@@ -30,21 +30,21 @@ pub trait ClusterPubSub<TB: RuntimeToolbox>: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if the subscription fails.
-  fn subscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError>;
+  fn subscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber) -> Result<(), PubSubError>;
 
   /// Unsubscribes from a topic.
   ///
   /// # Errors
   ///
   /// Returns an error if the unsubscription fails.
-  fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError>;
+  fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber) -> Result<(), PubSubError>;
 
   /// Publishes to a topic and returns acknowledgement.
   ///
   /// # Errors
   ///
   /// Returns an error only for system-level failures.
-  fn publish(&mut self, request: PublishRequest<TB>) -> Result<PublishAck, PubSubError>;
+  fn publish(&mut self, request: PublishRequest) -> Result<PublishAck, PubSubError>;
 
   /// Applies a topology update to refresh routing decisions.
   fn on_topology(&mut self, update: &TopologyUpdate);

@@ -1,7 +1,6 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{dispatch::mailbox::MailboxRegistryError, props::MailboxConfig};
@@ -12,21 +11,18 @@ mod tests;
 const DEFAULT_MAILBOX_ID: &str = "default";
 
 /// Registry that manages mailbox configurations keyed by identifier.
-pub struct MailboxesGeneric<TB: RuntimeToolbox + 'static> {
+pub struct Mailboxes {
   entries: HashMap<String, MailboxConfig, RandomState>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
 
-/// Type alias bound to the default toolbox.
-pub type Mailboxes = MailboxesGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Clone for MailboxesGeneric<TB> {
+impl Clone for Mailboxes {
   fn clone(&self) -> Self {
     Self { entries: self.entries.clone(), _marker: core::marker::PhantomData }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
+impl Mailboxes {
   /// Creates an empty mailbox registry.
   #[must_use]
   pub fn new() -> Self {
@@ -69,7 +65,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxesGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for MailboxesGeneric<TB> {
+impl Default for Mailboxes {
   fn default() -> Self {
     Self::new()
   }

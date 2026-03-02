@@ -1,21 +1,16 @@
 //! Extra top-level actor registry for custom top-level paths.
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
-use crate::core::actor::actor_ref::ActorRefGeneric;
+use crate::core::actor::actor_ref::ActorRef;
 
 /// Registry of extra top-level actor references.
-pub(crate) struct ExtraTopLevelsGeneric<TB: RuntimeToolbox + 'static> {
-  map: HashMap<alloc::string::String, ActorRefGeneric<TB>, RandomState>,
+pub(crate) struct ExtraTopLevels {
+  map: HashMap<alloc::string::String, ActorRef, RandomState>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type ExtraTopLevels = ExtraTopLevelsGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ExtraTopLevelsGeneric<TB> {
+impl ExtraTopLevels {
   /// Creates a new empty extra top-levels registry.
   #[must_use]
   pub(crate) fn new() -> Self {
@@ -29,18 +24,18 @@ impl<TB: RuntimeToolbox + 'static> ExtraTopLevelsGeneric<TB> {
   }
 
   /// Inserts an actor reference under the given name.
-  pub(crate) fn insert(&mut self, name: alloc::string::String, actor: ActorRefGeneric<TB>) {
+  pub(crate) fn insert(&mut self, name: alloc::string::String, actor: ActorRef) {
     self.map.insert(name, actor);
   }
 
   /// Returns a registered actor reference if present.
   #[must_use]
-  pub(crate) fn get(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+  pub(crate) fn get(&self, name: &str) -> Option<ActorRef> {
     self.map.get(name).cloned()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for ExtraTopLevelsGeneric<TB> {
+impl Default for ExtraTopLevels {
   fn default() -> Self {
     Self::new()
   }

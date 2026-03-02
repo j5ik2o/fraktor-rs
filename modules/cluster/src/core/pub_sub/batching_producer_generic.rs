@@ -6,8 +6,8 @@ mod tests;
 use alloc::{format, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  messaging::AnyMessageGeneric,
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerSharedGeneric},
+  messaging::AnyMessage,
+  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerShared},
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
@@ -37,7 +37,7 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
   pub fn new(
     topic: PubSubTopic,
     publisher: PubSubPublisherGeneric<TB>,
-    scheduler: SchedulerSharedGeneric<TB>,
+    scheduler: SchedulerShared,
     config: BatchingProducerConfig,
   ) -> Self {
     let state = BatchingProducerState::new(config.max_queue_size);
@@ -50,9 +50,9 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
   /// # Errors
   ///
   /// Returns `PubSubError` for system-level failures.
-  pub fn produce(&self, message: AnyMessageGeneric<TB>) -> Result<PublishAck, PubSubError> {
+  pub fn produce(&self, message: AnyMessage) -> Result<PublishAck, PubSubError> {
     let mut schedule = false;
-    let mut flush_messages: Vec<AnyMessageGeneric<TB>> = Vec::new();
+    let mut flush_messages: Vec<AnyMessage> = Vec::new();
 
     {
       let mut guard = self.inner.state.lock();
@@ -128,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
     Ok(())
   }
 
-  fn flush_messages(&self, messages: Vec<AnyMessageGeneric<TB>>) -> Result<PublishAck, PubSubError> {
+  fn flush_messages(&self, messages: Vec<AnyMessage>) -> Result<PublishAck, PubSubError> {
     let batch = match self.inner.publisher.build_batch(messages) {
       | Ok(batch) => batch,
       | Err(reason) => return Ok(PublishAck::rejected(reason)),
@@ -164,25 +164,25 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
 }
 
 struct BatchingProducerInner<TB: RuntimeToolbox + 'static> {
-  state:     RuntimeMutex<BatchingProducerState<TB>>,
+  state:     RuntimeMutex<BatchingProducerState>,
   topic:     PubSubTopic,
   publisher: PubSubPublisherGeneric<TB>,
-  scheduler: SchedulerSharedGeneric<TB>,
+  scheduler: SchedulerShared,
   config:    BatchingProducerConfig,
 }
 
-struct BatchingProducerState<TB: RuntimeToolbox> {
-  queue:        SyncFifoQueue<AnyMessageGeneric<TB>, VecDequeBackend<AnyMessageGeneric<TB>>>,
+struct BatchingProducerState {
+  queue:        SyncFifoQueue<AnyMessage, VecDequeBackend<AnyMessage>>,
   timer_active: bool,
 }
 
-impl<TB: RuntimeToolbox> BatchingProducerState<TB> {
+impl BatchingProducerState {
   fn new(capacity: usize) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, OverflowPolicy::Block);
     Self { queue: SyncFifoQueue::new(backend), timer_active: false }
   }
 
-  fn drain_batch(&mut self, max: usize) -> Vec<AnyMessageGeneric<TB>> {
+  fn drain_batch(&mut self, max: usize) -> Vec<AnyMessage> {
     let mut items = Vec::new();
     for _ in 0..max {
       match self.queue.poll() {

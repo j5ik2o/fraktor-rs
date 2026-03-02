@@ -1,52 +1,48 @@
 //! Shared wrapper for actor cell registry.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
-use super::cells::CellsGeneric;
+use super::cells::Cells;
 
-/// Shared wrapper for [`CellsGeneric`].
+/// Shared wrapper for [`Cells`].
 ///
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying registry, allowing safe
 /// concurrent access from multiple owners.
-pub(crate) struct CellsSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<CellsGeneric<TB>>>,
+pub(crate) struct CellsShared {
+  inner: ArcShared<RuntimeMutex<Cells>>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type CellsShared = CellsSharedGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> CellsSharedGeneric<TB> {
+impl CellsShared {
   /// Creates a new shared wrapper around the provided registry.
   #[must_use]
-  pub(crate) fn new(cells: CellsGeneric<TB>) -> Self {
+  pub(crate) fn new(cells: Cells) -> Self {
     Self { inner: ArcShared::new(RuntimeMutex::new(cells)) }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for CellsSharedGeneric<TB> {
+impl Default for CellsShared {
   fn default() -> Self {
-    Self::new(CellsGeneric::default())
+    Self::new(Cells::default())
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for CellsSharedGeneric<TB> {
+impl Clone for CellsShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<CellsGeneric<TB>> for CellsSharedGeneric<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&CellsGeneric<TB>) -> R) -> R {
+impl SharedAccess<Cells> for CellsShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Cells) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut CellsGeneric<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Cells) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }

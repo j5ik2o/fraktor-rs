@@ -1,25 +1,22 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 #[cfg(test)]
 mod tests;
 
 use crate::core::actor::Actor;
 
 /// Trait implemented by actor factories stored inside [`Props`](super::base::Props).
-pub trait ActorFactory<TB: RuntimeToolbox = NoStdToolbox>: Send + Sync {
+pub trait ActorFactory: Send + Sync {
   /// Creates a new actor instance boxed behind a trait object.
-  fn create(&mut self) -> Box<dyn Actor<TB> + Send + Sync>;
+  fn create(&mut self) -> Box<dyn Actor + Send + Sync>;
 }
 
-impl<F, A, TB> ActorFactory<TB> for F
+impl<F, A> ActorFactory for F
 where
   F: FnMut() -> A + Send + Sync + 'static,
-  A: Actor<TB> + Sync + 'static,
-  TB: RuntimeToolbox,
+  A: Actor + Sync + 'static,
 {
-  fn create(&mut self) -> Box<dyn Actor<TB> + Send + Sync> {
+  fn create(&mut self) -> Box<dyn Actor + Send + Sync> {
     Box::new((self)())
   }
 }

@@ -1,11 +1,9 @@
 //! Local-only actor reference provider.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   actor::{
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
   system::provider::ActorRefProvider,
@@ -15,11 +13,11 @@ use crate::core::{
 ///
 /// This provider only supports local actor references and will return an error
 /// if asked to create a reference for a remote actor path (with authority).
-pub struct LocalActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
-  _marker: core::marker::PhantomData<TB>,
+pub struct LocalActorRefProvider {
+  _marker: core::marker::PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LocalActorRefProviderGeneric<TB> {
+impl LocalActorRefProvider {
   /// Creates a new local actor reference provider.
   #[must_use]
   pub const fn new() -> Self {
@@ -27,18 +25,18 @@ impl<TB: RuntimeToolbox + 'static> LocalActorRefProviderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for LocalActorRefProviderGeneric<TB> {
+impl Default for LocalActorRefProvider {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for LocalActorRefProviderGeneric<TB> {
+impl ActorRefProvider for LocalActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     &[ActorPathScheme::Fraktor]
   }
 
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     // Local provider only supports local paths (no authority)
     if path.parts().authority_endpoint().is_some() {
       return Err(ActorError::fatal("LocalActorRefProvider does not support remote actor paths"));

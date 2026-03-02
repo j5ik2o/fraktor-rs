@@ -15,13 +15,13 @@ use std::{
 };
 
 use fraktor_actor_rs::core::scheduler::{
-  SchedulerSharedGeneric,
+  SchedulerShared,
   tick_driver::{
     HardwareKind, HardwareTickDriver, SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverConfig,
     TickDriverError, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler, TickPulseSource,
   },
 };
-use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 
@@ -43,7 +43,7 @@ pub fn create_demo_pulse_handle() -> DemoPulseHandle {
 /// This is a convenience helper that wraps the builder configuration pattern,
 /// combining a hardware tick driver with a scheduler executor.
 /// Creates the demo pulse source internally.
-pub fn hardware_tick_driver_config() -> (TickDriverConfig<StdToolbox>, DemoPulseHandle) {
+pub fn hardware_tick_driver_config() -> (TickDriverConfig, DemoPulseHandle) {
   let handle = create_demo_pulse_handle();
   let config = hardware_tick_driver_config_with_handle(handle.clone());
   (config, handle)
@@ -52,10 +52,10 @@ pub fn hardware_tick_driver_config() -> (TickDriverConfig<StdToolbox>, DemoPulse
 /// Creates a hardware-based tick driver configuration with a custom pulse handle.
 ///
 /// Use this when you need more control over the pulse source.
-pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickDriverConfig<StdToolbox> {
+pub fn hardware_tick_driver_config_with_handle(handle: DemoPulseHandle) -> TickDriverConfig {
   TickDriverConfig::new(move |ctx| {
     // プロビジョニングコンテキストから解像度と容量を取得
-    let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+    let scheduler: SchedulerShared = ctx.scheduler();
     let (resolution, capacity) =
       scheduler.with_read(|s| (s.config().resolution(), s.config().profile().tick_buffer_quota()));
 
@@ -157,7 +157,7 @@ impl HandlerSlot {
 unsafe impl Send for HandlerSlot {}
 unsafe impl Sync for HandlerSlot {}
 
-type SchedulerArc = SchedulerSharedGeneric<StdToolbox>;
+type SchedulerArc = SchedulerShared;
 
 pub struct StdTickDriverPump {
   running: Arc<AtomicBool>,
@@ -165,7 +165,7 @@ pub struct StdTickDriverPump {
 }
 
 impl StdTickDriverPump {
-  pub fn spawn(pulse_handle: DemoPulseHandle, scheduler: SchedulerArc, feed: TickFeedHandle<StdToolbox>) -> Self {
+  pub fn spawn(pulse_handle: DemoPulseHandle, scheduler: SchedulerArc, feed: TickFeedHandle) -> Self {
     let running = Arc::new(AtomicBool::new(true));
     let signal = feed.signal();
     let sleep_interval = StdDuration::from_nanos(pulse_handle.period());

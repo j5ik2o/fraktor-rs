@@ -3,9 +3,9 @@
 use alloc::{boxed::Box, format};
 
 use fraktor_actor_rs::core::{
-  event::stream::EventStreamSharedGeneric,
+  event::stream::EventStreamShared,
   extension::ExtensionInstaller,
-  system::{ActorSystemBuildError, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
@@ -38,10 +38,8 @@ impl BlockListProvider for EmptyBlockListProvider {
 /// - `event_stream` - The actor system's event stream for publishing cluster events
 /// - `block_list_provider` - Provider for blocked member information
 /// - `advertised_address` - The address this node advertises to the cluster
-pub type ClusterProviderFactory<TB> = ArcShared<
-  dyn Fn(EventStreamSharedGeneric<TB>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
-    + Send
-    + Sync,
+pub type ClusterProviderFactory = ArcShared<
+  dyn Fn(EventStreamShared, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider> + Send + Sync,
 >;
 
 /// Factory function type for creating a `Gossiper`.
@@ -82,7 +80,7 @@ type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Sen
 /// ```
 pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
   config:              ClusterExtensionConfig,
-  provider_f:          ClusterProviderFactory<TB>,
+  provider_f:          ClusterProviderFactory,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   downing_provider_f:  Option<DowningProviderFactory>,
   gossiper_f:          Option<GossiperFactory>,
@@ -127,10 +125,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn new<F>(config: ClusterExtensionConfig, provider_f: F) -> Self
   where
-    F: Fn(EventStreamSharedGeneric<TB>, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider>
-      + Send
-      + Sync
-      + 'static, {
+    F:
+      Fn(EventStreamShared, ArcShared<dyn BlockListProvider>, &str) -> Box<dyn ClusterProvider> + Send + Sync + 'static,
+  {
     Self {
       config,
       provider_f: ArcShared::new(provider_f),
@@ -153,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn new_with_local(config: ClusterExtensionConfig) -> Self {
     let static_topology = config.static_topology().cloned();
     Self::new(config, move |event_stream, block_list_provider, advertised_address| {
-      let mut provider = LocalClusterProviderGeneric::new(event_stream, block_list_provider, advertised_address);
+      let mut provider = LocalClusterProviderGeneric::<TB>::new(event_stream, block_list_provider, advertised_address);
       if let Some(ref topology) = static_topology {
         provider = provider.with_static_topology(topology.clone());
       }
@@ -268,7 +265,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   /// Panics if the extension is already installed with different configuration.
   pub fn install(
     &self,
-    system: &ActorSystemGeneric<TB>,
+    system: &ActorSystem,
   ) -> Result<ArcShared<crate::core::ClusterExtensionGeneric<TB>>, ActorSystemBuildError> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
@@ -312,11 +309,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   }
 }
 
-impl<TB> ExtensionInstaller<TB> for ClusterExtensionInstaller<TB>
+impl<TB> ExtensionInstaller for ClusterExtensionInstaller<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let _ = ClusterExtensionInstaller::install(self, system)?;
     Ok(())
   }

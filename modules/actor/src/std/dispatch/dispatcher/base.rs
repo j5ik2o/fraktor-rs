@@ -1,7 +1,5 @@
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
-  core::dispatch::dispatcher::{DispatchError, DispatchExecutorRunnerGeneric},
+  core::dispatch::dispatcher::{DispatchError, DispatchExecutorRunner},
   std::dispatch::dispatcher::DispatchShared,
 };
 
@@ -21,7 +19,7 @@ pub trait DispatchExecutor: Send + 'static {
   fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError>;
 }
 
-impl DispatchExecutor for DispatchExecutorRunnerGeneric<StdToolbox> {
+impl DispatchExecutor for DispatchExecutorRunner {
   fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.submit(dispatcher)
   }

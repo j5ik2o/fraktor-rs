@@ -1,13 +1,11 @@
 //! Internal root guardian that supervises `/user` and `/system`.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  actor::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, Pid, actor_ref::ActorRef},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-  system::state::SystemStateSharedGeneric,
+  system::state::SystemStateShared,
 };
 
 /// Root guardian actor responsible for watching the system guardian.
@@ -20,42 +18,36 @@ impl RootGuardianActor {
     Self
   }
 
-  fn watch_system_guardian<TB: RuntimeToolbox + 'static>(
-    ctx: &mut ActorContextGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn watch_system_guardian(ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if let Some(cell) = ctx.system().state().system_guardian() {
-      let system_ref: ActorRefGeneric<TB> = cell.actor_ref();
+      let system_ref: ActorRef = cell.actor_ref();
       ctx.watch(&system_ref).map_err(|error| ActorError::from_send_error(&error))
     } else {
       Ok(())
     }
   }
 
-  fn handle_system_terminated<TB: RuntimeToolbox + 'static>(state: &SystemStateSharedGeneric<TB>) {
+  fn handle_system_terminated(state: &SystemStateShared) {
     state.mark_terminated();
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Actor<TB> for RootGuardianActor {
-  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+impl Actor for RootGuardianActor {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     Self::watch_system_guardian(ctx)
   }
 
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
     let state = ctx.system().state();
     Self::handle_system_terminated(&state);
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_| {
       SupervisorDirective::Stop
     })

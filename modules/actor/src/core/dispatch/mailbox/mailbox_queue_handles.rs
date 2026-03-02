@@ -4,7 +4,7 @@ use core::cmp;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::ArcShared,
 };
 
@@ -16,16 +16,15 @@ use crate::core::dispatch::mailbox::{
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 
 /// Internal handles wrapping queue producers/consumers.
-pub(crate) struct QueueStateHandle<T, TB: RuntimeToolbox>
+pub(crate) struct QueueStateHandle<T>
 where
   T: Send + 'static, {
-  pub(crate) state: ArcShared<RuntimeMutex<QueueState<T, TB>>>,
+  pub(crate) state: ArcShared<RuntimeMutex<QueueState<T>>>,
 }
 
-impl<T, TB> QueueStateHandle<T, TB>
+impl<T> QueueStateHandle<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   pub(crate) fn new_user(policy: &MailboxPolicy) -> Self {
     let (capacity, overflow) = match policy.capacity() {

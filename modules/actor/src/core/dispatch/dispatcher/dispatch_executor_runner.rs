@@ -5,35 +5,28 @@ use core::sync::atomic::Ordering;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
 };
 use portable_atomic::AtomicBool;
 
-use super::{
-  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
-};
+use super::{dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared};
 
 #[cfg(test)]
 mod tests;
-
-/// Type alias for the task queue used by [`DispatchExecutorRunnerGeneric`].
-type TaskQueue<TB> = SyncFifoQueue<DispatchSharedGeneric<TB>, VecDequeBackend<DispatchSharedGeneric<TB>>>;
+type TaskQueue = SyncFifoQueue<DispatchShared, VecDequeBackend<DispatchShared>>;
 
 /// Serializing runner for [`DispatchExecutor`] that avoids deadlock on re-entry.
 ///
 /// When `submit` is called during an ongoing execution (re-entry), the task is
 /// queued instead of blocking. Only one thread drains the queue at a time.
-pub struct DispatchExecutorRunnerGeneric<TB: RuntimeToolbox + 'static> {
-  executor: RuntimeMutex<Box<dyn DispatchExecutor<TB>>>,
-  queue:    RuntimeMutex<TaskQueue<TB>>,
+pub struct DispatchExecutorRunner {
+  executor: RuntimeMutex<Box<dyn DispatchExecutor>>,
+  queue:    RuntimeMutex<TaskQueue>,
   running:  AtomicBool,
 }
 
-/// Type alias for the default runner with the default `NoStdToolbox`.
-pub type DispatchExecutorRunner = DispatchExecutorRunnerGeneric<NoStdToolbox>;
-
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatchExecutorRunnerGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatchExecutorRunnerGeneric<TB> {}
+unsafe impl Send for DispatchExecutorRunner {}
+unsafe impl Sync for DispatchExecutorRunner {}
 
 /// Default initial capacity for the task queue.
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
@@ -51,10 +44,10 @@ const fn queue_error_to_dispatch_error<T>(err: &QueueError<T>) -> DispatchError 
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatchExecutorRunnerGeneric<TB> {
+impl DispatchExecutorRunner {
   /// Creates a new runner wrapping the given executor.
   #[must_use]
-  pub fn new(executor: Box<dyn DispatchExecutor<TB>>) -> Self {
+  pub fn new(executor: Box<dyn DispatchExecutor>) -> Self {
     let backend = VecDequeBackend::with_capacity(DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow);
     let queue = SyncFifoQueue::new(backend);
     Self { executor: RuntimeMutex::new(executor), queue: RuntimeMutex::new(queue), running: AtomicBool::new(false) }
@@ -69,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchExecutorRunnerGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`DispatchError`] if the underlying executor rejects execution.
-  pub fn submit(&self, task: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
+  pub fn submit(&self, task: DispatchShared) -> Result<(), DispatchError> {
     // Push task to queue
     self.queue.lock().offer(task).map_err(|e| queue_error_to_dispatch_error(&e))?;
 

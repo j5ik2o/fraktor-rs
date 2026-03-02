@@ -29,15 +29,15 @@ impl<TB: RuntimeToolbox> ClusterPubSub<TB> for NoopClusterPubSub {
     Ok(())
   }
 
-  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn publish(&mut self, _request: PublishRequest<TB>) -> Result<PublishAck, PubSubError> {
+  fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
     Ok(PublishAck::accepted())
   }
 

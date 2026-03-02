@@ -13,14 +13,14 @@ use std::{thread, time::Duration};
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   extension::ExtensionInstallers,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, remote::RemotingConfig},
+  system::{ActorSystem, ActorSystemConfig, remote::RemotingConfig},
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
   let (receiver, receiver_driver) = build_loopback_system(
     "loopback-receiver",
     RECEIVER_PORT,
-    PropsGeneric::<StdToolbox>::from_fn(ReceiverGuardian::new).with_name(RECEIVER_GUARDIAN_NAME),
+    Props::from_fn(ReceiverGuardian::new).with_name(RECEIVER_GUARDIAN_NAME),
     receiver_transport_config(),
   )?;
   println!(
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
   let (sender, sender_driver) = build_loopback_system(
     "loopback-sender",
     SENDER_PORT,
-    PropsGeneric::<StdToolbox>::from_fn(SenderGuardian::new).with_name(SENDER_GUARDIAN_NAME),
+    Props::from_fn(SenderGuardian::new).with_name(SENDER_GUARDIAN_NAME),
     sender_transport_config(),
   )?;
   println!(
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
 
   sender
     .user_guardian_ref()
-    .tell(AnyMessageGeneric::new(StartPing {
+    .tell(AnyMessage::new(StartPing {
       // ローカルで取得した ActorRef をそのまま渡すだけ。canonical 付与とリモート配送はランタイムが自動処理する。
       target: receiver.user_guardian_ref(),
       text:   "ping over loopback remoting".to_string(),
@@ -80,28 +80,28 @@ fn main() -> Result<()> {
 fn build_loopback_system(
   system_name: &str,
   canonical_port: u16,
-  guardian: PropsGeneric<StdToolbox>,
+  guardian: Props,
   transport_config: RemotingExtensionConfig,
-) -> Result<(ActorSystemGeneric<StdToolbox>, ManualTestDriver<StdToolbox>)> {
-  let manual_driver = ManualTestDriver::<StdToolbox>::new();
+) -> Result<(ActorSystem, ManualTestDriver)> {
+  let manual_driver = ManualTestDriver::new();
   let driver_handle = manual_driver.clone();
-  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
+  let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(manual_driver))
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
-      ExtensionInstallers::<StdToolbox>::default()
+      ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(transport_config.clone())),
     );
-  let system = ActorSystemGeneric::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
+  let system = ActorSystem::new_with_config(&guardian, &system_config).map_err(|error| anyhow!("{error:?}"))?;
   let id = RemotingExtensionId::new(transport_config);
   let _ = system.extended().extension(&id).expect("extension registered");
   Ok((system, driver_handle))
 }
 
-fn pump_manual_drivers(drivers: &[&ManualTestDriver<StdToolbox>], ticks: u32) {
+fn pump_manual_drivers(drivers: &[&ManualTestDriver], ticks: u32) {
   for _ in 0..ticks {
     for driver in drivers {
       let controller = driver.controller();
@@ -128,14 +128,10 @@ impl SenderGuardian {
   }
 }
 
-impl Actor<StdToolbox> for SenderGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for SenderGuardian {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
-      let envelope = AnyMessageGeneric::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
+      let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
       println!("sender -> remote: {}", cmd.text);
       cmd.target.clone().tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
     } else if let Some(pong) = message.downcast_ref::<String>() {
@@ -153,17 +149,13 @@ impl ReceiverGuardian {
   }
 }
 
-impl Actor<StdToolbox> for ReceiverGuardian {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for ReceiverGuardian {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<Ping>() {
       ping
         .reply_to
         .clone()
-        .tell(AnyMessageGeneric::new(ping.text.clone()))
+        .tell(AnyMessage::new(ping.text.clone()))
         .map_err(|e| ActorError::recoverable(format!("forward failed: {e:?}")))?;
       println!("receiver <- {}", ping.text);
     }
@@ -173,12 +165,12 @@ impl Actor<StdToolbox> for ReceiverGuardian {
 
 #[derive(Clone, Debug)]
 struct StartPing {
-  target: ActorRefGeneric<StdToolbox>,
+  target: ActorRef,
   text:   String,
 }
 
 #[derive(Clone, Debug)]
 struct Ping {
   text:     String,
-  reply_to: ActorRefGeneric<StdToolbox>,
+  reply_to: ActorRef,
 }

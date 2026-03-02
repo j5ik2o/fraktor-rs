@@ -1,7 +1,5 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
     actor::{Pid, actor_path::ActorPath},
@@ -9,15 +7,12 @@ use crate::{
       logging::LogLevel,
       stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
     },
-    scheduler::{SchedulerBackedDelayProvider, SchedulerSharedGeneric, tick_driver::TickDriverConfig},
+    scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
     spawn::SpawnError,
     system::{
-      ActorSystemGeneric as CoreActorSystemGeneric, ExtendedActorSystemGeneric,
+      ActorSystem as CoreActorSystem, ExtendedActorSystem,
       provider::ActorRefResolveError,
-      state::{
-        SystemStateSharedGeneric as CoreSystemStateSharedGeneric,
-        system_state::SystemStateGeneric as CoreSystemStateGeneric,
-      },
+      state::{SystemStateShared as CoreSystemStateShared, system_state::SystemState as CoreSystemState},
     },
   },
   std::{
@@ -39,7 +34,7 @@ type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShare
 
 /// Actor system specialised for `StdToolbox` with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
-  inner: CoreActorSystemGeneric<StdToolbox>,
+  inner: CoreActorSystem,
 }
 
 impl ActorSystem {
@@ -101,8 +96,8 @@ impl ActorSystem {
   ///
   /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
   /// fails.
-  pub fn new(props: &Props, tick_driver_config: TickDriverConfig<StdToolbox>) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new(props.as_core(), tick_driver_config).map(Self::from_core)
+  pub fn new(props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
+    CoreActorSystem::new(props.as_core(), tick_driver_config).map(Self::from_core)
   }
 
   /// Creates a new actor system with an explicit configuration.
@@ -112,32 +107,32 @@ impl ActorSystem {
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
   /// initialised with the supplied configuration.
   pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    CoreActorSystemGeneric::new_with_config(props.as_core(), config.as_core()).map(Self::from_core)
+    CoreActorSystem::new_with_config(props.as_core(), config.as_core()).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).
   #[must_use]
   #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
-    Self::from_core(CoreActorSystemGeneric::new_empty())
+    Self::from_core(CoreActorSystem::new_empty())
   }
 
   /// Constructs the wrapper from a core actor system.
   #[must_use]
-  pub const fn from_core(inner: CoreActorSystemGeneric<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreActorSystem) -> Self {
     Self { inner }
   }
 
   /// Borrows the underlying core actor system.
   #[must_use]
   #[allow(dead_code)]
-  pub const fn as_core(&self) -> &CoreActorSystemGeneric<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreActorSystem {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core actor system.
   #[must_use]
-  pub fn into_core(self) -> CoreActorSystemGeneric<StdToolbox> {
+  pub fn into_core(self) -> CoreActorSystem {
     self.inner
   }
 
@@ -179,20 +174,20 @@ impl ActorSystem {
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> SchedulerSharedGeneric<StdToolbox> {
+  pub fn scheduler(&self) -> SchedulerShared {
     self.inner.scheduler()
   }
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<StdToolbox> {
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider {
     self.inner.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &StdSubscriberHandle) -> EventStreamSubscription {
-    let adapter = core_subscriber_handle::<StdToolbox>(EventStreamSubscriberAdapter::new(subscriber.clone()));
+    let adapter = core_subscriber_handle(EventStreamSubscriberAdapter::new(subscriber.clone()));
     self.inner.subscribe_event_stream(&adapter)
   }
 
@@ -243,11 +238,8 @@ impl ActorSystem {
   }
 }
 
-/// Shared system state specialised for `StdToolbox`.
-pub type SystemState = CoreSystemStateGeneric<StdToolbox>;
+/// Shared system state wrapper specialised for the standard runtime.
+pub type SystemStateShared = CoreSystemStateShared;
 
-/// Shared system state wrapper specialised for `StdToolbox`.
-pub type SystemStateShared = CoreSystemStateSharedGeneric<StdToolbox>;
-
-/// Extended actor system type specialised for `StdToolbox`.
-pub type ExtendedActorSystem = ExtendedActorSystemGeneric<StdToolbox>;
+/// System state container specialised for the standard runtime.
+pub type SystemState = CoreSystemState;

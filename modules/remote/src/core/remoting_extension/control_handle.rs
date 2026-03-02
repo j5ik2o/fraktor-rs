@@ -17,11 +17,11 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
 
 #[cfg(feature = "tokio-transport")]
-use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
+use fraktor_actor_rs::core::messaging::AnyMessage;
 use fraktor_actor_rs::core::{
-  actor::{actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPathParts, actor_ref::ActorRef},
   event::stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
+  system::{ActorSystem, ActorSystemWeak},
 };
 #[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
 use fraktor_utils_rs::core::sync::SharedAccess;
@@ -76,7 +76,7 @@ where
   ///
   /// The handle stores a weak reference to the actor system to avoid circular references.
   #[allow(dead_code)]
-  pub(crate) fn new(system: ActorSystemGeneric<TB>, config: RemotingExtensionConfig) -> Self {
+  pub(crate) fn new(system: ActorSystem, config: RemotingExtensionConfig) -> Self {
     let mut listeners: Vec<RemotingBackpressureListenerShared> = Vec::new();
     for listener in config.backpressure_listeners() {
       let boxed = listener.clone_box();
@@ -167,7 +167,7 @@ where
   }
 
   /// Registers the remote watcher daemon actor.
-  pub(crate) fn register_remote_watcher_daemon(&self, daemon: ActorRefGeneric<TB>) {
+  pub(crate) fn register_remote_watcher_daemon(&self, daemon: ActorRef) {
     *self.inner.watcher_daemon.lock() = Some(daemon);
   }
 
@@ -182,7 +182,7 @@ where
     let daemon = self.inner.watcher_daemon.lock().clone();
     match daemon {
       | Some(daemon) => daemon
-        .tell(AnyMessageGeneric::new(command))
+        .tell(AnyMessage::new(command))
         .map(|_| ())
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
       | None => Err(RemotingError::TransportUnavailable("watcher daemon not registered; command dropped".into())),
@@ -323,7 +323,7 @@ where
 struct RemotingControlInner<TB>
 where
   TB: RuntimeToolbox + 'static, {
-  system:                 ActorSystemWeakGeneric<TB>,
+  system:                 ActorSystemWeak,
   event_publisher:        EventPublisherGeneric<TB>,
   canonical_host:         String,
   canonical_port:         Option<u16>,
@@ -342,7 +342,7 @@ where
   correlation_seq:        AtomicU64,
   writer:                 RuntimeMutex<Option<EndpointWriterSharedGeneric<TB>>>,
   reader:                 RuntimeMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>>,
-  watcher_daemon:         RuntimeMutex<Option<ActorRefGeneric<TB>>>,
+  watcher_daemon:         RuntimeMutex<Option<ActorRef>>,
   transport_ref:          RuntimeMutex<Option<RemoteTransportShared<TB>>>,
   #[cfg(feature = "tokio-transport")]
   remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,

@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamShared;
 use fraktor_utils_rs::{core::time::TimerInstant, std::runtime_toolbox::StdToolbox};
 use tokio::sync::oneshot;
 
@@ -22,7 +22,7 @@ pub struct TokioGossiper {
   config:       TokioGossiperConfig,
   coordinator:  MembershipCoordinatorSharedGeneric<StdToolbox>,
   transport:    Option<TokioGossipTransport>,
-  event_stream: EventStreamSharedGeneric<StdToolbox>,
+  event_stream: EventStreamShared,
   runtime:      tokio::runtime::Handle,
   shutdown:     Option<oneshot::Sender<()>>,
   task:         Option<tokio::task::JoinHandle<()>>,
@@ -35,7 +35,7 @@ impl TokioGossiper {
     config: TokioGossiperConfig,
     coordinator: MembershipCoordinatorSharedGeneric<StdToolbox>,
     transport: TokioGossipTransport,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
     runtime: tokio::runtime::Handle,
   ) -> Self {
     Self { config, coordinator, transport: Some(transport), event_stream, runtime, shutdown: None, task: None }

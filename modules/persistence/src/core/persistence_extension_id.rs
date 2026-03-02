@@ -1,11 +1,10 @@
 //! Extension identifier for persistence subsystem.
 
-use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystem};
 
 use crate::core::{
-  journal::Journal, persistence_extension::PersistenceExtensionGeneric,
-  persistence_extension_shared::PersistenceExtensionSharedGeneric, snapshot_store::SnapshotStore,
+  journal::Journal, persistence_extension::PersistenceExtension,
+  persistence_extension_shared::PersistenceExtensionShared, snapshot_store::SnapshotStore,
 };
 
 /// Registers and instantiates persistence extensions.
@@ -22,9 +21,8 @@ impl<J, S> PersistenceExtensionId<J, S> {
   }
 }
 
-impl<TB, J, S> ExtensionId<TB> for PersistenceExtensionId<J, S>
+impl<J, S> ExtensionId for PersistenceExtensionId<J, S>
 where
-  TB: RuntimeToolbox + 'static,
   J: Journal + Clone + Send + Sync + 'static,
   S: SnapshotStore + Clone + Send + Sync + 'static,
   for<'a> J::WriteFuture<'a>: Send + 'static,
@@ -36,15 +34,15 @@ where
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
-  type Ext = PersistenceExtensionSharedGeneric<TB>;
+  type Ext = PersistenceExtensionShared;
 
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
-    let extension = match PersistenceExtensionGeneric::new(system, self.journal.clone(), self.snapshot_store.clone()) {
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
+    let extension = match PersistenceExtension::new(system, self.journal.clone(), self.snapshot_store.clone()) {
       | Ok(extension) => extension,
       | Err(error) => {
         panic!("persistence extension bootstrap failed: {error:?}");
       },
     };
-    PersistenceExtensionSharedGeneric::new(extension)
+    PersistenceExtensionShared::new(extension)
   }
 }

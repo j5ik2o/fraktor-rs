@@ -4,47 +4,37 @@ mod tests;
 use alloc::boxed::Box;
 use core::{pin::Pin, task::Context};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
-use super::dispatcher_shared::DispatcherSharedGeneric;
+use super::dispatcher_shared::DispatcherShared;
 use crate::core::{
   actor::actor_ref::{ActorRefSender, SendOutcome},
   dispatch::{
-    dispatcher::schedule_adapter_shared::ScheduleAdapterSharedGeneric,
-    mailbox::{EnqueueOutcome, MailboxGeneric, MailboxOfferFutureGeneric, ScheduleHints},
+    dispatcher::schedule_adapter_shared::ScheduleAdapterShared,
+    mailbox::{EnqueueOutcome, Mailbox, MailboxOfferFuture, ScheduleHints},
   },
   error::SendError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 /// Sender that enqueues messages via actor handle.
-pub struct DispatcherSenderGeneric<TB: RuntimeToolbox + 'static> {
-  dispatcher: DispatcherSharedGeneric<TB>,
-  mailbox:    ArcShared<MailboxGeneric<TB>>,
+pub struct DispatcherSender {
+  dispatcher: DispatcherShared,
+  mailbox:    ArcShared<Mailbox>,
 }
 
-/// Type alias for the default dispatcher sender.
-pub type DispatcherSender = DispatcherSenderGeneric<NoStdToolbox>;
+unsafe impl Send for DispatcherSender {}
+unsafe impl Sync for DispatcherSender {}
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSenderGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSenderGeneric<TB> {}
-
-impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
+impl DispatcherSender {
   #[must_use]
   /// Creates a sender bound to the specified dispatcher.
-  pub fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
+  pub fn new(dispatcher: DispatcherShared) -> Self {
     let mailbox = dispatcher.mailbox();
     Self { dispatcher, mailbox }
   }
 
-  fn poll_pending(
-    &self,
-    adapter: &ScheduleAdapterSharedGeneric<TB>,
-    future: &mut MailboxOfferFutureGeneric<TB>,
-  ) -> Result<(), SendError<TB>> {
+  fn poll_pending(&self, adapter: &ScheduleAdapterShared, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
     let waker = adapter.with_write(|a| a.create_waker(self.dispatcher.clone()));
     let mut cx = Context::from_waker(&waker);
 
@@ -65,8 +55,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSenderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for DispatcherSenderGeneric<TB> {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for DispatcherSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     match self.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         if self.mailbox.is_running() {

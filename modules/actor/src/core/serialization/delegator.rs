@@ -5,24 +5,22 @@ mod tests;
 
 use core::any::Any;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{
-  call_scope::SerializationCallScope, error::SerializationError, serialization_registry::SerializationRegistryGeneric,
+  call_scope::SerializationCallScope, error::SerializationError, serialization_registry::SerializationRegistry,
   serialized_message::SerializedMessage, transport_information::TransportInformation,
 };
 
 /// Helper that routes nested serialization requests through the registry.
-pub struct SerializationDelegator<'a, TB: RuntimeToolbox> {
-  registry:       &'a SerializationRegistryGeneric<TB>,
+pub struct SerializationDelegator<'a> {
+  registry:       &'a SerializationRegistry,
   scope:          SerializationCallScope,
   transport_hint: Option<TransportInformation>,
 }
 
-impl<'a, TB: RuntimeToolbox> SerializationDelegator<'a, TB> {
+impl<'a> SerializationDelegator<'a> {
   /// Creates a new delegator bound to the provided registry.
   #[must_use]
-  pub const fn new(registry: &'a SerializationRegistryGeneric<TB>) -> Self {
+  pub const fn new(registry: &'a SerializationRegistry) -> Self {
     Self { registry, scope: SerializationCallScope::Local, transport_hint: None }
   }
 

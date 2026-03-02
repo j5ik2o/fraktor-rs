@@ -4,7 +4,7 @@ use core::time::Duration;
 use std::sync::{Arc, Mutex};
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{
   core::{
@@ -26,8 +26,8 @@ struct EventSink {
   events: Arc<Mutex<Vec<ClusterEvent>>>,
 }
 
-impl EventStreamSubscriber<StdToolbox> for EventSink {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for EventSink {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     let EventStreamEvent::Extension { name, payload } = event else {
       return;
     };
@@ -78,7 +78,7 @@ fn join_delta(authority: &str) -> MembershipDelta {
 
 #[tokio::test]
 async fn gossip_delta_triggers_topology_update() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let captured = Arc::new(Mutex::new(Vec::new()));
   let subscriber = subscriber_handle(EventSink { events: captured.clone() });
   let _subscription = event_stream.subscribe(&subscriber);

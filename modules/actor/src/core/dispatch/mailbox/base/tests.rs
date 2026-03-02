@@ -1,22 +1,19 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   actor::Pid,
   dispatch::mailbox::{
-    Mailbox, MailboxInstrumentation, MailboxOfferFutureGeneric, MailboxOverflowStrategy, MailboxPolicy,
-    MailboxPollFutureGeneric,
+    Mailbox, MailboxInstrumentation, MailboxOfferFuture, MailboxOverflowStrategy, MailboxPolicy, MailboxPollFuture,
   },
-  messaging::{AnyMessage, AnyMessageGeneric, system_message::SystemMessage},
+  messaging::{AnyMessage, system_message::SystemMessage},
   system::ActorSystem,
 };
 
-impl<TB: RuntimeToolbox + 'static> super::MailboxGeneric<TB> {
-  pub(crate) fn enqueue_user_future(&self, message: AnyMessageGeneric<TB>) -> MailboxOfferFutureGeneric<TB> {
-    MailboxOfferFutureGeneric::new(self.user.state.clone(), message)
+impl super::Mailbox {
+  pub(crate) fn enqueue_user_future(&self, message: AnyMessage) -> MailboxOfferFuture {
+    MailboxOfferFuture::new(self.user.state.clone(), message)
   }
 
-  pub(crate) fn poll_user_future(&self) -> MailboxPollFutureGeneric<TB> {
-    MailboxPollFutureGeneric::new(self.user.state.clone())
+  pub(crate) fn poll_user_future(&self) -> MailboxPollFuture {
+    MailboxPollFuture::new(self.user.state.clone())
   }
 }
 

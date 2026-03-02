@@ -13,32 +13,32 @@ use fraktor_utils_rs::core::{
     queue::{OfferOutcome, QueueError},
     wait::WaitShared,
   },
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::ArcShared,
   timing::delay::{DelayFuture, DelayProvider},
 };
 
 use super::{mailbox_queue_state::QueueState, map_user_queue_error};
-use crate::core::{error::SendError, messaging::AnyMessageGeneric};
+use crate::core::{error::SendError, messaging::AnyMessage};
 
 #[cfg(test)]
 mod tests;
 
 /// Future returned when a queue needs to wait for capacity.
-struct QueueOfferFuture<T, TB: RuntimeToolbox>
+struct QueueOfferFuture<T>
 where
   T: Send + 'static, {
-  state:   ArcShared<RuntimeMutex<QueueState<T, TB>>>,
+  state:   ArcShared<RuntimeMutex<QueueState<T>>>,
   message: Option<T>,
-  waiter:  Option<WaitShared<QueueError<T>, TB>>,
+  waiter:  Option<WaitShared<QueueError<T>>>,
   timeout: Option<DelayFuture>,
 }
 
-impl<T, TB: RuntimeToolbox> QueueOfferFuture<T, TB>
+impl<T> QueueOfferFuture<T>
 where
   T: Send + 'static,
 {
-  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T, TB>>>, message: T) -> Self {
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T>>>, message: T) -> Self {
     Self { state, message: Some(message), waiter: None, timeout: None }
   }
 
@@ -47,7 +47,7 @@ where
     self
   }
 
-  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>, TB>, QueueError<T>> {
+  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
       let waiter = {
         let mut state = self.state.lock();
@@ -60,17 +60,11 @@ where
   }
 }
 
-impl<T, TB> Unpin for QueueOfferFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox,
-{
-}
+impl<T> Unpin for QueueOfferFuture<T> where T: Send + 'static {}
 
-impl<T, TB> Future for QueueOfferFuture<T, TB>
+impl<T> Future for QueueOfferFuture<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox,
 {
   type Output = Result<OfferOutcome, QueueError<T>>;
 
@@ -124,18 +118,12 @@ where
 }
 
 /// Future completing once a user message has been enqueued.
-pub struct MailboxOfferFutureGeneric<TB: RuntimeToolbox + 'static> {
-  inner: QueueOfferFuture<AnyMessageGeneric<TB>, TB>,
+pub struct MailboxOfferFuture {
+  inner: QueueOfferFuture<AnyMessage>,
 }
 
-/// Type alias for [MailboxOfferFutureGeneric] with the default [NoStdToolbox].
-pub type MailboxOfferFuture = MailboxOfferFutureGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> MailboxOfferFutureGeneric<TB> {
-  pub(crate) const fn new(
-    state: ArcShared<RuntimeMutex<QueueState<AnyMessageGeneric<TB>, TB>>>,
-    message: AnyMessageGeneric<TB>,
-  ) -> Self {
+impl MailboxOfferFuture {
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>, message: AnyMessage) -> Self {
     Self { inner: QueueOfferFuture::new(state, message) }
   }
 
@@ -148,10 +136,10 @@ impl<TB: RuntimeToolbox + 'static> MailboxOfferFutureGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Unpin for MailboxOfferFutureGeneric<TB> {}
+impl Unpin for MailboxOfferFuture {}
 
-impl<TB: RuntimeToolbox + 'static> Future for MailboxOfferFutureGeneric<TB> {
-  type Output = Result<(), SendError<TB>>;
+impl Future for MailboxOfferFuture {
+  type Output = Result<(), SendError>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     match Pin::new(&mut self.inner).poll(cx) {
@@ -162,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> Future for MailboxOfferFutureGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> fmt::Debug for MailboxOfferFutureGeneric<TB> {
+impl fmt::Debug for MailboxOfferFuture {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("MailboxOfferFuture").finish()
   }

@@ -3,10 +3,9 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber,
-    EventStreamSubscriptionGeneric, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -49,12 +48,12 @@ fn build_update(
 
 fn apply_update_and_publish(
   core: &mut ClusterCore<NoStdToolbox>,
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: &EventStreamShared,
   update: &TopologyUpdate,
 ) {
   let event = core.try_apply_topology(update).expect("topology apply");
   if let Some(event) = event {
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     event_stream.publish(&extension_event);
   }
@@ -380,7 +379,7 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn subscribe(
     &mut self,
     _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber,
   ) -> Result<(), PubSubError> {
     Ok(())
   }
@@ -388,14 +387,14 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn unsubscribe(
     &mut self,
     _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber,
   ) -> Result<(), PubSubError> {
     Ok(())
   }
 
   fn publish(
     &mut self,
-    _request: crate::core::pub_sub::PublishRequest<NoStdToolbox>,
+    _request: crate::core::pub_sub::PublishRequest,
   ) -> Result<crate::core::pub_sub::PublishAck, PubSubError> {
     Ok(crate::core::pub_sub::PublishAck::accepted())
   }
@@ -424,8 +423,8 @@ impl RecordingClusterEvents {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingClusterEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == "cluster"
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
@@ -435,9 +434,7 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let subscriber_impl = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
   let subscription = event_stream.subscribe(&subscriber);

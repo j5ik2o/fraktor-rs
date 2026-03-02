@@ -1,7 +1,5 @@
 //! Tests for tick driver configuration.
 
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use crate::core::scheduler::tick_driver::TickDriverConfig;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -9,7 +7,7 @@ use crate::core::scheduler::tick_driver::TickDriverConfig;
 fn test_tick_driver_config_manual_test() {
   use crate::core::scheduler::tick_driver::ManualTestDriver;
 
-  let driver = ManualTestDriver::<NoStdToolbox>::new();
+  let driver = ManualTestDriver::new();
   let config = TickDriverConfig::manual(driver);
 
   match config {
@@ -23,7 +21,7 @@ fn test_tick_driver_config_manual_test() {
 fn test_tick_driver_config_builder() {
   use crate::core::scheduler::tick_driver::TickDriverError;
 
-  let config = TickDriverConfig::<NoStdToolbox>::new(|_ctx| {
+  let config = TickDriverConfig::new(|_ctx| {
     // Dummy builder for testing
     Err(TickDriverError::UnsupportedEnvironment)
   });

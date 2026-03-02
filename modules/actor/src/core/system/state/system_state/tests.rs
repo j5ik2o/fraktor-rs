@@ -5,35 +5,35 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdMutex, RuntimeMutex},
   sync::{ArcShared, SharedAccess},
 };
 
-use super::{super::booting_state::BootingSystemStateGeneric, SystemState, SystemStateGeneric};
+use super::{super::booting_state::BootingSystemState, SystemState};
 use crate::core::{
   actor::{
-    Actor, ActorCell, ActorContextGeneric, Pid,
+    Actor, ActorCell, ActorContext, Pid,
     actor_path::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
     },
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   dispatch::{
-    dispatcher::{DispatchError, DispatchExecutor, DispatchSharedGeneric, DispatcherConfig},
+    dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
     mailbox::MailboxMessage,
   },
   error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   messaging::{
-    AnyMessage, AnyMessageViewGeneric,
+    AnyMessage, AnyMessageView,
     system_message::{FailurePayload, SystemMessage},
   },
   props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{
-      ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError,
-      TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+      ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
+      TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
     },
   },
   system::{
@@ -44,7 +44,7 @@ use crate::core::{
   },
 };
 
-impl<TB: RuntimeToolbox + 'static> SystemStateGeneric<TB> {
+impl SystemState {
   pub(crate) fn remove_cell(&mut self, pid: &Pid) {
     let reservation_source =
       self.actor_path_registry.get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
@@ -85,7 +85,7 @@ fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
 }
 
 fn base_config() -> ActorSystemConfig {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver)
 }
@@ -112,8 +112,8 @@ fn system_state_drop_shuts_down_executor_once() {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(RuntimeMutex::new(control));
     let resolution = Duration::from_millis(1);
-    let handle = TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
-    let feed = TickFeed::<NoStdToolbox>::new(resolution, 1, TickExecutorSignal::new());
+    let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
+    let feed = TickFeed::new(resolution, 1, TickExecutorSignal::new());
     let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
       let executor_calls = executor_calls_for_builder.clone();
       move || {
@@ -384,11 +384,11 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
+  use crate::core::{futures::ActorFutureShared, messaging::AskResult};
 
-  type TestAskResult = AskResult<NoStdToolbox>;
+  type TestAskResult = AskResult;
   let mut state = build_state();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();
@@ -441,7 +441,7 @@ fn system_state_user_guardian() {
 #[test]
 fn system_state_register_extra_top_level_success() {
   let mut state = build_state();
-  let actor = ActorRefGeneric::null();
+  let actor = ActorRef::null();
   assert!(state.register_extra_top_level("metrics", actor.clone()).is_ok());
   assert!(state.extra_top_level("metrics").is_some());
 }
@@ -449,7 +449,7 @@ fn system_state_register_extra_top_level_success() {
 #[test]
 fn system_state_register_extra_top_level_errors() {
   let mut state = build_state();
-  let actor = ActorRefGeneric::null();
+  let actor = ActorRef::null();
   let reserved = state.register_extra_top_level("user", actor.clone());
   assert!(matches!(reserved, Err(RegisterExtraTopLevelError::ReservedName(_))));
   state.mark_root_started();
@@ -460,7 +460,7 @@ fn system_state_register_extra_top_level_errors() {
 #[test]
 fn system_state_temp_actor_round_trip() {
   let mut state = build_state();
-  let actor = ActorRefGeneric::null();
+  let actor = ActorRef::null();
   let name = state.register_temp_actor(actor.clone());
   assert!(state.temp_actor(&name).is_some());
   state.unregister_temp_actor(&name);
@@ -533,7 +533,7 @@ fn guardian_cell_via_cells_returns_none_when_missing() {
 #[test]
 fn booting_into_running_requires_all_guardians() {
   let state = build_shared_state();
-  let booting = BootingSystemStateGeneric::new(state.clone());
+  let booting = BootingSystemState::new(state.clone());
 
   let root_pid = state.allocate_pid();
   let system_pid = state.allocate_pid();
@@ -564,7 +564,7 @@ fn booting_into_running_requires_all_guardians() {
 #[test]
 fn booting_into_running_fails_when_guardian_missing() {
   let state = build_shared_state();
-  let booting = BootingSystemStateGeneric::new(state.clone());
+  let booting = BootingSystemState::new(state.clone());
 
   let root_pid = state.allocate_pid();
   let system_pid = state.allocate_pid();
@@ -715,8 +715,7 @@ fn system_state_logs_failure_with_pid_origin() {
   use core::time::Duration;
 
   let state = build_shared_state();
-  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>> =
-    ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
   let _subscription = state.event_stream().subscribe(&subscriber);
 
@@ -758,7 +757,7 @@ impl RecordingRemoteWatchHook {
   }
 }
 
-impl crate::core::system::remote::RemoteWatchHook<NoStdToolbox> for RecordingRemoteWatchHook {
+impl crate::core::system::remote::RemoteWatchHook for RecordingRemoteWatchHook {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     let mut calls = self.calls.lock();
     calls.watch_calls += 1;
@@ -775,11 +774,11 @@ impl crate::core::system::remote::RemoteWatchHook<NoStdToolbox> for RecordingRem
 }
 
 struct RemoteEventRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RemoteEventRecorder {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -790,16 +789,16 @@ impl Default for RemoteEventRecorder {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RemoteEventRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RemoteEventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
 struct NoopExecutor;
 
-impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
-  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for NoopExecutor {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     Ok(())
   }
 
@@ -809,11 +808,11 @@ impl DispatchExecutor<NoStdToolbox> for NoopExecutor {
 }
 
 struct LogRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl LogRecorder {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -824,18 +823,14 @@ impl Default for LogRecorder {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for LogRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for LogRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
 impl Actor for RestartProbeActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }

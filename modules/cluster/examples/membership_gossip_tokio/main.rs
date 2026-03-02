@@ -13,7 +13,7 @@ compile_error!("membership_gossip_tokio には --features std が必要です。
 use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{
   core::{
@@ -35,8 +35,8 @@ struct EventPrinter {
   label: &'static str,
 }
 
-impl EventStreamSubscriber<StdToolbox> for EventPrinter {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for EventPrinter {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     let EventStreamEvent::Extension { name, payload } = event else {
       return;
     };
@@ -94,8 +94,8 @@ async fn main() {
   let addr_a = "127.0.0.1:22110";
   let addr_b = "127.0.0.1:22111";
 
-  let event_stream_a = EventStreamSharedGeneric::<StdToolbox>::default();
-  let event_stream_b = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream_a = EventStreamShared::default();
+  let event_stream_b = EventStreamShared::default();
 
   let _sub_a = event_stream_a.subscribe(&subscriber_handle(EventPrinter { label: "node-a" }));
   let _sub_b = event_stream_b.subscribe(&subscriber_handle(EventPrinter { label: "node-b" }));

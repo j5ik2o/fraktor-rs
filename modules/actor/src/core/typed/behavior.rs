@@ -2,22 +2,19 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   error::ActorError,
   supervision::SupervisorStrategy,
-  typed::{actor::TypedActorContextGeneric, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContext, behavior_signal::BehaviorSignal},
 };
 
 /// Captures message and signal handlers that can evolve into new behaviors after each invocation.
-pub struct Behavior<M, TB = NoStdToolbox>
+pub struct Behavior<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   directive:           BehaviorDirective,
-  message_handler:     Option<MessageHandler<M, TB>>,
-  signal_handler:      Option<SignalHandler<M, TB>>,
+  message_handler:     Option<MessageHandler<M>>,
+  signal_handler:      Option<SignalHandler<M>>,
   supervisor_override: Option<SupervisorStrategy>,
 }
 
@@ -40,20 +37,15 @@ pub(crate) enum BehaviorDirective {
   Empty,
 }
 
-type MessageHandler<M, TB> = Box<
-  dyn for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &M) -> Result<Behavior<M, TB>, ActorError> + Send + Sync,
->;
+type MessageHandler<M> =
+  Box<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync>;
 
-type SignalHandler<M, TB> = Box<
-  dyn for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
-    + Send
-    + Sync,
->;
+type SignalHandler<M> =
+  Box<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + Send + Sync>;
 
-impl<M, TB> Behavior<M, TB>
+impl<M> Behavior<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   pub(crate) const fn same() -> Self {
     Self {
@@ -102,10 +94,7 @@ where
 
   pub(crate) fn from_message_handler<F>(handler: F) -> Self
   where
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &M) -> Result<Behavior<M, TB>, ActorError>
-      + Send
-      + Sync
-      + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     Self {
       directive:           BehaviorDirective::Active,
       message_handler:     Some(Box::new(handler)),
@@ -116,7 +105,7 @@ where
 
   pub(crate) fn from_signal_handler<F>(handler: F) -> Self
   where
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
@@ -131,7 +120,7 @@ where
   /// Attaches an additional signal handler while keeping the existing message handler intact.
   pub fn receive_signal<F>(mut self, handler: F) -> Self
   where
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
@@ -148,7 +137,7 @@ where
   /// Otherwise the wrapper's result is returned directly.
   pub(crate) fn compose_signal<F>(mut self, wrapper: F) -> Self
   where
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
@@ -181,9 +170,9 @@ where
 
   pub(crate) fn handle_message(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     message: &M,
-  ) -> Result<Behavior<M, TB>, ActorError> {
+  ) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
@@ -199,9 +188,9 @@ where
 
   pub(crate) fn handle_signal(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     signal: &BehaviorSignal,
-  ) -> Result<Behavior<M, TB>, ActorError> {
+  ) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
       | BehaviorDirective::Stopped => Ok(Self::stopped()),

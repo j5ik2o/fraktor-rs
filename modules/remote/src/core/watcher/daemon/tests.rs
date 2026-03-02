@@ -4,14 +4,14 @@ use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric, Pid,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPathParts, GuardianKind},
   },
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfig, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex},
@@ -30,23 +30,19 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("remote-watcher-daemon-tests");
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("remote-watcher-daemon-tests");
   let config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  ActorSystemGeneric::new_with_config(&props, &config).expect("system")
+  ActorSystem::new_with_config(&props, &config).expect("system")
 }
 
-fn build_control(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlShared<NoStdToolbox> {
+fn build_control(system: &ActorSystem) -> RemotingControlShared<NoStdToolbox> {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let control: RemotingControlShared<NoStdToolbox> = ArcShared::new(RuntimeMutex::new(handle));
   let mut transport = LoopbackTransport::<NoStdToolbox>::default();
@@ -56,7 +52,7 @@ fn build_control(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlSh
   control
 }
 
-fn build_control_without_start(system: &ActorSystemGeneric<NoStdToolbox>) -> RemotingControlShared<NoStdToolbox> {
+fn build_control_without_start(system: &ActorSystem) -> RemotingControlShared<NoStdToolbox> {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   ArcShared::new(RuntimeMutex::new(handle))
 }

@@ -4,15 +4,13 @@
 mod tests;
 
 use alloc::{format, string::String, vec::Vec};
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   event::stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessageGeneric,
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
+  messaging::AnyMessage,
+  system::{ActorSystem, ActorSystemWeak},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
@@ -32,17 +30,17 @@ const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
   core:         ArcShared<RuntimeMutex<ClusterCore<TB>>>,
-  event_stream: EventStreamSharedGeneric<TB>,
+  event_stream: EventStreamShared,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
-  const fn new(core: ArcShared<RuntimeMutex<ClusterCore<TB>>>, event_stream: EventStreamSharedGeneric<TB>) -> Self {
+  const fn new(core: ArcShared<RuntimeMutex<ClusterCore<TB>>>, event_stream: EventStreamShared) -> Self {
     Self { core, event_stream }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopologySubscriber<TB> {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber for ClusterTopologySubscriber<TB> {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     // cluster 拡張イベントの TopologyUpdated のみを処理
     // （既に EventStream 経由で受信したイベントなので再 publish しない）
     if let EventStreamEvent::Extension { name, payload } = event
@@ -53,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterTopology
       if let Err(error) = result {
         let reason = format!("{error:?}");
         let failed = ClusterEvent::TopologyApplyFailed { reason, observed_at: update.observed_at };
-        let payload = AnyMessageGeneric::new(failed);
+        let payload = AnyMessage::new(failed);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
         self.event_stream.publish(&extension_event);
       }
@@ -106,20 +104,19 @@ struct SelfMemberStatus {
   status:    NodeStatus,
 }
 
-struct SelfMemberStatusTrackerSubscriber<TB: RuntimeToolbox + 'static> {
+struct SelfMemberStatusTrackerSubscriber {
   self_address: String,
   self_status:  ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
-  _marker:      PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SelfMemberStatusTrackerSubscriber<TB> {
+impl SelfMemberStatusTrackerSubscriber {
   const fn new(self_address: String, self_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>) -> Self {
-    Self { self_address, self_status, _marker: PhantomData }
+    Self { self_address, self_status }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for SelfMemberStatusTrackerSubscriber<TB> {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == CLUSTER_EVENT_STREAM_NAME
       && let Some(ClusterEvent::MemberStatusChanged { node_id, authority, to, .. }) =
@@ -132,32 +129,31 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for SelfMemberStatu
   }
 }
 
-struct MemberStatusSubscriber<TB: RuntimeToolbox + 'static, F: FnMut(&str, &str) + Send + Sync + 'static> {
+struct MemberStatusSubscriber<F: FnMut(&str, &str) + Send + Sync + 'static> {
   target:         NodeStatus,
   self_address:   String,
   callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
   state:          ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
-  event_stream:   EventStreamSharedGeneric<TB>,
+  event_stream:   EventStreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static, F: FnMut(&str, &str) + Send + Sync + 'static> MemberStatusSubscriber<TB, F> {
+impl<F: FnMut(&str, &str) + Send + Sync + 'static> MemberStatusSubscriber<F> {
   const fn new(
     target: NodeStatus,
     self_address: String,
     callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
     state: ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
-    event_stream: EventStreamSharedGeneric<TB>,
+    event_stream: EventStreamShared,
   ) -> Self {
     Self { target, self_address, callback_state, state, event_stream }
   }
 }
 
-impl<TB, F> EventStreamSubscriber<TB> for MemberStatusSubscriber<TB, F>
+impl<F> EventStreamSubscriber for MemberStatusSubscriber<F>
 where
-  TB: RuntimeToolbox + 'static,
   F: FnMut(&str, &str) + Send + Sync + 'static,
 {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == CLUSTER_EVENT_STREAM_NAME
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
@@ -180,20 +176,20 @@ where
 
 struct NoopMemberStatusSubscriber;
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for NoopMemberStatusSubscriber {
-  fn on_event(&mut self, _event: &EventStreamEvent<TB>) {}
+impl EventStreamSubscriber for NoopMemberStatusSubscriber {
+  fn on_event(&mut self, _event: &EventStreamEvent) {}
 }
 
-/// Cluster extension registered into `ActorSystemGeneric`.
+/// Cluster extension registered into `ActorSystem`.
 pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
   core: ArcShared<RuntimeMutex<ClusterCore<TB>>>,
-  event_stream: EventStreamSharedGeneric<TB>,
+  event_stream: EventStreamShared,
   grain_metrics: Option<GrainMetricsSharedGeneric<TB>>,
-  subscription: RuntimeMutex<Option<EventStreamSubscriptionGeneric<TB>>>,
+  subscription: RuntimeMutex<Option<EventStreamSubscription>>,
   terminated: RuntimeMutex<bool>,
   self_member_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
-  _self_member_status_subscription: EventStreamSubscriptionGeneric<TB>,
-  _system: ActorSystemWeakGeneric<TB>,
+  _self_member_status_subscription: EventStreamSubscription,
+  _system: ActorSystemWeak,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
@@ -201,14 +197,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   ///
   /// Uses a weak reference to the actor system to avoid circular references.
   #[must_use]
-  pub fn new(system: &ActorSystemGeneric<TB>, core: ClusterCore<TB>) -> Self {
+  pub fn new(system: &ActorSystem, core: ClusterCore<TB>) -> Self {
     let event_stream = system.event_stream();
     let self_address = core.startup_address();
     let grain_metrics =
       if core.metrics_enabled() { Some(GrainMetricsSharedGeneric::new(GrainMetrics::new())) } else { None };
     let self_member_status = ArcShared::new(RuntimeMutex::new(None));
     let status_subscriber =
-      subscriber_handle::<TB>(SelfMemberStatusTrackerSubscriber::<TB>::new(self_address, self_member_status.clone()));
+      subscriber_handle(SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
     let locked = RuntimeMutex::new(core);
     let subscription = RuntimeMutex::new(None);
@@ -359,7 +355,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
     match result {
       | Ok(Some(event)) => {
-        let payload = AnyMessageGeneric::new(event);
+        let payload = AnyMessage::new(event);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
         self.event_stream.publish(&extension_event);
       },
@@ -367,7 +363,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
       | Err(error) => {
         let reason = format!("{error:?}");
         let failed = ClusterEvent::TopologyApplyFailed { reason, observed_at: update.observed_at };
-        let payload = AnyMessageGeneric::new(failed);
+        let payload = AnyMessage::new(failed);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
         self.event_stream.publish(&extension_event);
       },
@@ -376,7 +372,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
   /// Registers a callback invoked when a member reaches `Up` status.
   #[must_use]
-  pub fn register_on_member_up<F>(&self, callback: F) -> EventStreamSubscriptionGeneric<TB>
+  pub fn register_on_member_up<F>(&self, callback: F) -> EventStreamSubscription
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     self.register_on_member_status(NodeStatus::Up, callback)
@@ -384,7 +380,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
   /// Registers a callback invoked when a member reaches `Removed` status.
   #[must_use]
-  pub fn register_on_member_removed<F>(&self, callback: F) -> EventStreamSubscriptionGeneric<TB>
+  pub fn register_on_member_removed<F>(&self, callback: F) -> EventStreamSubscription
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     if *self.terminated.lock() {
@@ -431,13 +427,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     self.core.lock().blocked_members().to_vec()
   }
 
-  fn register_on_member_status<F>(&self, target: NodeStatus, callback: F) -> EventStreamSubscriptionGeneric<TB>
+  fn register_on_member_status<F>(&self, target: NodeStatus, callback: F) -> EventStreamSubscription
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
     let self_address = self.core.lock().startup_address();
     let state = ArcShared::new(RuntimeMutex::new(MemberStatusSubscriberState::new()));
     let callback_state = ArcShared::new(RuntimeMutex::new(MemberStatusCallbackState::new(callback)));
-    let subscriber = subscriber_handle::<TB>(MemberStatusSubscriber::new(
+    let subscriber = subscriber_handle(MemberStatusSubscriber::new(
       target,
       self_address.clone(),
       callback_state.clone(),
@@ -464,12 +460,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     subscription
   }
 
-  fn already_unsubscribed_subscription(&self) -> EventStreamSubscriptionGeneric<TB> {
-    let subscriber = subscriber_handle::<TB>(NoopMemberStatusSubscriber);
+  fn already_unsubscribed_subscription(&self) -> EventStreamSubscription {
+    let subscriber = subscriber_handle(NoopMemberStatusSubscriber);
     let subscription = self.event_stream.subscribe(&subscriber);
     self.event_stream.unsubscribe(subscription.id());
     subscription
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> fraktor_actor_rs::core::extension::Extension<TB> for ClusterExtensionGeneric<TB> {}
+impl<TB: RuntimeToolbox + 'static> fraktor_actor_rs::core::extension::Extension for ClusterExtensionGeneric<TB> {}

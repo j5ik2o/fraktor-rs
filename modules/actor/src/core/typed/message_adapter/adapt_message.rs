@@ -6,26 +6,21 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 
 /// Represents a one-off adapter invocation scheduled on the parent actor thread.
-pub(crate) struct AdaptMessage<M, TB>
+pub(crate) struct AdaptMessage<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  entry:   ArcShared<AdapterEntry<M, TB>>,
-  payload: RuntimeMutex<Option<AdapterPayload<TB>>>,
+  M: Send + Sync + 'static, {
+  entry:   ArcShared<AdapterEntry<M>>,
+  payload: RuntimeMutex<Option<AdapterPayload>>,
 }
 
-impl<M, TB> AdaptMessage<M, TB>
+impl<M> AdaptMessage<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new inline adapter around the provided value and closure.
   pub(crate) fn new<U, F>(value: U, adapter: F) -> Self
@@ -33,7 +28,7 @@ where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let payload = AdapterPayload::new(value);
-    let entry = ArcShared::new(AdapterEntry::<M, TB>::new::<U, F>(TypeId::of::<U>(), adapter));
+    let entry = ArcShared::new(AdapterEntry::<M>::new::<U, F>(TypeId::of::<U>(), adapter));
     let storage = RuntimeMutex::new(Some(payload));
     Self { entry, payload: storage }
   }

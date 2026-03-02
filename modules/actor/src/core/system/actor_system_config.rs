@@ -2,16 +2,13 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   actor::actor_path::GuardianKind as PathGuardianKind,
   dispatch::{
-    dispatcher::{DispatcherConfigGeneric, DispatchersGeneric},
-    mailbox::MailboxesGeneric,
+    dispatcher::{DispatcherConfig, Dispatchers},
+    mailbox::Mailboxes,
   },
   extension::ExtensionInstallers,
   props::MailboxConfig,
@@ -23,28 +20,20 @@ use crate::core::{
 mod tests;
 
 /// Configuration for the actor system.
-pub struct ActorSystemConfigGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static, {
+pub struct ActorSystemConfig {
   system_name:               String,
   default_guardian:          PathGuardianKind,
   remoting_config:           Option<RemotingConfig>,
   scheduler_config:          SchedulerConfig,
-  tick_driver_config:        Option<TickDriverConfig<TB>>,
-  extension_installers:      Option<ExtensionInstallers<TB>>,
-  provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller<TB>>>,
-  default_dispatcher_config: Option<DispatcherConfigGeneric<TB>>,
-  dispatchers:               DispatchersGeneric<TB>,
-  mailboxes:                 MailboxesGeneric<TB>,
+  tick_driver_config:        Option<TickDriverConfig>,
+  extension_installers:      Option<ExtensionInstallers>,
+  provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  default_dispatcher_config: Option<DispatcherConfig>,
+  dispatchers:               Dispatchers,
+  mailboxes:                 Mailboxes,
 }
 
-/// Type alias for [ActorSystemConfigGeneric] with the default [NoStdToolbox].
-pub type ActorSystemConfig = ActorSystemConfigGeneric<NoStdToolbox>;
-
-impl<TB> ActorSystemConfigGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl ActorSystemConfig {
   /// Sets the actor system name.
   #[must_use]
   pub fn with_system_name(mut self, name: impl Into<String>) -> Self {
@@ -75,14 +64,14 @@ where
 
   /// Sets the tick driver configuration.
   #[must_use]
-  pub fn with_tick_driver(mut self, config: TickDriverConfig<TB>) -> Self {
+  pub fn with_tick_driver(mut self, config: TickDriverConfig) -> Self {
     self.tick_driver_config = Some(config);
     self
   }
 
   /// Registers extension installers executed after bootstrap.
   #[must_use]
-  pub fn with_extension_installers(mut self, installers: ExtensionInstallers<TB>) -> Self {
+  pub fn with_extension_installers(mut self, installers: ExtensionInstallers) -> Self {
     self.extension_installers = Some(installers);
     self
   }
@@ -91,14 +80,14 @@ where
   #[must_use]
   pub fn with_actor_ref_provider_installer<P>(mut self, installer: P) -> Self
   where
-    P: ActorRefProviderInstaller<TB> + 'static, {
+    P: ActorRefProviderInstaller + 'static, {
     self.provider_installer = Some(ArcShared::new(installer));
     self
   }
 
   /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
   #[must_use]
-  pub fn with_default_dispatcher(mut self, config: DispatcherConfigGeneric<TB>) -> Self {
+  pub fn with_default_dispatcher(mut self, config: DispatcherConfig) -> Self {
     self.dispatchers.register_or_update("default", config.clone());
     self.default_dispatcher_config = Some(config);
     self
@@ -106,7 +95,7 @@ where
 
   /// Registers or updates a dispatcher configuration.
   #[must_use]
-  pub fn with_dispatcher(mut self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) -> Self {
+  pub fn with_dispatcher(mut self, id: impl Into<String>, config: DispatcherConfig) -> Self {
     self.dispatchers.register_or_update(id, config);
     self
   }
@@ -145,67 +134,64 @@ where
 
   /// Returns the tick driver configuration if set.
   #[must_use]
-  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig<TB>> {
+  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig> {
     self.tick_driver_config.as_ref()
   }
 
   /// Takes the tick driver configuration.
   #[must_use]
-  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig<TB>> {
+  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig> {
     self.tick_driver_config.take()
   }
 
   /// Returns the extension installers if set.
   #[must_use]
-  pub const fn extension_installers(&self) -> Option<&ExtensionInstallers<TB>> {
+  pub const fn extension_installers(&self) -> Option<&ExtensionInstallers> {
     self.extension_installers.as_ref()
   }
 
   /// Takes the extension installers.
   #[must_use]
-  pub const fn take_extension_installers(&mut self) -> Option<ExtensionInstallers<TB>> {
+  pub const fn take_extension_installers(&mut self) -> Option<ExtensionInstallers> {
     self.extension_installers.take()
   }
 
   /// Returns the provider installer if set.
   #[must_use]
-  pub const fn provider_installer(&self) -> Option<&ArcShared<dyn ActorRefProviderInstaller<TB>>> {
+  pub const fn provider_installer(&self) -> Option<&ArcShared<dyn ActorRefProviderInstaller>> {
     self.provider_installer.as_ref()
   }
 
   /// Takes the provider installer.
   #[must_use]
-  pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller<TB>>> {
+  pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller>> {
     self.provider_installer.take()
   }
 
   /// Returns the default dispatcher configuration if set.
   #[must_use]
-  pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfigGeneric<TB>> {
+  pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfig> {
     self.default_dispatcher_config.as_ref()
   }
 
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
-  pub const fn dispatchers(&self) -> &DispatchersGeneric<TB> {
+  pub const fn dispatchers(&self) -> &Dispatchers {
     &self.dispatchers
   }
 
   /// Returns the mailbox registry configured for the system.
   #[must_use]
-  pub const fn mailboxes(&self) -> &MailboxesGeneric<TB> {
+  pub const fn mailboxes(&self) -> &Mailboxes {
     &self.mailboxes
   }
 }
 
-impl<TB> Default for ActorSystemConfigGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Default for ActorSystemConfig {
   fn default() -> Self {
-    let mut dispatchers = DispatchersGeneric::new();
+    let mut dispatchers = Dispatchers::new();
     dispatchers.ensure_default();
-    let mut mailboxes = MailboxesGeneric::new();
+    let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
       system_name: "default-system".to_string(),

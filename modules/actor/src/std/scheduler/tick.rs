@@ -4,19 +4,16 @@ extern crate std;
 
 use std::time::Duration;
 
-use fraktor_utils_rs::{
-  core::{
-    runtime_toolbox::RuntimeMutex,
-    sync::{ArcShared, ArcShared as Arc, SharedAccess},
-    time::TimerInstant,
-  },
-  std::runtime_toolbox::StdToolbox,
+use fraktor_utils_rs::core::{
+  runtime_toolbox::RuntimeMutex,
+  sync::{ArcShared, ArcShared as Arc, SharedAccess},
+  time::TimerInstant,
 };
 use tokio::runtime::Handle;
 
 use crate::{
   core::{
-    event::stream::EventStreamSharedGeneric,
+    event::stream::EventStreamShared,
     scheduler::tick_driver::{TickDriverConfig as CoreTickDriverConfig, TickDriverFactoryRef},
   },
   std::scheduler::tick::tokio_impl::TokioIntervalTickerFactory,
@@ -38,14 +35,14 @@ impl TickDriverConfig {
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
   #[allow(clippy::expect_used)]
-  pub fn tokio_auto(resolution: Duration) -> TickDriverFactoryRef<StdToolbox> {
+  pub fn tokio_auto(resolution: Duration) -> TickDriverFactoryRef {
     let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
     Self::tokio_with_handle(handle, resolution)
   }
 
   /// Creates a ready-to-use tick driver configuration for Tokio quickstart flows.
   #[must_use]
-  pub fn tokio_quickstart() -> CoreTickDriverConfig<StdToolbox> {
+  pub fn tokio_quickstart() -> CoreTickDriverConfig {
     Self::tokio_quickstart_with_resolution(Duration::from_millis(10))
   }
 
@@ -58,16 +55,16 @@ impl TickDriverConfig {
   ///
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
-  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig<StdToolbox> {
+  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig {
     use alloc::boxed::Box;
 
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      SchedulerSharedGeneric,
+      SchedulerShared,
       tick_driver::{
         AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriverBundle, TickDriverControl,
-        TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
+        TickDriverHandle, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     };
 
@@ -76,7 +73,7 @@ impl TickDriverConfig {
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
       // Get scheduler, resolution, and capacity from context
-      let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+      let scheduler: SchedulerShared = ctx.scheduler();
       let capacity = scheduler.with_read(|s| s.config().profile().tick_buffer_quota());
 
       // Create tick driver components
@@ -120,8 +117,7 @@ impl TickDriverConfig {
       let driver_id = next_tick_driver_id();
       let control: Box<dyn TickDriverControl> = Box::new(TokioQuickstartControl { tick_task, executor_task });
       let control = ArcShared::new(RuntimeMutex::new(control));
-      let driver_handle =
-        TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       // Create runtime
@@ -131,7 +127,7 @@ impl TickDriverConfig {
 
   /// Builds a factory using the provided Tokio runtime handle.
   #[must_use]
-  pub fn tokio_with_handle(handle: Handle, resolution: Duration) -> TickDriverFactoryRef<StdToolbox> {
+  pub fn tokio_with_handle(handle: Handle, resolution: Duration) -> TickDriverFactoryRef {
     ArcShared::new(TokioIntervalTickerFactory::new(handle, resolution))
   }
 
@@ -143,18 +139,18 @@ impl TickDriverConfig {
   #[must_use]
   pub fn tokio_quickstart_with_event_stream(
     resolution: Duration,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
     metrics_interval: Duration,
-  ) -> CoreTickDriverConfig<StdToolbox> {
+  ) -> CoreTickDriverConfig {
     use alloc::boxed::Box;
 
     use tokio::time::{MissedTickBehavior, interval};
 
     use crate::core::scheduler::{
-      SchedulerSharedGeneric,
+      SchedulerShared,
       tick_driver::{
         AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriverBundle,
-        TickDriverControl, TickDriverHandleGeneric, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
+        TickDriverControl, TickDriverHandle, TickDriverKind, TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     };
 
@@ -162,7 +158,7 @@ impl TickDriverConfig {
       #[allow(clippy::expect_used)]
       let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
 
-      let scheduler: SchedulerSharedGeneric<StdToolbox> = ctx.scheduler();
+      let scheduler: SchedulerShared = ctx.scheduler();
       let capacity = scheduler.with_read(|s| s.config().profile().tick_buffer_quota());
 
       let signal = TickExecutorSignal::new();
@@ -234,8 +230,7 @@ impl TickDriverConfig {
       let control: Box<dyn TickDriverControl> =
         Box::new(TokioQuickstartControl { tick_task, executor_task, metrics_task: Some(metrics_task) });
       let control = Arc::new(RuntimeMutex::new(control));
-      let driver_handle =
-        TickDriverHandleGeneric::<StdToolbox>::new(driver_id, TickDriverKind::Auto, resolution, control);
+      let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
       let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
 
       Ok(TickDriverBundle::new(driver_handle, feed).with_auto_metadata(metadata))
@@ -247,9 +242,9 @@ impl TickDriverConfig {
   pub fn tokio_with_handle_and_event_stream(
     handle: Handle,
     resolution: Duration,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
     interval: Duration,
-  ) -> TickDriverFactoryRef<StdToolbox> {
+  ) -> TickDriverFactoryRef {
     ArcShared::new(TokioIntervalTickerFactory::new(handle, resolution).with_metrics(event_stream, interval))
   }
 }

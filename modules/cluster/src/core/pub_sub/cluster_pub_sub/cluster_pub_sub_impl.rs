@@ -7,9 +7,9 @@ use alloc::{format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event::stream::EventStreamSharedGeneric,
-  messaging::AnyMessageGeneric,
-  serialization::{SerializationError, serialization_registry::SerializationRegistryGeneric},
+  event::stream::EventStreamShared,
+  messaging::AnyMessage,
+  serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
@@ -34,14 +34,14 @@ use crate::core::{
 /// before starting. On start, it creates the topic for TopicActorKind and publishes
 /// events to EventStream.
 pub struct ClusterPubSubImpl<TB: RuntimeToolbox + 'static> {
-  event_stream:         EventStreamSharedGeneric<TB>,
-  broker:               PubSubBroker<TB>,
+  event_stream:         EventStreamShared,
+  broker:               PubSubBroker,
   has_topic_actor_kind: bool,
   started:              bool,
   advertised_address:   String,
   pubsub_config:        PubSubConfig,
   delivery_endpoint:    DeliveryEndpointSharedGeneric<TB>,
-  registry:             ArcShared<SerializationRegistryGeneric<TB>>,
+  registry:             ArcShared<SerializationRegistry>,
   last_observed_at:     Option<TimerInstant>,
 }
 
@@ -51,8 +51,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   /// The KindRegistry is checked for TopicActorKind presence at construction time.
   #[must_use]
   pub fn new(
-    event_stream: EventStreamSharedGeneric<TB>,
-    registry: ArcShared<SerializationRegistryGeneric<TB>>,
+    event_stream: EventStreamShared,
+    registry: ArcShared<SerializationRegistry>,
     delivery_endpoint: DeliveryEndpointSharedGeneric<TB>,
     config: PubSubConfig,
     registry_snapshot: &KindRegistry,
@@ -92,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   }
 
   fn publish_pubsub_event(&self, event: PubSubEvent) {
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let stream_event = fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension {
       name: String::from("cluster-pubsub"),
       payload,
@@ -101,7 +101,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let stream_event =
       fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&stream_event);
@@ -112,7 +112,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     Some(defaults.apply_overrides(&overrides))
   }
 
-  fn serialize_payload(&self, payload: &AnyMessageGeneric<TB>) -> Result<PubSubBatch, SerializationError> {
+  fn serialize_payload(&self, payload: &AnyMessage) -> Result<PubSubBatch, SerializationError> {
     let payload_any = payload.payload();
     let type_id = payload_any.type_id();
     let type_name =
@@ -134,9 +134,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     Err(PubSubError::SerializationFailed { reason: format!("{error:?}") })
   }
 
-  fn split_subscribers(
-    subscribers: Vec<PubSubSubscriber<TB>>,
-  ) -> (Vec<PubSubSubscriber<TB>>, Vec<PubSubSubscriber<TB>>) {
+  fn split_subscribers(subscribers: Vec<PubSubSubscriber>) -> (Vec<PubSubSubscriber>, Vec<PubSubSubscriber>) {
     let mut local = Vec::new();
     let mut remote = Vec::new();
     for subscriber in subscribers {
@@ -152,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     &mut self,
     topic: &PubSubTopic,
     batch: PubSubBatch,
-    subscribers: &[PubSubSubscriber<TB>],
+    subscribers: &[PubSubSubscriber],
     options: PubSubTopicOptions,
   ) -> Result<(), PubSubError> {
     let deliver_request =
@@ -170,12 +168,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     }
   }
 
-  fn handle_delivery_report(
-    &mut self,
-    topic: &PubSubTopic,
-    subscribers: &[PubSubSubscriber<TB>],
-    report: DeliveryReport<TB>,
-  ) {
+  fn handle_delivery_report(&mut self, topic: &PubSubTopic, subscribers: &[PubSubSubscriber], report: DeliveryReport) {
     let now = self.last_observed_at.unwrap_or_else(|| TimerInstant::from_ticks(0, Duration::from_secs(1)));
 
     let mut failed_subscribers = Vec::new();
@@ -239,7 +232,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub<TB> for ClusterPubSubImpl<TB> {
     Ok(())
   }
 
-  fn subscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  fn subscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     if !self.started {
       return Err(PubSubError::NotStarted);
     }
@@ -248,7 +241,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub<TB> for ClusterPubSubImpl<TB> {
     result
   }
 
-  fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     if !self.started {
       return Err(PubSubError::NotStarted);
     }
@@ -257,7 +250,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub<TB> for ClusterPubSubImpl<TB> {
     result
   }
 
-  fn publish(&mut self, request: PublishRequest<TB>) -> Result<PublishAck, PubSubError> {
+  fn publish(&mut self, request: PublishRequest) -> Result<PublishAck, PubSubError> {
     if !self.started {
       return Err(PubSubError::NotStarted);
     }

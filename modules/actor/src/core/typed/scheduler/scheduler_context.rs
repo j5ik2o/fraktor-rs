@@ -1,59 +1,56 @@
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
 
 use super::TypedSchedulerShared;
 use crate::core::{
   scheduler::{
-    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerSharedGeneric, task_run::TaskRunSummary,
+    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared, task_run::TaskRunSummary,
   },
   typed::scheduler::TypedScheduler,
 };
 
 /// Owns the shared scheduler instance and exposes auxiliary services.
-pub struct TypedSchedulerContext<TB: RuntimeToolbox + 'static> {
-  scheduler:      SchedulerSharedGeneric<TB>,
-  delay_provider: SchedulerBackedDelayProvider<TB>,
+pub struct TypedSchedulerContext {
+  scheduler:      SchedulerShared,
+  delay_provider: SchedulerBackedDelayProvider,
 }
 
-impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
+impl TypedSchedulerContext {
   /// Creates a service from the provided toolbox and configuration.
   #[must_use]
-  pub fn new_with_config(toolbox: TB, config: SchedulerConfig) -> Self {
+  pub fn new_with_config(toolbox: NoStdToolbox, config: SchedulerConfig) -> Self {
     let context = SchedulerContext::new(toolbox, config);
     Self::new(&context)
   }
 
   /// Creates a service from the provided scheduler instance.
   #[must_use]
-  pub fn new(inner: &SchedulerContext<TB>) -> Self {
+  pub fn new(inner: &SchedulerContext) -> Self {
     Self::from_handles(inner.scheduler(), inner.delay_provider())
   }
 
   /// Wraps scheduler handles.
   #[must_use]
-  pub const fn from_handles(
-    scheduler: SchedulerSharedGeneric<TB>,
-    delay_provider: SchedulerBackedDelayProvider<TB>,
-  ) -> Self {
+  pub const fn from_handles(scheduler: SchedulerShared, delay_provider: SchedulerBackedDelayProvider) -> Self {
     Self { scheduler, delay_provider }
   }
 
   /// Returns a typed view of the shared scheduler mutex.
   #[must_use]
-  pub fn scheduler(&self) -> TypedSchedulerShared<TB> {
+  pub fn scheduler(&self) -> TypedSchedulerShared {
     TypedSchedulerShared::new(self.scheduler.clone())
   }
 
   /// Executes the provided closure while holding the scheduler lock.
   pub fn with_scheduler<F, R>(&self, callback: F) -> R
   where
-    F: for<'a> FnOnce(&mut TypedScheduler<'a, TB>) -> R, {
+    F: for<'a> FnOnce(&mut TypedScheduler<'a>) -> R, {
     let shared = self.scheduler();
     shared.with_write(|guard| guard.with(callback))
   }
 
   /// Returns a delay provider connected to this scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider {
     self.delay_provider.clone()
   }
 
@@ -64,7 +61,7 @@ impl<TB: RuntimeToolbox + 'static> TypedSchedulerContext<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for TypedSchedulerContext<TB> {
+impl Clone for TypedSchedulerContext {
   fn clone(&self) -> Self {
     Self { scheduler: self.scheduler.clone(), delay_provider: self.delay_provider.clone() }
   }

@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamShared;
 use fraktor_remote_rs::core::failure_detector::{
   DefaultFailureDetectorRegistry,
   phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
@@ -43,7 +43,7 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
 async fn start_then_stop_is_ok() {
   let config = TokioGossiperConfig::new(Duration::from_millis(50), Duration::from_millis(50));
   let coordinator = build_coordinator();
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
     tokio::runtime::Handle::current(),
@@ -60,7 +60,7 @@ async fn start_then_stop_is_ok() {
 async fn stop_without_start_returns_err() {
   let config = TokioGossiperConfig::new(Duration::from_millis(50), Duration::from_millis(50));
   let coordinator = build_coordinator();
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
     tokio::runtime::Handle::current(),
@@ -76,7 +76,7 @@ async fn stop_without_start_returns_err() {
 async fn start_twice_returns_err() {
   let config = TokioGossiperConfig::new(Duration::from_millis(50), Duration::from_millis(50));
   let coordinator = build_coordinator();
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
     tokio::runtime::Handle::current(),

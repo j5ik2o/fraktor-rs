@@ -7,10 +7,10 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   actor::{
     Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::SendError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 use fraktor_persistence_rs::core::{AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick};
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
@@ -19,8 +19,8 @@ type TB = NoStdToolbox;
 
 struct NoopSender;
 
-impl ActorRefSender<TB> for NoopSender {
-  fn send(&mut self, _message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for NoopSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Ok(SendOutcome::Delivered)
   }
 }
@@ -31,7 +31,7 @@ fn main() {
 
   // 日本語コメント: 配送メッセージを送信し、確認する
   let now = TimerInstant::from_ticks(10, Duration::from_secs(1));
-  let destination = ActorRefGeneric::new(Pid::new(1, 1), NoopSender);
+  let destination = ActorRef::new(Pid::new(1, 1), NoopSender);
   let delivery_id =
     delivery.deliver(destination.clone(), None, now, |id| (id, "payload")).expect("delivery should be accepted");
   let _confirmed = delivery.confirm_delivery(delivery_id);

@@ -1,11 +1,9 @@
 use alloc::boxed::Box;
 use core::{any::Any, task::Waker};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{
-  dispatcher_shared::DispatcherSharedGeneric, schedule_adapter::ScheduleAdapter,
-  schedule_adapter_shared::ScheduleAdapterSharedGeneric, schedule_waker::ScheduleWaker,
+  dispatcher_shared::DispatcherShared, schedule_adapter::ScheduleAdapter,
+  schedule_adapter_shared::ScheduleAdapterShared, schedule_waker::ScheduleWaker,
 };
 
 /// Inline adapter that delegates to the built-in `ScheduleWaker`.
@@ -21,14 +19,14 @@ impl InlineScheduleAdapter {
 
   /// Helper that creates a shared handle with external synchronization.
   #[must_use]
-  pub fn shared<TB: RuntimeToolbox + 'static>() -> ScheduleAdapterSharedGeneric<TB> {
-    ScheduleAdapterSharedGeneric::new(Box::new(InlineScheduleAdapter))
+  pub fn shared() -> ScheduleAdapterShared {
+    ScheduleAdapterShared::new(Box::new(InlineScheduleAdapter))
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ScheduleAdapter<TB> for InlineScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<TB>) -> Waker {
-    ScheduleWaker::<TB>::into_waker(dispatcher)
+impl ScheduleAdapter for InlineScheduleAdapter {
+  fn create_waker(&mut self, dispatcher: DispatcherShared) -> Waker {
+    ScheduleWaker::into_waker(dispatcher)
   }
 
   fn on_pending(&mut self) {

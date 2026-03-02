@@ -5,7 +5,7 @@ mod actor_ref;
 mod child_ref;
 mod typed_actor;
 
-pub use actor_context::{TypedActorContext, TypedActorContextGeneric};
-pub use actor_ref::{TypedActorRef, TypedActorRefGeneric};
-pub use child_ref::{TypedChildRef, TypedChildRefGeneric};
+pub use actor_context::TypedActorContext;
+pub use actor_ref::TypedActorRef;
+pub use child_ref::TypedChildRef;
 pub use typed_actor::TypedActor;

@@ -2,22 +2,19 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  time::{SchedulerTickHandle, TickLease},
-};
+use fraktor_utils_rs::core::time::{SchedulerTickHandle, TickLease};
 
 use super::{RunnerMode, Scheduler};
 
 /// Drives [`Scheduler`] by draining manually injected ticks.
-pub struct SchedulerRunner<'a, TB: RuntimeToolbox + 'static> {
+pub struct SchedulerRunner<'a> {
   tick_handle: &'a SchedulerTickHandle<'a>,
   tick_lease:  TickLease<'a>,
   mode:        RunnerMode,
-  _marker:     PhantomData<TB>,
+  _marker:     PhantomData<()>,
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> SchedulerRunner<'a, TB> {
+impl<'a> SchedulerRunner<'a> {
   #[must_use]
   pub(crate) fn new_internal(tick_handle: &'a SchedulerTickHandle<'a>) -> Self {
     let tick_lease = tick_handle.lease();
@@ -43,7 +40,7 @@ impl<'a, TB: RuntimeToolbox + 'static> SchedulerRunner<'a, TB> {
   }
 
   /// Processes the currently pending ticks.
-  pub fn run_once(&mut self, scheduler: &mut Scheduler<TB>) {
+  pub fn run_once(&mut self, scheduler: &mut Scheduler) {
     while let Some(event) = self.tick_lease.try_pull() {
       let ticks = event.ticks();
       if ticks == 0 {

@@ -3,15 +3,15 @@ use core::time::Duration;
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  actor::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRef,
   scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
   typed::{
-    actor::TypedActorRefGeneric,
+    actor::TypedActorRef,
     scheduler::{TypedScheduler, TypedSchedulerContext},
   },
 };
 
-fn build_scheduler() -> Scheduler<NoStdToolbox> {
+fn build_scheduler() -> Scheduler {
   let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
   Scheduler::new(toolbox, config)
@@ -22,8 +22,8 @@ fn typed_schedule_once_forwards_sender_metadata() {
   let mut scheduler = build_scheduler();
   {
     let mut typed_scheduler = TypedScheduler::new(&mut scheduler);
-    let receiver = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());
-    let sender = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());
+    let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
+    let sender = TypedActorRef::<u32>::from_untyped(ActorRef::null());
     let handle = typed_scheduler
       .schedule_once(Duration::from_millis(1), receiver.clone(), 7u32, None, Some(sender.clone()))
       .expect("handle");
@@ -41,7 +41,7 @@ fn typed_schedule_at_fixed_rate_registers_job() {
   let mut scheduler = build_scheduler();
   {
     let mut typed_scheduler = TypedScheduler::new(&mut scheduler);
-    let receiver = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());
+    let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
     let handle = typed_scheduler
       .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), receiver.clone(), 3u32, None, None)
       .expect("handle");
@@ -52,7 +52,7 @@ fn typed_schedule_at_fixed_rate_registers_job() {
 #[test]
 fn typed_scheduler_context_reuses_shared_scheduler_arc() {
   let context = TypedSchedulerContext::new_with_config(NoStdToolbox::default(), SchedulerConfig::default());
-  let receiver = TypedActorRefGeneric::<u32, NoStdToolbox>::from_untyped(ActorRefGeneric::null());
+  let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
 
   let handle = context.with_scheduler(|scheduler| {
     scheduler.schedule_once(Duration::from_millis(5), receiver.clone(), 99u32, None, None).expect("handle")

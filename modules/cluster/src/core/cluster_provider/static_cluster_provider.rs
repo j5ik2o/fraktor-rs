@@ -5,9 +5,9 @@
 //! single-process tests and no_std examples.
 
 use alloc::string::String;
-use core::time::Duration;
+use core::{marker::PhantomData, time::Duration};
 
-use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamShared;
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
@@ -23,21 +23,28 @@ mod tests;
 /// communication. It simply publishes a predetermined topology when started,
 /// making it ideal for testing and single-process demonstrations.
 pub struct StaticClusterProvider<TB: RuntimeToolbox + 'static> {
-  event_stream:        EventStreamSharedGeneric<TB>,
+  event_stream:        EventStreamShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   static_topology:     Option<ClusterTopology>,
   advertised_address:  String,
+  _marker:             PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
   /// Creates a new static cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: EventStreamSharedGeneric<TB>,
+    event_stream: EventStreamShared,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
-    Self { event_stream, block_list_provider, static_topology: None, advertised_address: advertised_address.into() }
+    Self {
+      event_stream,
+      block_list_provider,
+      static_topology: None,
+      advertised_address: advertised_address.into(),
+      _marker: PhantomData,
+    }
   }
 
   /// Sets the static topology to be published on startup.
@@ -56,7 +63,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
 
   /// Publishes the static topology to EventStream.
   fn publish_topology(&self) {
-    use fraktor_actor_rs::core::{event::stream::EventStreamEvent, messaging::AnyMessageGeneric};
+    use fraktor_actor_rs::core::{event::stream::EventStreamEvent, messaging::AnyMessage};
 
     use crate::core::ClusterEvent;
 
@@ -80,7 +87,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
         TimerInstant::from_ticks(topology.hash(), Duration::from_secs(1)),
       );
       let event = ClusterEvent::TopologyUpdated { update };
-      let payload = AnyMessageGeneric::new(event);
+      let payload = AnyMessage::new(event);
       let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
       self.event_stream.publish(&extension_event);
     }

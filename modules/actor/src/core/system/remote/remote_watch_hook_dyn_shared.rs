@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -19,16 +19,16 @@ use crate::core::actor::Pid;
 /// # Design
 /// This type follows the `*Shared` pattern from `docs/guides/shared_vs_handle.md`:
 /// - Interior mutability is encapsulated within this shared wrapper
-/// - The underlying `Box<dyn RemoteWatchHook<TB>>` does not need internal locks
+/// - The underlying `Box<dyn RemoteWatchHook>` does not need internal locks
 /// - Lock acquisition is hidden from callers via closure-based API
-pub(crate) struct RemoteWatchHookDynSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<Box<dyn RemoteWatchHook<TB>>>>,
+pub(crate) struct RemoteWatchHookDynShared {
+  inner: ArcShared<RuntimeMutex<Box<dyn RemoteWatchHook>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHookDynSharedGeneric<TB> {
+impl RemoteWatchHookDynShared {
   /// Creates a new shared wrapper around the provided hook.
   #[must_use]
-  pub(crate) fn new(hook: Box<dyn RemoteWatchHook<TB>>) -> Self {
+  pub(crate) fn new(hook: Box<dyn RemoteWatchHook>) -> Self {
     Self { inner: ArcShared::new(RuntimeMutex::new(hook)) }
   }
 
@@ -40,13 +40,13 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHookDynSharedGeneric<TB> {
 
   /// Acquires a write lock and applies the closure to the inner hook.
   #[inline]
-  pub(crate) fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook<TB>>) -> R) -> R {
+  pub(crate) fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook>) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }
 
   /// Replaces the current hook with a new one.
-  pub(crate) fn replace(&self, hook: Box<dyn RemoteWatchHook<TB>>) {
+  pub(crate) fn replace(&self, hook: Box<dyn RemoteWatchHook>) {
     self.with_write(|inner| *inner = hook);
   }
 
@@ -61,19 +61,19 @@ impl<TB: RuntimeToolbox + 'static> RemoteWatchHookDynSharedGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn RemoteWatchHook<TB>>> for RemoteWatchHookDynSharedGeneric<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteWatchHook<TB>>) -> R) -> R {
+impl SharedAccess<Box<dyn RemoteWatchHook>> for RemoteWatchHookDynShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteWatchHook>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook<TB>>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook>) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for RemoteWatchHookDynSharedGeneric<TB> {
+impl Clone for RemoteWatchHookDynShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }

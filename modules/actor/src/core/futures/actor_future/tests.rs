@@ -4,9 +4,9 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
-use crate::core::futures::{ActorFutureListener, ActorFutureSharedGeneric};
+use crate::core::futures::{ActorFutureListener, ActorFutureShared};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}
@@ -19,7 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future = ActorFutureSharedGeneric::<i32, NoStdToolbox>::new();
+  let future = ActorFutureShared::<i32>::new();
   let mut listener = ActorFutureListener::new(future.clone());
 
   assert!(future.with_write(|af| af.try_take().is_none()));

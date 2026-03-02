@@ -1,9 +1,9 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
 };
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> StreamDriveActor<TB> {
     self.shutdown_requested = true;
   }
 
-  fn try_stop(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn try_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if self.shutdown_requested && self.handles.is_empty() {
       ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))
     } else {
@@ -58,12 +58,8 @@ impl<TB: RuntimeToolbox + 'static> StreamDriveActor<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Actor<TB> for StreamDriveActor<TB> {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl<TB: RuntimeToolbox + 'static> Actor for StreamDriveActor<TB> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<StreamDriveCommand<TB>>() {
       match command {
         | StreamDriveCommand::Register { handle } => {

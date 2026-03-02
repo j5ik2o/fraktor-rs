@@ -11,40 +11,38 @@ use alloc::{
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::{ArcShared, SharedAccess},
 };
 
 use super::{
-  ExtendedActorSystemGeneric,
+  ExtendedActorSystem,
   guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
 use crate::core::{
   actor::{
-    ActorCellGeneric, ChildRefGeneric, Pid,
+    ActorCell, ChildRef, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
-  dead_letter::{DeadLetterEntryGeneric, DeadLetterReason},
+  dead_letter::{DeadLetterEntry, DeadLetterReason},
   error::SendError,
   event::{
     logging::LogLevel,
     stream::{
-      EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
-      TickDriverSnapshot,
+      EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription, TickDriverSnapshot,
     },
   },
-  futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessageGeneric, AskResult, system_message::SystemMessage},
-  props::PropsGeneric,
+  futures::ActorFutureShared,
+  messaging::{AnyMessage, AskResult, system_message::SystemMessage},
+  props::Props,
   scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
   serialization::default_serialization_extension_id,
   spawn::SpawnError,
   system::{
-    actor_system_config::ActorSystemConfigGeneric,
+    actor_system_config::ActorSystemConfig,
     provider::ActorRefResolveError,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 
@@ -52,14 +50,11 @@ const PARENT_MISSING: &str = "parent actor not found";
 const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
-pub struct ActorSystemGeneric<TB: RuntimeToolbox + 'static> {
-  state: SystemStateSharedGeneric<TB>,
+pub struct ActorSystem {
+  state: SystemStateShared,
 }
 
-/// Type alias for [ActorSystemGeneric] with the default [NoStdToolbox].
-pub type ActorSystem = ActorSystemGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
+impl ActorSystem {
   /// Creates an empty actor system without any guardian (testing only).
   ///
   /// # Panics
@@ -67,9 +62,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Panics if the default test-support configuration fails to build.
   #[must_use]
   #[cfg(any(test, feature = "test-support"))]
-  pub fn new_empty() -> Self
-  where
-    TB: Default, {
+  pub fn new_empty() -> Self {
     Self::new_empty_with(|config| config)
   }
 
@@ -82,27 +75,25 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty_with<F>(configure: F) -> Self
   where
-    TB: Default,
-    F: FnOnce(ActorSystemConfigGeneric<TB>) -> ActorSystemConfigGeneric<TB>, {
+    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
     let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
       crate::core::scheduler::tick_driver::ManualTestDriver::new(),
     );
     let scheduler_config = crate::core::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
-    let config =
-      ActorSystemConfigGeneric::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
+    let config = ActorSystemConfig::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
     let config = configure(config);
-    let state = match SystemStateGeneric::build_from_config(&config) {
+    let state = match SystemState::build_from_config(&config) {
       | Ok(state) => state,
       | Err(error) => panic!("default test-support config should always build: {error:?}"),
     };
-    let state = SystemStateSharedGeneric::new(state);
+    let state = SystemStateShared::new(state);
     state.mark_root_started();
     Self { state }
   }
 
   /// Creates an actor system from an existing system state.
   #[must_use]
-  pub const fn from_state(state: SystemStateSharedGeneric<TB>) -> Self {
+  pub const fn from_state(state: SystemStateShared) -> Self {
     Self { state }
   }
 
@@ -111,11 +102,10 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
-  pub fn new_with<F>(user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<Self, SpawnError>
+  pub fn new_with<F>(user_guardian_props: &Props, configure: F) -> Result<Self, SpawnError>
   where
-    TB: Default,
-    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    Self::new_with_config_and(user_guardian_props, &ActorSystemConfigGeneric::default(), configure)
+    F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
+    Self::new_with_config_and(user_guardian_props, &ActorSystemConfig::default(), configure)
   }
 
   /// Creates an actor system with the required tick driver configuration.
@@ -130,13 +120,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization or tick driver setup fails.
-  pub fn new(
-    user_guardian_props: &PropsGeneric<TB>,
-    tick_driver_config: TickDriverConfig<TB>,
-  ) -> Result<Self, SpawnError>
-  where
-    TB: Default, {
-    let config = ActorSystemConfigGeneric::default().with_tick_driver(tick_driver_config);
+  pub fn new(user_guardian_props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
+    let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config);
     Self::new_with_config(user_guardian_props, &config)
   }
 
@@ -145,12 +130,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError`] when guardian initialization fails.
-  pub fn new_with_config(
-    user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfigGeneric<TB>,
-  ) -> Result<Self, SpawnError>
-  where
-    TB: Default, {
+  pub fn new_with_config(user_guardian_props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     Self::new_with_config_and(user_guardian_props, config, |_| Ok(()))
   }
 
@@ -160,15 +140,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError`] when guardian initialization or configuration fails.
   pub fn new_with_config_and<F>(
-    user_guardian_props: &PropsGeneric<TB>,
-    config: &ActorSystemConfigGeneric<TB>,
+    user_guardian_props: &Props,
+    config: &ActorSystemConfig,
     configure: F,
   ) -> Result<Self, SpawnError>
   where
-    TB: Default,
-    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    let state = SystemStateGeneric::build_from_config(config)?;
-    let system = Self::from_state(SystemStateSharedGeneric::new(state));
+    F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
+    let state = SystemState::build_from_config(config)?;
+    let system = Self::from_state(SystemStateShared::new(state));
     system.bootstrap(user_guardian_props, configure)?;
 
     // Install extensions and provider after bootstrap
@@ -192,7 +171,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`ActorRefResolveError`] when the path cannot be resolved.
-  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorRefResolveError> {
+  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRef, ActorRefResolveError> {
     if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
       return Err(ActorRefResolveError::SystemNotBootstrapped);
     }
@@ -247,7 +226,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Panics if the user guardian has not been initialised.
   #[must_use]
-  pub fn user_guardian_ref(&self) -> ActorRefGeneric<TB> {
+  pub fn user_guardian_ref(&self) -> ActorRef {
     match self.state.user_guardian() {
       | Some(cell) => cell.actor_ref(),
       | None => panic!("user guardian has not been initialised"),
@@ -256,13 +235,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the actor reference to the system guardian when available.
   #[must_use]
-  pub fn system_guardian_ref(&self) -> Option<ActorRefGeneric<TB>> {
+  pub fn system_guardian_ref(&self) -> Option<ActorRef> {
     self.state.system_guardian().map(|cell| cell.actor_ref())
   }
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> SystemStateSharedGeneric<TB> {
+  pub fn state(&self) -> SystemStateShared {
     self.state.clone()
   }
 
@@ -272,8 +251,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// themselves owned by the system (such as extensions or remoting components)
   /// to avoid circular reference issues.
   #[must_use]
-  pub fn downgrade(&self) -> super::ActorSystemWeakGeneric<TB> {
-    super::ActorSystemWeakGeneric { state: self.state.downgrade() }
+  pub fn downgrade(&self) -> super::ActorSystemWeak {
+    super::ActorSystemWeak { state: self.state.downgrade() }
   }
 
   /// Returns the canonical host/port when remoting is configured.
@@ -290,8 +269,8 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns an extended view that exposes privileged runtime operations.
   #[must_use]
-  pub fn extended(&self) -> ExtendedActorSystemGeneric<TB> {
-    ExtendedActorSystemGeneric::new(self.clone())
+  pub fn extended(&self) -> ExtendedActorSystem {
+    ExtendedActorSystem::new(self.clone())
   }
 
   fn install_default_serialization_extension(&self) -> Result<(), SpawnError> {
@@ -312,19 +291,19 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
+  pub fn event_stream(&self) -> EventStreamShared {
     self.state.event_stream()
   }
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> crate::core::scheduler::SchedulerSharedGeneric<TB> {
+  pub fn scheduler(&self) -> crate::core::scheduler::SchedulerShared {
     self.state.scheduler()
   }
 
   /// Returns the tick driver bundle when initialized.
   #[must_use]
-  pub fn tick_driver_bundle(&self) -> crate::core::scheduler::tick_driver::TickDriverBundle<TB> {
+  pub fn tick_driver_bundle(&self) -> crate::core::scheduler::tick_driver::TickDriverBundle {
     self.state.tick_driver_bundle()
   }
 
@@ -336,27 +315,24 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a delay provider backed by the scheduler when available.
   #[must_use]
-  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider {
     self.state.delay_provider()
   }
 
   /// Subscribes the provided observer to the event stream.
   #[must_use]
-  pub fn subscribe_event_stream(
-    &self,
-    subscriber: &EventStreamSubscriberShared<TB>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
+  pub fn subscribe_event_stream(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
     self.state.event_stream().subscribe(subscriber)
   }
 
   /// Returns a snapshot of recorded dead letters.
   #[must_use]
-  pub fn dead_letters(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
+  pub fn dead_letters(&self) -> Vec<DeadLetterEntry> {
     self.state.dead_letters()
   }
 
   /// Records a deadletter entry that will also be published to the event stream.
-  pub fn record_dead_letter(&self, message: AnyMessageGeneric<TB>, reason: DeadLetterReason, recipient: Option<Pid>) {
+  pub fn record_dead_letter(&self, message: AnyMessage, reason: DeadLetterReason, recipient: Option<Pid>) {
     self.state.record_dead_letter(message, reason, recipient);
   }
 
@@ -368,14 +344,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns an actor reference for the provided pid when registered.
   #[must_use]
-  pub fn actor_ref_by_pid(&self, pid: Pid) -> Option<ActorRefGeneric<TB>> {
+  pub fn actor_ref_by_pid(&self, pid: Pid) -> Option<ActorRef> {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
   /// Registers a temporary actor reference under `/temp` and returns the generated segment.
   #[must_use]
   #[allow(dead_code)]
-  pub(crate) fn register_temp_actor(&self, actor: ActorRefGeneric<TB>) -> String {
+  pub(crate) fn register_temp_actor(&self, actor: ActorRef) -> String {
     self.state.register_temp_actor(actor)
   }
 
@@ -388,7 +364,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// Resolves a registered temporary actor reference.
   #[must_use]
   #[allow(dead_code)]
-  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRefGeneric<TB>> {
+  pub(crate) fn temp_actor(&self, name: &str) -> Option<ActorRef> {
     self.state.temp_actor(name)
   }
 
@@ -398,7 +374,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   }
 
   /// Publishes a raw event to the event stream.
-  pub fn publish_event(&self, event: &EventStreamEvent<TB>) {
+  pub fn publish_event(&self, event: &EventStreamEvent) {
     self.state.publish_event(event);
   }
 
@@ -408,14 +384,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the guardian is missing.
   #[allow(dead_code)]
-  pub(crate) fn spawn(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub(crate) fn spawn(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.user_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
 
   /// Spawns a new actor under the system guardian (internal use only).
   #[allow(dead_code)]
-  pub(crate) fn system_actor_of(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub(crate) fn system_actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let guardian_pid = self.state.system_guardian_pid().ok_or_else(SpawnError::system_unavailable)?;
     self.spawn_child(guardian_pid, props)
   }
@@ -425,7 +401,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::InvalidProps`] when the parent pid is unknown.
-  pub(crate) fn spawn_child(&self, parent: Pid, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub(crate) fn spawn_child(&self, parent: Pid, props: &Props) -> Result<ChildRef, SpawnError> {
     if !self.state.has_root_started() && self.state.root_guardian_pid().is_none() {
       return Err(SpawnError::system_not_bootstrapped());
     }
@@ -437,19 +413,19 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns an [`ActorRef`] for the specified pid if the actor is registered.
   #[must_use]
-  pub(crate) fn actor_ref(&self, pid: Pid) -> Option<ActorRefGeneric<TB>> {
+  pub(crate) fn actor_ref(&self, pid: Pid) -> Option<ActorRef> {
     self.state.cell(&pid).map(|cell| cell.actor_ref())
   }
 
   /// Returns child references supervised by the provided parent PID.
   #[must_use]
-  pub(crate) fn children(&self, parent: Pid) -> Vec<ChildRefGeneric<TB>> {
+  pub(crate) fn children(&self, parent: Pid) -> Vec<ChildRef> {
     let system = self.state.clone();
     self
       .state
       .child_pids(parent)
       .into_iter()
-      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRefGeneric::new(cell.actor_ref(), system.clone())))
+      .filter_map(|pid| self.state.cell(&pid).map(|cell| ChildRef::new(cell.actor_ref(), system.clone())))
       .collect()
   }
 
@@ -458,13 +434,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the stop message cannot be enqueued.
-  pub(crate) fn stop_actor(&self, pid: Pid) -> Result<(), SendError<TB>> {
+  pub(crate) fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
     self.state.send_system_message(pid, SystemMessage::Stop)
   }
 
   /// Drains ask futures that have been fulfilled since the last check.
   #[must_use]
-  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
+  pub fn drain_ready_ask_futures(&self) -> Vec<ActorFutureShared<AskResult>> {
     self.state.drain_ready_ask_futures()
   }
 
@@ -473,7 +449,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the guardian mailbox rejects the stop request.
-  pub fn terminate(&self) -> Result<(), SendError<TB>> {
+  pub fn terminate(&self) -> Result<(), SendError> {
     if self.state.is_terminated() {
       return Ok(());
     }
@@ -500,7 +476,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
 
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ActorFutureSharedGeneric<(), TB> {
+  pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.state.termination_future()
   }
 
@@ -512,11 +488,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
   }
 
-  fn spawn_with_parent(
-    &self,
-    parent: Option<Pid>,
-    props: &PropsGeneric<TB>,
-  ) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(parent, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, parent, name, props)?;
@@ -528,13 +500,13 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
       self.state.register_child(parent_pid, pid);
     }
 
-    Ok(ChildRefGeneric::new(cell.actor_ref(), self.state.clone()))
+    Ok(ChildRef::new(cell.actor_ref(), self.state.clone()))
   }
 
-  fn bootstrap<F>(&self, user_guardian_props: &PropsGeneric<TB>, configure: F) -> Result<(), SpawnError>
+  fn bootstrap<F>(&self, user_guardian_props: &Props, configure: F) -> Result<(), SpawnError>
   where
-    F: FnOnce(&ActorSystemGeneric<TB>) -> Result<(), SpawnError>, {
-    let root_props = PropsGeneric::from_fn(RootGuardianActor::new).with_name("root");
+    F: FnOnce(&ActorSystem) -> Result<(), SpawnError>, {
+    let root_props = Props::from_fn(RootGuardianActor::new).with_name("root");
     let root_cell = self.spawn_root_guardian_cell(&root_props)?;
     let root_pid = root_cell.pid();
     self.state.set_root_guardian(&root_cell);
@@ -547,7 +519,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
 
     let user_guardian_ref = user_guardian.actor_ref();
-    let system_props = PropsGeneric::from_fn({
+    let system_props = Props::from_fn({
       let user_guardian_ref = user_guardian_ref.clone();
       move || SystemGuardianActor::new(user_guardian_ref.clone())
     })
@@ -567,7 +539,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Ok(())
   }
 
-  fn spawn_root_guardian_cell(&self, props: &PropsGeneric<TB>) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+  fn spawn_root_guardian_cell(&self, props: &Props) -> Result<ArcShared<ActorCell>, SpawnError> {
     let pid = self.state.allocate_pid();
     let name = self.state.assign_name(None, props.name(), pid)?;
     let cell = self.build_cell_for_spawn(pid, None, name, props)?;
@@ -580,14 +552,14 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     pid: Pid,
     parent: Option<Pid>,
     name: String,
-    props: &PropsGeneric<TB>,
-  ) -> Result<ArcShared<ActorCellGeneric<TB>>, SpawnError> {
+    props: &Props,
+  ) -> Result<ArcShared<ActorCell>, SpawnError> {
     let resolved = self.resolve_props(props)?;
     Self::ensure_mailbox_requirements(&resolved)?;
-    ActorCellGeneric::create(self.state.clone(), pid, parent, name, &resolved)
+    ActorCell::create(self.state.clone(), pid, parent, name, &resolved)
   }
 
-  fn ensure_mailbox_requirements(props: &PropsGeneric<TB>) -> Result<(), SpawnError> {
+  fn ensure_mailbox_requirements(props: &Props) -> Result<(), SpawnError> {
     let requirement = props.mailbox_config().requirement();
     let registry = props.mailbox_config().capabilities();
     requirement.ensure_supported(&registry).map_err(|error| {
@@ -604,7 +576,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     }
   }
 
-  fn resolve_props(&self, props: &PropsGeneric<TB>) -> Result<PropsGeneric<TB>, SpawnError> {
+  fn resolve_props(&self, props: &Props) -> Result<Props, SpawnError> {
     let mut resolved = props.clone();
     if let Some(dispatcher_id) = resolved.dispatcher_id() {
       let config =
@@ -628,7 +600,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     &self,
     parent: Option<Pid>,
     pid: Pid,
-    cell: &ArcShared<ActorCellGeneric<TB>>,
+    cell: &ArcShared<ActorCell>,
   ) -> Result<(), SpawnError> {
     if let Err(error) = self.state.send_system_message(pid, SystemMessage::Create) {
       self.state.record_send_error(Some(pid), &error);
@@ -639,7 +611,7 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     Ok(())
   }
 
-  fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCellGeneric<TB>>, pid: Pid) {
+  fn rollback_spawn(&self, parent: Option<Pid>, cell: &ArcShared<ActorCell>, pid: Pid) {
     self.state.release_name(parent, cell.name());
     self.state.remove_cell(&pid);
     if let Some(parent_pid) = parent {
@@ -651,16 +623,16 @@ impl<TB: RuntimeToolbox + 'static> ActorSystemGeneric<TB> {
     if let Some(system_pid) = self.state.system_guardian_pid()
       && let Some(system_ref) = self.actor_ref(system_pid)
     {
-      let _ = system_ref.tell(AnyMessageGeneric::new(SystemGuardianProtocol::<TB>::ForceTerminateHooks));
+      let _ = system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks));
     }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ActorSystemGeneric<TB> {
+impl Clone for ActorSystem {
   fn clone(&self) -> Self {
     Self { state: self.state.clone() }
   }
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorSystemGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorSystemGeneric<TB> {}
+unsafe impl Send for ActorSystem {}
+unsafe impl Sync for ActorSystem {}

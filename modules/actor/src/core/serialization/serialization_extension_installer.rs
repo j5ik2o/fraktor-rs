@@ -2,12 +2,10 @@
 
 use alloc::format;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   extension::ExtensionInstaller,
   serialization::{SerializationExtensionId, SerializationSetup},
-  system::{ActorSystemBuildError, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemBuildError},
 };
 
 /// Installer that registers the serialization extension during actor system bootstrap.
@@ -29,8 +27,8 @@ impl SerializationExtensionInstaller {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ExtensionInstaller<TB> for SerializationExtensionInstaller {
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
+impl ExtensionInstaller for SerializationExtensionInstaller {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extension_id = SerializationExtensionId::new(self.setup.clone());
     system.extended().register_extension(&extension_id).map(|_| ()).map_err(|error| {
       ActorSystemBuildError::Configuration(format!("serialization extension registration failed: {error:?}"))

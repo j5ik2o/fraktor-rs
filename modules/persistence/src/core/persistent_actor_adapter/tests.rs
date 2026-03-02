@@ -1,17 +1,17 @@
 use alloc::{string::ToString, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorCellGeneric, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorCell, ActorContext, actor_ref::ActorRef},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric, message_invoker::MessageInvokerPipelineGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvokerPipeline},
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   system::{
-    ActorSystemConfigGeneric, ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem, ActorSystemConfig,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
@@ -30,12 +30,8 @@ type TB = NoStdToolbox;
 
 struct NoopActor;
 
-impl Actor<TB> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -88,11 +84,7 @@ impl Eventsourced<TB> for DummyPersistentActor {
     self.last_recovery_failure = Some(cause.clone());
   }
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.command_count = self.command_count.saturating_add(1);
     if let Some(value) = message.downcast_ref::<i32>() {
       self.command_log.push(*value);
@@ -138,11 +130,7 @@ impl Eventsourced<TB> for MismatchPersistentActor {
 
   fn receive_snapshot(&mut self, _snapshot: &Snapshot) {}
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -157,32 +145,30 @@ impl PersistentActor<TB> for MismatchPersistentActor {
   }
 }
 
-fn build_context(system: &ActorSystemGeneric<TB>) -> ActorContextGeneric<'static, TB> {
+fn build_context(system: &ActorSystem) -> ActorContext<'static> {
   let pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let cell =
-    ActorCellGeneric::create(system.state(), pid, None, "test".into(), &props).expect("actor cell should be created");
+  let props = Props::from_fn(|| NoopActor);
+  let cell = ActorCell::create(system.state(), pid, None, "test".into(), &props).expect("actor cell should be created");
   system.state().register_cell(cell);
-  ActorContextGeneric::new(system, pid)
+  ActorContext::new(system, pid)
 }
 
-fn register_noop_actor_ref(system: &ActorSystemGeneric<TB>, name: &str) -> ActorRefGeneric<TB> {
+fn register_noop_actor_ref(system: &ActorSystem, name: &str) -> ActorRef {
   let pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let cell =
-    ActorCellGeneric::create(system.state(), pid, None, name.into(), &props).expect("actor cell should be created");
+  let props = Props::from_fn(|| NoopActor);
+  let cell = ActorCell::create(system.state(), pid, None, name.into(), &props).expect("actor cell should be created");
   system.state().register_cell(cell.clone());
   cell.actor_ref()
 }
 
 fn prepare_processing_commands(
   adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContextGeneric<'_, TB>,
+  ctx: &mut ActorContext<'_>,
 ) {
   prepare_recovery_started(adapter, ctx);
   let _ = adapter.actor.persistence_context().handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
   let _ = adapter
     .actor
@@ -192,32 +178,25 @@ fn prepare_processing_commands(
 
 fn prepare_recovery_started(
   adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContextGeneric<'_, TB>,
+  ctx: &mut ActorContext<'_>,
 ) {
   let journal_ref = register_noop_actor_ref(ctx.system(), "journal");
   let snapshot_ref = register_noop_actor_ref(ctx.system(), "snapshot");
   adapter.actor.persistence_context().bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  adapter
-    .actor
-    .persistence_context()
-    .start_recovery(Recovery::default(), ActorRefGeneric::null())
-    .expect("start recovery");
+  adapter.actor.persistence_context().start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
 }
 
-fn prepare_recovering(
-  adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContextGeneric<'_, TB>,
-) {
+fn prepare_recovering(adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>, ctx: &mut ActorContext<'_>) {
   prepare_recovery_started(adapter, ctx);
   let _ = adapter.actor.persistence_context().handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
 }
 
 fn prepare_stashing_commands(
   adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContextGeneric<'_, TB>,
+  ctx: &mut ActorContext<'_>,
 ) {
   prepare_processing_commands(adapter, ctx);
   adapter.actor.persist(ctx, 1_i32, |_actor, _event| {});
@@ -227,7 +206,7 @@ fn prepare_stashing_commands(
 
 #[test]
 fn adapter_pre_start_fails_without_extension() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
@@ -245,12 +224,12 @@ fn adapter_pre_start_binds_context() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -258,7 +237,7 @@ fn adapter_pre_start_binds_context() {
 
   adapter.pre_start(&mut ctx).expect("pre_start");
 
-  let result = adapter.actor.persistence_context().bind_actor_refs(ActorRefGeneric::null(), ActorRefGeneric::null());
+  let result = adapter.actor.persistence_context().bind_actor_refs(ActorRef::null(), ActorRef::null());
   assert!(result.is_err());
 }
 
@@ -271,12 +250,12 @@ fn adapter_pre_start_schedules_recovery_timeout() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -296,12 +275,12 @@ fn adapter_pre_start_rejects_persistence_id_mismatch() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = MismatchPersistentActor::new();
@@ -320,12 +299,12 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
@@ -334,15 +313,13 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
 
   let snapshot_handle_raw = adapter.recovery_timeout_handle.as_ref().expect("snapshot handle").raw();
 
-  let snapshot_response = AnyMessageGeneric::<TB>::new(SnapshotResponse::LoadSnapshotResult {
-    snapshot:       None,
-    to_sequence_nr: u64::MAX,
-  });
+  let snapshot_response =
+    AnyMessage::new(SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX });
   adapter.receive(&mut ctx, snapshot_response.as_view()).expect("snapshot response");
   let replay_handle_raw = adapter.recovery_timeout_handle.as_ref().expect("replay handle").raw();
   assert_ne!(snapshot_handle_raw, replay_handle_raw);
 
-  let replayed = AnyMessageGeneric::<TB>::new(JournalResponse::ReplayedMessage {
+  let replayed = AnyMessage::new(JournalResponse::ReplayedMessage {
     persistent_repr: PersistentRepr::new("pid-1", 1, ArcShared::new(11_i32)),
   });
   adapter.receive(&mut ctx, replayed.as_view()).expect("replayed message");
@@ -352,11 +329,11 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
 
 #[test]
 fn adapter_forwards_recovery_timed_out_signal() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
-  let message = fraktor_actor_rs::core::messaging::AnyMessageGeneric::<TB>::new(RecoveryTimedOut::new("pid-1"));
+  let message = fraktor_actor_rs::core::messaging::AnyMessage::new(RecoveryTimedOut::new("pid-1"));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -366,12 +343,12 @@ fn adapter_forwards_recovery_timed_out_signal() {
 
 #[test]
 fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
-  let message = AnyMessageGeneric::<TB>::new(super::RecoveryTick::waiting_snapshot(adapter.recovery_timeout_epoch));
+  let message = AnyMessage::new(super::RecoveryTick::waiting_snapshot(adapter.recovery_timeout_epoch));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -386,12 +363,12 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
 
 #[test]
 fn adapter_recovery_tick_triggers_timeout_while_waiting_event() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let message = AnyMessageGeneric::<TB>::new(super::RecoveryTick::waiting_event(adapter.recovery_timeout_epoch));
+  let message = AnyMessage::new(super::RecoveryTick::waiting_event(adapter.recovery_timeout_epoch));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -413,32 +390,30 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   adapter.pre_start(&mut ctx).expect("pre_start");
 
-  let snapshot_response = AnyMessageGeneric::<TB>::new(SnapshotResponse::LoadSnapshotResult {
-    snapshot:       None,
-    to_sequence_nr: u64::MAX,
-  });
+  let snapshot_response =
+    AnyMessage::new(SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX });
   adapter.receive(&mut ctx, snapshot_response.as_view()).expect("snapshot response");
   let stale_epoch = adapter.recovery_timeout_epoch;
 
-  let replayed = AnyMessageGeneric::<TB>::new(JournalResponse::ReplayedMessage {
+  let replayed = AnyMessage::new(JournalResponse::ReplayedMessage {
     persistent_repr: PersistentRepr::new("pid-1", 1, ArcShared::new(11_i32)),
   });
   adapter.receive(&mut ctx, replayed.as_view()).expect("replayed message");
   assert_ne!(stale_epoch, adapter.recovery_timeout_epoch);
 
-  let stale_tick = AnyMessageGeneric::<TB>::new(super::RecoveryTick::waiting_event(stale_epoch));
+  let stale_tick = AnyMessage::new(super::RecoveryTick::waiting_event(stale_epoch));
   adapter.receive(&mut ctx, stale_tick.as_view()).expect("stale tick should be ignored");
 
   assert_eq!(adapter.actor.timed_out_count, 0);
@@ -446,13 +421,13 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
 
 #[test]
 fn adapter_propagates_unstash_all_error() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesSuccessful {
     instance_id: adapter.actor.persistence_context().instance_id(),
   });
 
@@ -465,7 +440,7 @@ fn adapter_propagates_unstash_all_error() {
 
 #[test]
 fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
@@ -476,7 +451,7 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
   assert!(adapter.actor.persistence_context().should_stash_commands());
   let instance_id = adapter.actor.persistence_context().instance_id();
 
-  let write_success = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageSuccess {
+  let write_success = AnyMessage::new(JournalResponse::WriteMessageSuccess {
     repr: PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
     instance_id,
   });
@@ -484,19 +459,19 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(123_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(123_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   assert_eq!(adapter.actor.command_count, 0);
 
-  let completion = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful { instance_id });
+  let completion = AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id });
   adapter.receive(&mut ctx, completion.as_view()).expect("completion");
   assert!(!adapter.actor.persistence_context().should_stash_commands());
 }
 
 #[test]
 fn adapter_stashes_command_between_write_message_success_and_write_messages_successful() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
@@ -506,7 +481,7 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
   assert!(adapter.actor.persistence_context().should_stash_commands());
   let instance_id = adapter.actor.persistence_context().instance_id();
 
-  let write_success = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageSuccess {
+  let write_success = AnyMessage::new(JournalResponse::WriteMessageSuccess {
     repr: PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
     instance_id,
   });
@@ -514,20 +489,19 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let boundary_command = AnyMessageGeneric::<TB>::new(125_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let boundary_command = AnyMessage::new(125_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, boundary_command).expect("boundary command should be stashed");
   assert_eq!(adapter.actor.command_count, 0);
 
-  let write_messages_successful =
-    AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful { instance_id });
+  let write_messages_successful = AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id });
   adapter.receive(&mut ctx, write_messages_successful.as_view()).expect("write messages successful should unstash");
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::ProcessingCommands);
   assert!(!adapter.actor.persistence_context().should_stash_commands());
   assert_eq!(adapter.actor.command_count, 0);
   assert!(adapter.actor.command_log.is_empty());
 
-  let follow_up_command = AnyMessageGeneric::<TB>::new(126_i32);
+  let follow_up_command = AnyMessage::new(126_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, follow_up_command).expect("follow-up command should be processed");
   assert_eq!(adapter.actor.command_count, 1);
   assert_eq!(adapter.actor.command_log, vec![126_i32]);
@@ -535,7 +509,7 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
 
 #[test]
 fn adapter_does_not_stash_command_during_persist_all_async() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
@@ -545,8 +519,8 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
   assert_eq!(adapter.actor.persistence_context().state(), PersistentActorState::PersistingEvents);
   assert!(!adapter.actor.persistence_context().should_stash_commands());
 
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(124_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(124_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be processed");
 
   assert_eq!(adapter.actor.command_count, 1);
@@ -555,13 +529,13 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
 
 #[test]
 fn adapter_stashes_command_during_recovery_started() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(123_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(123_i32);
 
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
 
@@ -570,13 +544,13 @@ fn adapter_stashes_command_during_recovery_started() {
 
 #[test]
 fn adapter_stashes_command_during_recovering() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(456_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(456_i32);
 
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
 
@@ -585,16 +559,16 @@ fn adapter_stashes_command_during_recovering() {
 
 #[test]
 fn adapter_unstash_all_on_recovery_success() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(789_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(789_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
+  let message = AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -605,19 +579,17 @@ fn adapter_unstash_all_on_recovery_success() {
 
 #[test]
 fn adapter_unstash_all_on_highest_sequence_nr() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(790_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(790_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::HighestSequenceNr {
-    persistence_id: "pid-1".to_string(),
-    sequence_nr:    0,
-  });
+  let message =
+    AnyMessage::new(JournalResponse::HighestSequenceNr { persistence_id: "pid-1".to_string(), sequence_nr: 0 });
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -628,12 +600,12 @@ fn adapter_unstash_all_on_highest_sequence_nr() {
 
 #[test]
 fn adapter_stops_on_replay_messages_failure_during_recovery() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::ReplayMessagesFailure {
+  let message = AnyMessage::new(JournalResponse::ReplayMessagesFailure {
     cause: JournalError::ReadFailed("replay failed".to_string()),
   });
 
@@ -648,12 +620,12 @@ fn adapter_stops_on_replay_messages_failure_during_recovery() {
 
 #[test]
 fn adapter_stops_on_highest_sequence_nr_failure_during_recovery() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::HighestSequenceNrFailure {
+  let message = AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
     persistence_id: "pid-1".to_string(),
     cause:          JournalError::ReadFailed("highest sequence lookup failed".to_string()),
   });
@@ -670,16 +642,16 @@ fn adapter_stops_on_highest_sequence_nr_failure_during_recovery() {
 
 #[test]
 fn adapter_stops_on_write_message_failure() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(791_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(791_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   let instance_id = adapter.actor.persistence_context().instance_id();
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageFailure {
+  let message = AnyMessage::new(JournalResponse::WriteMessageFailure {
     repr: PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
     cause: JournalError::WriteFailed("write failed".to_string()),
     instance_id,
@@ -695,13 +667,13 @@ fn adapter_stops_on_write_message_failure() {
 
 #[test]
 fn adapter_ignores_write_message_failure_when_instance_id_mismatches() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let mismatched_instance_id = adapter.actor.persistence_context().instance_id().wrapping_add(1);
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageFailure {
+  let message = AnyMessage::new(JournalResponse::WriteMessageFailure {
     repr:        PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
     cause:       JournalError::WriteFailed("write failed".to_string()),
     instance_id: mismatched_instance_id,
@@ -715,17 +687,17 @@ fn adapter_ignores_write_message_failure_when_instance_id_mismatches() {
 
 #[test]
 fn adapter_unstash_all_on_write_message_rejected() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(792_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(792_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
   let instance_id = adapter.actor.persistence_context().instance_id();
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessageRejected {
+  let message = AnyMessage::new(JournalResponse::WriteMessageRejected {
     repr: PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32)),
     cause: JournalError::WriteFailed("write rejected".to_string()),
     instance_id,
@@ -740,16 +712,16 @@ fn adapter_unstash_all_on_write_message_rejected() {
 
 #[test]
 fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(793_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(793_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesFailed {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesFailed {
     cause:       JournalError::WriteFailed("batch write failed".to_string()),
     write_count: 1,
     instance_id: adapter.actor.persistence_context().instance_id(),
@@ -763,16 +735,16 @@ fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
 
 #[test]
 fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(794_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(794_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesFailed {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesFailed {
     cause:       JournalError::WriteFailed("batch write failed".to_string()),
     write_count: 0,
     instance_id: adapter.actor.persistence_context().instance_id(),
@@ -787,16 +759,16 @@ fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
 
 #[test]
 fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(795_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(795_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesSuccessful {
     instance_id: adapter.actor.persistence_context().instance_id().wrapping_add(1),
   });
 
@@ -808,13 +780,13 @@ fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
 
 #[test]
 fn adapter_ignores_stale_write_messages_successful_after_processing_resumes() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesSuccessful {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesSuccessful {
     instance_id: adapter.actor.persistence_context().instance_id().wrapping_add(1),
   });
 
@@ -826,16 +798,16 @@ fn adapter_ignores_stale_write_messages_successful_after_processing_resumes() {
 
 #[test]
 fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_mismatches() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(796_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(796_i32);
   pipeline.invoke_user(&mut adapter, &mut ctx, command).expect("command should be stashed");
   ctx.system().state().remove_cell(&ctx.pid());
-  let message = AnyMessageGeneric::<TB>::new(JournalResponse::WriteMessagesFailed {
+  let message = AnyMessage::new(JournalResponse::WriteMessagesFailed {
     cause:       JournalError::WriteFailed("batch write failed".to_string()),
     write_count: 0,
     instance_id: adapter.actor.persistence_context().instance_id().wrapping_add(1),
@@ -849,13 +821,13 @@ fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_
 
 #[test]
 fn adapter_applies_drop_strategy_only_on_stash_overflow() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(123_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(123_i32);
 
   let result = pipeline.invoke_user(&mut adapter, &mut ctx, command);
 
@@ -864,28 +836,28 @@ fn adapter_applies_drop_strategy_only_on_stash_overflow() {
 
 #[test]
 fn adapter_applies_fail_strategy_on_stash_overflow() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Fail, 0);
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let pipeline = MessageInvokerPipelineGeneric::<TB>::new();
-  let command = AnyMessageGeneric::<TB>::new(123_i32);
+  let pipeline = MessageInvokerPipeline::new();
+  let command = AnyMessage::new(123_i32);
 
   let result = pipeline.invoke_user(&mut adapter, &mut ctx, command);
   let error = result.expect_err("overflow should fail when strategy is Fail");
 
-  assert!(ActorContextGeneric::<TB>::is_stash_overflow_error(&error));
+  assert!(ActorContext::is_stash_overflow_error(&error));
 }
 
 #[test]
 fn adapter_does_not_apply_drop_strategy_to_non_overflow_stash_error() {
-  let system = ActorSystemGeneric::<TB>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
   let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
-  let command = AnyMessageGeneric::<TB>::new(321_i32);
+  let command = AnyMessage::new(321_i32);
 
   let result = adapter.receive(&mut ctx, command.as_view());
 

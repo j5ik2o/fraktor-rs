@@ -19,7 +19,6 @@ use fraktor_streams_rs::{
   core::{Completion, StreamCompletion, mat::ActorMaterializerConfig},
   std::ActorMaterializer,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 struct GuardianActor;
 
@@ -29,9 +28,9 @@ impl Actor for GuardianActor {
   }
 }
 
-pub(crate) fn start_materializer() -> (ActorMaterializer, ManualTestDriver<StdToolbox>) {
+pub(crate) fn start_materializer() -> (ActorMaterializer, ManualTestDriver) {
   let props = Props::from_fn(|| GuardianActor);
-  let driver = ManualTestDriver::<StdToolbox>::new();
+  let driver = ManualTestDriver::new();
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(driver.clone());
   let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver_config(tick_driver);
@@ -45,7 +44,7 @@ pub(crate) fn start_materializer() -> (ActorMaterializer, ManualTestDriver<StdTo
 }
 
 pub(crate) fn drive_until_ready<T: Clone>(
-  driver: &ManualTestDriver<StdToolbox>,
+  driver: &ManualTestDriver,
   completion: &StreamCompletion<T>,
   max_ticks: usize,
 ) -> Option<Result<T, fraktor_streams_rs::core::StreamError>> {

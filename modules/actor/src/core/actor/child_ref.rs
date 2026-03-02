@@ -2,23 +2,21 @@
 
 use core::fmt;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
-  actor::{Pid, actor_ref::ActorRefGeneric},
+  actor::{Pid, actor_ref::ActorRef},
   error::SendError,
-  messaging::{AnyMessageGeneric, AskResponseGeneric, system_message::SystemMessage},
-  system::state::SystemStateSharedGeneric,
+  messaging::{AnyMessage, AskResponse, system_message::SystemMessage},
+  system::state::SystemStateShared,
 };
 
 /// Provides typed accessors to a child actor owned by a parent.
-pub struct ChildRefGeneric<TB: RuntimeToolbox + 'static> {
-  actor:  ActorRefGeneric<TB>,
-  system: SystemStateSharedGeneric<TB>,
+pub struct ChildRef {
+  actor:  ActorRef,
+  system: SystemStateShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
-  pub(crate) const fn new(actor: ActorRefGeneric<TB>, system: SystemStateSharedGeneric<TB>) -> Self {
+impl ChildRef {
+  pub(crate) const fn new(actor: ActorRef, system: SystemStateShared) -> Self {
     Self { actor, system }
   }
 
@@ -30,7 +28,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
 
   /// Returns the underlying actor reference.
   #[must_use]
-  pub const fn actor_ref(&self) -> &ActorRefGeneric<TB> {
+  pub const fn actor_ref(&self) -> &ActorRef {
     &self.actor
   }
 
@@ -39,7 +37,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the mailbox cannot accept the message.
-  pub fn tell(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
     self.actor.tell(message)
   }
 
@@ -48,7 +46,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
-  pub fn ask(&mut self, message: AnyMessageGeneric<TB>) -> Result<AskResponseGeneric<TB>, SendError<TB>> {
+  pub fn ask(&mut self, message: AnyMessage) -> Result<AskResponse, SendError> {
     self.actor.ask(message)
   }
 
@@ -57,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the stop signal cannot be delivered.
-  pub fn stop(&self) -> Result<(), SendError<TB>> {
+  pub fn stop(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Stop)
   }
 
@@ -66,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the suspend signal cannot be delivered.
-  pub fn suspend(&self) -> Result<(), SendError<TB>> {
+  pub fn suspend(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Suspend)
   }
 
@@ -75,30 +73,27 @@ impl<TB: RuntimeToolbox + 'static> ChildRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error when the resume signal cannot be delivered.
-  pub fn resume(&self) -> Result<(), SendError<TB>> {
+  pub fn resume(&self) -> Result<(), SendError> {
     self.system.send_system_message(self.pid(), SystemMessage::Resume)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ChildRefGeneric<TB> {
+impl Clone for ChildRef {
   fn clone(&self) -> Self {
     Self { actor: self.actor.clone(), system: self.system.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> fmt::Debug for ChildRefGeneric<TB> {
+impl fmt::Debug for ChildRef {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ChildRef").field("pid", &self.pid()).finish()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> PartialEq for ChildRefGeneric<TB> {
+impl PartialEq for ChildRef {
   fn eq(&self, other: &Self) -> bool {
     self.pid() == other.pid()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Eq for ChildRefGeneric<TB> {}
-
-/// Type alias for `ChildRefGeneric` with the default `NoStdToolbox`.
-pub type ChildRef = ChildRefGeneric<NoStdToolbox>;
+impl Eq for ChildRef {}

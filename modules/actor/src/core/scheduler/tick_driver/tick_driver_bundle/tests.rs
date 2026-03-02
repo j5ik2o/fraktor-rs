@@ -6,14 +6,10 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::scheduler::tick_driver::{
-  TickDriverBundle, TickDriverControl, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickExecutorSignal,
-  TickFeed,
+  TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
 };
 
 struct RecordingControl {
@@ -29,12 +25,11 @@ impl TickDriverControl for RecordingControl {
 fn runtime_with_executor_shutdown(
   executor_calls: ArcShared<AtomicUsize>,
   driver_calls: ArcShared<AtomicUsize>,
-) -> TickDriverBundle<NoStdToolbox> {
+) -> TickDriverBundle {
   let control: Box<dyn TickDriverControl> = Box::new(RecordingControl { shutdown_calls: driver_calls });
   let control = ArcShared::new(RuntimeMutex::new(control));
-  let handle =
-    TickDriverHandleGeneric::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
-  let feed = TickFeed::<NoStdToolbox>::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
+  let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
+  let feed = TickFeed::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
 
   TickDriverBundle::new(handle, feed).with_executor_shutdown(move || {
     executor_calls.fetch_add(1, Ordering::SeqCst);

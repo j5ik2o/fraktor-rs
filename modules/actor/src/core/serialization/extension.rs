@@ -16,49 +16,43 @@ use core::{
   sync::atomic::{AtomicBool, Ordering},
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{Pid, actor_ref::ActorRefGeneric},
+  actor::{Pid, actor_ref::ActorRef},
   dead_letter::DeadLetterReason,
   event::{logging::LogLevel, stream::EventStreamEvent},
   extension::Extension,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   serialization::{
     builtin,
     call_scope::SerializationCallScope,
     error::SerializationError,
     error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError,
-    serialization_registry::{SerializationRegistryGeneric, SerializerResolutionOrigin},
+    serialization_registry::{SerializationRegistry, SerializerResolutionOrigin},
     serialization_setup::SerializationSetup,
     serialized_message::SerializedMessage,
     serializer_id::SerializerId,
     transport_information::TransportInformation,
   },
-  system::{ActorSystemGeneric, state::SystemStateWeakGeneric},
+  system::{ActorSystem, state::SystemStateWeak},
 };
-
-/// Serialization extension type alias for the default toolbox.
-pub type SerializationExtension = SerializationExtensionGeneric<NoStdToolbox>;
 
 /// Serialization extension registered within the actor system.
 ///
 /// Uses a weak reference to the system state to avoid circular references,
 /// since this extension is registered into the actor system.
-pub struct SerializationExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  registry:        ArcShared<SerializationRegistryGeneric<TB>>,
+pub struct SerializationExtension {
+  registry:        ArcShared<SerializationRegistry>,
   setup:           SerializationSetup,
-  system_state:    SystemStateWeakGeneric<TB>,
+  system_state:    SystemStateWeak,
   transport_stack: Vec<TransportInformation>,
   uninitialized:   AtomicBool,
-  _marker:         PhantomData<TB>,
+  _marker:         PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
+impl SerializationExtension {
   /// Creates the extension from the provided setup.
   ///
   /// Uses a weak reference to the actor system to avoid circular references.
@@ -68,8 +62,8 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   /// Panics if the built-in serializers fail to register. This should not happen
   /// under normal conditions and indicates a serious configuration issue.
   #[must_use]
-  pub fn new(system: &ActorSystemGeneric<TB>, setup: SerializationSetup) -> Self {
-    let registry = ArcShared::new(SerializationRegistryGeneric::from_setup(&setup));
+  pub fn new(system: &ActorSystem, setup: SerializationSetup) -> Self {
+    let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
     let state = system.state();
     {
       // builtinシリアライザの登録を試み、失敗時には警告ログを出力してから継続
@@ -112,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
 
   /// Returns the shared serialization registry.
   #[must_use]
-  pub fn registry(&self) -> ArcShared<SerializationRegistryGeneric<TB>> {
+  pub fn registry(&self) -> ArcShared<SerializationRegistry> {
     self.registry.clone()
   }
 
@@ -196,7 +190,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   ///
   /// Returns `SerializationError::Uninitialized` if the extension has been shut down
   /// or the actor system has been dropped.
-  pub fn serialized_actor_path(&self, actor_ref: &ActorRefGeneric<TB>) -> Result<String, SerializationError> {
+  pub fn serialized_actor_path(&self, actor_ref: &ActorRef) -> Result<String, SerializationError> {
     self.ensure_active()?;
     let Some(system_state) = self.system_state.upgrade() else {
       return Err(SerializationError::Uninitialized);
@@ -292,7 +286,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     Ok(fallback)
   }
 
-  fn actor_path(actor_ref: &ActorRefGeneric<TB>) -> String {
+  fn actor_path(actor_ref: &ActorRef) -> String {
     if let Some(path) = actor_ref.path() {
       return path.to_string();
     }
@@ -362,7 +356,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     pid: Option<Pid>,
   ) -> Result<SerializedMessage, SerializationError> {
     self.ensure_active()?;
-    if let Some(actor_ref) = obj.downcast_ref::<ActorRefGeneric<TB>>() {
+    if let Some(actor_ref) = obj.downcast_ref::<ActorRef>() {
       let path = self.serialized_actor_path(actor_ref)?;
       return self.serialize_internal(&path, scope, pid);
     }
@@ -412,7 +406,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
     let event_stream = system_state.event_stream();
     event_stream.publish(&EventStreamEvent::Serialization(event));
 
-    let message: AnyMessageGeneric<TB> = AnyMessageGeneric::new(payload.clone());
+    let message: AnyMessage = AnyMessage::new(payload.clone());
     system_state.record_dead_letter(message, DeadLetterReason::SerializationError, payload.pid());
 
     let log_message = format!(
@@ -425,7 +419,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationExtensionGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension<TB> for SerializationExtensionGeneric<TB> {}
+impl Extension for SerializationExtension {}
 
 fn fallback_path(pid: Pid) -> String {
   format!("/pid/{}:{}", pid.value(), pid.generation())

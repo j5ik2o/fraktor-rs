@@ -2,15 +2,15 @@ use alloc::vec;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   system::{
-    ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::{
@@ -25,48 +25,44 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
-fn new_test_system() -> ActorSystemGeneric<TB> {
-  let state = SystemStateGeneric::new();
-  let state = SystemStateSharedGeneric::new(state);
+fn new_test_system() -> ActorSystem {
+  let state = SystemState::new();
+  let state = SystemStateShared::new(state);
   state.mark_root_started();
   register_actor_cell(&state, Pid::new(1, 1));
-  ActorSystemGeneric::from_state(state)
+  ActorSystem::from_state(state)
 }
 
 struct DummyActor;
 
-impl Actor<TB> for DummyActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for DummyActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn register_actor_cell(state: &SystemStateSharedGeneric<TB>, pid: Pid) {
-  let props = PropsGeneric::from_fn(|| DummyActor);
-  let cell = ActorCellGeneric::create(state.clone(), pid, None, "test".into(), &props).expect("cell create failed");
+fn register_actor_cell(state: &SystemStateShared, pid: Pid) {
+  let props = Props::from_fn(|| DummyActor);
+  let cell = ActorCell::create(state.clone(), pid, None, "test".into(), &props).expect("cell create failed");
   state.register_cell(cell);
 }
 
@@ -173,7 +169,7 @@ impl crate::core::journal::Journal for RetryJournal {
 fn journal_actor_write_messages_sends_responses() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let mut actor = JournalActor::<InMemoryJournal, TB>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();
 
@@ -189,7 +185,7 @@ fn journal_actor_write_messages_sends_responses() {
     instance_id: 9,
   };
 
-  let any_message = AnyMessageGeneric::new(message);
+  let any_message = AnyMessage::new(message);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   let responses = store.lock();
@@ -217,7 +213,7 @@ fn journal_actor_write_messages_sends_responses() {
 fn journal_actor_pending_does_not_emit_failure() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(0);
   let mut actor = JournalActor::<PendingJournal, TB>::new_with_config(PendingJournal, config);
   let (sender, store) = create_sender();
@@ -232,7 +228,7 @@ fn journal_actor_pending_does_not_emit_failure() {
     instance_id: 1,
   };
 
-  let any_message = AnyMessageGeneric::new(message);
+  let any_message = AnyMessage::new(message);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   let responses = store.lock();
@@ -243,7 +239,7 @@ fn journal_actor_pending_does_not_emit_failure() {
 fn journal_actor_retry_max_exceeded_on_errors() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(1);
   let mut actor = JournalActor::<RetryJournal, TB>::new_with_config(RetryJournal::new(2), config);
   let (sender, store) = create_sender();
@@ -258,12 +254,12 @@ fn journal_actor_retry_max_exceeded_on_errors() {
     instance_id: 1,
   };
 
-  let any_message = AnyMessageGeneric::new(message);
+  let any_message = AnyMessage::new(message);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   assert!(store.lock().is_empty());
 
-  let poll = AnyMessageGeneric::new(super::JournalPoll);
+  let poll = AnyMessage::new(super::JournalPoll);
   actor.receive(&mut ctx, poll.as_view()).expect("receive failed");
 
   let responses = store.lock();
@@ -293,7 +289,7 @@ fn journal_actor_retry_max_exceeded_on_errors() {
 fn journal_actor_replay_filters_deleted_messages() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let mut actor = JournalActor::<InMemoryJournal, TB>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();
 
@@ -307,7 +303,7 @@ fn journal_actor_replay_filters_deleted_messages() {
     sender:         sender.clone(),
     instance_id:    10,
   };
-  let write_message = AnyMessageGeneric::new(write);
+  let write_message = AnyMessage::new(write);
   actor.receive(&mut ctx, write_message.as_view()).expect("write receive failed");
   store.lock().clear();
 
@@ -318,7 +314,7 @@ fn journal_actor_replay_filters_deleted_messages() {
     max: 10,
     sender,
   };
-  let replay_message = AnyMessageGeneric::new(replay);
+  let replay_message = AnyMessage::new(replay);
   actor.receive(&mut ctx, replay_message.as_view()).expect("replay receive failed");
 
   let responses = store.lock();

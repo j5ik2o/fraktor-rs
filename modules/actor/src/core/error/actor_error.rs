@@ -5,8 +5,6 @@ mod tests;
 
 use alloc::format;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::error::{SendError, actor_error_reason::ActorErrorReason};
 
 /// Categorizes actor failures and informs supervision decisions.
@@ -57,7 +55,7 @@ impl ActorError {
 
   /// Creates a recoverable actor error from a send failure.
   #[must_use]
-  pub fn from_send_error<TB: RuntimeToolbox>(error: &SendError<TB>) -> Self {
+  pub fn from_send_error(error: &SendError) -> Self {
     ActorError::recoverable(format!("send failed: {:?}", error))
   }
 }

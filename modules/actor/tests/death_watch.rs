@@ -6,16 +6,13 @@ use std::{
 };
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, ChildRef, Pid},
+  actor::{Actor, ActorContext, ChildRef, Pid},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 struct SpawnChild;
 struct StopChild;
@@ -31,11 +28,7 @@ struct UserProbe;
 struct PassiveChild;
 
 impl Actor for PassiveChild {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<StopChild>().is_some() {
       ctx.stop_self().ok();
     }
@@ -58,7 +51,7 @@ impl HarnessWatcher {
     Self { terminated_log, order_log, child_slot }
   }
 
-  fn spawn_child(&self, ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn spawn_child(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if self.child_slot.lock().is_some() {
       return Ok(());
     }
@@ -78,11 +71,7 @@ impl HarnessWatcher {
 }
 
 impl Actor for HarnessWatcher {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
       return self.spawn_child(ctx);
     }
@@ -127,7 +116,7 @@ impl Actor for HarnessWatcher {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.terminated_log.lock().push(pid);
     self.order_log.lock().push("terminated");
     Ok(())
@@ -145,18 +134,14 @@ impl SecondaryWatcher {
 }
 
 impl Actor for SecondaryWatcher {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(child) = message.downcast_ref::<ChildRef>() {
       ctx.watch(child.actor_ref()).map_err(|_| ActorError::recoverable("secondary watch failed"))?;
     }
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -173,11 +158,7 @@ impl SpawnWatchedGuardian {
 }
 
 impl Actor for SpawnWatchedGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
       let props = Props::from_fn(|| PassiveChild);
       let child = ctx
@@ -188,7 +169,7 @@ impl Actor for SpawnWatchedGuardian {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.terminated_log.lock().push(pid);
     Ok(())
   }
@@ -205,11 +186,7 @@ impl CycleActor {
 }
 
 impl Actor for CycleActor {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(peer) = message.downcast_ref::<ChildRef>() {
       ctx.watch(peer.actor_ref()).map_err(|_| ActorError::recoverable("cycle watch failed"))?;
     } else if message.downcast_ref::<StopChild>().is_some() {
@@ -218,7 +195,7 @@ impl Actor for CycleActor {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -236,11 +213,7 @@ impl CycleGuardian {
 }
 
 impl Actor for CycleGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<StartCycle>().is_some() {
       let mut actor_a = ctx
         .spawn_child(&Props::from_fn({
@@ -479,11 +452,7 @@ impl WatchWithHarness {
 }
 
 impl Actor for WatchWithHarness {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<SpawnChild>().is_some() {
       if self.child_slot.lock().is_some() {
         return Ok(());
@@ -515,7 +484,7 @@ impl Actor for WatchWithHarness {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.terminated_log.lock().push(pid);
     Ok(())
   }

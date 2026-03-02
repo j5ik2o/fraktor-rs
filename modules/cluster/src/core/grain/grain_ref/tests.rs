@@ -4,23 +4,22 @@ use fraktor_actor_rs::core::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
-    actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
   },
   error::{ActorError, SendError},
   event::stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::{AnyMessageGeneric, AskError},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AskError},
+  props::Props,
   scheduler::{
-    SchedulerConfig, SchedulerSharedGeneric,
+    SchedulerConfig, SchedulerShared,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   system::{
-    ActorSystemConfigGeneric, ActorSystemGeneric,
-    provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+    ActorSystem, ActorSystemConfig,
+    provider::{ActorRefProvider, ActorRefProviderShared},
   },
 };
 use fraktor_utils_rs::core::{
@@ -43,7 +42,7 @@ fn grain_ref_get_returns_resolved_ref_with_identity() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRefGeneric::new(api, identity.clone());
 
@@ -68,7 +67,7 @@ fn request_retries_on_timeout_until_policy_exhausted() {
   let event_stream = system.event_stream();
   let (recorder, _subscription) = subscribe_grain_events(&event_stream);
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let options = GrainCallOptions::new(Some(core::time::Duration::from_millis(1)), GrainRetryPolicy::Fixed {
     max_retries: 2,
@@ -76,7 +75,7 @@ fn request_retries_on_timeout_until_policy_exhausted() {
   });
   let grain_ref = GrainRefGeneric::new(api, identity).with_options(options);
 
-  let response = grain_ref.request(&AnyMessageGeneric::new(())).expect("request");
+  let response = grain_ref.request(&AnyMessage::new(())).expect("request");
 
   run_scheduler(&system, core::time::Duration::from_millis(10));
 
@@ -112,11 +111,11 @@ fn request_emits_failure_event_and_updates_metrics() {
   let event_stream = system.event_stream();
   let (recorder, _subscription) = subscribe_grain_events(&event_stream);
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRefGeneric::new(api, identity.clone());
 
-  let err = match grain_ref.request(&AnyMessageGeneric::new(())) {
+  let err = match grain_ref.request(&AnyMessage::new(())) {
     | Ok(_) => panic!("request should fail"),
     | Err(err) => err,
   };
@@ -129,8 +128,8 @@ fn request_emits_failure_event_and_updates_metrics() {
   assert_eq!(metrics.call_failures(), 1);
 }
 
-fn run_scheduler(system: &ActorSystemGeneric<NoStdToolbox>, duration: core::time::Duration) {
-  let scheduler: SchedulerSharedGeneric<NoStdToolbox> = system.state().scheduler();
+fn run_scheduler(system: &ActorSystem, duration: core::time::Duration) {
+  let scheduler: SchedulerShared = system.state().scheduler();
   let resolution = scheduler.with_read(|inner| inner.config().resolution());
   let resolution_ns = resolution.as_nanos().max(1);
   let ticks = duration.as_nanos().div_ceil(resolution_ns).max(1);
@@ -143,7 +142,7 @@ fn run_scheduler(system: &ActorSystemGeneric<NoStdToolbox>, duration: core::time
 fn build_system_with_extension<F>(
   identity_lookup_factory: F,
   send_counter: Option<&ArcShared<NoStdMutex<usize>>>,
-) -> (ActorSystemGeneric<NoStdToolbox>, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+) -> (ActorSystem, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   build_system_with_extension_config(identity_lookup_factory, send_counter, false, SendBehavior::Ok)
@@ -154,33 +153,31 @@ fn build_system_with_extension_config<F>(
   send_counter: Option<&ArcShared<NoStdMutex<usize>>>,
   metrics_enabled: bool,
   send_behavior: SendBehavior,
-) -> (ActorSystemGeneric<NoStdToolbox>, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+) -> (ActorSystem, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config =
     ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
-  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
-    Box::new(NoopClusterProvider::new())
-  })
-  .with_identity_lookup_factory(identity_lookup_factory);
+  let cluster_installer =
+    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, |_event_stream, _block_list, _address| {
+      Box::new(NoopClusterProvider::new())
+    })
+    .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let send_counter = send_counter.cloned();
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(move |system: &ActorSystemGeneric<NoStdToolbox>| {
-      let provider = ActorRefProviderSharedGeneric::new(TestActorRefProvider::new(
-        system.clone(),
-        send_counter.clone(),
-        send_behavior,
-      ));
+    .with_actor_ref_provider_installer(move |system: &ActorSystem| {
+      let provider =
+        ActorRefProviderShared::new(TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior));
       system.extended().register_actor_ref_provider(&provider)
     });
-  let props = PropsGeneric::from_fn(|| TestGuardian);
-  let system = ActorSystemGeneric::new_with_config(&props, &config).expect("build system");
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
   let extension =
     system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
   (system, extension)
@@ -208,8 +205,8 @@ impl RecordingGrainEvents {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingGrainEvents {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingGrainEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == GRAIN_EVENT_STREAM_NAME
       && let Some(grain_event) = payload.payload().downcast_ref::<GrainEvent>()
@@ -219,9 +216,7 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingGrainEvents {
   }
 }
 
-fn subscribe_grain_events(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (RecordingGrainEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEvents, EventStreamSubscription) {
   let recorder = RecordingGrainEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
@@ -230,11 +225,11 @@ fn subscribe_grain_events(
 
 struct TestGuardian;
 
-impl Actor<NoStdToolbox> for TestGuardian {
+impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    _context: &mut fraktor_actor_rs::core::actor::ActorContext<'_>,
+    _message: fraktor_actor_rs::core::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -270,31 +265,26 @@ impl IdentityLookup for StaticIdentityLookup {
 }
 
 struct TestActorRefProvider {
-  system:   ActorSystemGeneric<NoStdToolbox>,
+  system:   ActorSystem,
   counter:  Option<ArcShared<NoStdMutex<usize>>>,
   behavior: SendBehavior,
 }
 
 impl TestActorRefProvider {
-  fn new(
-    system: ActorSystemGeneric<NoStdToolbox>,
-    counter: Option<ArcShared<NoStdMutex<usize>>>,
-    behavior: SendBehavior,
-  ) -> Self {
+  fn new(system: ActorSystem, counter: Option<ArcShared<NoStdMutex<usize>>>, behavior: SendBehavior) -> Self {
     Self { system, counter, behavior }
   }
 }
 
-impl ActorRefProvider<NoStdToolbox> for TestActorRefProvider {
+impl ActorRefProvider for TestActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     static SCHEMES: [ActorPathScheme; 1] = [ActorPathScheme::FraktorTcp];
     &SCHEMES
   }
 
-  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
-    let sender =
-      ActorRefSenderSharedGeneric::new(TestSender { counter: self.counter.clone(), behavior: self.behavior });
-    Ok(ActorRefGeneric::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
+    let sender = ActorRefSenderShared::new(TestSender { counter: self.counter.clone(), behavior: self.behavior });
+    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 }
 
@@ -303,18 +293,15 @@ struct TestSender {
   behavior: SendBehavior,
 }
 
-impl ActorRefSender<NoStdToolbox> for TestSender {
-  fn send(
-    &mut self,
-    message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
     if matches!(self.behavior, SendBehavior::Fail) {
-      return Err(SendError::timeout(AnyMessageGeneric::new(())));
+      return Err(SendError::timeout(AnyMessage::new(())));
     }
     if matches!(self.behavior, SendBehavior::Reply)
       && let Some(sender) = message.sender().cloned()
     {
-      let reply = AnyMessageGeneric::new(String::from("reply"));
+      let reply = AnyMessage::new(String::from("reply"));
       let _ = sender.tell(reply);
     }
     if let Some(counter) = &self.counter {
@@ -335,16 +322,15 @@ fn request_with_sender_forwards_reply_and_completes_future() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRefGeneric::new(api, identity);
 
   let recorder = RecordingSender::new();
-  let sender_ref = ActorRefGeneric::new(Pid::new(99, 0), recorder.clone());
+  let sender_ref = ActorRef::new(Pid::new(99, 0), recorder.clone());
 
-  let response = grain_ref
-    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
-    .expect("request with sender");
+  let response =
+    grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let reply = result.expect("reply ok");
@@ -371,14 +357,13 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
   let event_stream = system.event_stream();
   let (recorder, _subscription) = subscribe_grain_events(&event_stream);
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRefGeneric::new(api, identity.clone());
 
-  let sender_ref = ActorRefGeneric::new(Pid::new(98, 0), FailingSender);
-  let response = grain_ref
-    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
-    .expect("request with sender");
+  let sender_ref = ActorRef::new(Pid::new(98, 0), FailingSender);
+  let response =
+    grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let ask_error = result.expect_err("expect send failed");
@@ -402,15 +387,14 @@ fn request_with_sender_cleans_temp_actor_on_completion() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRefGeneric::new(api, identity);
 
   let recorder = RecordingSender::new();
-  let sender_ref = ActorRefGeneric::new(Pid::new(97, 0), recorder);
-  let response = grain_ref
-    .request_with_sender(&AnyMessageGeneric::new(String::from("ping")), &sender_ref)
-    .expect("request with sender");
+  let sender_ref = ActorRef::new(Pid::new(97, 0), recorder);
+  let response =
+    grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 
   let _ = response.future().with_write(|inner| inner.try_take());
   if let Some(temp_path) = response.sender().path() {
@@ -421,7 +405,7 @@ fn request_with_sender_cleans_temp_actor_on_completion() {
 
 #[derive(Clone)]
 struct RecordingSender {
-  messages: ArcShared<NoStdMutex<Vec<AnyMessageGeneric<NoStdToolbox>>>>,
+  messages: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
 }
 
 impl RecordingSender {
@@ -429,16 +413,13 @@ impl RecordingSender {
     Self { messages: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn messages(&self) -> Vec<AnyMessageGeneric<NoStdToolbox>> {
+  fn messages(&self) -> Vec<AnyMessage> {
     self.messages.lock().clone()
   }
 }
 
-impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(
-    &mut self,
-    message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
+impl ActorRefSender for RecordingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
@@ -446,11 +427,8 @@ impl ActorRefSender<NoStdToolbox> for RecordingSender {
 
 struct FailingSender;
 
-impl ActorRefSender<NoStdToolbox> for FailingSender {
-  fn send(
-    &mut self,
-    _message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
-    Err(SendError::timeout(AnyMessageGeneric::new(())))
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
+    Err(SendError::timeout(AnyMessage::new(())))
   }
 }

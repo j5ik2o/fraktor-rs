@@ -5,21 +5,21 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::{SchedulerTickMetrics, TickDriverKind, TickFeedHandle};
 
 /// Captures scheduler tick metrics at configurable intervals.
-pub struct SchedulerTickMetricsProbe<TB: RuntimeToolbox> {
-  feed:       TickFeedHandle<TB>,
+pub struct SchedulerTickMetricsProbe {
+  feed:       TickFeedHandle,
   resolution: Duration,
   driver:     TickDriverKind,
 }
 
-impl<TB: RuntimeToolbox> SchedulerTickMetricsProbe<TB> {
+impl SchedulerTickMetricsProbe {
   /// Creates a new probe for the provided feed.
   #[must_use]
-  pub const fn new(feed: TickFeedHandle<TB>, resolution: Duration, driver: TickDriverKind) -> Self {
+  pub const fn new(feed: TickFeedHandle, resolution: Duration, driver: TickDriverKind) -> Self {
     Self { feed, resolution, driver }
   }
 

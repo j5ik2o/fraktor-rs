@@ -4,44 +4,41 @@
 //! the `with_read` / `with_write` closure API.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
+  runtime_toolbox::RuntimeRwLock,
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use super::Scheduler;
 
 /// Thin shared wrapper around `ArcShared<RuntimeRwLock<Scheduler<..>>>`.
-pub struct SchedulerSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeRwLock<Scheduler<TB>>>,
+pub struct SchedulerShared {
+  inner: ArcShared<RuntimeRwLock<Scheduler>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for SchedulerSharedGeneric<TB> {
+impl Clone for SchedulerShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerSharedGeneric<TB> {
+impl SchedulerShared {
   /// Wrap an existing shared mutex.
   #[must_use]
-  pub const fn new(inner: ArcShared<RuntimeRwLock<Scheduler<TB>>>) -> Self {
+  pub const fn new(inner: ArcShared<RuntimeRwLock<Scheduler>>) -> Self {
     Self { inner }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Scheduler<TB>> for SchedulerSharedGeneric<TB> {
+impl SharedAccess<Scheduler> for SchedulerShared {
   #[inline]
-  fn with_read<R>(&self, f: impl FnOnce(&Scheduler<TB>) -> R) -> R {
+  fn with_read<R>(&self, f: impl FnOnce(&Scheduler) -> R) -> R {
     let guard = self.inner.read();
     f(&guard)
   }
 
   #[inline]
-  fn with_write<R>(&self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Scheduler) -> R) -> R {
     let mut guard = self.inner.write();
     f(&mut guard)
   }
 }
-
-/// Alias specialized with the default `NoStdToolbox`.
-pub type SchedulerShared = SchedulerSharedGeneric<NoStdToolbox>;

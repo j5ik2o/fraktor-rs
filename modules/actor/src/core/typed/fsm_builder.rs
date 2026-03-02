@@ -5,10 +5,7 @@ mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::typed::{Behaviors, behavior::Behavior};
 
@@ -31,29 +28,23 @@ where
 }
 
 /// Minimal FSM builder for composing state transition behaviors.
-pub struct FsmBuilderGeneric<State, Message, TB = NoStdToolbox>
+pub struct FsmBuilder<State, Message>
 where
   State: Clone + PartialEq + Send + Sync + 'static,
-  Message: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  Message: Send + Sync + 'static, {
   initial_state: State,
   transitions:   Vec<FsmTransition<State, Message>>,
-  _toolbox:      core::marker::PhantomData<TB>,
 }
 
-/// Type alias for [`FsmBuilderGeneric`] with [`NoStdToolbox`].
-pub type FsmBuilder<State, Message> = FsmBuilderGeneric<State, Message, NoStdToolbox>;
-
-impl<State, Message, TB> FsmBuilderGeneric<State, Message, TB>
+impl<State, Message> FsmBuilder<State, Message>
 where
   State: Clone + PartialEq + Send + Sync + 'static,
   Message: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new FSM builder with the provided initial state.
   #[must_use]
   pub const fn new(initial_state: State) -> Self {
-    Self { initial_state, transitions: Vec::new(), _toolbox: core::marker::PhantomData }
+    Self { initial_state, transitions: Vec::new() }
   }
 
   /// Registers a transition handler for the specified state.
@@ -70,7 +61,7 @@ where
 
   /// Builds a typed behavior that evaluates transitions on each message.
   #[must_use]
-  pub fn build(self) -> Behavior<Message, TB> {
+  pub fn build(self) -> Behavior<Message> {
     let runtime_state = ArcShared::new(RuntimeMutex::new(FsmRuntimeState {
       state:       self.initial_state,
       transitions: self.transitions,

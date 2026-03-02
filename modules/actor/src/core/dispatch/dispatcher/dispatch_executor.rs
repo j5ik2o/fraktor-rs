@@ -1,15 +1,13 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use super::{dispatch_error::DispatchError, dispatch_shared::DispatchSharedGeneric};
+use super::{dispatch_error::DispatchError, dispatch_shared::DispatchShared};
 
 /// Abstraction for schedulers to hook dispatcher execution.
-pub trait DispatchExecutor<TB: RuntimeToolbox + 'static>: Send + Sync {
+pub trait DispatchExecutor: Send + Sync {
   /// Delegates dispatcher execution to the scheduler.
   ///
   /// # Errors
   ///
   /// Returns [`DispatchError`] when the scheduler rejects the submitted dispatcher task.
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError>;
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError>;
 
   /// Returns `true` if this executor supports blocking mailbox operations.
   ///

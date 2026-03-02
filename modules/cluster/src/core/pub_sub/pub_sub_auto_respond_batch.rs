@@ -2,11 +2,10 @@
 
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_actor_rs::core::messaging::AnyMessage;
 
 /// Batch wrapper that carries decoded messages.
-pub struct PubSubAutoRespondBatch<TB: RuntimeToolbox> {
+pub struct PubSubAutoRespondBatch {
   /// Decoded messages in this batch.
-  pub messages: Vec<AnyMessageGeneric<TB>>,
+  pub messages: Vec<AnyMessage>,
 }

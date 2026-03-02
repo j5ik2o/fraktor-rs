@@ -6,7 +6,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric;
+use fraktor_actor_rs::core::event::stream::EventStreamShared;
 use fraktor_cluster_rs::{
   core::{
     ClusterExtensionConfig,
@@ -94,7 +94,7 @@ impl DemoNode {
     authority: &str,
     config: MembershipCoordinatorConfig,
     bus: Arc<Mutex<InMemoryBus>>,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
   ) -> Self {
     let table = MembershipTable::new(3);
     let threshold = config.phi_threshold;
@@ -198,7 +198,7 @@ fn assert_status_eventually(
 #[test]
 fn node_down_is_marked_dead_after_failure_detection() {
   let bus = Arc::new(Mutex::new(InMemoryBus::new()));
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let mut node_a = DemoNode::new("node-a", config(), bus.clone(), event_stream.clone());
   let mut node_b = DemoNode::new("node-b", config(), bus, event_stream);
 
@@ -266,7 +266,7 @@ fn node_down_is_marked_dead_after_failure_detection() {
 #[test]
 fn network_partition_marks_suspect_and_recovers_after_heal() {
   let bus = Arc::new(Mutex::new(InMemoryBus::new()));
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let config = config_with_suspect_timeout(Duration::from_secs(4));
   let mut node_a = DemoNode::new("node-a", config.clone(), bus.clone(), event_stream.clone());
   let mut node_b = DemoNode::new("node-b", config, bus.clone(), event_stream);
@@ -359,7 +359,7 @@ fn network_partition_marks_suspect_and_recovers_after_heal() {
 #[test]
 fn slow_node_transitions_to_suspect_then_returns_up() {
   let bus = Arc::new(Mutex::new(InMemoryBus::new()));
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let mut node_a = DemoNode::new("node-a", config(), bus, event_stream);
 
   let t1 = now(1);

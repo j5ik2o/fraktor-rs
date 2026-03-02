@@ -3,20 +3,17 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use crate::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   error::ActorError,
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
-  messaging::{AnyMessage, AnyMessageViewGeneric, system_message::SystemMessage},
+  messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -24,21 +21,17 @@ use crate::core::{
 struct PassiveActor;
 
 impl Actor for PassiveActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }

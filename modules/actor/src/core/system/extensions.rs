@@ -3,23 +3,16 @@
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 /// Registry of actor system extensions.
-pub(crate) struct ExtensionsGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct Extensions {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type Extensions = ExtensionsGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ExtensionsGeneric<TB> {
+impl Extensions {
   /// Creates a new empty extensions registry.
   #[must_use]
   pub(crate) fn new() -> Self {
@@ -48,7 +41,7 @@ impl<TB: RuntimeToolbox + 'static> ExtensionsGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for ExtensionsGeneric<TB> {
+impl Default for Extensions {
   fn default() -> Self {
     Self::new()
   }

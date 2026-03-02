@@ -17,6 +17,5 @@ pub use stash_buffer::StashBuffer;
 pub use system::*;
 pub use typed_ask_future::*;
 pub use typed_ask_response::*;
-
-/// Type alias for behavior signals bound to the standard runtime toolbox.
+/// Alias for typed behavior lifecycle signals.
 pub type BehaviorSignal = crate::core::typed::BehaviorSignal;

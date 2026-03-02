@@ -2,23 +2,16 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::SharedAccess,
-};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
-use crate::core::{futures::ActorFutureSharedGeneric, messaging::AskResult};
+use crate::core::{futures::ActorFutureShared, messaging::AskResult};
 
 /// Registry of pending ask futures.
-pub(crate) struct AskFuturesGeneric<TB: RuntimeToolbox + 'static> {
-  futures: Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>>,
+pub(crate) struct AskFutures {
+  futures: Vec<ActorFutureShared<AskResult>>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type AskFutures = AskFuturesGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> AskFuturesGeneric<TB> {
+impl AskFutures {
   /// Creates a new empty ask futures registry.
   #[must_use]
   pub(crate) const fn new() -> Self {
@@ -26,12 +19,12 @@ impl<TB: RuntimeToolbox + 'static> AskFuturesGeneric<TB> {
   }
 
   /// Registers an ask future for tracking.
-  pub(crate) fn push(&mut self, future: ActorFutureSharedGeneric<AskResult<TB>, TB>) {
+  pub(crate) fn push(&mut self, future: ActorFutureShared<AskResult>) {
     self.futures.push(future);
   }
 
   /// Drains futures that have completed since the previous inspection.
-  pub(crate) fn drain_ready(&mut self) -> Vec<ActorFutureSharedGeneric<AskResult<TB>, TB>> {
+  pub(crate) fn drain_ready(&mut self) -> Vec<ActorFutureShared<AskResult>> {
     let mut ready = Vec::new();
     let mut index = 0_usize;
 
@@ -47,7 +40,7 @@ impl<TB: RuntimeToolbox + 'static> AskFuturesGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for AskFuturesGeneric<TB> {
+impl Default for AskFutures {
   fn default() -> Self {
     Self::new()
   }

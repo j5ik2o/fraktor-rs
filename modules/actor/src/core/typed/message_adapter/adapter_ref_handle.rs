@@ -3,21 +3,21 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::typed::message_adapter::{AdapterRefHandleId, adapter_lifecycle_state::AdapterLifecycleState};
 
 /// Registered adapter handle storing lifecycle information.
 #[derive(Clone)]
-pub(crate) struct AdapterRefHandle<TB: RuntimeToolbox + 'static> {
+pub(crate) struct AdapterRefHandle {
   id:        AdapterRefHandleId,
-  lifecycle: ArcShared<AdapterLifecycleState<TB>>,
+  lifecycle: ArcShared<AdapterLifecycleState>,
 }
 
-impl<TB: RuntimeToolbox + 'static> AdapterRefHandle<TB> {
+impl AdapterRefHandle {
   /// Creates a new handle.
   #[must_use]
-  pub(crate) const fn new(id: AdapterRefHandleId, lifecycle: ArcShared<AdapterLifecycleState<TB>>) -> Self {
+  pub(crate) const fn new(id: AdapterRefHandleId, lifecycle: ArcShared<AdapterLifecycleState>) -> Self {
     Self { id, lifecycle }
   }
 

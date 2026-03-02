@@ -11,5 +11,5 @@ pub trait DeliveryEndpoint<TB: RuntimeToolbox>: Send + Sync {
   /// # Errors
   ///
   /// Returns `PubSubError` only for system-level failures.
-  fn deliver(&mut self, request: DeliverBatchRequest<TB>) -> Result<DeliveryReport<TB>, PubSubError>;
+  fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError>;
 }

@@ -1,8 +1,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::ChildRefGeneric, messaging::AnyMessageGeneric, props::PropsGeneric, scheduler::SchedulerCommand,
-  system::ActorSystemGeneric,
+  actor::ChildRef, messaging::AnyMessage, props::Props, scheduler::SchedulerCommand, system::ActorSystem,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
@@ -16,11 +15,12 @@ mod tests;
 
 /// Materializer backed by an actor system.
 pub struct ActorMaterializerGeneric<TB: RuntimeToolbox + 'static> {
-  system:      Option<ActorSystemGeneric<TB>>,
+  system:      Option<ActorSystem>,
   config:      ActorMaterializerConfig,
   state:       MaterializerState,
-  drive_actor: Option<ChildRefGeneric<TB>>,
+  drive_actor: Option<ChildRef>,
   tick_handle: Option<fraktor_actor_rs::core::scheduler::SchedulerHandle>,
+  _marker:     core::marker::PhantomData<TB>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,39 +33,53 @@ enum MaterializerState {
 impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
   /// Creates a new materializer bound to the provided actor system.
   #[must_use]
-  pub const fn new(system: ActorSystemGeneric<TB>, config: ActorMaterializerConfig) -> Self {
-    Self { system: Some(system), config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
+  pub const fn new(system: ActorSystem, config: ActorMaterializerConfig) -> Self {
+    Self {
+      system: Some(system),
+      config,
+      state: MaterializerState::Idle,
+      drive_actor: None,
+      tick_handle: None,
+      _marker: core::marker::PhantomData,
+    }
   }
 
   /// Creates a materializer without an actor system (testing helper).
   #[must_use]
   pub const fn new_without_system(config: ActorMaterializerConfig) -> Self {
-    Self { system: None, config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
+    Self {
+      system: None,
+      config,
+      state: MaterializerState::Idle,
+      drive_actor: None,
+      tick_handle: None,
+      _marker: core::marker::PhantomData,
+    }
   }
 
-  fn system(&self) -> Result<ActorSystemGeneric<TB>, StreamError> {
+  fn system(&self) -> Result<ActorSystem, StreamError> {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &ChildRefGeneric<TB>, handle: StreamHandleGeneric<TB>) -> Result<(), StreamError> {
-    let message = AnyMessageGeneric::new(StreamDriveCommand::Register { handle });
+  fn register_handle(actor: &ChildRef, handle: StreamHandleGeneric<TB>) -> Result<(), StreamError> {
+    let message = AnyMessage::new(StreamDriveCommand::Register { handle });
     actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
   }
 
-  fn send_command(actor: &ChildRefGeneric<TB>, command: StreamDriveCommand<TB>) -> Result<(), StreamError> {
-    let message = AnyMessageGeneric::new(command);
+  fn send_command(actor: &ChildRef, command: StreamDriveCommand<TB>) -> Result<(), StreamError> {
+    let message = AnyMessage::new(command);
     actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
   }
 
   fn schedule_ticks(
-    system: &ActorSystemGeneric<TB>,
-    actor: &ChildRefGeneric<TB>,
+    system: &ActorSystem,
+    actor: &ChildRef,
     interval: Duration,
   ) -> Result<fraktor_actor_rs::core::scheduler::SchedulerHandle, StreamError> {
     let receiver = actor.actor_ref().clone();
     let command = SchedulerCommand::SendMessage {
       receiver,
-      message: AnyMessageGeneric::new(StreamDriveCommand::<TB>::Tick),
+      message: AnyMessage::new(StreamDriveCommand::<TB>::Tick),
       dispatcher: None,
       sender: None,
     };
@@ -114,7 +128,7 @@ impl<TB: RuntimeToolbox + 'static> Materializer for ActorMaterializerGeneric<TB>
     }
 
     let system = self.system()?;
-    let props = PropsGeneric::from_fn(StreamDriveActor::<TB>::new).with_name("stream-drive");
+    let props = Props::from_fn(StreamDriveActor::<TB>::new).with_name("stream-drive");
     let drive_actor = system.extended().spawn_system_actor(&props).map_err(|_| StreamError::Failed)?;
     let interval = self.config.drive_interval();
     let tick_handle = Self::schedule_ticks(&system, &drive_actor, interval)?;

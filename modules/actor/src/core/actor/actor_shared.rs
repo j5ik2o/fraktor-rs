@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -14,37 +14,33 @@ use super::actor_lifecycle::Actor;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying actor, allowing safe
 /// concurrent access from multiple owners.
-pub(crate) struct ActorSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<Box<dyn Actor<TB> + Send + Sync>>>,
+pub(crate) struct ActorShared {
+  inner: ArcShared<RuntimeMutex<Box<dyn Actor + Send + Sync>>>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type ActorShared = ActorSharedGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ActorSharedGeneric<TB> {
+impl ActorShared {
   /// Creates a new shared wrapper around the provided actor instance.
   #[must_use]
-  pub(crate) fn new(actor: Box<dyn Actor<TB> + Send + Sync>) -> Self {
+  pub(crate) fn new(actor: Box<dyn Actor + Send + Sync>) -> Self {
     let mutex = RuntimeMutex::new(actor);
     Self { inner: ArcShared::new(mutex) }
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for ActorSharedGeneric<TB> {
+impl Clone for ActorShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn Actor<TB> + Send + Sync>> for ActorSharedGeneric<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Actor<TB> + Send + Sync>) -> R) -> R {
+impl SharedAccess<Box<dyn Actor + Send + Sync>> for ActorShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Actor + Send + Sync>) -> R) -> R {
     let guard = self.inner.lock();
-    f(&*guard)
+    f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Actor<TB> + Send + Sync>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Actor + Send + Sync>) -> R) -> R {
     let mut guard = self.inner.lock();
-    f(&mut *guard)
+    f(&mut guard)
   }
 }

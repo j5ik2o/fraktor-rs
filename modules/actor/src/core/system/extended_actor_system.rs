@@ -3,49 +3,46 @@
 use alloc::boxed::Box;
 use core::any::Any;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{
-  ActorSystemBuildError, ActorSystemGeneric, RegisterExtensionError, RegisterExtraTopLevelError,
-  provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+  ActorSystem, ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError,
+  provider::{ActorRefProvider, ActorRefProviderShared},
   remote::RemoteWatchHook,
 };
 use crate::core::{
-  actor::{ChildRefGeneric, actor_ref::ActorRefGeneric},
+  actor::{ChildRef, actor_ref::ActorRef},
   dispatch::{
-    dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError},
+    dispatcher::{DispatcherConfig, DispatcherRegistryError},
     mailbox::MailboxRegistryError,
   },
   extension::{Extension, ExtensionId},
-  props::{MailboxConfig, PropsGeneric},
+  props::{MailboxConfig, Props},
   spawn::SpawnError,
 };
 
 /// Provides privileged operations required by extensions and system daemons.
 #[derive(Clone)]
-pub struct ExtendedActorSystemGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ActorSystemGeneric<TB>,
+pub struct ExtendedActorSystem {
+  inner: ActorSystem,
 }
 
-impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
-  /// Creates a new extended wrapper around the provided [`ActorSystemGeneric`].
+impl ExtendedActorSystem {
+  /// Creates a new extended wrapper around the provided [`ActorSystem`].
   #[must_use]
-  pub const fn new(inner: ActorSystemGeneric<TB>) -> Self {
+  pub const fn new(inner: ActorSystem) -> Self {
     Self { inner }
   }
 
   /// Returns the underlying actor system reference.
   #[must_use]
-  pub const fn actor_system(&self) -> &ActorSystemGeneric<TB> {
+  pub const fn actor_system(&self) -> &ActorSystem {
     &self.inner
   }
 
   /// Converts the wrapper back into the actor system.
   #[must_use]
-  pub fn into_actor_system(self) -> ActorSystemGeneric<TB> {
+  pub fn into_actor_system(self) -> ActorSystem {
     self.inner
   }
 
@@ -54,7 +51,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfig, DispatcherRegistryError> {
     self.inner.state().resolve_dispatcher(id)
   }
 
@@ -75,7 +72,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   /// startup and the extension is not registered yet.
   pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
   where
-    E: ExtensionId<TB>, {
+    E: ExtensionId, {
     let state = self.inner.state();
     state.extension_or_insert_with(ext_id.id(), || ArcShared::new(ext_id.create_extension(self.actor_system())))
   }
@@ -84,7 +81,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   #[must_use]
   pub fn extension<E>(&self, ext_id: &E) -> Option<ArcShared<E::Ext>>
   where
-    E: ExtensionId<TB>, {
+    E: ExtensionId, {
     self.inner.state().extension(ext_id.id())
   }
 
@@ -92,7 +89,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   #[must_use]
   pub fn has_extension<E>(&self, ext_id: &E) -> bool
   where
-    E: ExtensionId<TB>, {
+    E: ExtensionId, {
     self.inner.state().has_extension(ext_id.id())
   }
 
@@ -100,7 +97,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   #[must_use]
   pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
-    E: Extension<TB> + 'static, {
+    E: Extension + 'static, {
     self.inner.state().extension_by_type::<E>()
   }
 
@@ -111,18 +108,18 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
   pub fn register_actor_ref_provider<P>(
     &self,
-    provider: &ActorRefProviderSharedGeneric<TB, P>,
+    provider: &ActorRefProviderShared<P>,
   ) -> Result<(), ActorSystemBuildError>
   where
-    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
+    P: ActorRefProvider + Any + Send + Sync + 'static, {
     self.inner.state().install_actor_ref_provider(provider)
   }
 
   /// Returns the actor-ref provider of the requested type when registered.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderSharedGeneric<TB, P>>
+  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderShared<P>>
   where
-    P: ActorRefProvider<TB> + Any + Send + Sync + 'static, {
+    P: ActorRefProvider + Any + Send + Sync + 'static, {
     self.inner.state().actor_ref_provider::<P>()
   }
 
@@ -131,8 +128,8 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   /// The hook will be wrapped in a `RuntimeMutex` internally for thread-safe access.
   pub fn register_remote_watch_hook<H>(&self, hook: H)
   where
-    H: RemoteWatchHook<TB>, {
-    let dyn_hook: Box<dyn RemoteWatchHook<TB>> = Box::new(hook);
+    H: RemoteWatchHook, {
+    let dyn_hook: Box<dyn RemoteWatchHook> = Box::new(hook);
     self.inner.state().register_remote_watch_hook(dyn_hook);
   }
 
@@ -142,11 +139,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   ///
   /// Returns [`RegisterExtraTopLevelError`] if the name is reserved, duplicated, or registration
   /// occurs after startup.
-  pub fn register_extra_top_level(
-    &self,
-    name: &str,
-    actor: ActorRefGeneric<TB>,
-  ) -> Result<(), RegisterExtraTopLevelError> {
+  pub fn register_extra_top_level(&self, name: &str, actor: ActorRef) -> Result<(), RegisterExtraTopLevelError> {
     self.inner.state().register_extra_top_level(name, actor)
   }
 
@@ -155,10 +148,7 @@ impl<TB: RuntimeToolbox + 'static> ExtendedActorSystemGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`SpawnError::SystemUnavailable`] when the system guardian is missing.
-  pub fn spawn_system_actor(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub fn spawn_system_actor(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.inner.system_actor_of(props)
   }
 }
-
-/// Type alias for [`ExtendedActorSystemGeneric`] using the default [`NoStdToolbox`].
-pub type ExtendedActorSystem = ExtendedActorSystemGeneric<NoStdToolbox>;

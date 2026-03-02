@@ -4,17 +4,17 @@ use alloc::{format, sync::Arc, vec::Vec};
 use std::sync::Mutex;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
   event::stream::{
-    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    RemotingLifecycleEvent, subscriber_handle,
+    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
+    subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
@@ -26,19 +26,15 @@ use crate::{
 
 struct NoopActor;
 
-impl Actor<StdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
 #[derive(Clone)]
 struct EventRecorder {
-  events: Arc<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
+  events: Arc<Mutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventRecorder {
@@ -46,40 +42,38 @@ impl EventRecorder {
     Self { events: Arc::new(Mutex::new(Vec::new())) }
   }
 
-  fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
+  fn snapshot(&self) -> Vec<EventStreamEvent> {
     self.events.lock().unwrap().clone()
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for EventRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for EventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().unwrap().push(event.clone());
   }
 }
 
-fn bootstrap(config: RemotingExtensionConfig) -> (ActorSystemGeneric<StdToolbox>, RemotingControlShared<StdToolbox>) {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("remoting-test-guardian");
+fn bootstrap(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+  let props = Props::from_fn(|| NoopActor).with_name("remoting-test-guardian");
   let installer = RemotingExtensionInstaller::new(config.clone());
   let extensions = ExtensionInstallers::default().with_extension_installer(installer);
-  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()))
+  let system_config = ActorSystemConfig::default()
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions);
-  let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("actor system");
+  let system = ActorSystem::new_with_config(&props, &system_config).expect("actor system");
   let id = RemotingExtensionId::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())
 }
 
-fn subscribe_events(
-  system: &ActorSystemGeneric<StdToolbox>,
-) -> (EventRecorder, EventStreamSubscriptionGeneric<StdToolbox>) {
+fn subscribe_events(system: &ActorSystem) -> (EventRecorder, EventStreamSubscription) {
   let recorder = EventRecorder::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
   (recorder, subscription)
 }
 
-fn captured_lifecycle(events: &[EventStreamEvent<StdToolbox>]) -> Vec<RemotingLifecycleEvent> {
+fn captured_lifecycle(events: &[EventStreamEvent]) -> Vec<RemotingLifecycleEvent> {
   events
     .iter()
     .filter_map(|event| match event {

@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
+use fraktor_actor_rs::core::{actor::ActorContext, error::ActorError, messaging::AnyMessageView};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
@@ -40,11 +40,7 @@ pub trait Eventsourced<TB: RuntimeToolbox + 'static>: Send {
   /// # Errors
   ///
   /// Returns `ActorError` when the command cannot be processed.
-  fn receive_command(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError>;
+  fn receive_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
 
   /// Called when recovery completes.
   fn on_recovery_completed(&mut self) {}

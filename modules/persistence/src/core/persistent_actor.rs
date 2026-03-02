@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_rs::core::{actor::ActorContextGeneric, error::ActorError, messaging::AnyMessageViewGeneric};
+use fraktor_actor_rs::core::{actor::ActorContext, error::ActorError, messaging::AnyMessageView};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
@@ -32,7 +32,7 @@ where
   /// Persists a single event and stashes commands.
   fn persist<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: E,
     handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -50,7 +50,7 @@ where
   /// This is a Pekko-compatible alias of [`Self::persist_unfenced`].
   fn persist_async<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: E,
     handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -65,7 +65,7 @@ where
   /// with Tokio's `async` terminology.
   fn persist_unfenced<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: E,
     handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -81,7 +81,7 @@ where
   /// Persists multiple events.
   fn persist_all<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     events: Vec<E>,
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -104,7 +104,7 @@ where
   /// Persists multiple events without command stashing (non-fenced).
   fn persist_all_async<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     events: Vec<E>,
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -129,13 +129,13 @@ where
   /// # Errors
   ///
   /// Returns `ActorError` when the batch send fails.
-  fn flush_batch(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn flush_batch(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let sender = ctx.self_ref();
     self.persistence_context().flush_batch(sender).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Saves a snapshot.
-  fn save_snapshot(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, snapshot: ArcShared<dyn Any + Send + Sync>) {
+  fn save_snapshot(&mut self, ctx: &mut ActorContext<'_>, snapshot: ArcShared<dyn Any + Send + Sync>) {
     let persistence_id = self.persistence_id().to_string();
     let sequence_nr = self.persistence_context().current_sequence_nr();
     let metadata = SnapshotMetadata::new(persistence_id, sequence_nr, 0);
@@ -144,7 +144,7 @@ where
   }
 
   /// Deletes messages up to the given sequence number.
-  fn delete_messages(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, to_sequence_nr: u64) {
+  fn delete_messages(&mut self, ctx: &mut ActorContext<'_>, to_sequence_nr: u64) {
     let persistence_id = self.persistence_id().to_string();
     let message = JournalMessage::DeleteMessagesTo { persistence_id, to_sequence_nr, sender: ctx.self_ref() };
     let _ = self.persistence_context().send_write_messages(message);
@@ -153,7 +153,7 @@ where
   /// Deletes snapshots matching the criteria.
   fn delete_snapshots(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     criteria: crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria,
   ) {
     let persistence_id = self.persistence_id().to_string();
@@ -162,7 +162,7 @@ where
   }
 
   /// Deletes a single snapshot by sequence number.
-  fn delete_snapshot(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, sequence_nr: u64) {
+  fn delete_snapshot(&mut self, ctx: &mut ActorContext<'_>, sequence_nr: u64) {
     let persistence_id = self.persistence_id().to_string();
     let metadata = SnapshotMetadata::new(persistence_id, sequence_nr, 0);
     let message = SnapshotMessage::DeleteSnapshot { metadata, sender: ctx.self_ref() };
@@ -176,7 +176,7 @@ where
   /// Panics if called during recovery (before `RecoveryCompleted`).
   fn defer<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: E,
     handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -205,7 +205,7 @@ where
   /// Panics if called during recovery (before `RecoveryCompleted`).
   fn defer_async<E: Any + Send + Sync + 'static>(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: E,
     handler: impl FnOnce(&mut Self, &E) + Send + Sync + 'static,
   ) {
@@ -249,7 +249,7 @@ where
   /// # Errors
   ///
   /// Returns `ActorError` when recovery initiation fails.
-  fn start_recovery(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn start_recovery(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let sender = ctx.self_ref();
     let recovery = self.recovery();
     self.persistence_context().start_recovery(recovery, sender).map_err(|error| ActorError::fatal(format!("{error:?}")))
@@ -262,7 +262,7 @@ where
   }
 
   /// Handles snapshot responses by delegating to the base.
-  fn handle_snapshot_response(&mut self, response: &SnapshotResponse, ctx: &mut ActorContextGeneric<'_, TB>) {
+  fn handle_snapshot_response(&mut self, response: &SnapshotResponse, ctx: &mut ActorContext<'_>) {
     let sender = ctx.self_ref();
     let action = self.persistence_context().handle_snapshot_response(response, sender);
     action.apply::<TB>(self);
@@ -273,11 +273,7 @@ where
   /// # Errors
   ///
   /// Returns `ActorError` when the underlying command handler fails.
-  fn handle_command(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn handle_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.receive_command(ctx, message)
   }
 }

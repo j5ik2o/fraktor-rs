@@ -1,10 +1,9 @@
 use alloc::{borrow::ToOwned, string::String};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::{HashMap, hash_map::Entry};
 
-use crate::core::dispatch::dispatcher::{DispatcherConfigGeneric, DispatcherRegistryError};
+use crate::core::dispatch::dispatcher::{DispatcherConfig, DispatcherRegistryError};
 
 #[cfg(test)]
 mod tests;
@@ -12,20 +11,17 @@ mod tests;
 const DEFAULT_DISPATCHER_ID: &str = "default";
 
 /// Registry that resolves dispatcher identifiers to configurations.
-pub struct DispatchersGeneric<TB: RuntimeToolbox + 'static> {
-  entries: HashMap<String, DispatcherConfigGeneric<TB>, RandomState>,
+pub struct Dispatchers {
+  entries: HashMap<String, DispatcherConfig, RandomState>,
 }
 
-/// Type alias using the default toolbox.
-pub type Dispatchers = DispatchersGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Clone for DispatchersGeneric<TB> {
+impl Clone for Dispatchers {
   fn clone(&self) -> Self {
     Self { entries: self.entries.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
+impl Dispatchers {
   /// Creates an empty dispatcher registry.
   #[must_use]
   pub fn new() -> Self {
@@ -37,11 +33,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Duplicate`] when the identifier already exists.
-  pub fn register(
-    &mut self,
-    id: impl Into<String>,
-    config: DispatcherConfigGeneric<TB>,
-  ) -> Result<(), DispatcherRegistryError> {
+  pub fn register(&mut self, id: impl Into<String>, config: DispatcherConfig) -> Result<(), DispatcherRegistryError> {
     let id = id.into();
     match self.entries.entry(id) {
       | Entry::Occupied(entry) => Err(DispatcherRegistryError::duplicate(entry.key())),
@@ -55,7 +47,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// Registers or updates a dispatcher configuration for the provided identifier.
   ///
   /// If the identifier already exists, the configuration is updated.
-  pub fn register_or_update(&mut self, id: impl Into<String>, config: DispatcherConfigGeneric<TB>) {
+  pub fn register_or_update(&mut self, id: impl Into<String>, config: DispatcherConfig) {
     self.entries.insert(id.into(), config);
   }
 
@@ -64,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve(&self, id: &str) -> Result<DispatcherConfigGeneric<TB>, DispatcherRegistryError> {
+  pub fn resolve(&self, id: &str) -> Result<DispatcherConfig, DispatcherRegistryError> {
     self.entries.get(id).cloned().ok_or_else(|| DispatcherRegistryError::unknown(id))
   }
 
@@ -74,7 +66,7 @@ impl<TB: RuntimeToolbox + 'static> DispatchersGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for DispatchersGeneric<TB> {
+impl Default for Dispatchers {
   fn default() -> Self {
     Self::new()
   }

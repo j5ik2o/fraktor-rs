@@ -1,8 +1,8 @@
 //! Deserialized envelope waiting for delivery to the actor system.
 
-use fraktor_actor_rs::core::{
-  actor::actor_path::ActorPath, event::stream::CorrelationId, messaging::AnyMessageGeneric,
-};
+use core::marker::PhantomData;
+
+use fraktor_actor_rs::core::{actor::actor_path::ActorPath, event::stream::CorrelationId, messaging::AnyMessage};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::priority::OutboundPriority;
@@ -12,10 +12,11 @@ use crate::core::remote_node_id::RemoteNodeId;
 pub struct InboundEnvelope<TB: RuntimeToolbox + 'static> {
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
-  message:     AnyMessageGeneric<TB>,
+  message:     AnyMessage,
   sender_path: Option<ActorPath>,
   correlation: CorrelationId,
   priority:    OutboundPriority,
+  _marker:     PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
@@ -24,12 +25,12 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
   pub fn new(
     recipient: ActorPath,
     remote_node: RemoteNodeId,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
     sender_path: Option<ActorPath>,
     correlation: CorrelationId,
     priority: OutboundPriority,
   ) -> Self {
-    Self { recipient, remote_node, message, sender_path, correlation, priority }
+    Self { recipient, remote_node, message, sender_path, correlation, priority, _marker: PhantomData }
   }
 
   /// Returns the intended recipient path.
@@ -46,13 +47,13 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
 
   /// Returns a borrowed reference to the decoded message.
   #[must_use]
-  pub fn message(&self) -> &AnyMessageGeneric<TB> {
+  pub fn message(&self) -> &AnyMessage {
     &self.message
   }
 
   /// Consumes the envelope and returns the owned message.
   #[must_use]
-  pub fn into_message(self) -> AnyMessageGeneric<TB> {
+  pub fn into_message(self) -> AnyMessage {
     self.message
   }
 
@@ -75,7 +76,7 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
   }
 
   /// Consumes the envelope and returns components required for delivery.
-  pub fn into_delivery_parts(self) -> (ActorPath, AnyMessageGeneric<TB>, Option<ActorPath>) {
+  pub fn into_delivery_parts(self) -> (ActorPath, AnyMessage, Option<ActorPath>) {
     (self.recipient, self.message, self.sender_path)
   }
 }

@@ -1,10 +1,7 @@
 use alloc::{collections::VecDeque, vec::Vec};
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::SchedulerDiagnosticsEvent;
 
@@ -13,26 +10,18 @@ pub(crate) struct PublishOutcome {
   pub(crate) dropped:   bool,
 }
 
-pub(crate) struct DiagnosticsSubscriberGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct DiagnosticsSubscriber {
   pub(crate) id:     u64,
-  pub(crate) buffer: ArcShared<DiagnosticsBufferGeneric<TB>>,
+  pub(crate) buffer: ArcShared<DiagnosticsBuffer>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type DiagnosticsSubscriber = DiagnosticsSubscriberGeneric<NoStdToolbox>;
-
-pub(crate) struct DiagnosticsBufferGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct DiagnosticsBuffer {
   queue:    RuntimeMutex<VecDeque<SchedulerDiagnosticsEvent>>,
   capacity: usize,
-  _marker:  PhantomData<TB>,
+  _marker:  PhantomData<()>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type DiagnosticsBuffer = DiagnosticsBufferGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> DiagnosticsBufferGeneric<TB> {
+impl DiagnosticsBuffer {
   pub(crate) const fn new(capacity: usize) -> Self {
     Self { queue: RuntimeMutex::new(VecDeque::new()), capacity, _marker: PhantomData }
   }
@@ -55,30 +44,26 @@ impl<TB: RuntimeToolbox + 'static> DiagnosticsBufferGeneric<TB> {
 }
 
 /// Streams scheduler events to diagnostic subscribers.
-pub(crate) struct DiagnosticsRegistryGeneric<TB: RuntimeToolbox + 'static> {
-  entries: ArcShared<RuntimeMutex<Vec<DiagnosticsSubscriberGeneric<TB>>>>,
-  _marker: PhantomData<TB>,
+pub(crate) struct DiagnosticsRegistry {
+  entries: ArcShared<RuntimeMutex<Vec<DiagnosticsSubscriber>>>,
+  _marker: PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for DiagnosticsRegistryGeneric<TB> {
+impl Clone for DiagnosticsRegistry {
   fn clone(&self) -> Self {
     Self { entries: self.entries.clone(), _marker: PhantomData }
   }
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type DiagnosticsRegistry = DiagnosticsRegistryGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> DiagnosticsRegistryGeneric<TB> {
+impl DiagnosticsRegistry {
   pub(crate) fn new() -> Self {
     Self { entries: ArcShared::new(RuntimeMutex::new(Vec::new())), _marker: PhantomData }
   }
 
-  pub(crate) fn register(&self, id: u64, capacity: usize) -> ArcShared<DiagnosticsBufferGeneric<TB>> {
-    let buffer = ArcShared::new(DiagnosticsBufferGeneric::new(capacity));
+  pub(crate) fn register(&self, id: u64, capacity: usize) -> ArcShared<DiagnosticsBuffer> {
+    let buffer = ArcShared::new(DiagnosticsBuffer::new(capacity));
     let mut entries = self.entries.lock();
-    entries.push(DiagnosticsSubscriberGeneric { id, buffer: buffer.clone() });
+    entries.push(DiagnosticsSubscriber { id, buffer: buffer.clone() });
     buffer
   }
 

@@ -1,12 +1,10 @@
 //! Handle wrapper for ActorRefProvider implementations.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::ActorRefProvider;
 use crate::core::{
   actor::{
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
 };
@@ -46,16 +44,15 @@ impl<P> ActorRefProviderHandle<P> {
   }
 }
 
-impl<TB, P> ActorRefProvider<TB> for ActorRefProviderHandle<P>
+impl<P> ActorRefProvider for ActorRefProviderHandle<P>
 where
-  TB: RuntimeToolbox + 'static,
-  P: ActorRefProvider<TB> + 'static,
+  P: ActorRefProvider + 'static,
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     self.supported_schemes()
   }
 
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.actor_ref(path)
   }
 }

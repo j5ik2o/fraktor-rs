@@ -1,8 +1,6 @@
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
-    actor::{ActorContextGeneric, Pid},
+    actor::{ActorContext, Pid},
     error::ActorError,
     supervision::SupervisorStrategy,
   },
@@ -25,39 +23,31 @@ impl<T> ActorAdapter<T> {
   }
 }
 
-impl<T> crate::core::actor::Actor<StdToolbox> for ActorAdapter<T>
+impl<T> crate::core::actor::Actor for ActorAdapter<T>
 where
   T: Actor,
 {
-  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, StdToolbox>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
     self.inner.pre_start(&mut wrapped_ctx)
   }
 
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    message: AnyMessageView<'_>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
     self.inner.receive(&mut wrapped_ctx, message)
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContextGeneric<'_, StdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
     self.inner.post_stop(&mut wrapped_ctx)
   }
 
-  fn on_terminated(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    terminated: Pid,
-  ) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
     self.inner.on_terminated(&mut wrapped_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, StdToolbox>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
     let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
     self.inner.supervisor_strategy(&mut wrapped_ctx)
   }

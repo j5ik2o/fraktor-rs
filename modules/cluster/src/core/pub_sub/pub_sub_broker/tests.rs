@@ -1,5 +1,3 @@
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use crate::core::{
   identity::ClusterIdentity,
   pub_sub::{
@@ -8,13 +6,13 @@ use crate::core::{
   },
 };
 
-fn drain(broker: &mut PubSubBroker<NoStdToolbox>) -> Vec<PubSubEvent> {
+fn drain(broker: &mut PubSubBroker) -> Vec<PubSubEvent> {
   broker.drain_events()
 }
 
 #[test]
 fn creates_topic_and_emits_event() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
 
   assert!(broker.create_topic(PubSubTopic::from("news")).is_ok());
 
@@ -25,7 +23,7 @@ fn creates_topic_and_emits_event() {
 
 #[test]
 fn subscribes_existing_topic_and_records_event() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   broker.create_topic(PubSubTopic::from("news")).expect("topic creation should succeed");
 
   let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "pid-1").expect("identity"));
@@ -40,7 +38,7 @@ fn subscribes_existing_topic_and_records_event() {
 
 #[test]
 fn rejects_subscription_when_topic_missing() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "pid-1").expect("identity"));
   broker.subscribe(&PubSubTopic::from("news"), &subscriber).expect("subscribe");
 
@@ -55,7 +53,7 @@ fn rejects_subscription_when_topic_missing() {
 
 #[test]
 fn publish_fails_when_topic_missing() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   let options = PubSubTopicOptions::system_default();
 
   let result = broker.publish_targets(&PubSubTopic::from("missing"), options);
@@ -70,7 +68,7 @@ fn publish_fails_when_topic_missing() {
 
 #[test]
 fn publish_fails_when_no_subscribers() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   broker.create_topic(PubSubTopic::from("news")).expect("topic creation should succeed");
 
   let options = PubSubTopicOptions::system_default();
@@ -87,7 +85,7 @@ fn publish_fails_when_no_subscribers() {
 
 #[test]
 fn at_most_once_drops_when_partitioned() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   broker
     .create_topic_with_options(PubSubTopic::from("news"), PubSubTopicOptions {
       delivery_policy:    DeliveryPolicy::AtMostOnce,
@@ -115,7 +113,7 @@ fn at_most_once_drops_when_partitioned() {
 
 #[test]
 fn at_least_once_queues_and_flushes_after_recovery() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   broker.create_topic(PubSubTopic::from("news")).expect("topic creation should succeed");
   let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "pid-1").expect("identity"));
   broker.subscribe(&PubSubTopic::from("news"), &subscriber).expect("subscription should succeed");
@@ -149,7 +147,7 @@ fn at_least_once_queues_and_flushes_after_recovery() {
 
 #[test]
 fn metrics_snapshot_is_emitted_and_counters_reset() {
-  let mut broker: PubSubBroker<NoStdToolbox> = PubSubBroker::new();
+  let mut broker = PubSubBroker::new();
   broker
     .create_topic_with_options(PubSubTopic::from("news"), PubSubTopicOptions {
       delivery_policy:    DeliveryPolicy::AtMostOnce,

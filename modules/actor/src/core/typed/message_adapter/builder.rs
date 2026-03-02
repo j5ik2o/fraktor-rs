@@ -5,33 +5,29 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::typed::{
-  actor::{TypedActorContextGeneric, TypedActorRefGeneric},
+  actor::{TypedActorContext, TypedActorRef},
   message_adapter::AdapterError,
 };
 
 /// Fluent builder for registering an adapter from external payload `U` to actor message `M`.
-pub struct MessageAdapterBuilderGeneric<'ctx, 'a, M, U, TB>
+pub struct MessageAdapterBuilder<'ctx, 'a, M, U>
 where
   M: Send + Sync + 'static,
-  U: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  context: &'ctx mut TypedActorContextGeneric<'a, M, TB>,
+  U: Send + Sync + 'static, {
+  context: &'ctx mut TypedActorContext<'a, M>,
   name:    Option<&'ctx str>,
   _marker: PhantomData<U>,
 }
 
-impl<'ctx, 'a, M, U, TB> MessageAdapterBuilderGeneric<'ctx, 'a, M, U, TB>
+impl<'ctx, 'a, M, U> MessageAdapterBuilder<'ctx, 'a, M, U>
 where
   M: Send + Sync + 'static,
   U: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a builder bound to a typed actor context.
   #[must_use]
-  pub(crate) const fn new(context: &'ctx mut TypedActorContextGeneric<'a, M, TB>) -> Self {
+  pub(crate) const fn new(context: &'ctx mut TypedActorContext<'a, M>) -> Self {
     Self { context, name: None, _marker: PhantomData }
   }
 
@@ -50,7 +46,7 @@ where
   /// # Errors
   ///
   /// Returns [`AdapterError`] when registration fails or when the registry is unavailable.
-  pub fn register<F>(self, adapter: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  pub fn register<F>(self, adapter: F) -> Result<TypedActorRef<U>, AdapterError>
   where
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     match self.name {
@@ -64,7 +60,7 @@ where
   /// # Errors
   ///
   /// Returns [`AdapterError`] when registration fails or when the registry is unavailable.
-  pub fn register_map<F>(self, mapper: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  pub fn register_map<F>(self, mapper: F) -> Result<TypedActorRef<U>, AdapterError>
   where
     F: Fn(U) -> M + Send + Sync + 'static, {
     self.register(move |payload| Ok(mapper(payload)))

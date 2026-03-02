@@ -9,12 +9,11 @@ use fraktor_actor_rs::core::{
   },
   messaging::AnyMessage,
   system::{
-    ActorSystemConfigGeneric,
+    ActorSystemConfig,
     remote::{RemoteAuthorityRegistry, RemotingConfig},
     state::AuthorityState,
   },
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 #[test]
 fn test_e2e_local_path_format_consistency() {
@@ -151,8 +150,7 @@ fn test_e2e_config_integration() {
     .with_canonical_port(2552)
     .with_quarantine_duration(Duration::from_secs(600));
 
-  let config =
-    ActorSystemConfigGeneric::<NoStdToolbox>::default().with_system_name("e2e-system").with_remoting_config(remoting);
+  let config = ActorSystemConfig::default().with_system_name("e2e-system").with_remoting_config(remoting);
 
   assert_eq!(config.system_name(), "e2e-system");
 

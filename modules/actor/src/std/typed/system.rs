@@ -1,13 +1,11 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
     actor::Pid,
     event::{logging::LogLevel, stream::subscriber_handle as core_subscriber_handle},
     spawn::SpawnError,
-    typed::TypedActorSystemGeneric as CoreTypedActorSystemGeneric,
+    typed::TypedActorSystem as CoreTypedActorSystem,
   },
   std::{
     dead_letter::DeadLetterEntry,
@@ -27,7 +25,7 @@ type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShare
 pub struct TypedActorSystem<M>
 where
   M: Send + Sync + 'static, {
-  inner: CoreTypedActorSystemGeneric<M, StdToolbox>,
+  inner: CoreTypedActorSystem<M>,
 }
 
 impl<M> TypedActorSystem<M>
@@ -38,7 +36,7 @@ where
   #[must_use]
   #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
-    Self { inner: CoreTypedActorSystemGeneric::new_empty() }
+    Self { inner: CoreTypedActorSystem::new_empty() }
   }
 
   /// Creates a new typed actor system with the given guardian props.
@@ -48,9 +46,9 @@ where
   /// Returns an error if the guardian actor cannot be spawned.
   pub fn new(
     guardian: &TypedProps<M>,
-    tick_driver_config: crate::core::scheduler::tick_driver::TickDriverConfig<StdToolbox>,
+    tick_driver_config: crate::core::scheduler::tick_driver::TickDriverConfig,
   ) -> Result<Self, SpawnError> {
-    Ok(Self { inner: CoreTypedActorSystemGeneric::new(guardian.as_core(), tick_driver_config)? })
+    Ok(Self { inner: CoreTypedActorSystem::new(guardian.as_core(), tick_driver_config)? })
   }
 
   /// Returns the typed user guardian reference.
@@ -83,7 +81,7 @@ where
   /// `EventStreamSubscriber` trait to the core trait.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &StdSubscriberHandle) -> EventStreamSubscription {
-    let adapter = core_subscriber_handle::<StdToolbox>(EventStreamSubscriberAdapter::new(subscriber.clone()));
+    let adapter = core_subscriber_handle(EventStreamSubscriberAdapter::new(subscriber.clone()));
     self.inner.subscribe_event_stream(&adapter)
   }
 

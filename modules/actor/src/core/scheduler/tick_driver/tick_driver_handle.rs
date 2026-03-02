@@ -3,23 +3,20 @@
 use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::{TickDriverControl, TickDriverId, TickDriverKind};
 
 /// Handle owning the lifetime of a running tick driver instance.
-pub struct TickDriverHandleGeneric<TB: RuntimeToolbox> {
+pub struct TickDriverHandle {
   id:         TickDriverId,
   kind:       TickDriverKind,
   resolution: Duration,
   control:    ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
-  _marker:    PhantomData<TB>,
+  _marker:    PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox> Clone for TickDriverHandleGeneric<TB> {
+impl Clone for TickDriverHandle {
   fn clone(&self) -> Self {
     Self {
       id:         self.id,
@@ -31,7 +28,7 @@ impl<TB: RuntimeToolbox> Clone for TickDriverHandleGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriverHandleGeneric<TB> {
+impl TickDriverHandle {
   /// Creates a new driver handle.
   #[must_use]
   pub fn new(

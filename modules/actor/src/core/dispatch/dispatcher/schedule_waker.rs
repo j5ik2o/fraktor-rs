@@ -5,23 +5,20 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
-use super::dispatcher_shared::DispatcherSharedGeneric;
+use super::dispatcher_shared::DispatcherShared;
 use crate::core::dispatch::mailbox::ScheduleHints;
 
 #[cfg(test)]
 mod tests;
 
-struct ScheduleHandle<TB: RuntimeToolbox + 'static> {
-  dispatcher: DispatcherSharedGeneric<TB>,
+struct ScheduleHandle {
+  dispatcher: DispatcherShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> ScheduleHandle<TB> {
-  const fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
+impl ScheduleHandle {
+  const fn new(dispatcher: DispatcherShared) -> Self {
     Self { dispatcher }
   }
 
@@ -36,12 +33,12 @@ impl<TB: RuntimeToolbox + 'static> ScheduleHandle<TB> {
   }
 }
 
-struct ScheduleShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<ScheduleHandle<TB>>>,
+struct ScheduleShared {
+  inner: ArcShared<RuntimeMutex<ScheduleHandle>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
-  fn new(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
+impl ScheduleShared {
+  fn new(dispatcher: DispatcherShared) -> Self {
     let handle = ScheduleHandle::new(dispatcher);
     let inner = ArcShared::new(RuntimeMutex::new(handle));
     Self { inner }
@@ -53,52 +50,48 @@ impl<TB: RuntimeToolbox + 'static> ScheduleShared<TB> {
 }
 
 /// Helper for creating a [`Waker`] that reschedules the dispatcher.
-pub(crate) struct ScheduleWaker<TB: RuntimeToolbox + 'static> {
-  _marker: PhantomData<TB>,
+pub(crate) struct ScheduleWaker {
+  _marker: PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ScheduleWaker<TB> {
+impl ScheduleWaker {
   /// Creates a waker that schedules the dispatcher using the provided dispatcher handle.
-  pub(crate) fn into_waker(dispatcher: DispatcherSharedGeneric<TB>) -> Waker {
+  pub(crate) fn into_waker(dispatcher: DispatcherShared) -> Waker {
     let shared = ArcShared::new(ScheduleShared::new(dispatcher));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }
 
-  unsafe fn raw_waker(shared: ArcShared<ScheduleShared<TB>>) -> RawWaker {
+  unsafe fn raw_waker(shared: ArcShared<ScheduleShared>) -> RawWaker {
     let data = ArcShared::into_raw(shared) as *const ();
-    RawWaker::new(data, &ScheduleWakerVtable::<TB>::VTABLE)
+    RawWaker::new(data, &ScheduleWakerVtable::VTABLE)
   }
 
   unsafe fn clone(ptr: *const ()) -> RawWaker {
-    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
+    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared) };
     let clone = shared.clone();
     let _ = ArcShared::into_raw(shared);
     unsafe { Self::raw_waker(clone) }
   }
 
   unsafe fn wake(ptr: *const ()) {
-    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
+    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared) };
     shared.schedule();
   }
 
   unsafe fn wake_by_ref(ptr: *const ()) {
-    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
+    let shared = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared) };
     shared.schedule();
     let _ = ArcShared::into_raw(shared);
   }
 
   unsafe fn drop(ptr: *const ()) {
-    let _ = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared<TB>) };
+    let _ = unsafe { ArcShared::from_raw(ptr as *const ScheduleShared) };
   }
 }
 
-struct ScheduleWakerVtable<TB: RuntimeToolbox + 'static>(PhantomData<TB>);
+struct ScheduleWakerVtable(PhantomData<()>);
 
-impl<TB: RuntimeToolbox + 'static> ScheduleWakerVtable<TB> {
-  const VTABLE: RawWakerVTable = RawWakerVTable::new(
-    ScheduleWaker::<TB>::clone,
-    ScheduleWaker::<TB>::wake,
-    ScheduleWaker::<TB>::wake_by_ref,
-    ScheduleWaker::<TB>::drop,
-  );
+impl ScheduleWakerVtable {
+  const VTABLE: RawWakerVTable =
+    RawWakerVTable::new(ScheduleWaker::clone, ScheduleWaker::wake, ScheduleWaker::wake_by_ref, ScheduleWaker::drop);
 }

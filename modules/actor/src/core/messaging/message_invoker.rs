@@ -9,7 +9,7 @@ mod pipeline;
 pub use invoker_shared::MessageInvokerShared;
 pub use invoker_trait::MessageInvoker;
 pub use middleware::MessageInvokerMiddleware;
-pub use pipeline::{MessageInvokerPipeline, MessageInvokerPipelineGeneric};
+pub use pipeline::MessageInvokerPipeline;
 
 #[cfg(test)]
 mod tests;

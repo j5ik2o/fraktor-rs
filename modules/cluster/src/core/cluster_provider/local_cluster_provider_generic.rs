@@ -9,11 +9,11 @@
 //! and only available in std environments.
 
 use alloc::{string::String, vec::Vec};
-use core::time::Duration;
+use core::{marker::PhantomData, time::Duration};
 
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared},
+  messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
@@ -39,7 +39,7 @@ mod tests;
 /// Task 4.5: Transport `RemotingLifecycleEvent::Connected` and `Quarantined`
 /// auto-detection is available via `subscribe_remoting_events()` in std environments.
 pub struct LocalClusterProviderGeneric<TB: RuntimeToolbox + 'static> {
-  event_stream:        EventStreamSharedGeneric<TB>,
+  event_stream:        EventStreamShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   // 現在のメンバーリスト（join/leave イベント処理用）
@@ -52,13 +52,14 @@ pub struct LocalClusterProviderGeneric<TB: RuntimeToolbox + 'static> {
   seed_nodes:          Vec<String>,
   // 起動モード（Member/Client）を追跡
   startup_mode:        Option<StartupMode>,
+  _marker:             PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   /// Creates a new local cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: EventStreamSharedGeneric<TB>,
+    event_stream: EventStreamShared,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
@@ -71,6 +72,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
       static_topology: None,
       seed_nodes: Vec::new(),
       startup_mode: None,
+      _marker: PhantomData,
     }
   }
 
@@ -151,7 +153,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   /// Returns the event stream reference.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]
-  pub fn event_stream(&self) -> &EventStreamSharedGeneric<TB> {
+  pub fn event_stream(&self) -> &EventStreamShared {
     &self.event_stream
   }
 
@@ -174,7 +176,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
       Self::observed_at(version),
     );
     let event = ClusterEvent::TopologyUpdated { update };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
@@ -199,7 +201,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
         Self::observed_at(self.version),
       );
       let event = ClusterEvent::TopologyUpdated { update };
-      let payload = AnyMessageGeneric::new(event);
+      let payload = AnyMessage::new(event);
       let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
       self.event_stream.publish(&extension_event);
     }
@@ -211,14 +213,14 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
 
   fn publish_startup_event(&self, mode: StartupMode) {
     let event = ClusterEvent::Startup { address: self.advertised_address.clone(), mode };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
 
   fn publish_shutdown_event(&self, mode: StartupMode) {
     let event = ClusterEvent::Shutdown { address: self.advertised_address.clone(), mode };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }

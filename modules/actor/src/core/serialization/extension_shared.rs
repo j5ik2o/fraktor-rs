@@ -1,11 +1,11 @@
 //! Shared wrapper for serialization extension instance.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
-use super::extension::SerializationExtensionGeneric;
+use super::extension::SerializationExtension;
 use crate::core::extension::Extension;
 
 /// Shared wrapper for a serialization extension instance.
@@ -13,40 +13,35 @@ use crate::core::extension::Extension;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying extension, allowing safe
 /// concurrent access from multiple owners.
-pub struct SerializationExtensionSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<SerializationExtensionGeneric<TB>>>,
+pub struct SerializationExtensionShared {
+  inner: ArcShared<RuntimeMutex<SerializationExtension>>,
 }
 
-/// Type alias using the default toolbox.
-pub type SerializationExtensionShared = SerializationExtensionSharedGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> SerializationExtensionSharedGeneric<TB> {
+impl SerializationExtensionShared {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
-  pub fn new(extension: SerializationExtensionGeneric<TB>) -> Self {
+  pub fn new(extension: SerializationExtension) -> Self {
     let mutex = RuntimeMutex::new(extension);
     Self { inner: ArcShared::new(mutex) }
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for SerializationExtensionSharedGeneric<TB> {
+impl Clone for SerializationExtensionShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<SerializationExtensionGeneric<TB>>
-  for SerializationExtensionSharedGeneric<TB>
-{
-  fn with_read<R>(&self, f: impl FnOnce(&SerializationExtensionGeneric<TB>) -> R) -> R {
+impl SharedAccess<SerializationExtension> for SerializationExtensionShared {
+  fn with_read<R>(&self, f: impl FnOnce(&SerializationExtension) -> R) -> R {
     let guard = self.inner.lock();
-    f(&*guard)
+    f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut SerializationExtensionGeneric<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut SerializationExtension) -> R) -> R {
     let mut guard = self.inner.lock();
-    f(&mut *guard)
+    f(&mut guard)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension<TB> for SerializationExtensionSharedGeneric<TB> {}
+impl Extension for SerializationExtensionShared {}

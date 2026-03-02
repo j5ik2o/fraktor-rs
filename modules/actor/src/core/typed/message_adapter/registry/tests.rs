@@ -1,46 +1,41 @@
 use alloc::string::ToString;
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{Actor, ActorCellGeneric, ActorContextGeneric},
+  actor::{Actor, ActorCell, ActorContext},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
   props::Props,
-  system::ActorSystemGeneric,
+  system::ActorSystem,
   typed::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},
 };
 
 struct Harness {
-  system: ActorSystemGeneric<NoStdToolbox>,
-  cell:   ArcShared<ActorCellGeneric<NoStdToolbox>>,
+  system: ActorSystem,
+  cell:   ArcShared<ActorCell>,
 }
 
 impl Harness {
   fn new() -> Self {
-    let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+    let system = ActorSystem::new_empty();
     let state = system.state();
     let props = Props::from_fn(|| ProbeActor);
     let pid = state.allocate_pid();
-    let cell =
-      ActorCellGeneric::create(state.clone(), pid, None, "adapter".to_string(), &props).expect("create actor cell");
+    let cell = ActorCell::create(state.clone(), pid, None, "adapter".to_string(), &props).expect("create actor cell");
     state.register_cell(cell.clone());
     Self { system, cell }
   }
 
-  fn context(&self) -> ActorContextGeneric<'_, NoStdToolbox> {
-    ActorContextGeneric::new(&self.system, self.cell.pid())
+  fn context(&self) -> ActorContext<'_> {
+    ActorContext::new(&self.system, self.cell.pid())
   }
 }
 
 struct ProbeActor;
 
 impl Actor for ProbeActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -48,7 +43,7 @@ impl Actor for ProbeActor {
 #[test]
 fn registry_replaces_existing_adapter_for_same_type() {
   let harness = Harness::new();
-  let mut registry = MessageAdapterRegistry::<i32, NoStdToolbox>::new();
+  let mut registry = MessageAdapterRegistry::<i32>::new();
   let ctx = harness.context();
 
   registry.register::<u32, _>(&ctx, |value| Ok(value as i32)).expect("first adapter");
@@ -56,7 +51,7 @@ fn registry_replaces_existing_adapter_for_same_type() {
 
   assert_eq!(registry.len(), 1);
 
-  let payload = AdapterPayload::<NoStdToolbox>::new(5_u32);
+  let payload = AdapterPayload::new(5_u32);
   let (outcome, leftover) = registry.adapt(payload);
   assert_eq!(outcome, AdapterOutcome::Converted(10));
   assert!(leftover.is_none());
@@ -64,8 +59,8 @@ fn registry_replaces_existing_adapter_for_same_type() {
 
 #[test]
 fn registry_returns_not_found_when_no_adapter_matches() {
-  let registry = MessageAdapterRegistry::<i32, NoStdToolbox>::new();
-  let payload = AdapterPayload::<NoStdToolbox>::new(1_u8);
+  let registry = MessageAdapterRegistry::<i32>::new();
+  let payload = AdapterPayload::new(1_u8);
   let (outcome, leftover) = registry.adapt(payload);
   assert_eq!(outcome, AdapterOutcome::NotFound);
   assert!(leftover.is_some());
@@ -74,11 +69,11 @@ fn registry_returns_not_found_when_no_adapter_matches() {
 #[test]
 fn registry_returns_failure_from_adapter() {
   let harness = Harness::new();
-  let mut registry = MessageAdapterRegistry::<i32, NoStdToolbox>::new();
+  let mut registry = MessageAdapterRegistry::<i32>::new();
   let ctx = harness.context();
   registry.register::<u32, _>(&ctx, |_| Err(AdapterError::Custom("boom".into()))).expect("register");
 
-  let payload = AdapterPayload::<NoStdToolbox>::new(3_u32);
+  let payload = AdapterPayload::new(3_u32);
   let (outcome, leftover) = registry.adapt(payload);
   assert_eq!(outcome, AdapterOutcome::Failure(AdapterError::Custom("boom".into())));
   assert!(leftover.is_none());

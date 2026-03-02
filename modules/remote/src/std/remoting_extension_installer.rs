@@ -4,9 +4,8 @@ use alloc::format;
 
 use fraktor_actor_rs::core::{
   extension::ExtensionInstaller,
-  system::{ActorSystemBuildError, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::remoting_extension_id::RemotingExtensionId;
 use crate::core::remoting_extension::RemotingExtensionConfig;
@@ -24,8 +23,8 @@ impl RemotingExtensionInstaller {
   }
 }
 
-impl ExtensionInstaller<StdToolbox> for RemotingExtensionInstaller {
-  fn install(&self, system: &ActorSystemGeneric<StdToolbox>) -> Result<(), ActorSystemBuildError> {
+impl ExtensionInstaller for RemotingExtensionInstaller {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     // システムの RemotingConfig から canonical_host/port を取得して、
     // 拡張設定で未設定の場合にマージする
     let mut merged_config = self.config.clone();

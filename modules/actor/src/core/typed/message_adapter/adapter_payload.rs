@@ -5,19 +5,16 @@ mod tests;
 
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 /// Owns a dynamically typed payload destined for message adapters.
 #[derive(Debug)]
-pub struct AdapterPayload<TB: RuntimeToolbox = NoStdToolbox> {
+pub struct AdapterPayload {
   inner:   ArcShared<dyn core::any::Any + Send + Sync + 'static>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox> AdapterPayload<TB> {
+impl AdapterPayload {
   /// Creates a payload from the provided message.
   #[must_use]
   pub fn new<T>(value: T) -> Self
@@ -37,7 +34,7 @@ impl<TB: RuntimeToolbox> AdapterPayload<TB> {
   /// # Errors
   ///
   /// Returns `Err(Self)` when the stored value cannot be converted to `T`.
-  pub fn try_downcast<T>(self) -> Result<ArcShared<T>, AdapterPayload<TB>>
+  pub fn try_downcast<T>(self) -> Result<ArcShared<T>, AdapterPayload>
   where
     T: Send + Sync + 'static, {
     match self.inner.downcast::<T>() {
@@ -66,7 +63,7 @@ impl<TB: RuntimeToolbox> AdapterPayload<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for AdapterPayload<TB> {
+impl Clone for AdapterPayload {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: self._marker }
   }

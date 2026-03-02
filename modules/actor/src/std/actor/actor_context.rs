@@ -1,10 +1,8 @@
 use core::ops::{Deref, DerefMut};
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
-    actor::{ActorContextGeneric as CoreActorContextGeneric, ChildRefGeneric},
+    actor::{ActorContext as CoreActorContext, ChildRef},
     spawn::SpawnError,
   },
   std::{props::Props, system::ActorSystem},
@@ -12,30 +10,30 @@ use crate::{
 
 /// Context handle specialised for `StdToolbox`.
 pub struct ActorContext<'ctx, 'inner> {
-  inner: &'ctx mut CoreActorContextGeneric<'inner, StdToolbox>,
+  inner: &'ctx mut CoreActorContext<'inner>,
 }
 
 impl<'ctx, 'inner> ActorContext<'ctx, 'inner> {
   /// Builds a std-facing context wrapper from the core context.
-  pub const fn new(inner: &'ctx mut CoreActorContextGeneric<'inner, StdToolbox>) -> Self {
+  pub const fn new(inner: &'ctx mut CoreActorContext<'inner>) -> Self {
     Self { inner }
   }
 
   /// Reinterprets a mutable core context reference as the std wrapper without allocation.
   #[must_use]
-  pub const fn from_core_mut(core: &'ctx mut CoreActorContextGeneric<'inner, StdToolbox>) -> Self {
+  pub const fn from_core_mut(core: &'ctx mut CoreActorContext<'inner>) -> Self {
     Self::new(core)
   }
 
   /// Borrows the underlying core context.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreActorContextGeneric<'inner, StdToolbox> {
+  pub const fn as_core(&self) -> &CoreActorContext<'inner> {
     self.inner
   }
 
   /// Mutably borrows the underlying core context.
   #[must_use]
-  pub const fn as_core_mut(&mut self) -> &mut CoreActorContextGeneric<'inner, StdToolbox> {
+  pub const fn as_core_mut(&mut self) -> &mut CoreActorContext<'inner> {
     self.inner
   }
 
@@ -50,13 +48,13 @@ impl<'ctx, 'inner> ActorContext<'ctx, 'inner> {
   /// # Errors
   ///
   /// Returns an error when spawning the child fails.
-  pub fn spawn_child(&self, props: &Props) -> Result<ChildRefGeneric<StdToolbox>, SpawnError> {
+  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.inner.spawn_child(props.as_core())
   }
 }
 
 impl<'inner> Deref for ActorContext<'_, 'inner> {
-  type Target = CoreActorContextGeneric<'inner, StdToolbox>;
+  type Target = CoreActorContext<'inner>;
 
   fn deref(&self) -> &Self::Target {
     self.inner

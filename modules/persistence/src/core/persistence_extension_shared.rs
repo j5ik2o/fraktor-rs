@@ -45,4 +45,4 @@ impl<TB: RuntimeToolbox + 'static> SharedAccess<PersistenceExtensionGeneric<TB>>
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension<TB> for PersistenceExtensionSharedGeneric<TB> {}
+impl<TB: RuntimeToolbox + 'static> Extension for PersistenceExtensionSharedGeneric<TB> {}

@@ -1,9 +1,9 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+  actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex},
@@ -17,14 +17,14 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
@@ -32,21 +32,20 @@ impl ActorRefSender<TB> for TestSender {
 
 struct FailingSender;
 
-impl ActorRefSender<TB> for FailingSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     Err(SendError::closed(message))
   }
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender =
-    ActorRefGeneric::new(fraktor_actor_rs::core::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRef::new(fraktor_actor_rs::core::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
-fn create_failing_sender() -> ActorRefGeneric<TB> {
-  ActorRefGeneric::new(fraktor_actor_rs::core::actor::Pid::new(1, 2), FailingSender)
+fn create_failing_sender() -> ActorRef {
+  ActorRef::new(fraktor_actor_rs::core::actor::Pid::new(1, 2), FailingSender)
 }
 
 #[test]
@@ -57,7 +56,7 @@ fn delivery_ids_increment_and_confirm() {
 
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let timestamp = TimerInstant::from_ticks(0, Duration::from_secs(1));
-  let unconfirmed = UnconfirmedDelivery::new(id1, ActorRefGeneric::null(), payload, None, timestamp, 0);
+  let unconfirmed = UnconfirmedDelivery::new(id1, ActorRef::null(), payload, None, timestamp, 0);
   delivery.add_unconfirmed(unconfirmed);
 
   assert_eq!(id1, 1);
@@ -73,7 +72,7 @@ fn delivery_snapshot_roundtrip() {
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new("data");
   let timestamp = TimerInstant::from_ticks(1, Duration::from_secs(1));
   let id = delivery.next_delivery_id();
-  delivery.add_unconfirmed(UnconfirmedDelivery::new(id, ActorRefGeneric::null(), payload, None, timestamp, 9));
+  delivery.add_unconfirmed(UnconfirmedDelivery::new(id, ActorRef::null(), payload, None, timestamp, 9));
 
   let snapshot = delivery.get_delivery_snapshot();
   let mut restored = AtLeastOnceDelivery::<TB>::new(AtLeastOnceDeliveryConfig::default());
@@ -123,14 +122,7 @@ fn deliveries_to_redeliver_respects_burst_limit() {
   let timestamp = TimerInstant::from_ticks(0, Duration::from_secs(1));
 
   for id in 1..=3 {
-    delivery.add_unconfirmed(UnconfirmedDelivery::new(
-      id,
-      ActorRefGeneric::null(),
-      payload.clone(),
-      None,
-      timestamp,
-      1,
-    ));
+    delivery.add_unconfirmed(UnconfirmedDelivery::new(id, ActorRef::null(), payload.clone(), None, timestamp, 1));
   }
 
   let redeliver = delivery.deliveries_to_redeliver(TimerInstant::from_ticks(1, Duration::from_secs(1)));

@@ -1,10 +1,11 @@
 extern crate std;
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
-  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy, typed::actor::TypedActorContextGeneric},
-  std::typed::actor::{TypedActor, TypedActorContext},
+  core::{
+    actor::Pid, error::ActorError, supervision::SupervisorStrategy,
+    typed::actor::TypedActorContext as CoreTypedActorContext,
+  },
+  std::typed::actor::{TypedActor, TypedActorContext as StdTypedActorContext},
 };
 
 /// Adapter bridging standard [`TypedActor`] implementations to the core runtime.
@@ -21,41 +22,33 @@ impl<M, T> TypedActorAdapter<M, T> {
   }
 }
 
-impl<M, T> crate::core::typed::actor::TypedActor<M, StdToolbox> for TypedActorAdapter<M, T>
+impl<M, T> crate::core::typed::actor::TypedActor<M> for TypedActorAdapter<M, T>
 where
   M: Send + Sync + 'static,
   T: TypedActor<M>,
 {
-  fn pre_start(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> Result<(), ActorError> {
-    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+  fn pre_start(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>) -> Result<(), ActorError> {
+    let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.pre_start(&mut wrapped_ctx)
   }
 
-  fn receive(
-    &mut self,
-    core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>,
-    message: &M,
-  ) -> Result<(), ActorError> {
-    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+  fn receive(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>, message: &M) -> Result<(), ActorError> {
+    let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.receive(&mut wrapped_ctx, message)
   }
 
-  fn post_stop(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> Result<(), ActorError> {
-    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+  fn post_stop(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>) -> Result<(), ActorError> {
+    let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.post_stop(&mut wrapped_ctx)
   }
 
-  fn on_terminated(
-    &mut self,
-    core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>,
-    terminated: Pid,
-  ) -> Result<(), ActorError> {
-    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+  fn on_terminated(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>, terminated: Pid) -> Result<(), ActorError> {
+    let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.on_terminated(&mut wrapped_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, core_ctx: &mut TypedActorContextGeneric<'_, M, StdToolbox>) -> SupervisorStrategy {
-    let mut wrapped_ctx = TypedActorContext::from_core_mut(core_ctx);
+  fn supervisor_strategy(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>) -> SupervisorStrategy {
+    let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.supervisor_strategy(&mut wrapped_ctx)
   }
 }

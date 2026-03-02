@@ -7,8 +7,8 @@ use alloc::{format, string::String, vec, vec::Vec};
 use core::any::type_name_of_val;
 
 use fraktor_actor_rs::core::{
-  messaging::AnyMessageGeneric,
-  serialization::{SerializationError, serialization_registry::SerializationRegistryGeneric},
+  messaging::AnyMessage,
+  serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
@@ -23,7 +23,7 @@ use super::{
 /// Publishes messages by serializing them into pub/sub batches.
 pub struct PubSubPublisherGeneric<TB: RuntimeToolbox + 'static> {
   pub_sub:  ClusterPubSubShared<TB>,
-  registry: ArcShared<SerializationRegistryGeneric<TB>>,
+  registry: ArcShared<SerializationRegistry>,
 }
 
 impl<TB: RuntimeToolbox + 'static> Clone for PubSubPublisherGeneric<TB> {
@@ -35,7 +35,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for PubSubPublisherGeneric<TB> {
 impl<TB: RuntimeToolbox + 'static> PubSubPublisherGeneric<TB> {
   /// Creates a new publisher.
   #[must_use]
-  pub const fn new(pub_sub: ClusterPubSubShared<TB>, registry: ArcShared<SerializationRegistryGeneric<TB>>) -> Self {
+  pub const fn new(pub_sub: ClusterPubSubShared<TB>, registry: ArcShared<SerializationRegistry>) -> Self {
     Self { pub_sub, registry }
   }
 
@@ -44,7 +44,7 @@ impl<TB: RuntimeToolbox + 'static> PubSubPublisherGeneric<TB> {
   /// # Errors
   ///
   /// Returns `PubSubError` for system-level failures.
-  pub fn publish(&self, request: &PublishRequest<TB>) -> Result<PublishAck, PubSubError> {
+  pub fn publish(&self, request: &PublishRequest) -> Result<PublishAck, PubSubError> {
     let topic = request.topic.clone();
     if topic.is_empty() {
       return Ok(PublishAck::rejected(PublishRejectReason::InvalidTopic));
@@ -74,11 +74,11 @@ impl<TB: RuntimeToolbox + 'static> PubSubPublisherGeneric<TB> {
     batch: PubSubBatch,
     options: PublishOptions,
   ) -> Result<PublishAck, PubSubError> {
-    let request = PublishRequest::new(topic.clone(), AnyMessageGeneric::new(batch), options);
+    let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), options);
     self.pub_sub.with_write(|pub_sub| pub_sub.publish(request))
   }
 
-  pub(crate) fn build_batch(&self, messages: Vec<AnyMessageGeneric<TB>>) -> Result<PubSubBatch, PublishRejectReason> {
+  pub(crate) fn build_batch(&self, messages: Vec<AnyMessage>) -> Result<PubSubBatch, PublishRejectReason> {
     let mut envelopes = Vec::with_capacity(messages.len());
     for message in messages {
       let envelope = match self.serialize_message(&message) {
@@ -90,7 +90,7 @@ impl<TB: RuntimeToolbox + 'static> PubSubPublisherGeneric<TB> {
     Ok(PubSubBatch::new(envelopes))
   }
 
-  fn serialize_message(&self, message: &AnyMessageGeneric<TB>) -> Result<PubSubEnvelope, SerializationError> {
+  fn serialize_message(&self, message: &AnyMessage) -> Result<PubSubEnvelope, SerializationError> {
     let payload = message.payload();
     let type_id = payload.type_id();
     let type_name = self.registry.binding_name(type_id).unwrap_or_else(|| String::from(type_name_of_val(payload)));

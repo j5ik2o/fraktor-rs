@@ -9,19 +9,19 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdMutex, NoStdToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::NoStdMutex;
 
 use crate::core::{
   dead_letter::DeadLetterReason,
   error::ActorError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   typed::{
     Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
-    actor::{TypedActor, TypedActorContextGeneric, TypedActorRef},
+    actor::{TypedActor, TypedActorContext, TypedActorRef},
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
-    props::TypedPropsGeneric,
-    system::TypedActorSystemGeneric,
+    props::TypedProps,
+    system::TypedActorSystem,
   },
 };
 
@@ -72,7 +72,7 @@ impl CounterActor {
 impl TypedActor<CounterMessage> for CounterActor {
   fn receive(
     &mut self,
-    _ctx: &mut TypedActorContextGeneric<'_, CounterMessage>,
+    _ctx: &mut TypedActorContext<'_, CounterMessage>,
     message: &CounterMessage,
   ) -> Result<(), ActorError> {
     match message {
@@ -91,11 +91,11 @@ impl TypedActor<CounterMessage> for CounterActor {
 
 #[test]
 fn typed_actor_system_handles_basic_flow() {
-  let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::new(CounterActor::new);
+  let props = TypedProps::<CounterMessage>::new(CounterActor::new);
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(2)).expect("tell increment one");
@@ -113,11 +113,11 @@ fn typed_actor_system_handles_basic_flow() {
 
 #[test]
 fn typed_behaviors_handle_recursive_state() {
-  let props = TypedPropsGeneric::<CounterMessage, NoStdToolbox>::from_behavior_factory(|| behavior_counter(0));
+  let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<CounterMessage, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
 
   counter.tell(CounterMessage::Increment(3)).expect("increment one");
@@ -135,11 +135,11 @@ fn typed_behaviors_handle_recursive_state() {
 
 #[test]
 fn typed_behaviors_ignore_keeps_current_state() {
-  let props = TypedPropsGeneric::<IgnoreCommand, NoStdToolbox>::from_behavior_factory(|| ignore_gate(0));
+  let props = TypedProps::<IgnoreCommand>::from_behavior_factory(|| ignore_gate(0));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<IgnoreCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<IgnoreCommand>::new(&props, tick_driver).expect("system");
   let mut gate = system.user_guardian_ref();
 
   gate.tell(IgnoreCommand::Add(1)).expect("add before reject");
@@ -158,11 +158,11 @@ fn typed_behaviors_ignore_keeps_current_state() {
 
 #[test]
 fn typed_behaviors_stash_buffered_messages_across_transition() {
-  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory(|| stash_behavior(0));
+  let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashCommand::Buffer(4)).expect("buffer one");
@@ -179,13 +179,13 @@ fn typed_behaviors_stash_buffered_messages_across_transition() {
 fn typed_behaviors_with_stash_limits_capacity() {
   let overflow_count = Arc::new(AtomicUsize::new(0));
   let overflow_probe = Arc::clone(&overflow_count);
-  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory(move || {
+  let props = TypedProps::<StashCommand>::from_behavior_factory(move || {
     stash_behavior_with_capacity_limit(0, Arc::clone(&overflow_probe))
   });
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashCommand::Buffer(4)).expect("buffer one");
@@ -202,14 +202,14 @@ fn typed_behaviors_with_stash_limits_capacity() {
 #[test]
 fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
   let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<i32>>>> = Arc::new(NoStdMutex::new(None));
-  let props = TypedPropsGeneric::<StashCommand, NoStdToolbox>::from_behavior_factory({
+  let props = TypedProps::<StashCommand>::from_behavior_factory({
     let slot = adapter_slot.clone();
     move || adapter_stash_behavior(0, &slot)
   });
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<StashCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
@@ -227,12 +227,11 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
 
 #[test]
 fn typed_behaviors_unstash_replays_before_already_queued_messages() {
-  let props =
-    TypedPropsGeneric::<StashOrderCommand, NoStdToolbox>::from_behavior_factory(|| stash_order_behavior(Vec::new()));
+  let props = TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new()));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<StashOrderCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<StashOrderCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   actor.tell(StashOrderCommand::Buffer(String::from("stashed"))).expect("buffer");
@@ -255,13 +254,12 @@ fn typed_behaviors_receive_signal_notifications() {
   let start_probe = Arc::clone(&started);
   let stop_probe = Arc::clone(&stopped);
 
-  let props = TypedPropsGeneric::<LifecycleCommand, NoStdToolbox>::from_behavior_factory(move || {
-    signal_probe_behavior(&start_probe, &stop_probe)
-  });
+  let props =
+    TypedProps::<LifecycleCommand>::from_behavior_factory(move || signal_probe_behavior(&start_probe, &stop_probe));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<LifecycleCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<LifecycleCommand>::new(&props, tick_driver).expect("system");
   system.terminate().expect("terminate");
   system.as_untyped().run_until_terminated();
 
@@ -295,13 +293,13 @@ struct SchedulerProbeActor;
 impl TypedActor<MismatchCommand> for MismatchActor {
   fn receive(
     &mut self,
-    _ctx: &mut TypedActorContextGeneric<'_, MismatchCommand>,
+    _ctx: &mut TypedActorContext<'_, MismatchCommand>,
     message: &MismatchCommand,
   ) -> Result<(), ActorError> {
     match message {
       | MismatchCommand::Trigger { reply_to } => reply_to
         .as_untyped()
-        .tell(AnyMessageGeneric::new("unexpected".to_string()))
+        .tell(AnyMessage::new("unexpected".to_string()))
         .map_err(|error| ActorError::from_send_error(&error)),
     }
   }
@@ -310,7 +308,7 @@ impl TypedActor<MismatchCommand> for MismatchActor {
 impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
   fn receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, SchedulerProbeCommand>,
+    ctx: &mut TypedActorContext<'_, SchedulerProbeCommand>,
     message: &SchedulerProbeCommand,
   ) -> Result<(), ActorError> {
     match message {
@@ -325,11 +323,11 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
 
 #[test]
 fn typed_ask_reports_type_mismatch() {
-  let props = TypedPropsGeneric::<MismatchCommand, NoStdToolbox>::new(|| MismatchActor);
+  let props = TypedProps::<MismatchCommand>::new(|| MismatchActor);
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<MismatchCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<MismatchCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<i32, _>(|reply_to| MismatchCommand::Trigger { reply_to }).expect("ask");
@@ -344,12 +342,11 @@ fn typed_ask_reports_type_mismatch() {
 
 #[test]
 fn typed_context_exposes_scheduler() {
-  let props = TypedPropsGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(|| SchedulerProbeActor);
+  let props = TypedProps::<SchedulerProbeCommand>::new(|| SchedulerProbeActor);
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<SchedulerProbeCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SchedulerProbeCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   let response = actor.ask::<bool, _>(|reply_to| SchedulerProbeCommand::Check { reply_to }).expect("ask");
@@ -382,7 +379,7 @@ fn wait_for(mut condition: impl FnMut() -> bool) -> bool {
   condition()
 }
 
-fn behavior_counter(total: i32) -> Behavior<CounterMessage, NoStdToolbox> {
+fn behavior_counter(total: i32) -> Behavior<CounterMessage> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
     | CounterMessage::Get { reply_to } => {
@@ -393,7 +390,7 @@ fn behavior_counter(total: i32) -> Behavior<CounterMessage, NoStdToolbox> {
   })
 }
 
-fn ignore_gate(total: u32) -> Behavior<IgnoreCommand, NoStdToolbox> {
+fn ignore_gate(total: u32) -> Behavior<IgnoreCommand> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | IgnoreCommand::Add(delta) => Ok(ignore_gate(total + delta)),
     | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
@@ -405,14 +402,11 @@ fn ignore_gate(total: u32) -> Behavior<IgnoreCommand, NoStdToolbox> {
   })
 }
 
-fn stash_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
+fn stash_behavior(total: u32) -> Behavior<StashCommand> {
   Behaviors::with_stash(32, move |stash| stash_locked_behavior(total, stash))
 }
 
-fn adapter_stash_behavior(
-  total: u32,
-  slot: &Arc<NoStdMutex<Option<TypedActorRef<i32>>>>,
-) -> Behavior<StashCommand, NoStdToolbox> {
+fn adapter_stash_behavior(total: u32, slot: &Arc<NoStdMutex<Option<TypedActorRef<i32>>>>) -> Behavior<StashCommand> {
   let slot = Arc::clone(slot);
   Behaviors::setup(move |ctx| {
     let adapter = ctx
@@ -427,14 +421,11 @@ fn adapter_stash_behavior(
   })
 }
 
-fn stash_behavior_with_capacity_limit(
-  total: u32,
-  overflow_counter: Arc<AtomicUsize>,
-) -> Behavior<StashCommand, NoStdToolbox> {
+fn stash_behavior_with_capacity_limit(total: u32, overflow_counter: Arc<AtomicUsize>) -> Behavior<StashCommand> {
   Behaviors::with_stash(1, move |stash| stash_limited_locked_behavior(total, Arc::clone(&overflow_counter), stash))
 }
 
-fn stash_locked_behavior(total: u32, stash: StashBuffer<StashCommand>) -> Behavior<StashCommand, NoStdToolbox> {
+fn stash_locked_behavior(total: u32, stash: StashBuffer<StashCommand>) -> Behavior<StashCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | StashCommand::Buffer(_) => {
       stash.stash(ctx)?;
@@ -456,7 +447,7 @@ fn stash_limited_locked_behavior(
   total: u32,
   overflow_counter: Arc<AtomicUsize>,
   stash: StashBuffer<StashCommand>,
-) -> Behavior<StashCommand, NoStdToolbox> {
+) -> Behavior<StashCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | StashCommand::Buffer(_) => {
       if stash.is_full(ctx)? {
@@ -478,7 +469,7 @@ fn stash_limited_locked_behavior(
   })
 }
 
-fn stash_open_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
+fn stash_open_behavior(total: u32) -> Behavior<StashCommand> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | StashCommand::Buffer(delta) => Ok(stash_open_behavior(total + delta)),
     | StashCommand::Open => Ok(Behaviors::same()),
@@ -490,14 +481,14 @@ fn stash_open_behavior(total: u32) -> Behavior<StashCommand, NoStdToolbox> {
   })
 }
 
-fn stash_order_behavior(history: Vec<String>) -> Behavior<StashOrderCommand, NoStdToolbox> {
+fn stash_order_behavior(history: Vec<String>) -> Behavior<StashOrderCommand> {
   Behaviors::with_stash(32, move |stash| stash_order_locked_behavior(history.clone(), stash))
 }
 
 fn stash_order_locked_behavior(
   history: Vec<String>,
   stash: StashBuffer<StashOrderCommand>,
-) -> Behavior<StashOrderCommand, NoStdToolbox> {
+) -> Behavior<StashOrderCommand> {
   Behaviors::receive_message(move |ctx, message| match message {
     | StashOrderCommand::Buffer(_) | StashOrderCommand::Marker(_) => {
       stash.stash(ctx)?;
@@ -515,7 +506,7 @@ fn stash_order_locked_behavior(
   })
 }
 
-fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand, NoStdToolbox> {
+fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | StashOrderCommand::Buffer(value) => {
       let mut next = history.clone();
@@ -536,10 +527,7 @@ fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand
   })
 }
 
-fn signal_probe_behavior(
-  started: &Arc<AtomicUsize>,
-  stopped: &Arc<AtomicUsize>,
-) -> Behavior<LifecycleCommand, NoStdToolbox> {
+fn signal_probe_behavior(started: &Arc<AtomicUsize>, stopped: &Arc<AtomicUsize>) -> Behavior<LifecycleCommand> {
   let start_probe = Arc::clone(started);
   let stop_probe = Arc::clone(stopped);
   Behaviors::receive_signal(move |_ctx, signal| {
@@ -559,7 +547,7 @@ fn signal_probe_behavior(
   })
 }
 
-fn child_behavior(counter: &Arc<AtomicUsize>) -> Behavior<ChildCommand, NoStdToolbox> {
+fn child_behavior(counter: &Arc<AtomicUsize>) -> Behavior<ChildCommand> {
   let start_probe = Arc::clone(counter);
   Behaviors::receive_message(move |_ctx, message| match message {
     | ChildCommand::Crash => Err(ActorError::recoverable("boom")),
@@ -572,14 +560,12 @@ fn child_behavior(counter: &Arc<AtomicUsize>) -> Behavior<ChildCommand, NoStdToo
   })
 }
 
-fn child_props(counter: &Arc<AtomicUsize>) -> TypedPropsGeneric<ChildCommand, NoStdToolbox> {
+fn child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
   let counter = Arc::clone(counter);
-  TypedPropsGeneric::from_behavior_factory(move || child_behavior(&counter))
+  TypedProps::from_behavior_factory(move || child_behavior(&counter))
 }
 
-fn supervised_parent_behavior(
-  child: TypedPropsGeneric<ChildCommand, NoStdToolbox>,
-) -> Behavior<SupervisorCommand, NoStdToolbox> {
+fn supervised_parent_behavior(child: TypedProps<ChildCommand>) -> Behavior<SupervisorCommand> {
   Behaviors::setup(move |ctx| {
     let child_ref = ctx.spawn_child(&child).expect("spawn child");
     let handle = child_ref.actor_ref();
@@ -594,9 +580,9 @@ fn supervised_parent_behavior(
 
 fn supervised_parent_props(
   strategy: SupervisorStrategy,
-  child: TypedPropsGeneric<ChildCommand, NoStdToolbox>,
-) -> TypedPropsGeneric<SupervisorCommand, NoStdToolbox> {
-  TypedPropsGeneric::from_behavior_factory(move || {
+  child: TypedProps<ChildCommand>,
+) -> TypedProps<SupervisorCommand> {
+  TypedProps::from_behavior_factory(move || {
     let behavior = supervised_parent_behavior(child.clone());
     Behaviors::supervise(behavior).on_failure(strategy.clone())
   })
@@ -613,8 +599,7 @@ fn behaviors_supervise_restarts_children() {
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -637,8 +622,7 @@ fn behaviors_supervise_stops_children() {
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<SupervisorCommand, NoStdToolbox>::new(&parent_props, tick_driver).expect("system");
+  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
@@ -654,9 +638,7 @@ fn behaviors_supervise_stops_children() {
   system.terminate().expect("terminate");
 }
 
-fn adapter_counter_behavior(
-  slot: &Arc<NoStdMutex<Option<TypedActorRef<String>>>>,
-) -> Behavior<AdapterCounterCommand, NoStdToolbox> {
+fn adapter_counter_behavior(slot: &Arc<NoStdMutex<Option<TypedActorRef<String>>>>) -> Behavior<AdapterCounterCommand> {
   let slot = Arc::clone(slot);
   Behaviors::setup(move |ctx| {
     let adapter = ctx
@@ -669,7 +651,7 @@ fn adapter_counter_behavior(
   })
 }
 
-fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand, NoStdToolbox> {
+fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | AdapterCounterCommand::Set(delta) => Ok(counter_behavior(value + delta)),
     | AdapterCounterCommand::Read { reply_to } => {
@@ -683,15 +665,14 @@ fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand, NoStdToolbox>
 #[test]
 fn message_adapter_converts_external_messages() {
   let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<String>>>> = Arc::new(NoStdMutex::new(None));
-  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory({
+  let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory({
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)
   });
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
@@ -709,7 +690,7 @@ fn message_adapter_converts_external_messages() {
 
 #[test]
 fn adapter_not_found_routes_to_dead_letter() {
-  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory(|| {
+  let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory(|| {
     Behaviors::setup(|ctx| {
       ctx
         .message_adapter(|value: String| {
@@ -722,14 +703,13 @@ fn adapter_not_found_routes_to_dead_letter() {
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
   let untyped = actor.as_untyped().clone();
 
-  let payload = AdapterPayload::<NoStdToolbox>::new(7_u64);
+  let payload = AdapterPayload::new(7_u64);
   let envelope = AdapterEnvelope::new(payload, None);
-  untyped.tell(AnyMessageGeneric::new(envelope)).expect("send envelope");
+  untyped.tell(AnyMessage::new(envelope)).expect("send envelope");
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();
@@ -740,7 +720,7 @@ fn adapter_not_found_routes_to_dead_letter() {
 
 #[test]
 fn pipe_to_self_converts_messages_via_adapter() {
-  let props = TypedPropsGeneric::<AdapterCounterCommand, NoStdToolbox>::from_behavior_factory(|| {
+  let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory(|| {
     Behaviors::setup(|ctx| {
       ctx
         .pipe_to_self(
@@ -757,8 +737,7 @@ fn pipe_to_self_converts_messages_via_adapter() {
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system =
-    TypedActorSystemGeneric::<AdapterCounterCommand, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
   wait_until(|| read_counter_value(&mut actor) == 6);
   system.terminate().expect("terminate");

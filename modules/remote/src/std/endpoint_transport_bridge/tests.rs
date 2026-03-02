@@ -14,24 +14,22 @@ use std::sync::Mutex;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::ActorError,
   event::{
     logging::LogLevel,
-    stream::{
-      CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
-    },
+    stream::{CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   },
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationCallScope, SerializationExtension, SerializationExtensionShared, SerializationSetup,
     SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::{
   core::sync::{ArcShared, SharedAccess},
@@ -60,12 +58,8 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<StdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -89,12 +83,8 @@ struct WatcherCommandRecorderActor {
   recorder: WatcherCommandRecorder,
 }
 
-impl Actor<StdToolbox> for WatcherCommandRecorderActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for WatcherCommandRecorderActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<RemoteWatcherCommand>() {
       self.recorder.commands.lock().expect("watcher recorder lock").push(command.clone());
     }
@@ -327,7 +317,7 @@ impl RemoteTransport<StdToolbox> for TestTransport {
 
 #[derive(Clone)]
 struct EventRecorder {
-  events: Arc<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
+  events: Arc<Mutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventRecorder {
@@ -335,27 +325,24 @@ impl EventRecorder {
     Self { events: Arc::new(Mutex::new(Vec::new())) }
   }
 
-  fn snapshot(&self) -> Vec<EventStreamEvent<StdToolbox>> {
+  fn snapshot(&self) -> Vec<EventStreamEvent> {
     self.events.lock().expect("recorder lock").clone()
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for EventRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for EventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().expect("recorder lock").push(event.clone());
   }
 }
 
-fn build_system() -> ActorSystemGeneric<StdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("endpoint-bridge-tests");
-  let config = ActorSystemConfigGeneric::<StdToolbox>::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()));
-  ActorSystemGeneric::new_with_config(&props, &config).expect("actor system")
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("endpoint-bridge-tests");
+  let config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  ActorSystem::new_with_config(&props, &config).expect("actor system")
 }
 
-fn subscribe_events(
-  system: &ActorSystemGeneric<StdToolbox>,
-) -> (EventRecorder, EventStreamSubscriptionGeneric<StdToolbox>) {
+fn subscribe_events(system: &ActorSystem) -> (EventRecorder, EventStreamSubscription) {
   let recorder = EventRecorder::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
@@ -379,13 +366,13 @@ fn serialization_setup() -> SerializationSetup {
     .expect("serialization setup")
 }
 
-fn serialization_extension(system: &ActorSystemGeneric<StdToolbox>) -> SerializationExtensionSharedGeneric<StdToolbox> {
-  SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(system, serialization_setup()))
+fn serialization_extension(system: &ActorSystem) -> SerializationExtensionShared {
+  SerializationExtensionShared::new(SerializationExtension::new(system, serialization_setup()))
 }
 
 fn build_bridge(
   handshake_timeout: Duration,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
   let (bridge, probe, system, _control) = build_bridge_with_control(handshake_timeout);
   (bridge, probe, system)
 }
@@ -394,7 +381,7 @@ fn build_bridge_with_windows(
   handshake_timeout: Duration,
   ack_send_window: u64,
   ack_receive_window: u64,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
@@ -422,12 +409,7 @@ fn build_bridge_with_windows(
 
 fn build_bridge_with_control(
   handshake_timeout: Duration,
-) -> (
-  Arc<EndpointTransportBridge<StdToolbox>>,
-  TestTransportProbe,
-  ActorSystemGeneric<StdToolbox>,
-  RemotingControlHandle<StdToolbox>,
-) {
+) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem, RemotingControlHandle<StdToolbox>) {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
@@ -456,7 +438,7 @@ fn build_bridge_with_control(
 fn build_bridge_with_instruments(
   handshake_timeout: Duration,
   remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
@@ -482,21 +464,14 @@ fn build_bridge_with_instruments(
   (EndpointTransportBridge::new(config), probe, system)
 }
 
-fn spawn_bridge(
-  handshake_timeout: Duration,
-) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystemGeneric<StdToolbox>) {
+fn spawn_bridge(handshake_timeout: Duration) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystem) {
   let (handle, probe, system, _control) = spawn_bridge_with_control(handshake_timeout);
   (handle, probe, system)
 }
 
 fn spawn_bridge_with_control(
   handshake_timeout: Duration,
-) -> (
-  EndpointTransportBridgeHandle,
-  TestTransportProbe,
-  ActorSystemGeneric<StdToolbox>,
-  RemotingControlHandle<StdToolbox>,
-) {
+) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystem, RemotingControlHandle<StdToolbox>) {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
@@ -523,11 +498,11 @@ fn spawn_bridge_with_control(
 }
 
 fn register_remote_watcher_daemon(
-  system: &ActorSystemGeneric<StdToolbox>,
+  system: &ActorSystem,
   control: &RemotingControlHandle<StdToolbox>,
 ) -> WatcherCommandRecorder {
   let recorder = WatcherCommandRecorder::new();
-  let props = PropsGeneric::from_fn({
+  let props = Props::from_fn({
     let recorder = recorder.clone();
     move || WatcherCommandRecorderActor { recorder: recorder.clone() }
   })

@@ -1,14 +1,12 @@
 extern crate std;
 use std::ops::{Deref, DerefMut};
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
     actor::Pid,
     error::SendError,
     spawn::SpawnError,
-    typed::{TypedActorSystemGeneric, actor::TypedActorContextGeneric as CoreTypedActorContextGeneric},
+    typed::{TypedActorSystem, actor::TypedActorContext as CoreTypedActorContext},
   },
   std::typed::{
     TypedProps,
@@ -20,7 +18,7 @@ use crate::{
 pub struct TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static, {
-  inner: &'ctx mut CoreTypedActorContextGeneric<'inner, M, StdToolbox>,
+  inner: &'ctx mut CoreTypedActorContext<'inner, M>,
 }
 
 impl<'ctx, 'inner, M> TypedActorContext<'ctx, 'inner, M>
@@ -29,7 +27,7 @@ where
 {
   /// Builds a std-facing typed context wrapper from the core context.
   #[must_use]
-  pub const fn from_core_mut(core: &'ctx mut CoreTypedActorContextGeneric<'inner, M, StdToolbox>) -> Self {
+  pub const fn from_core_mut(core: &'ctx mut CoreTypedActorContext<'inner, M>) -> Self {
     Self { inner: core }
   }
 
@@ -41,7 +39,7 @@ where
 
   /// Returns the underlying actor system handle.
   #[must_use]
-  pub fn system(&self) -> TypedActorSystemGeneric<M, StdToolbox> {
+  pub fn system(&self) -> TypedActorSystem<M> {
     self.inner.system()
   }
 
@@ -80,7 +78,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError<StdToolbox>>
+  pub fn watch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner.watch(target.as_core())
@@ -91,7 +89,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the unwatch operation cannot be performed.
-  pub fn unwatch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError<StdToolbox>>
+  pub fn unwatch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner.unwatch(target.as_core())
@@ -102,7 +100,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the stop signal cannot be sent.
-  pub fn stop_self(&self) -> Result<(), SendError<StdToolbox>> {
+  pub fn stop_self(&self) -> Result<(), SendError> {
     self.inner.stop_self()
   }
 
@@ -110,7 +108,7 @@ where
   #[must_use]
   pub const fn message_adapter_builder<U>(
     &mut self,
-  ) -> crate::core::typed::message_adapter::MessageAdapterBuilderGeneric<'_, 'inner, M, U, StdToolbox>
+  ) -> crate::core::typed::message_adapter::MessageAdapterBuilder<'_, 'inner, M, U>
   where
     U: Send + Sync + 'static, {
     self.inner.message_adapter_builder()
@@ -118,12 +116,12 @@ where
 
   /// Provides access to the underlying core typed context.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreTypedActorContextGeneric<'inner, M, StdToolbox> {
+  pub const fn as_core(&self) -> &CoreTypedActorContext<'inner, M> {
     self.inner
   }
 
   /// Provides mutable access to the underlying core typed context.
-  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContextGeneric<'inner, M, StdToolbox> {
+  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
     self.inner
   }
 }
@@ -132,7 +130,7 @@ impl<'inner, M> Deref for TypedActorContext<'_, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
-  type Target = CoreTypedActorContextGeneric<'inner, M, StdToolbox>;
+  type Target = CoreTypedActorContext<'inner, M>;
 
   fn deref(&self) -> &Self::Target {
     self.inner

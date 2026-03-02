@@ -7,17 +7,17 @@ use alloc::format;
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::ActorError,
   extension::ExtensionInstallers,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
   system::{
-    ActorSystemConfigGeneric, ActorSystemGeneric,
+    ActorSystem, ActorSystemConfig,
     provider::ActorRefProvider,
     remote::{RemoteWatchHookShared, RemotingConfig},
     state::AuthorityState,
@@ -35,31 +35,25 @@ use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbo
 
 struct NoopActor;
 
-impl Actor<StdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system(
-  config: RemotingExtensionConfig,
-) -> (ActorSystemGeneric<StdToolbox>, RemotingControlShared<StdToolbox>) {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("multi-node-guardian");
+fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+  let props = Props::from_fn(|| NoopActor).with_name("multi-node-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
-  let extensions = ExtensionInstallers::<StdToolbox>::default()
+  let extensions = ExtensionInstallers::default()
     .with_extension_installer(serialization_installer)
     .with_extension_installer(RemotingExtensionInstaller::new(config.clone()));
   let remoting_config = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(25511);
-  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()))
+  let system_config = ActorSystemConfig::default()
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
     .with_remoting_config(remoting_config);
-  let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("system");
+  let system = ActorSystem::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())
@@ -76,7 +70,7 @@ fn remote_path(system_name: &str, host: &str, port: u16, service_name: &str) -> 
 
 #[tokio::test]
 async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
 
@@ -116,8 +110,8 @@ async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> 
 
   let remote_a = provider.clone().actor_ref(remote_path("remote-a", "127.0.0.1", 25520, "svc-a")).expect("actor ref");
   let remote_b = provider.clone().actor_ref(remote_path("remote-b", "127.0.0.1", 25521, "svc-b")).expect("actor ref");
-  remote_a.tell(AnyMessageGeneric::new("to-a".to_string())).expect("send succeeds");
-  remote_b.tell(AnyMessageGeneric::new("to-b".to_string())).expect("send succeeds");
+  remote_a.tell(AnyMessage::new("to-a".to_string())).expect("send succeeds");
+  remote_b.tell(AnyMessage::new("to-b".to_string())).expect("send succeeds");
 
   let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
   let first_envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("first envelope");

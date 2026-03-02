@@ -1,11 +1,11 @@
-//! Generic serialization registry implementation.
+//! Serialization registry implementation.
 
 use alloc::{string::String, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
+  runtime_toolbox::RuntimeRwLock,
   sync::{ArcShared, sync_rwlock_like::SyncRwLockLike},
 };
 use hashbrown::{HashMap, hash_map::Entry};
@@ -17,17 +17,16 @@ use crate::core::serialization::{
 
 /// Registry that resolves serializers based on type identifiers.
 #[allow(clippy::type_complexity)]
-pub struct SerializationRegistryGeneric<TB: RuntimeToolbox> {
+pub struct SerializationRegistry {
   serializers:     RuntimeRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
   bindings:        RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   binding_names:   RuntimeRwLock<HashMap<TypeId, String, RandomState>>,
   manifest_routes: RuntimeRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
   cache:           RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   fallback:        SerializerId,
-  _marker:         PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
+impl SerializationRegistry {
   /// Creates a registry from the provided setup.
   #[must_use]
   pub fn from_setup(setup: &SerializationSetup) -> Self {
@@ -47,7 +46,6 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
       manifest_routes: RuntimeRwLock::new(manifest_routes),
       cache:           RuntimeRwLock::new(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
-      _marker:         PhantomData,
     }
   }
 
@@ -170,6 +168,3 @@ impl<TB: RuntimeToolbox> SerializationRegistryGeneric<TB> {
     self.cache.write().clear();
   }
 }
-
-/// Type alias for the no_std default registry.
-pub type SerializationRegistry = SerializationRegistryGeneric<NoStdToolbox>;

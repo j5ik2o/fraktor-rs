@@ -7,9 +7,9 @@ use alloc::{format, string::ToString};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   scheduler::{SchedulerCommand, SchedulerHandle},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
@@ -64,7 +64,7 @@ where
     Self { actor, recovery_timeout_handle: None, recovery_timeout_epoch: 0, _marker: core::marker::PhantomData }
   }
 
-  fn cancel_recovery_timeout(&mut self, ctx: &ActorContextGeneric<'_, TB>) {
+  fn cancel_recovery_timeout(&mut self, ctx: &ActorContext<'_>) {
     if let Some(handle) = self.recovery_timeout_handle.take() {
       let scheduler = ctx.system().scheduler();
       scheduler.with_write(|guard| {
@@ -73,11 +73,7 @@ where
     }
   }
 
-  fn schedule_recovery_timeout(
-    &mut self,
-    ctx: &ActorContextGeneric<'_, TB>,
-    waiting_snapshot: bool,
-  ) -> Result<(), ActorError> {
+  fn schedule_recovery_timeout(&mut self, ctx: &ActorContext<'_>, waiting_snapshot: bool) -> Result<(), ActorError> {
     self.cancel_recovery_timeout(ctx);
     let timeout = self.actor.recovery_event_timeout();
     if timeout == Duration::ZERO {
@@ -95,7 +91,7 @@ where
       .with_write(|guard| {
         guard.schedule_once(timeout, SchedulerCommand::SendMessage {
           receiver:   self_ref,
-          message:    AnyMessageGeneric::new(tick),
+          message:    AnyMessage::new(tick),
           dispatcher: None,
           sender:     None,
         })
@@ -105,7 +101,7 @@ where
     Ok(())
   }
 
-  fn handle_recovery_tick(&mut self, ctx: &ActorContextGeneric<'_, TB>, tick: RecoveryTick) -> Result<(), ActorError> {
+  fn handle_recovery_tick(&mut self, ctx: &ActorContext<'_>, tick: RecoveryTick) -> Result<(), ActorError> {
     if tick.epoch() != self.recovery_timeout_epoch {
       return Ok(());
     }
@@ -143,7 +139,7 @@ where
 
   fn update_recovery_timeout_after_snapshot_response(
     &mut self,
-    ctx: &ActorContextGeneric<'_, TB>,
+    ctx: &ActorContext<'_>,
     response: &SnapshotResponse,
   ) -> Result<(), ActorError> {
     match response {
@@ -159,7 +155,7 @@ where
 
   fn update_recovery_timeout_after_journal_response(
     &mut self,
-    ctx: &ActorContextGeneric<'_, TB>,
+    ctx: &ActorContext<'_>,
     response: &JournalResponse,
   ) -> Result<(), ActorError> {
     match response {
@@ -179,14 +175,12 @@ where
     Ok(())
   }
 
-  fn stash_current_message(&self, ctx: &ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn stash_current_message(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
     match ctx.stash_with_limit(self.actor.stash_capacity()) {
       | Ok(()) => Ok(()),
-      | Err(error) if ActorContextGeneric::<TB>::is_stash_overflow_error(&error) => {
-        match self.actor.stash_overflow_strategy() {
-          | StashOverflowStrategy::Drop => Ok(()),
-          | StashOverflowStrategy::Fail => Err(error),
-        }
+      | Err(error) if ActorContext::is_stash_overflow_error(&error) => match self.actor.stash_overflow_strategy() {
+        | StashOverflowStrategy::Drop => Ok(()),
+        | StashOverflowStrategy::Fail => Err(error),
       },
       | Err(error) => Err(error),
     }
@@ -224,12 +218,12 @@ where
   }
 }
 
-impl<A, TB> Actor<TB> for PersistentActorAdapter<A, TB>
+impl<A, TB> Actor for PersistentActorAdapter<A, TB>
 where
   A: PersistentActor<TB> + Sync + 'static,
   TB: RuntimeToolbox + 'static,
 {
-  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let extension = ctx
       .system()
       .extended()
@@ -253,11 +247,7 @@ where
     Ok(())
   }
 
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(response) = message.downcast_ref::<JournalResponse>() {
       let current_instance_id = self.actor.persistence_context().instance_id();
       let recovery_running = self.is_recovery_running();
@@ -317,7 +307,7 @@ where
     self.actor.handle_command(ctx, message)
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.cancel_recovery_timeout(ctx);
     Ok(())
   }

@@ -1,53 +1,46 @@
 //! Typed ask response handle returned by `TypedActorRef::ask`.
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
-  messaging::AskResponseGeneric,
-  typed::{actor::TypedActorRefGeneric, typed_ask_future::TypedAskFutureGeneric},
+  messaging::AskResponse,
+  typed::{actor::TypedActorRef, typed_ask_future::TypedAskFuture},
 };
 
 /// Associates the typed sender handle with the typed future.
 ///
 /// The future resolves with `Ok(R)` on success, or `Err(TypedAskError)` on failure.
-pub struct TypedAskResponseGeneric<R, TB>
+pub struct TypedAskResponse<R>
 where
-  R: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  sender: TypedActorRefGeneric<R, TB>,
-  future: TypedAskFutureGeneric<R, TB>,
+  R: Send + Sync + 'static, {
+  sender: TypedActorRef<R>,
+  future: TypedAskFuture<R>,
 }
 
-/// Type alias with the default toolbox.
-pub type TypedAskResponse<R> = TypedAskResponseGeneric<R, NoStdToolbox>;
-
-impl<R, TB> TypedAskResponseGeneric<R, TB>
+impl<R> TypedAskResponse<R>
 where
   R: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
-  pub(crate) fn from_generic(response: AskResponseGeneric<TB>) -> Self {
+  pub(crate) fn from_generic(response: AskResponse) -> Self {
     let (sender, future) = response.into_parts();
-    let sender = TypedActorRefGeneric::from_untyped(sender);
-    let future = TypedAskFutureGeneric::new(future);
+    let sender = TypedActorRef::from_untyped(sender);
+    let future = TypedAskFuture::new(future);
     Self { sender, future }
   }
 
   /// Returns the sender target exposed to ask callers.
   #[must_use]
-  pub const fn sender(&self) -> &TypedActorRefGeneric<R, TB> {
+  pub const fn sender(&self) -> &TypedActorRef<R> {
     &self.sender
   }
 
   /// Returns the typed future handle tied to this ask response.
   #[must_use]
-  pub const fn future(&self) -> &TypedAskFutureGeneric<R, TB> {
+  pub const fn future(&self) -> &TypedAskFuture<R> {
     &self.future
   }
 
   /// Decomposes the response into its raw parts.
   #[must_use]
-  pub fn into_parts(self) -> (TypedActorRefGeneric<R, TB>, TypedAskFutureGeneric<R, TB>) {
+  pub fn into_parts(self) -> (TypedActorRef<R>, TypedAskFuture<R>) {
     (self.sender, self.future)
   }
 }

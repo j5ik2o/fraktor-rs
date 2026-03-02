@@ -16,8 +16,8 @@ compile_error!("membership_gossip_failure_no_std には --features test-support 
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
+  messaging::AnyMessage,
 };
 use fraktor_cluster_rs::core::{
   ClusterCore, ClusterEvent, ClusterExtensionConfig, ClusterProviderShared,
@@ -63,8 +63,8 @@ impl TopologyMetricsObserver {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for TopologyMetricsObserver {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for TopologyMetricsObserver {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     let EventStreamEvent::Extension { name, payload } = event else {
       return;
     };
@@ -94,7 +94,7 @@ struct DemoNode {
   name:         &'static str,
   authority:    String,
   coordinator:  MembershipCoordinatorGeneric<NoStdToolbox>,
-  event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: EventStreamShared,
 }
 
 impl DemoNode {
@@ -102,7 +102,7 @@ impl DemoNode {
     name: &'static str,
     authority: &str,
     config: MembershipCoordinatorConfig,
-    event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+    event_stream: EventStreamShared,
   ) -> Self {
     let table = MembershipTable::new(3);
     let threshold = config.phi_threshold;
@@ -173,7 +173,7 @@ impl DemoNode {
 
   fn publish_cluster_event(&self, event: &ClusterEvent) {
     println!("[{}][cluster] {event:?}", self.name);
-    let payload = AnyMessageGeneric::new(event.clone());
+    let payload = AnyMessage::new(event.clone());
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
@@ -192,7 +192,7 @@ fn main() {
     topology_emit_interval: Duration::from_secs(1),
   };
 
-  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let core = build_cluster_core(event_stream.clone());
   let observer = subscriber_handle(TopologyMetricsObserver::new(core));
   let _subscription = event_stream.subscribe(&observer);
@@ -291,7 +291,7 @@ fn main() {
   println!("\n=== Demo complete ===");
 }
 
-fn build_cluster_core(event_stream: EventStreamSharedGeneric<NoStdToolbox>) -> ClusterCore<NoStdToolbox> {
+fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore<NoStdToolbox> {
   let config = ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true);
   let provider = ClusterProviderShared::new(Box::new(NoopClusterProvider::new()));
   let block_list_provider: ArcShared<dyn BlockListProvider> = ArcShared::new(DemoBlockListProvider);

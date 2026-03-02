@@ -6,21 +6,20 @@ use core::{
   hash::{Hash, Hasher},
 };
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
 
 use crate::core::identity::ClusterIdentity;
 
 /// Subscriber target for pub/sub delivery.
 #[derive(Debug)]
-pub enum PubSubSubscriber<TB: RuntimeToolbox> {
+pub enum PubSubSubscriber {
   /// Local actor reference.
-  ActorRef(ActorRefGeneric<TB>),
+  ActorRef(ActorRef),
   /// Cluster identity (resolved via cluster routing).
   ClusterIdentity(ClusterIdentity),
 }
 
-impl<TB: RuntimeToolbox> Clone for PubSubSubscriber<TB> {
+impl Clone for PubSubSubscriber {
   fn clone(&self) -> Self {
     match self {
       | Self::ActorRef(actor_ref) => Self::ActorRef(actor_ref.clone()),
@@ -29,7 +28,7 @@ impl<TB: RuntimeToolbox> Clone for PubSubSubscriber<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> PartialEq for PubSubSubscriber<TB> {
+impl PartialEq for PubSubSubscriber {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
       | (Self::ActorRef(left), Self::ActorRef(right)) => left.pid() == right.pid(),
@@ -41,9 +40,9 @@ impl<TB: RuntimeToolbox> PartialEq for PubSubSubscriber<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Eq for PubSubSubscriber<TB> {}
+impl Eq for PubSubSubscriber {}
 
-impl<TB: RuntimeToolbox> Hash for PubSubSubscriber<TB> {
+impl Hash for PubSubSubscriber {
   fn hash<H: Hasher>(&self, state: &mut H) {
     match self {
       | Self::ActorRef(actor_ref) => {
@@ -61,7 +60,7 @@ impl<TB: RuntimeToolbox> Hash for PubSubSubscriber<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> PubSubSubscriber<TB> {
+impl PubSubSubscriber {
   /// Returns a display label for observability.
   #[must_use]
   pub fn label(&self) -> String {
@@ -72,13 +71,13 @@ impl<TB: RuntimeToolbox> PubSubSubscriber<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> PartialOrd for PubSubSubscriber<TB> {
+impl PartialOrd for PubSubSubscriber {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<TB: RuntimeToolbox> Ord for PubSubSubscriber<TB> {
+impl Ord for PubSubSubscriber {
   fn cmp(&self, other: &Self) -> Ordering {
     match (self, other) {
       | (Self::ActorRef(left), Self::ActorRef(right)) => {

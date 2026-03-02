@@ -5,18 +5,18 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric, Pid,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationCallScope, SerializationExtension, SerializationExtensionShared, SerializationSetup,
     SerializationSetupBuilder, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric, remote::RemoteWatchHook},
+  system::{ActorSystem, ActorSystemConfig, remote::RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex},
@@ -32,20 +32,16 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("provider-tests");
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
   let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  ActorSystemGeneric::new_with_config(&props, &system_config).expect("system builds")
+  ActorSystem::new_with_config(&props, &system_config).expect("system builds")
 }
 
 fn serialization_setup() -> SerializationSetup {
@@ -65,13 +61,11 @@ fn serialization_setup() -> SerializationSetup {
     .expect("build setup")
 }
 
-fn serialization_extension(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-) -> SerializationExtensionSharedGeneric<NoStdToolbox> {
-  SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(system, serialization_setup()))
+fn serialization_extension(system: &ActorSystem) -> SerializationExtensionShared {
+  SerializationExtensionShared::new(SerializationExtension::new(system, serialization_setup()))
 }
 
-fn provider(system: &ActorSystemGeneric<NoStdToolbox>) -> RemoteActorRefProvider {
+fn provider(system: &ActorSystem) -> RemoteActorRefProvider {
   let serialization = serialization_extension(system);
   let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization));
   let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
@@ -100,7 +94,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
   let writer = provider.writer_for_test();
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
-  remote.tell(AnyMessageGeneric::new("hello".to_string())).expect("send succeeds");
+  remote.tell(AnyMessage::new("hello".to_string())).expect("send succeeds");
 
   let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope exists");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
@@ -150,6 +144,6 @@ fn sender_rejects_quarantined_authority() {
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
   system.state().remote_authority_set_quarantine("127.0.0.1:4100", Some(Duration::from_secs(10)));
-  let result = remote.tell(AnyMessageGeneric::new("hello".to_string()));
+  let result = remote.tell(AnyMessage::new("hello".to_string()));
   assert!(matches!(result, Err(SendError::Closed(_))));
 }

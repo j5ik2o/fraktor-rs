@@ -3,11 +3,11 @@
 use alloc::{format, string::ToString};
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
-  system::{ActorSystemGeneric, guardian::SystemGuardianProtocol},
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::{ActorSystem, guardian::SystemGuardianProtocol},
 };
 use fraktor_utils_rs::{
   core::{
@@ -36,15 +36,12 @@ const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";
 impl RemotingExtensionGeneric<StdToolbox> {
   /// Creates and wires the extension, panicking on unrecoverable errors.
   #[must_use]
-  pub fn new(system: &ActorSystemGeneric<StdToolbox>, config: &RemotingExtensionConfig) -> Self {
+  pub fn new(system: &ActorSystem, config: &RemotingExtensionConfig) -> Self {
     Self::try_new(system, config).unwrap_or_else(|error| panic!("failed to initialize remoting extension: {error}"))
   }
 
   /// Attempts to install the extension, returning an error if invariants are violated.
-  pub fn try_new(
-    system: &ActorSystemGeneric<StdToolbox>,
-    config: &RemotingExtensionConfig,
-  ) -> Result<Self, RemotingError> {
+  pub fn try_new(system: &ActorSystem, config: &RemotingExtensionConfig) -> Result<Self, RemotingError> {
     let control_handle = RemotingControlHandle::new(system.clone(), config.clone());
     let control: RemotingControlShared<StdToolbox> = ArcShared::new(RuntimeMutex::new(control_handle));
     let mut transport = StdTransportFactory::build(config)?;
@@ -62,13 +59,13 @@ impl RemotingExtensionGeneric<StdToolbox> {
 }
 
 fn spawn_endpoint_supervisor<TB>(
-  system: &ActorSystemGeneric<TB>,
-  guardian: &ActorRefGeneric<TB>,
+  system: &ActorSystem,
+  guardian: &ActorRef,
   control: RemotingControlShared<TB>,
-) -> Result<ActorRefGeneric<TB>, RemotingError>
+) -> Result<ActorRef, RemotingError>
 where
   TB: RuntimeToolbox + 'static, {
-  let props = PropsGeneric::from_fn({
+  let props = Props::from_fn({
     let handle = control.clone();
     let guardian_ref = guardian.clone();
     move || EndpointSupervisorActor::new(handle.clone(), guardian_ref.clone())
@@ -78,14 +75,9 @@ where
   Ok(child.actor_ref().clone())
 }
 
-fn register_shutdown_hook<TB>(
-  guardian: &mut ActorRefGeneric<TB>,
-  supervisor: &ActorRefGeneric<TB>,
-) -> Result<(), RemotingError>
-where
-  TB: RuntimeToolbox + 'static, {
+fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) -> Result<(), RemotingError> {
   guardian
-    .tell(AnyMessageGeneric::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())))
+    .tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())))
     .map_err(|error| RemotingError::HookRegistrationFailed(format!("{error:?}")))
 }
 
@@ -93,36 +85,32 @@ struct EndpointSupervisorActor<TB>
 where
   TB: RuntimeToolbox + 'static, {
   control:  RemotingControlShared<TB>,
-  guardian: ActorRefGeneric<TB>,
+  guardian: ActorRef,
 }
 
 impl<TB> EndpointSupervisorActor<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn new(control: RemotingControlShared<TB>, guardian: ActorRefGeneric<TB>) -> Self {
+  fn new(control: RemotingControlShared<TB>, guardian: ActorRef) -> Self {
     Self { control, guardian }
   }
 
-  fn acknowledge_shutdown(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn acknowledge_shutdown(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.control.lock().notify_system_shutdown();
     self
       .guardian
-      .tell(AnyMessageGeneric::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())))
+      .tell(AnyMessage::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())))
       .map_err(|error| ActorError::from_send_error(&error))
   }
 }
 
-impl<TB> Actor<TB> for EndpointSupervisorActor<TB>
+impl<TB> Actor for EndpointSupervisorActor<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
-    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>()
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol>()
       && matches!(protocol, SystemGuardianProtocol::TerminationHook)
     {
       self.acknowledge_shutdown(ctx)?;

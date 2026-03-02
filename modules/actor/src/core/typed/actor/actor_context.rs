@@ -2,46 +2,36 @@
 
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
-  actor::{ActorContextGeneric, Pid, PipeSpawnError},
+  actor::{ActorContext, Pid, PipeSpawnError},
   error::{ActorError, SendError},
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   spawn::SpawnError,
   typed::{
-    TypedActorSystemGeneric,
-    actor::{actor_ref::TypedActorRefGeneric, child_ref::TypedChildRefGeneric},
-    message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilderGeneric, MessageAdapterRegistry},
-    props::TypedPropsGeneric,
+    TypedActorSystem,
+    actor::{actor_ref::TypedActorRef, child_ref::TypedChildRef},
+    message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilder, MessageAdapterRegistry},
+    props::TypedProps,
     receive_timeout_config::ReceiveTimeoutConfig,
   },
 };
 
-/// Provides typed helpers around the untyped [`ActorContextGeneric`].
-pub struct TypedActorContextGeneric<'a, M, TB = NoStdToolbox>
+/// Provides typed helpers around the untyped [`ActorContext`].
+pub struct TypedActorContext<'a, M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  inner:           NonNull<ActorContextGeneric<'a, TB>>,
-  adapters:        Option<NonNull<MessageAdapterRegistry<M, TB>>>,
-  receive_timeout: Option<NonNull<Option<ReceiveTimeoutConfig<M, TB>>>>,
-  _marker:         PhantomData<(&'a mut ActorContextGeneric<'a, TB>, M)>,
+  M: Send + Sync + 'static, {
+  inner:           NonNull<ActorContext<'a>>,
+  adapters:        Option<NonNull<MessageAdapterRegistry<M>>>,
+  receive_timeout: Option<NonNull<Option<ReceiveTimeoutConfig<M>>>>,
+  _marker:         PhantomData<(&'a mut ActorContext<'a>, M)>,
 }
 
-/// Type alias for [TypedActorContextGeneric] with the default [NoStdToolbox].
-pub type TypedActorContext<'a, M> = TypedActorContextGeneric<'a, M, NoStdToolbox>;
-
-impl<'a, M, TB> TypedActorContextGeneric<'a, M, TB>
+impl<'a, M> TypedActorContext<'a, M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
-  pub(crate) fn from_untyped(
-    inner: &mut ActorContextGeneric<'a, TB>,
-    adapters: Option<&mut MessageAdapterRegistry<M, TB>>,
-  ) -> Self {
+  pub(crate) fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
     Self {
       inner:           NonNull::from(inner),
       adapters:        adapters.map(NonNull::from),
@@ -51,17 +41,17 @@ where
   }
 
   /// Attaches a receive timeout state reference to this context.
-  pub(crate) fn with_receive_timeout(mut self, state: &mut Option<ReceiveTimeoutConfig<M, TB>>) -> Self {
+  pub(crate) fn with_receive_timeout(mut self, state: &mut Option<ReceiveTimeoutConfig<M>>) -> Self {
     self.receive_timeout = Some(NonNull::from(state));
     self
   }
 
-  const fn inner(&self) -> &ActorContextGeneric<'a, TB> {
+  const fn inner(&self) -> &ActorContext<'a> {
     // SAFETY: `inner` always points to a valid context for lifetime `'a`.
     unsafe { self.inner.as_ref() }
   }
 
-  const fn inner_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
+  const fn inner_mut(&mut self) -> &mut ActorContext<'a> {
     // SAFETY: The runtime guarantees exclusive access while executing actor code.
     unsafe { self.inner.as_mut() }
   }
@@ -74,14 +64,14 @@ where
 
   /// Returns the underlying actor system handle.
   #[must_use]
-  pub fn system(&self) -> TypedActorSystemGeneric<M, TB> {
-    TypedActorSystemGeneric::from_untyped(self.inner().system().clone())
+  pub fn system(&self) -> TypedActorSystem<M> {
+    TypedActorSystem::from_untyped(self.inner().system().clone())
   }
 
   /// Returns the typed self reference.
   #[must_use]
-  pub fn self_ref(&self) -> TypedActorRefGeneric<M, TB> {
-    TypedActorRefGeneric::from_untyped(self.inner().self_ref())
+  pub fn self_ref(&self) -> TypedActorRef<M> {
+    TypedActorRef::from_untyped(self.inner().self_ref())
   }
 
   /// Spawns a typed child actor using the provided typed props
@@ -89,14 +79,11 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(
-    &self,
-    typed_props: &TypedPropsGeneric<C, TB>,
-  ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub fn spawn_child<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner().spawn_child(typed_props.to_untyped())?;
-    Ok(TypedChildRefGeneric::from_untyped(child))
+    Ok(TypedChildRef::from_untyped(child))
   }
 
   /// Spawns a typed child actor and automatically watches it.
@@ -104,14 +91,11 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned or watched.
-  pub fn spawn_child_watched<C>(
-    &self,
-    typed_props: &TypedPropsGeneric<C, TB>,
-  ) -> Result<TypedChildRefGeneric<C, TB>, SpawnError>
+  pub fn spawn_child_watched<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
     let child = self.inner().spawn_child_watched(typed_props.to_untyped())?;
-    Ok(TypedChildRefGeneric::from_untyped(child))
+    Ok(TypedChildRef::from_untyped(child))
   }
 
   /// Watches the provided typed target.
@@ -119,7 +103,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch<C>(&self, target: &TypedActorRefGeneric<C, TB>) -> Result<(), SendError<TB>>
+  pub fn watch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner().watch(target.as_untyped())
@@ -133,10 +117,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch_with<C>(&self, target: &TypedActorRefGeneric<C, TB>, message: M) -> Result<(), SendError<TB>>
+  pub fn watch_with<C>(&self, target: &TypedActorRef<C>, message: M) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().watch_with(target.as_untyped(), AnyMessageGeneric::new(message))
+    self.inner().watch_with(target.as_untyped(), AnyMessage::new(message))
   }
 
   /// Stops watching the provided typed target.
@@ -144,7 +128,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the unwatch operation cannot be performed.
-  pub fn unwatch<C>(&self, target: &TypedActorRefGeneric<C, TB>) -> Result<(), SendError<TB>>
+  pub fn unwatch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner().unwatch(target.as_untyped())
@@ -155,7 +139,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the stop signal cannot be sent.
-  pub fn stop_self(&self) -> Result<(), SendError<TB>> {
+  pub fn stop_self(&self) -> Result<(), SendError> {
     self.inner().stop_self()
   }
 
@@ -197,20 +181,20 @@ where
   }
 
   /// Provides mutable access to the underlying untyped context.
-  pub const fn as_untyped_mut(&mut self) -> &mut ActorContextGeneric<'a, TB> {
+  pub const fn as_untyped_mut(&mut self) -> &mut ActorContext<'a> {
     self.inner_mut()
   }
 
-  fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M, TB>>, AdapterError> {
+  fn registry_ptr(&self) -> Result<NonNull<MessageAdapterRegistry<M>>, AdapterError> {
     self.adapters.ok_or(AdapterError::RegistryUnavailable)
   }
 
   /// Creates a fluent builder for registering a message adapter.
   #[must_use]
-  pub const fn message_adapter_builder<U>(&mut self) -> MessageAdapterBuilderGeneric<'_, 'a, M, U, TB>
+  pub const fn message_adapter_builder<U>(&mut self) -> MessageAdapterBuilder<'_, 'a, M, U>
   where
     U: Send + Sync + 'static, {
-    MessageAdapterBuilderGeneric::new(self)
+    MessageAdapterBuilder::new(self)
   }
 
   /// Registers a message adapter for the specified payload type.
@@ -218,7 +202,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the registry is unavailable or if registration fails.
-  pub fn message_adapter<U, F>(&mut self, adapter: F) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  pub fn message_adapter<U, F>(&mut self, adapter: F) -> Result<TypedActorRef<U>, AdapterError>
   where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
@@ -229,7 +213,7 @@ where
       let registry = &mut *registry_ptr.as_ptr();
       registry.register::<U, _>(ctx_ref, adapter)?
     };
-    Ok(TypedActorRefGeneric::from_untyped(actor_ref))
+    Ok(TypedActorRef::from_untyped(actor_ref))
   }
 
   /// Spawns a dedicated message adapter.
@@ -241,7 +225,7 @@ where
     &mut self,
     _name: Option<&str>,
     adapter: F,
-  ) -> Result<TypedActorRefGeneric<U, TB>, AdapterError>
+  ) -> Result<TypedActorRef<U>, AdapterError>
   where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
@@ -267,11 +251,11 @@ where
     MapErr: Fn(E) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let mapped = async move {
       let outcome = future.await;
-      let adapt = AdaptMessage::<M, TB>::new(outcome, move |result: Result<U, E>| match result {
+      let adapt = AdaptMessage::<M>::new(outcome, move |result: Result<U, E>| match result {
         | Ok(value) => map_ok(value),
         | Err(error) => map_err(error),
       });
-      AnyMessageGeneric::new(adapt)
+      AnyMessage::new(adapt)
     };
     self.inner().pipe_to_self(mapped, |message| message)
   }

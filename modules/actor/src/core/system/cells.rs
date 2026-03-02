@@ -1,24 +1,17 @@
 //! Actor cell registry.
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
-use crate::core::actor::{ActorCellGeneric, Pid};
+use crate::core::actor::{ActorCell, Pid};
 
 /// Registry of actor cells indexed by their [`Pid`].
-pub(crate) struct CellsGeneric<TB: RuntimeToolbox + 'static> {
-  map: HashMap<Pid, ArcShared<ActorCellGeneric<TB>>, RandomState>,
+pub(crate) struct Cells {
+  map: HashMap<Pid, ArcShared<ActorCell>, RandomState>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type Cells = CellsGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> CellsGeneric<TB> {
+impl Cells {
   /// Creates a new empty cell registry.
   #[must_use]
   pub(crate) fn new() -> Self {
@@ -26,19 +19,19 @@ impl<TB: RuntimeToolbox + 'static> CellsGeneric<TB> {
   }
 
   /// Inserts an actor cell into the registry.
-  pub(crate) fn insert(&mut self, pid: Pid, cell: ArcShared<ActorCellGeneric<TB>>) {
+  pub(crate) fn insert(&mut self, pid: Pid, cell: ArcShared<ActorCell>) {
     self.map.insert(pid, cell);
   }
 
   /// Removes an actor cell from the registry.
   #[must_use]
-  pub(crate) fn remove(&mut self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn remove(&mut self, pid: &Pid) -> Option<ArcShared<ActorCell>> {
     self.map.remove(pid)
   }
 
   /// Returns an actor cell by its [`Pid`].
   #[must_use]
-  pub(crate) fn get(&self, pid: &Pid) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn get(&self, pid: &Pid) -> Option<ArcShared<ActorCell>> {
     self.map.get(pid).cloned()
   }
 
@@ -64,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> CellsGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for CellsGeneric<TB> {
+impl Default for Cells {
   fn default() -> Self {
     Self::new()
   }

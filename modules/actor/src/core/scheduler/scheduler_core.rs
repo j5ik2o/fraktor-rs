@@ -9,7 +9,7 @@ mod tests;
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
-  runtime_toolbox::RuntimeToolbox,
+  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   time::{SchedulerTickHandle, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };
 use hashbrown::HashMap;
@@ -20,7 +20,7 @@ use super::{
   command::SchedulerCommand,
   config::SchedulerConfig,
   deterministic::DeterministicEvent,
-  diagnostics::{SchedulerDiagnosticsEvent, SchedulerDiagnosticsGeneric, SchedulerDiagnosticsSubscriptionGeneric},
+  diagnostics::{SchedulerDiagnostics, SchedulerDiagnosticsEvent, SchedulerDiagnosticsSubscription},
   dump::SchedulerDump,
   dump_job::SchedulerDumpJob,
   error::SchedulerError,
@@ -32,30 +32,30 @@ use super::{
 const DEFAULT_DRIFT_BUDGET_PCT: u8 = 5;
 
 /// Scheduler responsible for registering delayed and periodic jobs.
-pub struct Scheduler<TB: RuntimeToolbox> {
-  toolbox:       TB,
+pub struct Scheduler {
+  toolbox:       NoStdToolbox,
   config:        SchedulerConfig,
   wheel:         TimerWheel<ScheduledPayload>,
   registry:      CancellableRegistry,
   metrics:       SchedulerMetrics,
   warnings:      Vec<SchedulerWarning>,
   next_handle:   u64,
-  jobs:          HashMap<u64, ScheduledJob<TB>, RandomState>,
+  jobs:          HashMap<u64, ScheduledJob, RandomState>,
   current_tick:  u64,
   closed:        bool,
   task_runs:     TaskRunQueue,
   task_run_seq:  u64,
   shutting_down: bool,
-  diagnostics:   SchedulerDiagnosticsGeneric<TB>,
+  diagnostics:   SchedulerDiagnostics,
 }
 
 #[allow(dead_code)]
-struct ScheduledJob<TB: RuntimeToolbox> {
+struct ScheduledJob {
   handle:        SchedulerHandle,
   wheel_id:      TimerHandleId,
   mode:          SchedulerMode,
   periodic:      Option<PeriodicContext>,
-  command:       SchedulerCommand<TB>,
+  command:       SchedulerCommand,
   deadline_tick: u64,
 }
 
@@ -90,10 +90,10 @@ enum BatchPreparation {
   Cancelled,
 }
 
-impl<TB: RuntimeToolbox> Scheduler<TB> {
+impl Scheduler {
   /// Creates a scheduler backed by the provided toolbox.
   #[must_use]
-  pub fn new(toolbox: TB, config: SchedulerConfig) -> Self {
+  pub fn new(toolbox: NoStdToolbox, config: SchedulerConfig) -> Self {
     let timer_config = TimerWheelConfig::from_profile(config.profile(), config.resolution(), DEFAULT_DRIFT_BUDGET_PCT);
     let wheel = TimerWheel::new(timer_config);
     let task_run_backend =
@@ -112,7 +112,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
       task_runs: TaskRunQueue::new(task_run_backend),
       task_run_seq: 0,
       shutting_down: false,
-      diagnostics: SchedulerDiagnosticsGeneric::with_capacity(config.diagnostics_capacity()),
+      diagnostics: SchedulerDiagnostics::with_capacity(config.diagnostics_capacity()),
     }
   }
 
@@ -130,7 +130,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns a reference to the underlying toolbox.
   #[must_use]
-  pub const fn toolbox(&self) -> &TB {
+  pub const fn toolbox(&self) -> &NoStdToolbox {
     &self.toolbox
   }
 
@@ -154,12 +154,12 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
 
   /// Returns the diagnostics snapshot.
   #[must_use]
-  pub const fn diagnostics(&self) -> &SchedulerDiagnosticsGeneric<TB> {
+  pub const fn diagnostics(&self) -> &SchedulerDiagnostics {
     &self.diagnostics
   }
 
   /// Subscribes to the diagnostics stream.
-  pub fn subscribe_diagnostics(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscriptionGeneric<TB> {
+  pub fn subscribe_diagnostics(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscription {
     self.diagnostics.subscribe(capacity.max(1))
   }
 
@@ -186,7 +186,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   pub fn schedule_once(
     &mut self,
     delay: Duration,
-    command: SchedulerCommand<TB>,
+    command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(delay, SchedulerMode::OneShot, None, command)
   }
@@ -200,7 +200,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     &mut self,
     initial_delay: Duration,
     period: Duration,
-    command: SchedulerCommand<TB>,
+    command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(initial_delay, SchedulerMode::FixedRate, Some(period), command)
   }
@@ -214,7 +214,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     &mut self,
     initial_delay: Duration,
     delay: Duration,
-    command: SchedulerCommand<TB>,
+    command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(initial_delay, SchedulerMode::FixedDelay, Some(delay), command)
   }
@@ -227,7 +227,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
   pub fn schedule_command(
     &mut self,
     delay: Duration,
-    command: SchedulerCommand<TB>,
+    command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     self.register_job(delay, SchedulerMode::OneShot, None, command)
   }
@@ -362,7 +362,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     delay: Duration,
     mode: SchedulerMode,
     period: Option<Duration>,
-    command: SchedulerCommand<TB>,
+    command: SchedulerCommand,
   ) -> Result<SchedulerHandle, SchedulerError> {
     if self.closed {
       return Err(SchedulerError::Closed);
@@ -421,7 +421,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     }
   }
 
-  fn prepare_batch(&mut self, job: &mut ScheduledJob<TB>, handle_id: u64) -> BatchPreparation {
+  fn prepare_batch(&mut self, job: &mut ScheduledJob, handle_id: u64) -> BatchPreparation {
     match job.periodic.as_mut() {
       | Some(context) => match context.build_batch(self.current_tick, handle_id) {
         | PeriodicBatchDecision::Execute { batch, warning } => {
@@ -503,7 +503,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     self.wheel.schedule(entry).map_err(|_| SchedulerError::CapacityExceeded)
   }
 
-  fn reschedule_job(&mut self, job: &mut ScheduledJob<TB>) -> Result<(), SchedulerError> {
+  fn reschedule_job(&mut self, job: &mut ScheduledJob) -> Result<(), SchedulerError> {
     let next_tick =
       job.periodic.as_ref().map(PeriodicContext::next_deadline_ticks).ok_or(SchedulerError::CapacityExceeded)?;
     let deadline = self.deadline_from_absolute(next_tick);
@@ -512,7 +512,7 @@ impl<TB: RuntimeToolbox> Scheduler<TB> {
     Ok(())
   }
 
-  fn execute_command(command: &SchedulerCommand<TB>, batch: &ExecutionBatch) {
+  fn execute_command(command: &SchedulerCommand, batch: &ExecutionBatch) {
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {

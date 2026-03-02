@@ -1,11 +1,9 @@
 //! Trait for dispatching messages from the mailbox to actors.
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
-  messaging::{AnyMessageGeneric, system_message::SystemMessage},
+  messaging::{AnyMessage, system_message::SystemMessage},
 };
 
 /// Dispatches user and system messages to actor handlers.
@@ -17,13 +15,13 @@ use crate::core::{
 /// let invoker = MessageInvokerShared::new(boxed_invoker);
 /// invoker.with_write(|i| i.invoke_user_message(message))?;
 /// ```
-pub trait MessageInvoker<TB: RuntimeToolbox + 'static = NoStdToolbox>: Send + Sync {
+pub trait MessageInvoker: Send + Sync {
   /// Processes user messages.
   ///
   /// # Errors
   ///
   /// Returns an error if message processing fails.
-  fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError>;
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), ActorError>;
 
   /// Processes system messages.
   ///

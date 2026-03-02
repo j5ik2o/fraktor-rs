@@ -6,23 +6,21 @@ mod tests;
 use alloc::{boxed::Box, string::String};
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::shared::Shared};
+use fraktor_utils_rs::core::sync::shared::Shared;
 
 use crate::core::typed::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload};
 
 /// Stores adapter metadata and execution closure.
-pub(crate) struct AdapterEntry<M, TB>
+pub(crate) struct AdapterEntry<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   type_id: TypeId,
-  handler: Box<dyn Fn(AdapterPayload<TB>) -> AdapterOutcome<M> + Send + Sync + 'static>,
+  handler: Box<dyn Fn(AdapterPayload) -> AdapterOutcome<M> + Send + Sync + 'static>,
 }
 
-impl<M, TB> AdapterEntry<M, TB>
+impl<M> AdapterEntry<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new registry entry placeholder.
   #[must_use]
@@ -30,7 +28,7 @@ where
   where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
-    let handler = Box::new(move |payload: AdapterPayload<TB>| match payload.try_downcast::<U>() {
+    let handler = Box::new(move |payload: AdapterPayload| match payload.try_downcast::<U>() {
       | Ok(value) => match value.try_unwrap() {
         | Ok(concrete) => match adapter(concrete) {
           | Ok(result) => AdapterOutcome::Converted(result),
@@ -51,7 +49,7 @@ where
 
   /// Executes the adapter closure.
   #[must_use]
-  pub(crate) fn invoke(&self, payload: AdapterPayload<TB>) -> AdapterOutcome<M> {
+  pub(crate) fn invoke(&self, payload: AdapterPayload) -> AdapterOutcome<M> {
     (self.handler)(payload)
   }
 }

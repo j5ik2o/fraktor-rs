@@ -7,15 +7,12 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 use hashbrown::HashMap;
 
 use crate::core::{
   scheduler::{SchedulerError, SchedulerHandle},
-  typed::{actor::TypedActorRefGeneric, scheduler::TypedSchedulerShared, timer_key::TimerKey},
+  typed::{actor::TypedActorRef, scheduler::TypedSchedulerShared, timer_key::TimerKey},
 };
 
 /// Manages keyed timers scoped to a single actor.
@@ -23,33 +20,28 @@ use crate::core::{
 /// Each key can have at most one active timer. Starting a new timer
 /// with an existing key cancels the previous timer first. All timers
 /// are cancelled when the actor stops.
-pub struct TimerSchedulerGeneric<M, TB = NoStdToolbox>
+pub struct TimerScheduler<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  self_ref:  TypedActorRefGeneric<M, TB>,
-  scheduler: TypedSchedulerShared<TB>,
+  M: Send + Sync + 'static, {
+  self_ref:  TypedActorRef<M>,
+  scheduler: TypedSchedulerShared,
   entries:   HashMap<TimerKey, SchedulerHandle, RandomState>,
 }
 
-/// Type alias for [`TimerSchedulerGeneric`] with the default [`NoStdToolbox`].
-pub type TimerScheduler<M> = TimerSchedulerGeneric<M, NoStdToolbox>;
-
-/// Shared handle for [`TimerSchedulerGeneric`], suitable for use in `Fn` closures.
+/// Shared handle for [`TimerScheduler`], suitable for use in `Fn` closures.
 ///
 /// Users call `.lock()` (via
 /// [`SyncMutexLike`](fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike))
 /// to obtain mutable access to the underlying timer scheduler.
-pub type TimerSchedulerShared<M, TB = NoStdToolbox> = ArcShared<RuntimeMutex<TimerSchedulerGeneric<M, TB>>>;
+pub type TimerSchedulerShared<M> = ArcShared<RuntimeMutex<TimerScheduler<M>>>;
 
-impl<M, TB> TimerSchedulerGeneric<M, TB>
+impl<M> TimerScheduler<M>
 where
   M: Send + Sync + Clone + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a timer scheduler bound to the provided actor.
   #[must_use]
-  pub fn new(self_ref: TypedActorRefGeneric<M, TB>, scheduler: TypedSchedulerShared<TB>) -> Self {
+  pub fn new(self_ref: TypedActorRef<M>, scheduler: TypedSchedulerShared) -> Self {
     Self { self_ref, scheduler, entries: HashMap::with_hasher(RandomState::new()) }
   }
 

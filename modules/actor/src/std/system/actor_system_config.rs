@@ -1,25 +1,22 @@
 use alloc::string::String;
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::{
     actor::actor_path::GuardianKind,
-    dispatch::dispatcher::DispatcherConfigGeneric,
+    dispatch::dispatcher::DispatcherConfig as CoreDispatcherConfig,
     extension::ExtensionInstallers,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
-    system::{
-      ActorSystemConfigGeneric as CoreActorSystemConfigGeneric, provider::ActorRefProviderInstaller,
-      remote::RemotingConfig,
-    },
+    system::{ActorSystemConfig as CoreActorSystemConfig, provider::ActorRefProviderInstaller, remote::RemotingConfig},
   },
-  std::dispatch::dispatcher::DispatcherConfig,
+  std::dispatch::dispatcher::DispatcherConfig as StdDispatcherConfig,
 };
 
 /// Configuration for the actor system.
 #[derive(Default)]
 pub struct ActorSystemConfig {
-  inner: CoreActorSystemConfigGeneric<StdToolbox>,
+  inner: CoreActorSystemConfig,
 }
 
 impl ActorSystemConfig {
@@ -53,14 +50,14 @@ impl ActorSystemConfig {
 
   /// Sets the tick driver configuration.
   #[must_use]
-  pub fn with_tick_driver_config(mut self, config: TickDriverConfig<StdToolbox>) -> Self {
+  pub fn with_tick_driver_config(mut self, config: TickDriverConfig) -> Self {
     self.inner = self.inner.with_tick_driver(config);
     self
   }
 
   /// Registers extension installers executed after bootstrap.
   #[must_use]
-  pub fn with_extension_installers(mut self, installers: ExtensionInstallers<StdToolbox>) -> Self {
+  pub fn with_extension_installers(mut self, installers: ExtensionInstallers) -> Self {
     self.inner = self.inner.with_extension_installers(installers);
     self
   }
@@ -69,14 +66,14 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_actor_ref_provider_installer<P>(mut self, installer: P) -> Self
   where
-    P: ActorRefProviderInstaller<StdToolbox> + 'static, {
+    P: ActorRefProviderInstaller + 'static, {
     self.inner = self.inner.with_actor_ref_provider_installer(installer);
     self
   }
 
   /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
   #[must_use]
-  pub fn with_default_dispatcher_config(mut self, config: DispatcherConfig) -> Self {
+  pub fn with_default_dispatcher_config(mut self, config: StdDispatcherConfig) -> Self {
     self.inner = self.inner.with_default_dispatcher(config.into_core());
     self
   }
@@ -107,61 +104,61 @@ impl ActorSystemConfig {
 
   /// Returns the tick driver configuration if set.
   #[must_use]
-  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig<StdToolbox>> {
+  pub const fn tick_driver_config(&self) -> Option<&TickDriverConfig> {
     self.inner.tick_driver_config()
   }
 
   /// Takes the tick driver configuration.
   #[must_use]
-  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig<StdToolbox>> {
+  pub const fn take_tick_driver_config(&mut self) -> Option<TickDriverConfig> {
     self.inner.take_tick_driver_config()
   }
 
   /// Returns the extension installers if set.
   #[must_use]
-  pub const fn extension_installers(&self) -> Option<&ExtensionInstallers<StdToolbox>> {
+  pub const fn extension_installers(&self) -> Option<&ExtensionInstallers> {
     self.inner.extension_installers()
   }
 
   /// Takes the extension installers.
   #[must_use]
-  pub const fn take_extension_installers(&mut self) -> Option<ExtensionInstallers<StdToolbox>> {
+  pub const fn take_extension_installers(&mut self) -> Option<ExtensionInstallers> {
     self.inner.take_extension_installers()
   }
 
   /// Returns the provider installer if set.
   #[must_use]
-  pub const fn provider_installer(&self) -> Option<&ArcShared<dyn ActorRefProviderInstaller<StdToolbox>>> {
+  pub const fn provider_installer(&self) -> Option<&ArcShared<dyn ActorRefProviderInstaller>> {
     self.inner.provider_installer()
   }
 
   /// Takes the provider installer.
   #[must_use]
-  pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller<StdToolbox>>> {
+  pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller>> {
     self.inner.take_provider_installer()
   }
 
   /// Returns the default dispatcher configuration if set.
   #[must_use]
-  pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfigGeneric<StdToolbox>> {
+  pub const fn default_dispatcher_config(&self) -> Option<&CoreDispatcherConfig> {
     self.inner.default_dispatcher_config()
   }
 
   /// Borrows the underlying core props reference.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreActorSystemConfigGeneric<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreActorSystemConfig {
     &self.inner
   }
 
   /// Borrows the underlying core props mutably.
   #[must_use]
-  pub const fn as_core_mut(&mut self) -> &mut CoreActorSystemConfigGeneric<StdToolbox> {
+  pub const fn as_core_mut(&mut self) -> &mut CoreActorSystemConfig {
     &mut self.inner
   }
 
   /// Consumes the wrapper and returns the underlying core props.
   #[must_use]
-  pub fn into_inner(self) -> CoreActorSystemConfigGeneric<StdToolbox> {
+  pub fn into_inner(self) -> CoreActorSystemConfig {
     self.inner
   }
 }

@@ -32,7 +32,7 @@ fn drive_pending_executes_scheduled_job() {
   let context = SchedulerContext::new(toolbox, config);
   let scheduler = context.scheduler();
   let signal = TickExecutorSignal::new();
-  let feed = TickFeed::<NoStdToolbox>::new(config.resolution(), 8, signal.clone());
+  let feed = TickFeed::new(config.resolution(), 8, signal.clone());
   let mut executor = SchedulerTickExecutor::new(scheduler.clone(), feed.clone(), signal);
 
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));

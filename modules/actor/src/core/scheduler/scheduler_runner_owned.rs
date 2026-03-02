@@ -1,16 +1,16 @@
 //! Owned runner that encapsulates tick handle lifetime.
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::SchedulerTickHandle};
+use fraktor_utils_rs::core::time::SchedulerTickHandle;
 
 use super::{Scheduler, SchedulerRunner, tick_driver::SchedulerTickHandleOwned};
 
 /// Owns a [`SchedulerRunner`] together with its tick handle.
-pub struct SchedulerRunnerOwned<TB: RuntimeToolbox> {
-  runner: SchedulerRunner<'static, TB>,
+pub struct SchedulerRunnerOwned {
+  runner: SchedulerRunner<'static>,
   handle: SchedulerTickHandleOwned,
 }
 
-impl<TB: RuntimeToolbox> SchedulerRunnerOwned<TB> {
+impl SchedulerRunnerOwned {
   /// Creates a new runner backed by an internal tick handle.
   #[must_use]
   pub fn new() -> Self {
@@ -29,7 +29,7 @@ impl<TB: RuntimeToolbox> SchedulerRunnerOwned<TB> {
   }
 
   /// Drives the underlying scheduler for all pending ticks.
-  pub fn drive(&mut self, scheduler: &mut Scheduler<TB>) {
+  pub fn drive(&mut self, scheduler: &mut Scheduler) {
     self.runner.run_once(scheduler);
   }
 
@@ -40,7 +40,7 @@ impl<TB: RuntimeToolbox> SchedulerRunnerOwned<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Default for SchedulerRunnerOwned<TB> {
+impl Default for SchedulerRunnerOwned {
   fn default() -> Self {
     Self::new()
   }

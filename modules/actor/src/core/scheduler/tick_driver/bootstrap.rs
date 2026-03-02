@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess
 #[cfg(any(test, feature = "test-support"))]
 use super::TickDriverControl;
 #[cfg(any(test, feature = "test-support"))]
-use super::TickDriverHandleGeneric;
+use super::TickDriverHandle;
 use super::{TickDriverBundle, TickDriverConfig, TickDriverError, TickDriverMetadata};
 #[cfg(any(test, feature = "test-support"))]
 use super::{
@@ -36,10 +36,10 @@ impl TickDriverBootstrap {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when driver provisioning fails.
-  pub(crate) fn provision<TB: RuntimeToolbox>(
-    config: &TickDriverConfig<TB>,
-    ctx: &TickDriverProvisioningContext<TB>,
-  ) -> Result<(TickDriverBundle<TB>, TickDriverSnapshot), TickDriverError> {
+  pub(crate) fn provision(
+    config: &TickDriverConfig,
+    ctx: &TickDriverProvisioningContext,
+  ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
       | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
@@ -60,10 +60,10 @@ impl TickDriverBootstrap {
   }
 
   #[cfg(any(test, feature = "test-support"))]
-  fn provision_manual<TB: RuntimeToolbox>(
-    driver: &ManualTestDriver<TB>,
-    ctx: &TickDriverProvisioningContext<TB>,
-  ) -> Result<(TickDriverBundle<TB>, TickDriverSnapshot), TickDriverError> {
+  fn provision_manual(
+    driver: &ManualTestDriver,
+    ctx: &TickDriverProvisioningContext,
+  ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
     let scheduler = ctx.scheduler();
     let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
     if !runner_enabled {
@@ -79,7 +79,7 @@ impl TickDriverBootstrap {
     let state = driver.state();
     let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
     let control = ArcShared::new(RuntimeMutex::new(control));
-    let handle = TickDriverHandleGeneric::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
+    let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
     let bundle = TickDriverBundle::new_manual(handle.clone(), controller);
     let metadata = TickDriverMetadata::new(handle.id(), start_instant);
@@ -90,7 +90,7 @@ impl TickDriverBootstrap {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-fn publish_driver_warning<TB: RuntimeToolbox>(ctx: &TickDriverProvisioningContext<TB>, message: &str) {
+fn publish_driver_warning(ctx: &TickDriverProvisioningContext, message: &str) {
   let timestamp = {
     let scheduler = ctx.scheduler();
     scheduler.with_read(|s| instant_to_duration(s.toolbox().clock().now()))

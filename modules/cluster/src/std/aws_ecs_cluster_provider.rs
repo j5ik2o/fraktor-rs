@@ -45,8 +45,8 @@ use std::{
 
 use aws_sdk_ecs::Client as EcsClient;
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared},
+  messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{
@@ -159,7 +159,7 @@ impl EcsClusterConfig {
 /// This provider polls the ECS API to discover running tasks and publishes
 /// topology updates when tasks join or leave the cluster.
 pub struct AwsEcsClusterProvider {
-  event_stream:        EventStreamSharedGeneric<StdToolbox>,
+  event_stream:        EventStreamShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
   config:              EcsClusterConfig,
@@ -174,7 +174,7 @@ impl AwsEcsClusterProvider {
   /// Creates a new AWS ECS cluster provider.
   #[must_use]
   pub fn new(
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
@@ -227,21 +227,21 @@ impl AwsEcsClusterProvider {
     let update =
       TopologyUpdate::new(topology, self.members.clone(), joined, left, Vec::new(), blocked, self.observed_at(version));
     let event = ClusterEvent::TopologyUpdated { update };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
 
   fn publish_startup_event(&self, mode: StartupMode) {
     let event = ClusterEvent::Startup { address: self.advertised_address.clone(), mode };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
 
   fn publish_shutdown_event(&self, mode: StartupMode) {
     let event = ClusterEvent::Shutdown { address: self.advertised_address.clone(), mode };
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }
@@ -305,7 +305,7 @@ impl AwsEcsClusterProvider {
                 TimerInstant::from_ticks(version, Duration::from_secs(1)),
               );
               let event = ClusterEvent::TopologyUpdated { update };
-              let payload = AnyMessageGeneric::new(event);
+              let payload = AnyMessage::new(event);
               let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
               event_stream.publish(&extension_event);
 

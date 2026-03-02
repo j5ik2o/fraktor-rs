@@ -3,18 +3,15 @@
 use std::{thread, time::Duration, vec::Vec};
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, ChildRef},
+  actor::{Actor, ActorContext, ChildRef},
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   spawn::SpawnError,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 struct Start;
 struct Deliver(u32);
@@ -30,11 +27,7 @@ impl RecordingChild {
 }
 
 impl Actor for RecordingChild {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(deliver) = message.downcast_ref::<Deliver>() {
       self.log.lock().push(deliver.0);
     }
@@ -54,11 +47,7 @@ impl RecordingGuardian {
 }
 
 impl Actor for RecordingGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let log = self.log.clone();
       let mut child = ctx
@@ -74,11 +63,7 @@ impl Actor for RecordingGuardian {
 struct SilentActor;
 
 impl Actor for SilentActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -95,11 +80,7 @@ impl NamingGuardian {
 }
 
 impl Actor for NamingGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let _ = ctx
         .spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"))

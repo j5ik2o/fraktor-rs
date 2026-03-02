@@ -1,6 +1,6 @@
 //! Extension identifier bridging actor-system registry and remoting implementation.
 
-use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
+use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystem};
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::core::remoting_extension::{RemotingExtensionConfig, RemotingExtensionGeneric};
@@ -21,10 +21,10 @@ impl RemotingExtensionId {
   }
 }
 
-impl ExtensionId<StdToolbox> for RemotingExtensionId {
+impl ExtensionId for RemotingExtensionId {
   type Ext = RemotingExtensionGeneric<StdToolbox>;
 
-  fn create_extension(&self, system: &ActorSystemGeneric<StdToolbox>) -> Self::Ext {
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     RemotingExtensionGeneric::new(system, &self.config)
   }
 }

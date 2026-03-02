@@ -5,13 +5,14 @@ mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
 use core::{
+  marker::PhantomData,
   ops::Deref,
   sync::atomic::{AtomicU32, Ordering},
 };
 
 use fraktor_actor_rs::core::{
-  actor::{Pid, actor_ref::ActorRefGeneric},
-  messaging::AnyMessageGeneric,
+  actor::{Pid, actor_ref::ActorRef},
+  messaging::AnyMessage,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
@@ -45,8 +46,9 @@ pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
   recovery: Recovery,
   instance_id: u32,
   event_adapters: EventAdapters,
-  journal_actor_ref: ActorRefGeneric<TB>,
-  snapshot_actor_ref: ActorRefGeneric<TB>,
+  journal_actor_ref: ActorRef,
+  snapshot_actor_ref: ActorRef,
+  _marker: PhantomData<TB>,
 }
 
 impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
@@ -64,8 +66,9 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       recovery: Recovery::default(),
       instance_id: NEXT_INSTANCE_ID.fetch_add(1, Ordering::Relaxed),
       event_adapters: EventAdapters::new(),
-      journal_actor_ref: ActorRefGeneric::null(),
-      snapshot_actor_ref: ActorRefGeneric::null(),
+      journal_actor_ref: ActorRef::null(),
+      snapshot_actor_ref: ActorRef::null(),
+      _marker: PhantomData,
     }
   }
 
@@ -76,8 +79,8 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   /// Returns `PersistenceError::StateMachine` when called more than once or refs are invalid.
   pub fn bind_actor_refs(
     &mut self,
-    journal_actor_ref: ActorRefGeneric<TB>,
-    snapshot_actor_ref: ActorRefGeneric<TB>,
+    journal_actor_ref: ActorRef,
+    snapshot_actor_ref: ActorRef,
   ) -> Result<(), PersistenceError> {
     if self.is_bound() {
       return Err(PersistenceError::StateMachine("persistence actor refs already bound".into()));
@@ -194,7 +197,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   /// Returns `PersistenceError` when the state transition or message send fails.
   /// On send failure the state is rolled back to `ProcessingCommands` and
   /// pending invocations are cleared.
-  pub fn flush_batch(&mut self, sender: ActorRefGeneric<TB>) -> Result<(), PersistenceError> {
+  pub fn flush_batch(&mut self, sender: ActorRef) -> Result<(), PersistenceError> {
     if self.event_batch.is_empty() || !self.is_ready() {
       return Ok(());
     }
@@ -346,7 +349,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   pub(crate) fn handle_snapshot_response(
     &mut self,
     response: &SnapshotResponse,
-    sender: ActorRefGeneric<TB>,
+    sender: ActorRef,
   ) -> SnapshotResponseAction {
     if !self.is_ready() || self.state != PersistentActorState::RecoveryStarted {
       return SnapshotResponseAction::None;
@@ -484,11 +487,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   ///
   /// Returns `PersistenceError` when the state transition or message send fails.
   /// On send failure the state is rolled back to `WaitingRecoveryPermit`.
-  pub(crate) fn start_recovery(
-    &mut self,
-    recovery: Recovery,
-    sender: ActorRefGeneric<TB>,
-  ) -> Result<(), PersistenceError> {
+  pub(crate) fn start_recovery(&mut self, recovery: Recovery, sender: ActorRef) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self.recovery = recovery;
     let next_state = self.state.transition_to_recovery_started()?;
@@ -526,11 +525,11 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
   /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
-  pub fn send_write_messages(&self, message: JournalMessage<TB>) -> Result<(), PersistenceError> {
+  pub fn send_write_messages(&self, message: JournalMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .journal_actor_ref
-      .tell(AnyMessageGeneric::new(message))
+      .tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
       .map(|_| ())
   }
@@ -541,11 +540,11 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
   /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
-  pub fn send_snapshot_message(&self, message: SnapshotMessage<TB>) -> Result<(), PersistenceError> {
+  pub fn send_snapshot_message(&self, message: SnapshotMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .snapshot_actor_ref
-      .tell(AnyMessageGeneric::new(message))
+      .tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
       .map(|_| ())
   }
@@ -595,7 +594,7 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
     !Self::is_null_ref(&self.journal_actor_ref) && !Self::is_null_ref(&self.snapshot_actor_ref)
   }
 
-  fn is_null_ref(actor_ref: &ActorRefGeneric<TB>) -> bool {
+  fn is_null_ref(actor_ref: &ActorRef) -> bool {
     actor_ref.pid() == Pid::new(0, 0)
   }
 }

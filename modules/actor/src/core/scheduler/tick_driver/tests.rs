@@ -13,7 +13,7 @@ use super::bootstrap::TickDriverBootstrap;
 use crate::core::{
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
   },
   scheduler::{
     ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
@@ -93,17 +93,17 @@ const TICK_DRIVER_MATRIX: &[TickDriverGuideEntry] =
   &[TickDriverGuideEntry::auto(), TickDriverGuideEntry::hardware(), TickDriverGuideEntry::manual()];
 
 struct RecordingSubscriber {
-  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
@@ -188,7 +188,7 @@ fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
   (handler, handle)
 }
 
-fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig<NoStdToolbox> {
+fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig {
   TickDriverConfig::new(move |ctx| {
     use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverBundle, TickExecutorSignal, TickFeed};
 
@@ -231,7 +231,7 @@ fn run_hardware_driver_enqueues_isr_pulses() {
 #[test]
 fn enqueue_from_isr_preserves_order_and_metrics() {
   let signal = TickExecutorSignal::new();
-  let feed = TickFeed::<NoStdToolbox>::new(Duration::from_millis(1), 1, signal.clone());
+  let feed = TickFeed::new(Duration::from_millis(1), 1, signal.clone());
 
   feed.enqueue_from_isr(1);
   feed.enqueue_from_isr(1);
@@ -284,7 +284,7 @@ impl SchedulerRunnable for ManualRunnable {
 
 #[test]
 fn manual_driver_runs_jobs_without_executor() {
-  let driver = ManualTestDriver::<NoStdToolbox>::new();
+  let driver = ManualTestDriver::new();
   let config = TickDriverConfig::manual(driver);
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), scheduler_config);
@@ -309,7 +309,7 @@ fn manual_driver_runs_jobs_without_executor() {
 
 #[test]
 fn manual_driver_rejected_when_runner_api_disabled() {
-  let driver = ManualTestDriver::<NoStdToolbox>::new();
+  let driver = ManualTestDriver::new();
   let config = TickDriverConfig::manual(driver);
   let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
@@ -386,7 +386,7 @@ fn driver_matrix_marks_manual_entry_as_test_only() {
 
 #[test]
 fn driver_metadata_records_driver_activation() {
-  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);
@@ -430,7 +430,7 @@ fn driver_snapshot_exposed_via_provisioning() {
 
 #[test]
 fn manual_driver_disabled_emits_warning() {
-  let event_stream = EventStreamSharedGeneric::<NoStdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);

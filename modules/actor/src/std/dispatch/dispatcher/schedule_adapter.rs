@@ -7,7 +7,7 @@ use std::{
   thread,
 };
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::dispatch::{dispatcher::ScheduleAdapter, mailbox::ScheduleHints},
@@ -37,7 +37,7 @@ impl Default for StdScheduleAdapter {
   }
 }
 
-impl ScheduleAdapter<StdToolbox> for StdScheduleAdapter {
+impl ScheduleAdapter for StdScheduleAdapter {
   fn create_waker(&mut self, dispatcher: DispatcherShared) -> Waker {
     StdScheduleWaker::into_waker(dispatcher)
   }

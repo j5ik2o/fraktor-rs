@@ -4,8 +4,8 @@ use alloc::{format, vec::Vec};
 use core::any::TypeId;
 
 use fraktor_actor_rs::core::{
-  messaging::AnyMessageGeneric,
-  serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistryGeneric},
+  messaging::AnyMessage,
+  serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
@@ -20,7 +20,7 @@ use crate::core::{
 /// Delivery endpoint that resolves cluster identities and sends batches.
 pub struct PubSubDeliveryActor<TB: RuntimeToolbox + 'static> {
   cluster_api: ClusterApiGeneric<TB>,
-  registry:    ArcShared<SerializationRegistryGeneric<TB>>,
+  registry:    ArcShared<SerializationRegistry>,
   _config:     PubSubConfig,
 }
 
@@ -29,7 +29,7 @@ impl<TB: RuntimeToolbox + 'static> PubSubDeliveryActor<TB> {
   #[must_use]
   pub const fn new(
     cluster_api: ClusterApiGeneric<TB>,
-    registry: ArcShared<SerializationRegistryGeneric<TB>>,
+    registry: ArcShared<SerializationRegistry>,
     config: PubSubConfig,
   ) -> Self {
     Self { cluster_api, registry, _config: config }
@@ -37,10 +37,10 @@ impl<TB: RuntimeToolbox + 'static> PubSubDeliveryActor<TB> {
 }
 
 impl<TB: RuntimeToolbox + 'static> DeliveryEndpoint<TB> for PubSubDeliveryActor<TB> {
-  fn deliver(&mut self, request: DeliverBatchRequest<TB>) -> Result<DeliveryReport<TB>, PubSubError> {
+  fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let messages = deserialize_batch(&self.registry, &request.batch)
       .map_err(|error| PubSubError::SerializationFailed { reason: format!("{error:?}") })?;
-    let payload = AnyMessageGeneric::new(PubSubAutoRespondBatch { messages });
+    let payload = AnyMessage::new(PubSubAutoRespondBatch { messages });
 
     let mut failed = Vec::new();
     for subscriber in request.subscribers {
@@ -70,10 +70,10 @@ impl<TB: RuntimeToolbox + 'static> DeliveryEndpoint<TB> for PubSubDeliveryActor<
   }
 }
 
-fn deserialize_batch<TB: RuntimeToolbox>(
-  registry: &ArcShared<SerializationRegistryGeneric<TB>>,
+fn deserialize_batch(
+  registry: &ArcShared<SerializationRegistry>,
   batch: &crate::core::pub_sub::PubSubBatch,
-) -> Result<Vec<AnyMessageGeneric<TB>>, SerializationError> {
+) -> Result<Vec<AnyMessage>, SerializationError> {
   let mut messages = Vec::with_capacity(batch.envelopes.len());
   for envelope in &batch.envelopes {
     let serializer_id =
@@ -84,12 +84,12 @@ fn deserialize_batch<TB: RuntimeToolbox>(
     } else {
       serializer.from_binary(&envelope.bytes, None::<TypeId>)?
     };
-    messages.push(AnyMessageGeneric::new(value));
+    messages.push(AnyMessage::new(value));
   }
   Ok(messages)
 }
 
-const fn map_send_error<TB: RuntimeToolbox>(error: &fraktor_actor_rs::core::error::SendError<TB>) -> DeliveryStatus {
+const fn map_send_error(error: &fraktor_actor_rs::core::error::SendError) -> DeliveryStatus {
   use fraktor_actor_rs::core::error::SendError;
   match error {
     | SendError::Timeout(_) => DeliveryStatus::Timeout,
@@ -97,7 +97,7 @@ const fn map_send_error<TB: RuntimeToolbox>(error: &fraktor_actor_rs::core::erro
   }
 }
 
-fn aggregate_status<TB: RuntimeToolbox>(failed: &[SubscriberDeliveryReport<TB>]) -> DeliveryStatus {
+fn aggregate_status(failed: &[SubscriberDeliveryReport]) -> DeliveryStatus {
   if failed.is_empty() {
     return DeliveryStatus::Delivered;
   }

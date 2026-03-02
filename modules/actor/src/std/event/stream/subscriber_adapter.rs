@@ -1,5 +1,3 @@
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use super::{EventStreamEvent, EventStreamSubscriberShared};
 use crate::core::event::stream::EventStreamSubscriber as CoreEventStreamSubscriber;
 
@@ -16,7 +14,7 @@ impl EventStreamSubscriberAdapter {
   }
 }
 
-impl CoreEventStreamSubscriber<StdToolbox> for EventStreamSubscriberAdapter {
+impl CoreEventStreamSubscriber for EventStreamSubscriberAdapter {
   fn on_event(&mut self, event: &EventStreamEvent) {
     let mut guard = self.inner.lock();
     guard.on_event(event);

@@ -2,10 +2,9 @@
 
 use core::{sync::atomic::Ordering, time::Duration};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 use portable_atomic::AtomicU64;
 
-use super::{TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle};
+use super::{TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle};
 
 static NEXT_DRIVER_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -22,7 +21,7 @@ pub(crate) fn next_tick_driver_id() -> TickDriverId {
 /// This trait no longer assumes interior mutability. The `start` method now
 /// requires `&mut self`. If shared access is needed, wrap implementations in
 /// an external synchronization primitive (e.g., `Mutex<Box<dyn TickDriver>>`).
-pub trait TickDriver<TB: RuntimeToolbox>: Send + 'static {
+pub trait TickDriver: Send + 'static {
   /// Unique identifier assigned to the driver instance.
   fn id(&self) -> TickDriverId;
   /// Kind classification for observability purposes.
@@ -34,5 +33,5 @@ pub trait TickDriver<TB: RuntimeToolbox>: Send + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] when the driver fails to initialize.
-  fn start(&mut self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandleGeneric<TB>, TickDriverError>;
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError>;
 }

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, vec::Vec};
 use core::any::Any;
 
-use fraktor_actor_rs::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMessageGeneric};
+use fraktor_actor_rs::core::{actor::actor_ref::ActorRef, messaging::AnyMessage};
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
 use crate::core::{
@@ -211,8 +211,8 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
   /// or when the destination rejects the message.
   pub fn deliver<M>(
     &mut self,
-    destination: ActorRefGeneric<TB>,
-    sender: Option<ActorRefGeneric<TB>>,
+    destination: ActorRef,
+    sender: Option<ActorRef>,
     timestamp: TimerInstant,
     build: impl FnOnce(u64) -> M,
   ) -> Result<u64, PersistenceError>
@@ -224,7 +224,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
 
     let delivery_id = self.next_delivery_id();
     let payload = ArcShared::new(build(delivery_id));
-    let message = AnyMessageGeneric::from_erased(payload.clone(), sender.clone());
+    let message = AnyMessage::from_erased(payload.clone(), sender.clone());
     destination.tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
 
     let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp, 1);
@@ -233,7 +233,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
   }
 
   fn send_delivery(delivery: &UnconfirmedDelivery<TB>) -> Result<(), PersistenceError> {
-    let message = AnyMessageGeneric::from_erased(delivery.payload_arc(), delivery.sender().cloned());
+    let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned());
     delivery.destination().tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
     Ok(())
   }

@@ -5,18 +5,16 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
-  actor::{ActorContextGeneric, Pid},
+  actor::{ActorContext, Pid},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
   supervision::SupervisorStrategy,
 };
 
 /// Defines the lifecycle hooks that every actor must implement.
-pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
+pub trait Actor: Send {
   /// Called once before the actor starts processing messages.
   ///
   /// # Errors
@@ -27,7 +25,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` instead so the
   /// supervisor can decide how to recover.
-  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -40,11 +38,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Panics
   ///
   /// Panics are considered fatal and will propagate to the runtime.
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError>;
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError>;
 
   /// Called once after the actor has been stopped.
   ///
@@ -56,7 +50,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   ///
   /// Panics are not expected. Implementations should return `Err` to allow
   /// supervisor policies to react.
-  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -65,7 +59,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Errors
   ///
   /// Returns an error when cleanup logic fails.
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>, _terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -76,7 +70,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// Returns an error when the actor cannot react to pressure conditions.
   fn on_mailbox_pressure(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _ctx: &mut ActorContext<'_>,
     _event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -106,9 +100,9 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// use core::time::Duration;
   ///
   /// use fraktor_actor_rs::core::{
-  ///   actor::{Actor, ActorContextGeneric},
+  ///   actor::{Actor, ActorContext},
   ///   error::ActorError,
-  ///   messaging::AnyMessageViewGeneric,
+  ///   messaging::AnyMessageView,
   ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   /// };
   /// use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
@@ -120,16 +114,13 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// impl Actor for ResilientWorker {
   ///   fn receive(
   ///     &mut self,
-  ///     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-  ///     _message: AnyMessageViewGeneric<'_>,
+  ///     _ctx: &mut ActorContext<'_>,
+  ///     _message: AnyMessageView<'_>,
   ///   ) -> Result<(), ActorError> {
   ///     Ok(())
   ///   }
   ///
-  ///   fn supervisor_strategy(
-  ///     &mut self,
-  ///     _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-  ///   ) -> SupervisorStrategy {
+  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
   ///     if self.consecutive_errors > 10 {
   ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(
@@ -159,7 +150,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// - [`SupervisorDirective`](crate::core::supervision::SupervisorDirective) for failure handling
   ///   options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
     SupervisorStrategy::default()
   }
 
@@ -170,7 +161,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// # Errors
   ///
   /// Returns an error when pre-restart cleanup fails.
-  fn pre_restart(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.post_stop(ctx)
   }
 
@@ -181,7 +172,7 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   /// Returns an error when the notification cannot be processed.
   fn on_child_failed(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
+    _ctx: &mut ActorContext<'_>,
     _child: Pid,
     _error: &ActorError,
   ) -> Result<(), ActorError> {
@@ -189,53 +180,43 @@ pub trait Actor<TB: RuntimeToolbox = NoStdToolbox>: Send {
   }
 }
 
-impl<T, TB> Actor<TB> for Box<T>
+impl<T> Actor for Box<T>
 where
-  T: Actor<TB> + ?Sized,
-  TB: RuntimeToolbox,
+  T: Actor + ?Sized,
 {
-  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     (**self).pre_start(ctx)
   }
 
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     (**self).receive(ctx, message)
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     (**self).post_stop(ctx)
   }
 
-  fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     (**self).on_terminated(ctx, terminated)
   }
 
   fn on_mailbox_pressure(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
     (**self).on_mailbox_pressure(ctx, event)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
     (**self).supervisor_strategy(ctx)
   }
 
-  fn pre_restart(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     (**self).pre_restart(ctx)
   }
 
-  fn on_child_failed(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    child: Pid,
-    error: &ActorError,
-  ) -> Result<(), ActorError> {
+  fn on_child_failed(&mut self, ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {
     (**self).on_child_failed(ctx, child, error)
   }
 }

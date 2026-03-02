@@ -1,17 +1,14 @@
 use alloc::{string::ToString, vec, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::ActorCell;
 use crate::core::{
-  actor::{Actor, ActorContextGeneric, Pid},
+  actor::{Actor, ActorContext, Pid},
   dispatch::mailbox::ScheduleHints,
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric, message_invoker::MessageInvoker, system_message::SystemMessage},
+  messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvoker, system_message::SystemMessage},
   props::Props,
   system::ActorSystem,
 };
@@ -19,11 +16,7 @@ use crate::core::{
 struct ProbeActor;
 
 impl Actor for ProbeActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -49,36 +42,28 @@ impl LifecycleRecorderActor {
 }
 
 impl Actor for LifecycleRecorderActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.log.lock().push("pre_start");
     Ok(())
   }
 
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.log.lock().push("receive");
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.log.lock().push("post_stop");
     Ok(())
   }
 }
 
 impl Actor for RecordingActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -95,11 +80,7 @@ impl OrderedMessageActor {
 }
 
 impl Actor for OrderedMessageActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<i32>() {
       self.received.lock().push(*value);
     }

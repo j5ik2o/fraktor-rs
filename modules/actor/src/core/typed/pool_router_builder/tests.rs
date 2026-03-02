@@ -1,27 +1,22 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::{pseudo_random_index, select_smallest_mailbox_index};
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContextGeneric, Pid},
+  actor::{Actor, ActorCell, ActorContext, Pid},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
   typed::{
-    Behaviors, actor::TypedActorRef, behavior::Behavior, props::TypedPropsGeneric, routers::Routers,
-    system::TypedActorSystemGeneric,
+    Behaviors, actor::TypedActorRef, behavior::Behavior, props::TypedProps, routers::Routers, system::TypedActorSystem,
   },
 };
 
 type RouteRecord = (usize, u32);
-type RouterSystemContext =
-  (TypedActorSystemGeneric<u32, NoStdToolbox>, TypedActorRef<u32>, ArcShared<NoStdMutex<Vec<RouteRecord>>>);
+type RouterSystemContext = (TypedActorSystem<u32>, TypedActorRef<u32>, ArcShared<NoStdMutex<Vec<RouteRecord>>>);
 
 #[derive(Clone, Copy)]
 enum PoolTestStrategy {
@@ -33,11 +28,7 @@ enum PoolTestStrategy {
 struct IdleActor;
 
 impl Actor for IdleActor {
-  fn receive(
-    &mut self,
-    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -52,10 +43,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
   assert!(condition());
 }
 
-fn recording_routee_behavior(
-  routee_index: usize,
-  records: ArcShared<NoStdMutex<Vec<RouteRecord>>>,
-) -> Behavior<u32, NoStdToolbox> {
+fn recording_routee_behavior(routee_index: usize, records: ArcShared<NoStdMutex<Vec<RouteRecord>>>) -> Behavior<u32> {
   Behaviors::receive_message(move |_ctx, message| {
     records.lock().push((routee_index, *message));
     Ok(Behaviors::same())
@@ -66,7 +54,7 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
 
-  let props = TypedPropsGeneric::<u32, NoStdToolbox>::from_behavior_factory({
+  let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
     let next_routee_index = next_routee_index.clone();
     move || {
@@ -83,7 +71,7 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
           recording_routee_behavior(routee_index, records.clone())
         }
       };
-      let builder = Routers::pool::<u32, NoStdToolbox, _>(pool_size, routee_factory);
+      let builder = Routers::pool::<u32, _>(pool_size, routee_factory);
       let builder = match strategy {
         | PoolTestStrategy::Broadcast => builder.with_broadcast(),
         | PoolTestStrategy::Random { seed } => builder.with_random(seed),
@@ -96,7 +84,7 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
-  let system = TypedActorSystemGeneric::<u32, NoStdToolbox>::new(&props, tick_driver).expect("system");
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let router = system.user_guardian_ref();
   (system, router, records)
 }
@@ -110,39 +98,38 @@ fn register_routee_cell(system: &ActorSystem, pid: Pid, name: &str) -> ArcShared
 
 #[test]
 fn pool_router_builder_builds_behavior() {
-  let builder = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore);
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore);
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
 fn pool_router_builder_with_pool_size_override() {
-  let builder = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_pool_size(5);
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_pool_size(5);
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
 fn pool_router_builder_with_broadcast_builds_behavior() {
-  let builder = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_broadcast();
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_broadcast();
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
 fn pool_router_builder_with_random_builds_behavior() {
-  let builder = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_random(42);
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_random(42);
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
 fn pool_router_builder_with_consistent_hash_builds_behavior() {
-  let builder =
-    Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_consistent_hash(|message| *message as u64);
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_consistent_hash(|message| *message as u64);
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
 fn pool_router_builder_with_smallest_mailbox_builds_behavior() {
-  let builder = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_smallest_mailbox();
-  let _behavior: Behavior<u32, NoStdToolbox> = builder.build();
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_smallest_mailbox();
+  let _behavior: Behavior<u32> = builder.build();
 }
 
 #[test]
@@ -235,11 +222,11 @@ fn pool_router_builder_with_smallest_mailbox_selects_lowest_queue() {
 #[test]
 #[should_panic(expected = "pool size must be positive")]
 fn pool_router_builder_rejects_zero_pool_size() {
-  let _builder = Routers::pool::<u32, NoStdToolbox, _>(0, Behaviors::ignore);
+  let _builder = Routers::pool::<u32, _>(0, Behaviors::ignore);
 }
 
 #[test]
 #[should_panic(expected = "pool size must be positive")]
 fn pool_router_builder_with_pool_size_rejects_zero() {
-  let _ = Routers::pool::<u32, NoStdToolbox, _>(3, Behaviors::ignore).with_pool_size(0);
+  let _ = Routers::pool::<u32, _>(3, Behaviors::ignore).with_pool_size(0);
 }

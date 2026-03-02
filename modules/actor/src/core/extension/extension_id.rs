@@ -2,18 +2,16 @@
 
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::Extension;
-use crate::core::system::ActorSystemGeneric;
+use crate::core::system::ActorSystem;
 
 /// Identifier + factory for an [`Extension`].
-pub trait ExtensionId<TB: RuntimeToolbox>: Send + Sync + 'static {
+pub trait ExtensionId: Send + Sync + 'static {
   /// Extension implementation type.
-  type Ext: Extension<TB>;
+  type Ext: Extension;
 
   /// Creates a new extension instance for the provided actor system.
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext;
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext;
 
   /// Returns the [`TypeId`] used to store and fetch this extension.
   #[must_use]

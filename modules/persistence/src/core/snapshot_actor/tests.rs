@@ -1,14 +1,14 @@
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   system::{
-    ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::{
@@ -24,48 +24,44 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
-fn new_test_system() -> ActorSystemGeneric<TB> {
-  let state = SystemStateGeneric::new();
-  let state = SystemStateSharedGeneric::new(state);
+fn new_test_system() -> ActorSystem {
+  let state = SystemState::new();
+  let state = SystemStateShared::new(state);
   state.mark_root_started();
   register_actor_cell(&state, Pid::new(1, 1));
-  ActorSystemGeneric::from_state(state)
+  ActorSystem::from_state(state)
 }
 
 struct DummyActor;
 
-impl Actor<TB> for DummyActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for DummyActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn register_actor_cell(state: &SystemStateSharedGeneric<TB>, pid: Pid) {
-  let props = PropsGeneric::from_fn(|| DummyActor);
-  let cell = ActorCellGeneric::create(state.clone(), pid, None, "test".into(), &props).expect("cell create failed");
+fn register_actor_cell(state: &SystemStateShared, pid: Pid) {
+  let props = Props::from_fn(|| DummyActor);
+  let cell = ActorCell::create(state.clone(), pid, None, "test".into(), &props).expect("cell create failed");
   state.register_cell(cell);
 }
 
@@ -184,14 +180,14 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
 fn snapshot_actor_save_and_load_responses() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let mut actor = SnapshotActor::<InMemorySnapshotStore, TB>::new(InMemorySnapshotStore::new());
   let (sender, store) = create_sender();
   let metadata = SnapshotMetadata::new("pid-1", 1, 10);
   let payload = ArcShared::new(1_i32);
 
   let save = SnapshotMessage::SaveSnapshot { metadata: metadata.clone(), snapshot: payload, sender: sender.clone() };
-  let any_message = AnyMessageGeneric::new(save);
+  let any_message = AnyMessage::new(save);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   {
@@ -213,7 +209,7 @@ fn snapshot_actor_save_and_load_responses() {
     criteria: SnapshotSelectionCriteria::latest(),
     sender,
   };
-  let any_message = AnyMessageGeneric::new(load);
+  let any_message = AnyMessage::new(load);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   let responses = store.lock();
@@ -232,7 +228,7 @@ fn snapshot_actor_save_and_load_responses() {
 fn snapshot_actor_pending_does_not_emit_failure() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let config = SnapshotActorConfig::new(0);
   let mut actor = SnapshotActor::<PendingSnapshotStore, TB>::new_with_config(PendingSnapshotStore, config);
   let (sender, store) = create_sender();
@@ -242,7 +238,7 @@ fn snapshot_actor_pending_does_not_emit_failure() {
     criteria: SnapshotSelectionCriteria::latest(),
     sender,
   };
-  let any_message = AnyMessageGeneric::new(load);
+  let any_message = AnyMessage::new(load);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   let responses = store.lock();
@@ -253,7 +249,7 @@ fn snapshot_actor_pending_does_not_emit_failure() {
 fn snapshot_actor_retry_max_exceeded_on_errors() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
+  let mut ctx = ActorContext::new(&system, pid);
   let config = SnapshotActorConfig::new(1);
   let mut actor = SnapshotActor::<RetrySnapshotStore, TB>::new_with_config(RetrySnapshotStore::new(2), config);
   let (sender, store) = create_sender();
@@ -261,12 +257,12 @@ fn snapshot_actor_retry_max_exceeded_on_errors() {
   let payload = ArcShared::new(1_i32);
 
   let save = SnapshotMessage::SaveSnapshot { metadata: metadata.clone(), snapshot: payload, sender };
-  let any_message = AnyMessageGeneric::new(save);
+  let any_message = AnyMessage::new(save);
   actor.receive(&mut ctx, any_message.as_view()).expect("receive failed");
 
   assert!(store.lock().is_empty());
 
-  let poll = AnyMessageGeneric::new(super::SnapshotPoll);
+  let poll = AnyMessage::new(super::SnapshotPoll);
   actor.receive(&mut ctx, poll.as_view()).expect("receive failed");
 
   let responses = store.lock();

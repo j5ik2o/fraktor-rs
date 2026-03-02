@@ -5,25 +5,22 @@ mod tests;
 
 use core::task::Waker;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 /// Represents a future that resolves with a message.
 ///
 /// This type no longer uses interior mutability. Methods that modify state
-/// require `&mut self`. Use [`ActorFutureSharedGeneric`](super::ActorFutureSharedGeneric) for
+/// require `&mut self`. Use [`ActorFutureShared`](super::ActorFutureShared) for
 /// shared ownership with external mutex synchronization.
-pub struct ActorFuture<T, TB: RuntimeToolbox = NoStdToolbox>
+pub struct ActorFuture<T>
 where
   T: Send + 'static, {
   value:   Option<T>,
   waker:   Option<Waker>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
 
-impl<T, TB> ActorFuture<T, TB>
+impl<T> ActorFuture<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox,
 {
   /// Creates a new future in the pending state.
   #[must_use]
@@ -38,7 +35,7 @@ where
   /// # Important
   ///
   /// The caller **must** wake the returned waker after releasing the lock to
-  /// avoid deadlock. See [`ActorFutureSharedGeneric`](super::ActorFutureSharedGeneric) for a
+  /// avoid deadlock. See [`ActorFutureShared`](super::ActorFutureShared) for a
   /// safe wrapper when working with shared futures.
   pub fn complete(&mut self, value: T) -> Option<Waker> {
     if self.value.is_some() {
@@ -66,10 +63,9 @@ where
   }
 }
 
-impl<T, TB> Default for ActorFuture<T, TB>
+impl<T> Default for ActorFuture<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox,
 {
   fn default() -> Self {
     Self::new()
@@ -79,16 +75,6 @@ where
 // SAFETY: `ActorFuture` fields are only accessed through `&mut self` methods.
 // When wrapped in `RuntimeMutex`, the mutex provides synchronization.
 // The stored value must be `Send` to allow transfer between threads.
-unsafe impl<T, TB> Send for ActorFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox,
-{
-}
+unsafe impl<T> Send for ActorFuture<T> where T: Send + 'static {}
 
-unsafe impl<T, TB> Sync for ActorFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox,
-{
-}
+unsafe impl<T> Sync for ActorFuture<T> where T: Send + 'static {}

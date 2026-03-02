@@ -4,12 +4,11 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber,
-    EventStreamSubscriptionGeneric, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   serialization::{
-    builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistryGeneric,
+    builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
 };
 use fraktor_cluster_rs::core::{
@@ -35,7 +34,7 @@ use fraktor_utils_rs::core::{
 
 #[derive(Clone)]
 struct EventCollector {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventCollector {
@@ -43,27 +42,25 @@ impl EventCollector {
     Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+  fn events(&self) -> Vec<EventStreamEvent> {
     self.events.lock().clone()
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for EventCollector {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for EventCollector {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (EventCollector, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (EventCollector, EventStreamSubscription) {
   let subscriber = EventCollector::new();
   let handle = subscriber_handle(subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
 }
 
-fn collect_pubsub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubSubEvent> {
+fn collect_pubsub_events(events: &[EventStreamEvent]) -> Vec<PubSubEvent> {
   events
     .iter()
     .filter_map(|event| {
@@ -79,20 +76,17 @@ fn collect_pubsub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubSu
 
 #[derive(Clone)]
 struct RecordingEndpoint {
-  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+  failed: Vec<PubSubSubscriber>,
 }
 
 impl RecordingEndpoint {
-  fn new(failed: Vec<PubSubSubscriber<NoStdToolbox>>) -> Self {
+  fn new(failed: Vec<PubSubSubscriber>) -> Self {
     Self { failed }
   }
 }
 
 impl DeliveryEndpoint<NoStdToolbox> for RecordingEndpoint {
-  fn deliver(
-    &mut self,
-    request: DeliverBatchRequest<NoStdToolbox>,
-  ) -> Result<DeliveryReport<NoStdToolbox>, PubSubError> {
+  fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let mut failed = Vec::new();
     for subscriber in request.subscribers {
       if self.failed.contains(&subscriber) {
@@ -113,17 +107,17 @@ impl BlockListProvider for EmptyBlockListProvider {
   }
 }
 
-fn make_registry() -> ArcShared<SerializationRegistryGeneric<NoStdToolbox>> {
+fn make_registry() -> ArcShared<SerializationRegistry> {
   let setup = default_serialization_setup();
-  let registry = ArcShared::new(SerializationRegistryGeneric::from_setup(&setup));
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
   let _ = register_defaults(&registry, |_name, _id| {});
   registry
 }
 
 fn build_pubsub(
-  event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: EventStreamShared,
   kind_registry: &KindRegistry,
-  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+  failed: Vec<PubSubSubscriber>,
 ) -> ClusterPubSubImpl<NoStdToolbox> {
   let registry = make_registry();
   let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(RecordingEndpoint::new(failed)));
@@ -132,7 +126,7 @@ fn build_pubsub(
 
 #[test]
 fn publish_emits_delivery_and_metrics_events() {
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (collector, _subscription) = subscribe_recorder(&event_stream);
 
   let mut kind_registry = KindRegistry::new();
@@ -152,7 +146,7 @@ fn publish_emits_delivery_and_metrics_events() {
     type_name:     String::from("dummy"),
     bytes:         vec![1],
   }]);
-  let request = PublishRequest::new(topic.clone(), AnyMessageGeneric::new(batch), PublishOptions::default());
+  let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), PublishOptions::default());
   pubsub.publish(request).expect("publish");
   pubsub.emit_metrics_snapshot();
 
@@ -168,7 +162,7 @@ fn publish_emits_delivery_and_metrics_events() {
 
 #[test]
 fn topology_update_reactivates_suspended_subscribers() {
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (collector, _subscription) = subscribe_recorder(&event_stream);
 
   let mut kind_registry = KindRegistry::new();
@@ -209,7 +203,7 @@ fn topology_update_reactivates_suspended_subscribers() {
     type_name:     String::from("dummy"),
     bytes:         vec![1],
   }]);
-  let request = PublishRequest::new(topic.clone(), AnyMessageGeneric::new(batch), PublishOptions::default());
+  let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), PublishOptions::default());
   pubsub_shared.with_write(|pubsub| pubsub.publish(request)).expect("publish");
 
   let events_before = collector.events();

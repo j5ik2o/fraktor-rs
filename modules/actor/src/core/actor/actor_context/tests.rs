@@ -2,17 +2,17 @@ use alloc::{string::String, vec, vec::Vec};
 use core::hint::spin_loop;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::NoStdMutex,
   sync::{ArcShared, SharedAccess},
 };
 
-use super::{ActorContext, ActorContextGeneric};
+use super::ActorContext;
 use crate::core::{
   actor::{Actor, ActorCell, Pid},
   error::ActorError,
   event::logging::LogLevel,
-  futures::{ActorFutureListener, ActorFutureSharedGeneric},
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  futures::{ActorFutureListener, ActorFutureShared},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
@@ -20,11 +20,7 @@ use crate::core::{
 struct TestActor;
 
 impl Actor for TestActor {
-  fn receive(
-    &mut self,
-    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -40,15 +36,11 @@ impl RecordingActor {
 }
 
 impl Actor for RecordingActor {
-  fn receive(
-    &mut self,
-    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn on_terminated(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>, pid: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, pid: Pid) -> Result<(), ActorError> {
     self.log.lock().push(pid);
     Ok(())
   }
@@ -65,11 +57,7 @@ impl ProbeActor {
 }
 
 impl Actor for ProbeActor {
-  fn receive(
-    &mut self,
-    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<i32>() {
       self.received.lock().push(*value);
     }
@@ -205,7 +193,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
   register_cell(&system, pid, "self", &props);
   let context = ActorContext::new(&system, pid);
 
-  let signal = ActorFutureSharedGeneric::<i32, NoStdToolbox>::new();
+  let signal = ActorFutureShared::<i32>::new();
   let future = {
     let handle = signal.clone();
     async move { ActorFutureListener::new(handle).await }
@@ -268,7 +256,7 @@ fn actor_context_stash_with_limit_detects_overflow() {
 
   let error = context.stash_with_limit(1).expect_err("overflow should fail");
 
-  assert!(ActorContextGeneric::<NoStdToolbox>::is_stash_overflow_error(&error));
+  assert!(ActorContext::is_stash_overflow_error(&error));
   assert_eq!(cell.stashed_message_len(), 1);
 }
 

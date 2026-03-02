@@ -1,14 +1,12 @@
 //! Extension identifier for the serialization subsystem.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   extension::ExtensionId,
   serialization::{
-    extension::SerializationExtensionGeneric, extension_shared::SerializationExtensionSharedGeneric,
+    extension::SerializationExtension, extension_shared::SerializationExtensionShared,
     serialization_setup::SerializationSetup,
   },
-  system::ActorSystemGeneric,
+  system::ActorSystem,
 };
 
 /// Identifier used to register the serialization extension.
@@ -25,11 +23,11 @@ impl SerializationExtensionId {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ExtensionId<TB> for SerializationExtensionId {
-  type Ext = SerializationExtensionSharedGeneric<TB>;
+impl ExtensionId for SerializationExtensionId {
+  type Ext = SerializationExtensionShared;
 
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
-    let inner = SerializationExtensionGeneric::new(system, self.setup.clone());
-    SerializationExtensionSharedGeneric::new(inner)
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
+    let inner = SerializationExtension::new(system, self.setup.clone());
+    SerializationExtensionShared::new(inner)
   }
 }

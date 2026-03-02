@@ -1,7 +1,7 @@
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::dispatch::{
-  dispatcher::{DispatcherSharedGeneric, schedule_waker::ScheduleWaker},
+  dispatcher::{DispatcherShared, schedule_waker::ScheduleWaker},
   mailbox::{Mailbox, MailboxPolicy},
 };
 
@@ -9,8 +9,8 @@ use crate::core::dispatch::{
 fn into_waker_creates_valid_waker() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox_shared);
-  let waker = ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox_shared);
+  let waker = ScheduleWaker::into_waker(dispatcher);
   // Wakerが正常に作成されることを確認
   assert!(core::ptr::addr_of!(waker).is_aligned());
 }
@@ -19,8 +19,8 @@ fn into_waker_creates_valid_waker() {
 fn waker_wake_schedules_dispatcher() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox_shared);
-  let waker = ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox_shared);
+  let waker = ScheduleWaker::into_waker(dispatcher);
 
   // wake()を呼び出す
   waker.wake();
@@ -32,8 +32,8 @@ fn waker_wake_schedules_dispatcher() {
 fn waker_wake_by_ref_schedules_dispatcher() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox_shared);
-  let waker = ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox_shared);
+  let waker = ScheduleWaker::into_waker(dispatcher);
 
   // wake_by_ref()を呼び出す
   waker.wake_by_ref();
@@ -45,8 +45,8 @@ fn waker_wake_by_ref_schedules_dispatcher() {
 fn waker_clone_creates_new_waker() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
-  let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox_shared);
-  let waker1 = ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher);
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox_shared);
+  let waker1 = ScheduleWaker::into_waker(dispatcher);
   let waker2 = waker1.clone();
 
   // 両方のwakerが有効であることを確認
@@ -59,8 +59,8 @@ fn waker_drop_cleans_up() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let mailbox_shared = ArcShared::new(mailbox);
   {
-    let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox_shared);
-    let _waker = ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher);
+    let dispatcher = DispatcherShared::with_inline_executor(mailbox_shared);
+    let _waker = ScheduleWaker::into_waker(dispatcher);
     // スコープを抜けるとdropが呼ばれる
   }
 

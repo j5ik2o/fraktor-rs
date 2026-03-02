@@ -4,19 +4,19 @@ use fraktor_actor_rs::core::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRefGeneric, ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
   },
   error::ActorError,
   extension::ExtensionInstallers,
-  messaging::AnyMessageGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessage,
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   system::{
-    ActorSystemConfigGeneric, ActorSystemGeneric,
-    provider::{ActorRefProvider, ActorRefProviderSharedGeneric},
+    ActorSystem, ActorSystemConfig,
+    provider::{ActorRefProvider, ActorRefProviderShared},
   },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
@@ -35,7 +35,7 @@ fn grain_context_scope_finishes_and_releases_context() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::try_from_system(&system).expect("cluster api");
+  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let context = GrainContextGeneric::new(identity, api);
 
@@ -50,27 +50,28 @@ fn grain_context_scope_finishes_and_releases_context() {
 
 fn build_system_with_extension<F>(
   identity_lookup_factory: F,
-) -> (ActorSystemGeneric<NoStdToolbox>, fraktor_utils_rs::core::sync::ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+) -> (ActorSystem, fraktor_utils_rs::core::sync::ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
-  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
-    Box::new(NoopClusterProvider::new())
-  })
-  .with_identity_lookup_factory(identity_lookup_factory);
+  let cluster_installer =
+    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, |_event_stream, _block_list, _address| {
+      Box::new(NoopClusterProvider::new())
+    })
+    .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(|system: &ActorSystemGeneric<NoStdToolbox>| {
-      let provider = ActorRefProviderSharedGeneric::new(TestActorRefProvider::new(system.clone()));
+    .with_actor_ref_provider_installer(|system: &ActorSystem| {
+      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&provider)
     });
-  let props = PropsGeneric::from_fn(|| TestGuardian);
-  let system = ActorSystemGeneric::new_with_config(&props, &config).expect("build system");
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
   let extension =
     system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
   (system, extension)
@@ -78,11 +79,11 @@ where
 
 struct TestGuardian;
 
-impl Actor<NoStdToolbox> for TestGuardian {
+impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::actor::ActorContextGeneric<'_, NoStdToolbox>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageViewGeneric<'_, NoStdToolbox>,
+    _context: &mut fraktor_actor_rs::core::actor::ActorContext<'_>,
+    _message: fraktor_actor_rs::core::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -118,34 +119,31 @@ impl IdentityLookup for StaticIdentityLookup {
 }
 
 struct TestActorRefProvider {
-  system: ActorSystemGeneric<NoStdToolbox>,
+  system: ActorSystem,
 }
 
 impl TestActorRefProvider {
-  fn new(system: ActorSystemGeneric<NoStdToolbox>) -> Self {
+  fn new(system: ActorSystem) -> Self {
     Self { system }
   }
 }
 
-impl ActorRefProvider<NoStdToolbox> for TestActorRefProvider {
+impl ActorRefProvider for TestActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     static SCHEMES: [ActorPathScheme; 1] = [ActorPathScheme::FraktorTcp];
     &SCHEMES
   }
 
-  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
-    let sender = ActorRefSenderSharedGeneric::new(TestSender);
-    Ok(ActorRefGeneric::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+  fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
+    let sender = ActorRefSenderShared::new(TestSender);
+    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 }
 
 struct TestSender;
 
-impl ActorRefSender<NoStdToolbox> for TestSender {
-  fn send(
-    &mut self,
-    _message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError<NoStdToolbox>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

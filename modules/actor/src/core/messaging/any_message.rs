@@ -6,23 +6,17 @@ mod tests;
 use alloc::fmt;
 use core::any::Any;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::{actor::actor_ref::ActorRefGeneric, messaging::AnyMessageViewGeneric};
+use crate::core::{actor::actor_ref::ActorRef, messaging::AnyMessageView};
 
 /// Wraps an arbitrary payload for message passing.
-pub struct AnyMessageGeneric<TB: RuntimeToolbox> {
+pub struct AnyMessage {
   payload: ArcShared<dyn Any + Send + Sync + 'static>,
-  sender:  Option<ActorRefGeneric<TB>>,
+  sender:  Option<ActorRef>,
 }
 
-/// Type alias for [AnyMessageGeneric] with the default [NoStdToolbox].
-pub type AnyMessage = AnyMessageGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
+impl AnyMessage {
   /// Creates a new owned message from the provided payload.
   #[must_use]
   pub fn new<T>(payload: T) -> Self
@@ -33,26 +27,26 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
 
   /// Associates a sender with this message and returns the updated instance.
   #[must_use]
-  pub fn with_sender(mut self, sender: ActorRefGeneric<TB>) -> Self {
+  pub fn with_sender(mut self, sender: ActorRef) -> Self {
     self.sender = Some(sender);
     self
   }
 
   /// Returns the sender, if any.
   #[must_use]
-  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+  pub const fn sender(&self) -> Option<&ActorRef> {
     self.sender.as_ref()
   }
 
   /// Converts the owned message into a borrowed view.
   #[must_use]
-  pub fn as_view(&self) -> AnyMessageViewGeneric<'_, TB> {
-    AnyMessageViewGeneric::new(&*self.payload, self.sender.as_ref())
+  pub fn as_view(&self) -> AnyMessageView<'_> {
+    AnyMessageView::new(&*self.payload, self.sender.as_ref())
   }
 
   /// Reconstructs a message from an erased payload pointer.
   #[must_use]
-  pub fn from_erased(payload: ArcShared<dyn Any + Send + Sync + 'static>, sender: Option<ActorRefGeneric<TB>>) -> Self {
+  pub fn from_erased(payload: ArcShared<dyn Any + Send + Sync + 'static>, sender: Option<ActorRef>) -> Self {
     Self::from_parts(payload, sender)
   }
 
@@ -68,28 +62,23 @@ impl<TB: RuntimeToolbox> AnyMessageGeneric<TB> {
   }
 
   /// Reconstructs an envelope from erased components.
-  pub(crate) fn from_parts(
-    payload: ArcShared<dyn Any + Send + Sync + 'static>,
-    sender: Option<ActorRefGeneric<TB>>,
-  ) -> Self {
+  pub(crate) fn from_parts(payload: ArcShared<dyn Any + Send + Sync + 'static>, sender: Option<ActorRef>) -> Self {
     Self { payload, sender }
   }
 
   /// Consumes the message and returns the payload alongside the sender.
-  pub(crate) fn into_payload_and_sender(
-    self,
-  ) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRefGeneric<TB>>) {
+  pub(crate) fn into_payload_and_sender(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>) {
     (self.payload, self.sender)
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for AnyMessageGeneric<TB> {
+impl Clone for AnyMessage {
   fn clone(&self) -> Self {
     Self { payload: self.payload.clone(), sender: self.sender.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox> fmt::Debug for AnyMessageGeneric<TB> {
+impl fmt::Debug for AnyMessage {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("AnyMessage")
       .field("type_id", &self.payload.type_id())

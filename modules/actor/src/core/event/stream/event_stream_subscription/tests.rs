@@ -1,12 +1,10 @@
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use super::EventStreamSubscription;
 use crate::core::event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle};
 
 struct MockSubscriber;
 
-impl EventStreamSubscriber<NoStdToolbox> for MockSubscriber {
-  fn on_event(&mut self, _event: &EventStreamEvent<NoStdToolbox>) {}
+impl EventStreamSubscriber for MockSubscriber {
+  fn on_event(&mut self, _event: &EventStreamEvent) {}
 }
 
 #[test]

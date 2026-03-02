@@ -2,29 +2,23 @@ extern crate alloc;
 
 use alloc::{format, string::String, vec, vec::Vec};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
 use crate::core::{
   actor::{
-    Actor, ActorContext, ActorContextGeneric, Pid,
+    Actor, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   system::ActorSystem,
 };
 
 struct RecordingSender;
 
-impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+impl ActorRefSender for RecordingSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }
 }
@@ -49,11 +43,7 @@ impl CaptureActor {
 }
 
 impl Actor for CaptureActor {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.payloads.lock().push(*value);
     }
@@ -77,11 +67,7 @@ impl LoggingActor {
 }
 
 impl Actor for LoggingActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.record("actor");
     Ok(())
   }
@@ -102,20 +88,16 @@ impl RecordingMiddleware {
   }
 }
 
-impl MessageInvokerMiddleware<NoStdToolbox> for RecordingMiddleware {
-  fn before_user(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl MessageInvokerMiddleware for RecordingMiddleware {
+  fn before_user(&mut self, _ctx: &mut ActorContext<'_>, _message: &AnyMessageView<'_>) -> Result<(), ActorError> {
     self.record("before");
     Ok(())
   }
 
   fn after_user(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: &AnyMessageViewGeneric<'_, NoStdToolbox>,
+    _ctx: &mut ActorContext<'_>,
+    _message: &AnyMessageView<'_>,
     result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     self.record("after");

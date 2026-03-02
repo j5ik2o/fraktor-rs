@@ -2,24 +2,19 @@
 
 #![cfg(any(test, feature = "test-support"))]
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex};
 
-use crate::core::scheduler::{
-  SchedulerRunnerOwned, SchedulerSharedGeneric, tick_driver::TickDriverProvisioningContext,
-};
+use crate::core::scheduler::{SchedulerRunnerOwned, SchedulerShared, tick_driver::TickDriverProvisioningContext};
 
-type SchedulerContextMutex<TB> = SpinSyncMutex<Option<SchedulerSharedGeneric<TB>>>;
+type SchedulerContextMutex = SpinSyncMutex<Option<SchedulerShared>>;
 
 /// Manual tick driver for deterministic testing.
 #[derive(Clone)]
-pub struct ManualTestDriver<TB: RuntimeToolbox> {
-  state: ArcShared<ManualDriverState<TB>>,
+pub struct ManualTestDriver {
+  state: ArcShared<ManualDriverState>,
 }
 
-impl<TB: RuntimeToolbox> ManualTestDriver<TB> {
+impl ManualTestDriver {
   /// Creates a new manual test driver.
   #[must_use]
   pub fn new() -> Self {
@@ -28,36 +23,36 @@ impl<TB: RuntimeToolbox> ManualTestDriver<TB> {
 
   /// Returns a controller that can inject ticks and drive the scheduler.
   #[must_use]
-  pub fn controller(&self) -> ManualTickController<TB> {
+  pub fn controller(&self) -> ManualTickController {
     ManualTickController { state: self.state.clone() }
   }
 
-  pub(crate) fn attach(&self, ctx: &TickDriverProvisioningContext<TB>) {
+  pub(crate) fn attach(&self, ctx: &TickDriverProvisioningContext) {
     self.state.attach(ctx.scheduler());
   }
 
-  pub(crate) fn state(&self) -> ArcShared<ManualDriverState<TB>> {
+  pub(crate) fn state(&self) -> ArcShared<ManualDriverState> {
     self.state.clone()
   }
 }
 
-impl<TB: RuntimeToolbox> Default for ManualTestDriver<TB> {
+impl Default for ManualTestDriver {
   fn default() -> Self {
     Self::new()
   }
 }
 
-pub(crate) struct ManualDriverState<TB: RuntimeToolbox> {
-  scheduler: SchedulerContextMutex<TB>,
-  runner:    SpinSyncMutex<Option<SchedulerRunnerOwned<TB>>>,
+pub(crate) struct ManualDriverState {
+  scheduler: SchedulerContextMutex,
+  runner:    SpinSyncMutex<Option<SchedulerRunnerOwned>>,
 }
 
-impl<TB: RuntimeToolbox> ManualDriverState<TB> {
+impl ManualDriverState {
   const fn new() -> Self {
     Self { scheduler: SpinSyncMutex::new(None), runner: SpinSyncMutex::new(None) }
   }
 
-  fn attach(&self, scheduler: SchedulerSharedGeneric<TB>) {
+  fn attach(&self, scheduler: SchedulerShared) {
     *self.scheduler.lock() = Some(scheduler);
     let mut runner = self.runner.lock();
     if runner.is_none() {
@@ -72,7 +67,7 @@ impl<TB: RuntimeToolbox> ManualDriverState<TB> {
 
   fn with_runner<F, R>(&self, mut f: F) -> Option<R>
   where
-    F: FnMut(&mut SchedulerRunnerOwned<TB>, &SchedulerSharedGeneric<TB>) -> R, {
+    F: FnMut(&mut SchedulerRunnerOwned, &SchedulerShared) -> R, {
     let scheduler = self.scheduler.lock().clone();
     let mut runner_guard = self.runner.lock();
     if let (Some(scheduler), Some(runner)) = (scheduler, runner_guard.as_mut()) {
@@ -84,17 +79,17 @@ impl<TB: RuntimeToolbox> ManualDriverState<TB> {
 }
 
 /// Public controller exposed to tests for manual tick injection.
-pub struct ManualTickController<TB: RuntimeToolbox> {
-  state: ArcShared<ManualDriverState<TB>>,
+pub struct ManualTickController {
+  state: ArcShared<ManualDriverState>,
 }
 
-impl<TB: RuntimeToolbox> Clone for ManualTickController<TB> {
+impl Clone for ManualTickController {
   fn clone(&self) -> Self {
     Self { state: self.state.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox> ManualTickController<TB> {
+impl ManualTickController {
   /// Injects ticks into the scheduler without running it.
   pub fn inject_ticks(&self, ticks: u32) {
     self.state.with_runner(|runner, _| {
@@ -117,17 +112,17 @@ impl<TB: RuntimeToolbox> ManualTickController<TB> {
 }
 
 /// Control hook that detaches manual driver state on shutdown.
-pub(crate) struct ManualDriverControl<TB: RuntimeToolbox> {
-  state: ArcShared<ManualDriverState<TB>>,
+pub(crate) struct ManualDriverControl {
+  state: ArcShared<ManualDriverState>,
 }
 
-impl<TB: RuntimeToolbox> ManualDriverControl<TB> {
-  pub(crate) const fn new(state: ArcShared<ManualDriverState<TB>>) -> Self {
+impl ManualDriverControl {
+  pub(crate) const fn new(state: ArcShared<ManualDriverState>) -> Self {
     Self { state }
   }
 }
 
-impl<TB: RuntimeToolbox> super::TickDriverControl for ManualDriverControl<TB> {
+impl super::TickDriverControl for ManualDriverControl {
   fn shutdown(&self) {
     self.state.reset();
   }

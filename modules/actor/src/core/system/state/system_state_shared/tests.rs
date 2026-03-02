@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_rwlock_like::SyncRwLockLike};
 
 use super::SystemStateShared;
 use crate::core::{
-  actor::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRef,
   system::{
     RegisterExtensionError, RegisterExtraTopLevelError, guardian::GuardianKind, state::system_state::SystemState,
   },
@@ -31,7 +31,7 @@ fn register_extra_top_level_after_root_started_does_not_block_on_read_lock() {
   locked_rx.recv_timeout(Duration::from_secs(1)).expect("lock ready");
 
   let register = std::thread::spawn(move || {
-    let result = shared_for_register.register_extra_top_level("metrics", ActorRefGeneric::null());
+    let result = shared_for_register.register_extra_top_level("metrics", ActorRef::null());
     result_tx.send(result).expect("result");
   });
 
@@ -66,7 +66,7 @@ fn with_actor_path_registry_does_not_hold_outer_read_lock_while_running_callback
   callback_started_rx.recv_timeout(Duration::from_secs(1)).expect("callback should start quickly");
 
   let write_thread = std::thread::spawn(move || {
-    let result = shared_for_write.register_extra_top_level("metrics", ActorRefGeneric::null());
+    let result = shared_for_write.register_extra_top_level("metrics", ActorRef::null());
     write_result_tx.send(result).expect("result");
   });
 
@@ -110,7 +110,7 @@ fn extension_or_insert_with_does_not_hold_outer_read_lock_while_running_factory(
   factory_started_rx.recv_timeout(Duration::from_secs(1)).expect("factory should start quickly");
 
   let write_thread = std::thread::spawn(move || {
-    let result = shared_for_write.register_extra_top_level("metrics", ActorRefGeneric::null());
+    let result = shared_for_write.register_extra_top_level("metrics", ActorRef::null());
     write_result_tx.send(result).expect("result");
   });
 

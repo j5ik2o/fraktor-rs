@@ -6,14 +6,14 @@ use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::NoStdMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -57,11 +57,7 @@ fn stop_self_propagates_to_children() {
 struct IdleGuardian;
 
 impl Actor for IdleGuardian {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -77,11 +73,7 @@ impl ParentGuardian {
 }
 
 impl Actor for ParentGuardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let states = self.child_states.clone();
       let child_props = Props::from_fn(move || RecordingChild::new(states.clone()));
@@ -103,20 +95,16 @@ impl RecordingChild {
 }
 
 impl Actor for RecordingChild {
-  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.states.lock().push("child_pre_start");
     Ok(())
   }
 
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.states.lock().push("child_post_stop");
     Ok(())
   }

@@ -1,24 +1,23 @@
 //! Publish request payload.
 
-use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_actor_rs::core::messaging::AnyMessage;
 
 use super::{PubSubTopic, PublishOptions};
 
 /// Request describing a publish operation.
-pub struct PublishRequest<TB: RuntimeToolbox> {
+pub struct PublishRequest {
   /// Target topic.
   pub topic:   PubSubTopic,
   /// Payload to publish.
-  pub payload: AnyMessageGeneric<TB>,
+  pub payload: AnyMessage,
   /// Publish-time overrides.
   pub options: PublishOptions,
 }
 
-impl<TB: RuntimeToolbox> PublishRequest<TB> {
+impl PublishRequest {
   /// Creates a new publish request.
   #[must_use]
-  pub const fn new(topic: PubSubTopic, payload: AnyMessageGeneric<TB>, options: PublishOptions) -> Self {
+  pub const fn new(topic: PubSubTopic, payload: AnyMessage, options: PublishOptions) -> Self {
     Self { topic, payload, options }
   }
 }

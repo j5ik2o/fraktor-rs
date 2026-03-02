@@ -1,13 +1,11 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use super::Actor;
 use crate::core::{
-  actor::{ActorContext, ActorContextGeneric, Pid},
+  actor::{ActorContext, Pid},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
   system::ActorSystem,
 };
 
@@ -20,36 +18,28 @@ struct TestActor {
 }
 
 impl Actor for TestActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.pre_start_called = true;
     Ok(())
   }
 
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
-  fn post_stop(&mut self, _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.post_stop_called = true;
     Ok(())
   }
 
-  fn on_terminated(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _terminated: Pid,
-  ) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, _ctx: &mut ActorContext<'_>, _terminated: Pid) -> Result<(), ActorError> {
     self.on_terminated_called = true;
     Ok(())
   }
 
   fn on_mailbox_pressure(
     &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
+    _ctx: &mut ActorContext<'_>,
     _event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
     self.mailbox_pressure = true;
@@ -61,7 +51,7 @@ impl Actor for TestActor {
 fn actor_box_delegates_pre_start() {
   let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
-  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
+  let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   assert!(actor.pre_start(&mut ctx).is_ok());
 }
 
@@ -69,8 +59,8 @@ fn actor_box_delegates_pre_start() {
 fn actor_box_delegates_receive() {
   let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
-  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
-  let message = AnyMessageViewGeneric::new(&(), None);
+  let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
+  let message = AnyMessageView::new(&(), None);
   assert!(actor.receive(&mut ctx, message).is_ok());
 }
 
@@ -78,7 +68,7 @@ fn actor_box_delegates_receive() {
 fn actor_box_delegates_post_stop() {
   let system = ActorSystem::new_empty();
   let mut ctx = ActorContext::new(&system, system.allocate_pid());
-  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
+  let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   assert!(actor.post_stop(&mut ctx).is_ok());
 }
 
@@ -87,7 +77,7 @@ fn actor_box_delegates_on_terminated() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut ctx = ActorContext::new(&system, pid);
-  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
+  let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   assert!(actor.on_terminated(&mut ctx, pid).is_ok());
 }
 
@@ -96,7 +86,7 @@ fn actor_box_delegates_on_mailbox_pressure() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let mut ctx = ActorContext::new(&system, pid);
-  let mut actor: Box<dyn Actor<NoStdToolbox>> = Box::new(TestActor::default());
+  let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
   let event = MailboxPressureEvent::new(pid, 8, 8, 100, core::time::Duration::from_millis(1), Some(6));
   assert!(actor.on_mailbox_pressure(&mut ctx, &event).is_ok());
 }

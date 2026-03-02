@@ -12,9 +12,9 @@ extern crate alloc;
 mod no_std_tick_driver_support;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::{ActorSystem, ActorSystemConfig},
 };
@@ -71,11 +71,7 @@ impl Eventsourced<TB> for CounterActor {
     }
   }
 
-  fn receive_command(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
       self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
       self.flush_batch(ctx)?;
@@ -96,18 +92,14 @@ impl PersistentActor<TB> for CounterActor {
 
 struct GuardianActor;
 
-impl Actor<TB> for GuardianActor {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for GuardianActor {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_none() {
       return Ok(());
     }
 
     let props = persistent_props(|| CounterActor::new("counter-1"));
-    let child = spawn_persistent(ctx, &props)
+    let child = spawn_persistent::<TB>(ctx, &props)
       .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
     child.tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send command failed"))?;
     Ok(())

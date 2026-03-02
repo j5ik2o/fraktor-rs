@@ -1,22 +1,17 @@
 //! Name registry collection for actor naming.
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{actor::Pid, spawn::NameRegistry};
 
 /// Collection of name registries indexed by parent [`Pid`].
-pub(crate) struct RegistriesGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct Registries {
   map:     HashMap<Option<Pid>, NameRegistry, RandomState>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type Registries = RegistriesGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> RegistriesGeneric<TB> {
+impl Registries {
   /// Creates a new empty registries collection.
   #[must_use]
   pub(crate) fn new() -> Self {
@@ -35,7 +30,7 @@ impl<TB: RuntimeToolbox + 'static> RegistriesGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for RegistriesGeneric<TB> {
+impl Default for Registries {
   fn default() -> Self {
     Self::new()
   }

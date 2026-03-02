@@ -221,14 +221,14 @@ fn build_cluster_node(
     .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
     .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher_config(default_dispatcher)
-    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::<StdToolbox>::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
       ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone()))
         .with_extension_installer(
-          ClusterExtensionInstaller::new_with_local(cluster_config)
+          ClusterExtensionInstaller::<StdToolbox>::new_with_local(cluster_config)
             .with_identity_lookup_factory(identity_lookup_factory),
         ),
     );

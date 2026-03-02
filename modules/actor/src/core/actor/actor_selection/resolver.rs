@@ -2,13 +2,11 @@
 
 use alloc::{string::ToString, vec::Vec};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::actor_selection_error::ActorSelectionError;
 use crate::core::{
   actor::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
-  messaging::AnyMessageGeneric,
-  system::{remote::RemoteAuthorityRegistryGeneric, state::AuthorityState},
+  messaging::AnyMessage,
+  system::{remote::RemoteAuthorityRegistry, state::AuthorityState},
 };
 
 /// Resolves relative actor selection expressions against a base path.
@@ -61,10 +59,10 @@ impl ActorSelectionResolver {
   /// If the authority is unresolved, the provided `message` is deferred (when present) and
   /// [`PathResolutionError::AuthorityUnresolved`] is returned. When the authority is quarantined,
   /// [`PathResolutionError::AuthorityQuarantined`] is returned immediately.
-  pub fn ensure_authority_state<TB: RuntimeToolbox + 'static>(
+  pub fn ensure_authority_state(
     path: &ActorPath,
-    authority_registry: &mut RemoteAuthorityRegistryGeneric<TB>,
-    message: Option<AnyMessageGeneric<TB>>,
+    authority_registry: &mut RemoteAuthorityRegistry,
+    message: Option<AnyMessage>,
   ) -> Result<(), PathResolutionError> {
     let Some(authority) = path.parts().authority() else {
       return Ok(());
@@ -90,11 +88,11 @@ impl ActorSelectionResolver {
   ///
   /// Returns [`ActorSelectionError`] when either the relative path is invalid or the authority
   /// remains unresolved/quarantined.
-  pub fn resolve_relative_with_authority<TB: RuntimeToolbox + 'static>(
+  pub fn resolve_relative_with_authority(
     base: &ActorPath,
     selection: &str,
-    authority_registry: &mut RemoteAuthorityRegistryGeneric<TB>,
-    message: Option<AnyMessageGeneric<TB>>,
+    authority_registry: &mut RemoteAuthorityRegistry,
+    message: Option<AnyMessage>,
   ) -> Result<ActorPath, ActorSelectionError> {
     let resolved = Self::resolve_relative(base, selection)?;
     Self::ensure_authority_state(&resolved, authority_registry, message).map_err(ActorSelectionError::from)?;

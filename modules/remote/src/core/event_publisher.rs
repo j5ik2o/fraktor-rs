@@ -4,12 +4,13 @@
 mod tests;
 
 use alloc::string::String;
+use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   event::stream::{
     BackpressureSignal, CorrelationId, EventStreamEvent, RemotingBackpressureEvent, RemotingLifecycleEvent,
   },
-  system::ActorSystemWeakGeneric,
+  system::ActorSystemWeak,
 };
 use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
@@ -17,7 +18,8 @@ use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
 pub struct EventPublisherGeneric<TB: RuntimeToolbox + 'static> {
-  system: ActorSystemWeakGeneric<TB>,
+  system:  ActorSystemWeak,
+  _marker: PhantomData<TB>,
 }
 
 /// Type alias for `EventPublisherGeneric` with the default `NoStdToolbox`.
@@ -25,7 +27,7 @@ pub type EventPublisher = EventPublisherGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> Clone for EventPublisherGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { system: self.system.clone() }
+    Self { system: self.system.clone(), _marker: PhantomData }
   }
 }
 
@@ -34,8 +36,8 @@ impl<TB: RuntimeToolbox + 'static> EventPublisherGeneric<TB> {
   ///
   /// The publisher stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemWeakGeneric<TB>) -> Self {
-    Self { system }
+  pub fn new(system: ActorSystemWeak) -> Self {
+    Self { system, _marker: PhantomData }
   }
 
   /// Emits a `ListenStarted` lifecycle event.

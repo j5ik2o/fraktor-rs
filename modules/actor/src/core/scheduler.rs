@@ -54,5 +54,5 @@ pub use scheduler_context::SchedulerContext;
 pub use scheduler_core::Scheduler;
 pub use scheduler_runner::SchedulerRunner;
 pub use scheduler_runner_owned::SchedulerRunnerOwned;
-pub use scheduler_shared::{SchedulerShared, SchedulerSharedGeneric};
+pub use scheduler_shared::SchedulerShared;
 pub use warning::SchedulerWarning;

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeRwLock, RuntimeToolbox},
+  runtime_toolbox::RuntimeRwLock,
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -14,31 +14,31 @@ use super::invoker_trait::MessageInvoker;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying invoker, allowing safe
 /// concurrent access from multiple owners.
-pub struct MessageInvokerShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeRwLock<Box<dyn MessageInvoker<TB>>>>,
+pub struct MessageInvokerShared {
+  inner: ArcShared<RuntimeRwLock<Box<dyn MessageInvoker>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> MessageInvokerShared<TB> {
+impl MessageInvokerShared {
   /// Creates a new shared wrapper around the provided invoker.
   #[must_use]
-  pub fn new(invoker: Box<dyn MessageInvoker<TB>>) -> Self {
+  pub fn new(invoker: Box<dyn MessageInvoker>) -> Self {
     Self { inner: ArcShared::new(RuntimeRwLock::new(invoker)) }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for MessageInvokerShared<TB> {
+impl Clone for MessageInvokerShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn MessageInvoker<TB>>> for MessageInvokerShared<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageInvoker<TB>>) -> R) -> R {
+impl SharedAccess<Box<dyn MessageInvoker>> for MessageInvokerShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageInvoker>) -> R) -> R {
     let guard = self.inner.read();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageInvoker<TB>>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageInvoker>) -> R) -> R {
     let mut guard = self.inner.write();
     f(&mut guard)
   }

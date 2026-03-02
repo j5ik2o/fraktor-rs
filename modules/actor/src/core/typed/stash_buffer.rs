@@ -5,26 +5,19 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
-use crate::core::{error::ActorError, typed::actor::TypedActorContextGeneric};
+use crate::core::{error::ActorError, typed::actor::TypedActorContext};
 
 /// Bounded stash helper inspired by Pekko's `StashBuffer`.
-pub struct StashBufferGeneric<M, TB = NoStdToolbox>
+pub struct StashBuffer<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   capacity: usize,
-  _marker:  PhantomData<fn() -> (M, TB)>,
+  _marker:  PhantomData<fn() -> M>,
 }
 
-/// Type alias for [StashBufferGeneric] with the default [NoStdToolbox].
-pub type StashBuffer<M> = StashBufferGeneric<M, NoStdToolbox>;
-
-impl<M, TB> StashBufferGeneric<M, TB>
+impl<M> StashBuffer<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a stash buffer wrapper with the specified maximum capacity.
   #[must_use]
@@ -43,7 +36,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
-  pub fn len(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<usize, ActorError> {
+  pub fn len(&self, ctx: &TypedActorContext<'_, M>) -> Result<usize, ActorError> {
     let cell = ctx
       .system()
       .state()
@@ -57,7 +50,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
-  pub fn is_empty(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<bool, ActorError> {
+  pub fn is_empty(&self, ctx: &TypedActorContext<'_, M>) -> Result<bool, ActorError> {
     Ok(self.len(ctx)? == 0)
   }
 
@@ -66,7 +59,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
-  pub fn is_full(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<bool, ActorError> {
+  pub fn is_full(&self, ctx: &TypedActorContext<'_, M>) -> Result<bool, ActorError> {
     Ok(self.len(ctx)? >= self.capacity)
   }
 
@@ -75,7 +68,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the stash capacity is reached or when context stashing fails.
-  pub fn stash(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  pub fn stash(&self, ctx: &TypedActorContext<'_, M>) -> Result<(), ActorError> {
     ctx.stash_with_limit(self.capacity)
   }
 
@@ -84,24 +77,18 @@ where
   /// # Errors
   ///
   /// Returns an error when unstash dispatch fails.
-  pub fn unstash_all(&self, ctx: &TypedActorContextGeneric<'_, M, TB>) -> Result<usize, ActorError> {
+  pub fn unstash_all(&self, ctx: &TypedActorContext<'_, M>) -> Result<usize, ActorError> {
     ctx.unstash_all()
   }
 }
 
-impl<M, TB> Clone for StashBufferGeneric<M, TB>
+impl<M> Clone for StashBuffer<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     *self
   }
 }
 
-impl<M, TB> Copy for StashBufferGeneric<M, TB>
-where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
-{
-}
+impl<M> Copy for StashBuffer<M> where M: Send + Sync + 'static {}

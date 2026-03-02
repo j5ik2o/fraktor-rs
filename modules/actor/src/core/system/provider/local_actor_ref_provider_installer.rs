@@ -1,12 +1,10 @@
 //! Installer for local-only actor-ref provider.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{
-  actor_ref_provider_installer::ActorRefProviderInstaller, actor_ref_provider_shared::ActorRefProviderSharedGeneric,
-  local_actor_ref_provider::LocalActorRefProviderGeneric,
+  actor_ref_provider_installer::ActorRefProviderInstaller, actor_ref_provider_shared::ActorRefProviderShared,
+  local_actor_ref_provider::LocalActorRefProvider,
 };
-use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
+use crate::core::system::{ActorSystem, ActorSystemBuildError};
 
 /// Installer for local-only actor-ref provider.
 ///
@@ -15,19 +13,19 @@ use crate::core::system::{ActorSystemBuildError, ActorSystemGeneric};
 /// no ActorRefProviderInstaller is specified.
 ///
 /// Using this installer makes the local-only intent explicit in the configuration.
-pub struct LocalActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
-  _marker: core::marker::PhantomData<TB>,
+pub struct LocalActorRefProviderInstaller {
+  _marker: core::marker::PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for LocalActorRefProviderInstaller<TB> {
+impl Default for LocalActorRefProviderInstaller {
   fn default() -> Self {
     Self { _marker: core::marker::PhantomData }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for LocalActorRefProviderInstaller<TB> {
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
-    let provider = ActorRefProviderSharedGeneric::new(LocalActorRefProviderGeneric::<TB>::new());
+impl ActorRefProviderInstaller for LocalActorRefProviderInstaller {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
+    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new());
     system.extended().register_actor_ref_provider(&provider)?;
     Ok(())
   }

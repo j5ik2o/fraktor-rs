@@ -8,11 +8,11 @@ use core::any::{Any, TypeId};
 
 use fraktor_actor_rs::core::{
   actor::{
-    ActorContextGeneric, Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex},
@@ -28,7 +28,7 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessageGeneric<TB>>>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 type DummyPendingHandler = Box<dyn FnOnce(&mut DummyActor, &PersistentRepr) + Send + Sync>;
 const ADD_TEN_MANIFEST: &str = "add-ten-v1";
 const SINGLE_MANIFEST: &str = "single-v1";
@@ -46,29 +46,29 @@ struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender = ActorRefGeneric::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
 struct FailingSender;
 
-impl ActorRefSender<TB> for FailingSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     Err(SendError::closed(message))
   }
 }
 
-fn create_failing_sender() -> ActorRefGeneric<TB> {
-  ActorRefGeneric::new(Pid::new(2, 1), FailingSender)
+fn create_failing_sender() -> ActorRef {
+  ActorRef::new(Pid::new(2, 1), FailingSender)
 }
 
 struct AddTenWriteAdapter;
@@ -115,11 +115,7 @@ impl Eventsourced<TB> for DummyActor {
 
   fn receive_snapshot(&mut self, _snapshot: &Snapshot) {}
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -149,7 +145,7 @@ fn context_sends_journal_messages() {
   let message = JournalMessage::DeleteMessagesTo {
     persistence_id: "pid-1".to_string(),
     to_sequence_nr: 10,
-    sender:         ActorRefGeneric::null(),
+    sender:         ActorRef::null(),
   };
   context.send_write_messages(message).expect("send");
 
@@ -167,7 +163,7 @@ fn context_sends_snapshot_messages() {
   let message = SnapshotMessage::DeleteSnapshots {
     persistence_id: "pid-1".to_string(),
     criteria:       crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria::latest(),
-    sender:         ActorRefGeneric::null(),
+    sender:         ActorRef::null(),
   };
   context.send_snapshot_message(message).expect("send");
 
@@ -182,7 +178,7 @@ fn bind_actor_refs_rejects_second_bind() {
   let mut context = DummyContext::new("pid-1".to_string());
 
   assert!(context.bind_actor_refs(journal_ref, snapshot_ref).is_ok());
-  let result = context.bind_actor_refs(ActorRefGeneric::null(), ActorRefGeneric::null());
+  let result = context.bind_actor_refs(ActorRef::null(), ActorRef::null());
   assert!(result.is_err());
 }
 
@@ -243,11 +239,11 @@ fn start_recovery_none_requests_highest_sequence_nr() {
   let mut context = DummyContext::new("pid-1".to_string());
   context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
 
-  context.start_recovery(crate::core::Recovery::none(), ActorRefGeneric::null()).expect("start recovery");
+  context.start_recovery(crate::core::Recovery::none(), ActorRef::null()).expect("start recovery");
 
   let journal_messages = journal_store.lock();
   assert_eq!(journal_messages.len(), 1);
-  let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+  let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
   match message {
     | JournalMessage::GetHighestSequenceNr { persistence_id, from_sequence_nr, .. } => {
       assert_eq!(persistence_id, "pid-1");
@@ -266,7 +262,7 @@ fn highest_sequence_nr_completes_recovery_none_path() {
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
   context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  context.start_recovery(crate::core::Recovery::none(), ActorRefGeneric::null()).expect("start recovery");
+  context.start_recovery(crate::core::Recovery::none(), ActorRef::null()).expect("start recovery");
   assert_eq!(context.state(), PersistentActorState::RecoveryStarted);
 
   let action = context.handle_journal_response(&JournalResponse::HighestSequenceNr {
@@ -304,13 +300,13 @@ fn context_applies_event_adapters_on_persist_and_replay() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
   let expected_instance_id = context.instance_id();
 
   let persisted_repr = {
     let journal_messages = journal_store.lock();
     assert_eq!(journal_messages.len(), 1);
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, instance_id, .. } => {
         assert_eq!(*instance_id, expected_instance_id);
@@ -398,11 +394,11 @@ fn write_messages_successful_triggers_deferred_handlers() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -466,11 +462,11 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let journal_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -497,7 +493,7 @@ fn assert_handler_not_double_boxed(stashing: bool) {
   let handler: DummyPendingHandler = Box::new(|_actor: &mut DummyActor, _repr| {});
   let original_ptr = (&*handler as *const dyn FnOnce(&mut DummyActor, &PersistentRepr)) as *const ();
   context.add_to_event_batch(1_i32, stashing, None, handler);
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let invocation = context.pending_invocations.pop_front().expect("pending invocation");
   let stored_ptr = match invocation {
@@ -531,7 +527,7 @@ fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion()
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  let result = context.flush_batch(ActorRefGeneric::null());
+  let result = context.flush_batch(ActorRef::null());
   assert!(result.is_err());
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
   assert!(context.pending_invocations.is_empty());
@@ -573,11 +569,11 @@ fn write_message_success_interleaves_defer_between_persisted_handlers() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_reprs = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { to_sequence_nr, messages, .. } => {
         assert_eq!(*to_sequence_nr, 2);
@@ -622,11 +618,11 @@ fn write_message_success_with_mismatched_instance_id_is_ignored() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -674,11 +670,11 @@ fn should_stash_commands_when_stashing_defer_waits_for_batch_success() {
 
   context.add_to_event_batch(1_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   context.add_deferred_handler(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -703,11 +699,11 @@ fn should_stash_commands_until_write_messages_successful_for_stashing_batch() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -735,11 +731,11 @@ fn should_stash_commands_until_batch_success_when_stashing_defer_is_between_pers
   context.add_to_event_batch(1_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   context.add_deferred_handler(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   context.add_to_event_batch(3_i32, false, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_reprs = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
       | _ => panic!("unexpected message"),
@@ -772,11 +768,11 @@ fn write_message_failure_keeps_context_in_persisting_state() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let failed_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -799,7 +795,7 @@ fn write_message_failure_keeps_context_in_persisting_state() {
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  let result = context.flush_batch(ActorRefGeneric::null());
+  let result = context.flush_batch(ActorRef::null());
   assert!(result.is_err());
 }
 
@@ -812,11 +808,11 @@ fn write_message_failure_with_mismatched_instance_id_is_ignored() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let failed_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -842,11 +838,11 @@ fn write_message_rejected_returns_to_processing_commands() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let rejected_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -869,7 +865,7 @@ fn write_message_rejected_returns_to_processing_commands() {
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch after rejection");
+  context.flush_batch(ActorRef::null()).expect("flush batch after rejection");
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 }
 
@@ -882,11 +878,11 @@ fn write_message_rejected_with_mismatched_instance_id_is_ignored() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let rejected_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -912,7 +908,7 @@ fn write_messages_successful_with_mismatched_instance_id_is_ignored() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let action = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful {
     instance_id: context.instance_id().wrapping_add(1),
@@ -930,7 +926,7 @@ fn write_messages_failed_with_zero_write_count_and_mismatched_instance_id_is_ign
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let action = context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
     cause:       JournalError::WriteFailed("batch write failed".to_string()),
@@ -950,7 +946,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
     context.state = PersistentActorState::ProcessingCommands;
     context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-    context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+    context.flush_batch(ActorRef::null()).expect("flush batch");
     context.instance_id()
   };
 
@@ -968,11 +964,11 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
       actor.handled_values.push(*value);
     }),
   );
-  success_context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  success_context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let success_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -1001,11 +997,11 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
   failure_context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
   failure_context.state = PersistentActorState::ProcessingCommands;
   failure_context.add_to_event_batch(3_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  failure_context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  failure_context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let failure_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -1026,11 +1022,11 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
   rejected_context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
   rejected_context.state = PersistentActorState::ProcessingCommands;
   rejected_context.add_to_event_batch(4_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  rejected_context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  rejected_context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let rejected_repr = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages[0].clone(),
       | _ => panic!("unexpected message"),
@@ -1079,7 +1075,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
   batch_failure_context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
   batch_failure_context.state = PersistentActorState::ProcessingCommands;
   batch_failure_context.add_to_event_batch(6_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  batch_failure_context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  batch_failure_context.flush_batch(ActorRef::null()).expect("flush batch");
   assert_ne!(batch_failure_context.instance_id(), stale_instance_id);
   let ignored_batch_failure = batch_failure_context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
     cause:       JournalError::WriteFailed("stale batch failed".to_string()),
@@ -1125,11 +1121,11 @@ fn write_message_rejected_keeps_remaining_invocations() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_reprs = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
       | _ => panic!("unexpected message"),
@@ -1199,11 +1195,11 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
       actor.handled_values.push(*value);
     }),
   );
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
 
   let persisted_reprs = {
     let journal_messages = journal_store.lock();
-    let message = journal_messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+    let message = journal_messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
     match message {
       | JournalMessage::WriteMessages { messages, .. } => messages.clone(),
       | _ => panic!("unexpected message"),
@@ -1247,7 +1243,7 @@ fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 
   let action = context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
@@ -1259,7 +1255,7 @@ fn write_messages_failed_with_positive_write_count_keeps_persisting_state() {
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  let result = context.flush_batch(ActorRefGeneric::null());
+  let result = context.flush_batch(ActorRef::null());
   assert!(result.is_err());
 }
 
@@ -1272,7 +1268,7 @@ fn write_messages_failed_with_zero_write_count_returns_to_processing_commands() 
   context.state = PersistentActorState::ProcessingCommands;
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch");
+  context.flush_batch(ActorRef::null()).expect("flush batch");
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 
   let action = context.handle_journal_response(&JournalResponse::WriteMessagesFailed {
@@ -1284,7 +1280,7 @@ fn write_messages_failed_with_zero_write_count_returns_to_processing_commands() 
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
 
   context.add_to_event_batch(2_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
-  context.flush_batch(ActorRefGeneric::null()).expect("flush batch after write messages failed");
+  context.flush_batch(ActorRef::null()).expect("flush batch after write messages failed");
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 }
 

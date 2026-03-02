@@ -3,11 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   actor::{ContextPipeTaskId, Pid},
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 mod failure_classification;
@@ -49,8 +47,8 @@ pub enum SystemMessage {
   PipeTask(ContextPipeTaskId),
 }
 
-impl<TB: RuntimeToolbox> From<SystemMessage> for AnyMessageGeneric<TB> {
+impl From<SystemMessage> for AnyMessage {
   fn from(value: SystemMessage) -> Self {
-    AnyMessageGeneric::new(value)
+    AnyMessage::new(value)
   }
 }

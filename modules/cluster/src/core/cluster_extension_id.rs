@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
-use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystemGeneric};
+use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystem};
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
   sync::ArcShared,
@@ -79,10 +79,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ExtensionId<TB> for ClusterExtensionId<TB> {
+impl<TB: RuntimeToolbox + 'static> ExtensionId for ClusterExtensionId<TB> {
   type Ext = ClusterExtensionGeneric<TB>;
 
-  fn create_extension(&self, system: &ActorSystemGeneric<TB>) -> Self::Ext {
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let event_stream = system.event_stream();
     let kind_registry = KindRegistry::new();
     let core = ClusterCore::new(

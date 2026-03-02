@@ -2,12 +2,12 @@ use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
 use fraktor_actor_rs::core::{
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   serialization::{
     NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
     SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, SerializerWithStringManifest,
   },
-  system::ActorSystemGeneric,
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
@@ -101,8 +101,8 @@ impl SerializerWithStringManifest for TelemetrySerializer {
 
 #[test]
 fn try_from_system_fails_when_extension_missing() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
-  match SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote) {
+  let system = ActorSystem::new_empty();
+  match SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote) {
     | Ok(_) => panic!("extension should be missing"),
     | Err(err) => assert!(matches!(err, GrainCodecError::ExtensionUnavailable { .. })),
   }
@@ -111,9 +111,10 @@ fn try_from_system_fails_when_extension_missing() {
 #[test]
 fn encode_decode_roundtrip_with_custom_serializer() {
   let system = build_system_with_serialization();
-  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let codec =
+    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
   let payload = TelemetryPayload { node: 7, temperature: 24 };
-  let message = AnyMessageGeneric::new(payload);
+  let message = AnyMessage::new(payload);
 
   let encoded = codec.encode(&message).expect("encode");
   let decoded = codec.decode(&encoded).expect("decode");
@@ -125,8 +126,9 @@ fn encode_decode_roundtrip_with_custom_serializer() {
 #[test]
 fn encode_returns_error_when_serializer_unregistered() {
   let system = build_system_with_serialization();
-  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
-  let message = AnyMessageGeneric::new("unregistered");
+  let codec =
+    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let message = AnyMessage::new("unregistered");
 
   let err = codec.encode(&message).expect_err("encode failure");
   assert!(matches!(err, GrainCodecError::SerializerNotRegistered { .. }));
@@ -135,7 +137,8 @@ fn encode_returns_error_when_serializer_unregistered() {
 #[test]
 fn decode_returns_error_on_incompatible_payload() {
   let system = build_system_with_serialization();
-  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let codec =
+    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
 
   let serializer_id = SerializerId::try_from(200).expect("serializer id");
   let message = SerializedMessage::new(serializer_id, Some(String::from(TELEMETRY_MANIFEST)), vec![1, 2, 3]);
@@ -144,7 +147,7 @@ fn decode_returns_error_on_incompatible_payload() {
   assert!(matches!(err, GrainCodecError::Incompatible { .. }));
 }
 
-fn build_system_with_serialization() -> ActorSystemGeneric<NoStdToolbox> {
+fn build_system_with_serialization() -> ActorSystem {
   let serializer_id = SerializerId::try_from(200).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(TelemetrySerializer::new(serializer_id));
   let setup = SerializationSetupBuilder::new()
@@ -161,7 +164,7 @@ fn build_system_with_serialization() -> ActorSystemGeneric<NoStdToolbox> {
     .expect("setup");
   let extension_id = SerializationExtensionId::new(setup);
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   system.extended().register_extension(&extension_id).expect("register extension");
   system
 }

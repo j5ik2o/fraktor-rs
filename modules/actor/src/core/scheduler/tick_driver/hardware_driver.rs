@@ -3,14 +3,11 @@
 use alloc::boxed::Box;
 use core::{ffi::c_void, time::Duration};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
-  HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandleGeneric, TickDriverId, TickDriverKind,
+  HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
   TickFeedHandle, TickPulseHandler, TickPulseSource, tick_driver_trait::next_tick_driver_id,
 };
 
@@ -35,7 +32,7 @@ impl HardwareTickDriver {
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriver<TB> for HardwareTickDriver {
+impl TickDriver for HardwareTickDriver {
   fn id(&self) -> TickDriverId {
     self.id
   }
@@ -48,46 +45,43 @@ impl<TB: RuntimeToolbox> TickDriver<TB> for HardwareTickDriver {
     self.pulse.resolution()
   }
 
-  fn start(&mut self, feed: TickFeedHandle<TB>) -> Result<TickDriverHandleGeneric<TB>, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
-    let handler = TickPulseHandler { func: pulse_trampoline::<TB>, ctx: ptr };
+    let handler = TickPulseHandler { func: pulse_trampoline, ctx: ptr };
     self.pulse.set_callback(handler);
     self.pulse.enable()?;
-    let control = build_control::<TB>(ptr, feed);
-    // Access fields directly to avoid trait method ambiguity with generic TB
+    let control = build_control(ptr, feed);
+    // Access fields directly to avoid trait method ambiguity.
     let id = self.id;
     let kind = TickDriverKind::Hardware { source: self.kind };
     let resolution = self.pulse.resolution();
-    Ok(TickDriverHandleGeneric::new(id, kind, resolution, control))
+    Ok(TickDriverHandle::new(id, kind, resolution, control))
   }
 }
 
-fn build_control<TB: RuntimeToolbox>(
-  ctx: *mut c_void,
-  feed: TickFeedHandle<TB>,
-) -> ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>> {
+fn build_control(ctx: *mut c_void, feed: TickFeedHandle) -> ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>> {
   let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(ctx, feed));
   ArcShared::new(RuntimeMutex::new(control))
 }
 
-struct PulseContext<TB: RuntimeToolbox> {
-  feed: TickFeedHandle<TB>,
+struct PulseContext {
+  feed: TickFeedHandle,
 }
 
-struct HardwareDriverControl<TB: RuntimeToolbox> {
-  ctx:   *mut PulseContext<TB>,
-  feed:  TickFeedHandle<TB>,
+struct HardwareDriverControl {
+  ctx:   *mut PulseContext,
+  feed:  TickFeedHandle,
   freed: AtomicBool,
 }
 
-impl<TB: RuntimeToolbox> HardwareDriverControl<TB> {
-  const fn new(ctx: *mut c_void, feed: TickFeedHandle<TB>) -> Self {
-    Self { ctx: ctx as *mut PulseContext<TB>, feed, freed: AtomicBool::new(false) }
+impl HardwareDriverControl {
+  const fn new(ctx: *mut c_void, feed: TickFeedHandle) -> Self {
+    Self { ctx: ctx as *mut PulseContext, feed, freed: AtomicBool::new(false) }
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriverControl for HardwareDriverControl<TB> {
+impl TickDriverControl for HardwareDriverControl {
   fn shutdown(&self) {
     if !self.freed.swap(true, Ordering::AcqRel) && !self.ctx.is_null() {
       unsafe {
@@ -98,13 +92,13 @@ impl<TB: RuntimeToolbox> TickDriverControl for HardwareDriverControl<TB> {
   }
 }
 
-unsafe extern "C" fn pulse_trampoline<TB: RuntimeToolbox>(ctx: *mut c_void) {
+unsafe extern "C" fn pulse_trampoline(ctx: *mut c_void) {
   if ctx.is_null() {
     return;
   }
-  let feed = unsafe { &*(ctx as *mut PulseContext<TB>) }.feed.clone();
+  let feed = unsafe { &*(ctx as *mut PulseContext) }.feed.clone();
   feed.enqueue_from_isr(1);
 }
 
-unsafe impl<TB: RuntimeToolbox> Send for HardwareDriverControl<TB> {}
-unsafe impl<TB: RuntimeToolbox> Sync for HardwareDriverControl<TB> {}
+unsafe impl Send for HardwareDriverControl {}
+unsafe impl Sync for HardwareDriverControl {}

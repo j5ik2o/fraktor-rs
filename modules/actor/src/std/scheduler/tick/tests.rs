@@ -4,17 +4,15 @@ use alloc::vec::Vec;
 use core::time::Duration;
 use std::sync::Mutex;
 
-use fraktor_utils_rs::{
-  core::{
-    sync::{ArcShared, SharedAccess},
-    time::TimerInstant,
-  },
-  std::runtime_toolbox::StdToolbox,
+use fraktor_utils_rs::core::{
+  runtime_toolbox::NoStdToolbox,
+  sync::{ArcShared, SharedAccess},
+  time::TimerInstant,
 };
 
 use crate::{
   core::{
-    event::stream::{EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle},
+    event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
     scheduler::{
       SchedulerConfig, SchedulerContext,
       tick_driver::{AutoProfileKind, TickDriverBootstrap, TickDriverKind, TickDriverProvisioningContext},
@@ -27,7 +25,7 @@ use crate::{
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
-  let scheduler_context = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -41,18 +39,18 @@ async fn tokio_interval_driver_produces_ticks() {
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<Mutex<Vec<EventStreamEvent<StdToolbox>>>>,
+  events: ArcShared<Mutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<Mutex<Vec<EventStreamEvent<StdToolbox>>>>) -> Self {
+  fn new(events: ArcShared<Mutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
+impl EventStreamSubscriber for RecordingSubscriber {
   #[allow(clippy::expect_used)]
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().expect("lock").push(event.clone());
   }
 }
@@ -60,7 +58,7 @@ impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);
@@ -70,7 +68,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
     event_stream.clone(),
     Duration::from_millis(50),
   );
-  let scheduler_context = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
@@ -90,7 +88,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 #[allow(clippy::expect_used)]
 async fn tokio_quickstart_helper_provisions_driver() {
   let config = TickDriverConfig::tokio_quickstart();
-  let scheduler_context = SchedulerContext::new(StdToolbox::default(), SchedulerConfig::default());
+  let scheduler_context = SchedulerContext::new(NoStdToolbox::default(), SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
   assert!(

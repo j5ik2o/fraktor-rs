@@ -2,17 +2,15 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use crate::core::event::stream::{EventStreamSubscriberEntryGeneric, EventStreamSubscriberShared};
+use crate::core::event::stream::{EventStreamSubscriberEntry, EventStreamSubscriberShared};
 
 /// Collection of subscriber entries with local identifier generation.
-pub(crate) struct EventStreamSubscriberEntriesGeneric<TB: RuntimeToolbox + 'static> {
-  entries: Vec<EventStreamSubscriberEntryGeneric<TB>>,
+pub(crate) struct EventStreamSubscriberEntries {
+  entries: Vec<EventStreamSubscriberEntry>,
   next_id: u64,
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
+impl EventStreamSubscriberEntries {
   /// Creates an empty collection with the initial identifier set to `1`.
   #[must_use]
   pub(crate) const fn new() -> Self {
@@ -20,10 +18,10 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
   }
 
   /// Adds a subscriber and returns the assigned identifier.
-  pub(crate) fn add(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> u64 {
+  pub(crate) fn add(&mut self, subscriber: EventStreamSubscriberShared) -> u64 {
     let id = self.next_id;
     self.next_id += 1;
-    self.entries.push(EventStreamSubscriberEntryGeneric::new(id, subscriber));
+    self.entries.push(EventStreamSubscriberEntry::new(id, subscriber));
     id
   }
 
@@ -36,12 +34,12 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriberEntriesGeneric<TB> {
 
   /// Returns a cloned snapshot of the current subscribers.
   #[must_use]
-  pub(crate) fn snapshot(&self) -> Vec<EventStreamSubscriberEntryGeneric<TB>> {
+  pub(crate) fn snapshot(&self) -> Vec<EventStreamSubscriberEntry> {
     self.entries.clone()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for EventStreamSubscriberEntriesGeneric<TB> {
+impl Default for EventStreamSubscriberEntries {
   fn default() -> Self {
     Self::new()
   }

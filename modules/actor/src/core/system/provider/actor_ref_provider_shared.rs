@@ -3,7 +3,7 @@
 use core::{any::TypeId, marker::PhantomData};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -11,7 +11,7 @@ use super::{ActorRefProvider, ActorRefProviderHandle};
 use crate::core::{
   actor::{
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
 };
@@ -29,12 +29,12 @@ use crate::core::{
 /// 1. Create a shared wrapper: `ActorRefProviderShared::new(provider)`
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
-pub struct ActorRefProviderSharedGeneric<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> {
+pub struct ActorRefProviderShared<P: ActorRefProvider + 'static> {
   inner:   ArcShared<RuntimeMutex<ActorRefProviderHandle<P>>>,
-  _marker: PhantomData<TB>,
+  _marker: PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefProviderSharedGeneric<TB, P> {
+impl<P: ActorRefProvider + 'static> ActorRefProviderShared<P> {
   /// Creates a new shared wrapper around the provided implementation.
   pub fn new(provider: P) -> Self {
     let schemes = provider.supported_schemes();
@@ -68,35 +68,31 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefPr
   /// # Errors
   ///
   /// Returns an error if the actor reference cannot be created.
-  pub fn get_actor_ref(&self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  pub fn get_actor_ref(&self, path: ActorPath) -> Result<ActorRef, ActorError> {
     let mut guard = self.inner.lock();
     guard.actor_ref(path)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> Clone for ActorRefProviderSharedGeneric<TB, P> {
+impl<P: ActorRefProvider + 'static> Clone for ActorRefProviderShared<P> {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> ActorRefProvider<TB>
-  for ActorRefProviderSharedGeneric<TB, P>
-{
+impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<P> {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     let guard = self.inner.lock();
     guard.supported_schemes()
   }
 
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     let mut guard = self.inner.lock();
     guard.actor_ref(path)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> SharedAccess<ActorRefProviderHandle<P>>
-  for ActorRefProviderSharedGeneric<TB, P>
-{
+impl<P: ActorRefProvider + 'static> SharedAccess<ActorRefProviderHandle<P>> for ActorRefProviderShared<P> {
   fn with_read<R>(&self, f: impl FnOnce(&ActorRefProviderHandle<P>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
@@ -107,6 +103,3 @@ impl<TB: RuntimeToolbox + 'static, P: ActorRefProvider<TB> + 'static> SharedAcce
     f(&mut guard)
   }
 }
-
-/// Type alias for [`ActorRefProviderSharedGeneric`] using the default [`NoStdToolbox`].
-pub type ActorRefProviderShared<P> = ActorRefProviderSharedGeneric<NoStdToolbox, P>;

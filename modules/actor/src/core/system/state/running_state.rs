@@ -2,20 +2,20 @@
 
 #![allow(dead_code)]
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{ActorCellGeneric, Pid},
-  system::{guardian::GuardianKind, state::SystemStateSharedGeneric},
+  actor::{ActorCell, Pid},
+  system::{guardian::GuardianKind, state::SystemStateShared},
 };
 
 /// Wrapper for the system state after all guardians are registered.
-pub(crate) struct RunningSystemStateGeneric<TB: RuntimeToolbox + 'static> {
-  state: SystemStateSharedGeneric<TB>,
+pub(crate) struct RunningSystemState {
+  state: SystemStateShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> RunningSystemStateGeneric<TB> {
-  pub(crate) const fn new(state: SystemStateSharedGeneric<TB>) -> Self {
+impl RunningSystemState {
+  pub(crate) const fn new(state: SystemStateShared) -> Self {
     Self { state }
   }
 
@@ -23,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> RunningSystemStateGeneric<TB> {
     self.state.guardian_pid(kind).unwrap_or_else(|| panic!("guardian pid must be set in running state"))
   }
 
-  pub(crate) fn guardian_cell(&self, kind: GuardianKind) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  pub(crate) fn guardian_cell(&self, kind: GuardianKind) -> Option<ArcShared<ActorCell>> {
     let pid = self.guardian_pid(kind);
     self.state.cell(&pid)
   }

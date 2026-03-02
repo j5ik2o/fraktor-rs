@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::ActorRef;
 use crate::core::{
@@ -26,10 +26,7 @@ impl RecordingSender {
 }
 
 impl ActorRefSender for RecordingSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
     use core::sync::atomic::Ordering;
     self.count.fetch_add(1, Ordering::Relaxed);
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
@@ -84,11 +81,9 @@ fn actor_ref_with_system() {
 
 #[test]
 fn actor_ref_path_resolves_segments() {
-  use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
   use crate::core::{
-    actor::{Actor, ActorCell, ActorContextGeneric},
-    messaging::AnyMessageViewGeneric,
+    actor::{Actor, ActorCell, ActorContext},
+    messaging::AnyMessageView,
     props::Props,
   };
 
@@ -96,8 +91,8 @@ fn actor_ref_path_resolves_segments() {
   impl Actor for PathActor {
     fn receive(
       &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+      _ctx: &mut ActorContext<'_>,
+      _message: AnyMessageView<'_>,
     ) -> Result<(), crate::core::error::ActorError> {
       Ok(())
     }
@@ -191,11 +186,9 @@ fn actor_ref_kill_without_system_uses_user_channel() {
 
 #[test]
 fn actor_ref_poison_pill_with_system_enqueues_user_message() {
-  use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
   use crate::core::{
-    actor::{Actor, ActorCell, ActorContextGeneric},
-    messaging::AnyMessageViewGeneric,
+    actor::{Actor, ActorCell, ActorContext},
+    messaging::AnyMessageView,
     props::Props,
   };
 
@@ -203,8 +196,8 @@ fn actor_ref_poison_pill_with_system_enqueues_user_message() {
   impl Actor for ProbeActor {
     fn receive(
       &mut self,
-      _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-      _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+      _ctx: &mut ActorContext<'_>,
+      _message: AnyMessageView<'_>,
     ) -> Result<(), crate::core::error::ActorError> {
       Ok(())
     }
