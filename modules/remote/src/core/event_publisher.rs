@@ -4,7 +4,6 @@
 mod tests;
 
 use alloc::string::String;
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   event::stream::{
@@ -12,32 +11,27 @@ use fraktor_actor_rs::core::{
   },
   system::ActorSystemWeak,
 };
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 /// Helper that publishes remoting observability events.
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
-pub struct EventPublisherGeneric<TB: RuntimeToolbox + 'static> {
-  system:  ActorSystemWeak,
-  _marker: PhantomData<TB>,
+pub struct EventPublisher {
+  system: ActorSystemWeak,
 }
 
-/// Type alias for `EventPublisherGeneric` with the default `NoStdToolbox`.
-pub type EventPublisher = EventPublisherGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Clone for EventPublisherGeneric<TB> {
+impl Clone for EventPublisher {
   fn clone(&self) -> Self {
-    Self { system: self.system.clone(), _marker: PhantomData }
+    Self { system: self.system.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventPublisherGeneric<TB> {
+impl EventPublisher {
   /// Creates a new publisher bound to the provided actor system.
   ///
   /// The publisher stores a weak reference to the actor system.
   #[must_use]
   pub fn new(system: ActorSystemWeak) -> Self {
-    Self { system, _marker: PhantomData }
+    Self { system }
   }
 
   /// Emits a `ListenStarted` lifecycle event.

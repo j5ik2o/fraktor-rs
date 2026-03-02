@@ -15,7 +15,7 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::core::{
@@ -54,7 +54,7 @@ fn serialization_setup() -> SerializationSetup {
     .expect("setup")
 }
 
-fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystem) {
+fn build_writer() -> (EndpointWriter, ActorSystem) {
   let system = build_system();
   let setup = serialization_setup();
   let serialization = SerializationExtensionShared::new(SerializationExtension::new(&system, setup));
@@ -73,7 +73,7 @@ fn actor_path(system: &str, guardian: GuardianKind, segments: &[&str]) -> ActorP
   path
 }
 
-fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>) -> OutboundMessage<NoStdToolbox> {
+fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>) -> OutboundMessage {
   let message = AnyMessage::new(content.to_string());
   let remote = remote_node();
   match sender {
@@ -82,7 +82,7 @@ fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>)
   }
 }
 
-fn system_message(content: &str, recipient: &ActorPath) -> OutboundMessage<NoStdToolbox> {
+fn system_message(content: &str, recipient: &ActorPath) -> OutboundMessage {
   let message = AnyMessage::new(content.to_string());
   OutboundMessage::system(message, recipient.clone(), remote_node())
 }

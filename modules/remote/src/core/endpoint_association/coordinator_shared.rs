@@ -1,9 +1,7 @@
 //! Shared wrapper for endpoint association coordinator.
 
-use core::marker::PhantomData;
-
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeRwLock, RuntimeToolbox},
+  runtime_toolbox::RuntimeRwLock,
   sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
@@ -14,34 +12,31 @@ use super::coordinator::EndpointAssociationCoordinator;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying [`EndpointAssociationCoordinator`], allowing safe
 /// concurrent access from multiple owners.
-pub struct EndpointAssociationCoordinatorSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeRwLock<EndpointAssociationCoordinator>>,
-  _marker: PhantomData<TB>,
+pub struct EndpointAssociationCoordinatorShared {
+  inner: ArcShared<RuntimeRwLock<EndpointAssociationCoordinator>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for EndpointAssociationCoordinatorSharedGeneric<TB> {
+impl Clone for EndpointAssociationCoordinatorShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for EndpointAssociationCoordinatorSharedGeneric<TB> {
+impl Default for EndpointAssociationCoordinatorShared {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointAssociationCoordinatorSharedGeneric<TB> {
+impl EndpointAssociationCoordinatorShared {
   /// Creates a new shared endpoint association coordinator instance.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: ArcShared::new(RuntimeRwLock::new(EndpointAssociationCoordinator::new())), _marker: PhantomData }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(EndpointAssociationCoordinator::new())) }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<EndpointAssociationCoordinator>
-  for EndpointAssociationCoordinatorSharedGeneric<TB>
-{
+impl SharedAccess<EndpointAssociationCoordinator> for EndpointAssociationCoordinatorShared {
   fn with_read<R>(&self, f: impl FnOnce(&EndpointAssociationCoordinator) -> R) -> R {
     let guard = self.inner.read();
     f(&guard)
@@ -52,7 +47,3 @@ impl<TB: RuntimeToolbox + 'static> SharedAccess<EndpointAssociationCoordinator>
     f(&mut guard)
   }
 }
-
-/// Type alias for [`EndpointAssociationCoordinatorSharedGeneric`] using the default
-/// [`NoStdToolbox`].
-pub type EndpointAssociationCoordinatorShared = EndpointAssociationCoordinatorSharedGeneric<NoStdToolbox>;

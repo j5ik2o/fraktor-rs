@@ -2,8 +2,6 @@
 
 use alloc::{boxed::Box, string::ToString};
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 #[cfg(feature = "tokio-transport")]
 use super::tokio_tcp::TokioTcpTransport;
 use crate::core::{
@@ -13,22 +11,21 @@ use crate::core::{
 
 /// Standard library transport factory that supports both loopback and Tokio TCP.
 ///
-/// This factory is specialized for [`StdToolbox`] because the Tokio TCP transport
-/// requires standard library mutex implementations for async `Send + Sync` bounds.
+/// This factory supports both loopback and Tokio TCP transport creation.
 pub struct StdTransportFactory;
 
 impl StdTransportFactory {
   /// Resolves a transport instance for the provided config (std compatible).
   ///
   /// Returns a boxed transport that callers can wrap in a mutex for shared access.
-  /// Uses [`StdToolbox`] for the transport's inbound handler mutex.
-  pub fn build(config: &RemotingExtensionConfig) -> Result<Box<dyn RemoteTransport<StdToolbox>>, TransportError> {
+  /// The returned transport can be wrapped in a shared handle for concurrent use.
+  pub fn build(config: &RemotingExtensionConfig) -> Result<Box<dyn RemoteTransport>, TransportError> {
     match config.transport_scheme() {
-      | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::<StdToolbox>::default())),
+      | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::default())),
       | "pekko.tcp" | "fraktor.tcp" => {
         #[cfg(feature = "tokio-transport")]
         {
-          TokioTcpTransport::build().map(|transport| Box::new(transport) as Box<dyn RemoteTransport<StdToolbox>>)
+          TokioTcpTransport::build().map(|transport| Box::new(transport) as Box<dyn RemoteTransport>)
         }
         #[cfg(not(feature = "tokio-transport"))]
         {

@@ -11,35 +11,33 @@ use fraktor_actor_rs::core::{
     remote::RemoteWatchHookShared,
   },
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor_ref_provider::{loopback::LoopbackActorRefProviderGeneric, loopback_router},
-  endpoint_reader::EndpointReaderGeneric,
-  endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
-  remoting_extension::RemotingExtensionGeneric,
+  actor_ref_provider::{loopback::LoopbackActorRefProvider, loopback_router},
+  endpoint_reader::EndpointReader,
+  endpoint_writer::{EndpointWriter, EndpointWriterShared},
+  remoting_extension::RemotingExtension,
 };
 
 /// Installer for Loopback actor-ref provider.
-pub struct LoopbackActorRefProviderInstaller<TB: RuntimeToolbox + 'static> {
-  _marker: core::marker::PhantomData<TB>,
-}
+pub struct LoopbackActorRefProviderInstaller;
 
-impl<TB: RuntimeToolbox + 'static> LoopbackActorRefProviderInstaller<TB> {
+impl LoopbackActorRefProviderInstaller {
   /// Creates a new Loopback actor-ref provider installer.
   #[must_use]
   pub const fn new() -> Self {
-    Self { _marker: core::marker::PhantomData }
+    Self
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for LoopbackActorRefProviderInstaller<TB> {
+impl Default for LoopbackActorRefProviderInstaller {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller for LoopbackActorRefProviderInstaller<TB> {
+impl ActorRefProviderInstaller for LoopbackActorRefProviderInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
@@ -48,17 +46,16 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller for LoopbackActorRe
     };
     let serialization = (*serialization_arc).clone();
 
-    let writer =
-      EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
-    let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+    let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
+    let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
 
-    let Some(extension) = extended.extension_by_type::<RemotingExtensionGeneric<TB>>() else {
+    let Some(extension) = extended.extension_by_type::<RemotingExtension>() else {
       return Err(ActorSystemBuildError::Configuration("remoting extension not installed".into()));
     };
 
     let control = extension.handle();
     control.lock().register_endpoint_io(writer.clone(), reader.clone());
-    let provider = LoopbackActorRefProviderGeneric::from_components(system.clone(), writer, control)
+    let provider = LoopbackActorRefProvider::from_components(system.clone(), writer, control)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
     let shared_provider = ActorRefProviderShared::new(shared.clone());

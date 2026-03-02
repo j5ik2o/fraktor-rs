@@ -8,7 +8,6 @@ use fraktor_actor_rs::core::{
   event::stream::{CorrelationId, RemotingLifecycleEvent},
   serialization::{SerializedMessage, SerializerId},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{
   super::QuarantineReason, AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinator,
@@ -49,14 +48,14 @@ fn envelope(label: &str) -> DeferredEnvelope {
 }
 
 struct LoopbackPair {
-  _transport:  LoopbackTransport<StdToolbox>,
+  _transport:  LoopbackTransport,
   authority_a: String,
   authority_b: String,
 }
 
 impl LoopbackPair {
   fn new() -> Self {
-    let mut transport = LoopbackTransport::<StdToolbox>::default();
+    let mut transport = LoopbackTransport::default();
     let bind_a = TransportBind::new("loopback-a.local", Some(4100));
     let handle_a = transport.spawn_listener(&bind_a).expect("listener a");
     let bind_b = TransportBind::new("loopback-b.local", Some(4200));

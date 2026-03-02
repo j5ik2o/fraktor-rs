@@ -2,28 +2,27 @@ use alloc::{string::String, sync::Arc, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::system::ActorSystemWeak;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  EventPublisherGeneric, RemoteInstrument, endpoint_reader::EndpointReaderGeneric,
-  endpoint_writer::EndpointWriterSharedGeneric, remoting_extension::RemotingControlHandle,
-  transport::RemoteTransportShared,
+  EventPublisher, RemoteInstrument, endpoint_reader::EndpointReader, endpoint_writer::EndpointWriterShared,
+  remoting_extension::RemotingControlHandle, transport::RemoteTransportShared,
 };
 
 /// Configuration required to bootstrap the transport bridge.
-pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
+pub struct EndpointTransportBridgeConfig {
   /// Actor system providing scheduling and state access (weak reference).
   pub system:                 ActorSystemWeak,
   /// Remoting control handle used to dispatch watcher commands.
-  pub control:                RemotingControlHandle<TB>,
+  pub control:                RemotingControlHandle,
   /// Shared endpoint writer feeding outbound frames.
-  pub writer:                 EndpointWriterSharedGeneric<TB>,
+  pub writer:                 EndpointWriterShared,
   /// Shared endpoint reader decoding inbound frames.
-  pub reader:                 ArcShared<EndpointReaderGeneric<TB>>,
+  pub reader:                 ArcShared<EndpointReader>,
   /// Active transport implementation wrapped in a mutex for shared mutable access.
-  pub transport:              RemoteTransportShared<TB>,
+  pub transport:              RemoteTransportShared,
   /// Event publisher for lifecycle/backpressure events.
-  pub event_publisher:        EventPublisherGeneric<TB>,
+  pub event_publisher:        EventPublisher,
   /// Canonical host used when binding listeners.
   pub canonical_host:         String,
   /// Canonical port used when binding listeners.

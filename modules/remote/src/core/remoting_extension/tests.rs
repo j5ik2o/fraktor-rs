@@ -16,7 +16,6 @@ use fraktor_actor_rs::core::{
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{RemotingControl, RemotingControlShared, RemotingError, RemotingExtensionConfig};
 use crate::{
@@ -53,7 +52,7 @@ impl EventStreamSubscriber for EventRecorder {
   }
 }
 
-fn bootstrap(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+fn bootstrap(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared) {
   let props = Props::from_fn(|| NoopActor).with_name("remoting-test-guardian");
   let installer = RemotingExtensionInstaller::new(config.clone());
   let extensions = ExtensionInstallers::default().with_extension_installer(installer);

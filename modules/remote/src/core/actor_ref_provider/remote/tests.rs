@@ -19,7 +19,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystem, ActorSystemConfig, remote::RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -69,8 +69,8 @@ fn provider(system: &ActorSystem) -> RemoteActorRefProvider {
   let serialization = serialization_extension(system);
   let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization));
   let control_handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  let control: RemotingControlShared<NoStdToolbox> = ArcShared::new(RuntimeMutex::new(control_handle));
-  let mut transport = LoopbackTransport::<NoStdToolbox>::default();
+  let control: RemotingControlShared = ArcShared::new(RuntimeMutex::new(control_handle));
+  let mut transport = LoopbackTransport::default();
   transport.spawn_listener(&TransportBind::new("127.0.0.1", Some(4100))).expect("bind 127.0.0.1:4100");
   transport.spawn_listener(&TransportBind::new("10.0.0.1", Some(9000))).expect("bind 10.0.0.1:9000");
   control.lock().register_remote_transport_shared(RemoteTransportShared::new(Box::new(transport)));

@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::actor::actor_path::ActorPathParts;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{control_handle::RemotingControlHandle, error::RemotingError};
 use crate::core::{
@@ -12,9 +12,7 @@ use crate::core::{
 };
 
 /// Public API exposed to extensions, providers, and system services to orchestrate remoting.
-pub trait RemotingControl<TB>: Send + Sync
-where
-  TB: RuntimeToolbox + 'static, {
+pub trait RemotingControl: Send + Sync {
   /// Starts the remoting subsystem if it is not already running.
   fn start(&mut self) -> Result<(), RemotingError>;
 
@@ -37,5 +35,5 @@ where
 }
 
 /// Shared handle wrapping [`RemotingControlHandle`] with external synchronization.
-pub type RemotingControlShared<TB> =
-  ArcShared<fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex<RemotingControlHandle<TB>>>;
+pub type RemotingControlShared =
+  ArcShared<fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex<RemotingControlHandle>>;

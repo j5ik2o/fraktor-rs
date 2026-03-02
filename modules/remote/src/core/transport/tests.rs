@@ -2,7 +2,6 @@
 #![cfg(feature = "std")]
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::{
   backpressure_hook::TransportBackpressureHook, backpressure_hook_shared::TransportBackpressureHookShared,
@@ -14,14 +13,14 @@ use crate::core::remoting_extension::RemotingExtensionConfig;
 #[test]
 fn factory_resolves_loopback_scheme() {
   let config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.loopback");
-  let transport = TransportFactory::build::<StdToolbox>(&config).expect("transport resolved");
+  let transport = TransportFactory::build(&config).expect("transport resolved");
   assert_eq!(transport.scheme(), "fraktor.loopback");
 }
 
 #[test]
 fn factory_rejects_unknown_scheme() {
   let config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.invalid");
-  match TransportFactory::build::<StdToolbox>(&config) {
+  match TransportFactory::build(&config) {
     | Ok(_) => panic!("expected unsupported scheme"),
     | Err(error) => match error {
       | TransportError::UnsupportedScheme(scheme) => assert_eq!(scheme, "fraktor.invalid"),
@@ -32,7 +31,7 @@ fn factory_rejects_unknown_scheme() {
 
 #[test]
 fn loopback_frames_include_length_and_correlation() {
-  let mut transport = LoopbackTransport::<StdToolbox>::default();
+  let mut transport = LoopbackTransport::default();
   let bind = TransportBind::new("127.0.0.1", Some(4100));
   let handle = transport.spawn_listener(&bind).expect("listener");
   let endpoint = TransportEndpoint::new("127.0.0.1:4100".into());
@@ -64,7 +63,7 @@ fn loopback_backpressure_hook_triggers_listener() {
     }
   }
 
-  let mut transport = LoopbackTransport::<StdToolbox>::default();
+  let mut transport = LoopbackTransport::default();
   let hook = TransportBackpressureHookShared::new(Box::new(RecordingHook));
   transport.install_backpressure_hook(hook);
   transport.emit_backpressure_for_test("loopback:test", BackpressureSignal::Apply, CorrelationId::from_u128(42));

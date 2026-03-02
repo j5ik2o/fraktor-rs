@@ -1,25 +1,21 @@
 //! Deserialized envelope waiting for delivery to the actor system.
 
-use core::marker::PhantomData;
-
 use fraktor_actor_rs::core::{actor::actor_path::ActorPath, event::stream::CorrelationId, messaging::AnyMessage};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::priority::OutboundPriority;
 use crate::core::remote_node_id::RemoteNodeId;
 
 /// Represents a fully decoded inbound message alongside routing metadata.
-pub struct InboundEnvelope<TB: RuntimeToolbox + 'static> {
+pub struct InboundEnvelope {
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
   message:     AnyMessage,
   sender_path: Option<ActorPath>,
   correlation: CorrelationId,
   priority:    OutboundPriority,
-  _marker:     PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
+impl InboundEnvelope {
   /// Creates a new inbound envelope.
   #[must_use]
   pub fn new(
@@ -30,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> InboundEnvelope<TB> {
     correlation: CorrelationId,
     priority: OutboundPriority,
   ) -> Self {
-    Self { recipient, remote_node, message, sender_path, correlation, priority, _marker: PhantomData }
+    Self { recipient, remote_node, message, sender_path, correlation, priority }
   }
 
   /// Returns the intended recipient path.

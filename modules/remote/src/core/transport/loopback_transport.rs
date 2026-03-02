@@ -5,10 +5,9 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
   backpressure_hook_shared::TransportBackpressureHookShared, inbound::TransportInboundShared,
@@ -17,14 +16,10 @@ use super::{
 };
 
 /// In-memory transport that records frames for assertions.
-///
-/// The transport is parameterized over a [`RuntimeToolbox`] to support both std and no_std
-/// environments. The toolbox determines which mutex type is used for the inbound handler.
-pub struct LoopbackTransport<TB: RuntimeToolbox + 'static> {
+pub struct LoopbackTransport {
   state:   LoopbackState,
   hook:    Option<TransportBackpressureHookShared>,
-  inbound: Option<TransportInboundShared<TB>>,
-  _marker: PhantomData<TB>,
+  inbound: Option<TransportInboundShared>,
 }
 
 const PRESSURE_THRESHOLD: usize = 64;
@@ -39,18 +34,17 @@ struct ListenerState {
   frames: Vec<Vec<u8>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for LoopbackTransport<TB> {
+impl Default for LoopbackTransport {
   fn default() -> Self {
     Self {
       state:   LoopbackState { listeners: BTreeMap::new(), channels: BTreeMap::new(), next_channel: 1 },
       hook:    None,
       inbound: None,
-      _marker: PhantomData,
     }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> LoopbackTransport<TB> {
+impl LoopbackTransport {
   fn encode_frame(payload: &[u8], correlation_id: CorrelationId) -> Vec<u8> {
     let header_len = 12_usize;
     let total = header_len + payload.len();
@@ -90,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> LoopbackTransport<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for LoopbackTransport<TB> {
+impl RemoteTransport for LoopbackTransport {
   fn scheme(&self) -> &str {
     "fraktor.loopback"
   }
@@ -135,7 +129,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for LoopbackTransport<TB>
     self.hook = Some(hook);
   }
 
-  fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared) {
     self.inbound = Some(handler);
   }
 }

@@ -12,12 +12,9 @@ use core::fmt;
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::{
-  core::{
-    runtime_toolbox::NoStdMutex,
-    sync::{ArcShared, SharedAccess},
-  },
-  std::runtime_toolbox::StdToolbox,
+use fraktor_utils_rs::core::{
+  runtime_toolbox::NoStdMutex,
+  sync::{ArcShared, SharedAccess},
 };
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
@@ -38,14 +35,13 @@ const CHANNEL_BUFFER_SIZE: usize = 256;
 
 /// Tokio-based TCP transport implementing the Pekko wire protocol.
 ///
-/// This transport is specialized for [`StdToolbox`] because it uses Tokio's async runtime
-/// and requires `Send + Sync` bounds on the inbound handler that are only available
-/// with standard library mutex implementations.
+/// This transport uses Tokio's async runtime and requires `Send + Sync` bounds
+/// on the inbound handler.
 pub struct TokioTcpTransport {
   state:    TokioTcpState,
   // hook と inbound は非同期タスクとの共有のため Arc<Mutex> を維持
   hook:     ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-  inbound:  ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
+  inbound:  ArcShared<NoStdMutex<Option<TransportInboundShared>>>,
   handle:   Handle,
   _runtime: Option<Runtime>,
 }
@@ -152,7 +148,7 @@ impl TokioTcpTransport {
     listener: TokioTcpListener,
     authority: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
+    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared>>>,
   ) {
     loop {
       match listener.accept().await {
@@ -180,7 +176,7 @@ impl TokioTcpTransport {
     authority: String,
     remote: String,
     hook: ArcShared<NoStdMutex<Option<TransportBackpressureHookShared>>>,
-    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared<StdToolbox>>>>,
+    inbound: ArcShared<NoStdMutex<Option<TransportInboundShared>>>,
   ) -> Result<(), TransportError> {
     let mut buffer = Vec::new();
     loop {
@@ -237,7 +233,7 @@ impl TokioTcpTransport {
   }
 }
 
-impl RemoteTransport<StdToolbox> for TokioTcpTransport {
+impl RemoteTransport for TokioTcpTransport {
   fn scheme(&self) -> &str {
     "fraktor.tcp"
   }
@@ -314,7 +310,7 @@ impl RemoteTransport<StdToolbox> for TokioTcpTransport {
     *self.hook.lock() = Some(hook);
   }
 
-  fn install_inbound_handler(&mut self, handler: TransportInboundShared<StdToolbox>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared) {
     *self.inbound.lock() = Some(handler);
   }
 }
