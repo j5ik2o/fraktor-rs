@@ -7,7 +7,7 @@ use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::ActorContext, error::ActorError, messaging::AnyMessageView};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,

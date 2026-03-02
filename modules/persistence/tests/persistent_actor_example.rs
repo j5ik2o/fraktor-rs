@@ -19,7 +19,7 @@ use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 type SharedValue = ArcShared<RuntimeMutex<i32>>;
 type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRef>>>;
 

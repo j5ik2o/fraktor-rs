@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex;
+use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,

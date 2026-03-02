@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced, journal_error::JournalError,
