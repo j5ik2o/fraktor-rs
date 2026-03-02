@@ -6,7 +6,6 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
   future::Future,
-  marker::PhantomData,
   pin::Pin,
   task::{Context, Poll, Waker},
 };
@@ -16,7 +15,7 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   snapshot::Snapshot, snapshot_actor_config::SnapshotActorConfig, snapshot_error::SnapshotError,
@@ -57,15 +56,14 @@ enum SnapshotInFlight {
 }
 
 /// Actor wrapper around a snapshot store implementation.
-pub struct SnapshotActor<S: SnapshotStore, TB: RuntimeToolbox + 'static> {
+pub struct SnapshotActor<S: SnapshotStore> {
   snapshot_store: S,
   in_flight:      Vec<SnapshotInFlight>,
   poll_scheduled: bool,
   config:         SnapshotActorConfig,
-  _marker:        PhantomData<TB>,
 }
 
-impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> SnapshotActor<S, TB>
+impl<S: SnapshotStore> SnapshotActor<S>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
@@ -81,7 +79,7 @@ where
   /// Creates a new snapshot actor with configuration.
   #[must_use]
   pub const fn new_with_config(snapshot_store: S, config: SnapshotActorConfig) -> Self {
-    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config, _marker: PhantomData }
+    Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config }
   }
 
   fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) {
@@ -112,7 +110,7 @@ where
   }
 }
 
-impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> Actor for SnapshotActor<S, TB>
+impl<S: SnapshotStore> Actor for SnapshotActor<S>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,

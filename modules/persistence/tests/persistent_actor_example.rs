@@ -19,12 +19,7 @@ use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
-
-type TB = NoStdToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 type SharedValue = ArcShared<RuntimeMutex<i32>>;
 type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRef>>>;
 
@@ -39,7 +34,7 @@ enum Event {
 }
 
 struct BatchActor {
-  context: PersistenceContext<BatchActor, TB>,
+  context: PersistenceContext<BatchActor>,
   value:   SharedValue,
 }
 
@@ -55,7 +50,7 @@ impl BatchActor {
   }
 }
 
-impl Eventsourced<TB> for BatchActor {
+impl Eventsourced for BatchActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -82,8 +77,8 @@ impl Eventsourced<TB> for BatchActor {
   }
 }
 
-impl PersistentActor<TB> for BatchActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for BatchActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }
@@ -107,8 +102,8 @@ impl Actor for Guardian {
     let value = self.value.clone();
     let child_refs = self.child_refs.clone();
     let props = persistent_props(move || BatchActor::new("batch-1", value.clone()));
-    let child = spawn_persistent::<TB>(ctx, &props)
-      .map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
+    let child =
+      spawn_persistent(ctx, &props).map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
     child_refs.lock().push(child);
     Ok(())
   }

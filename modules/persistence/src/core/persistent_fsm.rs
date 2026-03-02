@@ -6,7 +6,6 @@ mod tests;
 use core::any::Any;
 
 use fraktor_actor_rs::core::actor::ActorContext;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::persistent_actor::PersistentActor;
 
@@ -14,7 +13,7 @@ use crate::core::persistent_actor::PersistentActor;
 ///
 /// Implementors keep the FSM state and domain state inside the actor and define how
 /// persisted domain events are applied.
-pub trait PersistentFsm<TB: RuntimeToolbox + 'static>: PersistentActor<TB> {
+pub trait PersistentFsm: PersistentActor {
   /// FSM state type.
   type State: Send + Sync + 'static;
 

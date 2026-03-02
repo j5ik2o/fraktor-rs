@@ -12,11 +12,11 @@ use fraktor_actor_rs::core::{
   messaging::{AnyMessage, AnyMessageView},
   scheduler::{SchedulerCommand, SchedulerHandle},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
   journal_response::JournalResponse, persistence_error::PersistenceError,
-  persistence_extension_shared::PersistenceExtensionSharedGeneric, persistent_actor::PersistentActor,
+  persistence_extension_shared::PersistenceExtensionShared, persistent_actor::PersistentActor,
   persistent_actor_state::PersistentActorState, recovery_timed_out::RecoveryTimedOut,
   snapshot_response::SnapshotResponse, stash_overflow_strategy::StashOverflowStrategy,
 };
@@ -46,22 +46,20 @@ impl RecoveryTick {
 }
 
 /// Actor adapter that drives a persistent actor lifecycle.
-pub(crate) struct PersistentActorAdapter<A, TB: RuntimeToolbox + 'static> {
+pub(crate) struct PersistentActorAdapter<A> {
   actor:                   A,
   recovery_timeout_handle: Option<SchedulerHandle>,
   recovery_timeout_epoch:  u64,
-  _marker:                 core::marker::PhantomData<TB>,
 }
 
-impl<A, TB> PersistentActorAdapter<A, TB>
+impl<A> PersistentActorAdapter<A>
 where
-  A: PersistentActor<TB> + 'static,
-  TB: RuntimeToolbox + 'static,
+  A: PersistentActor + 'static,
 {
   /// Creates a new adapter around the provided persistent actor.
   #[must_use]
   pub(crate) const fn new(actor: A) -> Self {
-    Self { actor, recovery_timeout_handle: None, recovery_timeout_epoch: 0, _marker: core::marker::PhantomData }
+    Self { actor, recovery_timeout_handle: None, recovery_timeout_epoch: 0 }
   }
 
   fn cancel_recovery_timeout(&mut self, ctx: &ActorContext<'_>) {
@@ -218,16 +216,15 @@ where
   }
 }
 
-impl<A, TB> Actor for PersistentActorAdapter<A, TB>
+impl<A> Actor for PersistentActorAdapter<A>
 where
-  A: PersistentActor<TB> + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
+  A: PersistentActor + Sync + 'static,
 {
   fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let extension = ctx
       .system()
       .extended()
-      .extension_by_type::<PersistenceExtensionSharedGeneric<TB>>()
+      .extension_by_type::<PersistenceExtensionShared>()
       .ok_or_else(|| ActorError::fatal("persistence extension not registered"))?;
     let (journal_actor_ref, snapshot_actor_ref) =
       extension.with_read(|ext| (ext.journal_actor_ref(), ext.snapshot_actor_ref()));

@@ -1,7 +1,5 @@
 //! Actions derived from snapshot responses.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{eventsourced::Eventsourced, snapshot::Snapshot, snapshot_error::SnapshotError};
 
 /// Actions to apply on the actor after snapshot response handling.
@@ -15,7 +13,7 @@ pub(crate) enum SnapshotResponseAction {
 }
 
 impl SnapshotResponseAction {
-  pub(crate) fn apply<TB: RuntimeToolbox + 'static>(self, actor: &mut impl Eventsourced<TB>) {
+  pub(crate) fn apply(self, actor: &mut impl Eventsourced) {
     match self {
       | SnapshotResponseAction::None => {},
       | SnapshotResponseAction::ReceiveSnapshot(snapshot) => actor.receive_snapshot(&snapshot),

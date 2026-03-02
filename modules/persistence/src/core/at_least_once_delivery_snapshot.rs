@@ -5,20 +5,18 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::unconfirmed_delivery::UnconfirmedDelivery;
 
 /// Snapshot of current at-least-once delivery state.
-pub struct AtLeastOnceDeliverySnapshot<TB: RuntimeToolbox + 'static> {
+pub struct AtLeastOnceDeliverySnapshot {
   current_delivery_id: u64,
-  unconfirmed:         Vec<UnconfirmedDelivery<TB>>,
+  unconfirmed:         Vec<UnconfirmedDelivery>,
 }
 
-impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliverySnapshot<TB> {
+impl AtLeastOnceDeliverySnapshot {
   /// Creates a new snapshot.
   #[must_use]
-  pub const fn new(current_delivery_id: u64, unconfirmed: Vec<UnconfirmedDelivery<TB>>) -> Self {
+  pub const fn new(current_delivery_id: u64, unconfirmed: Vec<UnconfirmedDelivery>) -> Self {
     Self { current_delivery_id, unconfirmed }
   }
 
@@ -30,18 +28,18 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliverySnapshot<TB> {
 
   /// Returns the unconfirmed deliveries.
   #[must_use]
-  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery<TB>] {
+  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery] {
     &self.unconfirmed
   }
 
   /// Consumes the snapshot and returns the unconfirmed deliveries.
   #[must_use]
-  pub fn into_unconfirmed(self) -> Vec<UnconfirmedDelivery<TB>> {
+  pub fn into_unconfirmed(self) -> Vec<UnconfirmedDelivery> {
     self.unconfirmed
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for AtLeastOnceDeliverySnapshot<TB> {
+impl Clone for AtLeastOnceDeliverySnapshot {
   fn clone(&self) -> Self {
     Self { current_delivery_id: self.current_delivery_id, unconfirmed: self.unconfirmed.clone() }
   }

@@ -5,18 +5,13 @@ use fraktor_actor_rs::core::{
   error::SendError,
   messaging::AnyMessage,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-  time::TimerInstant,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared, time::TimerInstant};
 
 use crate::core::{
   at_least_once_delivery::AtLeastOnceDelivery, at_least_once_delivery_config::AtLeastOnceDeliveryConfig,
   persistence_error::PersistenceError, redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery,
 };
 
-type TB = NoStdToolbox;
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
@@ -50,7 +45,7 @@ fn create_failing_sender() -> ActorRef {
 
 #[test]
 fn delivery_ids_increment_and_confirm() {
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
   let id1 = delivery.next_delivery_id();
   let id2 = delivery.next_delivery_id();
 
@@ -68,14 +63,14 @@ fn delivery_ids_increment_and_confirm() {
 
 #[test]
 fn delivery_snapshot_roundtrip() {
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new("data");
   let timestamp = TimerInstant::from_ticks(1, Duration::from_secs(1));
   let id = delivery.next_delivery_id();
   delivery.add_unconfirmed(UnconfirmedDelivery::new(id, ActorRef::null(), payload, None, timestamp, 9));
 
   let snapshot = delivery.get_delivery_snapshot();
-  let mut restored = AtLeastOnceDelivery::<TB>::new(AtLeastOnceDeliveryConfig::default());
+  let mut restored = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
   let restore_now = TimerInstant::from_ticks(20, Duration::from_secs(1));
   restored.set_delivery_snapshot(snapshot, restore_now);
 
@@ -88,7 +83,7 @@ fn delivery_snapshot_roundtrip() {
 #[test]
 fn deliver_sends_message_and_tracks() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 5, 5, 5);
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(config);
+  let mut delivery = AtLeastOnceDelivery::new(config);
   let (destination, store) = create_sender();
 
   let id = delivery
@@ -106,7 +101,7 @@ fn deliver_sends_message_and_tracks() {
 #[test]
 fn deliver_rejects_when_max_unconfirmed_exceeded() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 1, 5, 5);
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(config);
+  let mut delivery = AtLeastOnceDelivery::new(config);
   let (destination, _store) = create_sender();
 
   let _ = delivery.deliver(destination.clone(), None, TimerInstant::from_ticks(0, Duration::from_secs(1)), |id| id);
@@ -117,7 +112,7 @@ fn deliver_rejects_when_max_unconfirmed_exceeded() {
 #[test]
 fn deliveries_to_redeliver_respects_burst_limit() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 5);
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(config);
+  let mut delivery = AtLeastOnceDelivery::new(config);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let timestamp = TimerInstant::from_ticks(0, Duration::from_secs(1));
 
@@ -133,13 +128,13 @@ fn deliveries_to_redeliver_respects_burst_limit() {
 #[test]
 fn redelivery_tick_detection() {
   let tick = RedeliveryTick;
-  assert!(AtLeastOnceDelivery::<TB>::is_redelivery_tick(&tick));
+  assert!(AtLeastOnceDelivery::is_redelivery_tick(&tick));
 }
 
 #[test]
 fn redelivery_tick_emits_warning_only_when_attempt_reaches_threshold() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(config);
+  let mut delivery = AtLeastOnceDelivery::new(config);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, _store) = create_sender();
   let resolution = Duration::from_secs(1);
@@ -164,7 +159,7 @@ fn redelivery_tick_emits_warning_only_when_attempt_reaches_threshold() {
 fn delivery_snapshot_restore_restarts_warning_counter() {
   let resolution = Duration::from_secs(1);
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
-  let mut original = AtLeastOnceDelivery::<TB>::new(config.clone());
+  let mut original = AtLeastOnceDelivery::new(config.clone());
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, _store) = create_sender();
   original.add_unconfirmed(UnconfirmedDelivery::new(
@@ -177,7 +172,7 @@ fn delivery_snapshot_restore_restarts_warning_counter() {
   ));
 
   let snapshot = original.get_delivery_snapshot();
-  let mut restored = AtLeastOnceDelivery::<TB>::new(config);
+  let mut restored = AtLeastOnceDelivery::new(config);
   restored.set_delivery_snapshot(snapshot, TimerInstant::from_ticks(10, resolution));
 
   let tick = RedeliveryTick;
@@ -197,7 +192,7 @@ fn delivery_snapshot_restore_restarts_warning_counter() {
 fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_interval() {
   let resolution = Duration::from_secs(1);
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(10), 10, 2, 5);
-  let mut original = AtLeastOnceDelivery::<TB>::new(config.clone());
+  let mut original = AtLeastOnceDelivery::new(config.clone());
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let (destination, store) = create_sender();
   original.add_unconfirmed(UnconfirmedDelivery::new(
@@ -210,7 +205,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
   ));
 
   let snapshot = original.get_delivery_snapshot();
-  let mut restored = AtLeastOnceDelivery::<TB>::new(config);
+  let mut restored = AtLeastOnceDelivery::new(config);
   let restore_now = TimerInstant::from_ticks(5, resolution);
   restored.set_delivery_snapshot(snapshot, restore_now);
 
@@ -225,7 +220,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
 #[test]
 fn redelivery_tick_propagates_send_failure() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
-  let mut delivery = AtLeastOnceDelivery::<TB>::new(config);
+  let mut delivery = AtLeastOnceDelivery::new(config);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
   let resolution = Duration::from_secs(1);
   let timestamp = TimerInstant::from_ticks(0, resolution);

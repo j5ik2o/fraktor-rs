@@ -11,9 +11,9 @@ use core::{any::Any, time::Duration};
 
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
 use fraktor_persistence_rs::core::{
-  AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, AtLeastOnceDeliveryGeneric, RedeliveryTick, UnconfirmedDelivery,
+  AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 /// Helper function to create a test payload.
 fn create_payload<T: Any + Send + Sync + 'static>(value: T) -> ArcShared<dyn Any + Send + Sync> {
@@ -33,7 +33,7 @@ fn now() -> TimerInstant {
 #[test]
 fn test_basic_delivery_tracking() {
   // デフォルト設定で AtLeastOnceDelivery を作成
-  let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
 
   // 初期状態の確認
   assert_eq!(delivery.current_delivery_id(), 1);
@@ -61,7 +61,7 @@ fn test_basic_delivery_tracking() {
 
 #[test]
 fn test_delivery_confirmation() {
-  let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
 
   // 複数の配信を追加
   for i in 1..=3 {
@@ -93,7 +93,7 @@ fn test_delivery_confirmation() {
 fn test_max_unconfirmed_enforcement() {
   // max_unconfirmed = 3 の設定を作成
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(5), 3, 10, 5);
-  let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(config);
 
   // 最大数まで追加
   for _ in 0..3 {
@@ -114,7 +114,7 @@ fn test_max_unconfirmed_enforcement() {
 #[test]
 fn test_snapshot_save_and_restore() {
   // アクター1: 配信を追跡
-  let mut delivery1: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery1: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
 
   for i in 1..=3 {
     let id = delivery1.next_delivery_id();
@@ -130,7 +130,7 @@ fn test_snapshot_save_and_restore() {
   let snapshot = delivery1.get_delivery_snapshot();
 
   // アクター2: スナップショットからリカバリ
-  let mut delivery2: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery2: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
   delivery2.set_delivery_snapshot(snapshot, now());
 
   // 状態が復元されていることを確認
@@ -147,19 +147,19 @@ fn test_redelivery_tick_detection() {
   let tick_any: &dyn Any = &tick;
 
   // RedeliveryTick であることを検出
-  assert!(AtLeastOnceDeliveryGeneric::<NoStdToolbox>::is_redelivery_tick(tick_any));
+  assert!(AtLeastOnceDelivery::is_redelivery_tick(tick_any));
 
   // 他のメッセージは検出されない
   let other_message = "not a tick";
   let other_any: &dyn Any = &other_message;
-  assert!(!AtLeastOnceDeliveryGeneric::<NoStdToolbox>::is_redelivery_tick(other_any));
+  assert!(!AtLeastOnceDelivery::is_redelivery_tick(other_any));
 }
 
 #[test]
 fn test_deliveries_to_redeliver() {
   // redelivery_burst_limit = 2 の設定（now() で overdue になるよう interval を短くする）
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_millis(200), 100, 2, 5);
-  let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(config);
 
   // 5つの配信を追加
   for i in 1..=5 {
@@ -179,7 +179,7 @@ fn test_deliveries_to_redeliver() {
 #[test]
 fn test_config_accessors() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(30), 500, 25, 7);
-  let delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(config);
+  let delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(config);
 
   assert_eq!(delivery.config().redeliver_interval(), Duration::from_secs(30));
   assert_eq!(delivery.config().max_unconfirmed(), 500);
@@ -189,7 +189,7 @@ fn test_config_accessors() {
 
 #[test]
 fn test_delivery_with_sender() {
-  let mut delivery: AtLeastOnceDelivery<NoStdToolbox> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
 
   let id = delivery.next_delivery_id();
   let sender = null_actor_ref();

@@ -2,47 +2,42 @@
 
 use fraktor_actor_rs::core::extension::Extension;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
-use crate::core::persistence_extension::PersistenceExtensionGeneric;
+use crate::core::persistence_extension::PersistenceExtension;
 
 /// Shared wrapper for a persistence extension instance.
-pub struct PersistenceExtensionSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<PersistenceExtensionGeneric<TB>>>,
+pub struct PersistenceExtensionShared {
+  inner: ArcShared<RuntimeMutex<PersistenceExtension>>,
 }
 
-/// Type alias using the default toolbox.
-pub type PersistenceExtensionShared = PersistenceExtensionSharedGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> PersistenceExtensionSharedGeneric<TB> {
+impl PersistenceExtensionShared {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
-  pub fn new(extension: PersistenceExtensionGeneric<TB>) -> Self {
+  pub fn new(extension: PersistenceExtension) -> Self {
     let mutex = RuntimeMutex::new(extension);
     Self { inner: ArcShared::new(mutex) }
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for PersistenceExtensionSharedGeneric<TB> {
+impl Clone for PersistenceExtensionShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<PersistenceExtensionGeneric<TB>>
-  for PersistenceExtensionSharedGeneric<TB>
-{
-  fn with_read<R>(&self, f: impl FnOnce(&PersistenceExtensionGeneric<TB>) -> R) -> R {
+impl SharedAccess<PersistenceExtension> for PersistenceExtensionShared {
+  fn with_read<R>(&self, f: impl FnOnce(&PersistenceExtension) -> R) -> R {
     let guard = self.inner.lock();
-    f(&*guard)
+    f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut PersistenceExtensionGeneric<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut PersistenceExtension) -> R) -> R {
     let mut guard = self.inner.lock();
-    f(&mut *guard)
+    f(&mut guard)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension for PersistenceExtensionSharedGeneric<TB> {}
+impl Extension for PersistenceExtensionShared {}

@@ -7,10 +7,7 @@ use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::ActorContext, error::ActorError, messaging::AnyMessageView};
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -23,11 +20,11 @@ const DEFER_DURING_RECOVERY_PANIC: &str =
   "Cannot defer during replay. Events can be deferred when receiving RecoveryCompleted or later.";
 
 /// Persistent actor interface.
-pub trait PersistentActor<TB: RuntimeToolbox + 'static>: Eventsourced<TB> + Sized
+pub trait PersistentActor: Eventsourced + Sized
 where
   Self: 'static, {
   /// Returns the mutable persistence context.
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB>;
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self>;
 
   /// Persists a single event and stashes commands.
   fn persist<E: Any + Send + Sync + 'static>(
@@ -258,14 +255,14 @@ where
   /// Handles journal responses by delegating to the base.
   fn handle_journal_response(&mut self, response: &JournalResponse) {
     let action = self.persistence_context().handle_journal_response(response);
-    action.apply::<TB>(self);
+    action.apply(self);
   }
 
   /// Handles snapshot responses by delegating to the base.
   fn handle_snapshot_response(&mut self, response: &SnapshotResponse, ctx: &mut ActorContext<'_>) {
     let sender = ctx.self_ref();
     let action = self.persistence_context().handle_snapshot_response(response, sender);
-    action.apply::<TB>(self);
+    action.apply(self);
   }
 
   /// Forwards command handling to the actor.

@@ -7,7 +7,7 @@ use alloc::{format, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::actor_ref::ActorRef, messaging::AnyMessage};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use crate::core::{
   at_least_once_delivery_config::AtLeastOnceDeliveryConfig,
@@ -16,16 +16,13 @@ use crate::core::{
 };
 
 /// At-least-once delivery implementation.
-pub struct AtLeastOnceDeliveryGeneric<TB: RuntimeToolbox + 'static> {
+pub struct AtLeastOnceDelivery {
   config:          AtLeastOnceDeliveryConfig,
   delivery_seq_nr: u64,
-  unconfirmed:     Vec<UnconfirmedDelivery<TB>>,
+  unconfirmed:     Vec<UnconfirmedDelivery>,
 }
 
-/// Type alias using default naming.
-pub type AtLeastOnceDelivery<TB> = AtLeastOnceDeliveryGeneric<TB>;
-
-impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
+impl AtLeastOnceDelivery {
   /// Creates a new delivery tracker.
   #[must_use]
   pub const fn new(config: AtLeastOnceDeliveryConfig) -> Self {
@@ -65,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
   }
 
   /// Adds an unconfirmed delivery.
-  pub fn add_unconfirmed(&mut self, delivery: UnconfirmedDelivery<TB>) {
+  pub fn add_unconfirmed(&mut self, delivery: UnconfirmedDelivery) {
     self.unconfirmed.push(delivery);
   }
 
@@ -81,13 +78,13 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
 
   /// Returns the unconfirmed deliveries.
   #[must_use]
-  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery<TB>] {
+  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery] {
     &self.unconfirmed
   }
 
   /// Returns deliveries that should be redelivered according to overdue deadline and burst limit.
   #[must_use]
-  pub fn deliveries_to_redeliver(&self, now: TimerInstant) -> Vec<UnconfirmedDelivery<TB>> {
+  pub fn deliveries_to_redeliver(&self, now: TimerInstant) -> Vec<UnconfirmedDelivery> {
     let redeliver_interval = self.config.redeliver_interval();
     let limit = self.config.redelivery_burst_limit().min(self.unconfirmed.len());
     self
@@ -101,7 +98,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
 
   /// Returns a snapshot of current delivery state.
   #[must_use]
-  pub fn get_delivery_snapshot(&self) -> AtLeastOnceDeliverySnapshot<TB> {
+  pub fn get_delivery_snapshot(&self) -> AtLeastOnceDeliverySnapshot {
     AtLeastOnceDeliverySnapshot::new(self.delivery_seq_nr, self.unconfirmed.clone())
   }
 
@@ -109,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
   ///
   /// Restored entries are rebuilt so that redelivery attempts restart from zero
   /// and the next redelivery tick can resend them.
-  pub fn set_delivery_snapshot(&mut self, snapshot: AtLeastOnceDeliverySnapshot<TB>, now: TimerInstant) {
+  pub fn set_delivery_snapshot(&mut self, snapshot: AtLeastOnceDeliverySnapshot, now: TimerInstant) {
     self.delivery_seq_nr = snapshot.current_delivery_id();
     let redelivery_base_timestamp = Self::redelivery_base_timestamp(now, self.config.redeliver_interval());
     self.unconfirmed = snapshot
@@ -142,14 +139,14 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     &mut self,
     message: &dyn Any,
     now: TimerInstant,
-  ) -> Result<Option<UnconfirmedWarning<TB>>, PersistenceError> {
+  ) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
     if !Self::is_redelivery_tick(message) {
       return Ok(None);
     }
     self.redeliver_overdue(now)
   }
 
-  fn redeliver_overdue(&mut self, now: TimerInstant) -> Result<Option<UnconfirmedWarning<TB>>, PersistenceError> {
+  fn redeliver_overdue(&mut self, now: TimerInstant) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
     let mut warnings = Vec::new();
     let redeliver_interval = self.config.redeliver_interval();
     let warning_attempt = self.config.warn_after_number_of_unconfirmed_attempts();
@@ -172,11 +169,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     if warnings.is_empty() { Ok(None) } else { Ok(Some(UnconfirmedWarning::new(warnings))) }
   }
 
-  fn is_overdue(
-    delivery: &UnconfirmedDelivery<TB>,
-    now: TimerInstant,
-    redeliver_interval: core::time::Duration,
-  ) -> bool {
+  fn is_overdue(delivery: &UnconfirmedDelivery, now: TimerInstant, redeliver_interval: core::time::Duration) -> bool {
     if delivery.attempt() == 0 {
       return true;
     }
@@ -232,7 +225,7 @@ impl<TB: RuntimeToolbox + 'static> AtLeastOnceDeliveryGeneric<TB> {
     Ok(delivery_id)
   }
 
-  fn send_delivery(delivery: &UnconfirmedDelivery<TB>) -> Result<(), PersistenceError> {
+  fn send_delivery(delivery: &UnconfirmedDelivery) -> Result<(), PersistenceError> {
     let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned());
     delivery.destination().tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
     Ok(())

@@ -23,12 +23,7 @@ use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
-
-type TB = NoStdToolbox;
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 type SharedValue = ArcShared<RuntimeMutex<i32>>;
 type SharedFlag = ArcShared<RuntimeMutex<bool>>;
 type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRef>>>;
@@ -44,7 +39,7 @@ enum Event {
 }
 
 struct CounterActor {
-  context:           PersistenceContext<CounterActor, TB>,
+  context:           PersistenceContext<CounterActor>,
   value:             SharedValue,
   recovery_complete: SharedFlag,
 }
@@ -61,7 +56,7 @@ impl CounterActor {
   }
 }
 
-impl Eventsourced<TB> for CounterActor {
+impl Eventsourced for CounterActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -95,8 +90,8 @@ impl Eventsourced<TB> for CounterActor {
   }
 }
 
-impl PersistentActor<TB> for CounterActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for CounterActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }
@@ -132,7 +127,7 @@ impl Actor for Guardian {
       let persistence_id = setup.persistence_id.clone();
       let props =
         persistent_props(move || CounterActor::new(&persistence_id, value.clone(), recovery_complete.clone()));
-      let child = spawn_persistent::<TB>(ctx, &props)
+      let child = spawn_persistent(ctx, &props)
         .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
       refs.push(child);
     }

@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   eventsourced::Eventsourced, in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
@@ -26,8 +26,6 @@ use crate::core::{
   stash_overflow_strategy::StashOverflowStrategy,
 };
 
-type TB = NoStdToolbox;
-
 struct NoopActor;
 
 impl Actor for NoopActor {
@@ -37,7 +35,7 @@ impl Actor for NoopActor {
 }
 
 struct DummyPersistentActor {
-  context:                 PersistenceContext<DummyPersistentActor, TB>,
+  context:                 PersistenceContext<DummyPersistentActor>,
   timed_out_count:         usize,
   recovery_failure_count:  usize,
   last_recovery_failure:   Option<PersistenceError>,
@@ -66,7 +64,7 @@ impl DummyPersistentActor {
   }
 }
 
-impl Eventsourced<TB> for DummyPersistentActor {
+impl Eventsourced for DummyPersistentActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -97,8 +95,8 @@ impl Eventsourced<TB> for DummyPersistentActor {
   }
 }
 
-impl PersistentActor<TB> for DummyPersistentActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for DummyPersistentActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 
@@ -112,7 +110,7 @@ impl PersistentActor<TB> for DummyPersistentActor {
 }
 
 struct MismatchPersistentActor {
-  context: PersistenceContext<MismatchPersistentActor, TB>,
+  context: PersistenceContext<MismatchPersistentActor>,
 }
 
 impl MismatchPersistentActor {
@@ -121,7 +119,7 @@ impl MismatchPersistentActor {
   }
 }
 
-impl Eventsourced<TB> for MismatchPersistentActor {
+impl Eventsourced for MismatchPersistentActor {
   fn persistence_id(&self) -> &str {
     "pid-1"
   }
@@ -139,8 +137,8 @@ impl Eventsourced<TB> for MismatchPersistentActor {
   }
 }
 
-impl PersistentActor<TB> for MismatchPersistentActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for MismatchPersistentActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }
@@ -161,10 +159,7 @@ fn register_noop_actor_ref(system: &ActorSystem, name: &str) -> ActorRef {
   cell.actor_ref()
 }
 
-fn prepare_processing_commands(
-  adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContext<'_>,
-) {
+fn prepare_processing_commands(adapter: &mut PersistentActorAdapter<DummyPersistentActor>, ctx: &mut ActorContext<'_>) {
   prepare_recovery_started(adapter, ctx);
   let _ = adapter.actor.persistence_context().handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
@@ -176,17 +171,14 @@ fn prepare_processing_commands(
     .handle_journal_response(&JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
 }
 
-fn prepare_recovery_started(
-  adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContext<'_>,
-) {
+fn prepare_recovery_started(adapter: &mut PersistentActorAdapter<DummyPersistentActor>, ctx: &mut ActorContext<'_>) {
   let journal_ref = register_noop_actor_ref(ctx.system(), "journal");
   let snapshot_ref = register_noop_actor_ref(ctx.system(), "snapshot");
   adapter.actor.persistence_context().bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
   adapter.actor.persistence_context().start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
 }
 
-fn prepare_recovering(adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>, ctx: &mut ActorContext<'_>) {
+fn prepare_recovering(adapter: &mut PersistentActorAdapter<DummyPersistentActor>, ctx: &mut ActorContext<'_>) {
   prepare_recovery_started(adapter, ctx);
   let _ = adapter.actor.persistence_context().handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
@@ -194,10 +186,7 @@ fn prepare_recovering(adapter: &mut PersistentActorAdapter<DummyPersistentActor,
   );
 }
 
-fn prepare_stashing_commands(
-  adapter: &mut PersistentActorAdapter<DummyPersistentActor, TB>,
-  ctx: &mut ActorContext<'_>,
-) {
+fn prepare_stashing_commands(adapter: &mut PersistentActorAdapter<DummyPersistentActor>, ctx: &mut ActorContext<'_>) {
   prepare_processing_commands(adapter, ctx);
   adapter.actor.persist(ctx, 1_i32, |_actor, _event| {});
   adapter.actor.flush_batch(ctx).expect("flush batch");
@@ -209,7 +198,7 @@ fn adapter_pre_start_fails_without_extension() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
 
   let result = adapter.pre_start(&mut ctx);
   assert!(matches!(result, Err(ActorError::Fatal(_))));
@@ -233,7 +222,7 @@ fn adapter_pre_start_binds_context() {
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
 
   adapter.pre_start(&mut ctx).expect("pre_start");
 
@@ -259,7 +248,7 @@ fn adapter_pre_start_schedules_recovery_timeout() {
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
 
   adapter.pre_start(&mut ctx).expect("pre_start");
 
@@ -284,7 +273,7 @@ fn adapter_pre_start_rejects_persistence_id_mismatch() {
 
   let mut ctx = build_context(&system);
   let actor = MismatchPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
 
   let result = adapter.pre_start(&mut ctx);
   assert!(matches!(result, Err(ActorError::Fatal(_))));
@@ -308,7 +297,7 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   adapter.pre_start(&mut ctx).expect("pre_start");
 
   let snapshot_handle_raw = adapter.recovery_timeout_handle.as_ref().expect("snapshot handle").raw();
@@ -332,7 +321,7 @@ fn adapter_forwards_recovery_timed_out_signal() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   let message = fraktor_actor_rs::core::messaging::AnyMessage::new(RecoveryTimedOut::new("pid-1"));
 
   let result = adapter.receive(&mut ctx, message.as_view());
@@ -346,7 +335,7 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
   let message = AnyMessage::new(super::RecoveryTick::waiting_snapshot(adapter.recovery_timeout_epoch));
 
@@ -366,7 +355,7 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_event() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
   let message = AnyMessage::new(super::RecoveryTick::waiting_event(adapter.recovery_timeout_epoch));
 
@@ -399,7 +388,7 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
 
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   adapter.pre_start(&mut ctx).expect("pre_start");
 
   let snapshot_response =
@@ -424,7 +413,7 @@ fn adapter_propagates_unstash_all_error() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   ctx.system().state().remove_cell(&ctx.pid());
   let message = AnyMessage::new(JournalResponse::WriteMessagesSuccessful {
@@ -443,7 +432,7 @@ fn adapter_stashes_command_until_defer_completes_after_persist_unfenced() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   adapter.actor.persist_unfenced(&mut ctx, 1_i32, |_actor, _event| {});
   adapter.actor.defer(&mut ctx, 2_i32, |_actor, _event| {});
@@ -474,7 +463,7 @@ fn adapter_stashes_command_between_write_message_success_and_write_messages_succ
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   adapter.actor.persist(&mut ctx, 1_i32, |_actor, _event| {});
   adapter.actor.flush_batch(&mut ctx).expect("flush");
@@ -512,7 +501,7 @@ fn adapter_does_not_stash_command_during_persist_all_async() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   adapter.actor.persist_all_async(&mut ctx, vec![1_i32, 2_i32], |_actor, _event| {});
   adapter.actor.flush_batch(&mut ctx).expect("flush");
@@ -532,7 +521,7 @@ fn adapter_stashes_command_during_recovery_started() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(123_i32);
@@ -547,7 +536,7 @@ fn adapter_stashes_command_during_recovering() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(456_i32);
@@ -562,7 +551,7 @@ fn adapter_unstash_all_on_recovery_success() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(789_i32);
@@ -582,7 +571,7 @@ fn adapter_unstash_all_on_highest_sequence_nr() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(790_i32);
@@ -603,7 +592,7 @@ fn adapter_stops_on_replay_messages_failure_during_recovery() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
   let message = AnyMessage::new(JournalResponse::ReplayMessagesFailure {
     cause: JournalError::ReadFailed("replay failed".to_string()),
@@ -623,7 +612,7 @@ fn adapter_stops_on_highest_sequence_nr_failure_during_recovery() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
   let message = AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
     persistence_id: "pid-1".to_string(),
@@ -645,7 +634,7 @@ fn adapter_stops_on_write_message_failure() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(791_i32);
@@ -670,7 +659,7 @@ fn adapter_ignores_write_message_failure_when_instance_id_mismatches() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let mismatched_instance_id = adapter.actor.persistence_context().instance_id().wrapping_add(1);
   let message = AnyMessage::new(JournalResponse::WriteMessageFailure {
@@ -690,7 +679,7 @@ fn adapter_unstash_all_on_write_message_rejected() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(792_i32);
@@ -715,7 +704,7 @@ fn adapter_keeps_stash_on_write_messages_failed_with_positive_write_count() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(793_i32);
@@ -738,7 +727,7 @@ fn adapter_unstash_all_on_write_messages_failed_with_zero_write_count() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(794_i32);
@@ -762,7 +751,7 @@ fn adapter_ignores_write_messages_successful_when_instance_id_mismatches() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(795_i32);
@@ -783,7 +772,7 @@ fn adapter_ignores_stale_write_messages_successful_after_processing_resumes() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_processing_commands(&mut adapter, &mut ctx);
   ctx.system().state().remove_cell(&ctx.pid());
   let message = AnyMessage::new(JournalResponse::WriteMessagesSuccessful {
@@ -801,7 +790,7 @@ fn adapter_ignores_write_messages_failed_with_zero_write_count_when_instance_id_
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(796_i32);
@@ -824,7 +813,7 @@ fn adapter_applies_drop_strategy_only_on_stash_overflow() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(123_i32);
@@ -839,7 +828,7 @@ fn adapter_applies_fail_strategy_on_stash_overflow() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Fail, 0);
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let pipeline = MessageInvokerPipeline::new();
   let command = AnyMessage::new(123_i32);
@@ -855,7 +844,7 @@ fn adapter_does_not_apply_drop_strategy_to_non_overflow_stash_error() {
   let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::with_stash_settings(StashOverflowStrategy::Drop, 0);
-  let mut adapter = PersistentActorAdapter::<_, TB>::new(actor);
+  let mut adapter = PersistentActorAdapter::new(actor);
   prepare_stashing_commands(&mut adapter, &mut ctx);
   let command = AnyMessage::new(321_i32);
 

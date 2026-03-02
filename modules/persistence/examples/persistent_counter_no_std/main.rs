@@ -22,9 +22,7 @@ use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
-
-type TB = NoStdToolbox;
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 struct Start;
 
@@ -39,7 +37,7 @@ enum Event {
 }
 
 struct CounterActor {
-  context: PersistenceContext<CounterActor, TB>,
+  context: PersistenceContext<CounterActor>,
   value:   i32,
 }
 
@@ -54,7 +52,7 @@ impl CounterActor {
   }
 }
 
-impl Eventsourced<TB> for CounterActor {
+impl Eventsourced for CounterActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -84,8 +82,8 @@ impl Eventsourced<TB> for CounterActor {
   }
 }
 
-impl PersistentActor<TB> for CounterActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for CounterActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }
@@ -99,7 +97,7 @@ impl Actor for GuardianActor {
     }
 
     let props = persistent_props(|| CounterActor::new("counter-1"));
-    let child = spawn_persistent::<TB>(ctx, &props)
+    let child = spawn_persistent(ctx, &props)
       .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
     child.tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send command failed"))?;
     Ok(())

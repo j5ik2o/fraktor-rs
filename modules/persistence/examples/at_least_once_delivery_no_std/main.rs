@@ -13,9 +13,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessage,
 };
 use fraktor_persistence_rs::core::{AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick};
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
-
-type TB = NoStdToolbox;
+use fraktor_utils_rs::core::time::TimerInstant;
 
 struct NoopSender;
 
@@ -27,7 +25,7 @@ impl ActorRefSender for NoopSender {
 
 fn main() {
   // 日本語コメント: デフォルト設定でトラッカーを作成する
-  let mut delivery: AtLeastOnceDelivery<TB> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut delivery: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
 
   // 日本語コメント: 配送メッセージを送信し、確認する
   let now = TimerInstant::from_ticks(10, Duration::from_secs(1));
@@ -42,6 +40,6 @@ fn main() {
 
   // 日本語コメント: スナップショットを取得して復元する
   let snapshot = delivery.get_delivery_snapshot();
-  let mut restored: AtLeastOnceDelivery<TB> = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
+  let mut restored: AtLeastOnceDelivery = AtLeastOnceDelivery::new(AtLeastOnceDeliveryConfig::default());
   restored.set_delivery_snapshot(snapshot, now);
 }
