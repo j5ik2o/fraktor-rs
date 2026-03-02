@@ -1,1 +1,0 @@
-../../references/okite-ai/.agent/rules/prefer-immutability.md
