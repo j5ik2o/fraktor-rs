@@ -9,7 +9,6 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, QueueError},
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
 };
 
 use super::{

@@ -5,7 +5,7 @@ use core::cmp;
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 
 use super::{UserQueueShared, mailbox_queue_state::QueueState};
@@ -39,7 +39,7 @@ where
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let sync_queue = SyncQueue::new(backend);
     let mutex = RuntimeMutex::new(sync_queue);
-    let queue = UserQueueShared::<T, TB>::new(ArcShared::new(mutex));
+    let queue = UserQueueShared::<T>::new(ArcShared::new(mutex));
     let state_mutex = RuntimeMutex::new(QueueState::new(queue));
     let state = ArcShared::new(state_mutex);
     Self { state }

@@ -7,7 +7,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::ArcShared,
 };
 

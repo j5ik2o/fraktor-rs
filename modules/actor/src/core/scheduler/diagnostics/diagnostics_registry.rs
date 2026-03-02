@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 
 use super::SchedulerDiagnosticsEvent;
@@ -33,7 +33,7 @@ pub(crate) struct DiagnosticsBufferGeneric<TB: RuntimeToolbox + 'static> {
 pub(crate) type DiagnosticsBuffer = DiagnosticsBufferGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> DiagnosticsBufferGeneric<TB> {
-  pub(crate) fn new(capacity: usize) -> Self {
+  pub(crate) const fn new(capacity: usize) -> Self {
     Self { queue: RuntimeMutex::new(VecDeque::new()), capacity, _marker: PhantomData }
   }
 

@@ -14,7 +14,7 @@ use fraktor_utils_rs::core::{
     wait::WaitShared,
   },
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
   timing::delay::{DelayFuture, DelayProvider},
 };
 

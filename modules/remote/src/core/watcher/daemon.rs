@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{command::RemoteWatcherCommand, heartbeat::Heartbeat, heartbeat_rsp::HeartbeatRsp};
 use crate::core::{

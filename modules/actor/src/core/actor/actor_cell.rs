@@ -8,7 +8,7 @@ use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, WeakShared, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess, WeakShared},
 };
 use portable_atomic::{AtomicBool, Ordering};
 

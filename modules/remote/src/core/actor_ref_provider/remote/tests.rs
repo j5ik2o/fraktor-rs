@@ -19,7 +19,7 @@ use fraktor_actor_rs::core::{
   system::{ActorSystemConfig, ActorSystemGeneric, remote::RemoteWatchHook},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::{ArcShared, SharedAccess},
 };
 

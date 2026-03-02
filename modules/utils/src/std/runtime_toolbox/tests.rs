@@ -2,7 +2,7 @@ use super::{StdMutex, StdRwLock};
 use crate::{
   core::{
     runtime_toolbox::{RuntimeMutex, RuntimeRwLock},
-    sync::{sync_mutex_like::SyncMutexLike, sync_rwlock_like::SyncRwLockLike},
+    sync::sync_rwlock_like::SyncRwLockLike,
   },
   std::{StdSyncMutex, StdSyncRwLock},
 };

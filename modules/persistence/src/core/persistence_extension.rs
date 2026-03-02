@@ -13,10 +13,7 @@ use fraktor_actor_rs::core::{
   props::PropsGeneric,
   system::ActorSystemGeneric,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{RuntimeMutex, RuntimeToolbox};
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,
@@ -99,7 +96,7 @@ where
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
-  fn new(journal: J) -> Self {
+  const fn new(journal: J) -> Self {
     Self { inner: RuntimeMutex::new(JournalActor::new(journal)) }
   }
 }
@@ -131,7 +128,7 @@ where
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
-  fn new(snapshot_store: S) -> Self {
+  const fn new(snapshot_store: S) -> Self {
     Self { inner: RuntimeMutex::new(SnapshotActor::new(snapshot_store)) }
   }
 }

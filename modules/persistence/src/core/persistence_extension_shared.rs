@@ -3,7 +3,7 @@
 use fraktor_actor_rs::core::extension::Extension;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::persistence_extension::PersistenceExtensionGeneric;

@@ -8,7 +8,7 @@ use core::sync::atomic::AtomicUsize;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 use portable_atomic::{AtomicU64, Ordering};
 
