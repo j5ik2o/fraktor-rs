@@ -11,10 +11,7 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   in_memory_snapshot_store::InMemorySnapshotStore, snapshot_actor::SnapshotActor,
@@ -23,7 +20,6 @@ use crate::core::{
   snapshot_selection_criteria::SnapshotSelectionCriteria,
 };
 
-type TB = NoStdToolbox;
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
@@ -181,7 +177,7 @@ fn snapshot_actor_save_and_load_responses() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
-  let mut actor = SnapshotActor::<InMemorySnapshotStore, TB>::new(InMemorySnapshotStore::new());
+  let mut actor = SnapshotActor::<InMemorySnapshotStore>::new(InMemorySnapshotStore::new());
   let (sender, store) = create_sender();
   let metadata = SnapshotMetadata::new("pid-1", 1, 10);
   let payload = ArcShared::new(1_i32);
@@ -230,7 +226,7 @@ fn snapshot_actor_pending_does_not_emit_failure() {
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
   let config = SnapshotActorConfig::new(0);
-  let mut actor = SnapshotActor::<PendingSnapshotStore, TB>::new_with_config(PendingSnapshotStore, config);
+  let mut actor = SnapshotActor::<PendingSnapshotStore>::new_with_config(PendingSnapshotStore, config);
   let (sender, store) = create_sender();
 
   let load = SnapshotMessage::LoadSnapshot {
@@ -251,7 +247,7 @@ fn snapshot_actor_retry_max_exceeded_on_errors() {
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
   let config = SnapshotActorConfig::new(1);
-  let mut actor = SnapshotActor::<RetrySnapshotStore, TB>::new_with_config(RetrySnapshotStore::new(2), config);
+  let mut actor = SnapshotActor::<RetrySnapshotStore>::new_with_config(RetrySnapshotStore::new(2), config);
   let (sender, store) = create_sender();
   let metadata = SnapshotMetadata::new("pid-1", 1, 10);
   let payload = ArcShared::new(1_i32);

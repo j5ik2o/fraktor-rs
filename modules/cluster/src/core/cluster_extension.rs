@@ -13,13 +13,13 @@ use fraktor_actor_rs::core::{
   system::{ActorSystem, ActorSystemWeak},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
-  grain::{GrainMetrics, GrainMetricsSharedGeneric, GrainMetricsSnapshot},
+  grain::{GrainMetrics, GrainMetricsShared, GrainMetricsSnapshot},
   identity::IdentitySetupError,
   membership::NodeStatus,
   placement::ActivatedKind,
@@ -28,18 +28,18 @@ use crate::core::{
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
 
 /// Internal subscriber that applies topology updates to ClusterCore.
-struct ClusterTopologySubscriber<TB: RuntimeToolbox + 'static> {
-  core:         ArcShared<RuntimeMutex<ClusterCore<TB>>>,
+struct ClusterTopologySubscriber {
+  core:         ArcShared<RuntimeMutex<ClusterCore>>,
   event_stream: EventStreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterTopologySubscriber<TB> {
-  const fn new(core: ArcShared<RuntimeMutex<ClusterCore<TB>>>, event_stream: EventStreamShared) -> Self {
+impl ClusterTopologySubscriber {
+  const fn new(core: ArcShared<RuntimeMutex<ClusterCore>>, event_stream: EventStreamShared) -> Self {
     Self { core, event_stream }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber for ClusterTopologySubscriber<TB> {
+impl EventStreamSubscriber for ClusterTopologySubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     // cluster 拡張イベントの TopologyUpdated のみを処理
     // （既に EventStream 経由で受信したイベントなので再 publish しない）
@@ -181,10 +181,10 @@ impl EventStreamSubscriber for NoopMemberStatusSubscriber {
 }
 
 /// Cluster extension registered into `ActorSystem`.
-pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<RuntimeMutex<ClusterCore<TB>>>,
+pub struct ClusterExtension {
+  core: ArcShared<RuntimeMutex<ClusterCore>>,
   event_stream: EventStreamShared,
-  grain_metrics: Option<GrainMetricsSharedGeneric<TB>>,
+  grain_metrics: Option<GrainMetricsShared>,
   subscription: RuntimeMutex<Option<EventStreamSubscription>>,
   terminated: RuntimeMutex<bool>,
   self_member_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
@@ -192,16 +192,15 @@ pub struct ClusterExtensionGeneric<TB: RuntimeToolbox + 'static> {
   _system: ActorSystemWeak,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
+impl ClusterExtension {
   /// Creates the extension from injected dependencies.
   ///
   /// Uses a weak reference to the actor system to avoid circular references.
   #[must_use]
-  pub fn new(system: &ActorSystem, core: ClusterCore<TB>) -> Self {
+  pub fn new(system: &ActorSystem, core: ClusterCore) -> Self {
     let event_stream = system.event_stream();
     let self_address = core.startup_address();
-    let grain_metrics =
-      if core.metrics_enabled() { Some(GrainMetricsSharedGeneric::new(GrainMetrics::new())) } else { None };
+    let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
     let self_member_status = ArcShared::new(RuntimeMutex::new(None));
     let status_subscriber =
       subscriber_handle(SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()));
@@ -223,19 +222,19 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
 
   /// Returns the shared cluster core handle.
   #[must_use]
-  pub(crate) fn core_shared(&self) -> ArcShared<RuntimeMutex<ClusterCore<TB>>> {
+  pub(crate) fn core_shared(&self) -> ArcShared<RuntimeMutex<ClusterCore>> {
     self.core.clone()
   }
 
   /// Returns the shared pub/sub handle.
   #[must_use]
-  pub(crate) fn pub_sub_shared(&self) -> crate::core::pub_sub::ClusterPubSubShared<TB> {
+  pub(crate) fn pub_sub_shared(&self) -> crate::core::pub_sub::ClusterPubSubShared {
     self.core.lock().pub_sub_shared()
   }
 
   /// Returns the shared grain metrics handle if enabled.
   #[must_use]
-  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsSharedGeneric<TB>> {
+  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsShared> {
     self.grain_metrics.clone()
   }
 
@@ -247,7 +246,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     }
 
     // ClusterCore への共有参照を持つ subscriber を作成
-    let subscriber: ClusterTopologySubscriber<TB> =
+    let subscriber: ClusterTopologySubscriber =
       ClusterTopologySubscriber::new(self.core.clone(), self.event_stream.clone());
     let subscriber_handle = subscriber_handle(subscriber);
     let sub = self.event_stream.subscribe(&subscriber_handle);
@@ -468,4 +467,4 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> fraktor_actor_rs::core::extension::Extension for ClusterExtensionGeneric<TB> {}
+impl fraktor_actor_rs::core::extension::Extension for ClusterExtension {}

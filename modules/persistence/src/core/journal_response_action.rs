@@ -2,8 +2,6 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   eventsourced::Eventsourced, journal_error::JournalError, pending_handler_invocation::PendingHandlerInvocation,
   persistence_error::PersistenceError, persistent_repr::PersistentRepr,
@@ -32,9 +30,9 @@ pub(crate) enum JournalResponseAction<A> {
 }
 
 impl<A> JournalResponseAction<A> {
-  pub(crate) fn apply<TB: RuntimeToolbox + 'static>(self, actor: &mut A)
+  pub(crate) fn apply(self, actor: &mut A)
   where
-    A: Eventsourced<TB>, {
+    A: Eventsourced, {
     match self {
       | JournalResponseAction::None => {},
       | JournalResponseAction::InvokeHandler(invocation) => invocation.invoke(actor),

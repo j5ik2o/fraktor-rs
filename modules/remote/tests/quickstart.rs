@@ -27,20 +27,15 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
-  actor_ref_provider::loopback::{
-    LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller, default_loopback_setup,
-  },
+  actor_ref_provider::loopback::{LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup},
   backpressure::FnRemotingBackpressureListener,
   flight_recorder::remoting_flight_recorder::FlightMetricKind,
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
   transport::TransportBind,
 };
-use fraktor_utils_rs::{
-  core::{
-    runtime_toolbox::NoStdMutex,
-    sync::{ArcShared, SharedAccess},
-  },
-  std::runtime_toolbox::StdToolbox,
+use fraktor_utils_rs::core::{
+  runtime_toolbox::NoStdMutex,
+  sync::{ArcShared, SharedAccess},
 };
 
 struct NoopActor;
@@ -68,7 +63,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
   }
 }
 
-fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared) {
   let props = Props::from_fn(|| NoopActor).with_name("quickstart-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
   let extensions = ExtensionInstallers::default()
@@ -78,7 +73,7 @@ fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingContro
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller)
     .with_remoting_config(remoting_config);
   let system = ActorSystem::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::new(config);
@@ -109,7 +104,7 @@ fn remote_path(port: u16) -> fraktor_actor_rs::core::actor::actor_path::ActorPat
 
 #[tokio::test]
 async fn quickstart_loopback_provider_flow() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
   let config = RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener({
@@ -195,7 +190,7 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 
 #[tokio::test]
 async fn remote_provider_enqueues_message() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let bind_port = alloc_port();
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
@@ -235,7 +230,7 @@ async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
     .lock()
     .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
-  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let remote = provider.get_actor_ref(remote_path(bind_port)).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);

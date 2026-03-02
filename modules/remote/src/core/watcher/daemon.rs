@@ -16,7 +16,6 @@ use fraktor_actor_rs::core::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{command::RemoteWatcherCommand, heartbeat::Heartbeat, heartbeat_rsp::HeartbeatRsp};
 use crate::core::{
@@ -31,10 +30,8 @@ use crate::core::{
 const HEARTBEAT_UNREACHABLE_REASON: &str = "heartbeat unreachable";
 
 /// System actor that proxies watch/unwatch commands to the remoting control plane.
-pub(crate) struct RemoteWatcherDaemon<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  control:                 RemotingControlShared<TB>,
+pub(crate) struct RemoteWatcherDaemon {
+  control:                 RemotingControlShared,
   watchers:                Vec<(Pid, ActorPathParts)>,
   authority_uids:          BTreeMap<String, u64>,
   failure_detectors:       BTreeMap<String, PhiFailureDetector>,
@@ -43,11 +40,8 @@ where
   rewatch_count:           usize,
 }
 
-impl<TB> RemoteWatcherDaemon<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
-  fn new(control: RemotingControlShared<TB>) -> Self {
+impl RemoteWatcherDaemon {
+  fn new(control: RemotingControlShared) -> Self {
     Self {
       control,
       watchers: Vec::new(),
@@ -60,7 +54,7 @@ where
   }
 
   /// Spawns the daemon under the system guardian hierarchy.
-  pub(crate) fn spawn(system: &ActorSystem, control: RemotingControlShared<TB>) -> Result<ActorRef, RemotingError> {
+  pub(crate) fn spawn(system: &ActorSystem, control: RemotingControlShared) -> Result<ActorRef, RemotingError> {
     let props = Props::from_fn({
       let handle = control.clone();
       move || RemoteWatcherDaemon::new(handle.clone())
@@ -190,10 +184,7 @@ where
   }
 }
 
-impl<TB> Actor for RemoteWatcherDaemon<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Actor for RemoteWatcherDaemon {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<RemoteWatcherCommand>() {
       let now_millis = ctx.system().state().monotonic_now().as_millis() as u64;

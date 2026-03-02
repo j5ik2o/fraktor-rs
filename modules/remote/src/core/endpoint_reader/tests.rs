@@ -19,10 +19,7 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::EndpointReader;
 use crate::core::{
@@ -90,7 +87,7 @@ fn recipient_path(system: &str, guardian: GuardianKind, segments: &[&str]) -> Ac
   path
 }
 
-fn outbound_message(recipient: &ActorPath) -> OutboundMessage<NoStdToolbox> {
+fn outbound_message(recipient: &ActorPath) -> OutboundMessage {
   let message = AnyMessage::new("ping".to_string());
   OutboundMessage::user(message, recipient.clone(), remote_node())
 }
@@ -130,7 +127,7 @@ fn deserialization_failure_produces_dead_letter_error() {
     crate::core::envelope::OutboundPriority::User,
   );
 
-  let result: Result<InboundEnvelope<_>, _> = reader.decode(envelope);
+  let result: Result<InboundEnvelope, _> = reader.decode(envelope);
   assert!(result.is_err());
   assert!(system.dead_letters().iter().any(|entry| entry.reason() == DeadLetterReason::SerializationError));
 }

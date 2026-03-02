@@ -25,13 +25,11 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
-  actor_ref_provider::loopback::{
-    LoopbackActorRefProviderGeneric, LoopbackActorRefProviderInstaller, default_loopback_setup,
-  },
+  actor_ref_provider::loopback::{LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup},
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
   transport::TransportBind,
 };
-use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 struct NoopActor;
 
@@ -41,7 +39,7 @@ impl Actor for NoopActor {
   }
 }
 
-fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared) {
   let props = Props::from_fn(|| NoopActor).with_name("multi-node-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
   let extensions = ExtensionInstallers::default()
@@ -51,7 +49,7 @@ fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingContro
   let system_config = ActorSystemConfig::default()
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller)
     .with_remoting_config(remoting_config);
   let system = ActorSystem::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::new(config);
@@ -70,7 +68,7 @@ fn remote_path(system_name: &str, host: &str, port: u16, service_name: &str) -> 
 
 #[tokio::test]
 async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
 

@@ -7,10 +7,10 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessage,
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  ClusterApiGeneric,
+  ClusterApi,
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubConfig,
     PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
@@ -18,25 +18,21 @@ use crate::core::{
 };
 
 /// Delivery endpoint that resolves cluster identities and sends batches.
-pub struct PubSubDeliveryActor<TB: RuntimeToolbox + 'static> {
-  cluster_api: ClusterApiGeneric<TB>,
+pub struct PubSubDeliveryActor {
+  cluster_api: ClusterApi,
   registry:    ArcShared<SerializationRegistry>,
   _config:     PubSubConfig,
 }
 
-impl<TB: RuntimeToolbox + 'static> PubSubDeliveryActor<TB> {
+impl PubSubDeliveryActor {
   /// Creates a new delivery actor.
   #[must_use]
-  pub const fn new(
-    cluster_api: ClusterApiGeneric<TB>,
-    registry: ArcShared<SerializationRegistry>,
-    config: PubSubConfig,
-  ) -> Self {
+  pub const fn new(cluster_api: ClusterApi, registry: ArcShared<SerializationRegistry>, config: PubSubConfig) -> Self {
     Self { cluster_api, registry, _config: config }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DeliveryEndpoint<TB> for PubSubDeliveryActor<TB> {
+impl DeliveryEndpoint for PubSubDeliveryActor {
   fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let messages = deserialize_batch(&self.registry, &request.batch)
       .map_err(|error| PubSubError::SerializationFailed { reason: format!("{error:?}") })?;

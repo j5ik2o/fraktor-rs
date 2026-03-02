@@ -9,7 +9,6 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   eventsourced::Eventsourced, persistent_repr::PersistentRepr, recovery::Recovery,
@@ -21,7 +20,7 @@ struct DummyEventsourced {
   last:           u64,
 }
 
-impl Eventsourced<NoStdToolbox> for DummyEventsourced {
+impl Eventsourced for DummyEventsourced {
   fn persistence_id(&self) -> &str {
     &self.persistence_id
   }

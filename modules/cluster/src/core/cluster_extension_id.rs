@@ -1,16 +1,12 @@
 //! Extension identifier for cluster runtime.
 
 use alloc::boxed::Box;
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystem};
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterProviderShared,
+  ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,
   cluster_provider::ClusterProvider,
   downing_provider::DowningProvider,
   grain::KindRegistry,
@@ -20,18 +16,17 @@ use crate::core::{
 };
 
 /// Registers the cluster extension into an actor system.
-pub struct ClusterExtensionId<TB: RuntimeToolbox + 'static> {
+pub struct ClusterExtensionId {
   config:              ClusterExtensionConfig,
-  provider:            ClusterProviderShared<TB>,
+  provider:            ClusterProviderShared,
   block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
   downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
-  gossiper:            GossiperShared<TB>,
-  pubsub:              ClusterPubSubShared<TB>,
-  identity_lookup:     IdentityLookupShared<TB>,
-  _marker:             PhantomData<TB>,
+  gossiper:            GossiperShared,
+  pubsub:              ClusterPubSubShared,
+  identity_lookup:     IdentityLookupShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionId<TB> {
+impl Clone for ClusterExtensionId {
   fn clone(&self) -> Self {
     Self {
       config:              self.config.clone(),
@@ -41,12 +36,11 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionId<TB> {
       gossiper:            self.gossiper.clone(),
       pubsub:              self.pubsub.clone(),
       identity_lookup:     self.identity_lookup.clone(),
-      _marker:             PhantomData,
     }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
+impl ClusterExtensionId {
   /// Creates a new identifier with injected dependencies.
   ///
   /// The `identity_lookup`, `provider`, `gossiper`, and `pubsub` are wrapped in `RuntimeMutex`
@@ -58,7 +52,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
     downing_provider: Box<dyn DowningProvider>,
     gossiper: Box<dyn Gossiper>,
-    pubsub: Box<dyn ClusterPubSub<TB>>,
+    pubsub: Box<dyn ClusterPubSub>,
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
     let provider = ClusterProviderShared::new(provider);
@@ -66,21 +60,12 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionId<TB> {
     let gossiper = GossiperShared::new(gossiper);
     let pubsub = ClusterPubSubShared::new(pubsub);
     let identity_lookup = IdentityLookupShared::new(identity_lookup);
-    Self {
-      config,
-      provider,
-      block_list_provider,
-      downing_provider,
-      gossiper,
-      pubsub,
-      identity_lookup,
-      _marker: PhantomData,
-    }
+    Self { config, provider, block_list_provider, downing_provider, gossiper, pubsub, identity_lookup }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ExtensionId for ClusterExtensionId<TB> {
-  type Ext = ClusterExtensionGeneric<TB>;
+impl ExtensionId for ClusterExtensionId {
+  type Ext = ClusterExtension;
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let event_stream = system.event_stream();
@@ -96,6 +81,6 @@ impl<TB: RuntimeToolbox + 'static> ExtensionId for ClusterExtensionId<TB> {
       kind_registry,
       self.identity_lookup.clone(),
     );
-    ClusterExtensionGeneric::new(system, core)
+    ClusterExtension::new(system, core)
   }
 }

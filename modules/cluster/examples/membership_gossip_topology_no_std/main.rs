@@ -2,7 +2,7 @@
 
 //! Membership/Gossip topology demo (no_std core).
 //!
-//! This example drives MembershipCoordinatorGeneric directly and publishes cluster
+//! This example drives MembershipCoordinator directly and publishes cluster
 //! events to EventStream. Topology updates are applied to ClusterCore to show
 //! metrics linkage.
 //!
@@ -27,8 +27,8 @@ use fraktor_cluster_rs::core::{
   grain::KindRegistry,
   identity::{IdentityLookupShared, NoopIdentityLookup},
   membership::{
-    GossipOutbound, GossiperShared, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
-    MembershipCoordinatorOutcome, MembershipDelta, MembershipSnapshot, MembershipTable, NoopGossiper,
+    GossipOutbound, GossiperShared, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorOutcome,
+    MembershipDelta, MembershipSnapshot, MembershipTable, NoopGossiper,
   },
   placement::ActivatedKind,
   pub_sub::{ClusterPubSubShared, NoopClusterPubSub},
@@ -40,11 +40,7 @@ use fraktor_remote_rs::core::{
     phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-  time::TimerInstant,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
 
 struct DemoBlockListProvider;
 
@@ -55,11 +51,11 @@ impl BlockListProvider for DemoBlockListProvider {
 }
 
 struct TopologyMetricsObserver {
-  core: ClusterCore<NoStdToolbox>,
+  core: ClusterCore,
 }
 
 impl TopologyMetricsObserver {
-  fn new(core: ClusterCore<NoStdToolbox>) -> Self {
+  fn new(core: ClusterCore) -> Self {
     Self { core }
   }
 }
@@ -96,7 +92,7 @@ impl EventStreamSubscriber for TopologyMetricsObserver {
 struct DemoNode {
   name:         &'static str,
   authority:    String,
-  coordinator:  MembershipCoordinatorGeneric<NoStdToolbox>,
+  coordinator:  MembershipCoordinator,
   event_stream: EventStreamShared,
 }
 
@@ -116,7 +112,7 @@ impl DemoNode {
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
       Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
     }));
-    let coordinator = MembershipCoordinatorGeneric::<NoStdToolbox>::new(config, cluster_config, table, registry);
+    let coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     Self { name, authority: authority.to_string(), coordinator, event_stream }
   }
 
@@ -248,7 +244,7 @@ fn main() {
   println!("\n=== Demo complete ===");
 }
 
-fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore<NoStdToolbox> {
+fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore {
   let config = ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true);
   let provider = ClusterProviderShared::new(Box::new(NoopClusterProvider::new()));
   let block_list_provider: ArcShared<dyn BlockListProvider> = ArcShared::new(DemoBlockListProvider);

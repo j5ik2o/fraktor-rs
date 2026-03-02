@@ -11,12 +11,11 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig, remote::RemotingConfig},
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   Completion, KeepRight, StreamError,
   lifecycle::StreamState,
-  mat::{ActorMaterializerConfig, ActorMaterializerGeneric},
+  mat::{ActorMaterializer, ActorMaterializerConfig},
   stage::{Sink, Source},
 };
 
@@ -38,8 +37,7 @@ fn build_system() -> ActorSystem {
 
 #[test]
 fn start_fails_without_actor_system() {
-  let mut materializer =
-    ActorMaterializerGeneric::<NoStdToolbox>::new_without_system(ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializer::new_without_system(ActorMaterializerConfig::default());
   let result = materializer.start();
   assert!(matches!(result, Err(StreamError::ActorSystemMissing)));
 }
@@ -47,7 +45,7 @@ fn start_fails_without_actor_system() {
 #[test]
 fn materialize_requires_start() {
   let system = build_system();
-  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
   let result = graph.run(&mut materializer);
   assert!(matches!(result, Err(StreamError::MaterializerNotStarted)));
@@ -57,10 +55,8 @@ fn materialize_requires_start() {
 fn actor_materializer_drives_stream() {
   let system = build_system();
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
-  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(
-    system,
-    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
-  );
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");
   let graph =
     Source::single(1_u32).map(|value| value + 1).to_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
@@ -75,7 +71,7 @@ fn actor_materializer_drives_stream() {
 #[test]
 fn shutdown_blocks_materialize() {
   let system = build_system();
-  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
   materializer.shutdown().expect("shutdown");
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
@@ -94,6 +90,6 @@ fn start_with_remoting_config() {
     .with_tick_driver(tick_driver)
     .with_remoting_config(remoting);
   let system = ActorSystem::new_with_config(&props, &config).expect("system should build");
-  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
 }

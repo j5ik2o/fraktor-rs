@@ -10,12 +10,11 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
   persistence_extension_installer::PersistenceExtensionInstaller,
-  persistence_extension_shared::PersistenceExtensionSharedGeneric,
+  persistence_extension_shared::PersistenceExtensionShared,
 };
 
 struct NoopActor;
@@ -41,7 +40,7 @@ fn installer_registers_persistence_extension() {
   let props = Props::from_fn(|| NoopActor);
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
-  let extension = system.extended().extension_by_type::<PersistenceExtensionSharedGeneric<NoStdToolbox>>();
+  let extension = system.extended().extension_by_type::<PersistenceExtensionShared>();
 
   assert!(extension.is_some());
 }

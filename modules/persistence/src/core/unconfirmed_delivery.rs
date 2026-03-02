@@ -3,23 +3,22 @@
 #[cfg(test)]
 mod tests;
 
-use core::{any::Any, marker::PhantomData};
+use core::any::Any;
 
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 /// Unconfirmed delivery tracked by at-least-once delivery.
-pub struct UnconfirmedDelivery<TB: RuntimeToolbox + 'static> {
+pub struct UnconfirmedDelivery {
   delivery_id: u64,
   destination: ActorRef,
   payload:     ArcShared<dyn Any + Send + Sync>,
   sender:      Option<ActorRef>,
   timestamp:   TimerInstant,
   attempt:     u32,
-  _marker:     PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
+impl UnconfirmedDelivery {
   /// Creates a new unconfirmed delivery.
   #[must_use]
   pub fn new(
@@ -30,7 +29,7 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
     timestamp: TimerInstant,
     attempt: u32,
   ) -> Self {
-    Self { delivery_id, destination, payload, sender, timestamp, attempt, _marker: PhantomData }
+    Self { delivery_id, destination, payload, sender, timestamp, attempt }
   }
 
   /// Returns the delivery id.
@@ -82,7 +81,7 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for UnconfirmedDelivery<TB> {
+impl Clone for UnconfirmedDelivery {
   fn clone(&self) -> Self {
     Self {
       delivery_id: self.delivery_id,
@@ -91,7 +90,6 @@ impl<TB: RuntimeToolbox + 'static> Clone for UnconfirmedDelivery<TB> {
       sender:      self.sender.clone(),
       timestamp:   self.timestamp,
       attempt:     self.attempt,
-      _marker:     PhantomData,
     }
   }
 }

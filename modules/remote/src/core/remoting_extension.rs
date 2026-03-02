@@ -16,29 +16,20 @@ pub use control::{RemotingControl, RemotingControlShared};
 pub use control_handle::RemotingControlHandle;
 pub use error::RemotingError;
 use fraktor_actor_rs::core::extension::Extension;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 
 use crate::core::transport::RemoteTransportShared;
 
 /// Installs the endpoint supervisor and exposes [`RemotingControlHandle`].
-pub struct RemotingExtensionGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  pub(crate) control:          RemotingControlShared<TB>,
+pub struct RemotingExtension {
+  pub(crate) control:          RemotingControlShared,
   pub(crate) transport_scheme: String,
-  pub(crate) _transport:       RemoteTransportShared<TB>,
+  pub(crate) _transport:       RemoteTransportShared,
 }
 
-/// Type alias for `RemotingExtensionGeneric` with the default `NoStdToolbox`.
-pub type RemotingExtension = RemotingExtensionGeneric<NoStdToolbox>;
-
-impl<TB> RemotingExtensionGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl RemotingExtension {
   /// Returns the shared control handle.
   #[must_use]
-  pub fn handle(&self) -> RemotingControlShared<TB> {
+  pub fn handle(&self) -> RemotingControlShared {
     self.control.clone()
   }
 
@@ -49,4 +40,4 @@ where
   }
 }
 
-impl<TB> Extension for RemotingExtensionGeneric<TB> where TB: RuntimeToolbox + 'static {}
+impl Extension for RemotingExtension {}

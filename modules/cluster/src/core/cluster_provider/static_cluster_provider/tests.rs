@@ -4,10 +4,7 @@ use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::*;
 use crate::core::{ClusterEvent, ClusterTopology, cluster_provider::ClusterProvider};
@@ -80,8 +77,8 @@ fn start_member_publishes_static_topology_to_event_stream() {
 
   // 静的トポロジを設定した Provider を作成
   let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![], Vec::new());
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a")
-    .with_static_topology(static_topology);
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
 
   // start_member を呼び出す
   provider.start_member().unwrap();
@@ -107,8 +104,8 @@ fn start_client_also_publishes_static_topology() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")], Vec::new());
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "client-a")
-    .with_static_topology(static_topology);
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
 
   provider.start_client().unwrap();
 
@@ -130,8 +127,8 @@ fn topology_includes_blocked_members_from_block_list_provider() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![], Vec::new());
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-main")
-    .with_static_topology(static_topology);
+  let mut provider =
+    StaticClusterProvider::new(event_stream, block_list, "node-main").with_static_topology(static_topology);
 
   provider.start_member().unwrap();
 
@@ -152,7 +149,7 @@ fn no_topology_published_when_static_topology_not_set() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   // 静的トポロジを設定しない
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-empty");
+  let mut provider = StaticClusterProvider::new(event_stream, block_list, "node-empty");
 
   provider.start_member().unwrap();
 
@@ -166,7 +163,7 @@ fn shutdown_succeeds_without_side_effects() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-shutdown");
+  let mut provider = StaticClusterProvider::new(event_stream, block_list, "node-shutdown");
 
   // shutdown は常に成功
   let result = provider.shutdown(true);
@@ -181,7 +178,7 @@ fn advertised_address_is_stored_correctly() {
   let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
-  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "127.0.0.1:8080");
+  let provider = StaticClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
   assert_eq!(provider.advertised_address(), "127.0.0.1:8080");
 }

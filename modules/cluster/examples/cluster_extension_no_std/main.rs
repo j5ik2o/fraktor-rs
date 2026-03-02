@@ -23,7 +23,7 @@
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
 //! - `StaticClusterProvider`: no_std 環境向け静的トポロジ（本サンプル）
-//! - `LocalClusterProviderGeneric`: std/Tokio 環境向け、Transport イベント自動検知
+//! - `LocalClusterProvider`: std/Tokio 環境向け、Transport イベント自動検知
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
 //! 詳細は `.kiro/specs/protoactor-go-cluster-extension-samples/example.md` を参照。
@@ -81,10 +81,10 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ClusterApi, ClusterApiGeneric, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric,
-  ClusterExtensionInstaller, ClusterTopology, TopologyUpdate,
+  ClusterApi, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
+  TopologyUpdate,
   cluster_provider::StaticClusterProvider,
-  grain::{GrainCallError, GrainKey, GrainRefGeneric},
+  grain::{GrainCallError, GrainKey, GrainRef as CoreGrainRef},
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
   membership::Gossiper,
   placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
@@ -94,19 +94,16 @@ use fraktor_cluster_rs::core::{
   },
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdToolbox,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
-// NoStdToolbox 固定の簡易 GrainRef ラッパー
+// 簡易 GrainRef ラッパー
 struct GrainRef {
-  inner: GrainRefGeneric<NoStdToolbox>,
+  inner: CoreGrainRef,
 }
 
 impl GrainRef {
-  fn new(api: ClusterApiGeneric<NoStdToolbox>, identity: ClusterIdentity) -> Self {
-    Self { inner: GrainRefGeneric::new(api, identity) }
+  fn new(api: ClusterApi, identity: ClusterIdentity) -> Self {
+    Self { inner: CoreGrainRef::new(api, identity) }
   }
 
   fn request_with_sender(&self, message: &AnyMessage, sender: &ActorRef) -> Result<AskResponse, GrainCallError> {
@@ -130,7 +127,7 @@ impl Gossiper for DemoGossiper {
 // デモ用の PubSub
 #[derive(Default)]
 struct DemoPubSub;
-impl ClusterPubSub<NoStdToolbox> for DemoPubSub {
+impl ClusterPubSub for DemoPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
@@ -300,7 +297,7 @@ impl Actor for GrainActor {
 // ノードのコンポーネントをまとめる構造体
 struct ClusterNode {
   system:    ActorSystem,
-  extension: ArcShared<ClusterExtensionGeneric<NoStdToolbox>>,
+  extension: ArcShared<ClusterExtension>,
   driver:    ManualTestDriver,
 }
 
@@ -320,24 +317,21 @@ impl ClusterNode {
     let peer_name = peer_name.to_string();
     let grain_path = "user/grain".to_string();
     let cluster_config = build_cluster_extension_config(authority);
-    let cluster_installer = ClusterExtensionInstaller::<NoStdToolbox>::new(
-      cluster_config,
-      move |event_stream, block_list_provider, advertised_address| {
+    let cluster_installer =
+      ClusterExtensionInstaller::new(cluster_config, move |event_stream, block_list_provider, advertised_address| {
         let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![], Vec::new());
-        let provider =
-          StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list_provider, advertised_address)
-            .with_static_topology(static_topology);
+        let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
+          .with_static_topology(static_topology);
         Box::new(provider)
-      },
-    )
-    .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
-    .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
-    .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
-    .with_identity_lookup_factory({
-      let authority = authority.to_string();
-      let grain_path = grain_path.clone();
-      move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
-    });
+      })
+      .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
+      .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
+      .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
+      .with_identity_lookup_factory({
+        let authority = authority.to_string();
+        let grain_path = grain_path.clone();
+        move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
+      });
 
     let system_cfg = ActorSystemConfig::default()
       .with_system_name(format!("cluster-{}", authority))
@@ -352,8 +346,7 @@ impl ClusterNode {
     let event_subscriber = subscriber_handle(ClusterEventLogger::new(authority));
     let _subscription = system.subscribe_event_stream(&event_subscriber);
 
-    let extension =
-      system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+    let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
     extension.setup_member_kinds(vec![ActivatedKind::new("grain")]).expect("kinds");
 
     Self { system, extension, driver }

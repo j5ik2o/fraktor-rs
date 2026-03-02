@@ -4,29 +4,27 @@
 mod tests;
 
 use alloc::{format, string::String};
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   messaging::AnyMessage,
   serialization::{SerializationCallScope, SerializationError, SerializationExtensionShared, SerializedMessage},
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{GrainCodec, GrainCodecError};
 
 /// Grain codec backed by the serialization extension.
-pub struct SerializationGrainCodec<TB: RuntimeToolbox + 'static> {
+pub struct SerializationGrainCodec {
   extension: SerializationExtensionShared,
   scope:     SerializationCallScope,
-  _marker:   PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SerializationGrainCodec<TB> {
+impl SerializationGrainCodec {
   /// Creates a new codec from a serialization extension handle.
   #[must_use]
   pub const fn new(extension: SerializationExtensionShared, scope: SerializationCallScope) -> Self {
-    Self { extension, scope, _marker: PhantomData }
+    Self { extension, scope }
   }
 
   /// Retrieves the serialization extension from the actor system.
@@ -58,7 +56,7 @@ impl<TB: RuntimeToolbox + 'static> SerializationGrainCodec<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainCodec<TB> for SerializationGrainCodec<TB> {
+impl GrainCodec for SerializationGrainCodec {
   fn encode(&self, message: &AnyMessage) -> Result<SerializedMessage, GrainCodecError> {
     self
       .extension

@@ -5,26 +5,24 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::unconfirmed_delivery::UnconfirmedDelivery;
 
 /// Warning emitted when unconfirmed deliveries remain.
 #[derive(Clone)]
-pub struct UnconfirmedWarning<TB: RuntimeToolbox + 'static> {
-  unconfirmed: Vec<UnconfirmedDelivery<TB>>,
+pub struct UnconfirmedWarning {
+  unconfirmed: Vec<UnconfirmedDelivery>,
 }
 
-impl<TB: RuntimeToolbox + 'static> UnconfirmedWarning<TB> {
+impl UnconfirmedWarning {
   /// Creates a warning from unconfirmed deliveries.
   #[must_use]
-  pub const fn new(unconfirmed: Vec<UnconfirmedDelivery<TB>>) -> Self {
+  pub const fn new(unconfirmed: Vec<UnconfirmedDelivery>) -> Self {
     Self { unconfirmed }
   }
 
   /// Returns tracked unconfirmed deliveries.
   #[must_use]
-  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery<TB>] {
+  pub fn unconfirmed_deliveries(&self) -> &[UnconfirmedDelivery] {
     &self.unconfirmed
   }
 

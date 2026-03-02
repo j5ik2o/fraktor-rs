@@ -18,16 +18,13 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_cluster_rs::core::{
-  ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+  ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
   cluster_provider::NoopClusterProvider,
   grain::GrainKey,
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
   placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdToolbox,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 #[test]
 fn cluster_api_request_flow_works() {
@@ -35,26 +32,23 @@ fn cluster_api_request_flow_works() {
   extension.start_member().expect("start member");
   extension.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let response = api.request(&identity, AnyMessage::new(()), None).expect("request ok");
   assert!(!response.future().with_read(|inner| inner.is_ready()));
 }
 
-fn build_system_with_extension<F>(
-  identity_lookup_factory: F,
-) -> (ActorSystem, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
-  let cluster_installer =
-    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, |_event_stream, _block_list, _address| {
-      Box::new(NoopClusterProvider::new())
-    })
-    .with_identity_lookup_factory(identity_lookup_factory);
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  })
+  .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
@@ -66,8 +60,7 @@ where
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension =
-    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (system, extension)
 }
 

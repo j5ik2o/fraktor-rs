@@ -1,19 +1,14 @@
 //! Resolved grain reference containing identity and actor ref.
 
-use core::marker::PhantomData;
-
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::identity::ClusterIdentity;
 
 /// Resolved grain reference with identity metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GrainResolvedRef<TB: RuntimeToolbox + 'static> {
+pub struct GrainResolvedRef {
   /// Resolved cluster identity.
   pub identity:  ClusterIdentity,
   /// Resolved actor reference.
   pub actor_ref: ActorRef,
-  /// Marker tying this reference to the runtime toolbox type.
-  pub _marker:   PhantomData<TB>,
 }

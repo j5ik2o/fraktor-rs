@@ -1,12 +1,7 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{Materialized, RunnableGraph, StreamError};
 
 /// Stream materializer contract.
 pub trait Materializer {
-  /// Runtime toolbox used by this materializer.
-  type Toolbox: RuntimeToolbox;
-
   /// Starts the materializer.
   ///
   /// # Errors
@@ -19,7 +14,7 @@ pub trait Materializer {
   /// # Errors
   ///
   /// Returns [`StreamError`] when materialization fails.
-  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, Self::Toolbox>, StreamError>;
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError>;
 
   /// Shuts down the materializer.
   ///

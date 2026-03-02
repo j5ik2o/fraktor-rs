@@ -1,21 +1,19 @@
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use super::{SharedKillSwitch, StreamHandleGeneric, UniqueKillSwitch};
+use super::{SharedKillSwitch, StreamHandleImpl, UniqueKillSwitch};
 
 /// Result of materializing a stream graph.
-pub struct Materialized<Mat, TB: RuntimeToolbox> {
-  handle:       StreamHandleGeneric<TB>,
+pub struct Materialized<Mat> {
+  handle:       StreamHandleImpl,
   materialized: Mat,
 }
 
-impl<Mat, TB: RuntimeToolbox> Materialized<Mat, TB> {
-  pub(crate) const fn new(handle: StreamHandleGeneric<TB>, materialized: Mat) -> Self {
+impl<Mat> Materialized<Mat> {
+  pub(crate) const fn new(handle: StreamHandleImpl, materialized: Mat) -> Self {
     Self { handle, materialized }
   }
 
   /// Returns the stream handle.
   #[must_use]
-  pub const fn handle(&self) -> &StreamHandleGeneric<TB> {
+  pub const fn handle(&self) -> &StreamHandleImpl {
     &self.handle
   }
 

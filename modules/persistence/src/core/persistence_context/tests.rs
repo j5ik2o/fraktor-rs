@@ -14,10 +14,7 @@ use fraktor_actor_rs::core::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced, journal_error::JournalError,
@@ -27,7 +24,6 @@ use crate::core::{
   snapshot::Snapshot, snapshot_message::SnapshotMessage, write_event_adapter::WriteEventAdapter,
 };
 
-type TB = NoStdToolbox;
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 type DummyPendingHandler = Box<dyn FnOnce(&mut DummyActor, &PersistentRepr) + Send + Sync>;
 const ADD_TEN_MANIFEST: &str = "add-ten-v1";
@@ -40,7 +36,7 @@ struct DummyActor {
   recovered_values: Vec<i32>,
 }
 
-type DummyContext = PersistenceContext<DummyActor, TB>;
+type DummyContext = PersistenceContext<DummyActor>;
 
 struct TestSender {
   messages: MessageStore,
@@ -103,7 +99,7 @@ impl ReadEventAdapter for SplitReadAdapter {
   }
 }
 
-impl Eventsourced<TB> for DummyActor {
+impl Eventsourced for DummyActor {
   fn persistence_id(&self) -> &str {
     "pid-1"
   }
@@ -333,7 +329,7 @@ fn context_applies_event_adapters_on_persist_and_replay() {
   let replay_action =
     context.handle_journal_response(&JournalResponse::ReplayedMessage { persistent_repr: persisted_repr.clone() });
   let mut recovering_actor = DummyActor::default();
-  replay_action.apply::<TB>(&mut recovering_actor);
+  replay_action.apply(&mut recovering_actor);
   assert_eq!(recovering_actor.recovered_values, vec![15_i32, 16_i32]);
 }
 
@@ -409,11 +405,11 @@ fn write_messages_successful_triggers_deferred_handlers() {
   let mut actor = DummyActor::default();
   let write_action =
     context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_repr, instance_id });
-  write_action.apply::<TB>(&mut actor);
+  write_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32]);
 
   let deferred_action = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
-  deferred_action.apply::<TB>(&mut actor);
+  deferred_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32, 2_i32]);
 }
 
@@ -437,7 +433,7 @@ fn deferred_handler_repr_keeps_sender() {
   let mut actor = DummyActor::default();
   let action =
     context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id: context.instance_id() });
-  action.apply::<TB>(&mut actor);
+  action.apply(&mut actor);
 
   assert_eq!(actor.handled_values, vec![2_i32]);
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
@@ -479,7 +475,7 @@ fn flush_batch_clears_sender_in_journal_repr_but_keeps_it_for_handler_invocation
     repr:        journal_repr,
     instance_id: context.instance_id(),
   });
-  action.apply::<TB>(&mut actor);
+  action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![11_i32]);
 }
 
@@ -588,16 +584,16 @@ fn write_message_success_interleaves_defer_between_persisted_handlers() {
   let mut actor = DummyActor::default();
   let first_action = context
     .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
-  first_action.apply::<TB>(&mut actor);
+  first_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32]);
 
   let second_action = context
     .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
-  second_action.apply::<TB>(&mut actor);
+  second_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32, 2_i32, 3_i32]);
 
   let completion_action = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
-  completion_action.apply::<TB>(&mut actor);
+  completion_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32, 2_i32, 3_i32]);
 }
 
@@ -641,7 +637,7 @@ fn write_message_success_with_mismatched_instance_id_is_ignored() {
   let mut actor = DummyActor::default();
   let success_action =
     context.handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_repr, instance_id });
-  success_action.apply::<TB>(&mut actor);
+  success_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32]);
 }
 
@@ -988,7 +984,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
     repr:        success_repr,
     instance_id: current_instance_id,
   });
-  success_action.apply::<TB>(&mut success_actor);
+  success_action.apply(&mut success_actor);
   assert_eq!(success_actor.handled_values, vec![2_i32]);
 
   let (journal_ref, journal_store) = create_sender();
@@ -1065,7 +1061,7 @@ fn stale_write_responses_from_previous_instance_are_ignored_after_restart() {
   let apply_batch_success = batch_success_context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful {
     instance_id: batch_success_context.instance_id(),
   });
-  apply_batch_success.apply::<TB>(&mut batch_success_actor);
+  apply_batch_success.apply(&mut batch_success_actor);
   assert_eq!(batch_success_actor.handled_values, vec![5_i32]);
   assert_eq!(batch_success_context.state(), PersistentActorState::ProcessingCommands);
 
@@ -1151,11 +1147,11 @@ fn write_message_rejected_keeps_remaining_invocations() {
   let mut actor = DummyActor::default();
   let success_action = context
     .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[1].clone(), instance_id });
-  success_action.apply::<TB>(&mut actor);
+  success_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![2_i32, 3_i32]);
 
   let completion_action = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
-  completion_action.apply::<TB>(&mut actor);
+  completion_action.apply(&mut actor);
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
   assert_eq!(actor.handled_values, vec![2_i32, 3_i32]);
 }
@@ -1211,7 +1207,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
   let mut actor = DummyActor::default();
   let first_action = context
     .handle_journal_response(&JournalResponse::WriteMessageSuccess { repr: persisted_reprs[0].clone(), instance_id });
-  first_action.apply::<TB>(&mut actor);
+  first_action.apply(&mut actor);
   assert_eq!(actor.handled_values, vec![1_i32]);
 
   let rejected_action = context.handle_journal_response(&JournalResponse::WriteMessageRejected {
@@ -1229,7 +1225,7 @@ fn write_message_rejected_for_later_persist_keeps_deferred_invocation() {
   assert_eq!(context.state(), PersistentActorState::PersistingEvents);
 
   let completion_action = context.handle_journal_response(&JournalResponse::WriteMessagesSuccessful { instance_id });
-  completion_action.apply::<TB>(&mut actor);
+  completion_action.apply(&mut actor);
   assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
   assert_eq!(actor.handled_values, vec![1_i32, 2_i32]);
 }

@@ -39,7 +39,7 @@ mod wire_error;
 mod wire_format;
 
 pub use block_list_provider::BlockListProvider;
-pub use event_publisher::{EventPublisher, EventPublisherGeneric};
+pub use event_publisher::EventPublisher;
 pub use flush::{FLUSH_FRAME_KIND, Flush};
 pub use flush_ack::{FLUSH_ACK_FRAME_KIND, FlushAck};
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;

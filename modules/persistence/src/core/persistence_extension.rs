@@ -4,7 +4,6 @@
 mod tests;
 
 use alloc::format;
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContext, actor_ref::ActorRef},
@@ -14,25 +13,21 @@ use fraktor_actor_rs::core::{
   props::Props,
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::runtime_toolbox::{RuntimeMutex, RuntimeToolbox};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex;
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,
   snapshot_store::SnapshotStore,
 };
 
-/// Persistence extension type alias for the default toolbox.
-pub type PersistenceExtension = PersistenceExtensionGeneric<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>;
-
 /// Extension providing access to journal and snapshot actors.
 #[derive(Clone)]
-pub struct PersistenceExtensionGeneric<TB: RuntimeToolbox + 'static> {
+pub struct PersistenceExtension {
   journal_actor:  ActorRef,
   snapshot_actor: ActorRef,
-  _marker:        PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
+impl PersistenceExtension {
   /// Creates a new persistence extension for the given actor system.
   ///
   /// # Errors
@@ -50,11 +45,10 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    let journal_actor =
-      spawn_system_actor(system, "journal", move || JournalActorWrapper::<J, TB>::new(journal.clone()))?;
+    let journal_actor = spawn_system_actor(system, "journal", move || JournalActorWrapper::<J>::new(journal.clone()))?;
     let snapshot_actor =
-      spawn_system_actor(system, "snapshot", move || SnapshotActorWrapper::<S, TB>::new(snapshot_store.clone()))?;
-    Ok(Self { journal_actor, snapshot_actor, _marker: PhantomData })
+      spawn_system_actor(system, "snapshot", move || SnapshotActorWrapper::<S>::new(snapshot_store.clone()))?;
+    Ok(Self { journal_actor, snapshot_actor })
   }
 
   /// Returns the journal actor reference.
@@ -70,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension for PersistenceExtensionGeneric<TB> {}
+impl Extension for PersistenceExtension {}
 
 fn spawn_system_actor<A>(
   system: &ActorSystem,
@@ -87,11 +81,11 @@ where
   Ok(child.actor_ref().clone())
 }
 
-struct JournalActorWrapper<J: Journal, TB: RuntimeToolbox + 'static> {
-  inner: RuntimeMutex<JournalActor<J, TB>>,
+struct JournalActorWrapper<J: Journal> {
+  inner: RuntimeMutex<JournalActor<J>>,
 }
 
-impl<J: Journal, TB: RuntimeToolbox + 'static> JournalActorWrapper<J, TB>
+impl<J: Journal> JournalActorWrapper<J>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
@@ -103,7 +97,7 @@ where
   }
 }
 
-impl<J: Journal, TB: RuntimeToolbox + 'static> Actor for JournalActorWrapper<J, TB>
+impl<J: Journal> Actor for JournalActorWrapper<J>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
@@ -115,11 +109,11 @@ where
   }
 }
 
-struct SnapshotActorWrapper<S: SnapshotStore, TB: RuntimeToolbox + 'static> {
-  inner: RuntimeMutex<SnapshotActor<S, TB>>,
+struct SnapshotActorWrapper<S: SnapshotStore> {
+  inner: RuntimeMutex<SnapshotActor<S>>,
 }
 
-impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> SnapshotActorWrapper<S, TB>
+impl<S: SnapshotStore> SnapshotActorWrapper<S>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
@@ -131,7 +125,7 @@ where
   }
 }
 
-impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> Actor for SnapshotActorWrapper<S, TB>
+impl<S: SnapshotStore> Actor for SnapshotActorWrapper<S>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,

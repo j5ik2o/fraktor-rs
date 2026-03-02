@@ -1,4 +1,4 @@
-//! std-only extension for LocalClusterProviderGeneric.
+//! std-only extension for LocalClusterProvider.
 //!
 //! This module provides Transport event auto-detection functionality
 //! that is only available in std environments.
@@ -7,9 +7,9 @@ use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
   RemotingLifecycleEvent, subscriber_handle,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
-use crate::core::cluster_provider::{LocalClusterProviderGeneric, LocalClusterProviderSharedGeneric};
+use crate::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -17,15 +17,13 @@ use crate::core::cluster_provider::{LocalClusterProviderGeneric, LocalClusterPro
 /// `RemotingLifecycleEvent::Connected` and `Quarantined` events, automatically
 /// triggering `TopologyUpdated` events when nodes join or leave.
 ///
-/// **Note**: This function is only available in std environments with `StdToolbox`.
-pub fn subscribe_remoting_events<TB>(provider: &LocalClusterProviderSharedGeneric<TB>)
-where
-  TB: RuntimeToolbox + 'static, {
-  struct RemotingEventHandler<TB: RuntimeToolbox + 'static> {
-    provider: LocalClusterProviderSharedGeneric<TB>,
+/// **Note**: This function is only available in std environments.
+pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
+  struct RemotingEventHandler {
+    provider: LocalClusterProviderShared,
   }
 
-  impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber for RemotingEventHandler<TB> {
+  impl EventStreamSubscriber for RemotingEventHandler {
     fn on_event(&mut self, event: &EventStreamEvent) {
       if let EventStreamEvent::Extension { name, payload } = event {
         if name == "remoting" {
@@ -58,11 +56,7 @@ where
   // provider がドロップされるまで有効
 }
 
-/// Creates a shared, thread-safe LocalClusterProviderGeneric wrapped in a mutex.
-pub fn wrap_local_cluster_provider<TB>(
-  provider: LocalClusterProviderGeneric<TB>,
-) -> LocalClusterProviderSharedGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  LocalClusterProviderSharedGeneric::new(provider)
+/// Creates a shared, thread-safe LocalClusterProvider wrapped in a mutex.
+pub fn wrap_local_cluster_provider(provider: LocalClusterProvider) -> LocalClusterProviderShared {
+  LocalClusterProviderShared::new(provider)
 }

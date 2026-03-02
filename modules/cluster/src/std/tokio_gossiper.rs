@@ -6,13 +6,13 @@ mod tests;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::EventStreamShared;
-use fraktor_utils_rs::{core::time::TimerInstant, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::time::TimerInstant;
 use tokio::sync::oneshot;
 
 use crate::{
-  core::membership::{Gossiper, MembershipCoordinatorSharedGeneric},
+  core::membership::{Gossiper, MembershipCoordinatorShared},
   std::{
-    MembershipCoordinatorDriverGeneric, tokio_gossip_transport::TokioGossipTransport,
+    MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport,
     tokio_gossiper_config::TokioGossiperConfig,
   },
 };
@@ -20,7 +20,7 @@ use crate::{
 /// Tokio-based gossiper.
 pub struct TokioGossiper {
   config:       TokioGossiperConfig,
-  coordinator:  MembershipCoordinatorSharedGeneric<StdToolbox>,
+  coordinator:  MembershipCoordinatorShared,
   transport:    Option<TokioGossipTransport>,
   event_stream: EventStreamShared,
   runtime:      tokio::runtime::Handle,
@@ -33,7 +33,7 @@ impl TokioGossiper {
   #[must_use]
   pub fn new(
     config: TokioGossiperConfig,
-    coordinator: MembershipCoordinatorSharedGeneric<StdToolbox>,
+    coordinator: MembershipCoordinatorShared,
     transport: TokioGossipTransport,
     event_stream: EventStreamShared,
     runtime: tokio::runtime::Handle,
@@ -43,7 +43,7 @@ impl TokioGossiper {
 
   /// Returns the shared coordinator handle.
   #[must_use]
-  pub const fn coordinator(&self) -> &MembershipCoordinatorSharedGeneric<StdToolbox> {
+  pub const fn coordinator(&self) -> &MembershipCoordinatorShared {
     &self.coordinator
   }
 }
@@ -62,7 +62,7 @@ impl Gossiper for TokioGossiper {
     let tick_resolution = self.config.tick_resolution;
     let tick_interval = self.config.tick_interval;
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
-    let mut driver = MembershipCoordinatorDriverGeneric::new(coordinator, transport, event_stream);
+    let mut driver = MembershipCoordinatorDriver::new(coordinator, transport, event_stream);
 
     let task = self.runtime.spawn(async move {
       let mut interval = tokio::time::interval(tick_interval);

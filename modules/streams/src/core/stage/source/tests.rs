@@ -3,16 +3,13 @@ use core::{future::ready, marker::PhantomData};
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
-  runtime_toolbox::NoStdToolbox,
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
 use crate::core::{
   Completion, DynValue, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
   StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  lifecycle::{
-    DriveOutcome, SharedKillSwitch, Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric, StreamState,
-  },
+  lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   mat::{Materialized, Materializer},
   stage::{Sink, Source, StageKind},
 };
@@ -34,22 +31,17 @@ impl Default for RecordingMaterializer {
 }
 
 impl Materializer for RecordingMaterializer {
-  type Toolbox = NoStdToolbox;
-
   fn start(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
 
-  fn materialize<Mat>(
-    &mut self,
-    graph: super::super::RunnableGraph<Mat>,
-  ) -> Result<Materialized<Mat, Self::Toolbox>, StreamError> {
+  fn materialize<Mat>(&mut self, graph: super::super::RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls += 1;
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamSharedGeneric::new(stream);
-    let handle = StreamHandleGeneric::new(StreamHandleId::next(), shared);
+    let shared = StreamShared::new(stream);
+    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
     Ok(Materialized::new(handle, materialized))
   }
 

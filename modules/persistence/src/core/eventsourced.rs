@@ -6,7 +6,6 @@ mod tests;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{actor::ActorContext, error::ActorError, messaging::AnyMessageView};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   journal_error::JournalError, persistence_error::PersistenceError, persistent_repr::PersistentRepr,
@@ -14,7 +13,7 @@ use crate::core::{
 };
 
 /// Event-sourced actor interface.
-pub trait Eventsourced<TB: RuntimeToolbox + 'static>: Send {
+pub trait Eventsourced: Send {
   /// Returns the persistence id.
   fn persistence_id(&self) -> &str;
 

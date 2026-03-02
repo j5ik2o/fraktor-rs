@@ -11,20 +11,17 @@ use fraktor_cluster_rs::{
   core::{
     ClusterExtensionConfig,
     membership::{
-      GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
-      MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
+      GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinator, MembershipCoordinatorConfig,
+      MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
     },
   },
-  std::MembershipCoordinatorDriverGeneric,
+  std::MembershipCoordinatorDriver,
 };
 use fraktor_remote_rs::core::failure_detector::{
   DefaultFailureDetectorRegistry,
   phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
-use fraktor_utils_rs::{
-  core::{sync::SharedAccess, time::TimerInstant},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::core::{sync::SharedAccess, time::TimerInstant};
 
 struct InMemoryBus {
   inbox:          HashMap<String, Vec<(String, MembershipDelta)>>,
@@ -86,7 +83,7 @@ impl GossipTransport for DemoTransport {
 }
 
 struct DemoNode {
-  driver: MembershipCoordinatorDriverGeneric<StdToolbox, DemoTransport>,
+  driver: MembershipCoordinatorDriver<DemoTransport>,
 }
 
 impl DemoNode {
@@ -105,11 +102,11 @@ impl DemoNode {
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
       Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
     }));
-    let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
+    let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");
-    let shared = MembershipCoordinatorSharedGeneric::new(coordinator);
+    let shared = MembershipCoordinatorShared::new(coordinator);
     let transport = DemoTransport::new(authority, bus);
-    let driver = MembershipCoordinatorDriverGeneric::new(shared, transport, event_stream);
+    let driver = MembershipCoordinatorDriver::new(shared, transport, event_stream);
     Self { driver }
   }
 

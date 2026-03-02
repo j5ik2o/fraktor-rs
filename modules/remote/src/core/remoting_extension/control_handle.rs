@@ -25,10 +25,7 @@ use fraktor_actor_rs::core::{
 };
 #[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
 use fraktor_utils_rs::core::sync::SharedAccess;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::{
   config::RemotingExtensionConfig, control::RemotingControl, control_backpressure_hook::ControlBackpressureHook,
@@ -44,34 +41,26 @@ use crate::core::{
   actor_ref_provider::unregister_endpoint,
   backpressure::{RemotingBackpressureListener, RemotingBackpressureListenerShared},
   endpoint_association::QuarantineReason,
-  endpoint_reader::EndpointReaderGeneric,
-  endpoint_writer::EndpointWriterSharedGeneric,
-  event_publisher::EventPublisherGeneric,
+  endpoint_reader::EndpointReader,
+  endpoint_writer::EndpointWriterShared,
+  event_publisher::EventPublisher,
   flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
-pub struct RemotingControlHandle<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  inner: ArcShared<RemotingControlInner<TB>>,
+pub struct RemotingControlHandle {
+  inner: ArcShared<RemotingControlInner>,
 }
 
-impl<TB> Clone for RemotingControlHandle<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Clone for RemotingControlHandle {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB> RemotingControlHandle<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl RemotingControlHandle {
   /// Creates a new handle bound to the provided actor system.
   ///
   /// The handle stores a weak reference to the actor system to avoid circular references.
@@ -83,7 +72,7 @@ where
       listeners.push(ArcShared::new(RuntimeMutex::new(boxed)));
     }
     let system_weak = system.downgrade();
-    let publisher = EventPublisherGeneric::new(system_weak.clone());
+    let publisher = EventPublisher::new(system_weak.clone());
     let inner = RemotingControlInner {
       system: system_weak,
       event_publisher: publisher,
@@ -144,23 +133,19 @@ where
 
   /// Registers the transport instance used by the runtime.
   #[allow(dead_code)]
-  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport<TB>>) {
-    let shared: RemoteTransportShared<TB> = RemoteTransportShared::new(transport);
+  pub(crate) fn register_transport(&self, transport: Box<dyn RemoteTransport>) {
+    let shared: RemoteTransportShared = RemoteTransportShared::new(transport);
     self.register_remote_transport_shared(shared);
   }
 
   /// Registers a pre-wrapped shared transport instance.
-  pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared<TB>) {
+  pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared) {
     *self.inner.transport_ref.lock() = Some(transport);
     let _ = self.inner.try_bootstrap_runtime(self.clone());
   }
 
   /// Registers endpoint IO components required for transport bridging.
-  pub(crate) fn register_endpoint_io(
-    &self,
-    writer: EndpointWriterSharedGeneric<TB>,
-    reader: ArcShared<EndpointReaderGeneric<TB>>,
-  ) {
+  pub(crate) fn register_endpoint_io(&self, writer: EndpointWriterShared, reader: ArcShared<EndpointReader>) {
     *self.inner.writer.lock() = Some(writer);
     *self.inner.reader.lock() = Some(reader);
     let _ = self.inner.try_bootstrap_runtime(self.clone());
@@ -254,10 +239,7 @@ where
   }
 }
 
-impl<TB> RemotingControl<TB> for RemotingControlHandle<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl RemotingControl for RemotingControlHandle {
   fn start(&mut self) -> Result<(), RemotingError> {
     {
       let mut guard = self.inner.state.lock();
@@ -320,11 +302,9 @@ where
   }
 }
 
-struct RemotingControlInner<TB>
-where
-  TB: RuntimeToolbox + 'static, {
+struct RemotingControlInner {
   system:                 ActorSystemWeak,
-  event_publisher:        EventPublisherGeneric<TB>,
+  event_publisher:        EventPublisher,
   canonical_host:         String,
   canonical_port:         Option<u16>,
   #[cfg(feature = "tokio-transport")]
@@ -340,10 +320,10 @@ where
   snapshots:              RuntimeMutex<Vec<RemoteAuthoritySnapshot>>,
   recorder:               RemotingFlightRecorder,
   correlation_seq:        AtomicU64,
-  writer:                 RuntimeMutex<Option<EndpointWriterSharedGeneric<TB>>>,
-  reader:                 RuntimeMutex<Option<ArcShared<EndpointReaderGeneric<TB>>>>,
+  writer:                 RuntimeMutex<Option<EndpointWriterShared>>,
+  reader:                 RuntimeMutex<Option<ArcShared<EndpointReader>>>,
   watcher_daemon:         RuntimeMutex<Option<ActorRef>>,
-  transport_ref:          RuntimeMutex<Option<RemoteTransportShared<TB>>>,
+  transport_ref:          RuntimeMutex<Option<RemoteTransportShared>>,
   #[cfg(feature = "tokio-transport")]
   remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
   #[cfg(feature = "tokio-transport")]
@@ -352,10 +332,7 @@ where
   heartbeat_channels:     RuntimeMutex<BTreeMap<String, TransportChannel>>,
 }
 
-impl<TB> RemotingControlInner<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl RemotingControlInner {
   /// Formats the canonical authority string from host and port.
   fn format_authority(&self) -> String {
     match self.canonical_port {
@@ -403,7 +380,7 @@ where
     self.recorder.record_backpressure(authority.to_string(), signal, correlation_id, millis);
   }
 
-  fn try_bootstrap_runtime(&self, control: RemotingControlHandle<TB>) -> Result<(), RemotingError> {
+  fn try_bootstrap_runtime(&self, control: RemotingControlHandle) -> Result<(), RemotingError> {
     #[cfg(feature = "tokio-transport")]
     {
       if !self.state.lock().is_running() {

@@ -4,7 +4,7 @@ use alloc::{boxed::Box, string::String};
 
 use fraktor_actor_rs::core::event::stream::CorrelationId;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -26,14 +26,14 @@ use super::{
 /// underlying transport.
 ///
 /// Example: `transport_shared.with_write(|t| t.open_channel(&endpoint))?;`
-pub struct RemoteTransportShared<TB: RuntimeToolbox + 'static> {
-  inner:  ArcShared<RuntimeMutex<Box<dyn RemoteTransport<TB>>>>,
+pub struct RemoteTransportShared {
+  inner:  ArcShared<RuntimeMutex<Box<dyn RemoteTransport>>>,
   scheme: String,
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteTransportShared<TB> {
+impl RemoteTransportShared {
   /// Creates a new shared wrapper around the provided transport implementation.
-  pub fn new(transport: Box<dyn RemoteTransport<TB>>) -> Self {
+  pub fn new(transport: Box<dyn RemoteTransport>) -> Self {
     let scheme = transport.scheme().into();
     Self { inner: ArcShared::new(RuntimeMutex::new(transport)), scheme }
   }
@@ -45,25 +45,25 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransportShared<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for RemoteTransportShared<TB> {
+impl Clone for RemoteTransportShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), scheme: self.scheme.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn RemoteTransport<TB>>> for RemoteTransportShared<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteTransport<TB>>) -> R) -> R {
+impl SharedAccess<Box<dyn RemoteTransport>> for RemoteTransportShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteTransport>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteTransport<TB>>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteTransport>) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for RemoteTransportShared<TB> {
+impl RemoteTransport for RemoteTransportShared {
   fn scheme(&self) -> &str {
     &self.scheme
   }
@@ -93,7 +93,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteTransport<TB> for RemoteTransportShared
     self.inner.lock().install_backpressure_hook(hook)
   }
 
-  fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared) {
     self.inner.lock().install_inbound_handler(handler)
   }
 }

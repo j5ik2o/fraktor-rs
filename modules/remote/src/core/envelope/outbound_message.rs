@@ -1,34 +1,30 @@
 //! Describes an outbound message queued for serialization.
 
-use core::marker::PhantomData;
-
 use fraktor_actor_rs::core::{actor::actor_path::ActorPath, messaging::AnyMessage};
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::priority::OutboundPriority;
 use crate::core::remote_node_id::RemoteNodeId;
 
 /// Message awaiting serialization and transport.
-pub struct OutboundMessage<TB: RuntimeToolbox + 'static> {
+pub struct OutboundMessage {
   message:     AnyMessage,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
   sender:      Option<ActorPath>,
   priority:    OutboundPriority,
-  _marker:     PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> OutboundMessage<TB> {
+impl OutboundMessage {
   /// Creates a user-priority message.
   #[must_use]
   pub fn user(message: AnyMessage, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::User, _marker: PhantomData }
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::User }
   }
 
   /// Creates a system-priority message.
   #[must_use]
   pub fn system(message: AnyMessage, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::System, _marker: PhantomData }
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::System }
   }
 
   /// Attaches a sender actor path to the message.

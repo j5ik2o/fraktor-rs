@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
-  persistence_extension::PersistenceExtensionGeneric,
+  persistence_extension::PersistenceExtension,
 };
 
 struct NoopActor;
@@ -33,10 +33,7 @@ fn persistence_extension_creates_actor_refs() {
   let journal = InMemoryJournal::new();
   let snapshot = InMemorySnapshotStore::new();
 
-  let extension = PersistenceExtensionGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    &system, journal, snapshot,
-  )
-  .expect("extension should build");
+  let extension = PersistenceExtension::new(&system, journal, snapshot).expect("extension should build");
 
   assert_ne!(extension.journal_actor_ref().pid(), Pid::new(0, 0));
   assert_ne!(extension.snapshot_actor_ref().pid(), Pid::new(0, 0));

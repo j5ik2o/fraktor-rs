@@ -5,7 +5,6 @@ mod error;
 mod tests;
 
 use alloc::sync::Arc;
-use core::marker::PhantomData;
 
 pub use error::EndpointReaderError;
 use fraktor_actor_rs::core::{
@@ -16,47 +15,40 @@ use fraktor_actor_rs::core::{
   serialization::{SerializationError, SerializationExtensionShared, SerializedMessage},
   system::{ActorSystem, ActorSystemWeak, remote::RemoteWatchHookShared},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::actor_ref_provider::tokio::TokioActorRefProviderGeneric;
+use crate::core::actor_ref_provider::tokio::TokioActorRefProvider;
 use crate::core::{
-  actor_ref_provider::remote::RemoteActorRefProviderGeneric,
+  actor_ref_provider::remote::RemoteActorRefProvider,
   envelope::{InboundEnvelope, RemotingEnvelope},
 };
 
 /// Deserializes inbound transport envelopes into runtime messages.
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
-pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
+pub struct EndpointReader {
   system:        ActorSystemWeak,
   serialization: SerializationExtensionShared,
-  _marker:       PhantomData<TB>,
 }
 
-/// Type alias for `EndpointReaderGeneric` with the default `NoStdToolbox`.
-pub type EndpointReader = EndpointReaderGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Clone for EndpointReaderGeneric<TB> {
+impl Clone for EndpointReader {
   fn clone(&self) -> Self {
-    Self { system: self.system.clone(), serialization: self.serialization.clone(), _marker: PhantomData }
+    Self { system: self.system.clone(), serialization: self.serialization.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
+impl EndpointReader {
   /// Creates a new reader bound to the provided actor system.
   ///
   /// The reader stores a weak reference to the actor system.
   #[must_use]
   pub fn new(system: ActorSystemWeak, serialization: SerializationExtensionShared) -> Self {
-    Self { system, serialization, _marker: PhantomData }
+    Self { system, serialization }
   }
 
   /// Decodes a remoting envelope into an inbound representation.
-  pub fn decode(&self, envelope: RemotingEnvelope) -> Result<InboundEnvelope<TB>, EndpointReaderError> {
+  pub fn decode(&self, envelope: RemotingEnvelope) -> Result<InboundEnvelope, EndpointReaderError> {
     let recipient = envelope.recipient().clone();
     let remote_node = envelope.remote_node().clone();
     let sender = envelope.sender().cloned();
@@ -92,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   /// Delivers the provided inbound envelope to the actor system.
   ///
   /// Returns an error if the actor system has been dropped or the recipient is unavailable.
-  pub fn deliver(&self, inbound: InboundEnvelope<TB>) -> Result<(), SendError> {
+  pub fn deliver(&self, inbound: InboundEnvelope) -> Result<(), SendError> {
     let Some(system) = self.system.upgrade() else {
       let (_, message, _) = inbound.into_delivery_parts();
       return Err(SendError::closed(message));
@@ -132,15 +124,13 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   fn resolve_sender_with_system(&self, system: &ActorSystem, path: &ActorPath) -> Option<ActorRef> {
     // Try Tokio provider first when available, then generic remote provider as fallback.
     #[cfg(feature = "tokio-transport")]
-    if let Some(provider) =
-      system.extended().actor_ref_provider::<RemoteWatchHookShared<TokioActorRefProviderGeneric<TB>>>()
+    if let Some(provider) = system.extended().actor_ref_provider::<RemoteWatchHookShared<TokioActorRefProvider>>()
       && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(sender_ref);
     }
 
-    if let Some(provider) =
-      system.extended().actor_ref_provider::<RemoteWatchHookShared<RemoteActorRefProviderGeneric<TB>>>()
+    if let Some(provider) = system.extended().actor_ref_provider::<RemoteWatchHookShared<RemoteActorRefProvider>>()
       && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(sender_ref);

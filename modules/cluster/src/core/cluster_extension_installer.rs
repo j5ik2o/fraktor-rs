@@ -8,12 +8,12 @@ use fraktor_actor_rs::core::{
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   ClusterExtensionConfig,
   cluster_extension_id::ClusterExtensionId,
-  cluster_provider::{ClusterProvider, LocalClusterProviderGeneric},
+  cluster_provider::{ClusterProvider, LocalClusterProvider},
   downing_provider::{DowningProvider, NoopDowningProvider},
   identity::{IdentityLookup, NoopIdentityLookup},
   membership::{Gossiper, NoopGossiper},
@@ -48,7 +48,7 @@ type GossiperFactory = ArcShared<dyn Fn() -> Box<dyn Gossiper> + Send + Sync>;
 type DowningProviderFactory = ArcShared<dyn Fn() -> Box<dyn DowningProvider> + Send + Sync>;
 
 /// Factory function type for creating a `ClusterPubSub`.
-type PubSubFactory<TB> = ArcShared<dyn Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub<TB>> + Send + Sync>;
+type PubSubFactory = ArcShared<dyn Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub> + Send + Sync>;
 
 /// Factory function type for creating an `IdentityLookup`.
 type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Send + Sync>;
@@ -68,7 +68,7 @@ type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Sen
 ///     .with_advertised_address("127.0.0.1:8080")
 ///     .with_metrics_enabled(true);
 ///
-/// // Use new_with_local for LocalClusterProviderGeneric (convenience)
+/// // Use new_with_local for LocalClusterProvider (convenience)
 /// let installer = ClusterExtensionInstaller::new_with_local(config);
 ///
 /// // Or use new with a custom ClusterProvider factory
@@ -78,17 +78,17 @@ type IdentityLookupFactory = ArcShared<dyn Fn() -> Box<dyn IdentityLookup> + Sen
 ///
 /// // Add to ActorSystemConfig extension_installers
 /// ```
-pub struct ClusterExtensionInstaller<TB: RuntimeToolbox + 'static> {
+pub struct ClusterExtensionInstaller {
   config:              ClusterExtensionConfig,
   provider_f:          ClusterProviderFactory,
   block_list_provider: Option<ArcShared<dyn BlockListProvider>>,
   downing_provider_f:  Option<DowningProviderFactory>,
   gossiper_f:          Option<GossiperFactory>,
-  pubsub_f:            Option<PubSubFactory<TB>>,
+  pubsub_f:            Option<PubSubFactory>,
   identity_lookup_f:   Option<IdentityLookupFactory>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
+impl Clone for ClusterExtensionInstaller {
   fn clone(&self) -> Self {
     Self {
       config:              self.config.clone(),
@@ -102,7 +102,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for ClusterExtensionInstaller<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
+impl ClusterExtensionInstaller {
   /// Creates a new installer with the provided configuration and cluster provider factory.
   ///
   /// Use this constructor when you need a custom `ClusterProvider` implementation
@@ -139,10 +139,10 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     }
   }
 
-  /// Creates a new installer with `LocalClusterProviderGeneric`.
+  /// Creates a new installer with `LocalClusterProvider`.
   ///
   /// This is a convenience constructor for the common case where you want to use
-  /// the built-in `LocalClusterProviderGeneric` with EventStream-based topology management.
+  /// the built-in `LocalClusterProvider` with EventStream-based topology management.
   ///
   /// Default implementations will be used for `Gossiper`, `ClusterPubSub`,
   /// and `IdentityLookup` unless explicitly set.
@@ -150,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn new_with_local(config: ClusterExtensionConfig) -> Self {
     let static_topology = config.static_topology().cloned();
     Self::new(config, move |event_stream, block_list_provider, advertised_address| {
-      let mut provider = LocalClusterProviderGeneric::<TB>::new(event_stream, block_list_provider, advertised_address);
+      let mut provider = LocalClusterProvider::new(event_stream, block_list_provider, advertised_address);
       if let Some(ref topology) = static_topology {
         provider = provider.with_static_topology(topology.clone());
       }
@@ -187,7 +187,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn new_with_ecs(
     config: ClusterExtensionConfig,
     ecs_config: crate::std::EcsClusterConfig,
-  ) -> ClusterExtensionInstaller<fraktor_utils_rs::std::runtime_toolbox::StdToolbox> {
+  ) -> ClusterExtensionInstaller {
     ClusterExtensionInstaller::new(config, move |event_stream, block_list_provider, advertised_address| {
       Box::new(
         crate::std::AwsEcsClusterProvider::new(event_stream, block_list_provider, advertised_address)
@@ -231,7 +231,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   #[must_use]
   pub fn with_pubsub_factory<F>(mut self, factory: F) -> Self
   where
-    F: Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub<TB>> + Send + Sync + 'static, {
+    F: Fn(&ClusterExtensionConfig) -> Box<dyn ClusterPubSub> + Send + Sync + 'static, {
     self.pubsub_f = Some(ArcShared::new(factory));
     self
   }
@@ -248,7 +248,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
+impl ClusterExtensionInstaller {
   /// Installs the cluster extension into the actor system.
   ///
   /// This is a **command** that creates and registers the `ClusterExtension`.
@@ -266,7 +266,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   pub fn install(
     &self,
     system: &ActorSystem,
-  ) -> Result<ArcShared<crate::core::ClusterExtensionGeneric<TB>>, ActorSystemBuildError> {
+  ) -> Result<ArcShared<crate::core::ClusterExtension>, ActorSystemBuildError> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
     if config.advertised_address().is_empty()
@@ -285,7 +285,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // Gossiper はファクトリ経由で作成（Clone できないため）
     let gossiper: Box<dyn Gossiper> = self.gossiper_f.as_ref().map(|f| f()).unwrap_or_else(|| Box::new(NoopGossiper));
     // ClusterPubSub はファクトリ経由で作成（Clone できないため）
-    let pubsub: Box<dyn ClusterPubSub<TB>> =
+    let pubsub: Box<dyn ClusterPubSub> =
       self.pubsub_f.as_ref().map(|f| f(&config)).unwrap_or_else(|| Box::new(NoopClusterPubSub));
     // IdentityLookup はファクトリ経由で作成（Clone できないため）
     let identity_lookup: Box<dyn IdentityLookup> =
@@ -294,7 +294,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
     // ファクトリー関数を呼び出して ClusterProvider を作成
     let provider = (self.provider_f)(system.event_stream(), block_list_provider.clone(), config.advertised_address());
 
-    let id = ClusterExtensionId::<TB>::new(
+    let id = ClusterExtensionId::new(
       config,
       provider,
       block_list_provider,
@@ -309,10 +309,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionInstaller<TB> {
   }
 }
 
-impl<TB> ExtensionInstaller for ClusterExtensionInstaller<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl ExtensionInstaller for ClusterExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let _ = ClusterExtensionInstaller::install(self, system)?;
     Ok(())

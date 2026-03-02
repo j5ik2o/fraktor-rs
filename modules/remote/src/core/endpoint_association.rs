@@ -14,7 +14,7 @@ mod state;
 
 pub use command::EndpointAssociationCommand;
 pub use coordinator::EndpointAssociationCoordinator;
-pub use coordinator_shared::{EndpointAssociationCoordinatorShared, EndpointAssociationCoordinatorSharedGeneric};
+pub use coordinator_shared::EndpointAssociationCoordinatorShared;
 pub use effect::EndpointAssociationEffect;
 pub use quarantine_reason::QuarantineReason;
 pub use result::EndpointAssociationResult;

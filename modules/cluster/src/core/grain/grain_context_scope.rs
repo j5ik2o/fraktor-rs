@@ -1,27 +1,25 @@
 //! Execution scope for grain context.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use super::GrainContextGeneric;
+use super::GrainContextImpl;
 
 #[cfg(test)]
 mod tests;
 
 /// Scope guard that controls the lifetime of a grain context.
-pub struct GrainContextScope<TB: RuntimeToolbox + 'static> {
-  context: Option<GrainContextGeneric<TB>>,
+pub struct GrainContextScope {
+  context: Option<GrainContextImpl>,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainContextScope<TB> {
+impl GrainContextScope {
   /// Creates a new scope from the provided context.
   #[must_use]
-  pub const fn new(context: GrainContextGeneric<TB>) -> Self {
+  pub const fn new(context: GrainContextImpl) -> Self {
     Self { context: Some(context) }
   }
 
   /// Returns the current context if still active.
   #[must_use]
-  pub const fn context(&self) -> Option<&GrainContextGeneric<TB>> {
+  pub const fn context(&self) -> Option<&GrainContextImpl> {
     self.context.as_ref()
   }
 

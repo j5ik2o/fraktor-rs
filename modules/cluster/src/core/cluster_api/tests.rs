@@ -24,13 +24,13 @@ use fraktor_actor_rs::core::{
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::NoStdMutex,
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
 
 use crate::core::{
-  ClusterApiError, ClusterApiGeneric, ClusterEvent, ClusterEventType, ClusterExtensionConfig, ClusterExtensionGeneric,
+  ClusterApi, ClusterApiError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterExtensionConfig,
   ClusterExtensionInstaller, ClusterRequestError, ClusterResolveError, ClusterSubscriptionInitialStateMode,
   ClusterTopology, MetricsError, TopologyUpdate,
   cluster_provider::{ClusterProvider, NoopClusterProvider},
@@ -43,7 +43,7 @@ use crate::core::{
 #[test]
 fn try_from_system_fails_when_extension_missing() {
   let system = ActorSystem::new_empty();
-  match ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system) {
+  match ClusterApi::try_from_system(&system) {
     | Ok(_) => panic!("extension should be missing"),
     | Err(err) => assert_eq!(err, ClusterApiError::ExtensionNotInstalled),
   }
@@ -53,8 +53,8 @@ fn try_from_system_fails_when_extension_missing() {
 fn try_from_system_returns_existing_extension() {
   let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
 
-  let first = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
-  let second = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let first = ClusterApi::try_from_system(&system).expect("cluster api");
+  let second = ClusterApi::try_from_system(&system).expect("cluster api");
 
   assert!(ArcShared::ptr_eq(&first.extension, &second.extension));
 }
@@ -63,7 +63,7 @@ fn try_from_system_returns_existing_extension() {
 fn get_fails_when_cluster_not_started() {
   let (system, _ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let err = api.get(&identity).expect_err("not started");
@@ -75,7 +75,7 @@ fn get_fails_when_kind_not_registered() {
   let (system, ext) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   ext.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let err = api.get(&identity).expect_err("kind not registered");
@@ -88,7 +88,7 @@ fn get_fails_on_invalid_pid_format() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let err = api.get(&identity).expect_err("invalid pid");
@@ -101,7 +101,7 @@ fn get_returns_lookup_pending_when_resolution_pending() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let err = api.get(&identity).expect_err("pending");
@@ -114,7 +114,7 @@ fn get_resolves_actor_ref_for_registered_kind() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let actor_ref = api.get(&identity).expect("resolved actor ref");
@@ -136,7 +136,7 @@ fn get_publishes_activation_events_and_updates_metrics() {
   let event_stream = system.event_stream();
   let (recorder, _subscription) = subscribe_grain_events(&event_stream);
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
 
   let _ = api.get(&identity).expect("resolved actor ref");
@@ -156,7 +156,7 @@ fn request_returns_error_when_lookup_fails() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   match api.request(&identity, AnyMessage::new(()), None) {
     | Ok(_) => panic!("lookup should fail"),
@@ -170,7 +170,7 @@ fn request_returns_ok_without_timeout() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let response = api.request(&identity, AnyMessage::new(()), None).expect("request ok");
 
@@ -183,7 +183,7 @@ fn request_future_completes_with_timeout_payload() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let future = api.request_future(&identity, AnyMessage::new(()), Some(Duration::from_millis(1))).expect("request");
 
@@ -208,7 +208,7 @@ fn down_delegates_to_cluster_provider() {
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
   let cluster_installer =
-    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, move |_event_stream, _block_list, _address| {
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
       Box::new(RecordingDownProvider { downed: downed_for_provider.clone() })
     })
     .with_downing_provider_factory(move || Box::new(RecordingDowningProvider { downed: downed_for_strategy.clone() }))
@@ -224,11 +224,10 @@ fn down_delegates_to_cluster_provider() {
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension =
-    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   extension.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   api.down("node2:8080").expect("down");
 
   assert_eq!(downed_strategy.lock().clone(), vec![String::from("node2:8080")]);
@@ -246,7 +245,7 @@ fn join_and_leave_delegate_to_cluster_provider() {
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
   let cluster_installer =
-    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, move |_event_stream, _block_list, _address| {
+    ClusterExtensionInstaller::new(cluster_config, move |_event_stream, _block_list, _address| {
       Box::new(RecordingMembershipProvider { joined: joined_for_provider.clone(), left: left_for_provider.clone() })
     })
     .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
@@ -261,11 +260,10 @@ fn join_and_leave_delegate_to_cluster_provider() {
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension =
-    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   extension.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   api.join("node2:8080").expect("join");
   api.leave("node2:8080").expect("leave");
 
@@ -278,7 +276,7 @@ fn subscribe_and_unsubscribe_control_event_stream_registration() {
   let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   extension.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription =
@@ -306,7 +304,7 @@ fn subscribe_snapshot_mode_sends_current_cluster_state_first() {
   let second = build_topology_update(2, vec![String::from("node3:8080")], Vec::new());
   extension.on_topology(&second);
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let _subscription =
@@ -341,7 +339,7 @@ fn subscribe_snapshot_mode_sends_self_member_before_topology_events() {
   let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   extension.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let _subscription =
@@ -367,7 +365,7 @@ fn subscribe_snapshot_mode_keeps_current_cluster_state_first_when_topology_updat
   let first = build_topology_update(1, vec![String::from("node2:8080")], Vec::new());
   extension.on_topology(&first);
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let _subscription =
@@ -398,7 +396,7 @@ fn subscribe_no_replay_skips_buffered_cluster_events() {
   let first = build_topology_update(1, vec![String::from("node2:8080")], Vec::new());
   extension.on_topology(&first);
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let _subscription = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
@@ -418,7 +416,7 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
   let (system, extension) = build_system_with_extension(|| Box::new(StaticIdentityLookup::new("node1:8080")));
   extension.start_member().expect("start member");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder);
 
@@ -436,9 +434,7 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
   });
 }
 
-fn build_system_with_extension<F>(
-  identity_lookup_factory: F,
-) -> (ActorSystem, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   build_system_with_extension_config(identity_lookup_factory, false)
@@ -447,18 +443,17 @@ where
 fn build_system_with_extension_config<F>(
   identity_lookup_factory: F,
   metrics_enabled: bool,
-) -> (ActorSystem, ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config =
     ClusterExtensionConfig::new().with_advertised_address("node1:8080").with_metrics_enabled(metrics_enabled);
-  let cluster_installer =
-    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, |_event_stream, _block_list, _address| {
-      Box::new(NoopClusterProvider::new())
-    })
-    .with_identity_lookup_factory(identity_lookup_factory);
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  })
+  .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
@@ -470,8 +465,7 @@ where
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension =
-    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (system, extension)
 }
 

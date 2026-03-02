@@ -19,10 +19,7 @@ use fraktor_actor_rs::core::{
   },
   system::ActorSystemWeak,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 use tokio::{
   sync::{Mutex as TokioMutex, mpsc},
   time::{Instant, sleep},
@@ -30,14 +27,12 @@ use tokio::{
 
 use super::{EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
-  EventPublisherGeneric, FLUSH_ACK_FRAME_KIND, FLUSH_FRAME_KIND, Flush, FlushAck, RemoteInstruments, RemoteNodeId,
-  WireError,
+  EventPublisher, FLUSH_ACK_FRAME_KIND, FLUSH_FRAME_KIND, Flush, FlushAck, RemoteInstruments, RemoteNodeId, WireError,
   endpoint_association::{
-    AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinatorSharedGeneric,
-    EndpointAssociationEffect,
+    AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinatorShared, EndpointAssociationEffect,
   },
-  endpoint_reader::EndpointReaderGeneric,
-  endpoint_writer::EndpointWriterSharedGeneric,
+  endpoint_reader::EndpointReader,
+  endpoint_writer::EndpointWriterShared,
   envelope::{
     ACKED_DELIVERY_ACK_FRAME_KIND, ACKED_DELIVERY_NACK_FRAME_KIND, AckedDelivery, DeferredEnvelope, RemotingEnvelope,
     SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope,
@@ -68,13 +63,13 @@ enum InboundSystemSequenceResult {
   OutOfWindow { highest_acked_sequence_no: u64, max_acceptable_sequence_no: u64 },
 }
 
-pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
+pub(crate) struct EndpointTransportBridge {
   system:                 ActorSystemWeak,
-  control:                RemotingControlHandle<TB>,
-  event_publisher:        EventPublisherGeneric<TB>,
-  writer:                 EndpointWriterSharedGeneric<TB>,
-  reader:                 ArcShared<EndpointReaderGeneric<TB>>,
-  transport:              RemoteTransportShared<TB>,
+  control:                RemotingControlHandle,
+  event_publisher:        EventPublisher,
+  writer:                 EndpointWriterShared,
+  reader:                 ArcShared<EndpointReader>,
+  transport:              RemoteTransportShared,
   host:                   String,
   port:                   u16,
   system_name:            String,
@@ -93,11 +88,11 @@ pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
   system_correlations:    TokioMutex<BTreeMap<u128, String>>,
   flush_ack_observations: TokioMutex<BTreeMap<String, u32>>,
   remote_instruments:     RemoteInstruments,
-  pub(super) coordinator: EndpointAssociationCoordinatorSharedGeneric<TB>,
+  pub(super) coordinator: EndpointAssociationCoordinatorShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
-  pub(super) fn new(config: EndpointTransportBridgeConfig<TB>) -> Arc<Self> {
+impl EndpointTransportBridge {
+  pub(super) fn new(config: EndpointTransportBridgeConfig) -> Arc<Self> {
     Arc::new(Self {
       system:                 config.system,
       control:                config.control,
@@ -123,19 +118,17 @@ impl<TB: RuntimeToolbox + 'static> EndpointTransportBridge<TB> {
       system_correlations:    TokioMutex::new(BTreeMap::<u128, String>::new()),
       flush_ack_observations: TokioMutex::new(BTreeMap::<String, u32>::new()),
       remote_instruments:     RemoteInstruments::new(config.remote_instruments),
-      coordinator:            EndpointAssociationCoordinatorSharedGeneric::new(),
+      coordinator:            EndpointAssociationCoordinatorShared::new(),
     })
   }
 
-  pub(crate) fn spawn(
-    config: EndpointTransportBridgeConfig<TB>,
-  ) -> Result<EndpointTransportBridgeHandle, TransportError> {
+  pub(crate) fn spawn(config: EndpointTransportBridgeConfig) -> Result<EndpointTransportBridgeHandle, TransportError> {
     let bridge = Self::new(config);
     let bind = TransportBind::new(bridge.host.clone(), Some(bridge.port));
     let handle = bridge.transport.with_write(|t| t.spawn_listener(&bind))?;
     bridge.event_publisher.publish_listen_started(bind.authority(), CorrelationId::from_u128(0));
     *bridge.listener.try_lock().expect("listener mutex uncontended") = Some(handle);
-    let handler: TransportInboundShared<TB> =
+    let handler: TransportInboundShared =
       TransportInboundShared::new(Box::new(InboundHandler::new(bridge.clone(), INBOUND_FRAME_MAX_CONCURRENCY)));
     bridge.transport.with_write(|t| t.install_inbound_handler(handler));
     let send_task = tokio::spawn(Self::drive_outbound(bridge.clone()));
@@ -889,7 +882,7 @@ struct InboundHandler {
 }
 
 impl InboundHandler {
-  fn new<TB: RuntimeToolbox + 'static>(bridge: Arc<EndpointTransportBridge<TB>>, max_concurrency: usize) -> Self {
+  fn new(bridge: Arc<EndpointTransportBridge>, max_concurrency: usize) -> Self {
     let (frame_sender, frame_receiver) = mpsc::channel::<InboundFrame>(max_concurrency);
     let frame_receiver = Arc::new(TokioMutex::new(frame_receiver));
     for _ in 0..max_concurrency {

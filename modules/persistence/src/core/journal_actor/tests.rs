@@ -13,10 +13,7 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, journal_actor::JournalActor, journal_actor_config::JournalActorConfig,
@@ -24,7 +21,6 @@ use crate::core::{
   persistent_repr::PersistentRepr,
 };
 
-type TB = NoStdToolbox;
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
@@ -170,7 +166,7 @@ fn journal_actor_write_messages_sends_responses() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
-  let mut actor = JournalActor::<InMemoryJournal, TB>::new(InMemoryJournal::new());
+  let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();
 
   let payload1 = ArcShared::new(1_i32);
@@ -215,7 +211,7 @@ fn journal_actor_pending_does_not_emit_failure() {
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(0);
-  let mut actor = JournalActor::<PendingJournal, TB>::new_with_config(PendingJournal, config);
+  let mut actor = JournalActor::<PendingJournal>::new_with_config(PendingJournal, config);
   let (sender, store) = create_sender();
 
   let payload = ArcShared::new(1_i32);
@@ -241,7 +237,7 @@ fn journal_actor_retry_max_exceeded_on_errors() {
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
   let config = JournalActorConfig::new(1);
-  let mut actor = JournalActor::<RetryJournal, TB>::new_with_config(RetryJournal::new(2), config);
+  let mut actor = JournalActor::<RetryJournal>::new_with_config(RetryJournal::new(2), config);
   let (sender, store) = create_sender();
 
   let payload = ArcShared::new(1_i32);
@@ -290,7 +286,7 @@ fn journal_actor_replay_filters_deleted_messages() {
   let system = new_test_system();
   let pid = Pid::new(1, 1);
   let mut ctx = ActorContext::new(&system, pid);
-  let mut actor = JournalActor::<InMemoryJournal, TB>::new(InMemoryJournal::new());
+  let mut actor = JournalActor::<InMemoryJournal>::new(InMemoryJournal::new());
   let (sender, store) = create_sender();
 
   let repr1 = PersistentRepr::new("pid-1", 1, ArcShared::new(1_i32));

@@ -4,11 +4,11 @@ use fraktor_actor_rs::std::{
   actor::ActorRef,
   messaging::{AnyMessage, AskResponse},
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::{
-    grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRefGeneric},
+    grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRef as CoreGrainRef},
     identity::ClusterIdentity,
   },
   std::ClusterApi,
@@ -16,13 +16,13 @@ use crate::{
 
 /// Grain reference bound to the standard toolbox.
 pub struct GrainRef {
-  inner: GrainRefGeneric<StdToolbox>,
+  inner: CoreGrainRef,
 }
 
 impl GrainRef {
   /// Creates a new grain reference.
   pub fn new(api: ClusterApi, identity: ClusterIdentity) -> Self {
-    Self { inner: GrainRefGeneric::new(api.into_core(), identity) }
+    Self { inner: CoreGrainRef::new(api.into_core(), identity) }
   }
 
   /// Applies call options to the grain reference.
@@ -34,7 +34,7 @@ impl GrainRef {
 
   /// Attaches a codec to validate serialization.
   #[must_use]
-  pub fn with_codec(mut self, codec: ArcShared<dyn GrainCodec<StdToolbox>>) -> Self {
+  pub fn with_codec(mut self, codec: ArcShared<dyn GrainCodec>) -> Self {
     self.inner = self.inner.with_codec(codec);
     self
   }

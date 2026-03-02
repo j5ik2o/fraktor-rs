@@ -8,15 +8,15 @@ use fraktor_actor_rs::std::{
   messaging::{AnyMessage, AskResponse, AskResult},
   system::ActorSystem,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::core::{
-  ClusterApiError, ClusterApiGeneric, ClusterError, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity,
+  ClusterApi as CoreClusterApi, ClusterApiError, ClusterError, ClusterRequestError, ClusterResolveError,
+  identity::ClusterIdentity,
 };
 
 /// Cluster API facade bound to a std actor system.
 pub struct ClusterApi {
-  inner: ClusterApiGeneric<StdToolbox>,
+  inner: CoreClusterApi,
 }
 
 impl ClusterApi {
@@ -26,24 +26,24 @@ impl ClusterApi {
   ///
   /// Returns an error if the cluster extension has not been installed.
   pub fn try_from_system(system: &ActorSystem) -> Result<Self, ClusterApiError> {
-    ClusterApiGeneric::try_from_system(system.as_core()).map(Self::from_core)
+    CoreClusterApi::try_from_system(system.as_core()).map(Self::from_core)
   }
 
   /// Creates a wrapper from the core cluster API.
   #[must_use]
-  pub const fn from_core(inner: ClusterApiGeneric<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreClusterApi) -> Self {
     Self { inner }
   }
 
   /// Borrows the underlying core cluster API.
   #[must_use]
-  pub const fn as_core(&self) -> &ClusterApiGeneric<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreClusterApi {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core cluster API.
   #[must_use]
-  pub fn into_core(self) -> ClusterApiGeneric<StdToolbox> {
+  pub fn into_core(self) -> CoreClusterApi {
     self.inner
   }
 

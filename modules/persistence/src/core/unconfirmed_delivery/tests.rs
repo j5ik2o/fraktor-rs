@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use crate::core::unconfirmed_delivery::UnconfirmedDelivery;
 
@@ -12,14 +12,7 @@ fn unconfirmed_delivery_accessors_return_values() {
   let sender = ActorRef::null();
   let timestamp = TimerInstant::from_ticks(10, Duration::from_secs(1));
 
-  let delivery = UnconfirmedDelivery::<NoStdToolbox>::new(
-    42,
-    destination.clone(),
-    payload.clone(),
-    Some(sender.clone()),
-    timestamp,
-    3,
-  );
+  let delivery = UnconfirmedDelivery::new(42, destination.clone(), payload.clone(), Some(sender.clone()), timestamp, 3);
 
   assert_eq!(delivery.delivery_id(), 42);
   assert_eq!(delivery.destination().pid(), destination.pid());

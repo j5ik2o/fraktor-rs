@@ -3,26 +3,24 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::GrainContext;
-use crate::core::{ClusterApiGeneric, identity::ClusterIdentity};
+use crate::core::{ClusterApi, identity::ClusterIdentity};
 
 /// Default grain execution context.
-pub struct GrainContextGeneric<TB: RuntimeToolbox + 'static> {
+pub struct GrainContextImpl {
   identity: ClusterIdentity,
-  cluster:  ClusterApiGeneric<TB>,
+  cluster:  ClusterApi,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainContextGeneric<TB> {
+impl GrainContextImpl {
   /// Creates a new grain context.
   #[must_use]
-  pub const fn new(identity: ClusterIdentity, cluster: ClusterApiGeneric<TB>) -> Self {
+  pub const fn new(identity: ClusterIdentity, cluster: ClusterApi) -> Self {
     Self { identity, cluster }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainContext<TB> for GrainContextGeneric<TB> {
+impl GrainContext for GrainContextImpl {
   fn kind(&self) -> &str {
     self.identity.kind()
   }
@@ -31,7 +29,7 @@ impl<TB: RuntimeToolbox + 'static> GrainContext<TB> for GrainContextGeneric<TB> 
     self.identity.identity()
   }
 
-  fn cluster(&self) -> &ClusterApiGeneric<TB> {
+  fn cluster(&self) -> &ClusterApi {
     &self.cluster
   }
 }

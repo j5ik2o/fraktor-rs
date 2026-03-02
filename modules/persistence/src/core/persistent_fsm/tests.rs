@@ -13,10 +13,7 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -25,7 +22,6 @@ use crate::core::{
   recovery::Recovery, snapshot::Snapshot, snapshot_response::SnapshotResponse,
 };
 
-type TB = NoStdToolbox;
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
@@ -78,7 +74,7 @@ struct TestFsmEvent {
 }
 
 struct TestPersistentFsmActor {
-  context: PersistenceContext<TestPersistentFsmActor, TB>,
+  context: PersistenceContext<TestPersistentFsmActor>,
   state:   TestFsmState,
   total:   i32,
 }
@@ -95,7 +91,7 @@ impl TestPersistentFsmActor {
   }
 }
 
-impl Eventsourced<TB> for TestPersistentFsmActor {
+impl Eventsourced for TestPersistentFsmActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -113,13 +109,13 @@ impl Eventsourced<TB> for TestPersistentFsmActor {
   }
 }
 
-impl PersistentActor<TB> for TestPersistentFsmActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, TB> {
+impl PersistentActor for TestPersistentFsmActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }
 
-impl PersistentFsm<TB> for TestPersistentFsmActor {
+impl PersistentFsm for TestPersistentFsmActor {
   type DomainEvent = TestFsmEvent;
   type State = TestFsmState;
 

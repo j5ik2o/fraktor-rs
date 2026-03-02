@@ -5,11 +5,11 @@
 //! single-process tests and no_std examples.
 
 use alloc::string::String;
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::EventStreamShared;
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
 use crate::core::{ClusterProviderError, ClusterTopology, TopologyUpdate};
@@ -22,15 +22,14 @@ mod tests;
 /// Unlike network-based providers, this provider does not perform any remote
 /// communication. It simply publishes a predetermined topology when started,
 /// making it ideal for testing and single-process demonstrations.
-pub struct StaticClusterProvider<TB: RuntimeToolbox + 'static> {
+pub struct StaticClusterProvider {
   event_stream:        EventStreamShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   static_topology:     Option<ClusterTopology>,
   advertised_address:  String,
-  _marker:             PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
+impl StaticClusterProvider {
   /// Creates a new static cluster provider.
   #[must_use]
   pub fn new(
@@ -38,13 +37,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
     block_list_provider: ArcShared<dyn BlockListProvider>,
     advertised_address: impl Into<String>,
   ) -> Self {
-    Self {
-      event_stream,
-      block_list_provider,
-      static_topology: None,
-      advertised_address: advertised_address.into(),
-      _marker: PhantomData,
-    }
+    Self { event_stream, block_list_provider, static_topology: None, advertised_address: advertised_address.into() }
   }
 
   /// Sets the static topology to be published on startup.
@@ -94,7 +87,7 @@ impl<TB: RuntimeToolbox + 'static> StaticClusterProvider<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterProvider for StaticClusterProvider<TB> {
+impl ClusterProvider for StaticClusterProvider {
   fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     self.publish_topology();
     Ok(())

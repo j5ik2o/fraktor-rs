@@ -13,10 +13,7 @@ use fraktor_actor_rs::core::{
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::RemoteWatcherDaemon;
 use crate::core::{
@@ -42,17 +39,17 @@ fn build_system() -> ActorSystem {
   ActorSystem::new_with_config(&props, &config).expect("system")
 }
 
-fn build_control(system: &ActorSystem) -> RemotingControlShared<NoStdToolbox> {
+fn build_control(system: &ActorSystem) -> RemotingControlShared {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  let control: RemotingControlShared<NoStdToolbox> = ArcShared::new(RuntimeMutex::new(handle));
-  let mut transport = LoopbackTransport::<NoStdToolbox>::default();
+  let control: RemotingControlShared = ArcShared::new(RuntimeMutex::new(handle));
+  let mut transport = LoopbackTransport::default();
   transport.spawn_listener(&TransportBind::new("127.0.0.1", Some(4100))).expect("bind 127.0.0.1:4100");
   control.lock().register_remote_transport_shared(RemoteTransportShared::new(Box::new(transport)));
   control.lock().start().expect("control start");
   control
 }
 
-fn build_control_without_start(system: &ActorSystem) -> RemotingControlShared<NoStdToolbox> {
+fn build_control_without_start(system: &ActorSystem) -> RemotingControlShared {
   let handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   ArcShared::new(RuntimeMutex::new(handle))
 }
@@ -64,7 +61,7 @@ fn remote_target() -> ActorPathParts {
 #[test]
 fn watch_and_unwatch_update_local_registry() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control(&system));
   let target = remote_target();
   let watcher = Pid::new(42, 0);
 
@@ -78,7 +75,7 @@ fn watch_and_unwatch_update_local_registry() {
 #[test]
 fn watch_returns_error_when_remoting_control_is_not_started() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control_without_start(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control_without_start(&system));
   let target = remote_target();
   let watcher = Pid::new(99, 0);
 
@@ -89,7 +86,7 @@ fn watch_returns_error_when_remoting_control_is_not_started() {
 #[test]
 fn heartbeat_rsp_with_zero_uid_is_tracked_and_reaped_by_failure_detector() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control(&system));
   let authority = "127.0.0.1:4100";
   let target = remote_target();
   let watcher = Pid::new(7, 0);
@@ -116,7 +113,7 @@ fn heartbeat_rsp_with_zero_uid_is_tracked_and_reaped_by_failure_detector() {
 #[test]
 fn first_heartbeat_rsp_triggers_rewatch_for_watched_authority() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control(&system));
   let authority = "127.0.0.1:4100";
   let target = remote_target();
   let watcher = Pid::new(70, 0);
@@ -144,7 +141,7 @@ fn first_heartbeat_rsp_triggers_rewatch_for_watched_authority() {
 #[test]
 fn heartbeat_rsp_uid_change_updates_cached_uid() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control(&system));
   let authority = "127.0.0.1:4100";
   let target = remote_target();
   let watcher = Pid::new(8, 0);
@@ -172,7 +169,7 @@ fn heartbeat_rsp_uid_change_updates_cached_uid() {
 #[test]
 fn heartbeat_probe_is_ignored_when_authority_is_not_watched() {
   let system = build_system();
-  let mut daemon: RemoteWatcherDaemon<NoStdToolbox> = RemoteWatcherDaemon::new(build_control(&system));
+  let mut daemon: RemoteWatcherDaemon = RemoteWatcherDaemon::new(build_control(&system));
 
   daemon
     .handle_command(

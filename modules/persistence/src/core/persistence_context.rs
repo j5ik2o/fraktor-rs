@@ -5,7 +5,6 @@ mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, format, string::String, vec::Vec};
 use core::{
-  marker::PhantomData,
   ops::Deref,
   sync::atomic::{AtomicU32, Ordering},
 };
@@ -14,7 +13,7 @@ use fraktor_actor_rs::core::{
   actor::{Pid, actor_ref::ActorRef},
   messaging::AnyMessage,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   event_adapters::EventAdapters, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -35,7 +34,7 @@ enum EventBatchEntry<A> {
 }
 
 /// Persistence context owned by persistent actors.
-pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
+pub struct PersistenceContext<A: 'static> {
   persistence_id: String,
   state: PersistentActorState,
   pending_invocations: VecDeque<PendingHandlerInvocation<A>>,
@@ -48,10 +47,9 @@ pub struct PersistenceContext<A: 'static, TB: RuntimeToolbox + 'static> {
   event_adapters: EventAdapters,
   journal_actor_ref: ActorRef,
   snapshot_actor_ref: ActorRef,
-  _marker: PhantomData<TB>,
 }
 
-impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
+impl<A: 'static> PersistenceContext<A> {
   /// Creates a new persistence context for the provided persistence id.
   #[must_use]
   pub fn new(persistence_id: String) -> Self {
@@ -68,7 +66,6 @@ impl<A: 'static, TB: RuntimeToolbox + 'static> PersistenceContext<A, TB> {
       event_adapters: EventAdapters::new(),
       journal_actor_ref: ActorRef::null(),
       snapshot_actor_ref: ActorRef::null(),
-      _marker: PhantomData,
     }
   }
 

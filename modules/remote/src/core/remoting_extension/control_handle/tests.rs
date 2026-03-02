@@ -16,7 +16,6 @@ use fraktor_actor_rs::core::{
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystem, ActorSystemConfig, state::AuthorityState},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use super::RemotingControlHandle;
 use crate::core::{
@@ -53,7 +52,7 @@ impl FailingTransport {
   }
 }
 
-impl RemoteTransport<StdToolbox> for FailingTransport {
+impl RemoteTransport for FailingTransport {
   fn scheme(&self) -> &str {
     "fraktor.test"
   }
@@ -85,7 +84,7 @@ impl RemoteTransport<StdToolbox> for FailingTransport {
 
   fn install_backpressure_hook(&mut self, _hook: crate::core::transport::TransportBackpressureHookShared) {}
 
-  fn install_inbound_handler(&mut self, _handler: TransportInboundShared<StdToolbox>) {}
+  fn install_inbound_handler(&mut self, _handler: TransportInboundShared) {}
 }
 
 fn build_system() -> ActorSystem {
@@ -94,26 +93,26 @@ fn build_system() -> ActorSystem {
   ActorSystem::new_with_config(&props, &config).expect("actor system")
 }
 
-fn build_started_control(mode: TransportFailureMode) -> RemotingControlHandle<StdToolbox> {
+fn build_started_control(mode: TransportFailureMode) -> RemotingControlHandle {
   let system = build_system();
-  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
   let transport = RemoteTransportShared::new(Box::new(FailingTransport::new(mode)));
   handle.register_remote_transport_shared(transport);
   handle.start().expect("control start");
   handle
 }
 
-fn build_started_control_without_transport() -> RemotingControlHandle<StdToolbox> {
+fn build_started_control_without_transport() -> RemotingControlHandle {
   let system = build_system();
-  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
   handle.start().expect("control start");
   handle
 }
 
-fn build_started_control_with_loopback_transport() -> RemotingControlHandle<StdToolbox> {
+fn build_started_control_with_loopback_transport() -> RemotingControlHandle {
   let system = build_system();
-  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
-  let transport = RemoteTransportShared::new(Box::new(LoopbackTransport::<StdToolbox>::default()));
+  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
+  let transport = RemoteTransportShared::new(Box::new(LoopbackTransport::default()));
   handle.register_remote_transport_shared(transport);
   handle.start().expect("control start");
   handle
@@ -213,7 +212,7 @@ fn dispatch_remote_watcher_command_propagates_daemon_send_failure() {
 #[test]
 fn quarantine_updates_remote_authority_snapshot_and_state() {
   let system = build_system();
-  let mut handle = RemotingControlHandle::<StdToolbox>::new(system.clone(), RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   handle.start().expect("control start");
   let authority = "127.0.0.1:25520";
 

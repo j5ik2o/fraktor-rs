@@ -12,7 +12,6 @@ use fraktor_actor_rs::core::{
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
@@ -22,7 +21,7 @@ use crate::core::{
   ClusterEvent, StartupMode,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpointSharedGeneric, DeliveryReport, PubSubBatch, PubSubBroker, PubSubConfig,
+    DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, PubSubBatch, PubSubBroker, PubSubConfig,
     PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PubSubTopicOptions, PublishAck,
     PublishOptions, PublishRejectReason, PublishRequest, SubscriberDeliveryReport,
   },
@@ -33,19 +32,19 @@ use crate::core::{
 /// This implementation requires TopicActorKind to be registered in the KindRegistry
 /// before starting. On start, it creates the topic for TopicActorKind and publishes
 /// events to EventStream.
-pub struct ClusterPubSubImpl<TB: RuntimeToolbox + 'static> {
+pub struct ClusterPubSubImpl {
   event_stream:         EventStreamShared,
   broker:               PubSubBroker,
   has_topic_actor_kind: bool,
   started:              bool,
   advertised_address:   String,
   pubsub_config:        PubSubConfig,
-  delivery_endpoint:    DeliveryEndpointSharedGeneric<TB>,
+  delivery_endpoint:    DeliveryEndpointShared,
   registry:             ArcShared<SerializationRegistry>,
   last_observed_at:     Option<TimerInstant>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
+impl ClusterPubSubImpl {
   /// Creates a new PubSubImpl with EventStream and KindRegistry reference.
   ///
   /// The KindRegistry is checked for TopicActorKind presence at construction time.
@@ -53,7 +52,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   pub fn new(
     event_stream: EventStreamShared,
     registry: ArcShared<SerializationRegistry>,
-    delivery_endpoint: DeliveryEndpointSharedGeneric<TB>,
+    delivery_endpoint: DeliveryEndpointShared,
     config: PubSubConfig,
     registry_snapshot: &KindRegistry,
   ) -> Self {
@@ -193,7 +192,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterPubSub<TB> for ClusterPubSubImpl<TB> {
+impl ClusterPubSub for ClusterPubSubImpl {
   fn start(&mut self) -> Result<(), PubSubError> {
     // TopicActorKind がなければ起動失敗
     if !self.has_topic_actor_kind {
@@ -332,7 +331,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSub<TB> for ClusterPubSubImpl<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
+impl ClusterPubSubImpl {
   /// Emits a metrics snapshot to the event stream.
   pub fn emit_metrics_snapshot(&mut self) {
     let _ = self.broker.drain_metrics();

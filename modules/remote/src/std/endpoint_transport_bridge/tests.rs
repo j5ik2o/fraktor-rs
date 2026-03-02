@@ -31,17 +31,14 @@ use fraktor_actor_rs::core::{
   },
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::{
-  core::sync::{ArcShared, SharedAccess},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{EndpointTransportBridge, EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
-  EventPublisherGeneric, FLUSH_ACK_FRAME_KIND, Flush, FlushAck, RemoteInstrument, RemoteNodeId, WireError,
+  EventPublisher, FLUSH_ACK_FRAME_KIND, Flush, FlushAck, RemoteInstrument, RemoteNodeId, WireError,
   endpoint_association::{AssociationState, EndpointAssociationCommand, QuarantineReason},
-  endpoint_reader::EndpointReaderGeneric,
-  endpoint_writer::{EndpointWriterGeneric, EndpointWriterSharedGeneric},
+  endpoint_reader::EndpointReader,
+  endpoint_writer::{EndpointWriter, EndpointWriterShared},
   envelope::{
     ACKED_DELIVERY_ACK_FRAME_KIND, ACKED_DELIVERY_NACK_FRAME_KIND, AckedDelivery, OutboundPriority, RemotingEnvelope,
     SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope,
@@ -155,7 +152,7 @@ struct TestTransportProbe {
   open_channel_delay: Arc<AtomicU64>,
   send_failures_left: Arc<AtomicUsize>,
   send_delay:         Arc<AtomicU64>,
-  inbound_handler:    Arc<Mutex<Option<TransportInboundShared<StdToolbox>>>>,
+  inbound_handler:    Arc<Mutex<Option<TransportInboundShared>>>,
 }
 
 impl TestTransportProbe {
@@ -175,7 +172,7 @@ impl TestTransportProbe {
     self.send_delay.store(delay.as_millis() as u64, Ordering::SeqCst);
   }
 
-  fn set_inbound_handler(&self, handler: TransportInboundShared<StdToolbox>) {
+  fn set_inbound_handler(&self, handler: TransportInboundShared) {
     *self.inbound_handler.lock().expect("probe lock") = Some(handler);
   }
 
@@ -237,7 +234,7 @@ struct TestTransport {
   probe:         TestTransportProbe,
   channels:      BTreeMap<u64, String>,
   next_channel:  u64,
-  inbound:       Option<TransportInboundShared<StdToolbox>>,
+  inbound:       Option<TransportInboundShared>,
   next_listener: u64,
 }
 
@@ -257,7 +254,7 @@ impl TestTransport {
   }
 }
 
-impl RemoteTransport<StdToolbox> for TestTransport {
+impl RemoteTransport for TestTransport {
   fn scheme(&self) -> &str {
     "fraktor.test"
   }
@@ -309,7 +306,7 @@ impl RemoteTransport<StdToolbox> for TestTransport {
 
   fn install_backpressure_hook(&mut self, _hook: crate::core::transport::TransportBackpressureHookShared) {}
 
-  fn install_inbound_handler(&mut self, handler: TransportInboundShared<StdToolbox>) {
+  fn install_inbound_handler(&mut self, handler: TransportInboundShared) {
     self.inbound = Some(handler);
     self.probe.set_inbound_handler(self.inbound.clone().expect("inbound handler"));
   }
@@ -370,9 +367,7 @@ fn serialization_extension(system: &ActorSystem) -> SerializationExtensionShared
   SerializationExtensionShared::new(SerializationExtension::new(system, serialization_setup()))
 }
 
-fn build_bridge(
-  handshake_timeout: Duration,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
+fn build_bridge(handshake_timeout: Duration) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem) {
   let (bridge, probe, system, _control) = build_bridge_with_control(handshake_timeout);
   (bridge, probe, system)
 }
@@ -381,11 +376,11 @@ fn build_bridge_with_windows(
   handshake_timeout: Duration,
   ack_send_window: u64,
   ack_receive_window: u64,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
+) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem) {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
-  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
   let (transport, probe) = TestTransport::new();
   let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let config = EndpointTransportBridgeConfig {
@@ -394,7 +389,7 @@ fn build_bridge_with_windows(
     writer,
     reader,
     transport: RemoteTransportShared::new(Box::new(transport)),
-    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    event_publisher: EventPublisher::new(system.downgrade()),
     canonical_host: "127.0.0.1".to_string(),
     canonical_port: 2552,
     system_name: "local-system".to_string(),
@@ -409,11 +404,11 @@ fn build_bridge_with_windows(
 
 fn build_bridge_with_control(
   handshake_timeout: Duration,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem, RemotingControlHandle<StdToolbox>) {
+) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem, RemotingControlHandle) {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
-  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
   let (transport, probe) = TestTransport::new();
   let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let config = EndpointTransportBridgeConfig {
@@ -422,7 +417,7 @@ fn build_bridge_with_control(
     writer,
     reader,
     transport: RemoteTransportShared::new(Box::new(transport)),
-    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    event_publisher: EventPublisher::new(system.downgrade()),
     canonical_host: "127.0.0.1".to_string(),
     canonical_port: 2552,
     system_name: "local-system".to_string(),
@@ -438,11 +433,11 @@ fn build_bridge_with_control(
 fn build_bridge_with_instruments(
   handshake_timeout: Duration,
   remote_instruments: Vec<Arc<dyn RemoteInstrument>>,
-) -> (Arc<EndpointTransportBridge<StdToolbox>>, TestTransportProbe, ActorSystem) {
+) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem) {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
-  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
   let (transport, probe) = TestTransport::new();
   let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let config = EndpointTransportBridgeConfig {
@@ -451,7 +446,7 @@ fn build_bridge_with_instruments(
     writer,
     reader,
     transport: RemoteTransportShared::new(Box::new(transport)),
-    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    event_publisher: EventPublisher::new(system.downgrade()),
     canonical_host: "127.0.0.1".to_string(),
     canonical_port: 2552,
     system_name: "local-system".to_string(),
@@ -471,11 +466,11 @@ fn spawn_bridge(handshake_timeout: Duration) -> (EndpointTransportBridgeHandle, 
 
 fn spawn_bridge_with_control(
   handshake_timeout: Duration,
-) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystem, RemotingControlHandle<StdToolbox>) {
+) -> (EndpointTransportBridgeHandle, TestTransportProbe, ActorSystem, RemotingControlHandle) {
   let system = build_system();
   let serialization = serialization_extension(&system);
-  let writer = EndpointWriterSharedGeneric::new(EndpointWriterGeneric::new(system.downgrade(), serialization.clone()));
-  let reader = ArcShared::new(EndpointReaderGeneric::new(system.downgrade(), serialization));
+  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
+  let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
   let (transport, probe) = TestTransport::new();
   let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
   let config = EndpointTransportBridgeConfig {
@@ -484,7 +479,7 @@ fn spawn_bridge_with_control(
     writer,
     reader,
     transport: RemoteTransportShared::new(Box::new(transport)),
-    event_publisher: EventPublisherGeneric::new(system.downgrade()),
+    event_publisher: EventPublisher::new(system.downgrade()),
     canonical_host: "127.0.0.1".to_string(),
     canonical_port: 2552,
     system_name: "local-system".to_string(),
@@ -497,10 +492,7 @@ fn spawn_bridge_with_control(
   (EndpointTransportBridge::spawn(config).expect("spawn bridge"), probe, system, control)
 }
 
-fn register_remote_watcher_daemon(
-  system: &ActorSystem,
-  control: &RemotingControlHandle<StdToolbox>,
-) -> WatcherCommandRecorder {
+fn register_remote_watcher_daemon(system: &ActorSystem, control: &RemotingControlHandle) -> WatcherCommandRecorder {
   let recorder = WatcherCommandRecorder::new();
   let props = Props::from_fn({
     let recorder = recorder.clone();
@@ -513,7 +505,7 @@ fn register_remote_watcher_daemon(
 }
 
 fn association_state(
-  bridge: &EndpointTransportBridge<StdToolbox>,
+  bridge: &EndpointTransportBridge,
   authority: &str,
 ) -> Option<crate::core::endpoint_association::AssociationState> {
   bridge.coordinator.with_read(|m| m.state(authority))
@@ -557,12 +549,7 @@ fn sample_system_message_envelope(
   SystemMessageEnvelope::new(recipient, remote_node, None, serialized, correlation_id, sequence_no, ack_reply_to)
 }
 
-async fn associate(
-  bridge: &EndpointTransportBridge<StdToolbox>,
-  authority: &str,
-  endpoint: TransportEndpoint,
-  now: u64,
-) {
+async fn associate(bridge: &EndpointTransportBridge, authority: &str, endpoint: TransportEndpoint, now: u64) {
   let result = bridge.coordinator.with_write(|m| {
     m.handle(EndpointAssociationCommand::Associate { authority: authority.to_string(), endpoint, now })
   });

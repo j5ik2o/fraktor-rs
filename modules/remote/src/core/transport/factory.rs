@@ -1,8 +1,6 @@
 //! Transport factory resolving schemes from configuration.
 use alloc::{boxed::Box, string::ToString};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{
   loopback_transport::LoopbackTransport, remote_transport::RemoteTransport, transport_error::TransportError,
 };
@@ -18,11 +16,9 @@ impl TransportFactory {
   /// This core factory intentionally resolves only runtime-agnostic transports.
   /// Standard-library specific transports are resolved by
   /// [`crate::std::transport::StdTransportFactory`].
-  pub fn build<TB: RuntimeToolbox + 'static>(
-    config: &RemotingExtensionConfig,
-  ) -> Result<Box<dyn RemoteTransport<TB>>, TransportError> {
+  pub fn build(config: &RemotingExtensionConfig) -> Result<Box<dyn RemoteTransport>, TransportError> {
     match config.transport_scheme() {
-      | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::<TB>::default())),
+      | "fraktor.loopback" => Ok(Box::new(LoopbackTransport::default())),
       | scheme => Err(TransportError::UnsupportedScheme(scheme.to_string())),
     }
   }

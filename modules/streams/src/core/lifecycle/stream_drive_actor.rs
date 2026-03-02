@@ -5,22 +5,21 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::AnyMessageView,
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
-use super::{StreamHandleGeneric, StreamHandleId, stream_drive_command::StreamDriveCommand};
+use super::{StreamHandleId, StreamHandleImpl, stream_drive_command::StreamDriveCommand};
 
 /// Actor that drives registered streams on each tick.
-pub(crate) struct StreamDriveActor<TB: RuntimeToolbox + 'static> {
-  handles:            BTreeMap<StreamHandleId, StreamHandleGeneric<TB>>,
+pub(crate) struct StreamDriveActor {
+  handles:            BTreeMap<StreamHandleId, StreamHandleImpl>,
   shutdown_requested: bool,
 }
 
-impl<TB: RuntimeToolbox + 'static> StreamDriveActor<TB> {
+impl StreamDriveActor {
   pub(crate) const fn new() -> Self {
     Self { handles: BTreeMap::new(), shutdown_requested: false }
   }
 
-  fn register(&mut self, handle: StreamHandleGeneric<TB>) {
+  fn register(&mut self, handle: StreamHandleImpl) {
     if self.shutdown_requested {
       let _ = handle.cancel();
       return;
@@ -58,9 +57,9 @@ impl<TB: RuntimeToolbox + 'static> StreamDriveActor<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Actor for StreamDriveActor<TB> {
+impl Actor for StreamDriveActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if let Some(command) = message.downcast_ref::<StreamDriveCommand<TB>>() {
+    if let Some(command) = message.downcast_ref::<StreamDriveCommand>() {
       match command {
         | StreamDriveCommand::Register { handle } => {
           self.register(handle.clone());

@@ -1,32 +1,29 @@
-use core::marker::PhantomData;
-
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
 use super::stream::Stream;
 
 /// Shared wrapper for [`Stream`].
-pub(crate) struct StreamSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeMutex<Stream>>,
-  _marker: PhantomData<TB>,
+pub(crate) struct StreamShared {
+  inner: ArcShared<RuntimeMutex<Stream>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for StreamSharedGeneric<TB> {
+impl Clone for StreamShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> StreamSharedGeneric<TB> {
+impl StreamShared {
   pub(crate) fn new(stream: Stream) -> Self {
     let inner = ArcShared::new(RuntimeMutex::new(stream));
-    Self { inner, _marker: PhantomData }
+    Self { inner }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Stream> for StreamSharedGeneric<TB> {
+impl SharedAccess<Stream> for StreamShared {
   fn with_read<R>(&self, f: impl FnOnce(&Stream) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)

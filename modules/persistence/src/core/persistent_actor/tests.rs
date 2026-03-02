@@ -11,10 +11,7 @@ use fraktor_actor_rs::core::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -89,7 +86,7 @@ fn move_to_processing_commands(actor: &mut DummyPersistentActor) {
 }
 
 struct DummyPersistentActor {
-  context: PersistenceContext<DummyPersistentActor, NoStdToolbox>,
+  context: PersistenceContext<DummyPersistentActor>,
   handled: Vec<i32>,
 }
 
@@ -109,7 +106,7 @@ impl DummyPersistentActor {
   }
 }
 
-impl Eventsourced<NoStdToolbox> for DummyPersistentActor {
+impl Eventsourced for DummyPersistentActor {
   fn persistence_id(&self) -> &str {
     self.context.persistence_id()
   }
@@ -127,8 +124,8 @@ impl Eventsourced<NoStdToolbox> for DummyPersistentActor {
   }
 }
 
-impl PersistentActor<NoStdToolbox> for DummyPersistentActor {
-  fn persistence_context(&mut self) -> &mut PersistenceContext<Self, NoStdToolbox> {
+impl PersistentActor for DummyPersistentActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
     &mut self.context
   }
 }

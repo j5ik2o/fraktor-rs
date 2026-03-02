@@ -1,25 +1,22 @@
 //! Shared wrapper for `GrainMetrics`.
 
-use core::marker::PhantomData;
-
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
 use super::GrainMetrics;
 
 /// Shared wrapper enabling interior mutability for [`GrainMetrics`].
-pub struct GrainMetricsSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeMutex<GrainMetrics>>,
-  _marker: PhantomData<TB>,
+pub struct GrainMetricsShared {
+  inner: ArcShared<RuntimeMutex<GrainMetrics>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainMetricsSharedGeneric<TB> {
+impl GrainMetricsShared {
   /// Creates a new shared wrapper around grain metrics.
   #[must_use]
   pub fn new(metrics: GrainMetrics) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(metrics)), _marker: PhantomData }
+    Self { inner: ArcShared::new(RuntimeMutex::new(metrics)) }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
@@ -29,13 +26,13 @@ impl<TB: RuntimeToolbox + 'static> GrainMetricsSharedGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for GrainMetricsSharedGeneric<TB> {
+impl Clone for GrainMetricsShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<GrainMetrics> for GrainMetricsSharedGeneric<TB> {
+impl SharedAccess<GrainMetrics> for GrainMetricsShared {
   fn with_read<R>(&self, f: impl FnOnce(&GrainMetrics) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)

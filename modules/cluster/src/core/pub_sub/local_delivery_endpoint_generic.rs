@@ -1,13 +1,13 @@
 //! no_std local delivery endpoint implementation.
 
 use alloc::{format, vec::Vec};
-use core::{any::TypeId, marker::PhantomData};
+use core::any::TypeId;
 
 use fraktor_actor_rs::core::{
   messaging::AnyMessage,
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{
   DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubBatch,
@@ -15,20 +15,19 @@ use super::{
 };
 
 /// Local-only delivery endpoint for no_std usage.
-pub struct LocalDeliveryEndpointGeneric<TB: RuntimeToolbox + 'static> {
+pub struct LocalDeliveryEndpoint {
   registry: ArcShared<SerializationRegistry>,
-  _marker:  PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LocalDeliveryEndpointGeneric<TB> {
+impl LocalDeliveryEndpoint {
   /// Creates a new local delivery endpoint.
   #[must_use]
   pub const fn new(registry: ArcShared<SerializationRegistry>) -> Self {
-    Self { registry, _marker: PhantomData }
+    Self { registry }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DeliveryEndpoint<TB> for LocalDeliveryEndpointGeneric<TB> {
+impl DeliveryEndpoint for LocalDeliveryEndpoint {
   fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let messages = deserialize_batch(&self.registry, &request.batch)
       .map_err(|error| PubSubError::SerializationFailed { reason: format!("{error:?}") })?;

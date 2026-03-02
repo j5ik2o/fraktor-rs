@@ -9,19 +9,13 @@ use fraktor_actor_rs::core::{
   props::Props,
   system::{ActorSystem, guardian::SystemGuardianProtocol},
 };
-use fraktor_utils_rs::{
-  core::{
-    runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-    sync::ArcShared,
-  },
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::{
   core::{
     remoting_extension::{
-      RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtensionConfig,
-      RemotingExtensionGeneric,
+      RemotingControl, RemotingControlHandle, RemotingControlShared, RemotingError, RemotingExtension,
+      RemotingExtensionConfig,
     },
     transport::RemoteTransportShared,
   },
@@ -30,10 +24,10 @@ use crate::{
 
 const ENDPOINT_SUPERVISOR_NAME: &str = "remoting-endpoint-supervisor";
 
-/// Standard library extension implementation specialized for [`StdToolbox`].
+/// Standard library extension implementation.
 ///
 /// This implementation supports all transport schemes including Tokio TCP.
-impl RemotingExtensionGeneric<StdToolbox> {
+impl RemotingExtension {
   /// Creates and wires the extension, panicking on unrecoverable errors.
   #[must_use]
   pub fn new(system: &ActorSystem, config: &RemotingExtensionConfig) -> Self {
@@ -43,10 +37,10 @@ impl RemotingExtensionGeneric<StdToolbox> {
   /// Attempts to install the extension, returning an error if invariants are violated.
   pub fn try_new(system: &ActorSystem, config: &RemotingExtensionConfig) -> Result<Self, RemotingError> {
     let control_handle = RemotingControlHandle::new(system.clone(), config.clone());
-    let control: RemotingControlShared<StdToolbox> = ArcShared::new(RuntimeMutex::new(control_handle));
+    let control: RemotingControlShared = ArcShared::new(RuntimeMutex::new(control_handle));
     let mut transport = StdTransportFactory::build(config)?;
     transport.install_backpressure_hook(control.lock().backpressure_hook());
-    let shared_transport: RemoteTransportShared<StdToolbox> = RemoteTransportShared::new(transport);
+    let shared_transport: RemoteTransportShared = RemoteTransportShared::new(transport);
     control.lock().register_remote_transport_shared(shared_transport.clone());
     let mut guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
@@ -58,13 +52,11 @@ impl RemotingExtensionGeneric<StdToolbox> {
   }
 }
 
-fn spawn_endpoint_supervisor<TB>(
+fn spawn_endpoint_supervisor(
   system: &ActorSystem,
   guardian: &ActorRef,
-  control: RemotingControlShared<TB>,
-) -> Result<ActorRef, RemotingError>
-where
-  TB: RuntimeToolbox + 'static, {
+  control: RemotingControlShared,
+) -> Result<ActorRef, RemotingError> {
   let props = Props::from_fn({
     let handle = control.clone();
     let guardian_ref = guardian.clone();
@@ -81,18 +73,13 @@ fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) -> Res
     .map_err(|error| RemotingError::HookRegistrationFailed(format!("{error:?}")))
 }
 
-struct EndpointSupervisorActor<TB>
-where
-  TB: RuntimeToolbox + 'static, {
-  control:  RemotingControlShared<TB>,
+struct EndpointSupervisorActor {
+  control:  RemotingControlShared,
   guardian: ActorRef,
 }
 
-impl<TB> EndpointSupervisorActor<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
-  fn new(control: RemotingControlShared<TB>, guardian: ActorRef) -> Self {
+impl EndpointSupervisorActor {
+  fn new(control: RemotingControlShared, guardian: ActorRef) -> Self {
     Self { control, guardian }
   }
 
@@ -105,10 +92,7 @@ where
   }
 }
 
-impl<TB> Actor for EndpointSupervisorActor<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Actor for EndpointSupervisorActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol>()
       && matches!(protocol, SystemGuardianProtocol::TerminationHook)

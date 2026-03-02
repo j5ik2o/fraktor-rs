@@ -6,7 +6,6 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{
   future::Future,
-  marker::PhantomData,
   pin::Pin,
   task::{Context, Poll, Waker},
 };
@@ -16,7 +15,6 @@ use fraktor_actor_rs::core::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::{
   journal::Journal, journal_actor_config::JournalActorConfig, journal_error::JournalError,
@@ -58,15 +56,14 @@ enum JournalInFlight {
 }
 
 /// Actor wrapper around a journal implementation.
-pub struct JournalActor<J: Journal, TB: RuntimeToolbox + 'static> {
+pub struct JournalActor<J: Journal> {
   journal:        J,
   in_flight:      Vec<JournalInFlight>,
   poll_scheduled: bool,
   config:         JournalActorConfig,
-  _marker:        PhantomData<TB>,
 }
 
-impl<J: Journal, TB: RuntimeToolbox + 'static> JournalActor<J, TB>
+impl<J: Journal> JournalActor<J>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
@@ -82,7 +79,7 @@ where
   /// Creates a new journal actor with configuration.
   #[must_use]
   pub const fn new_with_config(journal: J, config: JournalActorConfig) -> Self {
-    Self { journal, in_flight: Vec::new(), poll_scheduled: false, config, _marker: PhantomData }
+    Self { journal, in_flight: Vec::new(), poll_scheduled: false, config }
   }
 
   fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) {
@@ -113,7 +110,7 @@ where
   }
 }
 
-impl<J: Journal, TB: RuntimeToolbox + 'static> Actor for JournalActor<J, TB>
+impl<J: Journal> Actor for JournalActor<J>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,

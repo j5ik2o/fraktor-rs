@@ -3,37 +3,36 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::{serialization::SerializationExtension, system::ActorSystem};
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
-  BatchingProducerConfig, BatchingProducerGeneric, ClusterPubSubShared, PubSubError, PubSubPublisherGeneric,
-  PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest,
+  BatchingProducer, BatchingProducerConfig, ClusterPubSubShared, PubSubError, PubSubPublisher, PubSubSubscriber,
+  PubSubTopic, PublishAck, PublishRequest,
 };
-use crate::core::ClusterExtensionGeneric;
+use crate::core::ClusterExtension;
 
 /// Pub/sub API facade bound to an actor system.
-pub struct PubSubApiGeneric<TB: RuntimeToolbox + 'static> {
+pub struct PubSubApi {
   system:    ActorSystem,
-  pub_sub:   ClusterPubSubShared<TB>,
-  publisher: PubSubPublisherGeneric<TB>,
+  pub_sub:   ClusterPubSubShared,
+  publisher: PubSubPublisher,
 }
 
-impl<TB: RuntimeToolbox + 'static> PubSubApiGeneric<TB> {
+impl PubSubApi {
   /// Retrieves the pub/sub API from an actor system.
   ///
   /// # Errors
   ///
   /// Returns an error if the cluster extension is not installed or serialization is unavailable.
   pub fn try_from_system(system: &ActorSystem) -> Result<Self, PubSubError> {
-    let extension =
-      system.extended().extension_by_type::<ClusterExtensionGeneric<TB>>().ok_or(PubSubError::NotStarted)?;
+    let extension = system.extended().extension_by_type::<ClusterExtension>().ok_or(PubSubError::NotStarted)?;
 
     let pub_sub = extension.pub_sub_shared();
     let serialization = system
       .extended()
       .extension_by_type::<SerializationExtension>()
       .ok_or(PubSubError::SerializationFailed { reason: String::from("serialization extension not installed") })?;
-    let publisher = PubSubPublisherGeneric::new(pub_sub.clone(), serialization.registry());
+    let publisher = PubSubPublisher::new(pub_sub.clone(), serialization.registry());
     Ok(Self { system: system.clone(), pub_sub, publisher })
   }
 
@@ -66,14 +65,14 @@ impl<TB: RuntimeToolbox + 'static> PubSubApiGeneric<TB> {
 
   /// Returns a publisher handle.
   #[must_use]
-  pub fn publisher(&self) -> PubSubPublisherGeneric<TB> {
+  pub fn publisher(&self) -> PubSubPublisher {
     self.publisher.clone()
   }
 
   /// Creates a batching producer bound to the specified topic.
   #[must_use]
-  pub fn batching_producer(&self, topic: PubSubTopic, config: BatchingProducerConfig) -> BatchingProducerGeneric<TB> {
+  pub fn batching_producer(&self, topic: PubSubTopic, config: BatchingProducerConfig) -> BatchingProducer {
     let scheduler = self.system.state().scheduler();
-    BatchingProducerGeneric::new(topic, self.publisher.clone(), scheduler, config)
+    BatchingProducer::new(topic, self.publisher.clone(), scheduler, config)
   }
 }

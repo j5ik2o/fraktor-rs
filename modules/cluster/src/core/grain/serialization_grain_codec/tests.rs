@@ -9,7 +9,7 @@ use fraktor_actor_rs::core::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::grain::{GrainCodec, GrainCodecError, SerializationGrainCodec};
 
@@ -102,7 +102,7 @@ impl SerializerWithStringManifest for TelemetrySerializer {
 #[test]
 fn try_from_system_fails_when_extension_missing() {
   let system = ActorSystem::new_empty();
-  match SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote) {
+  match SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote) {
     | Ok(_) => panic!("extension should be missing"),
     | Err(err) => assert!(matches!(err, GrainCodecError::ExtensionUnavailable { .. })),
   }
@@ -111,8 +111,7 @@ fn try_from_system_fails_when_extension_missing() {
 #[test]
 fn encode_decode_roundtrip_with_custom_serializer() {
   let system = build_system_with_serialization();
-  let codec =
-    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
   let payload = TelemetryPayload { node: 7, temperature: 24 };
   let message = AnyMessage::new(payload);
 
@@ -126,8 +125,7 @@ fn encode_decode_roundtrip_with_custom_serializer() {
 #[test]
 fn encode_returns_error_when_serializer_unregistered() {
   let system = build_system_with_serialization();
-  let codec =
-    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
   let message = AnyMessage::new("unregistered");
 
   let err = codec.encode(&message).expect_err("encode failure");
@@ -137,8 +135,7 @@ fn encode_returns_error_when_serializer_unregistered() {
 #[test]
 fn decode_returns_error_on_incompatible_payload() {
   let system = build_system_with_serialization();
-  let codec =
-    SerializationGrainCodec::<NoStdToolbox>::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
+  let codec = SerializationGrainCodec::try_from_system(&system, SerializationCallScope::Remote).expect("codec");
 
   let serializer_id = SerializerId::try_from(200).expect("serializer id");
   let message = SerializedMessage::new(serializer_id, Some(String::from(TELEMETRY_MANIFEST)), vec![1, 2, 3]);

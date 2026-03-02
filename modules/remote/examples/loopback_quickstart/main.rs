@@ -27,7 +27,6 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::loopback::{LoopbackActorRefProviderInstaller, default_loopback_setup},
   remoting_extension::RemotingExtensionConfig,
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 const HOST: &str = "127.0.0.1";
 const RECEIVER_PORT: u16 = 25520;
@@ -88,7 +87,7 @@ fn build_loopback_system(
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(TickDriverConfig::manual(manual_driver))
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller)
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
       ExtensionInstallers::default()

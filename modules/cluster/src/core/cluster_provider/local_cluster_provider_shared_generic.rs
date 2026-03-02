@@ -1,44 +1,42 @@
-//! Shared wrapper for LocalClusterProviderGeneric implementations.
+//! Shared wrapper for LocalClusterProvider implementations.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
-use super::LocalClusterProviderGeneric;
+use super::LocalClusterProvider;
 
-/// Shared wrapper for [`LocalClusterProviderGeneric`].
+/// Shared wrapper for [`LocalClusterProvider`].
 ///
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying provider, allowing safe
 /// concurrent access from multiple owners.
-pub struct LocalClusterProviderSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<RuntimeMutex<LocalClusterProviderGeneric<TB>>>,
+pub struct LocalClusterProviderShared {
+  inner: ArcShared<RuntimeMutex<LocalClusterProvider>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LocalClusterProviderSharedGeneric<TB> {
+impl LocalClusterProviderShared {
   /// Creates a new shared wrapper around the provided provider.
   #[must_use]
-  pub fn new(provider: LocalClusterProviderGeneric<TB>) -> Self {
+  pub fn new(provider: LocalClusterProvider) -> Self {
     Self { inner: ArcShared::new(RuntimeMutex::new(provider)) }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for LocalClusterProviderSharedGeneric<TB> {
+impl Clone for LocalClusterProviderShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<LocalClusterProviderGeneric<TB>>
-  for LocalClusterProviderSharedGeneric<TB>
-{
-  fn with_read<R>(&self, f: impl FnOnce(&LocalClusterProviderGeneric<TB>) -> R) -> R {
+impl SharedAccess<LocalClusterProvider> for LocalClusterProviderShared {
+  fn with_read<R>(&self, f: impl FnOnce(&LocalClusterProvider) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut LocalClusterProviderGeneric<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut LocalClusterProvider) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }

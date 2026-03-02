@@ -6,10 +6,7 @@ mod shared;
 mod tests;
 
 use alloc::string::String;
-use core::{
-  marker::PhantomData,
-  sync::atomic::{AtomicBool, AtomicU64, Ordering},
-};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 pub use error::EndpointWriterError;
 use fraktor_actor_rs::core::{
@@ -19,10 +16,9 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncFifoQueue, SyncQueue, backend::VecDequeBackend},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
   sync::SharedAccess,
 };
-pub use shared::{EndpointWriterShared, EndpointWriterSharedGeneric};
+pub use shared::EndpointWriterShared;
 
 use crate::core::envelope::{OutboundMessage, OutboundPriority, RemotingEnvelope};
 
@@ -31,20 +27,16 @@ const DEFAULT_QUEUE_CAPACITY: usize = 128;
 /// Serializes outbound messages, enforcing priority and backpressure.
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
-pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
+pub struct EndpointWriter {
   system:        ActorSystemWeak,
   serialization: SerializationExtensionShared,
-  system_queue:  SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
-  user_queue:    SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
+  system_queue:  SyncFifoQueue<OutboundMessage, VecDequeBackend<OutboundMessage>>,
+  user_queue:    SyncFifoQueue<OutboundMessage, VecDequeBackend<OutboundMessage>>,
   user_paused:   AtomicBool,
   correlation:   AtomicU64,
-  _marker:       PhantomData<TB>,
 }
 
-/// Type alias for `EndpointWriterGeneric` with the default `NoStdToolbox`.
-pub type EndpointWriter = EndpointWriterGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
+impl EndpointWriter {
   /// Creates a writer bound to the provided actor system and serialization extension.
   ///
   /// The writer stores a weak reference to the actor system.
@@ -57,7 +49,6 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
       user_queue: Self::new_queue(),
       user_paused: AtomicBool::new(false),
       correlation: AtomicU64::new(1),
-      _marker: PhantomData,
     }
   }
 
@@ -76,7 +67,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   }
 
   /// Enqueues an outbound message using its declared priority.
-  pub fn enqueue(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+  pub fn enqueue(&mut self, message: OutboundMessage) -> Result<(), EndpointWriterError> {
     let priority = message.priority();
     match priority {
       | OutboundPriority::System => self.offer_system(message),
@@ -102,7 +93,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   }
 
   /// Serializes the outbound message immediately (used by loopback routing).
-  pub fn serialize_for_loopback(&self, message: OutboundMessage<TB>) -> Result<RemotingEnvelope, EndpointWriterError> {
+  pub fn serialize_for_loopback(&self, message: OutboundMessage) -> Result<RemotingEnvelope, EndpointWriterError> {
     let priority = message.priority();
     self.serialize(message, priority)
   }
@@ -115,7 +106,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn offer_system(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+  fn offer_system(&mut self, message: OutboundMessage) -> Result<(), EndpointWriterError> {
     match self.system_queue.offer(message) {
       | Ok(OfferOutcome::Enqueued)
       | Ok(OfferOutcome::DroppedNewest { .. })
@@ -125,7 +116,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn offer_user(&mut self, message: OutboundMessage<TB>) -> Result<(), EndpointWriterError> {
+  fn offer_user(&mut self, message: OutboundMessage) -> Result<(), EndpointWriterError> {
     match self.user_queue.offer(message) {
       | Ok(OfferOutcome::Enqueued)
       | Ok(OfferOutcome::DroppedNewest { .. })
@@ -135,7 +126,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn poll_system(&mut self) -> Result<Option<OutboundMessage<TB>>, EndpointWriterError> {
+  fn poll_system(&mut self) -> Result<Option<OutboundMessage>, EndpointWriterError> {
     match self.system_queue.poll() {
       | Ok(message) => Ok(Some(message)),
       | Err(QueueError::Empty) => Ok(None),
@@ -143,7 +134,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn poll_user(&mut self) -> Result<Option<OutboundMessage<TB>>, EndpointWriterError> {
+  fn poll_user(&mut self) -> Result<Option<OutboundMessage>, EndpointWriterError> {
     match self.user_queue.poll() {
       | Ok(message) => Ok(Some(message)),
       | Err(QueueError::Empty) => Ok(None),
@@ -153,7 +144,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
 
   fn serialize(
     &self,
-    message: OutboundMessage<TB>,
+    message: OutboundMessage,
     priority: OutboundPriority,
   ) -> Result<RemotingEnvelope, EndpointWriterError> {
     let (payload, recipient, remote_node, sender) = message.into_parts();
@@ -170,12 +161,12 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     CorrelationId::from_u128(value)
   }
 
-  fn new_queue() -> SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>> {
+  fn new_queue() -> SyncFifoQueue<OutboundMessage, VecDequeBackend<OutboundMessage>> {
     let backend = VecDequeBackend::with_capacity(DEFAULT_QUEUE_CAPACITY, OverflowPolicy::Grow);
     SyncQueue::new(backend)
   }
 
-  fn map_offer_error(priority: OutboundPriority, error: QueueError<OutboundMessage<TB>>) -> EndpointWriterError {
+  fn map_offer_error(priority: OutboundPriority, error: QueueError<OutboundMessage>) -> EndpointWriterError {
     match error {
       | QueueError::Full(_) => EndpointWriterError::QueueFull(priority),
       | QueueError::Closed(_) | QueueError::Disconnected => EndpointWriterError::QueueClosed(priority),
@@ -187,7 +178,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
     }
   }
 
-  fn map_poll_error(priority: OutboundPriority, error: QueueError<OutboundMessage<TB>>) -> EndpointWriterError {
+  fn map_poll_error(priority: OutboundPriority, error: QueueError<OutboundMessage>) -> EndpointWriterError {
     match error {
       | QueueError::Full(_) => EndpointWriterError::QueueFull(priority),
       | QueueError::Closed(_) | QueueError::Disconnected => EndpointWriterError::QueueClosed(priority),

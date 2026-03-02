@@ -11,32 +11,31 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
 use super::{
-  BatchingProducerConfig, PubSubError, PubSubPublisherGeneric, PubSubTopic, PublishAck, PublishOptions,
-  PublishRejectReason,
+  BatchingProducerConfig, PubSubError, PubSubPublisher, PubSubTopic, PublishAck, PublishOptions, PublishRejectReason,
 };
 
 /// Batching producer handle.
-pub struct BatchingProducerGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<BatchingProducerInner<TB>>,
+pub struct BatchingProducer {
+  inner: ArcShared<BatchingProducerInner>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for BatchingProducerGeneric<TB> {
+impl Clone for BatchingProducer {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
+impl BatchingProducer {
   /// Creates a new batching producer.
   #[must_use]
   pub fn new(
     topic: PubSubTopic,
-    publisher: PubSubPublisherGeneric<TB>,
+    publisher: PubSubPublisher,
     scheduler: SchedulerShared,
     config: BatchingProducerConfig,
   ) -> Self {
@@ -163,10 +162,10 @@ impl<TB: RuntimeToolbox + 'static> BatchingProducerGeneric<TB> {
   }
 }
 
-struct BatchingProducerInner<TB: RuntimeToolbox + 'static> {
+struct BatchingProducerInner {
   state:     RuntimeMutex<BatchingProducerState>,
   topic:     PubSubTopic,
-  publisher: PubSubPublisherGeneric<TB>,
+  publisher: PubSubPublisher,
   scheduler: SchedulerShared,
   config:    BatchingProducerConfig,
 }
@@ -195,11 +194,11 @@ impl BatchingProducerState {
   }
 }
 
-struct BatchFlushRunnable<TB: RuntimeToolbox + 'static> {
-  producer: BatchingProducerGeneric<TB>,
+struct BatchFlushRunnable {
+  producer: BatchingProducer,
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for BatchFlushRunnable<TB> {
+impl SchedulerRunnable for BatchFlushRunnable {
   fn run(&self, _batch: &ExecutionBatch) {
     self.producer.on_timer();
   }
