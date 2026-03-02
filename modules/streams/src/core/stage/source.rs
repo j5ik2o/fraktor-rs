@@ -573,7 +573,7 @@ where
     self,
     sink: Sink<Out, Mat2>,
     materializer: &mut M,
-  ) -> Result<Materialized<Mat2, M::Toolbox>, StreamError>
+  ) -> Result<Materialized<Mat2>, StreamError>
   where
     M: Materializer, {
     self.to_mat(sink, super::keep_right::KeepRight).run(materializer)

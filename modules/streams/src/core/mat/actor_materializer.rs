@@ -3,24 +3,23 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   actor::ChildRef, messaging::AnyMessage, props::Props, scheduler::SchedulerCommand, system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
-  ActorMaterializerConfig, Materialized, Materializer, RunnableGraph, StreamError, StreamHandleGeneric, StreamHandleId,
-  lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamSharedGeneric},
+  ActorMaterializerConfig, Materialized, Materializer, RunnableGraph, StreamError, StreamHandleId, StreamHandleImpl,
+  lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
 };
 
 #[cfg(test)]
 mod tests;
 
 /// Materializer backed by an actor system.
-pub struct ActorMaterializerGeneric<TB: RuntimeToolbox + 'static> {
+pub struct ActorMaterializer {
   system:      Option<ActorSystem>,
   config:      ActorMaterializerConfig,
   state:       MaterializerState,
   drive_actor: Option<ChildRef>,
   tick_handle: Option<fraktor_actor_rs::core::scheduler::SchedulerHandle>,
-  _marker:     core::marker::PhantomData<TB>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,43 +29,29 @@ enum MaterializerState {
   Stopped,
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
+impl ActorMaterializer {
   /// Creates a new materializer bound to the provided actor system.
   #[must_use]
   pub const fn new(system: ActorSystem, config: ActorMaterializerConfig) -> Self {
-    Self {
-      system: Some(system),
-      config,
-      state: MaterializerState::Idle,
-      drive_actor: None,
-      tick_handle: None,
-      _marker: core::marker::PhantomData,
-    }
+    Self { system: Some(system), config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
   }
 
   /// Creates a materializer without an actor system (testing helper).
   #[must_use]
   pub const fn new_without_system(config: ActorMaterializerConfig) -> Self {
-    Self {
-      system: None,
-      config,
-      state: MaterializerState::Idle,
-      drive_actor: None,
-      tick_handle: None,
-      _marker: core::marker::PhantomData,
-    }
+    Self { system: None, config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
   }
 
   fn system(&self) -> Result<ActorSystem, StreamError> {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &ChildRef, handle: StreamHandleGeneric<TB>) -> Result<(), StreamError> {
+  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
     let message = AnyMessage::new(StreamDriveCommand::Register { handle });
     actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
   }
 
-  fn send_command(actor: &ChildRef, command: StreamDriveCommand<TB>) -> Result<(), StreamError> {
+  fn send_command(actor: &ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
     let message = AnyMessage::new(command);
     actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
   }
@@ -79,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
     let receiver = actor.actor_ref().clone();
     let command = SchedulerCommand::SendMessage {
       receiver,
-      message: AnyMessage::new(StreamDriveCommand::<TB>::Tick),
+      message: AnyMessage::new(StreamDriveCommand::Tick),
       dispatcher: None,
       sender: None,
     };
@@ -103,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`StreamError`] when materialization fails.
-  pub fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, TB>, StreamError> {
+  pub fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     Materializer::materialize(self, graph)
   }
 
@@ -117,9 +102,7 @@ impl<TB: RuntimeToolbox + 'static> ActorMaterializerGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Materializer for ActorMaterializerGeneric<TB> {
-  type Toolbox = TB;
-
+impl Materializer for ActorMaterializer {
   fn start(&mut self) -> Result<(), StreamError> {
     match self.state {
       | MaterializerState::Running => return Err(StreamError::MaterializerAlreadyStarted),
@@ -128,7 +111,7 @@ impl<TB: RuntimeToolbox + 'static> Materializer for ActorMaterializerGeneric<TB>
     }
 
     let system = self.system()?;
-    let props = Props::from_fn(StreamDriveActor::<TB>::new).with_name("stream-drive");
+    let props = Props::from_fn(StreamDriveActor::new).with_name("stream-drive");
     let drive_actor = system.extended().spawn_system_actor(&props).map_err(|_| StreamError::Failed)?;
     let interval = self.config.drive_interval();
     let tick_handle = Self::schedule_ticks(&system, &drive_actor, interval)?;
@@ -139,7 +122,7 @@ impl<TB: RuntimeToolbox + 'static> Materializer for ActorMaterializerGeneric<TB>
     Ok(())
   }
 
-  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, TB>, StreamError> {
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     match self.state {
       | MaterializerState::Idle => return Err(StreamError::MaterializerNotStarted),
       | MaterializerState::Stopped => return Err(StreamError::MaterializerStopped),
@@ -149,8 +132,8 @@ impl<TB: RuntimeToolbox + 'static> Materializer for ActorMaterializerGeneric<TB>
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, self.config.buffer_config());
     stream.start()?;
-    let shared = StreamSharedGeneric::new(stream);
-    let handle = StreamHandleGeneric::new(StreamHandleId::next(), shared);
+    let shared = StreamShared::new(stream);
+    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
     Self::register_handle(drive_actor, handle.clone())?;
     Ok(Materialized::new(handle, materialized))
   }

@@ -1,12 +1,9 @@
-use fraktor_utils_rs::core::{
-  runtime_toolbox::NoStdToolbox,
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
   Completion, DemandTracker, DynValue, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig, StreamCompletion,
   StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  lifecycle::{Stream, StreamHandleGeneric, StreamHandleId, StreamSharedGeneric},
+  lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   mat::{Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source, StageKind},
 };
@@ -28,19 +25,17 @@ impl Default for TestMaterializer {
 }
 
 impl Materializer for TestMaterializer {
-  type Toolbox = NoStdToolbox;
-
   fn start(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
 
-  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat, Self::Toolbox>, StreamError> {
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls = self.calls.saturating_add(1);
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
-    let shared = StreamSharedGeneric::new(stream);
-    let handle = StreamHandleGeneric::new(StreamHandleId::next(), shared);
+    let shared = StreamShared::new(stream);
+    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
     Ok(Materialized::new(handle, materialized))
   }
 

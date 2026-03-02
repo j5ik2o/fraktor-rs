@@ -1,24 +1,24 @@
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
   DriveOutcome, SharedKillSwitch, StreamError, StreamHandle, StreamHandleId, StreamState, UniqueKillSwitch,
-  stream_shared::StreamSharedGeneric,
+  stream_shared::StreamShared,
 };
 
 /// Handle owning the lifecycle of a stream execution.
-pub struct StreamHandleGeneric<TB: RuntimeToolbox + 'static> {
+pub struct StreamHandleImpl {
   id:     StreamHandleId,
-  shared: StreamSharedGeneric<TB>,
+  shared: StreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for StreamHandleGeneric<TB> {
+impl Clone for StreamHandleImpl {
   fn clone(&self) -> Self {
     Self { id: self.id, shared: self.shared.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> StreamHandleGeneric<TB> {
-  pub(crate) const fn new(id: StreamHandleId, shared: StreamSharedGeneric<TB>) -> Self {
+impl StreamHandleImpl {
+  pub(crate) const fn new(id: StreamHandleId, shared: StreamShared) -> Self {
     Self { id, shared }
   }
 
@@ -64,20 +64,20 @@ impl<TB: RuntimeToolbox + 'static> StreamHandleGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> StreamHandle for StreamHandleGeneric<TB> {
+impl StreamHandle for StreamHandleImpl {
   fn id(&self) -> StreamHandleId {
-    StreamHandleGeneric::id(self)
+    StreamHandleImpl::id(self)
   }
 
   fn state(&self) -> StreamState {
-    StreamHandleGeneric::state(self)
+    StreamHandleImpl::state(self)
   }
 
   fn cancel(&self) -> Result<(), StreamError> {
-    StreamHandleGeneric::cancel(self)
+    StreamHandleImpl::cancel(self)
   }
 
   fn drive(&self) -> DriveOutcome {
-    StreamHandleGeneric::drive(self)
+    StreamHandleImpl::drive(self)
   }
 }

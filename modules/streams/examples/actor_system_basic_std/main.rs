@@ -17,13 +17,10 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_streams_rs::{
-  core::{
-    Completion, KeepRight,
-    mat::ActorMaterializerConfig,
-    stage::{Sink, Source},
-  },
-  std::ActorMaterializer,
+use fraktor_streams_rs::core::{
+  Completion, KeepRight,
+  mat::{ActorMaterializer, ActorMaterializerConfig},
+  stage::{Sink, Source},
 };
 
 struct GuardianActor;

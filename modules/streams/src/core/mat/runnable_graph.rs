@@ -30,7 +30,7 @@ impl<Mat> RunnableGraph<Mat> {
   /// # Errors
   ///
   /// Returns [`StreamError`] when materialization fails.
-  pub fn run<M>(self, materializer: &mut M) -> Result<Materialized<Mat, M::Toolbox>, StreamError>
+  pub fn run<M>(self, materializer: &mut M) -> Result<Materialized<Mat>, StreamError>
   where
     M: Materializer, {
     materializer.materialize(self)

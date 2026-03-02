@@ -3,7 +3,7 @@
 // Bridge imports from core level for children
 use super::{
   StreamBufferConfig, StreamError, StreamPlan,
-  lifecycle::{self, SharedKillSwitch, StreamHandleGeneric, StreamHandleId, UniqueKillSwitch},
+  lifecycle::{self, SharedKillSwitch, StreamHandleId, StreamHandleImpl, UniqueKillSwitch},
 };
 
 mod actor_materializer;
@@ -12,7 +12,7 @@ mod materialized;
 mod materializer;
 mod runnable_graph;
 
-pub use actor_materializer::ActorMaterializerGeneric;
+pub use actor_materializer::ActorMaterializer;
 pub use actor_materializer_config::ActorMaterializerConfig;
 pub use materialized::Materialized;
 pub use materializer::Materializer;
