@@ -1,15 +1,34 @@
 tasks:
   - worktree: true
-    piece: pekko-porting
-    issue: 400
+    branch: takt/412/github-issue-412-phase-a-review
+    piece: refactoring
+    issue: 412
     auto_pr: true
     draft_pr: true
-    name: github-issue-400-takt-pekkogya
-    status: pending
-    slug: github-issue-400-takt-pekkogya
-    summary: "## GitHub Issue #400: takt: Pekkoギャップ埋め Phase 1-2 (trivial/easy/medium)"
-    task_dir: .takt/tasks/20260228-235758-github-issue-400-takt-pekko-ph
-    created_at: 2026-02-28T23:57:58.787Z
-    started_at: null
-    completed_at: null
+    name: github-issue-412-phase-a-review
+    status: completed
+    slug: github-issue-412-phase-a-review
+    summary: "Phase A レビュー: RuntimeMutex/RuntimeRwLock 導入（PR #441）の品質確認"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260301T2247-412-github-issue-412-phase-a-review
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/456
+    task_dir: .takt/tasks/20260301-170000-github-issue-412-tb-runtime-toolbox
+    created_at: 2026-03-02T02:10:00.000Z
+    started_at: 2026-03-01T22:47:46.657Z
+    completed_at: 2026-03-02T00:12:10.480Z
+    owner_pid: null
+  - worktree: false
+    branch: refactor/cleanup
+    piece: refactoring
+    issue: 442
+    auto_pr: false
+    draft_pr: false
+    name: github-issue-442-refactor-phas
+    status: completed
+    slug: github-issue-442-refactor-phas
+    summary: "## GitHub Issue #442: refactor: Phase B — actor モジュールから TB:
+      RuntimeToolbox を除去し "
+    task_dir: .takt/tasks/20260302-014152-github-issue-442-refactor-phas
+    created_at: 2026-03-02T01:41:52.831Z
+    started_at: 2026-03-02T02:08:02.062Z
+    completed_at: 2026-03-02T05:40:51.562Z
     owner_pid: null

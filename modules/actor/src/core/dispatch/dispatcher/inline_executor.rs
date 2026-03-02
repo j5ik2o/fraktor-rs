@@ -1,26 +1,19 @@
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
-use super::{
-  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
-};
+use super::{dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared};
 
 /// Simple executor that runs tasks immediately in a synchronous context.
-pub struct InlineExecutorGeneric<TB: RuntimeToolbox + 'static> {
-  _marker: PhantomData<TB>,
+pub struct InlineExecutor {
+  _marker: PhantomData<()>,
 }
 
-/// Type alias for `InlineExecutorGeneric` with the default `NoStdToolbox`.
-pub type InlineExecutor = InlineExecutorGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Default for InlineExecutorGeneric<TB> {
+impl Default for InlineExecutor {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> InlineExecutorGeneric<TB> {
+impl InlineExecutor {
   #[must_use]
   /// Returns an executor that runs tasks on the calling thread.
   pub const fn new() -> Self {
@@ -28,11 +21,8 @@ impl<TB: RuntimeToolbox + 'static> InlineExecutorGeneric<TB> {
   }
 }
 
-impl<TB> DispatchExecutor<TB> for InlineExecutorGeneric<TB>
-where
-  TB: RuntimeToolbox + Send + Sync + 'static,
-{
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
+impl DispatchExecutor for InlineExecutor {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     dispatcher.drive();
     Ok(())
   }

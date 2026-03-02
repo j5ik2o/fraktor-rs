@@ -1,7 +1,7 @@
 use alloc::vec;
 
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{journal_message::JournalMessage, persistent_repr::PersistentRepr};
 
@@ -11,7 +11,7 @@ fn journal_message_write_messages_fields() {
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
   let repr = PersistentRepr::new("pid-1", 1, payload);
 
-  let message = JournalMessage::<NoStdToolbox>::WriteMessages {
+  let message = JournalMessage::WriteMessages {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 1,
     messages:       vec![repr.clone()],
@@ -34,7 +34,7 @@ fn journal_message_write_messages_fields() {
 #[test]
 fn journal_message_replay_fields() {
   let sender = ActorRef::null();
-  let message = JournalMessage::<NoStdToolbox>::ReplayMessages {
+  let message = JournalMessage::ReplayMessages {
     persistence_id: "pid-1".into(),
     from_sequence_nr: 1,
     to_sequence_nr: 5,
@@ -56,16 +56,13 @@ fn journal_message_replay_fields() {
 #[test]
 fn journal_message_delete_and_highest_fields() {
   let sender = ActorRef::null();
-  let delete_message = JournalMessage::<NoStdToolbox>::DeleteMessagesTo {
+  let delete_message = JournalMessage::DeleteMessagesTo {
     persistence_id: "pid-1".into(),
     to_sequence_nr: 3,
     sender:         sender.clone(),
   };
-  let highest_message = JournalMessage::<NoStdToolbox>::GetHighestSequenceNr {
-    persistence_id: "pid-1".into(),
-    from_sequence_nr: 1,
-    sender,
-  };
+  let highest_message =
+    JournalMessage::GetHighestSequenceNr { persistence_id: "pid-1".into(), from_sequence_nr: 1, sender };
 
   match delete_message {
     | JournalMessage::DeleteMessagesTo { persistence_id, to_sequence_nr, sender: _ } => {

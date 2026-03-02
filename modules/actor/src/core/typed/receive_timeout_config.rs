@@ -3,28 +3,24 @@
 use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::scheduler::SchedulerHandle;
 
 /// Stores the receive timeout configuration for a single actor.
 ///
 /// This is held by `TypedActorAdapter` and exposed to the typed context
 /// via a mutable pointer so that `set_receive_timeout` can modify it.
-pub(crate) struct ReceiveTimeoutConfig<M, TB = NoStdToolbox>
+pub(crate) struct ReceiveTimeoutConfig<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   pub(crate) duration:        Duration,
   pub(crate) message_factory: Box<dyn Fn() -> M + Send + Sync>,
   pub(crate) handle:          Option<SchedulerHandle>,
-  _marker:                    PhantomData<TB>,
+  _marker:                    PhantomData<M>,
 }
 
-impl<M, TB> ReceiveTimeoutConfig<M, TB>
+impl<M> ReceiveTimeoutConfig<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new receive timeout configuration.
   pub(crate) fn new<F>(duration: Duration, message_factory: F) -> Self

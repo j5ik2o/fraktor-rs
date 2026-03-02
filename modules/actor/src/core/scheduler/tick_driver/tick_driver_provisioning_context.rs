@@ -1,51 +1,49 @@
 //! Immutable view used while provisioning tick drivers.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  event::stream::EventStreamSharedGeneric,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerContext, SchedulerSharedGeneric},
+  event::stream::EventStreamShared,
+  scheduler::{SchedulerBackedDelayProvider, SchedulerContext, SchedulerShared},
 };
 
 /// Immutable context used while provisioning a tick driver.
-pub struct TickDriverProvisioningContext<TB: RuntimeToolbox + 'static> {
-  scheduler:      SchedulerSharedGeneric<TB>,
-  delay_provider: SchedulerBackedDelayProvider<TB>,
-  event_stream:   EventStreamSharedGeneric<TB>,
+pub struct TickDriverProvisioningContext {
+  scheduler:      SchedulerShared,
+  delay_provider: SchedulerBackedDelayProvider,
+  event_stream:   EventStreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> TickDriverProvisioningContext<TB> {
+impl TickDriverProvisioningContext {
   /// Creates a new provisioning context from scheduler handles.
   #[must_use]
   pub const fn new(
-    scheduler: SchedulerSharedGeneric<TB>,
-    delay_provider: SchedulerBackedDelayProvider<TB>,
-    event_stream: EventStreamSharedGeneric<TB>,
+    scheduler: SchedulerShared,
+    delay_provider: SchedulerBackedDelayProvider,
+    event_stream: EventStreamShared,
   ) -> Self {
     Self { scheduler, delay_provider, event_stream }
   }
 
   /// Builds a provisioning context from a scheduler context.
   #[must_use]
-  pub fn from_scheduler_context(context: &SchedulerContext<TB>) -> Self {
+  pub fn from_scheduler_context(context: &SchedulerContext) -> Self {
     Self::new(context.scheduler(), context.delay_provider(), context.event_stream())
   }
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> SchedulerSharedGeneric<TB> {
+  pub fn scheduler(&self) -> SchedulerShared {
     self.scheduler.clone()
   }
 
   /// Returns the delay provider connected to the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider<TB> {
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider {
     self.delay_provider.clone()
   }
 
   /// Returns the event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> EventStreamSharedGeneric<TB> {
+  pub fn event_stream(&self) -> EventStreamShared {
     self.event_stream.clone()
   }
 }

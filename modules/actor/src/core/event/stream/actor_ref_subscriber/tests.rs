@@ -1,40 +1,34 @@
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use crate::core::{
   actor::{
     Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender},
   },
   error::SendError,
   event::{
     logging::{LogEvent, LogLevel},
     stream::{ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamSubscriber},
   },
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 // Test sender that collects messages
 struct CollectorSender {
-  messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent<NoStdToolbox>>>>,
+  messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent>>>,
 }
 
 impl CollectorSender {
-  fn new(messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+  fn new(messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent>>>) -> Self {
     Self { messages }
   }
 }
 
-impl ActorRefSender<NoStdToolbox> for CollectorSender {
-  fn send(
-    &mut self,
-    message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
-    if let Some(event) = message.payload().downcast_ref::<EventStreamEvent<NoStdToolbox>>() {
+impl ActorRefSender for CollectorSender {
+  fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
+    if let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() {
       self.messages.lock().push(event.clone());
     }
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
@@ -46,7 +40,7 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
   let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -69,7 +63,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
   let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -91,7 +85,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
 fn actor_ref_returns_correct_reference() {
   let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRefGeneric::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 
   let subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 

@@ -9,7 +9,7 @@
 
 use core::{any::Any, time::Duration};
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
+use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
 use fraktor_persistence_rs::core::{
   AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, AtLeastOnceDeliveryGeneric, RedeliveryTick, UnconfirmedDelivery,
 };
@@ -21,8 +21,8 @@ fn create_payload<T: Any + Send + Sync + 'static>(value: T) -> ArcShared<dyn Any
 }
 
 /// Helper function to create a null actor reference.
-fn null_actor_ref() -> ActorRefGeneric<NoStdToolbox> {
-  ActorRefGeneric::null()
+fn null_actor_ref() -> ActorRef {
+  ActorRef::null()
 }
 
 /// Helper function to create a timer instant.

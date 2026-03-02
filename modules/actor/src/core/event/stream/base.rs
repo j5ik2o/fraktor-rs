@@ -5,32 +5,27 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::event::stream::{
-  EventStreamEvent, EventStreamEventsGeneric, EventStreamSubscriberEntriesGeneric, EventStreamSubscriberEntryGeneric,
+  EventStreamEvent, EventStreamEvents, EventStreamSubscriberEntries, EventStreamSubscriberEntry,
   EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
 };
 
 /// In-memory event bus with replay support for late subscribers.
 ///
 /// This type uses `&mut self` methods for state modification, following the
-/// interior mutability guideline. For shared access, use [`EventStreamSharedGeneric`].
+/// interior mutability guideline. For shared access, use [`EventStreamShared`].
 ///
-/// [`EventStreamSharedGeneric`]: super::EventStreamSharedGeneric
-pub struct EventStreamGeneric<TB: RuntimeToolbox + 'static> {
-  subscribers: EventStreamSubscriberEntriesGeneric<TB>,
-  events:      EventStreamEventsGeneric<TB>,
+/// [`EventStreamShared`]: super::EventStreamShared
+pub struct EventStream {
+  subscribers: EventStreamSubscriberEntries,
+  events:      EventStreamEvents,
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
+impl EventStream {
   /// Creates a stream with the specified buffer capacity.
   #[must_use]
   pub const fn with_capacity(capacity: usize) -> Self {
-    Self {
-      subscribers: EventStreamSubscriberEntriesGeneric::new(),
-      events:      EventStreamEventsGeneric::with_capacity(capacity),
-    }
+    Self { subscribers: EventStreamSubscriberEntries::new(), events: EventStreamEvents::with_capacity(capacity) }
   }
 
   /// Adds a subscriber and returns the assigned identifier along with a
@@ -39,7 +34,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   /// The caller is responsible for replaying the snapshot to the subscriber
   /// after releasing any locks.
   #[must_use]
-  pub fn subscribe(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> (u64, Vec<EventStreamEvent<TB>>) {
+  pub fn subscribe(&mut self, subscriber: EventStreamSubscriberShared) -> (u64, Vec<EventStreamEvent>) {
     let id = self.subscribers.add(subscriber);
     let snapshot = self.events.snapshot();
     (id, snapshot)
@@ -47,7 +42,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
 
   /// Adds a subscriber without replaying buffered events.
   #[must_use]
-  pub fn subscribe_no_replay(&mut self, subscriber: EventStreamSubscriberShared<TB>) -> u64 {
+  pub fn subscribe_no_replay(&mut self, subscriber: EventStreamSubscriberShared) -> u64 {
     self.subscribers.add(subscriber)
   }
 
@@ -62,7 +57,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   /// This separation prevents deadlocks by ensuring callbacks are executed without
   /// holding the event stream lock.
   #[must_use]
-  pub fn publish_prepare(&mut self, event: EventStreamEvent<TB>) -> Vec<EventStreamSubscriberEntryGeneric<TB>> {
+  pub fn publish_prepare(&mut self, event: EventStreamEvent) -> Vec<EventStreamSubscriberEntry> {
     self.events.push_and_trim(event);
     self.subscribers.snapshot()
   }
@@ -74,11 +69,8 @@ impl<TB: RuntimeToolbox + 'static> EventStreamGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for EventStreamGeneric<TB> {
+impl Default for EventStream {
   fn default() -> Self {
     Self::with_capacity(DEFAULT_CAPACITY)
   }
 }
-
-/// Type alias for `EventStreamGeneric` with the default `NoStdToolbox`.
-pub type EventStream = EventStreamGeneric<NoStdToolbox>;

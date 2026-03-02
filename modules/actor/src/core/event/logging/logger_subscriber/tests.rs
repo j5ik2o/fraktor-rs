@@ -1,10 +1,7 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use crate::core::{
   dead_letter::DeadLetterEntry,
@@ -54,9 +51,9 @@ fn on_event_filters_by_level() {
   let warn_event = LogEvent::new(LogLevel::Warn, String::from("warn"), Duration::ZERO, None);
   let error_event = LogEvent::new(LogLevel::Error, String::from("error"), Duration::ZERO, None);
 
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::Log(debug_event));
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::Log(warn_event));
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::Log(error_event));
+  subscriber.on_event(&EventStreamEvent::Log(debug_event));
+  subscriber.on_event(&EventStreamEvent::Log(warn_event));
+  subscriber.on_event(&EventStreamEvent::Log(error_event));
 
   let recorded = logs.lock();
   assert_eq!(recorded.len(), 2);
@@ -70,7 +67,7 @@ fn on_event_writes_matching_logs() {
   let mut subscriber = LoggerSubscriber::new(LogLevel::Info, Box::new(writer));
 
   let event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::ZERO, None);
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::Log(event));
+  subscriber.on_event(&EventStreamEvent::Log(event));
 
   let recorded = logs.lock();
   assert_eq!(recorded.len(), 1);
@@ -82,7 +79,7 @@ fn on_event_ignores_non_log_events() {
   let (writer, logs) = TestWriter::new();
   let mut subscriber = LoggerSubscriber::new(LogLevel::Info, Box::new(writer));
 
-  subscriber.on_event(&EventStreamEvent::<NoStdToolbox>::DeadLetter(DeadLetterEntry::new(
+  subscriber.on_event(&EventStreamEvent::DeadLetter(DeadLetterEntry::new(
     crate::core::messaging::AnyMessage::new(()),
     crate::core::dead_letter::DeadLetterReason::MissingRecipient,
     None,

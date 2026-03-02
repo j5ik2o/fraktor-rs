@@ -2,10 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::{
-  core::sync::ArcShared,
-  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
-};
+use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 
 use super::{DispatchExecutor, DispatchShared};
 use crate::core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
@@ -27,7 +24,7 @@ impl DispatchExecutorAdapter {
   }
 }
 
-impl CoreDispatchExecutor<StdToolbox> for DispatchExecutorAdapter {
+impl CoreDispatchExecutor for DispatchExecutorAdapter {
   fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     // 外部ロックを取得してから execute を呼び出す
     self.inner.lock().execute(dispatcher)

@@ -4,10 +4,10 @@ use alloc::format;
 
 use fraktor_actor_rs::core::{
   actor::actor_path::ActorPathScheme,
-  serialization::SerializationExtensionSharedGeneric,
+  serialization::SerializationExtensionShared,
   system::{
-    ActorSystemBuildError, ActorSystemGeneric,
-    provider::{ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
+    ActorSystem, ActorSystemBuildError,
+    provider::{ActorRefProviderInstaller, ActorRefProviderShared},
     remote::RemoteWatchHookShared,
   },
 };
@@ -40,11 +40,11 @@ impl<TB: RuntimeToolbox + 'static> Default for RemoteActorRefProviderInstaller<T
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActorRefProviderInstaller<TB> {
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
+impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller for RemoteActorRefProviderInstaller<TB> {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
-    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
+    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionShared>() else {
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
     let serialization = (*serialization_arc).clone();
@@ -59,7 +59,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
     let provider = RemoteActorRefProviderGeneric::from_components(system.clone(), writer, control)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
-    let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
+    let shared_provider = ActorRefProviderShared::new(shared.clone());
     extended.register_actor_ref_provider(&shared_provider)?;
     extended.register_remote_watch_hook(shared);
 
@@ -67,12 +67,12 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for RemoteActor
       let Some(authority) = system.canonical_authority() else {
         return Err(ActorSystemBuildError::Configuration("canonical authority missing for loopback routing".into()));
       };
-      let Some(serialization_ext_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
+      let Some(serialization_ext_arc) = extended.extension_by_type::<SerializationExtensionShared>() else {
         return Err(ActorSystemBuildError::Configuration(
           "serialization extension missing for loopback routing".into(),
         ));
       };
-      let reader = EndpointReaderGeneric::new(system.downgrade(), (*serialization_ext_arc).clone());
+      let reader = EndpointReaderGeneric::<TB>::new(system.downgrade(), (*serialization_ext_arc).clone());
       loopback_router::register_endpoint(authority, reader, system.clone());
     }
     Ok(())

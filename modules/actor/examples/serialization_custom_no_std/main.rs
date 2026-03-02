@@ -19,7 +19,7 @@ use core::{
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
+  messaging::AnyMessageView,
   props::Props,
   serialization::{
     NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
@@ -126,7 +126,7 @@ impl NullActor {
 }
 
 impl Actor for NullActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }

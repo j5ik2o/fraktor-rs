@@ -1,22 +1,19 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::Behaviors;
 use crate::core::{
   actor::{
-    ActorContextGeneric, Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::AnyMessageGeneric,
-  system::ActorSystemGeneric,
+  messaging::AnyMessage,
+  system::ActorSystem,
   typed::{
-    actor::TypedActorContextGeneric, behavior::Behavior, behavior_interceptor::BehaviorInterceptor,
+    actor::TypedActorContext, behavior::Behavior, behavior_interceptor::BehaviorInterceptor,
     behavior_signal::BehaviorSignal, receive_timeout_config::ReceiveTimeoutConfig,
   },
 };
@@ -24,17 +21,17 @@ use crate::core::{
 struct Query(u32);
 
 struct RecordingSender {
-  inbox: ArcShared<NoStdMutex<Vec<AnyMessageGeneric<NoStdToolbox>>>>,
+  inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
 }
 
 impl RecordingSender {
-  fn new(inbox: ArcShared<NoStdMutex<Vec<AnyMessageGeneric<NoStdToolbox>>>>) -> Self {
+  fn new(inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>) -> Self {
     Self { inbox }
   }
 }
 
-impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(&mut self, message: AnyMessageGeneric<NoStdToolbox>) -> Result<SendOutcome, SendError<NoStdToolbox>> {
+impl ActorRefSender for RecordingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.inbox.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
@@ -42,15 +39,15 @@ impl ActorRefSender<NoStdToolbox> for RecordingSender {
 
 #[test]
 fn receive_and_reply_sends_response_to_sender() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let sender = ActorRefGeneric::new(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
+  let sender = ActorRef::new(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
 
-  let mut context = ActorContextGeneric::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(sender));
 
-  let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut context, None);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
   let mut behavior = Behaviors::receive_and_reply(|_ctx, message: &Query| Ok(message.0 + 1));
   let _ = behavior.handle_message(&mut typed_ctx, &Query(41)).expect("reply should succeed");
 
@@ -62,10 +59,10 @@ fn receive_and_reply_sends_response_to_sender() {
 
 #[test]
 fn receive_and_reply_returns_recoverable_error_without_sender() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut context, None);
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut behavior = Behaviors::receive_and_reply(|_ctx, message: &Query| Ok(message.0 + 1));
   let result = behavior.handle_message(&mut typed_ctx, &Query(1));
@@ -77,13 +74,13 @@ fn receive_and_reply_returns_recoverable_error_without_sender() {
 
 #[test]
 fn with_timers_produces_active_behavior_with_signal_handler() {
-  let behavior = Behaviors::with_timers::<u32, NoStdToolbox, _>(|_timers| Behaviors::ignore());
+  let behavior = Behaviors::with_timers::<u32, _>(|_timers| Behaviors::ignore());
   assert!(behavior.has_signal_handler());
 }
 
 #[test]
 fn with_timers_shared_handle_usable_in_closures() {
-  let behavior = Behaviors::with_timers::<u32, NoStdToolbox, _>(|timers| {
+  let behavior = Behaviors::with_timers::<u32, _>(|timers| {
     let timers_for_handler = timers.clone();
     Behaviors::receive_message(move |_ctx, msg: &u32| {
       let key = crate::core::typed::timer_key::TimerKey::new("dynamic");
@@ -103,29 +100,23 @@ struct RecordingInterceptor {
   signal_count:  ArcShared<NoStdMutex<u32>>,
 }
 
-impl BehaviorInterceptor<u32, NoStdToolbox> for RecordingInterceptor {
+impl BehaviorInterceptor<u32> for RecordingInterceptor {
   fn around_receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, u32, NoStdToolbox>,
+    ctx: &mut TypedActorContext<'_, u32>,
     message: &u32,
-    target: &mut dyn FnMut(
-      &mut TypedActorContextGeneric<'_, u32, NoStdToolbox>,
-      &u32,
-    ) -> Result<Behavior<u32, NoStdToolbox>, ActorError>,
-  ) -> Result<Behavior<u32, NoStdToolbox>, ActorError> {
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, u32>, &u32) -> Result<Behavior<u32>, ActorError>,
+  ) -> Result<Behavior<u32>, ActorError> {
     *self.receive_count.lock() += 1;
     target(ctx, message)
   }
 
   fn around_signal(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, u32, NoStdToolbox>,
+    ctx: &mut TypedActorContext<'_, u32>,
     signal: &BehaviorSignal,
-    target: &mut dyn FnMut(
-      &mut TypedActorContextGeneric<'_, u32, NoStdToolbox>,
-      &BehaviorSignal,
-    ) -> Result<Behavior<u32, NoStdToolbox>, ActorError>,
-  ) -> Result<Behavior<u32, NoStdToolbox>, ActorError> {
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, u32>, &BehaviorSignal) -> Result<Behavior<u32>, ActorError>,
+  ) -> Result<Behavior<u32>, ActorError> {
     *self.signal_count.lock() += 1;
     target(ctx, signal)
   }
@@ -136,7 +127,7 @@ fn intercept_delegates_started_to_interceptor() {
   let signal_count = ArcShared::new(NoStdMutex::new(0u32));
   let signal_count_clone = signal_count.clone();
 
-  let mut behavior = Behaviors::intercept::<u32, NoStdToolbox, _, _>(
+  let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
         receive_count: ArcShared::new(NoStdMutex::new(0)),
@@ -146,10 +137,10 @@ fn intercept_delegates_started_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut context, None);
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   // Trigger Started — this calls interceptor.around_start
   let _inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
@@ -165,7 +156,7 @@ fn intercept_delegates_message_to_interceptor() {
   let receive_count = ArcShared::new(NoStdMutex::new(0u32));
   let receive_count_clone = receive_count.clone();
 
-  let mut behavior = Behaviors::intercept::<u32, NoStdToolbox, _, _>(
+  let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
         receive_count: receive_count_clone.clone(),
@@ -175,10 +166,10 @@ fn intercept_delegates_message_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut context, None);
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   // First trigger Started to initialize the intercepted behavior
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
@@ -194,7 +185,7 @@ fn intercept_delegates_signal_to_interceptor() {
   let signal_count = ArcShared::new(NoStdMutex::new(0u32));
   let signal_count_clone = signal_count.clone();
 
-  let mut behavior = Behaviors::intercept::<u32, NoStdToolbox, _, _>(
+  let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
         receive_count: ArcShared::new(NoStdMutex::new(0)),
@@ -204,10 +195,10 @@ fn intercept_delegates_signal_to_interceptor() {
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
   );
 
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut typed_ctx = TypedActorContextGeneric::from_untyped(&mut context, None);
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
 
@@ -221,21 +212,20 @@ fn intercept_delegates_signal_to_interceptor() {
 
 #[test]
 fn receive_timeout_config_stores_duration_and_produces_message() {
-  let config = ReceiveTimeoutConfig::<u32, NoStdToolbox>::new(Duration::from_millis(500), || 99u32);
+  let config = ReceiveTimeoutConfig::<u32>::new(Duration::from_millis(500), || 99u32);
   assert_eq!(config.duration, Duration::from_millis(500));
   assert_eq!(config.make_message(), 99);
 }
 
 #[test]
 fn set_receive_timeout_configures_state() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut timeout_state: Option<ReceiveTimeoutConfig<u32, NoStdToolbox>> = None;
+  let mut context = ActorContext::new(&system, pid);
+  let mut timeout_state: Option<ReceiveTimeoutConfig<u32>> = None;
 
   {
-    let mut typed_ctx =
-      TypedActorContextGeneric::from_untyped(&mut context, None).with_receive_timeout(&mut timeout_state);
+    let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None).with_receive_timeout(&mut timeout_state);
     typed_ctx.set_receive_timeout(Duration::from_millis(200), || 42u32);
   }
 
@@ -246,14 +236,13 @@ fn set_receive_timeout_configures_state() {
 
 #[test]
 fn cancel_receive_timeout_clears_state() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContextGeneric::new(&system, pid);
-  let mut timeout_state: Option<ReceiveTimeoutConfig<u32, NoStdToolbox>> = None;
+  let mut context = ActorContext::new(&system, pid);
+  let mut timeout_state: Option<ReceiveTimeoutConfig<u32>> = None;
 
   {
-    let mut typed_ctx =
-      TypedActorContextGeneric::from_untyped(&mut context, None).with_receive_timeout(&mut timeout_state);
+    let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None).with_receive_timeout(&mut timeout_state);
     typed_ctx.set_receive_timeout(Duration::from_millis(200), || 42u32);
     typed_ctx.cancel_receive_timeout();
   }

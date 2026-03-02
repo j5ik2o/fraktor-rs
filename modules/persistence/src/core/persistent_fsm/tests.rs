@@ -2,19 +2,19 @@ use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
-    actor_ref::{ActorRef, ActorRefGeneric, ActorRefSender, SendOutcome},
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   system::{
-    ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::ArcShared,
 };
 
@@ -26,50 +26,45 @@ use crate::core::{
 };
 
 type TB = NoStdToolbox;
-type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn create_sender_with_pid(pid: Pid) -> (ActorRefGeneric<TB>, MessageStore) {
-  let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
-  let sender = ActorRefGeneric::new(pid, TestSender { messages: messages.clone() });
+fn create_sender_with_pid(pid: Pid) -> (ActorRef, MessageStore) {
+  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
+  let sender = ActorRef::new(pid, TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   create_sender_with_pid(Pid::new(1, 1))
 }
 
 struct NoopActor;
 
-impl Actor<TB> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_context() -> ActorContextGeneric<'static, TB> {
-  let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
-  let system = ActorSystemGeneric::<TB>::from_state(state.clone());
+fn build_context() -> ActorContext<'static> {
+  let state = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::from_state(state.clone());
   let pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let cell =
-    ActorCellGeneric::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");
+  let props = Props::from_fn(|| NoopActor);
+  let cell = ActorCell::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");
   state.register_cell(cell);
-  ActorContextGeneric::new(&system, pid)
+  ActorContext::new(&system, pid)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,11 +104,7 @@ impl Eventsourced<TB> for TestPersistentFsmActor {
 
   fn receive_snapshot(&mut self, _snapshot: &Snapshot) {}
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -146,10 +137,10 @@ impl PersistentFsm<TB> for TestPersistentFsmActor {
 }
 
 fn move_to_processing_commands(actor: &mut TestPersistentFsmActor) {
-  actor.context.start_recovery(Recovery::default(), ActorRefGeneric::null()).expect("start recovery");
+  actor.context.start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
   let _ = actor.context.handle_journal_response(&JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
 }
@@ -158,7 +149,7 @@ fn first_write_message_repr(journal_store: &MessageStore) -> PersistentRepr {
   let messages = journal_store.lock();
   messages
     .iter()
-    .filter_map(|message| message.payload().downcast_ref::<JournalMessage<TB>>())
+    .filter_map(|message| message.payload().downcast_ref::<JournalMessage>())
     .find_map(|message| match message {
       | JournalMessage::WriteMessages { messages, .. } => messages.first().cloned(),
       | _ => None,

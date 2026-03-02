@@ -5,48 +5,45 @@ mod tests;
 
 use alloc::format;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   actor::{
     Pid,
-    actor_ref::{ActorRefSender, ActorRefSenderSharedGeneric, SendOutcome},
+    actor_ref::{ActorRefSender, ActorRefSenderShared, SendOutcome},
   },
   error::SendError,
   event::logging::LogLevel,
-  messaging::AnyMessageGeneric,
-  system::state::SystemStateSharedGeneric,
+  messaging::AnyMessage,
+  system::state::SystemStateShared,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterPayload, AdapterRefHandleId},
 };
 
 /// Sends external messages through the adapter pipeline.
-pub(crate) struct AdapterRefSender<TB: RuntimeToolbox + 'static = NoStdToolbox> {
+pub(crate) struct AdapterRefSender {
   pid:       Pid,
   handle_id: AdapterRefHandleId,
-  target:    ActorRefSenderSharedGeneric<TB>,
-  lifecycle: ArcShared<AdapterLifecycleState<TB>>,
-  system:    SystemStateSharedGeneric<TB>,
+  target:    ActorRefSenderShared,
+  lifecycle: ArcShared<AdapterLifecycleState>,
+  system:    SystemStateShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> AdapterRefSender<TB> {
+impl AdapterRefSender {
   /// Creates a new sender instance.
   #[must_use]
   pub(crate) const fn new(
     pid: Pid,
     handle_id: AdapterRefHandleId,
-    target: ActorRefSenderSharedGeneric<TB>,
-    lifecycle: ArcShared<AdapterLifecycleState<TB>>,
-    system: SystemStateSharedGeneric<TB>,
+    target: ActorRefSenderShared,
+    lifecycle: ArcShared<AdapterLifecycleState>,
+    system: SystemStateShared,
   ) -> Self {
     Self { pid, handle_id, target, lifecycle, system }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for AdapterRefSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     if !self.lifecycle.is_alive() {
       let error = SendError::closed(message);
       self.system.record_send_error(Some(self.pid), &error);
@@ -58,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for AdapterRefSender<TB> {
     let (erased, sender) = message.into_payload_and_sender();
     let payload = AdapterPayload::from_erased(erased);
     let envelope = AdapterEnvelope::new(payload, sender);
-    let adapted = AnyMessageGeneric::new(envelope);
+    let adapted = AnyMessage::new(envelope);
 
     match self.target.send(adapted) {
       | Ok(()) => Ok(SendOutcome::Delivered),

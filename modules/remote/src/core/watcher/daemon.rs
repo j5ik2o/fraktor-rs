@@ -10,13 +10,13 @@ use alloc::{
 };
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, Pid, actor_path::ActorPathParts, actor_ref::ActorRef},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
-  system::ActorSystemGeneric,
+  messaging::AnyMessageView,
+  props::Props,
+  system::ActorSystem,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::sync_mutex_like::SyncMutexLike};
+use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::{command::RemoteWatcherCommand, heartbeat::Heartbeat, heartbeat_rsp::HeartbeatRsp};
 use crate::core::{
@@ -60,11 +60,8 @@ where
   }
 
   /// Spawns the daemon under the system guardian hierarchy.
-  pub(crate) fn spawn(
-    system: &ActorSystemGeneric<TB>,
-    control: RemotingControlShared<TB>,
-  ) -> Result<ActorRefGeneric<TB>, RemotingError> {
-    let props = PropsGeneric::from_fn({
+  pub(crate) fn spawn(system: &ActorSystem, control: RemotingControlShared<TB>) -> Result<ActorRef, RemotingError> {
+    let props = Props::from_fn({
       let handle = control.clone();
       move || RemoteWatcherDaemon::new(handle.clone())
     })
@@ -193,15 +190,11 @@ where
   }
 }
 
-impl<TB> Actor<TB> for RemoteWatcherDaemon<TB>
+impl<TB> Actor for RemoteWatcherDaemon<TB>
 where
   TB: RuntimeToolbox + 'static,
 {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<RemoteWatcherCommand>() {
       let now_millis = ctx.system().state().monotonic_now().as_millis() as u64;
       self.handle_command(command, now_millis).map_err(|error| ActorError::recoverable(error.to_string()))?;

@@ -12,18 +12,17 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::{actor_path::ActorPathParser, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
   event::stream::{
-    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriptionGeneric,
-    subscriber_handle,
+    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
   },
-  messaging::{AnyMessageGeneric, AskError, AskResponseGeneric, AskResult},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
-  system::ActorSystemGeneric,
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
@@ -36,17 +35,17 @@ use crate::core::{
 
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
 
-struct ClusterEventFilterSubscriber<TB: RuntimeToolbox + 'static> {
-  subscriber:  EventStreamSubscriberShared<TB>,
+struct ClusterEventFilterSubscriber {
+  subscriber:  EventStreamSubscriberShared,
   event_types: BTreeSet<ClusterEventType>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterEventFilterSubscriber<TB> {
-  fn new(subscriber: EventStreamSubscriberShared<TB>, event_types: BTreeSet<ClusterEventType>) -> Self {
+impl ClusterEventFilterSubscriber {
+  fn new(subscriber: EventStreamSubscriberShared, event_types: BTreeSet<ClusterEventType>) -> Self {
     Self { subscriber, event_types }
   }
 
-  fn matches_event(event: &EventStreamEvent<TB>, event_types: &BTreeSet<ClusterEventType>) -> bool {
+  fn matches_event(event: &EventStreamEvent, event_types: &BTreeSet<ClusterEventType>) -> bool {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == CLUSTER_EVENT_STREAM_NAME
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
@@ -57,8 +56,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterEventFilterSubscriber<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterEventFilterSubscriber<TB> {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+impl EventStreamSubscriber for ClusterEventFilterSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if Self::matches_event(event, &self.event_types) {
       let mut subscriber = self.subscriber.lock();
       subscriber.on_event(event);
@@ -68,7 +67,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ClusterEventFil
 
 /// Cluster API facade bound to an actor system.
 pub struct ClusterApiGeneric<TB: RuntimeToolbox + 'static> {
-  system:    ActorSystemGeneric<TB>,
+  system:    ActorSystem,
   extension: ArcShared<ClusterExtensionGeneric<TB>>,
 }
 
@@ -81,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the cluster extension has not been installed.
-  pub fn try_from_system(system: &ActorSystemGeneric<TB>) -> Result<Self, ClusterApiError> {
+  pub fn try_from_system(system: &ActorSystem) -> Result<Self, ClusterApiError> {
     let extension = system
       .extended()
       .extension_by_type::<ClusterExtensionGeneric<TB>>()
@@ -89,7 +88,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     Ok(Self { system: system.clone(), extension })
   }
 
-  pub(crate) const fn system(&self) -> &ActorSystemGeneric<TB> {
+  pub(crate) const fn system(&self) -> &ActorSystem {
     &self.system
   }
 
@@ -103,7 +102,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   ///
   /// Returns an error if the cluster is not started, the kind is not registered,
   /// PID lookup fails, or actor resolution fails.
-  pub fn get(&self, identity: &ClusterIdentity) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {
+  pub fn get(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     self.resolve_actor_ref(identity)
   }
 
@@ -115,9 +114,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   pub fn request(
     &self,
     identity: &ClusterIdentity,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
     timeout: Option<Duration>,
-  ) -> Result<AskResponseGeneric<TB>, ClusterRequestError> {
+  ) -> Result<AskResponse, ClusterRequestError> {
     let actor_ref = self.get(identity).map_err(ClusterRequestError::ResolveFailed)?;
     let response =
       actor_ref.ask(message).map_err(|error| ClusterRequestError::SendFailed { reason: format!("{error:?}") })?;
@@ -139,9 +138,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   pub fn request_future(
     &self,
     identity: &ClusterIdentity,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
     timeout: Option<Duration>,
-  ) -> Result<fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>, ClusterRequestError> {
+  ) -> Result<fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -187,14 +186,14 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   #[must_use]
   pub fn subscribe(
     &self,
-    subscriber: &EventStreamSubscriberShared<TB>,
+    subscriber: &EventStreamSubscriberShared,
     initial_state_mode: ClusterSubscriptionInitialStateMode,
     event_types: &[ClusterEventType],
-  ) -> EventStreamSubscriptionGeneric<TB> {
+  ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
     let event_type_set = to_event_type_set(event_types);
-    let filtered = subscriber_handle::<TB>(ClusterEventFilterSubscriber::<TB>::new(subscriber.clone(), event_type_set));
+    let filtered = subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set));
     let event_stream = self.system.event_stream();
 
     match initial_state_mode {
@@ -204,7 +203,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
           let mut guard = filtered.lock();
           guard.on_event(event);
         }
-        EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+        EventStreamSubscription::new(event_stream, subscription_id)
       },
       | ClusterSubscriptionInitialStateMode::AsSnapshot => {
         // Subscribe first to avoid event gap between snapshot and registration.
@@ -214,11 +213,11 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
           let (state, observed_at) = core.lock().current_cluster_state_snapshot();
           ClusterEvent::CurrentClusterState { state, observed_at }
         };
-        let payload = AnyMessageGeneric::new(initial_event);
+        let payload = AnyMessage::new(initial_event);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
         let mut guard = subscriber.lock();
         guard.on_event(&extension_event);
-        EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+        EventStreamSubscription::new(event_stream, subscription_id)
       },
     }
   }
@@ -233,18 +232,16 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   #[must_use]
   pub fn subscribe_no_replay(
     &self,
-    subscriber: &EventStreamSubscriberShared<TB>,
+    subscriber: &EventStreamSubscriberShared,
     event_types: &[ClusterEventType],
-  ) -> EventStreamSubscriptionGeneric<TB> {
+  ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
-    let filtered = subscriber_handle::<TB>(ClusterEventFilterSubscriber::<TB>::new(
-      subscriber.clone(),
-      to_event_type_set(event_types),
-    ));
+    let filtered =
+      subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)));
     let event_stream = self.system.event_stream();
     let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
-    EventStreamSubscriptionGeneric::new(event_stream, subscription_id)
+    EventStreamSubscription::new(event_stream, subscription_id)
   }
 
   /// Unsubscribes from event stream notifications by subscription identifier.
@@ -252,7 +249,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     self.system.event_stream().unsubscribe(subscription_id);
   }
 
-  fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRefGeneric<TB>, ClusterResolveError> {
+  fn resolve_actor_ref(&self, identity: &ClusterIdentity) -> Result<ActorRef, ClusterResolveError> {
     let key = identity.key();
     let now = self.current_time_secs();
     let (pid_result, placement_events) = {
@@ -290,7 +287,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
   fn schedule_timeout(
     &self,
     timeout: Duration,
-    future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>,
+    future: fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>,
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
@@ -339,20 +336,17 @@ fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
   Ok((authority, path))
 }
 
-fn publish_grain_event<TB: RuntimeToolbox + 'static>(
-  event_stream: &fraktor_actor_rs::core::event::stream::EventStreamSharedGeneric<TB>,
-  event: GrainEvent,
-) {
-  let payload = AnyMessageGeneric::new(event);
+fn publish_grain_event(event_stream: &fraktor_actor_rs::core::event::stream::EventStreamShared, event: GrainEvent) {
+  let payload = AnyMessage::new(event);
   let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
   event_stream.publish(&extension_event);
 }
 
-struct TimeoutRunnable<TB: RuntimeToolbox + 'static> {
-  future: fraktor_actor_rs::core::futures::ActorFutureSharedGeneric<AskResult<TB>, TB>,
+struct TimeoutRunnable {
+  future: fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>,
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for TimeoutRunnable<TB> {
+impl SchedulerRunnable for TimeoutRunnable {
   fn run(&self, _batch: &ExecutionBatch) {
     let waker =
       self.future.with_write(|inner| if inner.is_ready() { None } else { inner.complete(Err(AskError::Timeout)) });

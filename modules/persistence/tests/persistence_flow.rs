@@ -9,29 +9,29 @@ use core::{
 };
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::ArcShared,
 };
 
 type TB = NoStdToolbox;
-type SharedValue = ArcShared<ToolboxMutex<i32, TB>>;
-type SharedFlag = ArcShared<ToolboxMutex<bool, TB>>;
-type SharedRefs = ArcShared<ToolboxMutex<Vec<ActorRefGeneric<TB>>, TB>>;
+type SharedValue = ArcShared<RuntimeMutex<i32>>;
+type SharedFlag = ArcShared<RuntimeMutex<bool>>;
+type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRef>>>;
 
 #[derive(Clone)]
 enum Command {
@@ -78,11 +78,7 @@ impl Eventsourced<TB> for CounterActor {
     }
   }
 
-  fn receive_command(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
       self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
       self.flush_batch(ctx)?;
@@ -123,12 +119,8 @@ impl Guardian {
   }
 }
 
-impl Actor<TB> for Guardian {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for Guardian {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_none() {
       return Ok(());
     }
@@ -140,7 +132,7 @@ impl Actor<TB> for Guardian {
       let persistence_id = setup.persistence_id.clone();
       let props =
         persistent_props(move || CounterActor::new(&persistence_id, value.clone(), recovery_complete.clone()));
-      let child = spawn_persistent(ctx, &props)
+      let child = spawn_persistent::<TB>(ctx, &props)
         .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
       refs.push(child);
     }
@@ -150,8 +142,8 @@ impl Actor<TB> for Guardian {
 
 struct Start;
 
-fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<ToolboxMutex<T, TB>> {
-  ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(value))
+fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<RuntimeMutex<T>> {
+  ArcShared::new(RuntimeMutex::new(value))
 }
 
 fn drive_ready<F: Future>(future: F) -> F::Output {
@@ -192,19 +184,19 @@ fn recovery_flow_snapshot_then_replay() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn({
+  let props = Props::from_fn({
     let setups = setups.clone();
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  system.user_guardian_ref().tell(AnyMessageGeneric::new(Start)).expect("start");
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   for _ in 0..50 {
     controller.inject_and_drive(1);
@@ -243,19 +235,19 @@ fn persist_flow_keeps_values_independent() {
     fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn({
+  let props = Props::from_fn({
     let setups = setups.clone();
     let refs = refs.clone();
     move || Guardian::new(setups.clone(), refs.clone())
   });
-  let system = ActorSystemGeneric::<TB>::new_with_config(&props, &config).expect("system");
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  system.user_guardian_ref().tell(AnyMessageGeneric::new(Start)).expect("start");
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
   for _ in 0..5 {
     controller.inject_and_drive(1);
@@ -263,8 +255,8 @@ fn persist_flow_keeps_values_independent() {
 
   let refs_guard = refs.lock();
   assert_eq!(refs_guard.len(), 2);
-  refs_guard[0].tell(AnyMessageGeneric::new(Command::Add(2))).expect("send add");
-  refs_guard[1].tell(AnyMessageGeneric::new(Command::Add(5))).expect("send add");
+  refs_guard[0].tell(AnyMessage::new(Command::Add(2))).expect("send add");
+  refs_guard[1].tell(AnyMessage::new(Command::Add(5))).expect("send add");
   drop(refs_guard);
 
   for _ in 0..10 {

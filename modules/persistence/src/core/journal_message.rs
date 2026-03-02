@@ -5,14 +5,13 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
+use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
 
 use crate::core::persistent_repr::PersistentRepr;
 
 /// Messages sent to the journal actor.
 #[derive(Clone, Debug)]
-pub enum JournalMessage<TB: RuntimeToolbox + 'static> {
+pub enum JournalMessage {
   /// Writes a batch of messages.
   WriteMessages {
     /// Persistence id for the batch.
@@ -22,7 +21,7 @@ pub enum JournalMessage<TB: RuntimeToolbox + 'static> {
     /// Events to persist.
     messages:       Vec<PersistentRepr>,
     /// Request sender.
-    sender:         ActorRefGeneric<TB>,
+    sender:         ActorRef,
     /// Instance id for correlation.
     instance_id:    u32,
   },
@@ -37,7 +36,7 @@ pub enum JournalMessage<TB: RuntimeToolbox + 'static> {
     /// Maximum number of messages to replay.
     max:              u64,
     /// Request sender.
-    sender:           ActorRefGeneric<TB>,
+    sender:           ActorRef,
   },
   /// Deletes messages up to the given sequence number.
   DeleteMessagesTo {
@@ -46,7 +45,7 @@ pub enum JournalMessage<TB: RuntimeToolbox + 'static> {
     /// Delete up to this sequence number.
     to_sequence_nr: u64,
     /// Request sender.
-    sender:         ActorRefGeneric<TB>,
+    sender:         ActorRef,
   },
   /// Requests the highest sequence number.
   GetHighestSequenceNr {
@@ -55,6 +54,6 @@ pub enum JournalMessage<TB: RuntimeToolbox + 'static> {
     /// Starting sequence number for the query.
     from_sequence_nr: u64,
     /// Request sender.
-    sender:           ActorRefGeneric<TB>,
+    sender:           ActorRef,
   },
 }

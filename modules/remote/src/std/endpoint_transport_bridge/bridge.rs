@@ -17,7 +17,7 @@ use fraktor_actor_rs::core::{
     logging::LogLevel,
     stream::{CorrelationId, RemotingLifecycleEvent},
   },
-  system::ActorSystemWeakGeneric,
+  system::ActorSystemWeak,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
@@ -69,7 +69,7 @@ enum InboundSystemSequenceResult {
 }
 
 pub(crate) struct EndpointTransportBridge<TB: RuntimeToolbox + 'static> {
-  system:                 ActorSystemWeakGeneric<TB>,
+  system:                 ActorSystemWeak,
   control:                RemotingControlHandle<TB>,
   event_publisher:        EventPublisherGeneric<TB>,
   writer:                 EndpointWriterSharedGeneric<TB>,

@@ -4,17 +4,14 @@ use alloc::format;
 
 use fraktor_actor_rs::core::{
   actor::actor_path::ActorPathScheme,
-  serialization::SerializationExtensionSharedGeneric,
+  serialization::SerializationExtensionShared,
   system::{
-    ActorSystemBuildError, ActorSystemGeneric,
-    provider::{ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
+    ActorSystem, ActorSystemBuildError,
+    provider::{ActorRefProviderInstaller, ActorRefProviderShared},
     remote::RemoteWatchHookShared,
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_ref_provider::{loopback_router, tokio::TokioActorRefProviderGeneric},
@@ -43,11 +40,11 @@ impl<TB: RuntimeToolbox + 'static> Default for TokioActorRefProviderInstaller<TB
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorRefProviderInstaller<TB> {
-  fn install(&self, system: &ActorSystemGeneric<TB>) -> Result<(), ActorSystemBuildError> {
+impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller for TokioActorRefProviderInstaller<TB> {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extended = system.extended();
 
-    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionSharedGeneric<TB>>() else {
+    let Some(serialization_arc) = extended.extension_by_type::<SerializationExtensionShared>() else {
       return Err(ActorSystemBuildError::Configuration("serialization extension not installed".into()));
     };
     let serialization = (*serialization_arc).clone();
@@ -65,7 +62,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProviderInstaller<TB> for TokioActorR
     let provider = TokioActorRefProviderGeneric::from_components(system.clone(), writer, control)
       .map_err(|error| ActorSystemBuildError::Configuration(format!("{error}")))?;
     let shared = RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp]);
-    let shared_provider = ActorRefProviderSharedGeneric::new(shared.clone());
+    let shared_provider = ActorRefProviderShared::new(shared.clone());
     extended.register_actor_ref_provider(&shared_provider)?;
     extended.register_remote_watch_hook(shared);
 

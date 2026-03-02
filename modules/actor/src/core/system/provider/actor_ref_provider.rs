@@ -1,11 +1,9 @@
 //! Core trait for actor reference providers.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   actor::{
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
 };
@@ -21,7 +19,7 @@ use crate::core::{
 /// - `LoopbackActorRefProvider`: For remote actor systems with loopback routing optimization
 ///
 /// This trait is not intended for extension outside of fraktor-rs core.
-pub trait ActorRefProvider<TB: RuntimeToolbox + 'static>: Send + Sync {
+pub trait ActorRefProvider: Send + Sync {
   /// Returns the URI schemes handled by this provider.
   #[must_use]
   fn supported_schemes(&self) -> &'static [ActorPathScheme];
@@ -31,12 +29,12 @@ pub trait ActorRefProvider<TB: RuntimeToolbox + 'static>: Send + Sync {
   /// # Errors
   ///
   /// Returns an error if the actor reference cannot be created.
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError>;
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError>;
 
   // Future extensions:
-  // fn root_guardian(&self) -> ActorRefGeneric<TB>;
-  // fn guardian(&self) -> ActorRefGeneric<TB>;
-  // fn system_guardian(&self) -> ActorRefGeneric<TB>;
-  // fn dead_letters(&self) -> ActorRefGeneric<TB>;
+  // fn root_guardian(&self) -> ActorRef;
+  // fn guardian(&self) -> ActorRef;
+  // fn system_guardian(&self) -> ActorRef;
+  // fn dead_letters(&self) -> ActorRef;
   // fn temp_path(&self) -> ActorPath;
 }

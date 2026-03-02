@@ -1,25 +1,23 @@
 use core::ops::{Deref, DerefMut};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
   scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
-  typed::{actor::TypedActorRefGeneric, scheduler::TypedScheduler},
+  typed::{actor::TypedActorRef, scheduler::TypedScheduler},
 };
 
 /// Guard that keeps the scheduler lock and exposes typed scheduling APIs.
-pub struct TypedSchedulerGuard<'a, TB: RuntimeToolbox + 'static> {
-  pub(crate) scheduler: &'a mut Scheduler<TB>,
+pub struct TypedSchedulerGuard<'a> {
+  pub(crate) scheduler: &'a mut Scheduler,
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
-  pub(crate) const fn new(scheduler: &'a mut Scheduler<TB>) -> Self {
+impl<'a> TypedSchedulerGuard<'a> {
+  pub(crate) const fn new(scheduler: &'a mut Scheduler) -> Self {
     Self { scheduler }
   }
 
   /// Provides a typed scheduler facade scoped to the current lock.
   #[allow(clippy::missing_const_for_fn)] // ロック取得が必要なため const fn にできない
-  pub fn scheduler(&'a mut self) -> TypedScheduler<'a, TB> {
+  pub fn scheduler(&'a mut self) -> TypedScheduler<'a> {
     TypedScheduler::new(self.scheduler)
   }
 
@@ -27,7 +25,7 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   /// Executes a closure with a typed scheduler reference while holding the lock.
   pub fn with<F, R>(&mut self, callback: F) -> R
   where
-    F: for<'b> FnOnce(&mut TypedScheduler<'b, TB>) -> R, {
+    F: for<'b> FnOnce(&mut TypedScheduler<'b>) -> R, {
     let mut typed = TypedScheduler::new(self.scheduler);
     callback(&mut typed)
   }
@@ -41,10 +39,10 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   pub fn schedule_once<M>(
     &mut self,
     delay: core::time::Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
@@ -61,10 +59,10 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
     &mut self,
     initial_delay: core::time::Duration,
     interval: core::time::Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
@@ -88,10 +86,10 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
     &mut self,
     initial_delay: core::time::Duration,
     delay: core::time::Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
@@ -106,15 +104,15 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedSchedulerGuard<'a, TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Deref for TypedSchedulerGuard<'_, TB> {
-  type Target = Scheduler<TB>;
+impl Deref for TypedSchedulerGuard<'_> {
+  type Target = Scheduler;
 
   fn deref(&self) -> &Self::Target {
     self.scheduler
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DerefMut for TypedSchedulerGuard<'_, TB> {
+impl DerefMut for TypedSchedulerGuard<'_> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     self.scheduler
   }

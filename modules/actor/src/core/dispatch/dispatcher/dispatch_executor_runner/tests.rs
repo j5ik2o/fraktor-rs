@@ -1,29 +1,26 @@
 use alloc::{boxed::Box, sync::Arc, vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
-use super::DispatchExecutorRunnerGeneric;
+use super::DispatchExecutorRunner;
 use crate::core::dispatch::dispatcher::{
-  DispatchError, DispatchExecutor, DispatchSharedGeneric, dispatcher_core::DispatcherCoreGeneric,
+  DispatchError, DispatchExecutor, DispatchShared, dispatcher_core::DispatcherCore,
 };
 
-fn make_dispatch_task() -> DispatchSharedGeneric<NoStdToolbox> {
+fn make_dispatch_task() -> DispatchShared {
   use crate::core::dispatch::{
     dispatcher::InlineExecutor,
     mailbox::{Mailbox, MailboxPolicy},
   };
 
   let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-  let inline_executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(InlineExecutor::new());
-  let inner_runner = ArcShared::new(DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(inline_executor));
-  let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
-  let core = ArcShared::new(DispatcherCoreGeneric::new(mailbox, inner_runner, adapter, None, None, None));
+  let inline_executor: Box<dyn DispatchExecutor> = Box::new(InlineExecutor::new());
+  let inner_runner = ArcShared::new(DispatchExecutorRunner::new(inline_executor));
+  let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared();
+  let core = ArcShared::new(DispatcherCore::new(mailbox, inner_runner, adapter, None, None, None));
 
-  DispatchSharedGeneric::new(core)
+  DispatchShared::new(core)
 }
 
 struct CountingExecutor {
@@ -36,8 +33,8 @@ impl CountingExecutor {
   }
 }
 
-impl DispatchExecutor<NoStdToolbox> for CountingExecutor {
-  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for CountingExecutor {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.count.fetch_add(1, Ordering::SeqCst);
     Ok(())
   }
@@ -50,8 +47,8 @@ impl DispatchExecutor<NoStdToolbox> for CountingExecutor {
 #[test]
 fn dispatch_executor_runner_executes_single_task() {
   let count = Arc::new(AtomicUsize::new(0));
-  let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(CountingExecutor::new(count.clone()));
-  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
+  let executor: Box<dyn DispatchExecutor> = Box::new(CountingExecutor::new(count.clone()));
+  let runner = DispatchExecutorRunner::new(executor);
 
   let task = make_dispatch_task();
 
@@ -63,8 +60,8 @@ fn dispatch_executor_runner_executes_single_task() {
 #[test]
 fn dispatch_executor_runner_supports_blocking_delegates() {
   let count = Arc::new(AtomicUsize::new(0));
-  let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(CountingExecutor::new(count));
-  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
+  let executor: Box<dyn DispatchExecutor> = Box::new(CountingExecutor::new(count));
+  let runner = DispatchExecutorRunner::new(executor);
 
   assert!(!runner.supports_blocking());
 }
@@ -80,8 +77,8 @@ impl SequenceExecutor {
   }
 }
 
-impl DispatchExecutor<NoStdToolbox> for SequenceExecutor {
-  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for SequenceExecutor {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.calls.fetch_add(1, Ordering::SeqCst);
     self.outcomes.lock().pop().unwrap_or(Ok(()))
   }
@@ -96,8 +93,8 @@ fn failed_task_is_requeued_and_retried() {
   // 先頭のタスクで拒否されても再度キューへ戻されることを確認する
   let outcomes = Arc::new(NoStdMutex::new(vec![Ok(()), Err(DispatchError::RejectedExecution)]));
   let calls = Arc::new(AtomicUsize::new(0));
-  let executor: Box<dyn DispatchExecutor<NoStdToolbox>> = Box::new(SequenceExecutor::new(outcomes, calls.clone()));
-  let runner = DispatchExecutorRunnerGeneric::<NoStdToolbox>::new(executor);
+  let executor: Box<dyn DispatchExecutor> = Box::new(SequenceExecutor::new(outcomes, calls.clone()));
+  let runner = DispatchExecutorRunner::new(executor);
 
   let task1 = make_dispatch_task();
   let err = runner.submit(task1).expect_err("first submit should propagate rejection");

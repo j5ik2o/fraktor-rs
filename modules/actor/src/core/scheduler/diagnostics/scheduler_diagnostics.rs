@@ -1,32 +1,26 @@
 use alloc::collections::VecDeque;
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use super::{
   super::deterministic::{DeterministicEvent, DeterministicLog, DeterministicReplay},
   SchedulerDiagnosticsEvent,
-  diagnostics_registry::DiagnosticsRegistryGeneric,
-  scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscriptionGeneric,
+  diagnostics_registry::DiagnosticsRegistry,
+  scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription,
 };
 
 const DEFAULT_STREAM_CAPACITY: usize = 256;
 
 /// Aggregates scheduler diagnostics state.
-pub struct SchedulerDiagnosticsGeneric<TB: RuntimeToolbox + 'static> {
+pub struct SchedulerDiagnostics {
   deterministic_log:  Option<DeterministicLog>,
-  registry:           DiagnosticsRegistryGeneric<TB>,
+  registry:           DiagnosticsRegistry,
   next_subscriber_id: u64,
   stream_buffer:      VecDeque<SchedulerDiagnosticsEvent>,
   stream_capacity:    usize,
-  _marker:            PhantomData<TB>,
+  _marker:            PhantomData<()>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub type SchedulerDiagnostics = SchedulerDiagnosticsGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsGeneric<TB> {
+impl SchedulerDiagnostics {
   /// Creates a diagnostics container with logging disabled.
   #[must_use]
   pub fn new() -> Self {
@@ -39,7 +33,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsGeneric<TB> {
     let bounded = capacity.max(1);
     Self {
       deterministic_log:  None,
-      registry:           DiagnosticsRegistryGeneric::new(),
+      registry:           DiagnosticsRegistry::new(),
       next_subscriber_id: 1,
       stream_buffer:      VecDeque::new(),
       stream_capacity:    bounded,
@@ -71,7 +65,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsGeneric<TB> {
   }
 
   /// Registers a diagnostics subscriber with the requested queue capacity.
-  pub fn subscribe(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscriptionGeneric<TB> {
+  pub fn subscribe(&mut self, capacity: usize) -> SchedulerDiagnosticsSubscription {
     let id = self.alloc_subscriber_id();
     let buffer = self.registry.register(id, capacity.max(1));
     if !self.stream_buffer.is_empty() {
@@ -80,7 +74,7 @@ impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsGeneric<TB> {
       }
       self.stream_buffer.clear();
     }
-    SchedulerDiagnosticsSubscriptionGeneric::new(id, self.registry.clone(), buffer)
+    SchedulerDiagnosticsSubscription::new(id, self.registry.clone(), buffer)
   }
 
   /// Publishes a stream event to subscribers, returning whether any queue dropped data.
@@ -116,13 +110,13 @@ impl<TB: RuntimeToolbox + 'static> SchedulerDiagnosticsGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for SchedulerDiagnosticsGeneric<TB> {
+impl Default for SchedulerDiagnostics {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for SchedulerDiagnosticsGeneric<TB> {
+impl Clone for SchedulerDiagnostics {
   fn clone(&self) -> Self {
     Self {
       deterministic_log:  self.deterministic_log.clone(),

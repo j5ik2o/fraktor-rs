@@ -1,14 +1,12 @@
 //! Outcome returned by immediate enqueue attempts.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use super::mailbox_offer_future::MailboxOfferFutureGeneric;
+use super::mailbox_offer_future::MailboxOfferFuture;
 
 /// Result of attempting to enqueue a user message without blocking.
 #[derive(Debug)]
-pub enum EnqueueOutcome<TB: RuntimeToolbox + 'static> {
+pub enum EnqueueOutcome {
   /// The message was enqueued immediately.
   Enqueued,
   /// The mailbox is full and a future must be awaited for completion.
-  Pending(MailboxOfferFutureGeneric<TB>),
+  Pending(MailboxOfferFuture),
 }

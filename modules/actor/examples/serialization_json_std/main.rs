@@ -18,10 +18,9 @@ use fraktor_actor_rs::{
     extension::ExtensionInstallers,
     serialization::{
       NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
-      SerializationExtensionSharedGeneric, SerializationSetup, SerializationSetupBuilder, SerializedMessage,
-      Serializer, SerializerId, SerializerWithStringManifest, TransportInformation,
+      SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
+      SerializerId, SerializerWithStringManifest, TransportInformation,
     },
-    system::ActorSystemGeneric,
   },
   std::{
     actor::{Actor, ActorContext},
@@ -30,10 +29,7 @@ use fraktor_actor_rs::{
     system::{ActorSystem, ActorSystemConfig},
   },
 };
-use fraktor_utils_rs::{
-  core::sync::{ArcShared, SharedAccess},
-  std::runtime_toolbox::StdToolbox,
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
 
 const TELEMETRY_MANIFEST: &str = "sample.telemetry.TelemetryPayload";
@@ -148,7 +144,7 @@ fn main() {
   let serialization_id = SerializationExtensionId::new(setup);
   let installers = ExtensionInstallers::default().with_extension_installer({
     let ext_id = serialization_id.clone();
-    move |system: &ActorSystemGeneric<StdToolbox>| {
+    move |system: &fraktor_actor_rs::core::system::ActorSystem| {
       system.extended().register_extension(&ext_id).map(|_| ()).map_err(|error| {
         fraktor_actor_rs::core::system::ActorSystemBuildError::Configuration(format!(
           "serialization extension registration failed: {error:?}"
@@ -163,7 +159,7 @@ fn main() {
   let config = ActorSystemConfig::default().with_tick_driver_config(tick_driver).with_extension_installers(installers);
 
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
-  let serialization: SerializationExtensionSharedGeneric<StdToolbox> =
+  let serialization: SerializationExtensionShared =
     (*system.extended().extension(&serialization_id).expect("extension registered")).clone();
 
   let payload = TelemetryPayload { node: 7, temperature: 24 };

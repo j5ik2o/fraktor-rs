@@ -5,8 +5,8 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::core::dispatch::{
-  dispatcher::DispatcherSharedGeneric,
-  mailbox::{MailboxGeneric, MailboxPolicy},
+  dispatcher::DispatcherShared,
+  mailbox::{Mailbox, MailboxPolicy},
 };
 
 impl StdScheduleAdapter {
@@ -31,8 +31,8 @@ fn std_schedule_adapter_tracks_signals() {
 
 #[test]
 fn std_schedule_adapter_creates_valid_waker() {
-  let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
-  let dispatcher = DispatcherSharedGeneric::with_inline_executor(mailbox);
+  let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let dispatcher = DispatcherShared::with_inline_executor(mailbox);
   let mut adapter = StdScheduleAdapter::default();
   let waker = adapter.create_waker(dispatcher);
   waker.wake_by_ref();

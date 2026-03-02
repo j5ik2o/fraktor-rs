@@ -1,18 +1,18 @@
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorCellGeneric, ActorContextGeneric, Pid,
-    actor_ref::{ActorRef, ActorRefGeneric, ActorRefSender, SendOutcome},
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   system::{
-    ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::ArcShared,
 };
 
@@ -23,73 +23,67 @@ use crate::core::{
   snapshot_response::SnapshotResponse, snapshot_selection_criteria::SnapshotSelectionCriteria,
 };
 
-type TB = NoStdToolbox;
-type MessageStore = ArcShared<ToolboxMutex<Vec<AnyMessageGeneric<TB>>, TB>>;
+type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
 }
 
-impl ActorRefSender<TB> for TestSender {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn create_sender_with_pid(pid: Pid) -> (ActorRefGeneric<TB>, MessageStore) {
-  let messages = ArcShared::new(<<NoStdToolbox as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::create(Vec::new()));
-  let sender = ActorRefGeneric::new(pid, TestSender { messages: messages.clone() });
+fn create_sender_with_pid(pid: Pid) -> (ActorRef, MessageStore) {
+  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
+  let sender = ActorRef::new(pid, TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
-fn create_sender() -> (ActorRefGeneric<TB>, MessageStore) {
+fn create_sender() -> (ActorRef, MessageStore) {
   create_sender_with_pid(Pid::new(1, 1))
 }
 
 struct NoopActor;
 
-impl Actor<TB> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, TB>,
-    _message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_context() -> ActorContextGeneric<'static, TB> {
-  let state = SystemStateSharedGeneric::new(SystemStateGeneric::new());
-  let system = ActorSystemGeneric::<TB>::from_state(state.clone());
+fn build_context() -> ActorContext<'static> {
+  let state = SystemStateShared::new(SystemState::new());
+  let system = ActorSystem::from_state(state.clone());
   let pid = system.allocate_pid();
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let cell =
-    ActorCellGeneric::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");
+  let props = Props::from_fn(|| NoopActor);
+  let cell = ActorCell::create(state.clone(), pid, None, "test".into(), &props).expect("actor cell should be created");
   state.register_cell(cell);
-  ActorContextGeneric::new(&system, pid)
+  ActorContext::new(&system, pid)
 }
 
 fn start_recovery_without_snapshot(actor: &mut DummyPersistentActor) {
   let (journal_ref, _journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   actor.context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRefGeneric::null()).expect("start recovery");
+  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
 }
 
 fn move_to_recovering(actor: &mut DummyPersistentActor) {
   start_recovery_without_snapshot(actor);
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
 }
 
 fn move_to_processing_commands(actor: &mut DummyPersistentActor) {
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRefGeneric::null()).expect("start recovery");
+  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
   let _ = actor.context.handle_journal_response(&JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
 }
@@ -124,11 +118,7 @@ impl Eventsourced<NoStdToolbox> for DummyPersistentActor {
 
   fn receive_snapshot(&mut self, _snapshot: &Snapshot) {}
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -228,7 +218,7 @@ fn persistent_actor_clears_sender_in_journal_representations() {
   let messages = journal_store.lock();
   let message = messages
     .iter()
-    .filter_map(|message| message.payload().downcast_ref::<JournalMessage<TB>>())
+    .filter_map(|message| message.payload().downcast_ref::<JournalMessage>())
     .find(|message| matches!(message, JournalMessage::WriteMessages { .. }))
     .expect("write messages not found");
   match message {
@@ -254,7 +244,7 @@ fn persistent_actor_save_snapshot_sends_message() {
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
-  let message = messages[0].payload().downcast_ref::<SnapshotMessage<TB>>().expect("unexpected payload");
+  let message = messages[0].payload().downcast_ref::<SnapshotMessage>().expect("unexpected payload");
   match message {
     | SnapshotMessage::SaveSnapshot { metadata, .. } => {
       assert_eq!(metadata.persistence_id(), "pid-1");
@@ -275,7 +265,7 @@ fn persistent_actor_delete_messages_sends_message() {
 
   let messages = journal_store.lock();
   assert_eq!(messages.len(), 1);
-  let message = messages[0].payload().downcast_ref::<JournalMessage<TB>>().expect("unexpected payload");
+  let message = messages[0].payload().downcast_ref::<JournalMessage>().expect("unexpected payload");
   match message {
     | JournalMessage::DeleteMessagesTo { persistence_id, to_sequence_nr, .. } => {
       assert_eq!(persistence_id, "pid-1");
@@ -297,7 +287,7 @@ fn persistent_actor_delete_snapshots_sends_message() {
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
-  let message = messages[0].payload().downcast_ref::<SnapshotMessage<TB>>().expect("unexpected payload");
+  let message = messages[0].payload().downcast_ref::<SnapshotMessage>().expect("unexpected payload");
   match message {
     | SnapshotMessage::DeleteSnapshots { persistence_id, criteria: sent, .. } => {
       assert_eq!(persistence_id, "pid-1");
@@ -318,7 +308,7 @@ fn persistent_actor_delete_snapshot_sends_message() {
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
-  let message = messages[0].payload().downcast_ref::<SnapshotMessage<TB>>().expect("unexpected payload");
+  let message = messages[0].payload().downcast_ref::<SnapshotMessage>().expect("unexpected payload");
   match message {
     | SnapshotMessage::DeleteSnapshot { metadata: sent, .. } => {
       assert_eq!(sent, &SnapshotMetadata::new("pid-1", 7, 0));
@@ -333,10 +323,10 @@ fn persistent_actor_defer_runs_after_write_messages_successful() {
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRefGeneric::null()).expect("start recovery");
+  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
-    ActorRefGeneric::null(),
+    ActorRef::null(),
   );
   let _ = actor.context.handle_journal_response(&JournalResponse::RecoverySuccess { highest_sequence_nr: 0 });
 
@@ -350,12 +340,12 @@ fn persistent_actor_defer_runs_after_write_messages_successful() {
 
   let repr = {
     let messages = journal_store.lock();
-    let maybe_repr = messages
-      .iter()
-      .filter_map(|message| message.payload().downcast_ref::<JournalMessage<TB>>())
-      .find_map(|message| match message {
-        | JournalMessage::WriteMessages { messages, .. } => messages.first().cloned(),
-        | _ => None,
+    let maybe_repr =
+      messages.iter().filter_map(|message| message.payload().downcast_ref::<JournalMessage>()).find_map(|message| {
+        match message {
+          | JournalMessage::WriteMessages { messages, .. } => messages.first().cloned(),
+          | _ => None,
+        }
       });
     maybe_repr.expect("write message not found")
   };

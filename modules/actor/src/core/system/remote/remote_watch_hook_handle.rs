@@ -1,10 +1,8 @@
 //! Handle wrapper for RemoteWatchHook implementations.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{ActorRefProvider, RemoteWatchHook};
 use crate::core::{
-  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRefGeneric},
+  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef},
   error::ActorError,
 };
 
@@ -43,10 +41,9 @@ impl<P> RemoteWatchHookHandle<P> {
   }
 }
 
-impl<TB, P> RemoteWatchHook<TB> for RemoteWatchHookHandle<P>
+impl<P> RemoteWatchHook for RemoteWatchHookHandle<P>
 where
-  TB: RuntimeToolbox + 'static,
-  P: RemoteWatchHook<TB>,
+  P: RemoteWatchHook,
 {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     self.provider.handle_watch(target, watcher)
@@ -57,16 +54,15 @@ where
   }
 }
 
-impl<TB, P> ActorRefProvider<TB> for RemoteWatchHookHandle<P>
+impl<P> ActorRefProvider for RemoteWatchHookHandle<P>
 where
-  TB: RuntimeToolbox + 'static,
-  P: ActorRefProvider<TB>,
+  P: ActorRefProvider,
 {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     self.supported_schemes()
   }
 
-  fn actor_ref(&mut self, path: crate::core::actor::actor_path::ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: crate::core::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.actor_ref(path)
   }
 }

@@ -3,8 +3,8 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::DeliveryEndpoint;
@@ -12,25 +12,25 @@ use super::DeliveryEndpoint;
 /// Shared wrapper enabling interior mutability for delivery endpoints.
 pub struct DeliveryEndpointSharedGeneric<TB: RuntimeToolbox + 'static> {
   /// Shared endpoint implementation.
-  pub inner: ArcShared<ToolboxMutex<Box<dyn DeliveryEndpoint<TB>>, TB>>,
+  pub inner: ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> DeliveryEndpointSharedGeneric<TB> {
   /// Creates a new shared wrapper around the given endpoint.
   #[must_use]
   pub fn new(endpoint: Box<dyn DeliveryEndpoint<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(endpoint)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(endpoint)) }
   }
 
   /// Creates a wrapper from an existing shared mutex.
   #[must_use]
-  pub const fn from_inner(inner: ArcShared<ToolboxMutex<Box<dyn DeliveryEndpoint<TB>>, TB>>) -> Self {
+  pub const fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint<TB>>>>) -> Self {
     Self { inner }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
   #[must_use]
-  pub fn inner(&self) -> ArcShared<ToolboxMutex<Box<dyn DeliveryEndpoint<TB>>, TB>> {
+  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint<TB>>>> {
     self.inner.clone()
   }
 }

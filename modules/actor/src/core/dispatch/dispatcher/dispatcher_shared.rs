@@ -1,71 +1,65 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{
-  DispatcherSenderGeneric,
+  DispatcherSender,
   dispatch_error::DispatchError,
   dispatch_executor::DispatchExecutor,
-  dispatch_executor_runner::DispatchExecutorRunnerGeneric,
-  dispatch_shared::DispatchSharedGeneric,
-  dispatcher_core::{DispatcherCoreGeneric, MAX_EXECUTOR_RETRIES},
+  dispatch_executor_runner::DispatchExecutorRunner,
+  dispatch_shared::DispatchShared,
+  dispatcher_core::{DispatcherCore, MAX_EXECUTOR_RETRIES},
   dispatcher_state::DispatcherState,
-  inline_executor::InlineExecutorGeneric,
+  inline_executor::InlineExecutor,
   inline_schedule_adapter::InlineScheduleAdapter,
-  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
+  schedule_adapter_shared::ScheduleAdapterShared,
 };
 use crate::core::{
-  actor::actor_ref::ActorRefSenderSharedGeneric,
-  dispatch::mailbox::{MailboxGeneric, ScheduleHints, metrics_event::MailboxPressureEvent},
+  actor::actor_ref::ActorRefSenderShared,
+  dispatch::mailbox::{Mailbox, ScheduleHints, metrics_event::MailboxPressureEvent},
   error::SendError,
-  messaging::{AnyMessageGeneric, message_invoker::MessageInvokerShared, system_message::SystemMessage},
+  messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
 };
 
 /// Dispatcher shared handle that manages mailbox processing.
-pub struct DispatcherSharedGeneric<TB: RuntimeToolbox + 'static> {
-  core: ArcShared<DispatcherCoreGeneric<TB>>,
+pub struct DispatcherShared {
+  core: ArcShared<DispatcherCore>,
 }
 
-/// Type alias for `DispatcherSharedGeneric` with the default `NoStdToolbox`.
-pub type DispatcherShared = DispatcherSharedGeneric<NoStdToolbox>;
+unsafe impl Send for DispatcherShared {}
+unsafe impl Sync for DispatcherShared {}
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherSharedGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherSharedGeneric<TB> {}
-
-impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
+impl DispatcherShared {
   /// Creates a new dispatcher from a mailbox and execution strategy.
   #[must_use]
-  pub fn new(mailbox: ArcShared<MailboxGeneric<TB>>, executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>) -> Self {
+  pub fn new(mailbox: ArcShared<Mailbox>, executor: ArcShared<DispatchExecutorRunner>) -> Self {
     Self::with_executor(mailbox, executor, None, None)
   }
 
   /// Creates a dispatcher with explicit runtime limits.
   #[must_use]
   pub fn with_executor(
-    mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
+    mailbox: ArcShared<Mailbox>,
+    executor: ArcShared<DispatchExecutorRunner>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
-    let adapter = InlineScheduleAdapter::shared::<TB>();
+    let adapter = InlineScheduleAdapter::shared();
     Self::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
   }
 
   /// Creates a dispatcher with a custom schedule adapter.
   #[must_use]
   pub fn with_adapter(
-    mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
-    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
+    mailbox: ArcShared<Mailbox>,
+    executor: ArcShared<DispatchExecutorRunner>,
+    schedule_adapter: ScheduleAdapterShared,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
   ) -> Self {
     let throughput = mailbox.throughput_limit();
-    let core = ArcShared::new(DispatcherCoreGeneric::new(
+    let core = ArcShared::new(DispatcherCore::new(
       mailbox,
       executor,
       schedule_adapter,
@@ -78,14 +72,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   /// Creates a dispatcher using an inline execution strategy.
   #[must_use]
-  pub fn with_inline_executor(mailbox: ArcShared<MailboxGeneric<TB>>) -> Self {
-    let executor: Box<dyn DispatchExecutor<TB>> = Box::new(InlineExecutorGeneric::<TB>::new());
-    let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(executor));
+  pub fn with_inline_executor(mailbox: ArcShared<Mailbox>) -> Self {
+    let executor: Box<dyn DispatchExecutor> = Box::new(InlineExecutor::new());
+    let runner = ArcShared::new(DispatchExecutorRunner::new(executor));
     Self::new(mailbox, runner)
   }
 
   /// Registers an invoker.
-  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared) {
     self.core.register_invoker(invoker);
   }
 
@@ -95,8 +89,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   ///
   /// Returns an error if the mailbox is full or closed.
   #[allow(dead_code)]
-  pub(crate) fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
-    DispatcherCoreGeneric::enqueue_user(&self.core, message)
+  pub(crate) fn enqueue_user(&self, message: AnyMessage) -> Result<(), SendError> {
+    DispatcherCore::enqueue_user(&self.core, message)
   }
 
   /// Enqueues a system message.
@@ -104,8 +98,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the mailbox is full or closed.
-  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
-    DispatcherCoreGeneric::enqueue_system(&self.core, message)
+  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError> {
+    DispatcherCore::enqueue_system(&self.core, message)
   }
 
   /// Requests execution from the scheduler.
@@ -122,7 +116,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   fn try_execute(&self, attempt: usize) {
     let executor = self.core.executor().clone();
-    let task = DispatchSharedGeneric::new(self.core.clone());
+    let task = DispatchShared::new(self.core.clone());
     match executor.submit(task) {
       | Ok(()) => {},
       | Err(DispatchError::RejectedExecution) if attempt < MAX_EXECUTOR_RETRIES => {
@@ -136,42 +130,42 @@ impl<TB: RuntimeToolbox + 'static> DispatcherSharedGeneric<TB> {
 
   /// Requests scheduling with the provided hints.
   pub fn register_for_execution(&self, hints: ScheduleHints) {
-    DispatcherCoreGeneric::request_execution(&self.core, hints);
+    DispatcherCore::request_execution(&self.core, hints);
   }
 
   /// Returns a reference to the mailbox.
   #[must_use]
-  pub(crate) fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
+  pub(crate) fn mailbox(&self) -> ArcShared<Mailbox> {
     self.core.mailbox().clone()
   }
 
   /// Notifies the dispatcher about a mailbox pressure signal.
   pub(crate) fn notify_backpressure(&self, event: &MailboxPressureEvent) {
-    DispatcherCoreGeneric::handle_backpressure(&self.core, event);
+    DispatcherCore::handle_backpressure(&self.core, event);
   }
 
-  pub(crate) const fn from_core(core: ArcShared<DispatcherCoreGeneric<TB>>) -> Self {
+  pub(crate) const fn from_core(core: ArcShared<DispatcherCore>) -> Self {
     Self { core }
   }
 
   /// Constructs an `ActorRefSender` implementation with a shared handle.
   #[must_use]
   #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ActorRefSenderSharedGeneric<TB> {
-    ActorRefSenderSharedGeneric::new(DispatcherSenderGeneric::new(self.clone()))
+  pub(crate) fn into_sender(&self) -> ActorRefSenderShared {
+    ActorRefSenderShared::new(DispatcherSender::new(self.clone()))
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared {
     self.core.schedule_adapter()
   }
 
   /// Publishes dispatcher diagnostics to the event stream, when instrumentation is available.
   pub fn publish_dump_metrics(&self) {
-    DispatcherCoreGeneric::publish_dump(&self.core);
+    DispatcherCore::publish_dump(&self.core);
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for DispatcherSharedGeneric<TB> {
+impl Clone for DispatcherShared {
   fn clone(&self) -> Self {
     Self { core: self.core.clone() }
   }

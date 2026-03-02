@@ -5,38 +5,33 @@ mod tests;
 
 use alloc::{format, string::String};
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
-use super::BackpressurePublisherGeneric;
+use super::BackpressurePublisher;
 use crate::core::{
   actor::Pid,
   dispatch::mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   event::{logging::LogLevel, stream::EventStreamEvent},
-  system::state::{SystemStateSharedGeneric, SystemStateWeakGeneric},
+  system::state::{SystemStateShared, SystemStateWeak},
 };
 
 const PRESSURE_THRESHOLD_PERCENT: usize = 75;
 
 /// Provides mailbox metrics publication facilities.
 #[derive(Clone)]
-pub struct MailboxInstrumentationGeneric<TB: RuntimeToolbox + 'static> {
-  system_state:   SystemStateWeakGeneric<TB>,
+pub struct MailboxInstrumentation {
+  system_state:   SystemStateWeak,
   capacity:       Option<usize>,
   throughput:     Option<usize>,
   warn_threshold: Option<usize>,
   pid:            Pid,
-  backpressure:   Option<BackpressurePublisherGeneric<TB>>,
+  backpressure:   Option<BackpressurePublisher>,
 }
 
-/// Type alias for the default mailbox instrumentation.
-pub type MailboxInstrumentation = MailboxInstrumentationGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
+impl MailboxInstrumentation {
   /// Creates a new instrumentation helper.
   #[must_use]
   #[allow(clippy::needless_pass_by_value)]
   pub fn new(
-    system_state: SystemStateSharedGeneric<TB>,
+    system_state: SystemStateShared,
     pid: Pid,
     capacity: Option<usize>,
     throughput: Option<usize>,
@@ -46,7 +41,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   }
 
   /// Upgrades the weak system state reference to a strong reference.
-  fn get_system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+  fn get_system_state(&self) -> Option<SystemStateShared> {
     self.system_state.upgrade()
   }
 
@@ -68,12 +63,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
     }
   }
 
-  fn publish_pressure(
-    &self,
-    system_state: &SystemStateSharedGeneric<TB>,
-    user_len: usize,
-    timestamp: core::time::Duration,
-  ) {
+  fn publish_pressure(&self, system_state: &SystemStateShared, user_len: usize, timestamp: core::time::Duration) {
     let Some(capacity) = self.capacity else {
       return;
     };
@@ -90,7 +80,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
   }
 
   /// Registers the dispatcher-facing publisher that consumes pressure events.
-  pub fn attach_backpressure_publisher(&mut self, publisher: BackpressurePublisherGeneric<TB>) {
+  pub fn attach_backpressure_publisher(&mut self, publisher: BackpressurePublisher) {
     self.backpressure = Some(publisher);
   }
 
@@ -102,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> MailboxInstrumentationGeneric<TB> {
 
   /// Returns the associated system state handle.
   #[must_use]
-  pub fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+  pub fn system_state(&self) -> Option<SystemStateShared> {
     self.get_system_state()
   }
 

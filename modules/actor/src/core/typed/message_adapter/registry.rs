@@ -6,11 +6,9 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  actor::{ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
-  system::state::SystemStateSharedGeneric,
+  actor::{ActorContext, Pid, actor_ref::ActorRef},
+  system::state::SystemStateShared,
   typed::message_adapter::{
     AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,
   },
@@ -19,21 +17,19 @@ use crate::core::{
 const MAX_ADAPTERS: usize = 32;
 
 /// Stores adapter entries registered by a typed actor instance.
-pub struct MessageAdapterRegistry<M, TB>
+pub struct MessageAdapterRegistry<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  entries:        Vec<AdapterEntry<M, TB>>,
-  adapter_ref:    Option<ActorRefGeneric<TB>>,
+  M: Send + Sync + 'static, {
+  entries:        Vec<AdapterEntry<M>>,
+  adapter_ref:    Option<ActorRef>,
   adapter_handle: Option<AdapterRefHandleId>,
-  system:         Option<SystemStateSharedGeneric<TB>>,
+  system:         Option<SystemStateShared>,
   pid:            Option<Pid>,
 }
 
-impl<M, TB> MessageAdapterRegistry<M, TB>
+impl<M> MessageAdapterRegistry<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates an empty registry.
   #[must_use]
@@ -67,22 +63,18 @@ where
   ///
   /// Returns [`AdapterError::RegistryFull`] when the registry reached its capacity or
   /// [`AdapterError::ActorUnavailable`] when the owning actor cell cannot be located.
-  pub fn register<U, F>(
-    &mut self,
-    ctx: &ActorContextGeneric<'_, TB>,
-    adapter: F,
-  ) -> Result<ActorRefGeneric<TB>, AdapterError>
+  pub fn register<U, F>(&mut self, ctx: &ActorContext<'_>, adapter: F) -> Result<ActorRef, AdapterError>
   where
     U: Send + Sync + 'static,
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let adapter_ref = self.ensure_adapter_ref(ctx)?;
     let type_id = TypeId::of::<U>();
-    if let Some(position) = self.entries.iter().position(|entry: &AdapterEntry<M, TB>| entry.type_id() == type_id) {
+    if let Some(position) = self.entries.iter().position(|entry: &AdapterEntry<M>| entry.type_id() == type_id) {
       self.entries.remove(position);
     } else if self.entries.len() >= MAX_ADAPTERS {
       return Err(AdapterError::RegistryFull);
     }
-    let entry = AdapterEntry::<M, TB>::new::<U, F>(type_id, adapter);
+    let entry = AdapterEntry::<M>::new::<U, F>(type_id, adapter);
     self.entries.push(entry);
     Ok(adapter_ref)
   }
@@ -100,7 +92,7 @@ where
 
   /// Attempts to adapt the provided payload.
   #[must_use]
-  pub(crate) fn adapt(&self, payload: AdapterPayload<TB>) -> (AdapterOutcome<M>, Option<AdapterPayload<TB>>) {
+  pub(crate) fn adapt(&self, payload: AdapterPayload) -> (AdapterOutcome<M>, Option<AdapterPayload>) {
     let payload_type = payload.type_id();
     let mut envelope = Some(payload);
     for entry in self.entries.iter().rev() {
@@ -114,7 +106,7 @@ where
     (AdapterOutcome::NotFound, envelope)
   }
 
-  fn ensure_adapter_ref(&mut self, ctx: &ActorContextGeneric<'_, TB>) -> Result<ActorRefGeneric<TB>, AdapterError> {
+  fn ensure_adapter_ref(&mut self, ctx: &ActorContext<'_>) -> Result<ActorRef, AdapterError> {
     if let Some(reference) = &self.adapter_ref {
       return Ok(reference.clone());
     }
@@ -125,7 +117,7 @@ where
     let (handle_id, lifecycle) = cell.acquire_adapter_handle();
     let target = cell.mailbox_sender();
     let adapter_sender = AdapterRefSender::new(pid, handle_id, target, lifecycle, system_state.clone());
-    let adapter_ref = ActorRefGeneric::with_system(pid, adapter_sender, &system_state);
+    let adapter_ref = ActorRef::with_system(pid, adapter_sender, &system_state);
 
     self.adapter_ref = Some(adapter_ref.clone());
     self.adapter_handle = Some(handle_id);
@@ -136,10 +128,9 @@ where
   }
 }
 
-impl<M, TB> Default for MessageAdapterRegistry<M, TB>
+impl<M> Default for MessageAdapterRegistry<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   fn default() -> Self {
     Self::new()

@@ -3,12 +3,12 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{TickDriver, TickDriverError, TickDriverKind};
 
 /// Factory for creating tick driver instances.
-pub trait TickDriverFactory<TB: RuntimeToolbox>: Send + Sync + 'static {
+pub trait TickDriverFactory: Send + Sync + 'static {
   /// Returns the kind of driver this factory produces.
   fn kind(&self) -> TickDriverKind;
 
@@ -20,8 +20,8 @@ pub trait TickDriverFactory<TB: RuntimeToolbox>: Send + Sync + 'static {
   /// # Errors
   ///
   /// Returns [`TickDriverError`] if driver creation fails.
-  fn build(&self) -> Result<Box<dyn TickDriver<TB>>, TickDriverError>;
+  fn build(&self) -> Result<Box<dyn TickDriver>, TickDriverError>;
 }
 
 /// Shared reference to a tick driver factory.
-pub type TickDriverFactoryRef<TB> = ArcShared<dyn TickDriverFactory<TB>>;
+pub type TickDriverFactoryRef = ArcShared<dyn TickDriverFactory>;

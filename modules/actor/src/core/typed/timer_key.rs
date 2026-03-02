@@ -1,11 +1,11 @@
 //! Key type for identifying timers within a
-//! [`TimerSchedulerGeneric`](super::timer_scheduler::TimerSchedulerGeneric).
+//! [`TimerScheduler`](super::timer_scheduler::TimerScheduler).
 
 use alloc::string::String;
 use core::fmt;
 
 /// Identifies a named timer managed by a
-/// [`TimerSchedulerGeneric`](super::timer_scheduler::TimerSchedulerGeneric).
+/// [`TimerScheduler`](super::timer_scheduler::TimerScheduler).
 ///
 /// Starting a new timer with the same key cancels the previous one.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

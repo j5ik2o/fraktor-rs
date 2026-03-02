@@ -43,7 +43,7 @@ pub trait RemoteTransport<TB: RuntimeToolbox>: Send + 'static {
 
   /// Registers a handler that receives inbound frames accepted by the transport.
   ///
-  /// The handler is wrapped in a mutex from the toolbox's `MutexFamily`, allowing
+  /// The handler is wrapped in a runtime-selected mutex, allowing
   /// `on_frame(&mut self)` to be called safely from shared contexts.
   fn install_inbound_handler(&mut self, handler: TransportInboundShared<TB>);
 }

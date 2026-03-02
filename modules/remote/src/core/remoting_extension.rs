@@ -49,4 +49,4 @@ where
   }
 }
 
-impl<TB> Extension<TB> for RemotingExtensionGeneric<TB> where TB: RuntimeToolbox + 'static {}
+impl<TB> Extension for RemotingExtensionGeneric<TB> where TB: RuntimeToolbox + 'static {}

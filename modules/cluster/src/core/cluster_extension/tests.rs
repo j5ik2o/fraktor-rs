@@ -3,11 +3,10 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event::stream::{
-    EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessageGeneric,
-  system::ActorSystemGeneric,
+  messaging::AnyMessage,
+  system::ActorSystem,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -48,7 +47,7 @@ fn build_update(
 }
 
 fn publish_member_status(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: &EventStreamShared,
   node_id: &str,
   authority: &str,
   from: NodeStatus,
@@ -61,7 +60,7 @@ fn publish_member_status(
     to,
     observed_at: TimerInstant::from_ticks(10, Duration::from_secs(1)),
   };
-  let payload = AnyMessageGeneric::new(cluster_event);
+  let payload = AnyMessage::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
 }
@@ -94,13 +93,13 @@ impl ClusterProvider for StubProvider {
 }
 
 struct StartAndEmitSelfUpProvider {
-  event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: EventStreamShared,
   authority:    String,
   node_id:      String,
 }
 
 impl StartAndEmitSelfUpProvider {
-  const fn new(event_stream: EventStreamSharedGeneric<NoStdToolbox>, authority: String, node_id: String) -> Self {
+  const fn new(event_stream: EventStreamShared, authority: String, node_id: String) -> Self {
     Self { event_stream, authority, node_id }
   }
 }
@@ -157,7 +156,7 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn subscribe(
     &mut self,
     _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber,
   ) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
@@ -165,14 +164,14 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
   fn unsubscribe(
     &mut self,
     _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber<NoStdToolbox>,
+    _subscriber: crate::core::pub_sub::PubSubSubscriber,
   ) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
 
   fn publish(
     &mut self,
-    _request: crate::core::pub_sub::PublishRequest<NoStdToolbox>,
+    _request: crate::core::pub_sub::PublishRequest,
   ) -> Result<crate::core::pub_sub::PublishAck, crate::core::pub_sub::PubSubError> {
     Ok(crate::core::pub_sub::PublishAck::accepted())
   }
@@ -217,7 +216,7 @@ fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId<NoStd
 
 #[test]
 fn registers_extension_and_starts_member() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
 
@@ -228,7 +227,7 @@ fn registers_extension_and_starts_member() {
 
 #[test]
 fn register_on_member_up_invokes_callback_for_up_transition() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -250,7 +249,7 @@ fn register_on_member_up_invokes_callback_for_up_transition() {
 
 #[test]
 fn register_on_member_removed_invokes_callback_for_removed_transition() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -272,7 +271,7 @@ fn register_on_member_removed_invokes_callback_for_removed_transition() {
 
 #[test]
 fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -295,7 +294,7 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
 fn run_member_up_during_start_test(
   start_fn: impl FnOnce(&ClusterExtensionGeneric<NoStdToolbox>) -> Result<(), ClusterError>,
 ) {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
   let authority = String::from("fraktor://demo");
 
@@ -334,7 +333,7 @@ fn register_on_member_up_invokes_callback_when_status_arrives_during_start_clien
 
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_when_self_already_removed() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -356,7 +355,7 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
 
 #[test]
 fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -377,7 +376,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 
 #[test]
 fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
@@ -396,7 +395,7 @@ fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_i
 
 #[test]
 fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -421,7 +420,7 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
 
 #[test]
 fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
@@ -446,7 +445,7 @@ fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
 
 #[test]
 fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_install() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
@@ -470,7 +469,7 @@ fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_inst
 
 #[test]
 fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension_install() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -495,7 +494,7 @@ fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension
 #[test]
 fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   // 1. システムとエクステンションをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(
@@ -517,7 +516,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
     vec![],
   );
   let cluster_event = ClusterEvent::TopologyUpdated { update };
-  let payload = AnyMessageGeneric::new(cluster_event);
+  let payload = AnyMessage::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
 
@@ -530,7 +529,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
 
 #[test]
 fn ignores_topology_with_same_hash_via_event_stream() {
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(
@@ -550,7 +549,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
       vec![],
     );
     let cluster_event = ClusterEvent::TopologyUpdated { update };
-    let payload = AnyMessageGeneric::new(cluster_event);
+    let payload = AnyMessage::new(cluster_event);
     let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     event_stream.publish(&event);
   }
@@ -602,8 +601,8 @@ impl RecordingClusterEvents {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingClusterEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == "cluster"
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
@@ -613,9 +612,7 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let recorder = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
@@ -627,7 +624,7 @@ fn subscribe_recorder(
 #[test]
 fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_core() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録してイベントを記録
@@ -638,7 +635,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-a")]));
   let static_topology =
     ClusterTopology::new(1000, vec![String::from("node-b"), String::from("node-c")], vec![], Vec::new());
-  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
+  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
   // 4. ClusterExtension をセットアップ（metrics 有効）
@@ -679,7 +676,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
 #[test]
 fn phase1_integration_topology_updated_includes_blocked_members() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -694,7 +691,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
 
   // 4. StaticClusterProvider を設定
   let static_topology = ClusterTopology::new(3000, vec![String::from("node-b")], vec![], Vec::new());
-  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
+  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
   // 5. ClusterExtension をセットアップ
@@ -735,7 +732,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
 #[test]
 fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -768,7 +765,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
 #[test]
 fn phase1_integration_metrics_include_members_and_virtual_actors() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. ClusterExtension をセットアップ
@@ -796,7 +793,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
     vec![],
   );
   let cluster_event = ClusterEvent::TopologyUpdated { update };
-  let payload = AnyMessageGeneric::new(cluster_event);
+  let payload = AnyMessage::new(cluster_event);
   let event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
   event_stream.publish(&event);
 
@@ -815,7 +812,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
 #[test]
 fn phase2_integration_join_leave_events_produce_topology_updated() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -878,7 +875,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
 #[test]
 fn phase2_integration_blocklist_reflected_in_topology_events() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録
@@ -938,7 +935,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
 #[test]
 fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
 
   // 2. ClusterExtension をセットアップ
   let ext_id =
@@ -990,7 +987,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
 #[test]
 fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   // 1. システムをセットアップ
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_empty();
+  let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
 
   // 2. EventStream に subscriber を登録

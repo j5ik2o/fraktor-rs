@@ -1,7 +1,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::system::ActorSystemWeakGeneric;
+use fraktor_actor_rs::core::system::ActorSystemWeak;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
@@ -13,7 +13,7 @@ use crate::core::{
 /// Configuration required to bootstrap the transport bridge.
 pub struct EndpointTransportBridgeConfig<TB: RuntimeToolbox + 'static> {
   /// Actor system providing scheduling and state access (weak reference).
-  pub system:                 ActorSystemWeakGeneric<TB>,
+  pub system:                 ActorSystemWeak,
   /// Remoting control handle used to dispatch watcher commands.
   pub control:                RemotingControlHandle<TB>,
   /// Shared endpoint writer feeding outbound frames.

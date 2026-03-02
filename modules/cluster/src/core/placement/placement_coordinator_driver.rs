@@ -3,8 +3,8 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared},
+  messaging::AnyMessage,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
 
@@ -14,16 +14,13 @@ use crate::core::{grain::GrainKey, identity::LookupError};
 /// Driver that orchestrates placement commands.
 pub struct PlacementCoordinatorDriverGeneric<TB: RuntimeToolbox + 'static> {
   coordinator:  PlacementCoordinatorSharedGeneric<TB>,
-  event_stream: EventStreamSharedGeneric<TB>,
+  event_stream: EventStreamShared,
 }
 
 impl<TB: RuntimeToolbox + 'static> PlacementCoordinatorDriverGeneric<TB> {
   /// Creates a new driver.
   #[must_use]
-  pub const fn new(
-    coordinator: PlacementCoordinatorSharedGeneric<TB>,
-    event_stream: EventStreamSharedGeneric<TB>,
-  ) -> Self {
+  pub const fn new(coordinator: PlacementCoordinatorSharedGeneric<TB>, event_stream: EventStreamShared) -> Self {
     Self { coordinator, event_stream }
   }
 
@@ -58,7 +55,7 @@ impl<TB: RuntimeToolbox + 'static> PlacementCoordinatorDriverGeneric<TB> {
   fn publish_events(&self) {
     let events = self.coordinator.with_write(|coordinator| coordinator.drain_events());
     for event in events {
-      let payload = AnyMessageGeneric::new(event);
+      let payload = AnyMessage::new(event);
       let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
       self.event_stream.publish(&extension_event);
     }

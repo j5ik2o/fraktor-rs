@@ -1,10 +1,7 @@
 extern crate alloc;
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::{
-  core::sync::ArcShared,
-  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
-};
+use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 #[cfg(feature = "tokio-executor")]
 use tokio::runtime::Handle;
 
@@ -13,11 +10,8 @@ use super::dispatch_executor::TokioExecutor;
 use super::{DispatchExecutor, DispatchExecutorAdapter, DispatcherShared, StdScheduleAdapter};
 use crate::core::{
   dispatch::{
-    dispatcher::{
-      DispatchExecutorRunnerGeneric, DispatcherConfigGeneric as CoreDispatcherConfigGeneric,
-      ScheduleAdapterSharedGeneric,
-    },
-    mailbox::MailboxGeneric,
+    dispatcher::{DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, ScheduleAdapterShared},
+    mailbox::Mailbox,
   },
   spawn::SpawnError,
 };
@@ -28,7 +22,7 @@ mod tests;
 /// Dispatcher configuration specialised for `StdToolbox`.
 #[derive(Clone, Default)]
 pub struct DispatcherConfig {
-  inner: CoreDispatcherConfigGeneric<StdToolbox>,
+  inner: CoreDispatcherConfig,
 }
 
 impl DispatcherConfig {
@@ -38,8 +32,8 @@ impl DispatcherConfig {
   #[must_use]
   pub fn from_executor(executor: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>) -> Self {
     let executor_adapter = Box::new(DispatchExecutorAdapter::new(executor));
-    let schedule_adapter = ScheduleAdapterSharedGeneric::<StdToolbox>::new(Box::new(StdScheduleAdapter::default()));
-    let inner = CoreDispatcherConfigGeneric::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
+    let schedule_adapter = ScheduleAdapterShared::new(Box::new(StdScheduleAdapter::default()));
+    let inner = CoreDispatcherConfig::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
     Self { inner }
   }
 
@@ -59,10 +53,10 @@ impl DispatcherConfig {
 
   /// Returns the configured scheduler runner.
   ///
-  /// The returned [`DispatchExecutorRunnerGeneric`] implements [`DispatchExecutor`] and can be used
+  /// The returned [`DispatchExecutorRunner`] implements [`DispatchExecutor`] and can be used
   /// to submit dispatchers for execution.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<DispatchExecutorRunnerGeneric<StdToolbox>> {
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner> {
     self.inner.executor()
   }
 
@@ -72,28 +66,25 @@ impl DispatcherConfig {
   ///
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
   /// with the executor (e.g., using Block strategy with a non-blocking executor).
-  pub fn build_dispatcher(
-    &self,
-    mailbox: ArcShared<MailboxGeneric<StdToolbox>>,
-  ) -> Result<DispatcherShared, SpawnError> {
+  pub fn build_dispatcher(&self, mailbox: ArcShared<Mailbox>) -> Result<DispatcherShared, SpawnError> {
     self.inner.build_dispatcher(mailbox)
   }
 
   /// Borrows the underlying core configuration.
   #[must_use]
-  pub const fn as_core(&self) -> &CoreDispatcherConfigGeneric<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreDispatcherConfig {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the core configuration.
   #[must_use]
-  pub fn into_core(self) -> CoreDispatcherConfigGeneric<StdToolbox> {
+  pub fn into_core(self) -> CoreDispatcherConfig {
     self.inner
   }
 
   /// Wraps an existing core configuration.
   #[must_use]
-  pub const fn from_core(inner: CoreDispatcherConfigGeneric<StdToolbox>) -> Self {
+  pub const fn from_core(inner: CoreDispatcherConfig) -> Self {
     Self { inner }
   }
 }

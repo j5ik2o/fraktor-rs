@@ -5,25 +5,20 @@ mod tests;
 
 use core::any::{Any, TypeId};
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
-use crate::core::actor::actor_ref::ActorRefGeneric;
+use crate::core::actor::actor_ref::ActorRef;
 
 /// Represents a borrowed view of an actor message.
 #[derive(Debug)]
-pub struct AnyMessageViewGeneric<'a, TB: RuntimeToolbox = NoStdToolbox> {
+pub struct AnyMessageView<'a> {
   payload: &'a (dyn Any + Send + Sync + 'static),
   type_id: TypeId,
-  sender:  Option<&'a ActorRefGeneric<TB>>,
+  sender:  Option<&'a ActorRef>,
 }
 
-/// Type alias for [AnyMessageViewGeneric] with the default [NoStdToolbox].
-pub type AnyMessageView<'a> = AnyMessageViewGeneric<'a, NoStdToolbox>;
-
-impl<'a, TB: RuntimeToolbox> AnyMessageViewGeneric<'a, TB> {
+impl<'a> AnyMessageView<'a> {
   /// Creates a new borrowed message view.
   #[must_use]
-  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), sender: Option<&'a ActorRefGeneric<TB>>) -> Self {
+  pub fn new(payload: &'a (dyn Any + Send + Sync + 'static), sender: Option<&'a ActorRef>) -> Self {
     Self { payload, type_id: (*payload).type_id(), sender }
   }
 
@@ -41,7 +36,7 @@ impl<'a, TB: RuntimeToolbox> AnyMessageViewGeneric<'a, TB> {
 
   /// Returns the sender if present.
   #[must_use]
-  pub const fn sender(&self) -> Option<&'a ActorRefGeneric<TB>> {
+  pub const fn sender(&self) -> Option<&'a ActorRef> {
     self.sender
   }
 }

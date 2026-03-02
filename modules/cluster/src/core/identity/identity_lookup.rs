@@ -12,7 +12,7 @@ use crate::core::{
 ///
 /// All methods that modify internal state use `&mut self` to make state changes
 /// explicit in the type signature. Callers (such as `ClusterCore`) should wrap
-/// the implementation in `ToolboxMutex<Box<dyn IdentityLookup>>` for thread-safe access.
+/// the implementation in `RuntimeMutex<Box<dyn IdentityLookup>>` for thread-safe access.
 pub trait IdentityLookup: Send + Sync {
   /// Prepares identity lookup for member mode with the provided kinds.
   ///

@@ -16,7 +16,7 @@ compile_error!("identity_lookup_placement_std は --features std が必要です
 use std::{collections::HashMap, future::Future, pin::Pin};
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::core::{
   grain::GrainKey,
@@ -42,8 +42,8 @@ impl PlacementEventLogger {
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for PlacementEventLogger {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for PlacementEventLogger {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(event) = payload.payload().downcast_ref::<PlacementEvent>() {
@@ -149,7 +149,7 @@ async fn main() {
   let key_local = select_key_for_authority(local, &authorities, 0);
   let key_remote = select_key_for_authority("node-b", &authorities, 200);
 
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let _subscription = subscribe_placement_events(&event_stream, "driver");
 
   let mut coordinator = PlacementCoordinatorCore::new(16, 30);
@@ -212,9 +212,9 @@ async fn main() {
 }
 
 fn subscribe_placement_events(
-  event_stream: &EventStreamSharedGeneric<StdToolbox>,
+  event_stream: &EventStreamShared,
   label: &'static str,
-) -> fraktor_actor_rs::core::event::stream::EventStreamSubscriptionGeneric<StdToolbox> {
+) -> fraktor_actor_rs::core::event::stream::EventStreamSubscription {
   let subscriber = subscriber_handle(PlacementEventLogger::new(label));
   event_stream.subscribe(&subscriber)
 }

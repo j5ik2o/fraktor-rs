@@ -1,19 +1,16 @@
 //! Typed actor lifecycle contract.
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   actor::Pid,
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
   supervision::SupervisorStrategy,
-  typed::{actor::actor_context::TypedActorContextGeneric, message_adapter::AdapterError},
+  typed::{actor::actor_context::TypedActorContext, message_adapter::AdapterError},
 };
 
 /// Defines the lifecycle hooks for actors that operate on a typed message `M`.
-pub trait TypedActor<M, TB = NoStdToolbox>: Send + Sync
+pub trait TypedActor<M>: Send + Sync
 where
-  TB: RuntimeToolbox + 'static,
   M: Send + Sync + 'static, {
   /// Called before the actor starts processing messages.
   ///
@@ -21,7 +18,7 @@ where
   ///
   /// Returns an error when the actor fails to initialize and should not start.
   #[allow(unused_variables)]
-  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -30,7 +27,7 @@ where
   /// # Errors
   ///
   /// Returns an error to signal recoverable or fatal processing failures.
-  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError>;
+  fn receive(&mut self, ctx: &mut TypedActorContext<'_, M>, message: &M) -> Result<(), ActorError>;
 
   /// Called after the actor stops.
   ///
@@ -38,7 +35,7 @@ where
   ///
   /// Returns an error when cleanup work fails.
   #[allow(unused_variables)]
-  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -48,17 +45,13 @@ where
   ///
   /// Returns an error when cleanup logic fails.
   #[allow(unused_variables)]
-  fn on_terminated(
-    &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    terminated: Pid,
-  ) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut TypedActorContext<'_, M>, terminated: Pid) -> Result<(), ActorError> {
     Ok(())
   }
 
   /// Provides the supervision strategy for this typed actor.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
     SupervisorStrategy::default()
   }
 
@@ -70,7 +63,7 @@ where
   #[allow(unused_variables)]
   fn on_mailbox_pressure(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     event: &MailboxPressureEvent,
   ) -> Result<(), ActorError> {
     Ok(())
@@ -83,7 +76,7 @@ where
   /// Returns an error if the failure cannot be handled.
   fn on_adapter_failure(
     &mut self,
-    _ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    _ctx: &mut TypedActorContext<'_, M>,
     _failure: AdapterError,
   ) -> Result<(), ActorError> {
     Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
@@ -96,7 +89,7 @@ where
   /// # Errors
   ///
   /// Returns an error when pre-restart cleanup fails.
-  fn pre_restart(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     self.post_stop(ctx)
   }
 
@@ -108,7 +101,7 @@ where
   #[allow(unused_variables)]
   fn on_child_failed(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     child: Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {

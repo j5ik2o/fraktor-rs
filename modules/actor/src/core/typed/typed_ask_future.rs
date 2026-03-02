@@ -2,41 +2,32 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{SharedAccess, shared::Shared},
-};
+use fraktor_utils_rs::core::sync::{SharedAccess, shared::Shared};
 
-use crate::core::{futures::ActorFutureSharedGeneric, messaging::AskResult, typed::typed_ask_error::TypedAskError};
+use crate::core::{futures::ActorFutureShared, messaging::AskResult, typed::typed_ask_error::TypedAskError};
 
 /// Exposes typed helpers around an ask future that resolves with `R`.
-pub struct TypedAskFutureGeneric<R, TB>
+pub struct TypedAskFuture<R>
 where
-  R: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  inner:  ActorFutureSharedGeneric<AskResult<TB>, TB>,
+  R: Send + Sync + 'static, {
+  inner:  ActorFutureShared<AskResult>,
   marker: PhantomData<R>,
 }
 
-/// Type alias with the default toolbox.
-pub type TypedAskFuture<R> = TypedAskFutureGeneric<R, NoStdToolbox>;
-
-impl<R, TB> Clone for TypedAskFutureGeneric<R, TB>
+impl<R> Clone for TypedAskFuture<R>
 where
   R: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), marker: PhantomData }
   }
 }
 
-impl<R, TB> TypedAskFutureGeneric<R, TB>
+impl<R> TypedAskFuture<R>
 where
   R: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
-  pub(crate) const fn new(inner: ActorFutureSharedGeneric<AskResult<TB>, TB>) -> Self {
+  pub(crate) const fn new(inner: ActorFutureShared<AskResult>) -> Self {
     Self { inner, marker: PhantomData }
   }
 
@@ -52,7 +43,7 @@ where
     self.inner.with_write(|af| af.try_take().map(Self::map_result))
   }
 
-  fn map_result(result: AskResult<TB>) -> Result<R, TypedAskError> {
+  fn map_result(result: AskResult) -> Result<R, TypedAskError> {
     match result {
       | Ok(message) => Self::map_message(message),
       | Err(ask_error) => Err(TypedAskError::AskFailed(ask_error)),
@@ -60,7 +51,7 @@ where
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  fn map_message(message: crate::core::messaging::AnyMessageGeneric<TB>) -> Result<R, TypedAskError> {
+  fn map_message(message: crate::core::messaging::AnyMessage) -> Result<R, TypedAskError> {
     let payload = message.payload_arc();
     drop(message);
     match payload.downcast::<R>() {

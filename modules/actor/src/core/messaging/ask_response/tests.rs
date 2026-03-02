@@ -1,17 +1,17 @@
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
   actor::actor_ref::ActorRef,
-  futures::ActorFutureSharedGeneric,
+  futures::ActorFutureShared,
   messaging::{AnyMessage, AskError, AskResult, ask_response::AskResponse},
 };
 
-type TestAskResult = AskResult<NoStdToolbox>;
+type TestAskResult = AskResult;
 
 #[test]
 fn exposes_parts() {
   let sender: ActorRef = ActorRef::null();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   let response = AskResponse::new(sender.clone(), future.clone());
 
   assert_eq!(response.sender(), &sender);
@@ -28,7 +28,7 @@ fn exposes_parts() {
 #[test]
 fn future_resolves_with_success() {
   let sender: ActorRef = ActorRef::null();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   let response = AskResponse::new(sender, future.clone());
 
   // 成功値で完了
@@ -44,7 +44,7 @@ fn future_resolves_with_success() {
 #[test]
 fn future_resolves_with_timeout_error() {
   let sender: ActorRef = ActorRef::null();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   let response = AskResponse::new(sender, future.clone());
 
   // タイムアウトエラーで完了
@@ -60,7 +60,7 @@ fn future_resolves_with_timeout_error() {
 #[test]
 fn future_resolves_with_dead_letter_error() {
   let sender: ActorRef = ActorRef::null();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   let response = AskResponse::new(sender, future.clone());
 
   // DeadLetter エラーで完了
@@ -76,7 +76,7 @@ fn future_resolves_with_dead_letter_error() {
 #[test]
 fn future_resolves_with_send_failed_error() {
   let sender: ActorRef = ActorRef::null();
-  let future = ActorFutureSharedGeneric::<TestAskResult, NoStdToolbox>::new();
+  let future = ActorFutureShared::<TestAskResult>::new();
   let response = AskResponse::new(sender, future.clone());
 
   // SendFailed エラーで完了

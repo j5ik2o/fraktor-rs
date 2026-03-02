@@ -3,23 +3,16 @@
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 /// Registry of actor reference providers by type.
-pub(crate) struct ActorRefProvidersGeneric<TB: RuntimeToolbox + 'static> {
+pub(crate) struct ActorRefProviders {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
-  _marker: core::marker::PhantomData<TB>,
+  _marker: core::marker::PhantomData<()>,
 }
-
-/// Type alias using the default toolbox.
 #[allow(dead_code)]
-pub(crate) type ActorRefProviders = ActorRefProvidersGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ActorRefProvidersGeneric<TB> {
+impl ActorRefProviders {
   /// Creates a new empty actor reference providers registry.
   #[must_use]
   pub(crate) fn new() -> Self {
@@ -50,7 +43,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefProvidersGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for ActorRefProvidersGeneric<TB> {
+impl Default for ActorRefProviders {
   fn default() -> Self {
     Self::new()
   }

@@ -5,32 +5,28 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::supervise::Supervise;
 use crate::core::{
   error::ActorError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   typed::{
-    actor::TypedActorContextGeneric,
+    actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
     behavior_signal::BehaviorSignal,
-    stash_buffer::StashBufferGeneric,
-    timer_scheduler::{TimerSchedulerGeneric, TimerSchedulerShared},
+    stash_buffer::StashBuffer,
+    timer_scheduler::{TimerScheduler, TimerSchedulerShared},
   },
 };
 
 /// Internal state for an intercepted behavior.
-struct InterceptState<M, TB>
+struct InterceptState<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  interceptor: Box<dyn BehaviorInterceptor<M, TB>>,
-  inner:       Behavior<M, TB>,
+  M: Send + Sync + 'static, {
+  interceptor: Box<dyn BehaviorInterceptor<M>>,
+  inner:       Behavior<M>,
 }
 
 /// Provides Pekko-inspired helpers for constructing [`Behavior`] instances.
@@ -39,28 +35,25 @@ pub struct Behaviors;
 impl Behaviors {
   /// Returns a directive that keeps the current behavior.
   #[must_use]
-  pub const fn same<M, TB>() -> Behavior<M, TB>
+  pub const fn same<M>() -> Behavior<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Behavior::same()
   }
 
   /// Returns a directive that stops the actor.
   #[must_use]
-  pub const fn stopped<M, TB>() -> Behavior<M, TB>
+  pub const fn stopped<M>() -> Behavior<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Behavior::stopped()
   }
 
   /// Returns a behavior that ignores incoming messages.
   #[must_use]
-  pub const fn ignore<M, TB>() -> Behavior<M, TB>
+  pub const fn ignore<M>() -> Behavior<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Behavior::ignore()
   }
 
@@ -73,10 +66,9 @@ impl Behaviors {
   /// Unlike `ignore()`, this will emit an `UnhandledMessage` event to the event stream
   /// for monitoring and debugging purposes.
   #[must_use]
-  pub const fn unhandled<M, TB>() -> Behavior<M, TB>
+  pub const fn unhandled<M>() -> Behavior<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Behavior::unhandled()
   }
 
@@ -93,19 +85,17 @@ impl Behaviors {
   /// Unlike `unhandled()`, which reverts to the previous behavior, `empty()` maintains
   /// the empty state indefinitely until explicitly changed.
   #[must_use]
-  pub const fn empty<M, TB>() -> Behavior<M, TB>
+  pub const fn empty<M>() -> Behavior<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Behavior::empty()
   }
 
   /// Defers behavior creation until the actor is started, allowing access to the context.
-  pub fn setup<M, TB, F>(factory: F) -> Behavior<M, TB>
+  pub fn setup<M, F>(factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> Behavior<M> + Send + Sync + 'static, {
     Behavior::from_signal_handler(move |ctx, signal| match signal {
       | BehaviorSignal::Started => Ok(factory(ctx)),
       | _ => Ok(Behavior::same()),
@@ -116,23 +106,18 @@ impl Behaviors {
   ///
   /// This mirrors Pekko's `Behaviors.withStash`.
   #[must_use]
-  pub fn with_stash<M, TB, F>(capacity: usize, factory: F) -> Behavior<M, TB>
+  pub fn with_stash<M, F>(capacity: usize, factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: Fn(StashBufferGeneric<M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
-    Self::setup(move |_ctx| factory(StashBufferGeneric::new(capacity)))
+    F: Fn(StashBuffer<M>) -> Behavior<M> + Send + Sync + 'static, {
+    Self::setup(move |_ctx| factory(StashBuffer::new(capacity)))
   }
 
   /// Creates a behavior that handles typed messages and can return the next behavior.
-  pub fn receive_message<M, TB, F>(handler: F) -> Behavior<M, TB>
+  pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &M) -> Result<Behavior<M, TB>, ActorError>
-      + Send
-      + Sync
-      + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     Behavior::from_message_handler(handler)
   }
 
@@ -144,28 +129,23 @@ impl Behaviors {
   /// # Errors
   ///
   /// Returns an error when the handler fails or when no sender is available.
-  pub fn receive_and_reply<M, TB, R, F>(handler: F) -> Behavior<M, TB>
+  pub fn receive_and_reply<M, R, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
     R: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
     Behavior::from_message_handler(move |ctx, message| {
       let response = handler(ctx, message)?;
-      ctx
-        .as_untyped_mut()
-        .reply(AnyMessageGeneric::new(response))
-        .map_err(|error| ActorError::from_send_error(&error))?;
+      ctx.as_untyped_mut().reply(AnyMessage::new(response)).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(Behavior::same())
     })
   }
 
   /// Creates a behavior that only reacts to signals.
-  pub fn receive_signal<M, TB, F>(handler: F) -> Behavior<M, TB>
+  pub fn receive_signal<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: for<'a> Fn(&mut TypedActorContextGeneric<'a, M, TB>, &BehaviorSignal) -> Result<Behavior<M, TB>, ActorError>
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
@@ -175,28 +155,26 @@ impl Behaviors {
   /// Wraps a behavior so that spawned children inherit a declarative
   /// [`SupervisorStrategy`](crate::core::supervision::SupervisorStrategy).
   #[must_use]
-  pub const fn supervise<M, TB>(behavior: Behavior<M, TB>) -> Supervise<M, TB>
+  pub const fn supervise<M>(behavior: Behavior<M>) -> Supervise<M>
   where
-    M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static, {
+    M: Send + Sync + 'static, {
     Supervise::new(behavior)
   }
 
   /// Creates a behavior with access to a timer scheduler.
   ///
   /// This mirrors Pekko's `Behaviors.withTimers`. The factory receives a shared
-  /// handle to a [`TimerSchedulerGeneric`] that can be cloned into `Fn` closures.
+  /// handle to a [`TimerScheduler`] that can be cloned into `Fn` closures.
   /// Call `.lock()` on the handle to obtain mutable access to the timer scheduler.
-  pub fn with_timers<M, TB, F>(factory: F) -> Behavior<M, TB>
+  pub fn with_timers<M, F>(factory: F) -> Behavior<M>
   where
     M: Send + Sync + Clone + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: Fn(TimerSchedulerShared<M, TB>) -> Behavior<M, TB> + Send + Sync + 'static, {
+    F: Fn(TimerSchedulerShared<M>) -> Behavior<M> + Send + Sync + 'static, {
     Self::setup(move |ctx| {
       let self_ref = ctx.self_ref();
       let scheduler = ctx.system().scheduler();
-      let timers = TimerSchedulerGeneric::new(self_ref, scheduler);
-      let mutex = <TB::MutexFamily as SyncMutexFamily>::create(timers);
+      let timers = TimerScheduler::new(self_ref, scheduler);
+      let mutex = RuntimeMutex::new(timers);
       let shared = ArcShared::new(mutex);
       let shared_for_stop = shared.clone();
       factory(shared).compose_signal(move |_ctx, signal| match signal {
@@ -214,12 +192,11 @@ impl Behaviors {
   /// This mirrors Pekko's `Behaviors.intercept`. The interceptor wraps every
   /// message and signal handler call, enabling transparent logging, monitoring,
   /// or message filtering without modifying the inner behavior.
-  pub fn intercept<M, TB, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M, TB>
+  pub fn intercept<M, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    TB: RuntimeToolbox + 'static,
-    I: Fn() -> Box<dyn BehaviorInterceptor<M, TB>> + Send + Sync + 'static,
-    F: Fn() -> Behavior<M, TB> + Send + Sync + 'static, {
+    I: Fn() -> Box<dyn BehaviorInterceptor<M>> + Send + Sync + 'static,
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     Behavior::from_signal_handler(move |ctx, signal| match signal {
       | BehaviorSignal::Started => {
         let mut interceptor = interceptor_factory();
@@ -232,7 +209,7 @@ impl Behaviors {
         }
 
         let state = InterceptState { interceptor, inner };
-        let mutex = <TB::MutexFamily as SyncMutexFamily>::create(state);
+        let mutex = RuntimeMutex::new(state);
         let shared = ArcShared::new(mutex);
 
         let shared_msg = shared.clone();
@@ -266,10 +243,9 @@ impl Behaviors {
 ///
 /// Returns `Err(())` when the inner behavior requests a stop during startup,
 /// so the caller can construct `Behavior::stopped()` and propagate it.
-fn apply_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>) -> Result<(), ()>
+fn apply_intercepted_directive<M>(inner: &mut Behavior<M>, next: Behavior<M>) -> Result<(), ()>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   match next.directive() {
     | BehaviorDirective::Active => {
       *inner = next;
@@ -285,10 +261,9 @@ where
 }
 
 /// Resolves the interceptor result into the outer behavior directive.
-fn resolve_intercepted_directive<M, TB>(inner: &mut Behavior<M, TB>, next: Behavior<M, TB>) -> Behavior<M, TB>
+fn resolve_intercepted_directive<M>(inner: &mut Behavior<M>, next: Behavior<M>) -> Behavior<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   match next.directive() {
     | BehaviorDirective::Same | BehaviorDirective::Ignore => Behaviors::same(),
     | BehaviorDirective::Stopped => Behaviors::stopped(),

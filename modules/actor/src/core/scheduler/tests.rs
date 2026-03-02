@@ -13,7 +13,7 @@ use core::{
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeToolbox, sync_rwlock_family::SyncRwLockFamily},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeRwLock},
   sync::{ArcShared, SharedAccess},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::delay::{DelayFuture, DelayProvider},
@@ -34,30 +34,27 @@ use super::{
 use crate::core::{
   actor::{
     Pid,
-    actor_ref::{ActorRefGeneric, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender},
   },
   error::SendError,
-  messaging::AnyMessageGeneric,
-  scheduler::SchedulerSharedGeneric,
+  messaging::AnyMessage,
+  scheduler::SchedulerShared,
 };
 
-fn build_scheduler() -> Scheduler<NoStdToolbox> {
+fn build_scheduler() -> Scheduler {
   let toolbox = NoStdToolbox::default();
   let config = SchedulerConfig::default();
   Scheduler::new(toolbox, config)
 }
 
-fn build_scheduler_with_resolution(resolution: Duration) -> Scheduler<NoStdToolbox> {
+fn build_scheduler_with_resolution(resolution: Duration) -> Scheduler {
   let toolbox = NoStdToolbox::new(resolution);
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(resolution, profile);
   Scheduler::new(toolbox, config)
 }
 
-fn build_scheduler_with_policies(
-  rate_policy: FixedRatePolicy,
-  delay_policy: FixedDelayPolicy,
-) -> Scheduler<NoStdToolbox> {
+fn build_scheduler_with_policies(rate_policy: FixedRatePolicy, delay_policy: FixedDelayPolicy) -> Scheduler {
   let toolbox = NoStdToolbox::default();
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile)
@@ -94,13 +91,13 @@ impl TaskRunOnClose for RecordingTask {
   }
 }
 
-type SharedScheduler = SchedulerSharedGeneric<NoStdToolbox>;
+type SharedScheduler = SchedulerShared;
 
-fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider<NoStdToolbox>) {
+fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
   let toolbox = NoStdToolbox::default();
   let scheduler = Scheduler::new(toolbox, SchedulerConfig::default());
-  let rwlock = <<NoStdToolbox as RuntimeToolbox>::RwLockFamily as SyncRwLockFamily>::create(scheduler);
-  let shared = SchedulerSharedGeneric::new(ArcShared::new(rwlock));
+  let rwlock = RuntimeRwLock::new(scheduler);
+  let shared = SchedulerShared::new(ArcShared::new(rwlock));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
 }
@@ -123,23 +120,22 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
   Pin::new(future).poll(&mut cx)
 }
 
-fn schedule_message_command<TB: RuntimeToolbox>(
-  scheduler: &mut Scheduler<TB>,
+fn schedule_message_command(
+  scheduler: &mut Scheduler,
   delay: Duration,
-  receiver: ActorRefGeneric<TB>,
-  message: AnyMessageGeneric<TB>,
-  sender: Option<ActorRefGeneric<TB>>,
+  receiver: ActorRef,
+  message: AnyMessage,
+  sender: Option<ActorRef>,
 ) -> Result<SchedulerHandle, SchedulerError> {
   scheduler.schedule_command(delay, SchedulerCommand::SendMessage { receiver, message, dispatcher: None, sender })
 }
 
-fn schedule_runnable_command<TB, F>(
-  scheduler: &mut Scheduler<TB>,
+fn schedule_runnable_command<F>(
+  scheduler: &mut Scheduler,
   delay: Duration,
   runnable: F,
 ) -> Result<SchedulerHandle, SchedulerError>
 where
-  TB: RuntimeToolbox,
   F: SchedulerRunnable, {
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
   scheduler.schedule_command(delay, SchedulerCommand::RunRunnable { runnable, dispatcher: None })
@@ -231,8 +227,8 @@ fn capacity_limit_returns_error() {
 #[test]
 fn schedule_command_records_send_message() {
   let mut scheduler = build_scheduler();
-  let receiver = ActorRefGeneric::null();
-  let message = AnyMessageGeneric::new(42u32);
+  let receiver = ActorRef::null();
+  let message = AnyMessage::new(42u32);
   let handle = scheduler
     .schedule_command(Duration::from_millis(3), SchedulerCommand::SendMessage {
       receiver:   receiver.clone(),
@@ -255,9 +251,9 @@ fn schedule_command_records_send_message() {
 #[test]
 fn schedule_once_records_sender_metadata() {
   let mut scheduler = build_scheduler();
-  let receiver = ActorRefGeneric::null();
-  let sender = ActorRefGeneric::null();
-  let message = AnyMessageGeneric::new("payload".to_string());
+  let receiver = ActorRef::null();
+  let sender = ActorRef::null();
+  let message = AnyMessage::new("payload".to_string());
   let handle = schedule_message_command(
     &mut scheduler,
     Duration::from_millis(4),
@@ -271,7 +267,7 @@ fn schedule_once_records_sender_metadata() {
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<String>());
       assert!(dispatcher.is_none());
-      assert_eq!(stored_sender.as_ref().map(ActorRefGeneric::pid), Some(sender.pid()));
+      assert_eq!(stored_sender.as_ref().map(ActorRef::pid), Some(sender.pid()));
     },
     | other => panic!("unexpected command: {:?}", other),
   }
@@ -282,11 +278,11 @@ fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRefGeneric::new(Pid::new(2, 0), sender);
+  let receiver = ActorRef::new(Pid::new(2, 0), sender);
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
       receiver,
-      message: AnyMessageGeneric::new(11u32),
+      message: AnyMessage::new(11u32),
       dispatcher: None,
       sender: None,
     })
@@ -326,8 +322,8 @@ fn run_for_test_executes_send_message() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRefGeneric::new(Pid::new(1, 0), sender);
-  schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessageGeneric::new(7u32), None)
+  let receiver = ActorRef::new(Pid::new(1, 0), sender);
+  schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessage::new(7u32), None)
     .expect("handle");
   scheduler.run_for_test(5);
   assert_eq!(inbox.lock().len(), 1);
@@ -353,17 +349,11 @@ fn runner_manual_processes_ticks_in_order() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRefGeneric::new(Pid::new(7, 0), sender);
+  let receiver = ActorRef::new(Pid::new(7, 0), sender);
 
-  schedule_message_command(
-    &mut scheduler,
-    Duration::from_millis(1),
-    receiver.clone(),
-    AnyMessageGeneric::new(1u32),
-    None,
-  )
-  .expect("handle");
-  schedule_message_command(&mut scheduler, Duration::from_millis(1), receiver, AnyMessageGeneric::new(2u32), None)
+  schedule_message_command(&mut scheduler, Duration::from_millis(1), receiver.clone(), AnyMessage::new(1u32), None)
+    .expect("handle");
+  schedule_message_command(&mut scheduler, Duration::from_millis(1), receiver, AnyMessage::new(2u32), None)
     .expect("handle");
 
   {
@@ -416,9 +406,9 @@ fn cancelled_job_is_not_delivered() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRefGeneric::new(Pid::new(3, 0), sender);
+  let receiver = ActorRef::new(Pid::new(3, 0), sender);
   let handle =
-    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(42u32), None)
+    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessage::new(42u32), None)
       .expect("handle");
   assert!(scheduler.cancel(&handle));
   scheduler.run_for_test(2);
@@ -772,14 +762,8 @@ proptest! {
 fn deterministic_log_replay_matches_snapshot() {
   let mut scheduler = build_scheduler();
   scheduler.enable_deterministic_log(32);
-  schedule_message_command(
-    &mut scheduler,
-    Duration::from_millis(2),
-    ActorRefGeneric::null(),
-    AnyMessageGeneric::new(5u32),
-    None,
-  )
-  .expect("handle");
+  schedule_message_command(&mut scheduler, Duration::from_millis(2), ActorRef::null(), AnyMessage::new(5u32), None)
+    .expect("handle");
   scheduler.run_for_test(2);
 
   let replay_events: Vec<DeterministicEvent> = scheduler.diagnostics().replay().collect();
@@ -790,9 +774,9 @@ fn deterministic_log_replay_matches_snapshot() {
 fn diagnostics_subscription_receives_events() {
   let mut scheduler = build_scheduler();
   let mut subscription = scheduler.subscribe_diagnostics(8);
-  let receiver = ActorRefGeneric::null();
+  let receiver = ActorRef::null();
   let handle =
-    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(11u32), None)
+    schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessage::new(11u32), None)
       .expect("handle");
   scheduler.run_for_test(2);
   let events = subscription.drain();
@@ -810,16 +794,10 @@ fn diagnostics_subscription_receives_events() {
 fn diagnostics_drop_emits_warning() {
   let mut scheduler = build_scheduler();
   let mut _subscription = scheduler.subscribe_diagnostics(1);
-  let receiver = ActorRefGeneric::null();
-  schedule_message_command(
-    &mut scheduler,
-    Duration::from_millis(5),
-    receiver.clone(),
-    AnyMessageGeneric::new(1u32),
-    None,
-  )
-  .expect("first");
-  schedule_message_command(&mut scheduler, Duration::from_millis(6), receiver, AnyMessageGeneric::new(2u32), None)
+  let receiver = ActorRef::null();
+  schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver.clone(), AnyMessage::new(1u32), None)
+    .expect("first");
+  schedule_message_command(&mut scheduler, Duration::from_millis(6), receiver, AnyMessage::new(2u32), None)
     .expect("second");
   assert!(scheduler.warnings().iter().any(|warning| matches!(warning, SchedulerWarning::DiagnosticsDropped { .. })));
 }
@@ -827,8 +805,8 @@ fn diagnostics_drop_emits_warning() {
 #[test]
 fn diagnostics_replays_buffered_events_for_new_subscriber() {
   let mut scheduler = build_scheduler();
-  let receiver = ActorRefGeneric::null();
-  schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessageGeneric::new(22u32), None)
+  let receiver = ActorRef::null();
+  schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessage::new(22u32), None)
     .expect("handle");
   scheduler.run_for_test(2);
   let mut subscription = scheduler.subscribe_diagnostics(4);
@@ -1024,14 +1002,11 @@ fn shutdown_reports_failed_tasks() {
 }
 
 struct RecordingSender {
-  inbox: ArcShared<NoStdMutex<Vec<AnyMessageGeneric<NoStdToolbox>>>>,
+  inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
 }
 
-impl ActorRefSender<NoStdToolbox> for RecordingSender {
-  fn send(
-    &mut self,
-    message: AnyMessageGeneric<NoStdToolbox>,
-  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+impl ActorRefSender for RecordingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
     self.inbox.lock().push(message);
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }

@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
@@ -34,8 +34,8 @@ impl RecordingClusterEvents {
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for RecordingClusterEvents {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for RecordingClusterEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -46,9 +46,7 @@ impl EventStreamSubscriber<StdToolbox> for RecordingClusterEvents {
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<StdToolbox>,
-) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<StdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let subscriber_impl = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
   let subscription = event_stream.subscribe(&subscriber);
@@ -85,7 +83,7 @@ fn ecs_cluster_config_builder_pattern() {
 
 #[test]
 fn provider_new_creates_instance() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
@@ -97,7 +95,7 @@ fn provider_new_creates_instance() {
 
 #[test]
 fn provider_with_ecs_config() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let ecs_config = EcsClusterConfig::new().with_cluster_name("test-cluster").with_service_name("test-service");
@@ -110,7 +108,7 @@ fn provider_with_ecs_config() {
 
 #[tokio::test]
 async fn start_member_publishes_startup_event() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -138,7 +136,7 @@ async fn start_member_publishes_startup_event() {
 
 #[tokio::test]
 async fn start_client_publishes_startup_event() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -165,7 +163,7 @@ async fn start_client_publishes_startup_event() {
 
 #[tokio::test]
 async fn shutdown_publishes_shutdown_event() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
 
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
@@ -189,7 +187,7 @@ async fn shutdown_publishes_shutdown_event() {
 
 #[test]
 fn down_rejects_self_authority() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
@@ -202,7 +200,7 @@ fn down_rejects_self_authority() {
 
 #[test]
 fn down_unknown_node_is_noop() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
@@ -217,7 +215,7 @@ fn down_unknown_node_is_noop() {
 
 #[test]
 fn down_known_node_removes_member_and_publishes_left() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
@@ -236,7 +234,7 @@ fn down_known_node_removes_member_and_publishes_left() {
 
 #[test]
 fn join_is_explicitly_unsupported() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 
@@ -249,7 +247,7 @@ fn join_is_explicitly_unsupported() {
 
 #[test]
 fn leave_is_explicitly_unsupported() {
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let block_list: ArcShared<dyn BlockListProvider> = ArcShared::new(EmptyBlockList);
   let mut provider = AwsEcsClusterProvider::new(event_stream, block_list, "127.0.0.1:8080");
 

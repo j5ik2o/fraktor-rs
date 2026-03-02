@@ -21,7 +21,7 @@ use std::{
 };
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamSharedGeneric, EventStreamSubscriber, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{
   core::{
@@ -73,8 +73,8 @@ impl ClusterEventObserver {
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for ClusterEventObserver {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for ClusterEventObserver {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     let EventStreamEvent::Extension { name, payload } = event else {
       return;
     };
@@ -155,7 +155,7 @@ impl DemoNode {
     authority: &str,
     config: MembershipCoordinatorConfig,
     bus: Arc<Mutex<InMemoryBus>>,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
   ) -> Self {
     let table = MembershipTable::new(3);
     let threshold = config.phi_threshold;
@@ -214,7 +214,7 @@ fn main() {
     topology_emit_interval: Duration::from_secs(2),
   };
 
-  let event_stream = EventStreamSharedGeneric::<StdToolbox>::default();
+  let event_stream = EventStreamShared::default();
   let core = build_cluster_core(event_stream.clone());
   let observer = subscriber_handle(ClusterEventObserver::new(core));
   let _subscription = event_stream.subscribe(&observer);
@@ -253,7 +253,7 @@ fn main() {
   println!("\n=== Demo complete ===");
 }
 
-fn build_cluster_core(event_stream: EventStreamSharedGeneric<StdToolbox>) -> ClusterCore<StdToolbox> {
+fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore<StdToolbox> {
   let config = ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true);
   let provider = ClusterProviderShared::new(Box::new(NoopClusterProvider::new()));
   let block_list_provider: ArcShared<dyn BlockListProvider> = ArcShared::new(DemoBlockListProvider);

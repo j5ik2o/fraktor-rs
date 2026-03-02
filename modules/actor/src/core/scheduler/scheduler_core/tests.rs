@@ -1,13 +1,15 @@
 use super::*;
 
-impl<TB: RuntimeToolbox> Scheduler<TB> {
+impl Scheduler {
   /// Returns the number of registered jobs (testing helper).
+  #[must_use]
   pub fn job_count_for_test(&self) -> usize {
     self.jobs.len()
   }
 
   /// Returns the command associated with the provided handle for testing.
-  pub fn command_for_test(&self, handle: &SchedulerHandle) -> Option<&SchedulerCommand<TB>> {
+  #[must_use]
+  pub fn command_for_test(&self, handle: &SchedulerHandle) -> Option<&SchedulerCommand> {
     self.jobs.get(&handle.raw()).map(|job| &job.command)
   }
 

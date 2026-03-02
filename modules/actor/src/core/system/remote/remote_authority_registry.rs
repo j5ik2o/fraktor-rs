@@ -11,37 +11,33 @@ use alloc::{
 use core::{marker::PhantomData, time::Duration};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
 use hashbrown::HashMap;
 
 use crate::core::{
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   system::{remote::RemoteAuthorityError, state::AuthorityState},
 };
 
 /// Entry tracking authority state and deferred messages.
 #[derive(Debug)]
-struct AuthorityEntry<TB: RuntimeToolbox + 'static> {
+struct AuthorityEntry {
   state:    AuthorityState,
-  deferred: VecDeque<AnyMessageGeneric<TB>>,
+  deferred: VecDeque<AnyMessage>,
 }
 
-impl<TB: RuntimeToolbox + 'static> AuthorityEntry<TB> {
+impl AuthorityEntry {
   const fn new(state: AuthorityState) -> Self {
     Self { state, deferred: VecDeque::new() }
   }
 }
 
 /// Tracks remote authority state transitions and deferred message queues.
-pub struct RemoteAuthorityRegistryGeneric<TB: RuntimeToolbox + 'static> {
-  entries: HashMap<String, AuthorityEntry<TB>, RandomState>,
-  _marker: PhantomData<TB>,
+pub struct RemoteAuthorityRegistry {
+  entries: HashMap<String, AuthorityEntry, RandomState>,
+  _marker: PhantomData<()>,
 }
 
-/// Type alias using the default toolbox.
-pub type RemoteAuthorityRegistry = RemoteAuthorityRegistryGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
+impl RemoteAuthorityRegistry {
   /// Creates a new registry with no authorities.
   #[must_use]
   pub fn new() -> Self {
@@ -59,11 +55,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
   /// # Errors
   ///
   /// Returns [`RemoteAuthorityError::Quarantined`] if the authority is quarantined.
-  pub fn defer_send(
-    &mut self,
-    authority: impl Into<String>,
-    message: AnyMessageGeneric<TB>,
-  ) -> Result<(), RemoteAuthorityError> {
+  pub fn defer_send(&mut self, authority: impl Into<String>, message: AnyMessage) -> Result<(), RemoteAuthorityError> {
     self.defer_or_reject(authority.into(), message)
   }
 
@@ -75,12 +67,12 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
   pub fn try_defer_send(
     &mut self,
     authority: impl Into<String>,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
   ) -> Result<(), RemoteAuthorityError> {
     self.defer_or_reject(authority.into(), message)
   }
 
-  fn defer_or_reject(&mut self, authority: String, message: AnyMessageGeneric<TB>) -> Result<(), RemoteAuthorityError> {
+  fn defer_or_reject(&mut self, authority: String, message: AnyMessage) -> Result<(), RemoteAuthorityError> {
     let entry = self.entries.entry(authority).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
 
     // Quarantine中は拒否
@@ -93,7 +85,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
   }
 
   /// Transitions an authority to Connected and returns deferred messages.
-  pub fn set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessageGeneric<TB>>> {
+  pub fn set_connected(&mut self, authority: &str) -> Option<VecDeque<AnyMessage>> {
     let entry =
       self.entries.entry(authority.to_string()).or_insert_with(|| AuthorityEntry::new(AuthorityState::Unresolved));
     entry.state = AuthorityState::Connected;
@@ -158,7 +150,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteAuthorityRegistryGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for RemoteAuthorityRegistryGeneric<TB> {
+impl Default for RemoteAuthorityRegistry {
   fn default() -> Self {
     Self::new()
   }

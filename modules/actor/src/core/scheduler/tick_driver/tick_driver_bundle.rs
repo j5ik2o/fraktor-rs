@@ -2,26 +2,24 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 #[cfg(test)]
 mod tests;
 
 #[cfg(any(test, feature = "test-support"))]
 use super::manual_test_driver::ManualTickController;
-use super::{AutoDriverMetadata, TickDriverHandleGeneric, TickFeedHandle};
+use super::{AutoDriverMetadata, TickDriverHandle, TickFeedHandle};
 
 /// Bundle of assets produced after provisioning a tick driver.
-pub struct TickDriverBundle<TB: RuntimeToolbox> {
-  driver:            TickDriverHandleGeneric<TB>,
-  feed:              Option<TickFeedHandle<TB>>,
+pub struct TickDriverBundle {
+  driver:            TickDriverHandle,
+  feed:              Option<TickFeedHandle>,
   executor_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
   auto_metadata:     Option<AutoDriverMetadata>,
   #[cfg(any(test, feature = "test-support"))]
-  manual:            Option<ManualTickController<TB>>,
+  manual:            Option<ManualTickController>,
 }
 
-impl<TB: RuntimeToolbox> Clone for TickDriverBundle<TB> {
+impl Clone for TickDriverBundle {
   fn clone(&self) -> Self {
     Self {
       driver: self.driver.clone(),
@@ -34,10 +32,10 @@ impl<TB: RuntimeToolbox> Clone for TickDriverBundle<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriverBundle<TB> {
+impl TickDriverBundle {
   /// Creates a new bundle for automatic/hardware drivers.
   #[must_use]
-  pub const fn new(driver: TickDriverHandleGeneric<TB>, feed: TickFeedHandle<TB>) -> Self {
+  pub const fn new(driver: TickDriverHandle, feed: TickFeedHandle) -> Self {
     Self {
       driver,
       feed: Some(feed),
@@ -67,19 +65,19 @@ impl<TB: RuntimeToolbox> TickDriverBundle<TB> {
   /// Creates a manual-driver bundle.
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
-  pub const fn new_manual(driver: TickDriverHandleGeneric<TB>, controller: ManualTickController<TB>) -> Self {
+  pub const fn new_manual(driver: TickDriverHandle, controller: ManualTickController) -> Self {
     Self { driver, feed: None, executor_shutdown: None, auto_metadata: None, manual: Some(controller) }
   }
 
   /// Returns the driver handle.
   #[must_use]
-  pub const fn driver(&self) -> &TickDriverHandleGeneric<TB> {
+  pub const fn driver(&self) -> &TickDriverHandle {
     &self.driver
   }
 
   /// Returns the shared tick feed handle when present.
   #[must_use]
-  pub const fn feed(&self) -> Option<&TickFeedHandle<TB>> {
+  pub const fn feed(&self) -> Option<&TickFeedHandle> {
     self.feed.as_ref()
   }
 
@@ -92,7 +90,7 @@ impl<TB: RuntimeToolbox> TickDriverBundle<TB> {
   /// Returns the manual tick controller if available.
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
-  pub const fn manual_controller(&self) -> Option<&ManualTickController<TB>> {
+  pub const fn manual_controller(&self) -> Option<&ManualTickController> {
     self.manual.as_ref()
   }
 

@@ -10,13 +10,13 @@ use alloc::string::String;
 
 pub use bool_serializer::BoolSerializer;
 pub use bytes_serializer::BytesSerializer;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 pub use i32_serializer::I32Serializer;
 pub use null_serializer::NullSerializer;
 pub use string_serializer::StringSerializer;
 
 use crate::core::serialization::{
-  error::SerializationError, serialization_registry::SerializationRegistryGeneric, serializer::Serializer,
+  error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
   serializer_id::SerializerId,
 };
 
@@ -40,13 +40,10 @@ pub const BYTES_ID: SerializerId = SerializerId::from_raw(5);
 /// # Errors
 ///
 /// Returns `SerializationError` if type binding registration fails during the process.
-pub fn register_defaults<TB: RuntimeToolbox + 'static, F>(
-  registry: &SerializationRegistryGeneric<TB>,
-  mut on_collision: F,
-) -> Result<(), SerializationError>
+pub fn register_defaults<F>(registry: &SerializationRegistry, mut on_collision: F) -> Result<(), SerializationError>
 where
   F: FnMut(&'static str, SerializerId), {
-  register::<TB, _, _>(
+  register::<_, _>(
     registry,
     NULL_ID,
     NullSerializer::new(NULL_ID),
@@ -54,7 +51,7 @@ where
     Some((core::any::TypeId::of::<()>(), "()".into())),
     &mut on_collision,
   )?;
-  register::<TB, _, _>(
+  register::<_, _>(
     registry,
     BOOL_ID,
     BoolSerializer::new(BOOL_ID),
@@ -62,7 +59,7 @@ where
     Some((core::any::TypeId::of::<bool>(), "bool".into())),
     &mut on_collision,
   )?;
-  register::<TB, _, _>(
+  register::<_, _>(
     registry,
     I32_ID,
     I32Serializer::new(I32_ID),
@@ -70,7 +67,7 @@ where
     Some((core::any::TypeId::of::<i32>(), "i32".into())),
     &mut on_collision,
   )?;
-  register::<TB, _, _>(
+  register::<_, _>(
     registry,
     STRING_ID,
     StringSerializer::new(STRING_ID),
@@ -78,7 +75,7 @@ where
     Some((core::any::TypeId::of::<alloc::string::String>(), "String".into())),
     &mut on_collision,
   )?;
-  register::<TB, _, _>(
+  register::<_, _>(
     registry,
     BYTES_ID,
     BytesSerializer::new(BYTES_ID),
@@ -89,8 +86,8 @@ where
   Ok(())
 }
 
-fn register<TB: RuntimeToolbox + 'static, S, F>(
-  registry: &SerializationRegistryGeneric<TB>,
+fn register<S, F>(
+  registry: &SerializationRegistry,
   id: SerializerId,
   serializer: S,
   name: &'static str,

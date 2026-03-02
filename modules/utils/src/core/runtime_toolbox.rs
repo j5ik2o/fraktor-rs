@@ -1,4 +1,4 @@
-//! Runtime toolbox abstraction selecting synchronization families and time primitives.
+//! Runtime toolbox abstraction selecting synchronization primitives and time providers.
 
 use crate::core::time::{MonotonicClock, SchedulerTickHandle};
 
@@ -6,19 +6,11 @@ use crate::core::time::{MonotonicClock, SchedulerTickHandle};
 mod tests;
 
 mod no_std_toolbox;
-pub mod sync_mutex_family;
-pub mod sync_rwlock_family;
 
 pub use no_std_toolbox::NoStdToolbox;
-use sync_mutex_family::SyncMutexFamily;
-use sync_rwlock_family::SyncRwLockFamily;
 
 /// Provides access to synchronization primitives required by the runtime.
 pub trait RuntimeToolbox: Send + Sync + 'static {
-  /// Mutex family used to instantiate synchronization primitives.
-  type MutexFamily: SyncMutexFamily;
-  /// RwLock family used to instantiate synchronization primitives.
-  type RwLockFamily: SyncRwLockFamily;
   /// Clock implementation exposed through the toolbox.
   type Clock: MonotonicClock;
 
@@ -29,14 +21,14 @@ pub trait RuntimeToolbox: Send + Sync + 'static {
   fn tick_source(&self) -> SchedulerTickHandle<'_>;
 }
 
-/// Helper alias exposing the mutex type produced by the selected toolbox.
-pub type ToolboxMutex<T, TB> = <<TB as RuntimeToolbox>::MutexFamily as SyncMutexFamily>::Mutex<T>;
+/// Runtime-selected mutex alias.
+pub type RuntimeMutex<T> = crate::RuntimeMutexBackend<T>;
 
-/// Convenience alias for the default no_std mutex.
-pub type NoStdMutex<T> = ToolboxMutex<T, NoStdToolbox>;
+/// Runtime-selected rwlock alias.
+pub type RuntimeRwLock<T> = crate::RuntimeRwLockBackend<T>;
 
-/// Helper alias exposing the rwlock type produced by the selected toolbox.
-pub type ToolboxRwLock<T, TB> = <<TB as RuntimeToolbox>::RwLockFamily as SyncRwLockFamily>::RwLock<T>;
+/// No-std mutex alias.
+pub type NoStdMutex<T> = RuntimeMutex<T>;
 
-/// Convenience alias for the default no_std rwlock.
-pub type NoStdRwLock<T> = ToolboxRwLock<T, NoStdToolbox>;
+/// No-std rwlock alias.
+pub type NoStdRwLock<T> = RuntimeRwLock<T>;

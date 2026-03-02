@@ -5,28 +5,25 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use crate::core::{
   actor::{ContextPipeTaskId, Pid},
   messaging::system_message::SystemMessage,
-  system::state::SystemStateSharedGeneric,
+  system::state::SystemStateShared,
 };
 
 #[cfg(test)]
 mod tests;
 
-struct ContextPipeWakerHandle<TB: RuntimeToolbox + 'static> {
-  system: SystemStateSharedGeneric<TB>,
+struct ContextPipeWakerHandle {
+  system: SystemStateShared,
   pid:    Pid,
   task:   ContextPipeTaskId,
 }
 
-impl<TB: RuntimeToolbox + 'static> ContextPipeWakerHandle<TB> {
-  const fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
+impl ContextPipeWakerHandle {
+  const fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
     Self { system, pid, task }
   }
 
@@ -41,14 +38,14 @@ impl<TB: RuntimeToolbox + 'static> ContextPipeWakerHandle<TB> {
   }
 }
 
-struct ContextPipeWakerShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<ContextPipeWakerHandle<TB>, TB>>,
+struct ContextPipeWakerShared {
+  inner: ArcShared<RuntimeMutex<ContextPipeWakerHandle>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
-  fn new(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Self {
+impl ContextPipeWakerShared {
+  fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
     let handle = ContextPipeWakerHandle::new(system, pid, task);
-    let inner = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(handle));
+    let inner = ArcShared::new(RuntimeMutex::new(handle));
     Self { inner }
   }
 
@@ -58,52 +55,52 @@ impl<TB: RuntimeToolbox + 'static> ContextPipeWakerShared<TB> {
 }
 
 /// Helper that transforms system references into [`Waker`] instances.
-pub(crate) struct ContextPipeWaker<TB: RuntimeToolbox + 'static> {
-  _marker: PhantomData<TB>,
+pub(crate) struct ContextPipeWaker {
+  _marker: PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ContextPipeWaker<TB> {
+impl ContextPipeWaker {
   /// Creates a waker that notifies the owning actor cell about task readiness.
-  pub(crate) fn into_waker(system: SystemStateSharedGeneric<TB>, pid: Pid, task: ContextPipeTaskId) -> Waker {
+  pub(crate) fn into_waker(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Waker {
     let shared = ArcShared::new(ContextPipeWakerShared::new(system, pid, task));
     unsafe { Waker::from_raw(Self::raw_waker(shared)) }
   }
 
-  unsafe fn raw_waker(shared: ArcShared<ContextPipeWakerShared<TB>>) -> RawWaker {
+  unsafe fn raw_waker(shared: ArcShared<ContextPipeWakerShared>) -> RawWaker {
     let data = ArcShared::into_raw(shared) as *const ();
-    RawWaker::new(data, &ContextPipeWakerVtable::<TB>::VTABLE)
+    RawWaker::new(data, &ContextPipeWakerVtable::VTABLE)
   }
 
   unsafe fn clone(ptr: *const ()) -> RawWaker {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
     let cloned = handle.clone();
     let _ = ArcShared::into_raw(handle);
     unsafe { Self::raw_waker(cloned) }
   }
 
   unsafe fn wake(ptr: *const ()) {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
     handle.wake();
   }
 
   unsafe fn wake_by_ref(ptr: *const ()) {
-    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared<TB>) };
+    let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
     handle.wake();
     let _ = ArcShared::into_raw(handle);
   }
 
   unsafe fn drop(ptr: *const ()) {
-    let _ = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared<TB>) };
+    let _ = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
   }
 }
 
-struct ContextPipeWakerVtable<TB: RuntimeToolbox + 'static>(PhantomData<TB>);
+struct ContextPipeWakerVtable(PhantomData<()>);
 
-impl<TB: RuntimeToolbox + 'static> ContextPipeWakerVtable<TB> {
+impl ContextPipeWakerVtable {
   const VTABLE: RawWakerVTable = RawWakerVTable::new(
-    ContextPipeWaker::<TB>::clone,
-    ContextPipeWaker::<TB>::wake,
-    ContextPipeWaker::<TB>::wake_by_ref,
-    ContextPipeWaker::<TB>::drop,
+    ContextPipeWaker::clone,
+    ContextPipeWaker::wake,
+    ContextPipeWaker::wake_by_ref,
+    ContextPipeWaker::drop,
   );
 }

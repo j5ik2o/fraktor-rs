@@ -3,8 +3,8 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared},
+  messaging::AnyMessage,
 };
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::TimerInstant};
 
@@ -19,7 +19,7 @@ use crate::core::{
 pub struct MembershipCoordinatorDriverGeneric<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> {
   coordinator:  MembershipCoordinatorSharedGeneric<TB>,
   transport:    TTransport,
-  event_stream: EventStreamSharedGeneric<TB>,
+  event_stream: EventStreamShared,
 }
 
 impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordinatorDriverGeneric<TB, TTransport> {
@@ -28,7 +28,7 @@ impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordi
   pub fn new(
     coordinator: MembershipCoordinatorSharedGeneric<TB>,
     transport: TTransport,
-    event_stream: EventStreamSharedGeneric<TB>,
+    event_stream: EventStreamShared,
   ) -> Self {
     Self { coordinator, transport, event_stream }
   }
@@ -113,7 +113,7 @@ impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordi
   }
 
   fn publish_event(&self, event: ClusterEvent) {
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }

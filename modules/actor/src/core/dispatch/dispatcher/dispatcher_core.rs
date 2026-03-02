@@ -11,53 +11,52 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeMutex,
+  sync::{ArcShared, SharedAccess},
 };
 use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
-  dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunnerGeneric,
+  dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
   dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState,
-  schedule_adapter_shared::ScheduleAdapterSharedGeneric,
+  schedule_adapter_shared::ScheduleAdapterShared,
 };
 use crate::core::{
   dispatch::mailbox::{
-    EnqueueOutcome, MailboxGeneric, MailboxMessage, MailboxOfferFutureGeneric, ScheduleHints,
-    metrics_event::MailboxPressureEvent,
+    EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, ScheduleHints, metrics_event::MailboxPressureEvent,
   },
   error::{ActorError, SendError},
   event::{logging::LogLevel, stream::EventStreamEvent},
-  messaging::{AnyMessageGeneric, message_invoker::MessageInvokerShared, system_message::SystemMessage},
-  system::state::{SystemStateSharedGeneric, SystemStateWeakGeneric},
+  messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
+  system::state::{SystemStateShared, SystemStateWeak},
 };
 
 const DEFAULT_THROUGHPUT: usize = 300;
 pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
 
 /// Entity that drains the mailbox and invokes messages.
-pub(crate) struct DispatcherCoreGeneric<TB: RuntimeToolbox + 'static> {
-  mailbox:             ArcShared<MailboxGeneric<TB>>,
-  executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
-  schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
-  invoker:             ToolboxMutex<Option<MessageInvokerShared<TB>>, TB>,
-  mailbox_pressure:    ToolboxMutex<Option<MailboxPressureEvent>, TB>,
+pub(crate) struct DispatcherCore {
+  mailbox:             ArcShared<Mailbox>,
+  executor:            ArcShared<DispatchExecutorRunner>,
+  schedule_adapter:    ScheduleAdapterShared,
+  invoker:             RuntimeMutex<Option<MessageInvokerShared>>,
+  mailbox_pressure:    RuntimeMutex<Option<MailboxPressureEvent>>,
   state:               AtomicU8,
   throughput_limit:    Option<NonZeroUsize>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  system_state:        Option<SystemStateWeakGeneric<TB>>,
+  system_state:        Option<SystemStateWeak>,
   last_progress:       AtomicU64,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for DispatcherCoreGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for DispatcherCoreGeneric<TB> {}
+unsafe impl Send for DispatcherCore {}
+unsafe impl Sync for DispatcherCore {}
 
-impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
+impl DispatcherCore {
   pub(crate) fn new(
-    mailbox: ArcShared<MailboxGeneric<TB>>,
-    executor: ArcShared<DispatchExecutorRunnerGeneric<TB>>,
-    schedule_adapter: ScheduleAdapterSharedGeneric<TB>,
+    mailbox: ArcShared<Mailbox>,
+    executor: ArcShared<DispatchExecutorRunner>,
+    schedule_adapter: ScheduleAdapterShared,
     throughput_limit: Option<NonZeroUsize>,
     throughput_deadline: Option<Duration>,
     starvation_deadline: Option<Duration>,
@@ -67,8 +66,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
       mailbox,
       executor,
       schedule_adapter,
-      invoker: <TB::MutexFamily as SyncMutexFamily>::create(None),
-      mailbox_pressure: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      invoker: RuntimeMutex::new(None),
+      mailbox_pressure: RuntimeMutex::new(None),
       state: AtomicU8::new(DispatcherState::Idle.as_u8()),
       throughput_limit,
       throughput_deadline,
@@ -78,19 +77,19 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     }
   }
 
-  pub(crate) const fn mailbox(&self) -> &ArcShared<MailboxGeneric<TB>> {
+  pub(crate) const fn mailbox(&self) -> &ArcShared<Mailbox> {
     &self.mailbox
   }
 
-  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared<TB>) {
+  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared) {
     *self.invoker.lock() = Some(invoker);
   }
 
-  pub(crate) const fn executor(&self) -> &ArcShared<DispatchExecutorRunnerGeneric<TB>> {
+  pub(crate) const fn executor(&self) -> &ArcShared<DispatchExecutorRunner> {
     &self.executor
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
+  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared {
     self.schedule_adapter.clone()
   }
 
@@ -98,7 +97,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     &self.state
   }
 
-  fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+  fn system_state(&self) -> Option<SystemStateShared> {
     self.system_state.as_ref().and_then(|weak| weak.upgrade())
   }
 
@@ -207,7 +206,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     }
   }
 
-  fn handle_user_message(&self, message: AnyMessageGeneric<TB>) {
+  fn handle_user_message(&self, message: AnyMessage) {
     let _ = self.invoke_user_message(message);
   }
 
@@ -219,7 +218,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     true
   }
 
-  fn invoke_user_message(&self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
+  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
     // Clone the invoker reference and release the outer lock before acquiring the inner lock.
     // This prevents potential deadlock when actor message handlers interact with the dispatcher.
     let invoker = self.invoker.lock().clone();
@@ -250,7 +249,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   }
 
   #[allow(dead_code)]
-  pub(crate) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub(crate) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage) -> Result<(), SendError> {
     match self_arc.mailbox.enqueue_user(message) {
       | Ok(EnqueueOutcome::Enqueued) => {
         Self::request_execution(self_arc, ScheduleHints {
@@ -273,7 +272,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
     }
   }
 
-  pub(crate) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError<TB>> {
+  pub(crate) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError> {
     self_arc.mailbox.enqueue_system(message)?;
     Self::request_execution(self_arc, ScheduleHints {
       has_system_messages: true,
@@ -284,12 +283,9 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
   }
 
   #[allow(dead_code)]
-  fn drain_offer_future(
-    self_arc: &ArcShared<Self>,
-    future: &mut MailboxOfferFutureGeneric<TB>,
-  ) -> Result<(), SendError<TB>> {
+  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
     let adapter = self_arc.schedule_adapter();
-    let dispatcher = super::dispatcher_shared::DispatcherSharedGeneric::from_core(self_arc.clone());
+    let dispatcher = super::dispatcher_shared::DispatcherShared::from_core(self_arc.clone());
     let waker = adapter.with_write(|a| a.create_waker(dispatcher));
     let mut cx = Context::from_waker(&waker);
 
@@ -324,7 +320,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
       return;
     }
     if self_arc.mailbox.request_schedule(hints) {
-      super::dispatcher_shared::DispatcherSharedGeneric::from_core(self_arc.clone()).spawn_execution();
+      super::dispatcher_shared::DispatcherShared::from_core(self_arc.clone()).spawn_execution();
     } else {
       self_arc.handle_starvation(hints);
     }
@@ -368,7 +364,7 @@ const fn duration_to_millis(duration: Duration) -> u64 {
   duration.as_millis() as u64
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatcherCoreGeneric<TB> {
+impl DispatcherCore {
   fn handle_starvation(&self, hints: ScheduleHints) {
     if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
       return;

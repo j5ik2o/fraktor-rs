@@ -1,8 +1,8 @@
 //! Shared wrapper for LocalClusterProviderGeneric implementations.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::LocalClusterProviderGeneric;
@@ -13,14 +13,14 @@ use super::LocalClusterProviderGeneric;
 /// that internally lock the underlying provider, allowing safe
 /// concurrent access from multiple owners.
 pub struct LocalClusterProviderSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<LocalClusterProviderGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<LocalClusterProviderGeneric<TB>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> LocalClusterProviderSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided provider.
   #[must_use]
   pub fn new(provider: LocalClusterProviderGeneric<TB>) -> Self {
-    Self { inner: ArcShared::new(<TB as RuntimeToolbox>::MutexFamily::create(provider)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(provider)) }
   }
 }
 

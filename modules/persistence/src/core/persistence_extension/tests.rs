@@ -1,15 +1,14 @@
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, Pid},
+  actor::{Actor, ActorContext, Pid},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
@@ -18,12 +17,8 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -32,13 +27,16 @@ impl Actor<NoStdToolbox> for NoopActor {
 fn persistence_extension_creates_actor_refs() {
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_with_config(&props, &config).expect("system");
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let journal = InMemoryJournal::new();
   let snapshot = InMemorySnapshotStore::new();
 
-  let extension = PersistenceExtensionGeneric::new(&system, journal, snapshot).expect("extension should build");
+  let extension = PersistenceExtensionGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
+    &system, journal, snapshot,
+  )
+  .expect("extension should build");
 
   assert_ne!(extension.journal_actor_ref().pid(), Pid::new(0, 0));
   assert_ne!(extension.snapshot_actor_ref().pid(), Pid::new(0, 0));

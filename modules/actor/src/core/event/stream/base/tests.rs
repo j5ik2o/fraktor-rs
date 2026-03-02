@@ -3,10 +3,7 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use crate::core::{
   actor::Pid,
@@ -19,19 +16,17 @@ use crate::core::{
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(
-    events: ArcShared<NoStdMutex<Vec<EventStreamEvent<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>>>>,
-  ) -> Self {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }

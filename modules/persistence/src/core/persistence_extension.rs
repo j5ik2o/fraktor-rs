@@ -4,19 +4,17 @@
 mod tests;
 
 use alloc::format;
+use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   extension::Extension,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
-  system::ActorSystemGeneric,
+  messaging::AnyMessageView,
+  props::Props,
+  system::ActorSystem,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::sync_mutex_like::SyncMutexLike,
-};
+use fraktor_utils_rs::core::runtime_toolbox::{RuntimeMutex, RuntimeToolbox};
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,
@@ -29,8 +27,9 @@ pub type PersistenceExtension = PersistenceExtensionGeneric<fraktor_utils_rs::co
 /// Extension providing access to journal and snapshot actors.
 #[derive(Clone)]
 pub struct PersistenceExtensionGeneric<TB: RuntimeToolbox + 'static> {
-  journal_actor:  ActorRefGeneric<TB>,
-  snapshot_actor: ActorRefGeneric<TB>,
+  journal_actor:  ActorRef,
+  snapshot_actor: ActorRef,
+  _marker:        PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
@@ -39,7 +38,7 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
   /// # Errors
   ///
   /// Returns `PersistenceError::MessagePassing` when actor creation fails.
-  pub fn new<J, S>(system: &ActorSystemGeneric<TB>, journal: J, snapshot_store: S) -> Result<Self, PersistenceError>
+  pub fn new<J, S>(system: &ActorSystem, journal: J, snapshot_store: S) -> Result<Self, PersistenceError>
   where
     J: Journal + Clone + Send + Sync + 'static,
     S: SnapshotStore + Clone + Send + Sync + 'static,
@@ -51,36 +50,36 @@ impl<TB: RuntimeToolbox + 'static> PersistenceExtensionGeneric<TB> {
     for<'a> S::LoadFuture<'a>: Send + 'static,
     for<'a> S::DeleteOneFuture<'a>: Send + 'static,
     for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-    let journal_actor = spawn_system_actor(system, "journal", move || JournalActorWrapper::new(journal.clone()))?;
+    let journal_actor =
+      spawn_system_actor(system, "journal", move || JournalActorWrapper::<J, TB>::new(journal.clone()))?;
     let snapshot_actor =
-      spawn_system_actor(system, "snapshot", move || SnapshotActorWrapper::new(snapshot_store.clone()))?;
-    Ok(Self { journal_actor, snapshot_actor })
+      spawn_system_actor(system, "snapshot", move || SnapshotActorWrapper::<S, TB>::new(snapshot_store.clone()))?;
+    Ok(Self { journal_actor, snapshot_actor, _marker: PhantomData })
   }
 
   /// Returns the journal actor reference.
   #[must_use]
-  pub(crate) fn journal_actor_ref(&self) -> ActorRefGeneric<TB> {
+  pub(crate) fn journal_actor_ref(&self) -> ActorRef {
     self.journal_actor.clone()
   }
 
   /// Returns the snapshot actor reference.
   #[must_use]
-  pub(crate) fn snapshot_actor_ref(&self) -> ActorRefGeneric<TB> {
+  pub(crate) fn snapshot_actor_ref(&self) -> ActorRef {
     self.snapshot_actor.clone()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Extension<TB> for PersistenceExtensionGeneric<TB> {}
+impl<TB: RuntimeToolbox + 'static> Extension for PersistenceExtensionGeneric<TB> {}
 
-fn spawn_system_actor<TB, A>(
-  system: &ActorSystemGeneric<TB>,
+fn spawn_system_actor<A>(
+  system: &ActorSystem,
   name: &str,
   factory: impl FnMut() -> A + Send + Sync + 'static,
-) -> Result<ActorRefGeneric<TB>, PersistenceError>
+) -> Result<ActorRef, PersistenceError>
 where
-  TB: RuntimeToolbox + 'static,
-  A: Actor<TB> + Sync + 'static, {
-  let props = PropsGeneric::from_fn(factory).with_name(name);
+  A: Actor + Sync + 'static, {
+  let props = Props::from_fn(factory).with_name(name);
   let child = system
     .extended()
     .spawn_system_actor(&props)
@@ -89,7 +88,7 @@ where
 }
 
 struct JournalActorWrapper<J: Journal, TB: RuntimeToolbox + 'static> {
-  inner: ToolboxMutex<JournalActor<J, TB>, TB>,
+  inner: RuntimeMutex<JournalActor<J, TB>>,
 }
 
 impl<J: Journal, TB: RuntimeToolbox + 'static> JournalActorWrapper<J, TB>
@@ -99,29 +98,25 @@ where
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
-  fn new(journal: J) -> Self {
-    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(JournalActor::new(journal)) }
+  const fn new(journal: J) -> Self {
+    Self { inner: RuntimeMutex::new(JournalActor::new(journal)) }
   }
 }
 
-impl<J: Journal, TB: RuntimeToolbox + 'static> Actor<TB> for JournalActorWrapper<J, TB>
+impl<J: Journal, TB: RuntimeToolbox + 'static> Actor for JournalActorWrapper<J, TB>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.inner.lock().receive(ctx, message)
   }
 }
 
 struct SnapshotActorWrapper<S: SnapshotStore, TB: RuntimeToolbox + 'static> {
-  inner: ToolboxMutex<SnapshotActor<S, TB>, TB>,
+  inner: RuntimeMutex<SnapshotActor<S, TB>>,
 }
 
 impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> SnapshotActorWrapper<S, TB>
@@ -131,23 +126,19 @@ where
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
-  fn new(snapshot_store: S) -> Self {
-    Self { inner: <TB::MutexFamily as SyncMutexFamily>::create(SnapshotActor::new(snapshot_store)) }
+  const fn new(snapshot_store: S) -> Self {
+    Self { inner: RuntimeMutex::new(SnapshotActor::new(snapshot_store)) }
   }
 }
 
-impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> Actor<TB> for SnapshotActorWrapper<S, TB>
+impl<S: SnapshotStore, TB: RuntimeToolbox + 'static> Actor for SnapshotActorWrapper<S, TB>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.inner.lock().receive(ctx, message)
   }
 }

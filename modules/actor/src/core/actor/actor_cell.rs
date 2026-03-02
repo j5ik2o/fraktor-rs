@@ -7,22 +7,22 @@ use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, WeakShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeMutex,
+  sync::{ArcShared, SharedAccess, WeakShared},
 };
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
   actor::{
-    Actor, ActorContextGeneric, ActorSharedGeneric, ContextPipeTaskId, Pid, STASH_OVERFLOW_REASON,
-    actor_ref::{ActorRefGeneric, ActorRefSenderSharedGeneric},
+    Actor, ActorContext, ActorShared, ContextPipeTaskId, Pid, STASH_OVERFLOW_REASON,
+    actor_ref::{ActorRef, ActorRefSenderShared},
     context_pipe_task::{ContextPipeFuture, ContextPipeTask},
     pipe_spawn_error::PipeSpawnError,
   },
   dispatch::{
-    dispatcher::DispatcherSharedGeneric,
+    dispatcher::DispatcherShared,
     mailbox::{
-      BackpressurePublisherGeneric, MailboxCapacity, MailboxGeneric, MailboxInstrumentationGeneric, ScheduleHints,
+      BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
       metrics_event::MailboxPressureEvent,
     },
   },
@@ -30,34 +30,34 @@ use crate::core::{
   event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
-    AnyMessageGeneric,
-    message_invoker::{MessageInvoker, MessageInvokerPipelineGeneric, MessageInvokerShared},
+    AnyMessage,
+    message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
     system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
   },
-  props::{ActorFactorySharedGeneric, PropsGeneric},
+  props::{ActorFactoryShared, Props},
   spawn::SpawnError,
   supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
   system::{
-    ActorSystemGeneric,
+    ActorSystem,
     guardian::GuardianKind,
-    state::{SystemStateSharedGeneric, SystemStateWeakGeneric, system_state::FailureOutcome},
+    state::{SystemStateShared, SystemStateWeak, system_state::FailureOutcome},
   },
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
 
-struct ActorCellState<TB: RuntimeToolbox + 'static> {
+struct ActorCellState {
   children:               Vec<Pid>,
   child_stats:            Vec<(Pid, RestartStatistics)>,
   watchers:               Vec<Pid>,
-  watch_with_messages:    Vec<(Pid, AnyMessageGeneric<TB>)>,
-  stashed_messages:       VecDeque<AnyMessageGeneric<TB>>,
-  pipe_tasks:             Vec<ContextPipeTask<TB>>,
-  adapter_handles:        Vec<AdapterRefHandle<TB>>,
+  watch_with_messages:    Vec<(Pid, AnyMessage)>,
+  stashed_messages:       VecDeque<AnyMessage>,
+  pipe_tasks:             Vec<ContextPipeTask>,
+  adapter_handles:        Vec<AdapterRefHandle>,
   adapter_handle_counter: u64,
   pipe_task_counter:      u64,
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorCellState<TB> {
+impl ActorCellState {
   const fn new() -> Self {
     Self {
       children:               Vec::new(),
@@ -74,32 +74,32 @@ impl<TB: RuntimeToolbox + 'static> ActorCellState<TB> {
 }
 
 /// Runtime container responsible for executing an actor instance.
-pub struct ActorCellGeneric<TB: RuntimeToolbox + 'static> {
+pub struct ActorCell {
   pid:        Pid,
   parent:     Option<Pid>,
   name:       String,
-  system:     SystemStateWeakGeneric<TB>,
-  factory:    ActorFactorySharedGeneric<TB>,
-  actor:      ActorSharedGeneric<TB>,
-  pipeline:   MessageInvokerPipelineGeneric<TB>,
-  mailbox:    ArcShared<MailboxGeneric<TB>>,
-  dispatcher: DispatcherSharedGeneric<TB>,
-  sender:     ActorRefSenderSharedGeneric<TB>,
-  state:      ToolboxMutex<ActorCellState<TB>, TB>,
+  system:     SystemStateWeak,
+  factory:    ActorFactoryShared,
+  actor:      ActorShared,
+  pipeline:   MessageInvokerPipeline,
+  mailbox:    ArcShared<Mailbox>,
+  dispatcher: DispatcherShared,
+  sender:     ActorRefSenderShared,
+  state:      RuntimeMutex<ActorCellState>,
   terminated: AtomicBool,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for ActorCellGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for ActorCellGeneric<TB> {}
+unsafe impl Send for ActorCell {}
+unsafe impl Sync for ActorCell {}
 
-impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
+impl ActorCell {
   /// Upgrades the weak system reference to a strong reference.
   ///
   /// # Panics
   ///
   /// Panics if the system state has already been dropped.
   #[allow(clippy::expect_used)]
-  fn system(&self) -> SystemStateSharedGeneric<TB> {
+  fn system(&self) -> SystemStateShared {
     self.system.upgrade().expect("system state has been dropped")
   }
 
@@ -111,13 +111,13 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
   #[allow(clippy::needless_pass_by_value)]
   pub fn create(
-    system: SystemStateSharedGeneric<TB>,
+    system: SystemStateShared,
     pid: Pid,
     parent: Option<Pid>,
     name: String,
-    props: &PropsGeneric<TB>,
+    props: &Props,
   ) -> Result<ArcShared<Self>, SpawnError> {
-    let mailbox = ArcShared::new(MailboxGeneric::new(props.mailbox_policy()));
+    let mailbox = ArcShared::new(Mailbox::new(props.mailbox_policy()));
     {
       let mailbox_config = props.mailbox_config();
       let policy = mailbox_config.policy();
@@ -127,16 +127,15 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       };
       let throughput = policy.throughput_limit().map(|limit| limit.get());
       let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
-      let instrumentation =
-        MailboxInstrumentationGeneric::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher = props.dispatcher_config().build_dispatcher(mailbox.clone())?;
-    mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
+    mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
-    let actor = ActorSharedGeneric::new(factory.with_write(|f| f.create()));
-    let state = <TB::MutexFamily as SyncMutexFamily>::create(ActorCellState::new());
+    let actor = ActorShared::new(factory.with_write(|f| f.create()));
+    let state = RuntimeMutex::new(ActorCellState::new());
 
     let cell = ArcShared::new(Self {
       pid,
@@ -145,7 +144,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       system: system.downgrade(),
       factory,
       actor,
-      pipeline: MessageInvokerPipelineGeneric::new(),
+      pipeline: MessageInvokerPipeline::new(),
       mailbox,
       dispatcher,
       sender,
@@ -157,7 +156,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
       // Dispatcher keeps a weak reference to the invoker for message delivery.
       // Using weak reference avoids circular reference: ActorCell → Dispatcher → DispatcherCore → Invoker
       // → ActorCell
-      let invoker: MessageInvokerShared<TB> =
+      let invoker: MessageInvokerShared =
         MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       cell.dispatcher.register_invoker(invoker);
     }
@@ -193,26 +192,26 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   /// Returns a handle to the mailbox managed by this cell.
   #[must_use]
-  pub fn mailbox(&self) -> ArcShared<MailboxGeneric<TB>> {
+  pub fn mailbox(&self) -> ArcShared<Mailbox> {
     self.mailbox.clone()
   }
 
   /// Returns the dispatcher associated with this cell.
   #[must_use]
-  pub fn dispatcher(&self) -> DispatcherSharedGeneric<TB> {
+  pub fn dispatcher(&self) -> DispatcherShared {
     self.dispatcher.clone()
   }
 
   /// Returns a sender handle targeting this actor cell's mailbox.
   #[must_use]
-  pub(crate) fn mailbox_sender(&self) -> ActorRefSenderSharedGeneric<TB> {
+  pub(crate) fn mailbox_sender(&self) -> ActorRefSenderShared {
     self.sender.clone()
   }
 
   /// Produces an actor reference targeting this cell.
   #[must_use]
-  pub fn actor_ref(&self) -> ActorRefGeneric<TB> {
-    ActorRefGeneric::from_shared(self.pid, self.sender.clone(), &self.system())
+  pub fn actor_ref(&self) -> ActorRef {
+    ActorRef::from_shared(self.pid, self.sender.clone(), &self.system())
   }
 
   /// Registers a child pid for supervision.
@@ -286,11 +285,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   /// # Errors
   ///
   /// Returns an overflow error when the stash already reached `max_messages`.
-  pub(crate) fn stash_message_with_limit(
-    &self,
-    message: AnyMessageGeneric<TB>,
-    max_messages: usize,
-  ) -> Result<(), ActorError> {
+  pub(crate) fn stash_message_with_limit(&self, message: AnyMessage, max_messages: usize) -> Result<(), ActorError> {
     let mut state = self.state.lock();
     if state.stashed_messages.len() >= max_messages {
       return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
@@ -371,7 +366,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   /// Allocates and tracks a new adapter handle for message adapters.
-  pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState<TB>>) {
+  pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState>) {
     let mut state = self.state.lock();
     let id = state.adapter_handle_counter.wrapping_add(1);
     state.adapter_handle_counter = id;
@@ -402,7 +397,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   /// Registers a new pipe task and schedules its first poll.
-  pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture<TB>) -> Result<(), PipeSpawnError> {
+  pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture) -> Result<(), PipeSpawnError> {
     if self.is_terminated() {
       return Err(PipeSpawnError::TargetStopped);
     }
@@ -489,8 +484,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
         },
       }
     } else {
-      let system = ActorSystemGeneric::from_state(self.system());
-      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
       let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
       ctx.clear_sender();
       result
@@ -498,7 +493,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   /// Registers a custom message to deliver when the watched target terminates.
-  pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessageGeneric<TB>) {
+  pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessage) {
     let mut state = self.state.lock();
     state.watch_with_messages.retain(|(pid, _)| *pid != target);
     state.watch_with_messages.push((target, message));
@@ -509,7 +504,7 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     self.state.lock().watch_with_messages.retain(|(pid, _)| *pid != target);
   }
 
-  fn take_watch_with_message(&self, target: Pid) -> Option<AnyMessageGeneric<TB>> {
+  fn take_watch_with_message(&self, target: Pid) -> Option<AnyMessage> {
     let mut state = self.state.lock();
     if let Some(index) = state.watch_with_messages.iter().position(|(pid, _)| *pid == target) {
       let (_, message) = state.watch_with_messages.swap_remove(index);
@@ -529,8 +524,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 
   fn handle_recreate(&self) -> Result<(), ActorError> {
     {
-      let system = ActorSystemGeneric::from_state(self.system());
-      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
       self.actor.with_write(|actor| actor.pre_restart(&mut ctx))?;
       ctx.clear_sender();
     }
@@ -553,8 +548,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system());
-    let mut ctx = ActorContextGeneric::new(&system, self.pid);
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
     let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
     ctx.clear_sender();
     if result.is_ok() {
@@ -615,8 +610,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
     let (directive, affected) = self.handle_child_failure(payload.child(), &actor_error, now);
 
     {
-      let system = ActorSystemGeneric::from_state(self.system());
-      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
       if let Err(ref error) =
         self.actor.with_write(|actor| actor.on_child_failed(&mut ctx, payload.child(), &actor_error))
       {
@@ -663,8 +658,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   }
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
-    let system = ActorSystemGeneric::from_state(self.system());
-    let mut ctx = ActorContextGeneric::new(&system, self.pid);
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
     let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
     ctx.clear_sender();
     if outcome.is_ok() {
@@ -683,21 +678,21 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
 /// Internal invoker that bridges dispatcher message delivery to actor cell.
 ///
 /// Uses a weak reference to avoid circular reference between ActorCell and DispatcherCore.
-struct ActorCellInvoker<TB: RuntimeToolbox + 'static> {
-  cell: WeakShared<ActorCellGeneric<TB>>,
+struct ActorCellInvoker {
+  cell: WeakShared<ActorCell>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorCellInvoker<TB> {
+impl ActorCellInvoker {
   /// Upgrades the weak cell reference to a strong reference.
   ///
   /// Returns `None` if the actor cell has been dropped.
-  fn cell(&self) -> Option<ArcShared<ActorCellGeneric<TB>>> {
+  fn cell(&self) -> Option<ArcShared<ActorCell>> {
     self.cell.upgrade()
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
-  fn invoke_user_message(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), ActorError> {
+impl MessageInvoker for ActorCellInvoker {
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), ActorError> {
     let Some(cell) = self.cell() else {
       // ActorCell has been dropped, silently ignore the message
       return Ok(());
@@ -715,8 +710,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
         | _ => {},
       }
     }
-    let system = ActorSystemGeneric::from_state(cell.system());
-    let mut ctx = ActorContextGeneric::new(&system, cell.pid);
+    let system = ActorSystem::from_state(cell.system());
+    let mut ctx = ActorContext::new(&system, cell.pid);
     let failure_candidate = message.clone();
     let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
     if let Err(ref error) = result {
@@ -781,8 +776,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
       // ActorCell has been dropped, silently ignore the notification
       return Ok(());
     };
-    let system = ActorSystemGeneric::from_state(cell.system());
-    let mut ctx = ActorContextGeneric::new(&system, cell.pid);
+    let system = ActorSystem::from_state(cell.system());
+    let mut ctx = ActorContext::new(&system, cell.pid);
     let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
     if let Err(ref error) = result {
       cell.report_failure(error, None);
@@ -791,7 +786,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvoker<TB> for ActorCellInvoker<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
+impl ActorCell {
   pub(crate) fn handle_child_failure(
     &self,
     child: Pid,
@@ -800,8 +795,8 @@ impl<TB: RuntimeToolbox + 'static> ActorCellGeneric<TB> {
   ) -> (SupervisorDirective, Vec<Pid>) {
     // Get supervisor strategy dynamically from actor instance
     let strategy = {
-      let system = ActorSystemGeneric::from_state(self.system());
-      let mut ctx = ActorContextGeneric::new(&system, self.pid);
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
       self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
     };
 
@@ -840,6 +835,3 @@ fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -
   entries.push((pid, RestartStatistics::new()));
   &mut entries[new_index].1
 }
-
-/// Type alias for `ActorCellGeneric` with the default `NoStdToolbox`.
-pub type ActorCell = ActorCellGeneric<NoStdToolbox>;

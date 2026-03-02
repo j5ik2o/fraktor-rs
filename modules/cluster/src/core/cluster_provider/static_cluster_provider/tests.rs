@@ -1,8 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-  subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
@@ -52,8 +51,8 @@ impl RecordingClusterEvents {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingClusterEvents {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event
       && name == "cluster"
       && let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>()
@@ -63,9 +62,7 @@ impl EventStreamSubscriber<NoStdToolbox> for RecordingClusterEvents {
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (RecordingClusterEvents, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let subscriber_impl = RecordingClusterEvents::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
   let subscription = event_stream.subscribe(&subscriber);
@@ -83,8 +80,8 @@ fn start_member_publishes_static_topology_to_event_stream() {
 
   // 静的トポロジを設定した Provider を作成
   let static_topology = ClusterTopology::new(100, vec![String::from("node-b")], vec![], Vec::new());
-  let mut provider =
-    StaticClusterProvider::new(event_stream, block_list, "node-a").with_static_topology(static_topology);
+  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-a")
+    .with_static_topology(static_topology);
 
   // start_member を呼び出す
   provider.start_member().unwrap();
@@ -110,8 +107,8 @@ fn start_client_also_publishes_static_topology() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(200, vec![], vec![String::from("leaving-node")], Vec::new());
-  let mut provider =
-    StaticClusterProvider::new(event_stream, block_list, "client-a").with_static_topology(static_topology);
+  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "client-a")
+    .with_static_topology(static_topology);
 
   provider.start_client().unwrap();
 
@@ -133,8 +130,8 @@ fn topology_includes_blocked_members_from_block_list_provider() {
   let (subscriber_impl, _subscription) = subscribe_recorder(&event_stream);
 
   let static_topology = ClusterTopology::new(300, vec![String::from("node-x")], vec![], Vec::new());
-  let mut provider =
-    StaticClusterProvider::new(event_stream, block_list, "node-main").with_static_topology(static_topology);
+  let mut provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list, "node-main")
+    .with_static_topology(static_topology);
 
   provider.start_member().unwrap();
 

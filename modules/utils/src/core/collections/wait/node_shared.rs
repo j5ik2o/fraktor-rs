@@ -1,9 +1,11 @@
 //! Shared wrapper for WaitNode enabling interior mutability.
 
+use core::marker::PhantomData;
+
 use super::node::WaitNode;
 use crate::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
 };
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.
@@ -12,14 +14,15 @@ use crate::core::{
 /// that internally lock the underlying [`WaitNode`], allowing safe
 /// concurrent access from multiple owners.
 pub struct WaitNodeShared<E: Send + 'static, TB: RuntimeToolbox = NoStdToolbox> {
-  inner: ArcShared<ToolboxMutex<WaitNode<E>, TB>>,
+  inner:   ArcShared<RuntimeMutex<WaitNode<E>>>,
+  _marker: PhantomData<TB>,
 }
 
 impl<E: Send + 'static, TB: RuntimeToolbox + 'static> WaitNodeShared<E, TB> {
   /// Creates a new shared wrapper around a fresh WaitNode.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(WaitNode::new())) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(WaitNode::new())), _marker: PhantomData }
   }
 }
 
@@ -31,7 +34,7 @@ impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Default for WaitNodeShared
 
 impl<E: Send + 'static, TB: RuntimeToolbox> Clone for WaitNodeShared<E, TB> {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 

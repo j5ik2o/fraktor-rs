@@ -7,10 +7,10 @@ mod dead_letter_entry;
 mod dead_letter_reason;
 mod dead_letter_shared;
 
-pub use base::{DeadLetter, DeadLetterGeneric};
-pub use dead_letter_entry::{DeadLetterEntry, DeadLetterEntryGeneric};
+pub use base::DeadLetter;
+pub use dead_letter_entry::DeadLetterEntry;
 pub use dead_letter_reason::DeadLetterReason;
-pub use dead_letter_shared::{DeadLetterShared, DeadLetterSharedGeneric};
+pub use dead_letter_shared::DeadLetterShared;
 
 #[cfg(test)]
 mod tests;

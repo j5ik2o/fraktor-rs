@@ -3,37 +3,37 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::cluster_pub_sub::ClusterPubSub;
 
 /// Shared wrapper enabling interior mutability for [`ClusterPubSub`].
 ///
-/// This adapter wraps a pub/sub implementation in a `ToolboxMutex`, allowing
+/// This adapter wraps a pub/sub implementation in a `RuntimeMutex`, allowing
 /// callers to access mutable methods via [`SharedAccess`] without requiring a
 /// mutable handle to the wrapper itself.
 pub struct ClusterPubSubShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub<TB>>, TB>>,
+  inner: ArcShared<RuntimeMutex<Box<dyn ClusterPubSub<TB>>>>,
 }
 
 impl<TB: RuntimeToolbox + 'static> ClusterPubSubShared<TB> {
   /// Creates a new shared wrapper around the given pub/sub implementation.
   #[must_use]
   pub fn new(pub_sub: Box<dyn ClusterPubSub<TB>>) -> Self {
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(pub_sub)) }
+    Self { inner: ArcShared::new(RuntimeMutex::new(pub_sub)) }
   }
 
   /// Creates a wrapper from an existing shared mutex.
   #[must_use]
-  pub fn from_inner(inner: ArcShared<ToolboxMutex<Box<dyn ClusterPubSub<TB>>, TB>>) -> Self {
+  pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn ClusterPubSub<TB>>>>) -> Self {
     Self { inner }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
   #[must_use]
-  pub fn inner(&self) -> ArcShared<ToolboxMutex<Box<dyn ClusterPubSub<TB>>, TB>> {
+  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn ClusterPubSub<TB>>>> {
     self.inner.clone()
   }
 }

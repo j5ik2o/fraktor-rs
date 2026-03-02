@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::messaging::AnyMessageGeneric;
+use fraktor_actor_rs::core::messaging::AnyMessage;
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
   sync::ArcShared,
@@ -37,23 +37,15 @@ impl ClusterPubSub<NoStdToolbox> for StubPubSub {
     Ok(())
   }
 
-  fn subscribe(
-    &mut self,
-    _topic: &PubSubTopic,
-    _subscriber: PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), PubSubError> {
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn unsubscribe(
-    &mut self,
-    _topic: &PubSubTopic,
-    _subscriber: PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), PubSubError> {
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn publish(&mut self, _request: PublishRequest<NoStdToolbox>) -> Result<PublishAck, PubSubError> {
+  fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
     *self.publish_calls.lock() += 1;
     Ok(PublishAck::accepted())
   }
@@ -68,14 +60,14 @@ struct CustomPayload;
 fn publish_rejects_when_not_serializable() {
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
   let registry = ArcShared::new(
-    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric::from_setup(&setup),
+    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
   );
   let stub = StubPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(stub.clone()));
   let publisher = PubSubPublisherGeneric::new(shared, registry);
 
   let request =
-    PublishRequest::new(PubSubTopic::from("news"), AnyMessageGeneric::new(CustomPayload), PublishOptions::default());
+    PublishRequest::new(PubSubTopic::from("news"), AnyMessage::new(CustomPayload), PublishOptions::default());
   let ack = publisher.publish(&request).expect("publish should return ack");
   assert_eq!(ack, PublishAck::rejected(PublishRejectReason::NotSerializable));
   assert_eq!(stub.publish_calls(), 0);

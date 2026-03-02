@@ -2,27 +2,21 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::SharedAccess,
-};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::middleware_shared::MiddlewareShared;
 use crate::core::{
-  actor::{Actor, ActorContextGeneric, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
-  messaging::{AnyMessageGeneric, any_message_view::AnyMessageViewGeneric},
+  messaging::{AnyMessage, any_message_view::AnyMessageView},
 };
 
 /// Middleware-enabled pipeline used to invoke actor message handlers.
-pub struct MessageInvokerPipelineGeneric<TB: RuntimeToolbox + 'static> {
-  user_middlewares: Vec<MiddlewareShared<TB>>,
+pub struct MessageInvokerPipeline {
+  user_middlewares: Vec<MiddlewareShared>,
 }
 
-/// Type alias for [MessageInvokerPipelineGeneric] with the default [NoStdToolbox].
-pub type MessageInvokerPipeline = MessageInvokerPipelineGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
+impl MessageInvokerPipeline {
   /// Creates a pipeline without any middleware.
   #[must_use]
   pub const fn new() -> Self {
@@ -32,7 +26,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   /// Builds a pipeline from the provided middleware list.
   #[must_use]
   #[allow(dead_code)] // Used in tests
-  pub(crate) const fn from_middlewares(middlewares: Vec<MiddlewareShared<TB>>) -> Self {
+  pub(crate) const fn from_middlewares(middlewares: Vec<MiddlewareShared>) -> Self {
     Self { user_middlewares: middlewares }
   }
 
@@ -45,11 +39,11 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   pub fn invoke_user<A>(
     &self,
     actor: &mut A,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageGeneric<TB>,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessage,
   ) -> Result<(), ActorError>
   where
-    A: Actor<TB> + ?Sized, {
+    A: Actor + ?Sized, {
     let previous = ctx.sender().cloned();
     let sender = message.sender().cloned();
 
@@ -77,11 +71,7 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
     result
   }
 
-  fn invoke_before(
-    &self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: &AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
+  fn invoke_before(&self, ctx: &mut ActorContext<'_>, message: &AnyMessageView<'_>) -> Result<(), ActorError> {
     for middleware in &self.user_middlewares {
       middleware.with_write(|m| m.before_user(ctx, message))?;
     }
@@ -90,8 +80,8 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
 
   fn invoke_after(
     &self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: &AnyMessageViewGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
+    message: &AnyMessageView<'_>,
     mut result: Result<(), ActorError>,
   ) -> Result<(), ActorError> {
     for middleware in self.user_middlewares.iter().rev() {
@@ -101,17 +91,14 @@ impl<TB: RuntimeToolbox + 'static> MessageInvokerPipelineGeneric<TB> {
   }
 }
 
-fn restore_sender<TB: RuntimeToolbox + 'static>(
-  ctx: &mut ActorContextGeneric<'_, TB>,
-  previous: Option<ActorRefGeneric<TB>>,
-) {
+fn restore_sender(ctx: &mut ActorContext<'_>, previous: Option<ActorRef>) {
   match previous {
     | Some(target) => ctx.set_sender(Some(target)),
     | None => ctx.clear_sender(),
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for MessageInvokerPipelineGeneric<TB> {
+impl Default for MessageInvokerPipeline {
   fn default() -> Self {
     Self::new()
   }

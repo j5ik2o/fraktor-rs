@@ -2,18 +2,16 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{PubSubBatch, PubSubSubscriber, PubSubTopic, PubSubTopicOptions};
 
 /// Delivery request passed to `DeliveryEndpoint`.
-pub struct DeliverBatchRequest<TB: RuntimeToolbox> {
+pub struct DeliverBatchRequest {
   /// Target topic.
   pub topic:       PubSubTopic,
   /// Batch payload.
   pub batch:       PubSubBatch,
   /// Subscribers to deliver to.
-  pub subscribers: Vec<PubSubSubscriber<TB>>,
+  pub subscribers: Vec<PubSubSubscriber>,
   /// Effective delivery options.
   pub options:     PubSubTopicOptions,
 }

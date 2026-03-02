@@ -2,8 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSharedGeneric, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-  subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -26,7 +25,7 @@ use crate::core::{
 /// EventStream イベントを収集するテスト用 subscriber
 #[derive(Clone)]
 struct TestSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl TestSubscriber {
@@ -34,27 +33,25 @@ impl TestSubscriber {
     Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
   }
 
-  fn events(&self) -> Vec<EventStreamEvent<NoStdToolbox>> {
+  fn events(&self) -> Vec<EventStreamEvent> {
     self.events.lock().clone()
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for TestSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for TestSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
-fn subscribe_recorder(
-  event_stream: &EventStreamSharedGeneric<NoStdToolbox>,
-) -> (TestSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe_recorder(event_stream: &EventStreamShared) -> (TestSubscriber, EventStreamSubscription) {
   let subscriber = TestSubscriber::new();
   let handle = subscriber_handle(subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
 }
 
-fn extract_cluster_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<ClusterEvent> {
+fn extract_cluster_events(events: &[EventStreamEvent]) -> Vec<ClusterEvent> {
   events
     .iter()
     .filter_map(|e| {
@@ -68,7 +65,7 @@ fn extract_cluster_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<Clus
     .collect()
 }
 
-fn extract_pub_sub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubSubEvent> {
+fn extract_pub_sub_events(events: &[EventStreamEvent]) -> Vec<PubSubEvent> {
   events
     .iter()
     .filter_map(|e| {
@@ -84,20 +81,17 @@ fn extract_pub_sub_events(events: &[EventStreamEvent<NoStdToolbox>]) -> Vec<PubS
 
 #[derive(Clone)]
 struct StubEndpoint {
-  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+  failed: Vec<PubSubSubscriber>,
 }
 
 impl StubEndpoint {
-  fn new(failed: Vec<PubSubSubscriber<NoStdToolbox>>) -> Self {
+  fn new(failed: Vec<PubSubSubscriber>) -> Self {
     Self { failed }
   }
 }
 
 impl DeliveryEndpoint<NoStdToolbox> for StubEndpoint {
-  fn deliver(
-    &mut self,
-    request: DeliverBatchRequest<NoStdToolbox>,
-  ) -> Result<DeliveryReport<NoStdToolbox>, PubSubError> {
+  fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let failed = request
       .subscribers
       .into_iter()
@@ -109,13 +103,13 @@ impl DeliveryEndpoint<NoStdToolbox> for StubEndpoint {
 }
 
 fn make_pubsub(
-  event_stream: EventStreamSharedGeneric<NoStdToolbox>,
+  event_stream: EventStreamShared,
   registry: &KindRegistry,
-  failed: Vec<PubSubSubscriber<NoStdToolbox>>,
+  failed: Vec<PubSubSubscriber>,
 ) -> ClusterPubSubImpl<NoStdToolbox> {
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
   let serialization_registry = ArcShared::new(
-    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistryGeneric::from_setup(&setup),
+    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
   );
   let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
@@ -126,7 +120,7 @@ fn starts_when_topic_kind_is_registered() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (_subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
@@ -137,7 +131,7 @@ fn starts_when_topic_kind_is_registered() {
 #[test]
 fn fails_and_fires_event_when_topic_kind_missing() {
   let registry = KindRegistry::new();
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
@@ -159,7 +153,7 @@ fn publish_accepts_and_emits_events() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
@@ -176,7 +170,7 @@ fn publish_accepts_and_emits_events() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -193,7 +187,7 @@ fn publish_accepts_and_emits_events() {
 fn publish_rejects_when_no_subscribers() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
 
   let mut pubsub = make_pubsub(event_stream, &registry, Vec::new());
   pubsub.start().expect("start");
@@ -206,7 +200,7 @@ fn publish_rejects_when_no_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -218,7 +212,7 @@ fn topology_update_reactivates_suspended_subscribers() {
   let mut registry = KindRegistry::new();
   registry.register_all(Vec::new());
 
-  let event_stream: EventStreamSharedGeneric<NoStdToolbox> = EventStreamShared::default();
+  let event_stream: EventStreamShared = EventStreamShared::default();
   let (subscriber, _subscription) = subscribe_recorder(&event_stream);
 
   let topic = PubSubTopic::from("news");
@@ -234,7 +228,7 @@ fn topology_update_reactivates_suspended_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessageGeneric::new(batch),
+    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let _ = pubsub.publish(request).expect("publish");

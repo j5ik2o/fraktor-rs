@@ -4,21 +4,18 @@
 // reference these via `super::TypeName`.
 use super::{
   actor_path_registry::ActorPathRegistry,
-  ask_futures::AskFuturesGeneric,
-  cells_shared::CellsSharedGeneric,
-  extensions::ExtensionsGeneric,
-  extra_top_levels::ExtraTopLevelsGeneric,
+  ask_futures::AskFutures,
+  cells_shared::CellsShared,
+  extensions::Extensions,
+  extra_top_levels::ExtraTopLevels,
   guardian::{GuardianKind, GuardiansState},
   provider::{
-    ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallersGeneric, ActorRefProviderHandle,
-    ActorRefProviderSharedGeneric, ActorRefProvidersGeneric,
+    ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared,
+    ActorRefProviders,
   },
-  registries::RegistriesGeneric,
-  remote::{
-    RemoteAuthorityError, RemoteAuthorityRegistryGeneric, RemoteWatchHook, RemoteWatchHookDynSharedGeneric,
-    RemotingConfig,
-  },
-  temp_actors::TempActorsGeneric,
+  registries::Registries,
+  remote::{RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig},
+  temp_actors::TempActors,
 };
 
 mod authority_state;
@@ -32,5 +29,5 @@ mod system_state_shared;
 mod system_state_weak;
 
 pub use authority_state::AuthorityState;
-pub use system_state_shared::{SystemStateShared, SystemStateSharedGeneric};
-pub use system_state_weak::SystemStateWeakGeneric;
+pub use system_state_shared::SystemStateShared;
+pub use system_state_weak::SystemStateWeak;

@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::Any;
 
-use fraktor_actor_rs::core::actor::ActorContextGeneric;
+use fraktor_actor_rs::core::actor::ActorContext;
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use crate::core::persistent_actor::PersistentActor;
@@ -33,7 +33,7 @@ pub trait PersistentFsm<TB: RuntimeToolbox + 'static>: PersistentActor<TB> {
   /// Persists an event and applies the state transition after persistence acknowledgment.
   fn persist_state_transition(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: Self::DomainEvent,
     next_state: Self::State,
   ) {
@@ -47,7 +47,7 @@ pub trait PersistentFsm<TB: RuntimeToolbox + 'static>: PersistentActor<TB> {
   /// acknowledgment.
   fn persist_state_transition_async(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
+    ctx: &mut ActorContext<'_>,
     event: Self::DomainEvent,
     next_state: Self::State,
   ) {

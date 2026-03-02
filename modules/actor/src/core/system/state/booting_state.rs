@@ -2,16 +2,16 @@
 
 #![allow(dead_code)]
 
-use super::{GuardianKind, SystemStateSharedGeneric, running_state::RunningSystemStateGeneric};
+use super::{GuardianKind, SystemStateShared, running_state::RunningSystemState};
 use crate::core::{actor::Pid, spawn::SpawnError};
 
 /// Wrapper for the system state while guardians are being registered.
-pub(crate) struct BootingSystemStateGeneric<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> {
-  state: SystemStateSharedGeneric<TB>,
+pub(crate) struct BootingSystemState {
+  state: SystemStateShared,
 }
 
-impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> BootingSystemStateGeneric<TB> {
-  pub(crate) const fn new(state: SystemStateSharedGeneric<TB>) -> Self {
+impl BootingSystemState {
+  pub(crate) const fn new(state: SystemStateShared) -> Self {
     Self { state }
   }
 
@@ -19,7 +19,7 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Boot
     self.state.register_guardian_pid(kind, pid);
   }
 
-  pub(crate) fn into_running(self) -> Result<RunningSystemStateGeneric<TB>, SpawnError> {
+  pub(crate) fn into_running(self) -> Result<RunningSystemState, SpawnError> {
     let missing = [
       (GuardianKind::Root, self.state.root_guardian_pid()),
       (GuardianKind::System, self.state.system_guardian_pid()),
@@ -32,6 +32,6 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Boot
       return Err(SpawnError::system_not_bootstrapped());
     }
 
-    Ok(RunningSystemStateGeneric::new(self.state))
+    Ok(RunningSystemState::new(self.state))
   }
 }

@@ -8,12 +8,11 @@ mod tests;
 use alloc::{boxed::Box, string::ToString};
 use core::time::Duration;
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 use tracing::{Level, event};
 
 use crate::{
   core::event::{
-    logging::{LogEvent, LogLevel, LoggerSubscriberGeneric, LoggerWriter},
+    logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
     stream::EventStreamSubscriber as CoreEventStreamSubscriber,
   },
   std::event::stream::{EventStreamEvent, EventStreamSubscriber},
@@ -21,7 +20,7 @@ use crate::{
 
 /// Event stream subscriber that forwards runtime log events to the `tracing` crate.
 pub struct TracingLoggerSubscriber {
-  inner: LoggerSubscriberGeneric<StdToolbox>,
+  inner: LoggerSubscriber,
 }
 
 impl TracingLoggerSubscriber {
@@ -32,7 +31,7 @@ impl TracingLoggerSubscriber {
   #[must_use]
   pub fn new(level: LogLevel) -> Self {
     let writer: Box<dyn LoggerWriter> = Box::new(TracingLoggerWriter);
-    Self { inner: LoggerSubscriberGeneric::new(level, writer) }
+    Self { inner: LoggerSubscriber::new(level, writer) }
   }
 
   /// Returns the minimum severity handled by this subscriber.

@@ -7,7 +7,6 @@ mod dispatch_executor_adapter;
 /// Dispatcher configuration bindings tailored for `StdToolbox`.
 mod dispatcher_config;
 mod schedule_adapter;
-/// Type aliases that expose core dispatcher handles in std environments.
 mod types;
 
 pub use base::*;

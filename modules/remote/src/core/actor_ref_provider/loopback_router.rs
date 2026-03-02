@@ -9,7 +9,7 @@ use alloc::{
 use ahash::RandomState;
 use fraktor_actor_rs::core::{
   event::logging::LogLevel,
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
+  system::{ActorSystem, ActorSystemWeak},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::RuntimeToolbox,
@@ -41,11 +41,11 @@ trait LoopbackDeliverer: Send + Sync {
 /// to avoid circular references and memory leaks in the static registry.
 struct LoopbackDelivererImpl<TB: RuntimeToolbox + 'static> {
   reader: EndpointReaderGeneric<TB>,
-  system: ActorSystemWeakGeneric<TB>,
+  system: ActorSystemWeak,
 }
 
 impl<TB: RuntimeToolbox + 'static> LoopbackDelivererImpl<TB> {
-  fn new(reader: EndpointReaderGeneric<TB>, system: ActorSystemWeakGeneric<TB>) -> Self {
+  fn new(reader: EndpointReaderGeneric<TB>, system: ActorSystemWeak) -> Self {
     Self { reader, system }
   }
 }
@@ -89,11 +89,8 @@ pub(crate) fn scheme() -> &'static str {
 ///
 /// The system reference is stored as a weak reference to avoid circular references
 /// and ensure proper cleanup when the actor system is dropped.
-pub(crate) fn register_endpoint<TB>(
-  authority: String,
-  reader: EndpointReaderGeneric<TB>,
-  system: ActorSystemGeneric<TB>,
-) where
+pub(crate) fn register_endpoint<TB>(authority: String, reader: EndpointReaderGeneric<TB>, system: ActorSystem)
+where
   TB: RuntimeToolbox + 'static, {
   let deliverer: ArcDeliverer = ArcShared::new(LoopbackDelivererImpl::new(reader, system.downgrade()));
   let mut guard = REGISTRY.lock();

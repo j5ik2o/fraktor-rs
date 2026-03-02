@@ -33,8 +33,8 @@ pub use default_setup::{default_serialization_extension_id, default_serializatio
 pub use delegator::SerializationDelegator;
 pub use error::SerializationError;
 pub use error_event::SerializationErrorEvent;
-pub use extension::{SerializationExtension, SerializationExtensionGeneric};
-pub use extension_shared::{SerializationExtensionShared, SerializationExtensionSharedGeneric};
+pub use extension::SerializationExtension;
+pub use extension_shared::SerializationExtensionShared;
 pub use not_serializable_error::NotSerializableError;
 pub use serialization_extension_id::SerializationExtensionId;
 pub use serialization_extension_installer::SerializationExtensionInstaller;

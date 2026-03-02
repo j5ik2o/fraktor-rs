@@ -14,9 +14,9 @@ mod mailbox_requirement;
 /// Supervisor options module.
 mod supervisor_options;
 
-pub use base::{Props, PropsGeneric};
+pub use base::Props;
 pub use factory::ActorFactory;
-pub use factory_shared::{ActorFactoryShared, ActorFactorySharedGeneric};
+pub use factory_shared::ActorFactoryShared;
 pub use mailbox_config::MailboxConfig;
 pub use mailbox_requirement::MailboxRequirement;
 pub use supervisor_options::SupervisorOptions;

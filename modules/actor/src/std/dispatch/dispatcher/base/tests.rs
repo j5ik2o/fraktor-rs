@@ -1,6 +1,6 @@
 extern crate std;
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor},
@@ -32,7 +32,7 @@ impl DispatchExecutor for TestExecutor {
   }
 }
 
-impl CoreDispatchExecutor<StdToolbox> for TestExecutor {
+impl CoreDispatchExecutor for TestExecutor {
   fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     *Self::lock_state(&self.executed) = true;
     Ok(())
@@ -52,7 +52,7 @@ fn dispatch_executor_trait_implemented() {
 #[test]
 fn core_dispatch_executor_trait_implemented() {
   let (mut executor, executed) = TestExecutor::new();
-  let executor_dyn: &mut dyn CoreDispatchExecutor<StdToolbox> = &mut executor;
+  let executor_dyn: &mut dyn CoreDispatchExecutor = &mut executor;
 
   // This test just verifies trait implementation compiles correctly
   let _ = executor_dyn;

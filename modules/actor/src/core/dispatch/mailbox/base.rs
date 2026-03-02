@@ -8,13 +8,12 @@ use core::num::NonZeroUsize;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, QueueError},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::sync_mutex_like::SyncMutexLike,
+  runtime_toolbox::RuntimeMutex,
 };
 
 use super::{
-  BackpressurePublisherGeneric, MailboxOfferFutureGeneric, MailboxScheduleState, QueueStateHandle, ScheduleHints,
-  SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentationGeneric,
+  BackpressurePublisher, MailboxOfferFuture, MailboxScheduleState, QueueStateHandle, ScheduleHints, SystemQueue,
+  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
   mailbox_message::MailboxMessage, map_user_queue_error,
 };
 use crate::core::{
@@ -22,26 +21,23 @@ use crate::core::{
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   error::SendError,
   event::logging::LogLevel,
-  messaging::{AnyMessageGeneric, system_message::SystemMessage},
-  system::state::SystemStateSharedGeneric,
+  messaging::{AnyMessage, system_message::SystemMessage},
+  system::state::SystemStateShared,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
-pub struct MailboxGeneric<TB: RuntimeToolbox + 'static> {
+pub struct Mailbox {
   policy:          MailboxPolicy,
   system:          SystemQueue,
-  user:            QueueStateHandle<AnyMessageGeneric<TB>, TB>,
+  user:            QueueStateHandle<AnyMessage>,
   state:           MailboxScheduleState,
-  instrumentation: ToolboxMutex<Option<MailboxInstrumentationGeneric<TB>>, TB>,
+  instrumentation: RuntimeMutex<Option<MailboxInstrumentation>>,
 }
 
-unsafe impl<TB: RuntimeToolbox + 'static> Send for MailboxGeneric<TB> {}
-unsafe impl<TB: RuntimeToolbox + 'static> Sync for MailboxGeneric<TB> {}
+unsafe impl Send for Mailbox {}
+unsafe impl Sync for Mailbox {}
 
-impl<TB> MailboxGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Mailbox {
   /// Creates a new mailbox using the provided policy.
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
@@ -51,12 +47,12 @@ where
       system: SystemQueue::new(),
       user: user_handles,
       state: MailboxScheduleState::new(),
-      instrumentation: <TB::MutexFamily as SyncMutexFamily>::create(None),
+      instrumentation: RuntimeMutex::new(None),
     }
   }
 
   /// Installs instrumentation hooks for metrics emission.
-  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentationGeneric<TB>) {
+  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
@@ -67,7 +63,7 @@ where
   }
 
   /// Returns the system state handle if instrumentation has been installed.
-  pub(crate) fn system_state(&self) -> Option<SystemStateSharedGeneric<TB>> {
+  pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
     self.instrumentation.lock().as_ref().and_then(|inst| inst.system_state())
   }
 
@@ -85,7 +81,7 @@ where
   }
 
   /// Installs a backpressure publisher used for dispatcher coordination.
-  pub(crate) fn attach_backpressure_publisher(&self, publisher: BackpressurePublisherGeneric<TB>) {
+  pub(crate) fn attach_backpressure_publisher(&self, publisher: BackpressurePublisher) {
     let mut guard = self.instrumentation.lock();
     if let Some(instrumentation) = guard.as_mut() {
       instrumentation.attach_backpressure_publisher(publisher);
@@ -98,7 +94,7 @@ where
   ///
   /// Returns an error if the system message queue is full or closed.
   #[allow(clippy::unnecessary_wraps)]
-  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError<TB>> {
+  pub(crate) fn enqueue_system(&self, message: SystemMessage) -> Result<(), SendError> {
     self.system.push(message);
     self.publish_metrics();
     Ok(())
@@ -110,7 +106,7 @@ where
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
   #[cfg_attr(not(test), doc(hidden))]
-  pub fn enqueue_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
+  pub fn enqueue_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     if self.is_suspended() {
       return Err(SendError::suspended(message));
     }
@@ -129,7 +125,7 @@ where
   ///
   /// Returns an error if the mailbox is suspended, capacity checks fail, or queue restoration
   /// fails.
-  pub(crate) fn prepend_user_messages(&self, messages: &VecDeque<AnyMessageGeneric<TB>>) -> Result<(), SendError<TB>> {
+  pub(crate) fn prepend_user_messages(&self, messages: &VecDeque<AnyMessage>) -> Result<(), SendError> {
     let Some(first_message) = messages.front().cloned() else {
       return Ok(());
     };
@@ -198,7 +194,7 @@ where
 
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
-  pub(crate) fn dequeue(&self) -> Option<MailboxMessage<TB>> {
+  pub(crate) fn dequeue(&self) -> Option<MailboxMessage> {
     if let Some(system) = self.system.pop() {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
@@ -298,9 +294,9 @@ where
   fn enqueue_bounded_user(
     &self,
     capacity: usize,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
     overflow: MailboxOverflowStrategy,
-  ) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
+  ) -> Result<EnqueueOutcome, SendError> {
     match overflow {
       | MailboxOverflowStrategy::DropNewest => {
         let len = self.user.len();
@@ -318,7 +314,7 @@ where
       | MailboxOverflowStrategy::Grow => self.offer_user(message),
       | MailboxOverflowStrategy::Block => {
         if self.user.len() >= capacity {
-          let future = MailboxOfferFutureGeneric::new(self.user.state.clone(), message);
+          let future = MailboxOfferFuture::new(self.user.state.clone(), message);
           return Ok(EnqueueOutcome::Pending(future));
         }
         self.offer_user(message)
@@ -326,7 +322,7 @@ where
     }
   }
 
-  fn offer_user(&self, message: AnyMessageGeneric<TB>) -> Result<EnqueueOutcome<TB>, SendError<TB>> {
+  fn offer_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     match self.user.offer(message) {
       | Ok(outcome) => {
         Self::handle_offer_outcome(outcome);
@@ -337,7 +333,7 @@ where
     }
   }
 
-  fn poll_queue<T: Send + 'static>(handles: &QueueStateHandle<T, TB>) -> Option<T> {
+  fn poll_queue<T: Send + 'static>(handles: &QueueStateHandle<T>) -> Option<T> {
     match handles.poll() {
       | Ok(message) => Some(message),
       | Err(QueueError::Empty) => None,
@@ -362,6 +358,3 @@ where
     }
   }
 }
-
-/// Type alias for `MailboxGeneric` with the default `NoStdToolbox`.
-pub type Mailbox = MailboxGeneric<NoStdToolbox>;

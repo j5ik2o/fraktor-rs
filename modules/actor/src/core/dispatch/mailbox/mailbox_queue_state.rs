@@ -2,33 +2,30 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::{
-  collections::{
-    queue::{OfferOutcome, QueueError},
-    wait::{WaitError, WaitQueue, WaitShared},
-  },
-  runtime_toolbox::RuntimeToolbox,
+use fraktor_utils_rs::core::collections::{
+  queue::{OfferOutcome, QueueError},
+  wait::{WaitError, WaitQueue, WaitShared},
 };
 
 use super::UserQueueShared;
 
 /// Maintains shared queue state and wait queues for asynchronous offers/polls.
-pub(crate) struct QueueState<T, TB: RuntimeToolbox>
+pub(crate) struct QueueState<T>
 where
   T: Send + 'static, {
-  pub(crate) queue:            UserQueueShared<T, TB>,
-  pub(crate) producer_waiters: WaitQueue<QueueError<T>, TB>,
-  pub(crate) consumer_waiters: WaitQueue<QueueError<T>, TB>,
+  pub(crate) queue:            UserQueueShared<T>,
+  pub(crate) producer_waiters: WaitQueue<QueueError<T>>,
+  pub(crate) consumer_waiters: WaitQueue<QueueError<T>>,
   pub(crate) size:             AtomicUsize,
 }
 
-impl<T, TB: RuntimeToolbox + 'static> QueueState<T, TB>
+impl<T> QueueState<T>
 where
   T: Send + 'static,
 {
   /// Creates a new queue state wrapper.
   #[must_use]
-  pub(crate) fn new(queue: UserQueueShared<T, TB>) -> Self {
+  pub(crate) fn new(queue: UserQueueShared<T>) -> Self {
     Self { queue, producer_waiters: WaitQueue::new(), consumer_waiters: WaitQueue::new(), size: AtomicUsize::new(0) }
   }
 
@@ -56,11 +53,11 @@ where
     result
   }
 
-  pub(crate) fn register_producer_waiter(&mut self) -> Result<WaitShared<QueueError<T>, TB>, WaitError> {
+  pub(crate) fn register_producer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.producer_waiters.register()
   }
 
-  pub(crate) fn register_consumer_waiter(&mut self) -> Result<WaitShared<QueueError<T>, TB>, WaitError> {
+  pub(crate) fn register_consumer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.register()
   }
 

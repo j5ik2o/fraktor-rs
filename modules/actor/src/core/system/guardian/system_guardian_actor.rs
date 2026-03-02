@@ -2,22 +2,20 @@
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  actor::{Actor, ActorContextGeneric, Pid, actor_ref::ActorRefGeneric},
+  actor::{Actor, ActorContext, Pid, actor_ref::ActorRef},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   system::guardian::SystemGuardianProtocol,
 };
 
-struct HookEntry<TB: RuntimeToolbox + 'static> {
-  actor:     ActorRefGeneric<TB>,
+struct HookEntry {
+  actor:     ActorRef,
   completed: bool,
 }
 
-impl<TB: RuntimeToolbox + 'static> HookEntry<TB> {
+impl HookEntry {
   #[allow(clippy::missing_const_for_fn)]
   fn pid(&self) -> Pid {
     self.actor.pid()
@@ -31,23 +29,23 @@ enum SystemGuardianPhase {
 }
 
 /// Actor managing `/system` termination hooks.
-pub(crate) struct SystemGuardianActor<TB: RuntimeToolbox + 'static> {
-  user_guardian: ActorRefGeneric<TB>,
-  hooks:         Vec<HookEntry<TB>>,
+pub(crate) struct SystemGuardianActor {
+  user_guardian: ActorRef,
+  hooks:         Vec<HookEntry>,
   phase:         SystemGuardianPhase,
 }
 
-impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
+impl SystemGuardianActor {
   /// Creates a new system guardian linked to the provided user guardian.
   #[must_use]
-  pub(crate) const fn new(user_guardian: ActorRefGeneric<TB>) -> Self {
+  pub(crate) const fn new(user_guardian: ActorRef) -> Self {
     Self { user_guardian, hooks: Vec::new(), phase: SystemGuardianPhase::Running }
   }
 
   fn handle_protocol(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    protocol: &SystemGuardianProtocol<TB>,
+    ctx: &mut ActorContext<'_>,
+    protocol: &SystemGuardianProtocol,
   ) -> Result<(), ActorError> {
     match protocol {
       | SystemGuardianProtocol::RegisterTerminationHook(actor) => self.register_hook(ctx, actor.clone()),
@@ -65,11 +63,7 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
     }
   }
 
-  fn register_hook(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    actor: ActorRefGeneric<TB>,
-  ) -> Result<(), ActorError> {
+  fn register_hook(&mut self, ctx: &mut ActorContext<'_>, actor: ActorRef) -> Result<(), ActorError> {
     if matches!(self.phase, SystemGuardianPhase::Terminating | SystemGuardianPhase::Stopped) {
       return Ok(());
     }
@@ -81,7 +75,7 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
     Ok(())
   }
 
-  fn start_termination(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn start_termination(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     match self.phase {
       | SystemGuardianPhase::Running => {
         self.phase = SystemGuardianPhase::Terminating;
@@ -91,7 +85,7 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
           for hook in &mut self.hooks {
             hook
               .actor
-              .tell(AnyMessageGeneric::new(SystemGuardianProtocol::<TB>::TerminationHook))
+              .tell(AnyMessage::new(SystemGuardianProtocol::TerminationHook))
               .map_err(|error| ActorError::from_send_error(&error))?;
           }
           Ok(())
@@ -107,7 +101,7 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
     }
   }
 
-  fn try_complete(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+  fn try_complete(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if !matches!(self.phase, SystemGuardianPhase::Terminating) {
       return Ok(());
     }
@@ -120,24 +114,20 @@ impl<TB: RuntimeToolbox + 'static> SystemGuardianActor<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Actor<TB> for SystemGuardianActor<TB> {
-  fn pre_start(&mut self, ctx: &mut ActorContextGeneric<'_, TB>) -> Result<(), ActorError> {
+impl Actor for SystemGuardianActor {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     ctx.watch(&self.user_guardian).map_err(|error| ActorError::from_send_error(&error))
   }
 
-  fn receive(
-    &mut self,
-    ctx: &mut ActorContextGeneric<'_, TB>,
-    message: AnyMessageViewGeneric<'_, TB>,
-  ) -> Result<(), ActorError> {
-    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol<TB>>() {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol>() {
       self.handle_protocol(ctx, protocol)
     } else {
       Ok(())
     }
   }
 
-  fn on_terminated(&mut self, ctx: &mut ActorContextGeneric<'_, TB>, terminated: Pid) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     if terminated == self.user_guardian.pid() {
       self.start_termination(ctx)?;
     } else {
@@ -147,7 +137,7 @@ impl<TB: RuntimeToolbox + 'static> Actor<TB> for SystemGuardianActor<TB> {
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContextGeneric<'_, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_error| {
       SupervisorDirective::Stop
     })

@@ -1,10 +1,7 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 #[cfg(test)]
 mod tests;
@@ -12,26 +9,23 @@ mod tests;
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchExecutor, DispatchExecutorRunnerGeneric, DispatcherSharedGeneric, InlineExecutorGeneric,
-      InlineScheduleAdapter, ScheduleAdapterSharedGeneric,
+      DispatchExecutor, DispatchExecutorRunner, DispatcherShared, InlineExecutor, InlineScheduleAdapter,
+      ScheduleAdapterShared,
     },
-    mailbox::{MailboxGeneric, MailboxOverflowStrategy},
+    mailbox::{Mailbox, MailboxOverflowStrategy},
   },
   spawn::SpawnError,
 };
 
-/// Dispatcher configuration attached to [`PropsGeneric`](crate::core::props::PropsGeneric).
-pub struct DispatcherConfigGeneric<TB: RuntimeToolbox + 'static> {
-  executor:            ArcShared<DispatchExecutorRunnerGeneric<TB>>,
+/// Dispatcher configuration attached to [`Props`](crate::core::props::Props).
+pub struct DispatcherConfig {
+  executor:            ArcShared<DispatchExecutorRunner>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  schedule_adapter:    ScheduleAdapterSharedGeneric<TB>,
+  schedule_adapter:    ScheduleAdapterShared,
 }
 
-/// Type alias for [DispatcherConfigGeneric] with the default [NoStdToolbox].
-pub type DispatcherConfig = DispatcherConfigGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
+impl Clone for DispatcherConfig {
   fn clone(&self) -> Self {
     Self {
       executor:            self.executor.clone(),
@@ -42,21 +36,21 @@ impl<TB: RuntimeToolbox + 'static> Clone for DispatcherConfigGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
+impl DispatcherConfig {
   /// Creates a configuration from an executor.
   #[must_use]
-  pub fn from_executor(executor: Box<dyn DispatchExecutor<TB>>) -> Self {
+  pub fn from_executor(executor: Box<dyn DispatchExecutor>) -> Self {
     Self {
-      executor:            ArcShared::new(DispatchExecutorRunnerGeneric::new(executor)),
+      executor:            ArcShared::new(DispatchExecutorRunner::new(executor)),
       throughput_deadline: None,
       starvation_deadline: None,
-      schedule_adapter:    InlineScheduleAdapter::shared::<TB>(),
+      schedule_adapter:    InlineScheduleAdapter::shared(),
     }
   }
 
   /// Returns the current executor runner handle.
   #[must_use]
-  pub fn executor(&self) -> ArcShared<DispatchExecutorRunnerGeneric<TB>> {
+  pub fn executor(&self) -> ArcShared<DispatchExecutorRunner> {
     self.executor.clone()
   }
 
@@ -96,14 +90,14 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
 
   /// Overrides the scheduler adapter used for creating wakers and pending hooks.
   #[must_use]
-  pub fn with_schedule_adapter(mut self, adapter: ScheduleAdapterSharedGeneric<TB>) -> Self {
+  pub fn with_schedule_adapter(mut self, adapter: ScheduleAdapterShared) -> Self {
     self.schedule_adapter = adapter;
     self
   }
 
   /// Returns the configured schedule adapter.
   #[must_use]
-  pub fn schedule_adapter(&self) -> ScheduleAdapterSharedGeneric<TB> {
+  pub fn schedule_adapter(&self) -> ScheduleAdapterShared {
     self.schedule_adapter.clone()
   }
 
@@ -113,10 +107,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   ///
   /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox uses
   /// [`MailboxOverflowStrategy::Block`] with an executor that doesn't support blocking operations.
-  pub fn build_dispatcher(
-    &self,
-    mailbox: ArcShared<MailboxGeneric<TB>>,
-  ) -> Result<DispatcherSharedGeneric<TB>, SpawnError> {
+  pub fn build_dispatcher(&self, mailbox: ArcShared<Mailbox>) -> Result<DispatcherShared, SpawnError> {
     // Validate mailbox configuration against executor capabilities
     let policy = mailbox.policy();
     if policy.overflow() == MailboxOverflowStrategy::Block && !self.executor.supports_blocking() {
@@ -126,7 +117,7 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
       ));
     }
 
-    Ok(DispatcherSharedGeneric::with_adapter(
+    Ok(DispatcherShared::with_adapter(
       mailbox,
       self.executor.clone(),
       self.schedule_adapter(),
@@ -136,8 +127,8 @@ impl<TB: RuntimeToolbox + 'static> DispatcherConfigGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for DispatcherConfigGeneric<TB> {
+impl Default for DispatcherConfig {
   fn default() -> Self {
-    Self::from_executor(Box::new(InlineExecutorGeneric::<TB>::new()))
+    Self::from_executor(Box::new(InlineExecutor::new()))
   }
 }

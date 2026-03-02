@@ -4,20 +4,20 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   dead_letter::DeadLetterReason,
   error::ActorError,
   event::stream::CorrelationId,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationCallScope, SerializationExtension, SerializationExtensionShared, SerializationSetup,
     SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdMutex, NoStdToolbox},
@@ -32,12 +32,8 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -46,12 +42,8 @@ struct RecordingActor {
   events: ArcShared<NoStdMutex<Vec<String>>>,
 }
 
-impl Actor<NoStdToolbox> for RecordingActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for RecordingActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(payload) = message.downcast_ref::<String>() {
       self.events.lock().push(payload.clone());
     }
@@ -59,10 +51,10 @@ impl Actor<NoStdToolbox> for RecordingActor {
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("reader-tests");
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("reader-tests");
   let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  ActorSystemGeneric::new_with_config(&props, &system_config).expect("system builds")
+  ActorSystem::new_with_config(&props, &system_config).expect("system builds")
 }
 
 fn serialization_setup() -> SerializationSetup {
@@ -82,10 +74,8 @@ fn serialization_setup() -> SerializationSetup {
     .expect("build setup")
 }
 
-fn serialization_extension(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-) -> SerializationExtensionSharedGeneric<NoStdToolbox> {
-  SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(system, serialization_setup()))
+fn serialization_extension(system: &ActorSystem) -> SerializationExtensionShared {
+  SerializationExtensionShared::new(SerializationExtension::new(system, serialization_setup()))
 }
 
 fn remote_node() -> RemoteNodeId {
@@ -101,7 +91,7 @@ fn recipient_path(system: &str, guardian: GuardianKind, segments: &[&str]) -> Ac
 }
 
 fn outbound_message(recipient: &ActorPath) -> OutboundMessage<NoStdToolbox> {
-  let message = AnyMessageGeneric::new("ping".to_string());
+  let message = AnyMessage::new("ping".to_string());
   OutboundMessage::user(message, recipient.clone(), remote_node())
 }
 
@@ -151,7 +141,7 @@ fn deliver_routes_message_to_local_actor() {
   let serialization = serialization_extension(&system);
   let reader = EndpointReader::new(system.downgrade(), serialization);
   let events: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let props = PropsGeneric::from_fn({
+  let props = Props::from_fn({
     let events = events.clone();
     move || RecordingActor { events: events.clone() }
   })
@@ -163,7 +153,7 @@ fn deliver_routes_message_to_local_actor() {
   let inbound = InboundEnvelope::new(
     recipient,
     remote_node(),
-    AnyMessageGeneric::new("delivered".to_string()),
+    AnyMessage::new("delivered".to_string()),
     None,
     CorrelationId::from_u128(1),
     crate::core::envelope::OutboundPriority::User,

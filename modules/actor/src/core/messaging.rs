@@ -10,7 +10,7 @@ pub mod message_invoker;
 /// Internal system messages exchanged within the actor runtime.
 pub mod system_message;
 
-pub use any_message::{AnyMessage, AnyMessageGeneric};
-pub use any_message_view::{AnyMessageView, AnyMessageViewGeneric};
+pub use any_message::AnyMessage;
+pub use any_message_view::AnyMessageView;
 pub use ask_error::AskError;
-pub use ask_response::{AskResponse, AskResponseGeneric, AskResult};
+pub use ask_response::{AskResponse, AskResult};

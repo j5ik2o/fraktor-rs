@@ -1,8 +1,6 @@
 //! Pekko-inspired router factories.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use crate::core::typed::{behavior::Behavior, pool_router_builder::PoolRouterBuilderGeneric};
+use crate::core::typed::{behavior::Behavior, pool_router_builder::PoolRouterBuilder};
 
 /// Provides factory methods for creating routers.
 pub struct Routers;
@@ -12,11 +10,10 @@ impl Routers {
   ///
   /// Messages are distributed using round-robin by default.
   #[must_use]
-  pub fn pool<M, TB, F>(pool_size: usize, behavior_factory: F) -> PoolRouterBuilderGeneric<M, TB>
+  pub fn pool<M, F>(pool_size: usize, behavior_factory: F) -> PoolRouterBuilder<M>
   where
     M: Send + Sync + Clone + 'static,
-    TB: RuntimeToolbox + 'static,
-    F: Fn() -> Behavior<M, TB> + Send + Sync + 'static, {
-    PoolRouterBuilderGeneric::new(pool_size, behavior_factory)
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    PoolRouterBuilder::new(pool_size, behavior_factory)
   }
 }

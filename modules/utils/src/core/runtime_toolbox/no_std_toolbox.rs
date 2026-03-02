@@ -1,12 +1,12 @@
 use core::time::Duration;
 
-use super::{RuntimeToolbox, sync_mutex_family::SpinMutexFamily, sync_rwlock_family::SpinRwLockFamily};
+use super::RuntimeToolbox;
 use crate::core::time::{ManualClock, SchedulerTickHandle};
 
 #[cfg(test)]
 mod tests;
 
-/// Default toolbox for no_std environments, backed by [`SpinMutexFamily`].
+/// Default toolbox for no_std environments.
 #[derive(Clone, Copy, Debug)]
 pub struct NoStdToolbox {
   clock: ManualClock,
@@ -28,8 +28,6 @@ impl Default for NoStdToolbox {
 
 impl RuntimeToolbox for NoStdToolbox {
   type Clock = ManualClock;
-  type MutexFamily = SpinMutexFamily;
-  type RwLockFamily = SpinRwLockFamily;
 
   fn clock(&self) -> &Self::Clock {
     &self.clock

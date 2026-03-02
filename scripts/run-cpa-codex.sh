@@ -1,1 +1,0 @@
-../references/okite-ai/scripts/run-cpa-codex.sh

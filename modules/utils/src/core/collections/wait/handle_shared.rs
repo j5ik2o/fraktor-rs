@@ -17,6 +17,8 @@ pub struct WaitShared<E: Send + 'static, TB: RuntimeToolbox = NoStdToolbox> {
   node: WaitNodeShared<E, TB>,
 }
 
+impl<E: Send + 'static, TB: RuntimeToolbox + 'static> Unpin for WaitShared<E, TB> {}
+
 impl<E: Send + 'static, TB> WaitShared<E, TB>
 where
   TB: RuntimeToolbox + 'static,
@@ -35,9 +37,9 @@ where
   type Output = Result<(), E>;
 
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-    let this = self.get_mut();
+    let node = &self.as_ref().get_ref().node;
 
-    this.node.with_write(|guard| match guard.poll(cx) {
+    node.with_write(|guard| match guard.poll(cx) {
       | Poll::Ready(()) => {
         let result = guard.take_result().unwrap_or_else(|| {
           debug_assert!(false, "Completed waiter must provide a result");

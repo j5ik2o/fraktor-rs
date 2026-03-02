@@ -1,14 +1,14 @@
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
   extension::ExtensionInstallers,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -20,12 +20,8 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -38,12 +34,12 @@ fn installer_registers_persistence_extension() {
   let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_extension_installers(installers);
-  let props = PropsGeneric::from_fn(|| NoopActor);
-  let system = ActorSystemGeneric::<NoStdToolbox>::new_with_config(&props, &config).expect("system");
+  let props = Props::from_fn(|| NoopActor);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
   let extension = system.extended().extension_by_type::<PersistenceExtensionSharedGeneric<NoStdToolbox>>();
 

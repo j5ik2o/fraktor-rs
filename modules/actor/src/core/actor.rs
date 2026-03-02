@@ -18,12 +18,12 @@ mod pid;
 mod pipe_spawn_error;
 mod receive_state;
 
-pub use actor_cell::{ActorCell, ActorCellGeneric};
+pub use actor_cell::ActorCell;
+pub use actor_context::ActorContext;
 pub(crate) use actor_context::STASH_OVERFLOW_REASON;
-pub use actor_context::{ActorContext, ActorContextGeneric};
 pub use actor_lifecycle::Actor;
-pub(crate) use actor_shared::ActorSharedGeneric;
-pub use child_ref::{ChildRef, ChildRefGeneric};
+pub(crate) use actor_shared::ActorShared;
+pub use child_ref::ChildRef;
 pub use context_pipe_task_id::ContextPipeTaskId;
 pub use pid::Pid;
 pub use pipe_spawn_error::PipeSpawnError;

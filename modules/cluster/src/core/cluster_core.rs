@@ -13,13 +13,13 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
-  messaging::AnyMessageGeneric,
+  event::stream::{EventStreamEvent, EventStreamShared},
+  messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
 
@@ -38,8 +38,8 @@ use crate::core::{
 pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   provider:            ClusterProviderShared<TB>,
   block_list_provider: ArcShared<dyn BlockListProvider>,
-  event_stream:        EventStreamSharedGeneric<TB>,
-  downing_provider:    ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
+  event_stream:        EventStreamShared,
+  downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
   gossiper:            GossiperShared<TB>,
   pub_sub:             ClusterPubSubShared<TB>,
   startup_state:       ClusterStartupState,
@@ -65,8 +65,8 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
     config: &ClusterExtensionConfig,
     provider: ClusterProviderShared<TB>,
     block_list_provider: ArcShared<dyn BlockListProvider>,
-    event_stream: EventStreamSharedGeneric<TB>,
-    downing_provider: ArcShared<ToolboxMutex<Box<dyn DowningProvider>, TB>>,
+    event_stream: EventStreamShared,
+    downing_provider: ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
     gossiper: GossiperShared<TB>,
     pubsub: ClusterPubSubShared<TB>,
     kind_registry: KindRegistry,
@@ -401,7 +401,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
-    let payload = AnyMessageGeneric::new(event);
+    let payload = AnyMessage::new(event);
     let extension_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&extension_event);
   }

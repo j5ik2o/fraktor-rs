@@ -1,6 +1,8 @@
 //! Describes an outbound message queued for serialization.
 
-use fraktor_actor_rs::core::{actor::actor_path::ActorPath, messaging::AnyMessageGeneric};
+use core::marker::PhantomData;
+
+use fraktor_actor_rs::core::{actor::actor_path::ActorPath, messaging::AnyMessage};
 use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
 
 use super::priority::OutboundPriority;
@@ -8,24 +10,25 @@ use crate::core::remote_node_id::RemoteNodeId;
 
 /// Message awaiting serialization and transport.
 pub struct OutboundMessage<TB: RuntimeToolbox + 'static> {
-  message:     AnyMessageGeneric<TB>,
+  message:     AnyMessage,
   recipient:   ActorPath,
   remote_node: RemoteNodeId,
   sender:      Option<ActorPath>,
   priority:    OutboundPriority,
+  _marker:     PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> OutboundMessage<TB> {
   /// Creates a user-priority message.
   #[must_use]
-  pub fn user(message: AnyMessageGeneric<TB>, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::User }
+  pub fn user(message: AnyMessage, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::User, _marker: PhantomData }
   }
 
   /// Creates a system-priority message.
   #[must_use]
-  pub fn system(message: AnyMessageGeneric<TB>, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
-    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::System }
+  pub fn system(message: AnyMessage, recipient: ActorPath, remote_node: RemoteNodeId) -> Self {
+    Self { message, recipient, remote_node, sender: None, priority: OutboundPriority::System, _marker: PhantomData }
   }
 
   /// Attaches a sender actor path to the message.
@@ -41,7 +44,7 @@ impl<TB: RuntimeToolbox + 'static> OutboundMessage<TB> {
     self.priority
   }
 
-  pub(crate) fn into_parts(self) -> (AnyMessageGeneric<TB>, ActorPath, RemoteNodeId, Option<ActorPath>) {
+  pub(crate) fn into_parts(self) -> (AnyMessage, ActorPath, RemoteNodeId, Option<ActorPath>) {
     (self.message, self.recipient, self.remote_node, self.sender)
   }
 }

@@ -15,20 +15,20 @@ use fraktor_actor_rs::core::{
   actor::{
     Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-    actor_ref::{ActorRefGeneric, ActorRefSender, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
   event::logging::LogLevel,
-  messaging::{AnyMessageGeneric, system_message::SystemMessage},
+  messaging::{AnyMessage, system_message::SystemMessage},
   system::{
-    ActorSystemGeneric, ActorSystemWeakGeneric,
+    ActorSystem, ActorSystemWeak,
     provider::ActorRefProvider,
     remote::{RemoteAuthorityError, RemoteWatchHook},
   },
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::SharedAccess,
 };
 use hashbrown::HashMap;
 pub use installer::RemoteActorRefProviderInstaller;
@@ -46,19 +46,19 @@ use crate::core::{
   watcher::{RemoteWatcherCommand, RemoteWatcherDaemon},
 };
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
+/// Provider that creates [`ActorRef`] instances for remote recipients.
 ///
 /// Uses a weak reference to the actor system to avoid circular references,
 /// since this provider is registered into the actor system's extensions.
 pub struct RemoteActorRefProviderGeneric<TB: RuntimeToolbox + 'static> {
-  system:         ActorSystemWeakGeneric<TB>,
+  system:         ActorSystemWeak,
   writer:         EndpointWriterSharedGeneric<TB>,
   control:        RemotingControlShared<TB>,
-  watcher_daemon: ActorRefGeneric<TB>,
+  watcher_daemon: ActorRef,
   watch_entries:  HashMap<Pid, RemoteWatchEntry, RandomState>,
 }
 
-/// Provider that creates [`ActorRefGeneric`] instances for remote recipients.
+/// Provider that creates [`ActorRef`] instances for remote recipients.
 pub type RemoteActorRefProvider = RemoteActorRefProviderGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
@@ -69,17 +69,17 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   }
 
   /// Creates a remote actor reference for the provided path.
-  pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, RemoteActorRefProviderError> {
+  pub fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, RemoteActorRefProviderError> {
     let system = self.system.upgrade().ok_or(RemoteActorRefProviderError::SystemUnavailable)?;
     self.control.lock().associate(path.parts()).map_err(RemoteActorRefProviderError::from)?;
     let sender = self.sender_for_path(&path)?;
     let pid = system.allocate_pid();
     self.register_remote_entry(pid, path.clone());
-    Ok(ActorRefGeneric::with_system(pid, sender, &system.state()))
+    Ok(ActorRef::with_system(pid, sender, &system.state()))
   }
 
   pub(crate) fn from_components(
-    system: ActorSystemGeneric<TB>,
+    system: ActorSystem,
     writer: EndpointWriterSharedGeneric<TB>,
     control: RemotingControlShared<TB>,
   ) -> Result<Self, RemoteActorRefProviderError> {
@@ -157,7 +157,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     self
       .watcher_daemon
-      .tell(AnyMessageGeneric::new(command))
+      .tell(AnyMessage::new(command))
       .map(|_| ())
       .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))
   }
@@ -195,7 +195,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefProviderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> RemoteWatchHook<TB> for RemoteActorRefProviderGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> RemoteWatchHook for RemoteActorRefProviderGeneric<TB> {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
       if should_send
@@ -230,7 +230,7 @@ struct RemoteActorRefSender<TB: RuntimeToolbox + 'static> {
 }
 
 impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
-  fn determine_priority(message: &AnyMessageGeneric<TB>) -> OutboundPriority {
+  fn determine_priority(message: &AnyMessage) -> OutboundPriority {
     if message.as_view().downcast_ref::<SystemMessage>().is_some() {
       OutboundPriority::System
     } else {
@@ -238,7 +238,7 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
     }
   }
 
-  fn map_error(&self, error: EndpointWriterError, message: AnyMessageGeneric<TB>) -> SendError<TB> {
+  fn map_error(&self, error: EndpointWriterError, message: AnyMessage) -> SendError {
     match error {
       | EndpointWriterError::QueueFull(_) => SendError::full(message),
       | EndpointWriterError::QueueClosed(_) | EndpointWriterError::QueueUnavailable { .. } => {
@@ -277,8 +277,8 @@ impl<TB: RuntimeToolbox + 'static> RemoteActorRefSender<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender<TB> for RemoteActorRefSender<TB> {
-  fn send(&mut self, message: AnyMessageGeneric<TB>) -> Result<SendOutcome, SendError<TB>> {
+impl<TB: RuntimeToolbox + 'static> ActorRefSender for RemoteActorRefSender<TB> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     let system_state =
       self.writer.with_read(|w| w.system().map(|s| s.state())).ok_or_else(|| SendError::closed(message.clone()))?;
     let normalizer = ActorRefFieldNormalizerGeneric::new(system_state);
@@ -355,12 +355,12 @@ impl RemoteWatchEntry {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefProvider<TB> for RemoteActorRefProviderGeneric<TB> {
+impl<TB: RuntimeToolbox + 'static> ActorRefProvider for RemoteActorRefProviderGeneric<TB> {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     &[ActorPathScheme::FraktorTcp]
   }
 
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<TB>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     Self::actor_ref(self, path).map_err(|error| ActorError::fatal(format!("{error}")))
   }
 }

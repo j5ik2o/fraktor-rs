@@ -1,45 +1,39 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-use fraktor_utils_rs::core::{
-  collections::queue::capabilities::QueueCapabilityRegistry,
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-};
+use fraktor_utils_rs::core::collections::queue::capabilities::QueueCapabilityRegistry;
 
 use super::{
-  factory::ActorFactory, factory_shared::ActorFactorySharedGeneric, mailbox_config::MailboxConfig,
+  factory::ActorFactory, factory_shared::ActorFactoryShared, mailbox_config::MailboxConfig,
   mailbox_requirement::MailboxRequirement,
 };
 use crate::core::{
   actor::Actor,
-  dispatch::{dispatcher::DispatcherConfigGeneric, mailbox::MailboxPolicy},
+  dispatch::{dispatcher::DispatcherConfig, mailbox::MailboxPolicy},
 };
 
 /// Immutable configuration describing how to construct an actor.
-pub struct PropsGeneric<TB: RuntimeToolbox + 'static> {
-  factory:           ActorFactorySharedGeneric<TB>,
+pub struct Props {
+  factory:           ActorFactoryShared,
   name:              Option<String>,
   mailbox_config:    MailboxConfig,
   mailbox_id:        Option<String>,
   middleware:        Vec<String>,
-  dispatcher_config: DispatcherConfigGeneric<TB>,
+  dispatcher_config: DispatcherConfig,
   dispatcher_id:     Option<String>,
   dispatcher_custom: bool,
 }
 
-/// Type alias for [PropsGeneric] with the default [NoStdToolbox].
-pub type Props = PropsGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
+impl Props {
   /// Creates new props from the provided factory.
   #[must_use]
-  pub fn new(factory: Box<dyn ActorFactory<TB>>) -> Self {
+  pub fn new(factory: Box<dyn ActorFactory>) -> Self {
     Self {
-      factory:           ActorFactorySharedGeneric::new(factory),
+      factory:           ActorFactoryShared::new(factory),
       name:              None,
       mailbox_config:    MailboxConfig::default(),
       mailbox_id:        None,
       middleware:        Vec::new(),
-      dispatcher_config: DispatcherConfigGeneric::default(),
+      dispatcher_config: DispatcherConfig::default(),
       dispatcher_id:     None,
       dispatcher_custom: false,
     }
@@ -50,13 +44,13 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   pub fn from_fn<F, A>(factory: F) -> Self
   where
     F: FnMut() -> A + Send + Sync + 'static,
-    A: Actor<TB> + Sync + 'static, {
+    A: Actor + Sync + 'static, {
     Self::new(Box::new(factory))
   }
 
   /// Returns the actor factory.
   #[must_use]
-  pub const fn factory(&self) -> &ActorFactorySharedGeneric<TB> {
+  pub const fn factory(&self) -> &ActorFactoryShared {
     &self.factory
   }
 
@@ -99,7 +93,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Returns the configured dispatcher settings.
   #[must_use]
-  pub const fn dispatcher_config(&self) -> &DispatcherConfigGeneric<TB> {
+  pub const fn dispatcher_config(&self) -> &DispatcherConfig {
     &self.dispatcher_config
   }
 
@@ -140,7 +134,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
 
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
-  pub fn with_dispatcher_config(mut self, dispatcher_config: DispatcherConfigGeneric<TB>) -> Self {
+  pub fn with_dispatcher_config(mut self, dispatcher_config: DispatcherConfig) -> Self {
     self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
@@ -177,7 +171,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
     self
   }
 
-  pub(crate) fn with_resolved_dispatcher_config(mut self, dispatcher_config: DispatcherConfigGeneric<TB>) -> Self {
+  pub(crate) fn with_resolved_dispatcher_config(mut self, dispatcher_config: DispatcherConfig) -> Self {
     self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
@@ -191,7 +185,7 @@ impl<TB: RuntimeToolbox + 'static> PropsGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for PropsGeneric<TB> {
+impl Clone for Props {
   fn clone(&self) -> Self {
     Self {
       factory:           self.factory.clone(),

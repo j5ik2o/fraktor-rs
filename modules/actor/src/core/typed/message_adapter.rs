@@ -23,5 +23,5 @@ pub(crate) use adapter_outcome::AdapterOutcome;
 pub use adapter_payload::AdapterPayload;
 pub(crate) use adapter_ref_handle::AdapterRefHandle;
 pub(crate) use adapter_ref_sender::AdapterRefSender;
-pub use builder::MessageAdapterBuilderGeneric;
+pub use builder::MessageAdapterBuilder;
 pub use registry::MessageAdapterRegistry;

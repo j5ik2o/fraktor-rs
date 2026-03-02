@@ -3,19 +3,20 @@
 #[cfg(test)]
 mod tests;
 
-use core::any::Any;
+use core::{any::Any, marker::PhantomData};
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
+use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
 use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
 
 /// Unconfirmed delivery tracked by at-least-once delivery.
 pub struct UnconfirmedDelivery<TB: RuntimeToolbox + 'static> {
   delivery_id: u64,
-  destination: ActorRefGeneric<TB>,
+  destination: ActorRef,
   payload:     ArcShared<dyn Any + Send + Sync>,
-  sender:      Option<ActorRefGeneric<TB>>,
+  sender:      Option<ActorRef>,
   timestamp:   TimerInstant,
   attempt:     u32,
+  _marker:     PhantomData<TB>,
 }
 
 impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
@@ -23,13 +24,13 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
   #[must_use]
   pub fn new(
     delivery_id: u64,
-    destination: ActorRefGeneric<TB>,
+    destination: ActorRef,
     payload: ArcShared<dyn Any + Send + Sync>,
-    sender: Option<ActorRefGeneric<TB>>,
+    sender: Option<ActorRef>,
     timestamp: TimerInstant,
     attempt: u32,
   ) -> Self {
-    Self { delivery_id, destination, payload, sender, timestamp, attempt }
+    Self { delivery_id, destination, payload, sender, timestamp, attempt, _marker: PhantomData }
   }
 
   /// Returns the delivery id.
@@ -40,7 +41,7 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
 
   /// Returns the destination actor reference.
   #[must_use]
-  pub const fn destination(&self) -> &ActorRefGeneric<TB> {
+  pub const fn destination(&self) -> &ActorRef {
     &self.destination
   }
 
@@ -58,7 +59,7 @@ impl<TB: RuntimeToolbox + 'static> UnconfirmedDelivery<TB> {
 
   /// Returns the sender if present.
   #[must_use]
-  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+  pub const fn sender(&self) -> Option<&ActorRef> {
     self.sender.as_ref()
   }
 
@@ -90,6 +91,7 @@ impl<TB: RuntimeToolbox + 'static> Clone for UnconfirmedDelivery<TB> {
       sender:      self.sender.clone(),
       timestamp:   self.timestamp,
       attempt:     self.attempt,
+      _marker:     PhantomData,
     }
   }
 }

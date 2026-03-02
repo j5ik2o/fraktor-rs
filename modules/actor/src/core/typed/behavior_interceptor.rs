@@ -3,11 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   error::ActorError,
-  typed::{actor::TypedActorContextGeneric, behavior::Behavior, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContext, behavior::Behavior, behavior_signal::BehaviorSignal},
 };
 
 /// Intercepts messages and signals before they reach the wrapped behavior.
@@ -15,10 +13,9 @@ use crate::core::{
 /// This enables transparent cross-cutting concerns such as logging,
 /// monitoring, or message filtering without modifying the inner behavior.
 #[allow(clippy::type_complexity)]
-pub trait BehaviorInterceptor<M, TB = NoStdToolbox>: Send + Sync
+pub trait BehaviorInterceptor<M>: Send + Sync
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + 'static, {
   /// Called when the wrapped behavior starts.
   ///
   /// The default delegates directly to the `start` callback.
@@ -28,9 +25,9 @@ where
   /// Returns an error if the interceptor or inner behavior fails.
   fn around_start(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    start: &mut dyn FnMut(&mut TypedActorContextGeneric<'_, M, TB>) -> Result<Behavior<M, TB>, ActorError>,
-  ) -> Result<Behavior<M, TB>, ActorError> {
+    ctx: &mut TypedActorContext<'_, M>,
+    start: &mut dyn FnMut(&mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
     start(ctx)
   }
 
@@ -43,10 +40,10 @@ where
   /// Returns an error if the interceptor or inner behavior fails.
   fn around_receive(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     message: &M,
-    target: &mut dyn FnMut(&mut TypedActorContextGeneric<'_, M, TB>, &M) -> Result<Behavior<M, TB>, ActorError>,
-  ) -> Result<Behavior<M, TB>, ActorError> {
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
     target(ctx, message)
   }
 
@@ -59,13 +56,10 @@ where
   /// Returns an error if the interceptor or inner behavior fails.
   fn around_signal(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     signal: &BehaviorSignal,
-    target: &mut dyn FnMut(
-      &mut TypedActorContextGeneric<'_, M, TB>,
-      &BehaviorSignal,
-    ) -> Result<Behavior<M, TB>, ActorError>,
-  ) -> Result<Behavior<M, TB>, ActorError> {
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
     target(ctx, signal)
   }
 }

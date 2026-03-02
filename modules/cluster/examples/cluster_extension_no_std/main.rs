@@ -64,20 +64,20 @@ compile_error!("cluster_extension_no_std example requires --features test-suppor
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   extension::ExtensionInstallers,
-  futures::ActorFutureSharedGeneric,
-  messaging::{AnyMessage, AnyMessageViewGeneric, AskResponseGeneric, AskResult},
+  futures::ActorFutureShared,
+  messaging::{AnyMessage, AnyMessageView, AskResponse, AskResult},
   props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{
-    ActorSystemBuildError, ActorSystemConfig, ActorSystemGeneric,
-    provider::{ActorRefProvider, ActorRefProviderInstaller, ActorRefProviderSharedGeneric},
+    ActorSystem, ActorSystemBuildError, ActorSystemConfig,
+    provider::{ActorRefProvider, ActorRefProviderInstaller, ActorRefProviderShared},
   },
 };
 use fraktor_cluster_rs::core::{
@@ -109,11 +109,7 @@ impl GrainRef {
     Self { inner: GrainRefGeneric::new(api, identity) }
   }
 
-  fn request_with_sender(
-    &self,
-    message: &AnyMessage,
-    sender: &ActorRefGeneric<NoStdToolbox>,
-  ) -> Result<AskResponseGeneric<NoStdToolbox>, GrainCallError> {
+  fn request_with_sender(&self, message: &AnyMessage, sender: &ActorRef) -> Result<AskResponse, GrainCallError> {
     self.inner.request_with_sender(message, sender)
   }
 }
@@ -143,23 +139,15 @@ impl ClusterPubSub<NoStdToolbox> for DemoPubSub {
     Ok(())
   }
 
-  fn subscribe(
-    &mut self,
-    _topic: &PubSubTopic,
-    _subscriber: PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), PubSubError> {
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn unsubscribe(
-    &mut self,
-    _topic: &PubSubTopic,
-    _subscriber: PubSubSubscriber<NoStdToolbox>,
-  ) -> Result<(), PubSubError> {
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn publish(&mut self, _request: PublishRequest<NoStdToolbox>) -> Result<PublishAck, PubSubError> {
+  fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
     Ok(PublishAck::rejected(PublishRejectReason::NoSubscribers))
   }
 
@@ -208,22 +196,22 @@ impl BlockListProvider for DemoBlockList {
 
 // デモ用の ActorRefProvider（fraktor.tcp をローカルに解決）
 struct DemoActorRefProvider {
-  system: ActorSystemGeneric<NoStdToolbox>,
+  system: ActorSystem,
 }
 
 impl DemoActorRefProvider {
-  fn new(system: ActorSystemGeneric<NoStdToolbox>) -> Self {
+  fn new(system: ActorSystem) -> Self {
     Self { system }
   }
 }
 
-impl ActorRefProvider<NoStdToolbox> for DemoActorRefProvider {
+impl ActorRefProvider for DemoActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     static SCHEMES: [ActorPathScheme; 2] = [ActorPathScheme::Fraktor, ActorPathScheme::FraktorTcp];
     &SCHEMES
   }
 
-  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRefGeneric<NoStdToolbox>, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     let pid = self.system.pid_by_path(&path).ok_or_else(|| ActorError::recoverable("actor path not found"))?;
     self.system.actor_ref_by_pid(pid).ok_or_else(|| ActorError::recoverable("actor ref missing"))
   }
@@ -231,9 +219,9 @@ impl ActorRefProvider<NoStdToolbox> for DemoActorRefProvider {
 
 struct DemoActorRefProviderInstaller;
 
-impl ActorRefProviderInstaller<NoStdToolbox> for DemoActorRefProviderInstaller {
-  fn install(&self, system: &ActorSystemGeneric<NoStdToolbox>) -> Result<(), ActorSystemBuildError> {
-    let provider = ActorRefProviderSharedGeneric::new(DemoActorRefProvider::new(system.clone()));
+impl ActorRefProviderInstaller for DemoActorRefProviderInstaller {
+  fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
+    let provider = ActorRefProviderShared::new(DemoActorRefProvider::new(system.clone()));
     system.extended().register_actor_ref_provider(&provider)?;
     Ok(())
   }
@@ -250,8 +238,8 @@ impl ClusterEventLogger {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for ClusterEventLogger {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for ClusterEventLogger {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Extension { name, payload } = event {
       if name == "cluster" {
         if let Some(cluster_event) = payload.payload().downcast_ref::<ClusterEvent>() {
@@ -281,12 +269,8 @@ impl GrainReplyReceiver {
   }
 }
 
-impl Actor<NoStdToolbox> for GrainReplyReceiver {
-  fn receive(
-    &mut self,
-    _context: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for GrainReplyReceiver {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(reply) = message.downcast_ref::<String>() {
       println!("[sender] recv grain reply: {reply}");
     }
@@ -299,8 +283,8 @@ struct GrainActor;
 impl Actor for GrainActor {
   fn receive(
     &mut self,
-    ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    message: AnyMessageViewGeneric<'_, NoStdToolbox>,
+    ctx: &mut ActorContext<'_>,
+    message: AnyMessageView<'_>,
   ) -> Result<(), fraktor_actor_rs::core::error::ActorError> {
     if let Some(request) = message.downcast_ref::<String>() {
       println!("[grain] recv: {}", request);
@@ -315,9 +299,9 @@ impl Actor for GrainActor {
 
 // ノードのコンポーネントをまとめる構造体
 struct ClusterNode {
-  system:    ActorSystemGeneric<NoStdToolbox>,
+  system:    ActorSystem,
   extension: ArcShared<ClusterExtensionGeneric<NoStdToolbox>>,
-  driver:    ManualTestDriver<NoStdToolbox>,
+  driver:    ManualTestDriver,
 }
 
 fn build_cluster_extension_config(authority: &'static str) -> ClusterExtensionConfig {
@@ -331,26 +315,29 @@ fn build_cluster_extension_config(authority: &'static str) -> ClusterExtensionCo
 impl ClusterNode {
   fn new(authority: &'static str, peer_name: &'static str) -> Self {
     // ActorSystem を構築
-    let driver = ManualTestDriver::<NoStdToolbox>::new();
+    let driver = ManualTestDriver::new();
     let tick_cfg = TickDriverConfig::manual(driver.clone());
     let peer_name = peer_name.to_string();
     let grain_path = "user/grain".to_string();
     let cluster_config = build_cluster_extension_config(authority);
-    let cluster_installer =
-      ClusterExtensionInstaller::new(cluster_config, move |event_stream, block_list_provider, advertised_address| {
+    let cluster_installer = ClusterExtensionInstaller::<NoStdToolbox>::new(
+      cluster_config,
+      move |event_stream, block_list_provider, advertised_address| {
         let static_topology = ClusterTopology::new(1, vec![peer_name.clone()], vec![], Vec::new());
-        let provider = StaticClusterProvider::new(event_stream, block_list_provider, advertised_address)
-          .with_static_topology(static_topology);
+        let provider =
+          StaticClusterProvider::<NoStdToolbox>::new(event_stream, block_list_provider, advertised_address)
+            .with_static_topology(static_topology);
         Box::new(provider)
-      })
-      .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
-      .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
-      .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
-      .with_identity_lookup_factory({
-        let authority = authority.to_string();
-        let grain_path = grain_path.clone();
-        move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
-      });
+      },
+    )
+    .with_block_list_provider(ArcShared::new(DemoBlockList::default()))
+    .with_gossiper_factory(|| Box::new(DemoGossiper::default()))
+    .with_pubsub_factory(|_| Box::new(DemoPubSub::default()))
+    .with_identity_lookup_factory({
+      let authority = authority.to_string();
+      let grain_path = grain_path.clone();
+      move || Box::new(DemoIdentityLookup::new(authority.clone(), grain_path.clone()))
+    });
 
     let system_cfg = ActorSystemConfig::default()
       .with_system_name(format!("cluster-{}", authority))
@@ -359,8 +346,7 @@ impl ClusterNode {
       .with_actor_ref_provider_installer(DemoActorRefProviderInstaller);
 
     let grain_props = Props::from_fn(|| GrainActor).with_name("grain");
-    let system: ActorSystemGeneric<NoStdToolbox> =
-      ActorSystemGeneric::new_with_config(&grain_props, &system_cfg).expect("system build");
+    let system: ActorSystem = ActorSystem::new_with_config(&grain_props, &system_cfg).expect("system build");
 
     // EventStream のサブスクライバを登録（クラスタイベントを観測）
     let event_subscriber = subscriber_handle(ClusterEventLogger::new(authority));
@@ -404,7 +390,7 @@ impl ClusterNode {
     let reply_actor = self.system.extended().spawn_system_actor(&reply_props).expect("spawn reply receiver");
     let reply_ref = reply_actor.actor_ref().clone();
     let response = grain_ref.request_with_sender(&request, &reply_ref).expect("grain request");
-    let future: ActorFutureSharedGeneric<AskResult<NoStdToolbox>, NoStdToolbox> = response.future().clone();
+    let future: ActorFutureShared<AskResult> = response.future().clone();
     for _ in 0..10 {
       self.tick(1);
       if let Some(ask_result) = future.with_write(|inner| inner.try_take()) {

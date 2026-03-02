@@ -1,24 +1,24 @@
-//! Shared wrapper for [`EventStreamGeneric`] with deadlock-safe callback execution.
+//! Shared wrapper for [`EventStream`] with deadlock-safe callback execution.
 //!
-//! This module provides thread-safe access to [`EventStreamGeneric`] while ensuring
+//! This module provides thread-safe access to [`EventStream`] while ensuring
 //! that subscriber callbacks are executed without holding the event stream lock,
 //! preventing potential deadlocks.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxRwLock, sync_rwlock_family::SyncRwLockFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike, sync_rwlock_like::SyncRwLockLike},
+  runtime_toolbox::RuntimeRwLock,
+  sync::{ArcShared, SharedAccess, sync_rwlock_like::SyncRwLockLike},
 };
 
 use crate::core::{
-  actor::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRef,
   event::stream::{
-    ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamGeneric, EventStreamSubscriberShared,
+    ActorRefEventStreamSubscriber, EventStream, EventStreamEvent, EventStreamSubscriberShared,
     event_stream_events::DEFAULT_CAPACITY, event_stream_subscriber::subscriber_handle,
-    event_stream_subscription::EventStreamSubscriptionGeneric,
+    event_stream_subscription::EventStreamSubscription,
   },
 };
 
-/// Shared wrapper that provides thread-safe access to [`EventStreamGeneric`].
+/// Shared wrapper that provides thread-safe access to [`EventStream`].
 ///
 /// This type implements the hybrid locking pattern to avoid deadlocks:
 /// - Lock acquisition is minimized to data mutation only
@@ -41,26 +41,22 @@ use crate::core::{
 /// - Callback tries to access EventStream (directly or indirectly)
 /// - Thread B holds a lock that Thread A's callback needs
 /// - Thread B tries to access EventStream → deadlock
-pub struct EventStreamSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxRwLock<EventStreamGeneric<TB>, TB>>,
+pub struct EventStreamShared {
+  inner: ArcShared<RuntimeRwLock<EventStream>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
+impl EventStreamShared {
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self {
-      inner: ArcShared::new(<TB::RwLockFamily as SyncRwLockFamily>::create(EventStreamGeneric::with_capacity(
-        capacity,
-      ))),
-    }
+    Self { inner: ArcShared::new(RuntimeRwLock::new(EventStream::with_capacity(capacity))) }
   }
 
   /// Subscribes and replays buffered events to the subscriber.
   ///
   /// Events are replayed after releasing the lock to prevent deadlocks.
   #[must_use]
-  pub fn subscribe(&self, subscriber: &EventStreamSubscriberShared<TB>) -> EventStreamSubscriptionGeneric<TB> {
+  pub fn subscribe(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
     // Phase 1: Acquire lock, register subscriber, get replay snapshot
     let (id, snapshot) = {
       let mut guard = self.inner.write();
@@ -74,20 +70,17 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
       guard.on_event(event);
     }
 
-    EventStreamSubscriptionGeneric::new(self.clone(), id)
+    EventStreamSubscription::new(self.clone(), id)
   }
 
   /// Subscribes without replaying buffered events.
   #[must_use]
-  pub fn subscribe_no_replay(
-    &self,
-    subscriber: &EventStreamSubscriberShared<TB>,
-  ) -> EventStreamSubscriptionGeneric<TB> {
+  pub fn subscribe_no_replay(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
     let id = {
       let mut guard = self.inner.write();
       guard.subscribe_no_replay(subscriber.clone())
     };
-    EventStreamSubscriptionGeneric::new(self.clone(), id)
+    EventStreamSubscription::new(self.clone(), id)
   }
 
   /// Subscribes an ActorRef to this event stream.
@@ -98,7 +91,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
   /// - Better scalability with many subscribers
   /// - Natural actor processing model
   #[must_use]
-  pub fn subscribe_actor(&self, actor_ref: ActorRefGeneric<TB>) -> EventStreamSubscriptionGeneric<TB> {
+  pub fn subscribe_actor(&self, actor_ref: ActorRef) -> EventStreamSubscription {
     let subscriber = subscriber_handle(ActorRefEventStreamSubscriber::new(actor_ref));
     self.subscribe(&subscriber)
   }
@@ -112,7 +105,7 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
   /// Publishes the provided event to all registered subscribers.
   ///
   /// Subscribers are notified after releasing the lock to prevent deadlocks.
-  pub fn publish(&self, event: &EventStreamEvent<TB>) {
+  pub fn publish(&self, event: &EventStreamEvent) {
     // Phase 1: Acquire lock, store event, get subscriber snapshot
     let subscribers = {
       let mut guard = self.inner.write();
@@ -129,37 +122,34 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSharedGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for EventStreamSharedGeneric<TB> {
+impl Default for EventStreamShared {
   fn default() -> Self {
     Self::with_capacity(DEFAULT_CAPACITY)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for EventStreamSharedGeneric<TB> {
+impl Clone for EventStreamShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> PartialEq for EventStreamSharedGeneric<TB> {
+impl PartialEq for EventStreamShared {
   fn eq(&self, other: &Self) -> bool {
     ArcShared::ptr_eq(&self.inner, &other.inner)
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Eq for EventStreamSharedGeneric<TB> {}
+impl Eq for EventStreamShared {}
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<EventStreamGeneric<TB>> for EventStreamSharedGeneric<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&EventStreamGeneric<TB>) -> R) -> R {
+impl SharedAccess<EventStream> for EventStreamShared {
+  fn with_read<R>(&self, f: impl FnOnce(&EventStream) -> R) -> R {
     let guard = self.inner.read();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut EventStreamGeneric<TB>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut EventStream) -> R) -> R {
     let mut guard = self.inner.write();
     f(&mut guard)
   }
 }
-
-/// Type alias for `EventStreamSharedGeneric` with the default `NoStdToolbox`.
-pub type EventStreamShared = EventStreamSharedGeneric<NoStdToolbox>;

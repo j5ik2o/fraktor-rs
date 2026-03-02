@@ -2,12 +2,10 @@
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
-  typed::actor::TypedActorRefGeneric,
+  typed::actor::TypedActorRef,
 };
 
 mod scheduler_context;
@@ -21,20 +19,20 @@ pub use typed_scheduler_guard::TypedSchedulerGuard;
 pub use typed_scheduler_shared::TypedSchedulerShared;
 
 /// Provides typed helpers that delegate to the canonical scheduler APIs.
-pub struct TypedScheduler<'a, TB: RuntimeToolbox + 'static> {
-  scheduler: &'a mut Scheduler<TB>,
+pub struct TypedScheduler<'a> {
+  scheduler: &'a mut Scheduler,
 }
 
-impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
+impl<'a> TypedScheduler<'a> {
   /// Creates a typed facade from the underlying scheduler.
   #[must_use]
-  pub const fn new(scheduler: &'a mut Scheduler<TB>) -> Self {
+  pub const fn new(scheduler: &'a mut Scheduler) -> Self {
     Self { scheduler }
   }
 
   /// Returns a mutable reference to the underlying scheduler (primarily for testing).
   #[allow(dead_code)]
-  pub(crate) const fn inner(&mut self) -> &mut Scheduler<TB> {
+  pub(crate) const fn inner(&mut self) -> &mut Scheduler {
     self.scheduler
   }
 
@@ -47,18 +45,18 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
   pub fn schedule_once<M>(
     &mut self,
     delay: Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
-    let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
+    let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_once(delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessageGeneric::new(message),
+      message: AnyMessage::new(message),
       dispatcher,
       sender: sender_untyped,
     })
@@ -74,18 +72,18 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
     &mut self,
     initial_delay: Duration,
     interval: Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
-    let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
+    let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_at_fixed_rate(initial_delay, interval, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessageGeneric::new(message),
+      message: AnyMessage::new(message),
       dispatcher,
       sender: sender_untyped,
     })
@@ -101,18 +99,18 @@ impl<'a, TB: RuntimeToolbox + 'static> TypedScheduler<'a, TB> {
     &mut self,
     initial_delay: Duration,
     delay: Duration,
-    receiver: TypedActorRefGeneric<M, TB>,
+    receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared<TB>>,
-    sender: Option<TypedActorRefGeneric<M, TB>>,
+    dispatcher: Option<DispatcherSenderShared>,
+    sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
     let receiver_untyped = receiver.into_untyped();
-    let sender_untyped = sender.map(TypedActorRefGeneric::into_untyped);
+    let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_with_fixed_delay(initial_delay, delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessageGeneric::new(message),
+      message: AnyMessage::new(message),
       dispatcher,
       sender: sender_untyped,
     })

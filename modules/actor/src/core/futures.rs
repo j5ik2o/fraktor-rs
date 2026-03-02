@@ -8,4 +8,4 @@ mod actor_future_shared;
 
 pub use actor_future::ActorFuture;
 pub use actor_future_listener::ActorFutureListener;
-pub use actor_future_shared::{ActorFutureShared, ActorFutureSharedGeneric};
+pub use actor_future_shared::ActorFutureShared;

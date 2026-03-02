@@ -50,6 +50,9 @@ Cargo.lock
 /.opencode/
 /openspec/
 
+/.codex-personal/
+/.codex-corporate/
+
 /.serena/cache/
 
 /.takt/clone-meta/

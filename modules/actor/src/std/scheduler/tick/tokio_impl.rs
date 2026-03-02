@@ -3,10 +3,7 @@ extern crate std;
 use alloc::boxed::Box;
 use std::time::Duration;
 
-use fraktor_utils_rs::{
-  core::{runtime_toolbox::sync_mutex_family::SyncMutexFamily, sync::ArcShared, time::TimerInstant},
-  std::runtime_toolbox::{StdMutexFamily, StdToolbox},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared, time::TimerInstant};
 use tokio::{
   runtime::Handle,
   task::JoinHandle,
@@ -14,16 +11,16 @@ use tokio::{
 };
 
 use crate::core::{
-  event::stream::{EventStreamEvent, EventStreamSharedGeneric},
+  event::stream::{EventStreamEvent, EventStreamShared},
   scheduler::tick_driver::{
-    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory,
-    TickDriverHandleGeneric, TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
+    SchedulerTickMetricsProbe, TickDriver, TickDriverControl, TickDriverError, TickDriverFactory, TickDriverHandle,
+    TickDriverId, TickDriverKind, TickFeedHandle, next_tick_driver_id,
   },
 };
 
 #[derive(Clone)]
 struct StdMetricsOptions {
-  event_stream: EventStreamSharedGeneric<StdToolbox>,
+  event_stream: EventStreamShared,
   interval:     Duration,
 }
 
@@ -39,13 +36,13 @@ impl TokioIntervalTickerFactory {
     Self { handle, resolution, metrics: None }
   }
 
-  pub(crate) fn with_metrics(mut self, event_stream: EventStreamSharedGeneric<StdToolbox>, interval: Duration) -> Self {
+  pub(crate) fn with_metrics(mut self, event_stream: EventStreamShared, interval: Duration) -> Self {
     self.metrics = Some(StdMetricsOptions { event_stream, interval });
     self
   }
 }
 
-impl TickDriverFactory<StdToolbox> for TokioIntervalTickerFactory {
+impl TickDriverFactory for TokioIntervalTickerFactory {
   fn kind(&self) -> TickDriverKind {
     TickDriverKind::Auto
   }
@@ -54,7 +51,7 @@ impl TickDriverFactory<StdToolbox> for TokioIntervalTickerFactory {
     self.resolution
   }
 
-  fn build(&self) -> Result<Box<dyn TickDriver<StdToolbox>>, TickDriverError> {
+  fn build(&self) -> Result<Box<dyn TickDriver>, TickDriverError> {
     Ok(Box::new(TokioIntervalTicker {
       id:         next_tick_driver_id(),
       handle:     self.handle.clone(),
@@ -71,7 +68,7 @@ struct TokioIntervalTicker {
   metrics:    Option<StdMetricsOptions>,
 }
 
-impl TickDriver<StdToolbox> for TokioIntervalTicker {
+impl TickDriver for TokioIntervalTicker {
   fn id(&self) -> TickDriverId {
     self.id
   }
@@ -84,10 +81,7 @@ impl TickDriver<StdToolbox> for TokioIntervalTicker {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    feed: TickFeedHandle<StdToolbox>,
-  ) -> Result<TickDriverHandleGeneric<StdToolbox>, TickDriverError> {
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let mut ticker = interval(self.resolution);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let handle_clone = self.handle.clone();
@@ -110,8 +104,8 @@ impl TickDriver<StdToolbox> for TokioIntervalTicker {
       )
     });
     let control: Box<dyn TickDriverControl> = Box::new(TokioIntervalTickerControl::new(join, metrics));
-    let control = ArcShared::new(<StdMutexFamily as SyncMutexFamily>::create(control));
-    Ok(TickDriverHandleGeneric::new(self.id, self.kind(), self.resolution, control))
+    let control = ArcShared::new(RuntimeMutex::new(control));
+    Ok(TickDriverHandle::new(self.id, self.kind(), self.resolution, control))
   }
 }
 
@@ -144,10 +138,10 @@ struct StdTickMetricsEmitter {
 impl StdTickMetricsEmitter {
   fn spawn(
     handle: &Handle,
-    feed: TickFeedHandle<StdToolbox>,
+    feed: TickFeedHandle,
     resolution: Duration,
     driver: TickDriverKind,
-    event_stream: EventStreamSharedGeneric<StdToolbox>,
+    event_stream: EventStreamShared,
     metrics_interval: Duration,
   ) -> Self {
     let mut ticker = interval(metrics_interval);

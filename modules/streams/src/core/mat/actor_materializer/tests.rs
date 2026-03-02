@@ -1,15 +1,15 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::{
     SchedulerConfig,
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, remote::RemotingConfig},
+  system::{ActorSystem, ActorSystemConfig, remote::RemotingConfig},
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
@@ -22,22 +22,18 @@ use crate::core::{
 
 struct GuardianActor;
 
-impl Actor<NoStdToolbox> for GuardianActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for GuardianActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| GuardianActor);
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfigGeneric::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
-  ActorSystemGeneric::new_with_config(&props, &config).expect("system should build")
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  ActorSystem::new_with_config(&props, &config).expect("system should build")
 }
 
 #[test]
@@ -51,7 +47,7 @@ fn start_fails_without_actor_system() {
 #[test]
 fn materialize_requires_start() {
   let system = build_system();
-  let mut materializer = ActorMaterializerGeneric::new(system, ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
   let result = graph.run(&mut materializer);
   assert!(matches!(result, Err(StreamError::MaterializerNotStarted)));
@@ -61,7 +57,7 @@ fn materialize_requires_start() {
 fn actor_materializer_drives_stream() {
   let system = build_system();
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
-  let mut materializer = ActorMaterializerGeneric::new(
+  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(
     system,
     ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
   );
@@ -79,7 +75,7 @@ fn actor_materializer_drives_stream() {
 #[test]
 fn shutdown_blocks_materialize() {
   let system = build_system();
-  let mut materializer = ActorMaterializerGeneric::new(system, ActorMaterializerConfig::default());
+  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
   materializer.shutdown().expect("shutdown");
   let graph = Source::single(1_u32).to_mat(Sink::head(), KeepRight);
@@ -89,15 +85,15 @@ fn shutdown_blocks_materialize() {
 
 #[test]
 fn start_with_remoting_config() {
-  let props = PropsGeneric::from_fn(|| GuardianActor);
+  let props = Props::from_fn(|| GuardianActor);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let remoting = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(2552);
-  let config = ActorSystemConfigGeneric::default()
+  let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler)
     .with_tick_driver(tick_driver)
     .with_remoting_config(remoting);
-  let system = ActorSystemGeneric::new_with_config(&props, &config).expect("system should build");
-  let mut materializer = ActorMaterializerGeneric::new(system, ActorMaterializerConfig::default());
+  let system = ActorSystem::new_with_config(&props, &config).expect("system should build");
+  let mut materializer = ActorMaterializerGeneric::<NoStdToolbox>::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
 }

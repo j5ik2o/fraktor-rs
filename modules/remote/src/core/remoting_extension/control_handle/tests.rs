@@ -5,16 +5,16 @@ use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPathParts, GuardianKind},
-    actor_ref::ActorRefGeneric,
+    actor_ref::ActorRef,
   },
   error::ActorError,
   event::stream::CorrelationId,
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfigGeneric, ActorSystemGeneric, state::AuthorityState},
+  system::{ActorSystem, ActorSystemConfig, state::AuthorityState},
 };
 use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
@@ -31,12 +31,8 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<StdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -92,16 +88,15 @@ impl RemoteTransport<StdToolbox> for FailingTransport {
   fn install_inbound_handler(&mut self, _handler: TransportInboundShared<StdToolbox>) {}
 }
 
-fn build_system() -> ActorSystemGeneric<StdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("control-handle-tests");
-  let config = ActorSystemConfigGeneric::<StdToolbox>::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()));
-  ActorSystemGeneric::new_with_config(&props, &config).expect("actor system")
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("control-handle-tests");
+  let config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  ActorSystem::new_with_config(&props, &config).expect("actor system")
 }
 
 fn build_started_control(mode: TransportFailureMode) -> RemotingControlHandle<StdToolbox> {
   let system = build_system();
-  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
   let transport = RemoteTransportShared::new(Box::new(FailingTransport::new(mode)));
   handle.register_remote_transport_shared(transport);
   handle.start().expect("control start");
@@ -110,14 +105,14 @@ fn build_started_control(mode: TransportFailureMode) -> RemotingControlHandle<St
 
 fn build_started_control_without_transport() -> RemotingControlHandle<StdToolbox> {
   let system = build_system();
-  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
   handle.start().expect("control start");
   handle
 }
 
 fn build_started_control_with_loopback_transport() -> RemotingControlHandle<StdToolbox> {
   let system = build_system();
-  let mut handle = RemotingControlHandle::new(system, RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::<StdToolbox>::new(system, RemotingExtensionConfig::default());
   let transport = RemoteTransportShared::new(Box::new(LoopbackTransport::<StdToolbox>::default()));
   handle.register_remote_transport_shared(transport);
   handle.start().expect("control start");
@@ -202,7 +197,7 @@ fn dispatch_remote_watcher_command_returns_error_without_daemon() {
 #[test]
 fn dispatch_remote_watcher_command_propagates_daemon_send_failure() {
   let handle = build_started_control_without_transport();
-  handle.register_remote_watcher_daemon(ActorRefGeneric::null());
+  handle.register_remote_watcher_daemon(ActorRef::null());
 
   let error = handle
     .dispatch_remote_watcher_command(RemoteWatcherCommand::heartbeat("127.0.0.1:25520"))
@@ -218,7 +213,7 @@ fn dispatch_remote_watcher_command_propagates_daemon_send_failure() {
 #[test]
 fn quarantine_updates_remote_authority_snapshot_and_state() {
   let system = build_system();
-  let mut handle = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
+  let mut handle = RemotingControlHandle::<StdToolbox>::new(system.clone(), RemotingExtensionConfig::default());
   handle.start().expect("control start");
   let authority = "127.0.0.1:25520";
 

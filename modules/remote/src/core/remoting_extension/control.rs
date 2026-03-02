@@ -38,4 +38,4 @@ where
 
 /// Shared handle wrapping [`RemotingControlHandle`] with external synchronization.
 pub type RemotingControlShared<TB> =
-  ArcShared<fraktor_utils_rs::core::runtime_toolbox::ToolboxMutex<RemotingControlHandle<TB>, TB>>;
+  ArcShared<fraktor_utils_rs::core::runtime_toolbox::RuntimeMutex<RemotingControlHandle<TB>>>;

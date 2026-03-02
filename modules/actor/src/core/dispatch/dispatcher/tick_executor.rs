@@ -1,17 +1,13 @@
 use alloc::collections::VecDeque;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
-use super::{
-  dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchSharedGeneric,
-};
+use super::{dispatch_error::DispatchError, dispatch_executor::DispatchExecutor, dispatch_shared::DispatchShared};
 
 /// Executor that queues dispatcher batches until `tick` is invoked.
-pub struct TickExecutorGeneric<TB: RuntimeToolbox + 'static> {
-  queue: VecDeque<DispatchSharedGeneric<TB>>,
+pub struct TickExecutor {
+  queue: VecDeque<DispatchShared>,
 }
 
-impl<TB: RuntimeToolbox + 'static> TickExecutorGeneric<TB> {
+impl TickExecutor {
   /// Creates an empty tick-driven executor.
   #[must_use]
   pub const fn new() -> Self {
@@ -32,23 +28,14 @@ impl<TB: RuntimeToolbox + 'static> TickExecutorGeneric<TB> {
   }
 }
 
-impl<TB> Default for TickExecutorGeneric<TB>
-where
-  TB: RuntimeToolbox + 'static,
-{
+impl Default for TickExecutor {
   fn default() -> Self {
     Self::new()
   }
 }
 
-/// Type alias for the default tick executor.
-pub type TickExecutor = TickExecutorGeneric<NoStdToolbox>;
-
-impl<TB> DispatchExecutor<TB> for TickExecutorGeneric<TB>
-where
-  TB: RuntimeToolbox + Send + Sync + 'static,
-{
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<TB>) -> Result<(), DispatchError> {
+impl DispatchExecutor for TickExecutor {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.queue.push_back(dispatcher);
     Ok(())
   }

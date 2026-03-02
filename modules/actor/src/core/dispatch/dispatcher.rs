@@ -35,19 +35,19 @@ mod tick_executor;
 
 pub use dispatch_error::DispatchError;
 pub use dispatch_executor::DispatchExecutor;
-pub use dispatch_executor_runner::{DispatchExecutorRunner, DispatchExecutorRunnerGeneric};
-pub use dispatch_shared::{DispatchShared, DispatchSharedGeneric};
-pub use dispatcher_config::{DispatcherConfig, DispatcherConfigGeneric};
+pub use dispatch_executor_runner::DispatchExecutorRunner;
+pub use dispatch_shared::DispatchShared;
+pub use dispatcher_config::DispatcherConfig;
 pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_registry_error::DispatcherRegistryError;
-pub use dispatcher_sender::{DispatcherSender, DispatcherSenderGeneric};
-pub use dispatcher_shared::{DispatcherShared, DispatcherSharedGeneric};
-pub use dispatchers::{Dispatchers, DispatchersGeneric};
-pub use inline_executor::{InlineExecutor, InlineExecutorGeneric};
+pub use dispatcher_sender::DispatcherSender;
+pub use dispatcher_shared::DispatcherShared;
+pub use dispatchers::Dispatchers;
+pub use inline_executor::InlineExecutor;
 pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::ScheduleAdapter;
-pub use schedule_adapter_shared::{ScheduleAdapterShared, ScheduleAdapterSharedGeneric};
-pub use tick_executor::{TickExecutor, TickExecutorGeneric};
+pub use schedule_adapter_shared::ScheduleAdapterShared;
+pub use tick_executor::TickExecutor;
 
 /// Dispatcher configuration module.
 mod dispatcher_config;

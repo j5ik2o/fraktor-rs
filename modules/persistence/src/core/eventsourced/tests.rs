@@ -1,12 +1,12 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
-  actor::{ActorContextGeneric, Pid},
+  actor::{ActorContext, Pid},
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   system::{
-    ActorSystemGeneric,
-    state::{SystemStateSharedGeneric, system_state::SystemStateGeneric},
+    ActorSystem,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
@@ -30,11 +30,7 @@ impl Eventsourced<NoStdToolbox> for DummyEventsourced {
 
   fn receive_snapshot(&mut self, _snapshot: &Snapshot) {}
 
-  fn receive_command(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive_command(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 
@@ -55,10 +51,10 @@ fn eventsourced_default_recovery_is_latest() {
 #[test]
 fn eventsourced_default_hooks_do_not_panic() {
   let mut dummy = DummyEventsourced { persistence_id: "pid-1".into(), last: 0 };
-  let system = ActorSystemGeneric::<NoStdToolbox>::from_state(SystemStateSharedGeneric::new(SystemStateGeneric::new()));
+  let system = ActorSystem::from_state(SystemStateShared::new(SystemState::new()));
   let pid = Pid::new(1, 1);
-  let mut ctx = ActorContextGeneric::new(&system, pid);
-  let message = AnyMessageGeneric::new(1_i32);
+  let mut ctx = ActorContext::new(&system, pid);
+  let message = AnyMessage::new(1_i32);
 
   let _ = dummy.receive_command(&mut ctx, message.as_view());
   dummy.on_recovery_timed_out(&RecoveryTimedOut::new("pid-1"));

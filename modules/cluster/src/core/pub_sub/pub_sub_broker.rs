@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::{
   DeliveryPolicy, PartitionBehavior, PubSubError, PubSubEvent, PubSubMetrics, PubSubSubscriber, PubSubTopic,
@@ -56,28 +56,28 @@ impl SubscriberRecord {
 }
 
 #[derive(Debug)]
-struct TopicEntry<TB: RuntimeToolbox> {
-  subscriber_state:     BTreeMap<PubSubSubscriber<TB>, SubscriberRecord>,
+struct TopicEntry {
+  subscriber_state:     BTreeMap<PubSubSubscriber, SubscriberRecord>,
   options:              PubSubTopicOptions,
   partitioned:          bool,
   queued_message_count: usize,
 }
 
 /// Simple pub/sub broker that tracks topics and subscriptions.
-pub struct PubSubBroker<TB: RuntimeToolbox> {
-  topics:        BTreeMap<PubSubTopic, TopicEntry<TB>>,
+pub struct PubSubBroker {
+  topics:        BTreeMap<PubSubTopic, TopicEntry>,
   events:        Vec<PubSubEvent>,
   metrics:       PubSubMetrics,
   topic_metrics: BTreeMap<PubSubTopic, PubSubTopicMetrics>,
 }
 
-impl<TB: RuntimeToolbox> Default for PubSubBroker<TB> {
+impl Default for PubSubBroker {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl<TB: RuntimeToolbox> PubSubBroker<TB> {
+impl PubSubBroker {
   /// Creates an empty broker.
   #[must_use]
   pub const fn new() -> Self {
@@ -140,7 +140,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
   ///
   /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
   /// Returns [`PubSubError::DuplicateSubscriber`] if the subscriber is already registered.
-  pub fn subscribe(&mut self, topic: &PubSubTopic, subscriber: &PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  pub fn subscribe(&mut self, topic: &PubSubTopic, subscriber: &PubSubSubscriber) -> Result<(), PubSubError> {
     if !self.topics.contains_key(topic) {
       let _ = self.create_topic(topic.clone());
     }
@@ -174,7 +174,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
   ///
   /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
   /// Returns [`PubSubError::SubscriberNotFound`] if the subscriber is not registered.
-  pub fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: &PubSubSubscriber<TB>) -> Result<(), PubSubError> {
+  pub fn unsubscribe(&mut self, topic: &PubSubTopic, subscriber: &PubSubSubscriber) -> Result<(), PubSubError> {
     let Some(entry) = self.topics.get_mut(topic) else {
       return Err(PubSubError::TopicNotFound { topic: topic.clone() });
     };
@@ -197,7 +197,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
   /// # Errors
   ///
   /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
-  pub fn active_subscribers(&self, topic: &PubSubTopic) -> Result<Vec<PubSubSubscriber<TB>>, PubSubError> {
+  pub fn active_subscribers(&self, topic: &PubSubTopic) -> Result<Vec<PubSubSubscriber>, PubSubError> {
     let Some(entry) = self.topics.get(topic) else {
       return Err(PubSubError::TopicNotFound { topic: topic.clone() });
     };
@@ -219,7 +219,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
   pub fn suspend_subscriber(
     &mut self,
     topic: &PubSubTopic,
-    subscriber: &PubSubSubscriber<TB>,
+    subscriber: &PubSubSubscriber,
     reason: impl Into<String>,
     now: TimerInstant,
   ) -> Result<(), PubSubError> {
@@ -237,7 +237,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
   /// # Errors
   ///
   /// Returns [`PubSubError::TopicNotFound`] if the topic does not exist.
-  pub fn reactivate_all(&mut self, topic: &PubSubTopic) -> Result<Vec<PubSubSubscriber<TB>>, PubSubError> {
+  pub fn reactivate_all(&mut self, topic: &PubSubTopic) -> Result<Vec<PubSubSubscriber>, PubSubError> {
     let Some(entry) = self.topics.get_mut(topic) else {
       return Err(PubSubError::TopicNotFound { topic: topic.clone() });
     };
@@ -261,7 +261,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
     topic: &PubSubTopic,
     now: TimerInstant,
     ttl: Duration,
-  ) -> Result<Vec<PubSubSubscriber<TB>>, PubSubError> {
+  ) -> Result<Vec<PubSubSubscriber>, PubSubError> {
     let Some(entry) = self.topics.get_mut(topic) else {
       return Err(PubSubError::TopicNotFound { topic: topic.clone() });
     };
@@ -287,7 +287,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
     &mut self,
     topic: &PubSubTopic,
     options: PubSubTopicOptions,
-  ) -> Result<Vec<PubSubSubscriber<TB>>, PublishRejectReason> {
+  ) -> Result<Vec<PubSubSubscriber>, PublishRejectReason> {
     let Some(entry) = self.topics.get_mut(topic) else {
       self
         .events
@@ -394,7 +394,7 @@ impl<TB: RuntimeToolbox> PubSubBroker<TB> {
     &mut self,
     topic: &PubSubTopic,
     options: PubSubTopicOptions,
-  ) -> Result<Vec<PubSubSubscriber<TB>>, PublishRejectReason> {
+  ) -> Result<Vec<PubSubSubscriber>, PublishRejectReason> {
     let policy = options.delivery_policy;
     let behavior = options.partition_behavior;
     if matches!((policy, behavior), (DeliveryPolicy::AtLeastOnce, PartitionBehavior::DelayQueue))

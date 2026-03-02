@@ -14,8 +14,8 @@ use core::{
 pub use error::EndpointWriterError;
 use fraktor_actor_rs::core::{
   event::stream::{BackpressureSignal, CorrelationId},
-  serialization::{SerializationCallScope, SerializationExtensionSharedGeneric},
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric},
+  serialization::{SerializationCallScope, SerializationExtensionShared},
+  system::{ActorSystem, ActorSystemWeak},
 };
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncFifoQueue, SyncQueue, backend::VecDequeBackend},
@@ -32,8 +32,8 @@ const DEFAULT_QUEUE_CAPACITY: usize = 128;
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointWriterGeneric<TB: RuntimeToolbox + 'static> {
-  system:        ActorSystemWeakGeneric<TB>,
-  serialization: SerializationExtensionSharedGeneric<TB>,
+  system:        ActorSystemWeak,
+  serialization: SerializationExtensionShared,
   system_queue:  SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_queue:    SyncFifoQueue<OutboundMessage<TB>, VecDequeBackend<OutboundMessage<TB>>>,
   user_paused:   AtomicBool,
@@ -49,7 +49,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
   ///
   /// The writer stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: SerializationExtensionSharedGeneric<TB>) -> Self {
+  pub fn new(system: ActorSystemWeak, serialization: SerializationExtensionShared) -> Self {
     Self {
       system,
       serialization,
@@ -71,7 +71,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterGeneric<TB> {
 
   /// Returns a reference to the underlying actor system if still alive.
   #[must_use]
-  pub fn system(&self) -> Option<ActorSystemGeneric<TB>> {
+  pub fn system(&self) -> Option<ActorSystem> {
     self.system.upgrade()
   }
 

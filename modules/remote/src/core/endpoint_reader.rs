@@ -5,15 +5,16 @@ mod error;
 mod tests;
 
 use alloc::sync::Arc;
+use core::marker::PhantomData;
 
 pub use error::EndpointReaderError;
 use fraktor_actor_rs::core::{
-  actor::{actor_path::ActorPath, actor_ref::ActorRefGeneric},
+  actor::{actor_path::ActorPath, actor_ref::ActorRef},
   dead_letter::DeadLetterReason,
   error::SendError,
-  messaging::AnyMessageGeneric,
-  serialization::{SerializationError, SerializationExtensionSharedGeneric, SerializedMessage},
-  system::{ActorSystemGeneric, ActorSystemWeakGeneric, remote::RemoteWatchHookShared},
+  messaging::AnyMessage,
+  serialization::{SerializationError, SerializationExtensionShared, SerializedMessage},
+  system::{ActorSystem, ActorSystemWeak, remote::RemoteWatchHookShared},
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
@@ -31,8 +32,9 @@ use crate::core::{
 ///
 /// Uses a weak reference to the actor system to avoid circular references.
 pub struct EndpointReaderGeneric<TB: RuntimeToolbox + 'static> {
-  system:        ActorSystemWeakGeneric<TB>,
-  serialization: SerializationExtensionSharedGeneric<TB>,
+  system:        ActorSystemWeak,
+  serialization: SerializationExtensionShared,
+  _marker:       PhantomData<TB>,
 }
 
 /// Type alias for `EndpointReaderGeneric` with the default `NoStdToolbox`.
@@ -40,7 +42,7 @@ pub type EndpointReader = EndpointReaderGeneric<NoStdToolbox>;
 
 impl<TB: RuntimeToolbox + 'static> Clone for EndpointReaderGeneric<TB> {
   fn clone(&self) -> Self {
-    Self { system: self.system.clone(), serialization: self.serialization.clone() }
+    Self { system: self.system.clone(), serialization: self.serialization.clone(), _marker: PhantomData }
   }
 }
 
@@ -49,8 +51,8 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   ///
   /// The reader stores a weak reference to the actor system.
   #[must_use]
-  pub fn new(system: ActorSystemWeakGeneric<TB>, serialization: SerializationExtensionSharedGeneric<TB>) -> Self {
-    Self { system, serialization }
+  pub fn new(system: ActorSystemWeak, serialization: SerializationExtensionShared) -> Self {
+    Self { system, serialization, _marker: PhantomData }
   }
 
   /// Decodes a remoting envelope into an inbound representation.
@@ -70,19 +72,19 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
     }
   }
 
-  fn deserialize_message(&self, serialized: &SerializedMessage) -> Result<AnyMessageGeneric<TB>, SerializationError> {
+  fn deserialize_message(&self, serialized: &SerializedMessage) -> Result<AnyMessage, SerializationError> {
     let payload = self.serialization.with_read(|ext| ext.deserialize(serialized, None))?;
     let arc: Arc<dyn core::any::Any + Send + Sync + 'static> = payload.into();
     #[cfg(feature = "force-portable-arc")]
     let shared = ArcShared::___from_arc(arc.into());
     #[cfg(not(feature = "force-portable-arc"))]
     let shared = ArcShared::___from_arc(arc);
-    Ok(AnyMessageGeneric::from_erased(shared, None))
+    Ok(AnyMessage::from_erased(shared, None))
   }
 
   fn record_deserialization_failure(&self, recipient: &ActorPath) {
     if let Some(system) = self.system.upgrade() {
-      let message = AnyMessageGeneric::new(recipient.clone());
+      let message = AnyMessage::new(recipient.clone());
       system.record_dead_letter(message, DeadLetterReason::SerializationError, None);
     }
   }
@@ -90,7 +92,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
   /// Delivers the provided inbound envelope to the actor system.
   ///
   /// Returns an error if the actor system has been dropped or the recipient is unavailable.
-  pub fn deliver(&self, inbound: InboundEnvelope<TB>) -> Result<(), SendError<TB>> {
+  pub fn deliver(&self, inbound: InboundEnvelope<TB>) -> Result<(), SendError> {
     let Some(system) = self.system.upgrade() else {
       let (_, message, _) = inbound.into_delivery_parts();
       return Err(SendError::closed(message));
@@ -119,30 +121,26 @@ impl<TB: RuntimeToolbox + 'static> EndpointReaderGeneric<TB> {
 
   fn record_missing_recipient_with_system(
     &self,
-    system: &ActorSystemGeneric<TB>,
+    system: &ActorSystem,
     _recipient: ActorPath,
-    message: AnyMessageGeneric<TB>,
-  ) -> Result<(), SendError<TB>> {
+    message: AnyMessage,
+  ) -> Result<(), SendError> {
     system.record_dead_letter(message.clone(), DeadLetterReason::RecipientUnavailable, None);
     Err(SendError::no_recipient(message))
   }
 
-  fn resolve_sender_with_system(
-    &self,
-    system: &ActorSystemGeneric<TB>,
-    path: &ActorPath,
-  ) -> Option<ActorRefGeneric<TB>> {
+  fn resolve_sender_with_system(&self, system: &ActorSystem, path: &ActorPath) -> Option<ActorRef> {
     // Try Tokio provider first when available, then generic remote provider as fallback.
     #[cfg(feature = "tokio-transport")]
     if let Some(provider) =
-      system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, TokioActorRefProviderGeneric<TB>>>()
+      system.extended().actor_ref_provider::<RemoteWatchHookShared<TokioActorRefProviderGeneric<TB>>>()
       && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(sender_ref);
     }
 
     if let Some(provider) =
-      system.extended().actor_ref_provider::<RemoteWatchHookShared<TB, RemoteActorRefProviderGeneric<TB>>>()
+      system.extended().actor_ref_provider::<RemoteWatchHookShared<RemoteActorRefProviderGeneric<TB>>>()
       && let Ok(sender_ref) = provider.get_actor_ref(path.clone())
     {
       return Some(sender_ref);

@@ -4,8 +4,6 @@ use alloc::string::String;
 use core::time::Duration;
 
 #[cfg(feature = "alloc")]
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 #[cfg(feature = "alloc")]
 use super::EventStreamEvent;
 #[cfg(feature = "alloc")]
@@ -29,7 +27,7 @@ fn event_stream_event_lifecycle_clone() {
     LifecycleStage::Started,
     Duration::from_secs(0),
   );
-  let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event.clone());
+  let event = EventStreamEvent::Lifecycle(lifecycle_event.clone());
   let cloned = event.clone();
   match (event, cloned) {
     | (EventStreamEvent::Lifecycle(e1), EventStreamEvent::Lifecycle(e2)) => {
@@ -51,7 +49,7 @@ fn event_stream_event_dead_letter_clone() {
     Some(Pid::new(1, 0)),
     Duration::from_secs(0),
   );
-  let event = EventStreamEvent::<NoStdToolbox>::DeadLetter(entry.clone());
+  let event = EventStreamEvent::DeadLetter(entry.clone());
   let cloned = event.clone();
   match (event, cloned) {
     | (EventStreamEvent::DeadLetter(e1), EventStreamEvent::DeadLetter(e2)) => {
@@ -65,7 +63,7 @@ fn event_stream_event_dead_letter_clone() {
 #[test]
 fn event_stream_event_log_clone() {
   let log_event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::from_secs(0), None);
-  let event = EventStreamEvent::<NoStdToolbox>::Log(log_event.clone());
+  let event = EventStreamEvent::Log(log_event.clone());
   let cloned = event.clone();
   match (event, cloned) {
     | (EventStreamEvent::Log(e1), EventStreamEvent::Log(e2)) => {
@@ -80,7 +78,7 @@ fn event_stream_event_log_clone() {
 #[test]
 fn event_stream_event_mailbox_clone() {
   let metrics_event = MailboxMetricsEvent::new(Pid::new(1, 0), 10, 0, None, None, Duration::from_secs(0));
-  let event = EventStreamEvent::<NoStdToolbox>::Mailbox(metrics_event.clone());
+  let event = EventStreamEvent::Mailbox(metrics_event.clone());
   let cloned = event.clone();
   match (event, cloned) {
     | (EventStreamEvent::Mailbox(e1), EventStreamEvent::Mailbox(e2)) => {
@@ -95,8 +93,7 @@ fn event_stream_event_mailbox_clone() {
 #[test]
 fn event_stream_event_extension_clone() {
   let payload = AnyMessage::new(String::from("cluster-startup"));
-  let event =
-    EventStreamEvent::<NoStdToolbox>::Extension { name: String::from("cluster"), payload: payload.clone() };
+  let event = EventStreamEvent::Extension { name: String::from("cluster"), payload: payload.clone() };
   let cloned = event.clone();
 
   match (event, cloned) {
@@ -123,7 +120,7 @@ fn event_stream_event_serialization_clone() {
     Some(Pid::new(1, 0)),
     Some("fraktor://sys@host".into()),
   );
-  let original = EventStreamEvent::<NoStdToolbox>::Serialization(event.clone());
+  let original = EventStreamEvent::Serialization(event.clone());
   let cloned = original.clone();
   match (original, cloned) {
     | (EventStreamEvent::Serialization(e1), EventStreamEvent::Serialization(e2)) => {
@@ -140,6 +137,6 @@ fn event_stream_event_debug() {
   fn assert_debug<T: core::fmt::Debug>(_t: &T) {}
   let lifecycle_event =
     LifecycleEvent::new(Pid::new(1, 0), None, String::from("test"), LifecycleStage::Started, Duration::from_secs(0));
-  let event = EventStreamEvent::<NoStdToolbox>::Lifecycle(lifecycle_event);
+  let event = EventStreamEvent::Lifecycle(lifecycle_event);
   assert_debug(&event);
 }

@@ -1,11 +1,9 @@
 //! Std-specific typed behavior helpers that wrap the core DSL.
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
     error::ActorError,
-    typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor::TypedActorContextGeneric as CoreTypedActorContext},
+    typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor::TypedActorContext as CoreTypedActorContext},
   },
   std::typed::{Behavior, StashBuffer, Supervise, actor::TypedActorContext},
 };
@@ -114,7 +112,7 @@ impl Behaviors {
   }
 }
 
-fn with_std_ctx<'a, M, R, F>(ctx: &mut CoreTypedActorContext<'a, M, StdToolbox>, f: F) -> R
+fn with_std_ctx<'a, M, R, F>(ctx: &mut CoreTypedActorContext<'a, M>, f: F) -> R
 where
   M: Send + Sync + 'static,
   F: FnOnce(&mut TypedActorContext<'_, 'a, M>) -> R, {

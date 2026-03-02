@@ -2,9 +2,9 @@
 
 use core::{any::Any, ptr};
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::{actor::Pid, messaging::AnyMessageGeneric};
+use crate::core::{actor::Pid, messaging::AnyMessage};
 
 /// Snapshot of the user message that triggered the failure.
 #[derive(Clone)]
@@ -28,7 +28,7 @@ impl FailureMessageSnapshot {
 
   /// Captures the payload/sender information from a user message.
   #[must_use]
-  pub fn from_message<TB: RuntimeToolbox>(message: &AnyMessageGeneric<TB>) -> Self {
+  pub fn from_message(message: &AnyMessage) -> Self {
     let payload = message.payload_arc();
     let sender = message.sender().map(|actor_ref| actor_ref.pid());
     Self { payload, sender }

@@ -3,12 +3,10 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::{
-  actor::actor_ref::ActorRefGeneric,
+  actor::actor_ref::ActorRef,
   event::stream::{EventStreamEvent, EventStreamSubscriber},
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 /// Event stream subscriber that forwards events to an ActorRef.
@@ -21,28 +19,28 @@ use crate::core::{
 /// - `publish()` returns immediately (only mailbox enqueue time)
 /// - Event processing happens asynchronously in the actor
 /// - Scales well with many subscribers (O(n) mailbox sends vs O(n) synchronous callbacks)
-pub struct ActorRefEventStreamSubscriber<TB: RuntimeToolbox + 'static> {
-  actor_ref: ActorRefGeneric<TB>,
+pub struct ActorRefEventStreamSubscriber {
+  actor_ref: ActorRef,
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefEventStreamSubscriber<TB> {
+impl ActorRefEventStreamSubscriber {
   /// Creates a new subscriber that forwards events to the given ActorRef.
   #[must_use]
-  pub const fn new(actor_ref: ActorRefGeneric<TB>) -> Self {
+  pub const fn new(actor_ref: ActorRef) -> Self {
     Self { actor_ref }
   }
 
   /// Returns a reference to the underlying ActorRef.
   #[must_use]
-  pub const fn actor_ref(&self) -> &ActorRefGeneric<TB> {
+  pub const fn actor_ref(&self) -> &ActorRef {
     &self.actor_ref
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for ActorRefEventStreamSubscriber<TB> {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+impl EventStreamSubscriber for ActorRefEventStreamSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     // Non-blocking message send to actor's mailbox
-    let message = AnyMessageGeneric::new(event.clone());
+    let message = AnyMessage::new(event.clone());
     let _ = self.actor_ref.tell(message);
     // Errors are silently ignored (actor may be stopped, mailbox full, etc.)
     // This matches Akka/Pekko behavior where dead letter handling is separate

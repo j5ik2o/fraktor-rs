@@ -1,9 +1,9 @@
 //! Drives the core scheduler whenever ticks are available.
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
-  super::{SchedulerRunnerOwned, SchedulerSharedGeneric},
+  super::{SchedulerRunnerOwned, SchedulerShared},
   TickExecutorSignal, TickFeedHandle,
 };
 
@@ -11,17 +11,17 @@ use super::{
 mod tests;
 
 /// Executes scheduler work by draining ticks from the feed.
-pub struct SchedulerTickExecutor<TB: RuntimeToolbox + 'static> {
-  scheduler: SchedulerSharedGeneric<TB>,
-  feed:      TickFeedHandle<TB>,
+pub struct SchedulerTickExecutor {
+  scheduler: SchedulerShared,
+  feed:      TickFeedHandle,
   signal:    TickExecutorSignal,
-  runner:    SchedulerRunnerOwned<TB>,
+  runner:    SchedulerRunnerOwned,
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerTickExecutor<TB> {
+impl SchedulerTickExecutor {
   /// Creates a new executor bound to the provided scheduler context.
   #[must_use]
-  pub fn new(scheduler: SchedulerSharedGeneric<TB>, feed: TickFeedHandle<TB>, signal: TickExecutorSignal) -> Self {
+  pub fn new(scheduler: SchedulerShared, feed: TickFeedHandle, signal: TickExecutorSignal) -> Self {
     let runner = SchedulerRunnerOwned::new();
     Self { scheduler, feed, signal, runner }
   }

@@ -5,14 +5,14 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRefGeneric;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{snapshot_metadata::SnapshotMetadata, snapshot_selection_criteria::SnapshotSelectionCriteria};
 
 /// Messages sent to the snapshot actor.
 #[derive(Clone, Debug)]
-pub enum SnapshotMessage<TB: RuntimeToolbox + 'static> {
+pub enum SnapshotMessage {
   /// Saves a snapshot.
   SaveSnapshot {
     /// Snapshot metadata.
@@ -20,7 +20,7 @@ pub enum SnapshotMessage<TB: RuntimeToolbox + 'static> {
     /// Snapshot payload.
     snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
     /// Request sender.
-    sender:   ActorRefGeneric<TB>,
+    sender:   ActorRef,
   },
   /// Loads a snapshot.
   LoadSnapshot {
@@ -29,14 +29,14 @@ pub enum SnapshotMessage<TB: RuntimeToolbox + 'static> {
     /// Selection criteria.
     criteria:       SnapshotSelectionCriteria,
     /// Request sender.
-    sender:         ActorRefGeneric<TB>,
+    sender:         ActorRef,
   },
   /// Deletes a single snapshot.
   DeleteSnapshot {
     /// Snapshot metadata.
     metadata: SnapshotMetadata,
     /// Request sender.
-    sender:   ActorRefGeneric<TB>,
+    sender:   ActorRef,
   },
   /// Deletes snapshots by criteria.
   DeleteSnapshots {
@@ -45,6 +45,6 @@ pub enum SnapshotMessage<TB: RuntimeToolbox + 'static> {
     /// Selection criteria.
     criteria:       SnapshotSelectionCriteria,
     /// Request sender.
-    sender:         ActorRefGeneric<TB>,
+    sender:         ActorRef,
   },
 }

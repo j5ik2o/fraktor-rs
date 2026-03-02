@@ -2,18 +2,18 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContextGeneric,
+    Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
   error::ActorError,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
-    SerializationCallScope, SerializationExtensionGeneric, SerializationExtensionSharedGeneric, SerializationSetup,
+    SerializationCallScope, SerializationExtension, SerializationExtensionShared, SerializationSetup,
     SerializationSetupBuilder, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystemConfig, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
 
@@ -25,20 +25,16 @@ use crate::core::{
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("writer-tests");
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("writer-tests");
   let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  ActorSystemGeneric::new_with_config(&props, &system_config).expect("system builds")
+  ActorSystem::new_with_config(&props, &system_config).expect("system builds")
 }
 
 fn serialization_setup() -> SerializationSetup {
@@ -58,10 +54,10 @@ fn serialization_setup() -> SerializationSetup {
     .expect("setup")
 }
 
-fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystemGeneric<NoStdToolbox>) {
+fn build_writer() -> (EndpointWriterGeneric<NoStdToolbox>, ActorSystem) {
   let system = build_system();
   let setup = serialization_setup();
-  let serialization = SerializationExtensionSharedGeneric::new(SerializationExtensionGeneric::new(&system, setup));
+  let serialization = SerializationExtensionShared::new(SerializationExtension::new(&system, setup));
   (EndpointWriter::new(system.downgrade(), serialization), system)
 }
 
@@ -78,7 +74,7 @@ fn actor_path(system: &str, guardian: GuardianKind, segments: &[&str]) -> ActorP
 }
 
 fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>) -> OutboundMessage<NoStdToolbox> {
-  let message = AnyMessageGeneric::new(content.to_string());
+  let message = AnyMessage::new(content.to_string());
   let remote = remote_node();
   match sender {
     | Some(path) => OutboundMessage::user(message, recipient.clone(), remote).with_sender(path),
@@ -87,7 +83,7 @@ fn user_message(content: &str, recipient: &ActorPath, sender: Option<ActorPath>)
 }
 
 fn system_message(content: &str, recipient: &ActorPath) -> OutboundMessage<NoStdToolbox> {
-  let message = AnyMessageGeneric::new(content.to_string());
+  let message = AnyMessage::new(content.to_string());
   OutboundMessage::system(message, recipient.clone(), remote_node())
 }
 

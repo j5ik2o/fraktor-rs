@@ -1,5 +1,5 @@
 use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   snapshot_message::SnapshotMessage, snapshot_metadata::SnapshotMetadata,
@@ -12,22 +12,17 @@ fn snapshot_message_variants_hold_data() {
   let metadata = SnapshotMetadata::new("pid-1", 1, 10);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_i32);
 
-  let save = SnapshotMessage::<NoStdToolbox>::SaveSnapshot {
-    metadata: metadata.clone(),
-    snapshot: payload,
-    sender:   sender.clone(),
-  };
+  let save = SnapshotMessage::SaveSnapshot { metadata: metadata.clone(), snapshot: payload, sender: sender.clone() };
 
-  let load = SnapshotMessage::<NoStdToolbox>::LoadSnapshot {
+  let load = SnapshotMessage::LoadSnapshot {
     persistence_id: "pid-1".into(),
     criteria:       SnapshotSelectionCriteria::latest(),
     sender:         sender.clone(),
   };
 
-  let delete_one =
-    SnapshotMessage::<NoStdToolbox>::DeleteSnapshot { metadata: metadata.clone(), sender: sender.clone() };
+  let delete_one = SnapshotMessage::DeleteSnapshot { metadata: metadata.clone(), sender: sender.clone() };
 
-  let delete_many = SnapshotMessage::<NoStdToolbox>::DeleteSnapshots {
+  let delete_many = SnapshotMessage::DeleteSnapshots {
     persistence_id: "pid-1".into(),
     criteria: SnapshotSelectionCriteria::none(),
     sender,

@@ -62,3 +62,11 @@ pub mod core;
 #[allow(cfg_std_forbid)]
 #[cfg(feature = "std")]
 pub mod std;
+#[cfg(not(feature = "std"))]
+mod std {
+  pub(crate) type StdSyncMutex<T> = crate::core::sync::sync_mutex_like::SpinSyncMutex<T>;
+  pub(crate) type StdSyncRwLock<T> = crate::core::sync::sync_rwlock_like::SpinSyncRwLock<T>;
+}
+
+pub(crate) type RuntimeMutexBackend<T> = crate::std::StdSyncMutex<T>;
+pub(crate) type RuntimeRwLockBackend<T> = crate::std::StdSyncRwLock<T>;

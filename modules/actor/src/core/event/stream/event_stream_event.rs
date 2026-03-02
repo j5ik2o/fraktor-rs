@@ -5,22 +5,20 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use super::{
   remote_authority_event::RemoteAuthorityEvent, remoting_backpressure_event::RemotingBackpressureEvent,
   remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
 };
 use crate::core::{
   actor::Pid,
-  dead_letter::DeadLetterEntryGeneric,
+  dead_letter::DeadLetterEntry,
   dispatch::{
     dispatcher::DispatcherDumpEvent,
     mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   },
   event::logging::LogEvent,
   lifecycle::LifecycleEvent,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
   scheduler::tick_driver::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
   typed::{UnhandledMessageEvent, message_adapter::AdapterError},
@@ -28,11 +26,11 @@ use crate::core::{
 
 /// Event selected for publication on the event stream.
 #[derive(Debug)]
-pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
+pub enum EventStreamEvent {
   /// Actor lifecycle transition notification.
   Lifecycle(LifecycleEvent),
   /// Deadletter capture describing an undeliverable message.
-  DeadLetter(DeadLetterEntryGeneric<TB>),
+  DeadLetter(DeadLetterEntry),
   /// Structured log event.
   Log(LogEvent),
   /// Mailbox metrics snapshot.
@@ -67,11 +65,11 @@ pub enum EventStreamEvent<TB: RuntimeToolbox = NoStdToolbox> {
     /// Extension identifier (e.g. "cluster").
     name:    String,
     /// Payload carried by the extension event.
-    payload: AnyMessageGeneric<TB>,
+    payload: AnyMessage,
   },
 }
 
-impl<TB: RuntimeToolbox> Clone for EventStreamEvent<TB> {
+impl Clone for EventStreamEvent {
   fn clone(&self) -> Self {
     match self {
       | Self::Lifecycle(event) => Self::Lifecycle(event.clone()),

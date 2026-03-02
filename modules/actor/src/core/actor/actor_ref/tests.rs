@@ -1,13 +1,11 @@
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
-
 use crate::core::{
   actor::{
-    Actor, ActorCell, ActorContextGeneric, Pid,
+    Actor, ActorCell, ActorContext, Pid,
     actor_path::ActorPathScheme,
     actor_ref::{ActorRef, ActorRefSender},
   },
   error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   scheduler::{
     SchedulerConfig,
@@ -22,11 +20,8 @@ use crate::core::{
 
 struct TestSender;
 
-impl ActorRefSender<NoStdToolbox> for TestSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError<NoStdToolbox>> {
+impl ActorRefSender for TestSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
   }
 }
@@ -48,11 +43,7 @@ fn null_sender_returns_error() {
 struct NoopActor;
 
 impl Actor for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -63,7 +54,7 @@ impl Actor for NoopActor {
 /// Since ActorRef now uses weak references to SystemState, the returned SystemStateShared
 /// must be kept alive for the ActorRef's path methods to work.
 fn build_actor_ref_with_system(remoting: Option<RemotingConfig>) -> (ActorRef, SystemStateShared) {
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::<NoStdToolbox>::new());
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let mut config = ActorSystemConfig::default()
     .with_system_name("canonical-test")

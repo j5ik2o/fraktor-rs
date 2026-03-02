@@ -10,7 +10,7 @@ use core::{
 use std::thread;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::NoStdMutex,
   sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex},
 };
 
@@ -18,12 +18,12 @@ use super::schedule_waker::ScheduleWaker;
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchError, DispatchExecutor, DispatchExecutorRunnerGeneric, DispatchSharedGeneric, DispatcherSharedGeneric,
-      ScheduleAdapter, ScheduleAdapterSharedGeneric, TickExecutorGeneric,
+      DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchShared, DispatcherShared, ScheduleAdapter,
+      ScheduleAdapterShared, TickExecutor,
     },
     mailbox::{
-      BackpressurePublisherGeneric, EnqueueOutcome, MailboxGeneric, MailboxInstrumentation, MailboxOverflowStrategy,
-      MailboxPolicy, ScheduleHints,
+      BackpressurePublisher, EnqueueOutcome, Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy,
+      ScheduleHints,
     },
   },
   event::{
@@ -41,8 +41,8 @@ fn register_user_hint() -> ScheduleHints {
   ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: false }
 }
 
-fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
-  let mailbox = ArcShared::new(MailboxGeneric::new(MailboxPolicy::unbounded(None)));
+fn system_instrumented_mailbox() -> (ArcShared<Mailbox>, SystemStateShared) {
+  let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
   let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, None, None, None);
@@ -50,10 +50,10 @@ fn system_instrumented_mailbox() -> (ArcShared<MailboxGeneric<NoStdToolbox>>, Sy
   (mailbox, system)
 }
 
-fn bounded_mailbox(capacity: usize) -> (ArcShared<MailboxGeneric<NoStdToolbox>>, SystemStateShared) {
+fn bounded_mailbox(capacity: usize) -> (ArcShared<Mailbox>, SystemStateShared) {
   let policy =
     MailboxPolicy::bounded(NonZeroUsize::new(capacity).expect("capacity"), MailboxOverflowStrategy::Block, None);
-  let mailbox = ArcShared::new(MailboxGeneric::new(policy));
+  let mailbox = ArcShared::new(Mailbox::new(policy));
   let system = ActorSystem::new_empty().state();
   let pid = system.allocate_pid();
   let instrumentation = MailboxInstrumentation::new(system.clone(), pid, Some(capacity), None, None);
@@ -99,7 +99,7 @@ fn rejected_execution_is_retried_and_logged_on_failure() {
 
 #[test]
 fn dispatcher_respects_throughput_and_deadline_limits() {
-  let mailbox = ArcShared::new(MailboxGeneric::new(
+  let mailbox = ArcShared::new(Mailbox::new(
     MailboxPolicy::bounded(
       NonZeroUsize::new(2).unwrap(),
       crate::core::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
@@ -113,8 +113,7 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 
   let (tick, runner) = tick_executor_with_runner();
   let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, Some(Duration::from_millis(1)), None);
-  let invoker =
-    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  let invoker = MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker>);
   dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).unwrap();
@@ -130,12 +129,9 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
 fn schedule_adapter_receives_pending_signal() {
   let (mailbox, _system) = bounded_mailbox(1);
   let (tick, runner) = tick_executor_with_runner();
-  let adapter = ScheduleAdapterSharedGeneric::new(
-    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
-  );
+  let adapter = ScheduleAdapterShared::new(Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter>);
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
-  let invoker =
-    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  let invoker = MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker>);
   dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
@@ -165,9 +161,7 @@ fn schedule_adapter_notified_on_rejection() {
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (flaky, runner) = flaky_executor_with_runner(vec![DispatchError::RejectedExecution; 3]);
-  let adapter = ScheduleAdapterSharedGeneric::new(
-    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
-  );
+  let adapter = ScheduleAdapterShared::new(Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter>);
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter.clone());
 
   dispatcher.register_for_execution(register_user_hint());
@@ -192,9 +186,7 @@ fn dispatcher_dump_event_published() {
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ScheduleAdapterSharedGeneric::new(
-    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
-  );
+  let adapter = ScheduleAdapterShared::new(Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter>);
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox, runner, None, None, adapter);
 
   dispatcher.publish_dump_metrics();
@@ -210,12 +202,9 @@ fn telemetry_captures_mailbox_pressure_and_dispatcher_dump() {
   let _subscription = system.event_stream().subscribe(&subscriber);
 
   let (_recording, runner) = recording_executor_with_runner();
-  let adapter = ScheduleAdapterSharedGeneric::new(
-    Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter<NoStdToolbox>>
-  );
+  let adapter = ScheduleAdapterShared::new(Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter>);
   let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter);
-  let invoker =
-    MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker<NoStdToolbox>>);
+  let invoker = MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker>);
   dispatcher.register_invoker(invoker);
 
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(1usize)), Ok(EnqueueOutcome::Enqueued)));
@@ -233,7 +222,7 @@ fn mailbox_full_notifies_invoker_pressure_hook() {
     pressure_calls: ArcShared<NoStdMutex<usize>>,
   }
 
-  impl MessageInvoker<NoStdToolbox> for PressureInvoker {
+  impl MessageInvoker for PressureInvoker {
     fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
       Ok(())
     }
@@ -257,11 +246,11 @@ fn mailbox_full_notifies_invoker_pressure_hook() {
   let (mailbox, _system) = bounded_mailbox(1);
   let (recording, runner) = recording_executor_with_runner();
   let dispatcher = dispatcher_with_executor(mailbox.clone(), runner, None, None);
-  mailbox.attach_backpressure_publisher(BackpressurePublisherGeneric::from_dispatcher(dispatcher.clone()));
+  mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
 
   let pressure_calls = ArcShared::new(NoStdMutex::new(0_usize));
   let invoker = MessageInvokerShared::new(
-    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker<NoStdToolbox>>
+    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker>
   );
   dispatcher.register_invoker(invoker);
 
@@ -272,48 +261,45 @@ fn mailbox_full_notifies_invoker_pressure_hook() {
 }
 
 fn dispatcher_with_executor(
-  mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
-  executor: ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>,
+  mailbox: ArcShared<Mailbox>,
+  executor: ArcShared<DispatchExecutorRunner>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-) -> DispatcherSharedGeneric<NoStdToolbox> {
-  let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared::<NoStdToolbox>();
+) -> DispatcherShared {
+  let adapter = crate::core::dispatch::dispatcher::InlineScheduleAdapter::shared();
   dispatcher_with_executor_and_adapter(mailbox, executor, throughput_deadline, starvation_deadline, adapter)
 }
 
 fn dispatcher_with_executor_and_adapter(
-  mailbox: ArcShared<MailboxGeneric<NoStdToolbox>>,
-  executor: ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>,
+  mailbox: ArcShared<Mailbox>,
+  executor: ArcShared<DispatchExecutorRunner>,
   throughput_deadline: Option<Duration>,
   starvation_deadline: Option<Duration>,
-  adapter: ScheduleAdapterSharedGeneric<NoStdToolbox>,
-) -> DispatcherSharedGeneric<NoStdToolbox> {
-  DispatcherSharedGeneric::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
+  adapter: ScheduleAdapterShared,
+) -> DispatcherShared {
+  DispatcherShared::with_adapter(mailbox, executor, adapter, throughput_deadline, starvation_deadline)
 }
 
-fn recording_executor_with_runner()
--> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
+fn recording_executor_with_runner() -> (ArcShared<RecordingExecutor>, ArcShared<DispatchExecutorRunner>) {
   let recording = ArcShared::new(RecordingExecutor::default());
   let recording_clone = recording.clone();
-  let runner =
-    ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(RecordingExecutorWrapper { inner: recording })));
+  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(RecordingExecutorWrapper { inner: recording })));
   (recording_clone, runner)
 }
 
 fn flaky_executor_with_runner(
   failures: Vec<DispatchError>,
-) -> (ArcShared<FlakyExecutor>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
+) -> (ArcShared<FlakyExecutor>, ArcShared<DispatchExecutorRunner>) {
   let flaky = ArcShared::new(FlakyExecutor::new(failures));
   let flaky_clone = flaky.clone();
-  let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(FlakyExecutorWrapper { inner: flaky })));
+  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(FlakyExecutorWrapper { inner: flaky })));
   (flaky_clone, runner)
 }
 
-fn tick_executor_with_runner()
--> (ArcShared<TickExecutorGenericWrapper>, ArcShared<DispatchExecutorRunnerGeneric<NoStdToolbox>>) {
-  let tick = ArcShared::new(TickExecutorGenericWrapper::new());
+fn tick_executor_with_runner() -> (ArcShared<TickExecutorSharedWrapper>, ArcShared<DispatchExecutorRunner>) {
+  let tick = ArcShared::new(TickExecutorSharedWrapper::new());
   let tick_clone = tick.clone();
-  let runner = ArcShared::new(DispatchExecutorRunnerGeneric::new(Box::new(TickExecutorWrapper { inner: tick })));
+  let runner = ArcShared::new(DispatchExecutorRunner::new(Box::new(TickExecutorWrapper { inner: tick })));
   (tick_clone, runner)
 }
 
@@ -321,8 +307,8 @@ struct RecordingExecutorWrapper {
   inner: ArcShared<RecordingExecutor>,
 }
 
-impl DispatchExecutor<NoStdToolbox> for RecordingExecutorWrapper {
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for RecordingExecutorWrapper {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.inner.calls.fetch_add(1, Ordering::Release);
     self.inner.tasks.lock().push(dispatcher);
     Ok(())
@@ -333,24 +319,24 @@ struct FlakyExecutorWrapper {
   inner: ArcShared<FlakyExecutor>,
 }
 
-impl DispatchExecutor<NoStdToolbox> for FlakyExecutorWrapper {
-  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for FlakyExecutorWrapper {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.inner.attempts.fetch_add(1, Ordering::Release);
     self.inner.failures.lock().pop().map_or_else(|| Ok(()), Err)
   }
 }
 
 struct TickExecutorWrapper {
-  inner: ArcShared<TickExecutorGenericWrapper>,
+  inner: ArcShared<TickExecutorSharedWrapper>,
 }
 
-struct TickExecutorGenericWrapper {
-  executor: NoStdMutex<TickExecutorGeneric<NoStdToolbox>>,
+struct TickExecutorSharedWrapper {
+  executor: NoStdMutex<TickExecutor>,
 }
 
-impl TickExecutorGenericWrapper {
+impl TickExecutorSharedWrapper {
   fn new() -> Self {
-    Self { executor: NoStdMutex::new(TickExecutorGeneric::new()) }
+    Self { executor: NoStdMutex::new(TickExecutor::new()) }
   }
 
   fn tick(&self) {
@@ -362,14 +348,14 @@ impl TickExecutorGenericWrapper {
   }
 }
 
-impl DispatchExecutor<NoStdToolbox> for TickExecutorWrapper {
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for TickExecutorWrapper {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.inner.executor.lock().execute(dispatcher)
   }
 }
 
 struct RecordingExecutor {
-  tasks: SpinSyncMutex<Vec<DispatchSharedGeneric<NoStdToolbox>>>,
+  tasks: SpinSyncMutex<Vec<DispatchShared>>,
   calls: AtomicUsize,
 }
 
@@ -395,8 +381,8 @@ impl Default for RecordingExecutor {
   }
 }
 
-impl DispatchExecutor<NoStdToolbox> for RecordingExecutor {
-  fn execute(&mut self, dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for RecordingExecutor {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.calls.fetch_add(1, Ordering::Release);
     self.tasks.lock().push(dispatcher);
     Ok(())
@@ -418,8 +404,8 @@ impl FlakyExecutor {
   }
 }
 
-impl DispatchExecutor<NoStdToolbox> for FlakyExecutor {
-  fn execute(&mut self, _dispatcher: DispatchSharedGeneric<NoStdToolbox>) -> Result<(), DispatchError> {
+impl DispatchExecutor for FlakyExecutor {
+  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     self.attempts.fetch_add(1, Ordering::Release);
     self.failures.lock().pop().map_or_else(|| Ok(()), Err)
   }
@@ -435,7 +421,7 @@ impl Default for RecordingInvoker {
   }
 }
 
-impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
+impl MessageInvoker for RecordingInvoker {
   fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), crate::core::error::ActorError> {
     if let Some(value) = message.payload().downcast_ref::<usize>() {
       self.messages.lock().push(*value);
@@ -452,17 +438,17 @@ impl MessageInvoker<NoStdToolbox> for RecordingInvoker {
 }
 
 struct EventRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventRecorder {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>) -> Self {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for EventRecorder {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for EventRecorder {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
@@ -492,9 +478,9 @@ impl Default for CountingScheduleAdapter {
   }
 }
 
-impl ScheduleAdapter<NoStdToolbox> for CountingScheduleAdapter {
-  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<NoStdToolbox>) -> core::task::Waker {
-    ScheduleWaker::<NoStdToolbox>::into_waker(dispatcher)
+impl ScheduleAdapter for CountingScheduleAdapter {
+  fn create_waker(&mut self, dispatcher: DispatcherShared) -> core::task::Waker {
+    ScheduleWaker::into_waker(dispatcher)
   }
 
   fn on_pending(&mut self) {

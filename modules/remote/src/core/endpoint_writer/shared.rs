@@ -1,8 +1,8 @@
 //! Shared wrapper for endpoint writer with interior mutability.
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  sync::{ArcShared, SharedAccess},
 };
 
 use super::EndpointWriterGeneric;
@@ -13,7 +13,7 @@ use super::EndpointWriterGeneric;
 /// that internally lock the underlying writer, allowing safe
 /// concurrent access from multiple owners.
 pub struct EndpointWriterSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<EndpointWriterGeneric<TB>, TB>>,
+  inner: ArcShared<RuntimeMutex<EndpointWriterGeneric<TB>>>,
 }
 
 /// Type alias using the default toolbox.
@@ -23,7 +23,7 @@ impl<TB: RuntimeToolbox + 'static> EndpointWriterSharedGeneric<TB> {
   /// Creates a new shared wrapper around the provided writer instance.
   #[must_use]
   pub fn new(writer: EndpointWriterGeneric<TB>) -> Self {
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(writer);
+    let mutex = RuntimeMutex::new(writer);
     Self { inner: ArcShared::new(mutex) }
   }
 }

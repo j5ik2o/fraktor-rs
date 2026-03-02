@@ -6,42 +6,38 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData};
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
-  actor::{ChildRefGeneric, Pid, actor_ref::ActorRefGeneric, pipe_spawn_error::PipeSpawnError},
+  actor::{ChildRef, Pid, actor_ref::ActorRef, pipe_spawn_error::PipeSpawnError},
   error::{ActorError, SendError},
   event::logging::LogLevel,
-  messaging::{AnyMessageGeneric, system_message::SystemMessage},
-  props::PropsGeneric,
+  messaging::{AnyMessage, system_message::SystemMessage},
+  props::Props,
   spawn::SpawnError,
-  system::ActorSystemGeneric,
+  system::ActorSystem,
 };
 
 pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 
 /// Provides contextual APIs while handling a message.
-pub struct ActorContextGeneric<'a, TB: RuntimeToolbox + 'static> {
-  system:          ActorSystemGeneric<TB>,
+pub struct ActorContext<'a> {
+  system:          ActorSystem,
   pid:             Pid,
-  sender:          Option<ActorRefGeneric<TB>>,
-  current_message: Option<AnyMessageGeneric<TB>>,
+  sender:          Option<ActorRef>,
+  current_message: Option<AnyMessage>,
   _marker:         PhantomData<&'a ()>,
 }
 
 /// Alias for a context with the default runtime toolbox.
-pub type ActorContext<'a> = ActorContextGeneric<'a, NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
+impl ActorContext<'_> {
   /// Creates a new context placeholder.
   #[must_use]
-  pub fn new(system: &ActorSystemGeneric<TB>, pid: Pid) -> Self {
+  pub fn new(system: &ActorSystem, pid: Pid) -> Self {
     Self { system: system.clone(), pid, sender: None, current_message: None, _marker: PhantomData }
   }
 
   /// Returns a reference to the actor system.
   #[must_use]
-  pub const fn system(&self) -> &ActorSystemGeneric<TB> {
+  pub const fn system(&self) -> &ActorSystem {
     &self.system
   }
 
@@ -53,12 +49,12 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
 
   /// Returns the sender if supplied by the message envelope.
   #[must_use]
-  pub const fn sender(&self) -> Option<&ActorRefGeneric<TB>> {
+  pub const fn sender(&self) -> Option<&ActorRef> {
     self.sender.as_ref()
   }
 
   /// Sets the sender (used internally by the runtime).
-  pub fn set_sender(&mut self, sender: Option<ActorRefGeneric<TB>>) {
+  pub fn set_sender(&mut self, sender: Option<ActorRef>) {
     self.sender = sender;
   }
 
@@ -68,7 +64,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   }
 
   /// Sets the current user message being processed (runtime use only).
-  pub(crate) fn set_current_message(&mut self, message: Option<AnyMessageGeneric<TB>>) {
+  pub(crate) fn set_current_message(&mut self, message: Option<AnyMessage>) {
     self.current_message = message;
   }
 
@@ -140,13 +136,13 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
     cell.unstash_messages()
   }
 
-  /// Returns an [`ActorRefGeneric`] pointing to the running actor.
+  /// Returns an [`ActorRef`] pointing to the running actor.
   ///
   /// # Panics
   ///
   /// Panics if the actor reference cannot be resolved.
   #[must_use]
-  pub fn self_ref(&self) -> ActorRefGeneric<TB> {
+  pub fn self_ref(&self) -> ActorRef {
     match self.system.actor_ref(self.pid) {
       | Some(reference) => reference,
       | None => panic!("actor reference must exist for running context"),
@@ -158,7 +154,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error if no reply target is set or sending fails.
-  pub fn reply(&mut self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
     match self.sender.as_mut() {
       | Some(target) => target.tell(message),
       | None => Err(SendError::no_recipient(message)),
@@ -170,13 +166,13 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when spawning the child fails.
-  pub fn spawn_child(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.system.spawn_child(self.pid, props)
   }
 
   /// Returns the list of supervised children.
   #[must_use]
-  pub fn children(&self) -> Vec<ChildRefGeneric<TB>> {
+  pub fn children(&self) -> Vec<ChildRef> {
     self.system.children(self.pid)
   }
 
@@ -185,7 +181,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn stop_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.stop()
   }
 
@@ -194,7 +190,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_self(&self) -> Result<(), SendError<TB>> {
+  pub fn stop_self(&self) -> Result<(), SendError> {
     self.system.stop_actor(self.pid)
   }
 
@@ -203,7 +199,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the suspend signal cannot be delivered.
-  pub fn suspend_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn suspend_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.suspend()
   }
 
@@ -212,7 +208,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the resume signal cannot be delivered.
-  pub fn resume_child(&self, child: &ChildRefGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
     child.resume()
   }
 
@@ -221,7 +217,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn watch(&self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -242,7 +238,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the unwatch signal.
-  pub fn unwatch(&self, target: &ActorRefGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn unwatch(&self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -264,7 +260,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   ///
   /// Returns an error when spawning fails or when installing the watch registration cannot be
   /// performed.
-  pub fn spawn_child_watched(&self, props: &PropsGeneric<TB>) -> Result<ChildRefGeneric<TB>, SpawnError> {
+  pub fn spawn_child_watched(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let child = self.spawn_child(props)?;
     if self.watch(child.actor_ref()).is_err() {
       let _ = child.stop();
@@ -281,7 +277,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch_with(&self, target: &ActorRefGeneric<TB>, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn watch_with(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -309,7 +305,7 @@ impl<TB: RuntimeToolbox + 'static> ActorContextGeneric<'_, TB> {
   pub fn pipe_to_self<Fut, Map, Output>(&self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
   where
     Fut: Future<Output = Output> + Send + 'static,
-    Map: FnOnce(Output) -> AnyMessageGeneric<TB> + Send + 'static, {
+    Map: FnOnce(Output) -> AnyMessage + Send + 'static, {
     let state = self.system.state();
     let Some(cell) = state.cell(&self.pid) else {
       return Err(PipeSpawnError::ActorUnavailable);

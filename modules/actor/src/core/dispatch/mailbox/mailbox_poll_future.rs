@@ -9,29 +9,29 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::{queue::QueueError, wait::WaitShared},
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeMutex,
+  sync::ArcShared,
 };
 
 use super::{mailbox_queue_state::QueueState, map_user_queue_error};
-use crate::core::{error::SendError, messaging::AnyMessageGeneric};
+use crate::core::{error::SendError, messaging::AnyMessage};
 
 #[cfg(test)]
 mod tests;
 
 /// Future resolving when a message becomes available in the queue.
-struct QueuePollFuture<T, TB: RuntimeToolbox>
+struct QueuePollFuture<T>
 where
   T: Send + 'static, {
-  state:  ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
-  waiter: Option<WaitShared<QueueError<T>, TB>>,
+  state:  ArcShared<RuntimeMutex<QueueState<T>>>,
+  waiter: Option<WaitShared<QueueError<T>>>,
 }
 
-impl<T, TB: RuntimeToolbox> QueuePollFuture<T, TB>
+impl<T> QueuePollFuture<T>
 where
   T: Send + 'static,
 {
-  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>, TB>, QueueError<T>> {
+  fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
       let waiter = {
         let mut state = self.state.lock();
@@ -44,17 +44,11 @@ where
   }
 }
 
-impl<T, TB> Unpin for QueuePollFuture<T, TB>
-where
-  T: Send + 'static,
-  TB: RuntimeToolbox,
-{
-}
+impl<T> Unpin for QueuePollFuture<T> where T: Send + 'static {}
 
-impl<T, TB> Future for QueuePollFuture<T, TB>
+impl<T> Future for QueuePollFuture<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox,
 {
   type Output = Result<T, QueueError<T>>;
 
@@ -97,17 +91,14 @@ where
 }
 
 /// Future completing with the next user message from the mailbox.
-pub struct MailboxPollFutureGeneric<TB: RuntimeToolbox + 'static> {
-  inner: QueuePollFuture<AnyMessageGeneric<TB>, TB>,
+pub struct MailboxPollFuture {
+  inner: QueuePollFuture<AnyMessage>,
 }
 
-/// Type alias for [MailboxPollFutureGeneric] with the default [NoStdToolbox].
-pub type MailboxPollFuture = MailboxPollFutureGeneric<NoStdToolbox>;
+impl Unpin for MailboxPollFuture {}
 
-impl<TB: RuntimeToolbox + 'static> Unpin for MailboxPollFutureGeneric<TB> {}
-
-impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFutureGeneric<TB> {
-  type Output = Result<AnyMessageGeneric<TB>, SendError<TB>>;
+impl Future for MailboxPollFuture {
+  type Output = Result<AnyMessage, SendError>;
 
   fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     match Pin::new(&mut self.inner).poll(cx) {
@@ -118,7 +109,7 @@ impl<TB: RuntimeToolbox + 'static> Future for MailboxPollFutureGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> fmt::Debug for MailboxPollFutureGeneric<TB> {
+impl fmt::Debug for MailboxPollFuture {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("MailboxPollFuture").finish()
   }

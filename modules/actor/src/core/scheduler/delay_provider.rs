@@ -3,14 +3,13 @@
 use core::time::Duration;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
   sync::{ArcShared, SharedAccess},
   timing::delay::{DelayFuture, DelayProvider, DelayTrigger},
 };
 
 use super::{
-  Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerSharedGeneric,
-  execution_batch::ExecutionBatch, runnable::SchedulerRunnable,
+  Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerShared, execution_batch::ExecutionBatch,
+  runnable::SchedulerRunnable,
 };
 
 /// Provides delay futures by scheduling runnable tasks on the canonical scheduler.
@@ -20,18 +19,18 @@ use super::{
 /// This implementation now requires `&mut self` for the `delay()` method.
 /// The internal `Scheduler` is still protected by a mutex because it is a shared
 /// system resource, but callers must ensure exclusive access to this provider.
-pub struct SchedulerBackedDelayProvider<TB: RuntimeToolbox + 'static> {
-  scheduler: SchedulerSharedGeneric<TB>,
+pub struct SchedulerBackedDelayProvider {
+  scheduler: SchedulerShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
+impl SchedulerBackedDelayProvider {
   /// Creates a provider referencing the shared scheduler instance.
   #[must_use]
-  pub const fn new(scheduler: SchedulerSharedGeneric<TB>) -> Self {
+  pub const fn new(scheduler: SchedulerShared) -> Self {
     Self { scheduler }
   }
 
-  fn with_scheduler<R>(&mut self, f: impl FnOnce(&mut Scheduler<TB>) -> R) -> R {
+  fn with_scheduler<R>(&mut self, f: impl FnOnce(&mut Scheduler) -> R) -> R {
     self.scheduler.with_write(f)
   }
 
@@ -53,13 +52,13 @@ impl<TB: RuntimeToolbox + 'static> SchedulerBackedDelayProvider<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for SchedulerBackedDelayProvider<TB> {
+impl Clone for SchedulerBackedDelayProvider {
   fn clone(&self) -> Self {
     Self { scheduler: self.scheduler.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> DelayProvider for SchedulerBackedDelayProvider<TB> {
+impl DelayProvider for SchedulerBackedDelayProvider {
   fn delay(&mut self, duration: Duration) -> DelayFuture {
     let (future, trigger) = DelayFuture::new_pair(duration);
     match self.schedule_delay(duration, &trigger) {

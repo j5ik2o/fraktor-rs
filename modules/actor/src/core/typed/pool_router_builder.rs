@@ -6,40 +6,29 @@ mod tests;
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 use portable_atomic::{AtomicU64, Ordering};
 
 use crate::core::{
   event::logging::LogLevel,
-  typed::{
-    Behaviors, actor::TypedActorRefGeneric, behavior::Behavior, behavior_signal::BehaviorSignal,
-    props::TypedPropsGeneric,
-  },
+  typed::{Behaviors, actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, props::TypedProps},
 };
 
 /// Configures and builds a pool router behavior.
 ///
 /// The resulting behavior spawns `pool_size` child actors and distributes
 /// incoming messages to them using round-robin routing.
-pub struct PoolRouterBuilderGeneric<M, TB = NoStdToolbox>
+pub struct PoolRouterBuilder<M>
 where
-  M: Send + Sync + Clone + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + Clone + 'static, {
   pool_size:        usize,
-  behavior_factory: ArcShared<dyn Fn() -> Behavior<M, TB> + Send + Sync>,
+  behavior_factory: ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
   strategy:         PoolRouteStrategy<M>,
 }
 
-/// Type alias for [`PoolRouterBuilderGeneric`] with the default [`NoStdToolbox`].
-pub type PoolRouterBuilder<M> = PoolRouterBuilderGeneric<M, NoStdToolbox>;
-
-impl<M, TB> PoolRouterBuilderGeneric<M, TB>
+impl<M> PoolRouterBuilder<M>
 where
   M: Send + Sync + Clone + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a new pool router builder with the given factory.
   ///
@@ -48,7 +37,7 @@ where
   /// Panics if `pool_size` is zero.
   pub(crate) fn new<F>(pool_size: usize, behavior_factory: F) -> Self
   where
-    F: Fn() -> Behavior<M, TB> + Send + Sync + 'static, {
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     assert!(pool_size > 0, "pool size must be positive");
     Self { pool_size, behavior_factory: ArcShared::new(behavior_factory), strategy: PoolRouteStrategy::RoundRobin }
   }
@@ -98,16 +87,16 @@ where
   /// Builds the pool router as a [`Behavior`].
   #[must_use]
   #[allow(clippy::redundant_closure)]
-  pub fn build(self) -> Behavior<M, TB> {
+  pub fn build(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
     let strategy = self.strategy;
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
-      let props = TypedPropsGeneric::<M, TB>::from_behavior_factory(move || bf());
+      let props = TypedProps::<M>::from_behavior_factory(move || bf());
 
-      let mut routee_vec: Vec<TypedActorRefGeneric<M, TB>> = Vec::with_capacity(pool_size);
+      let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         match ctx.spawn_child_watched(&props) {
           | Ok(child) => routee_vec.push(child.actor_ref().clone()),
@@ -120,17 +109,17 @@ where
       }
 
       let routee_count = routee_vec.len();
-      let mutex = <TB::MutexFamily as SyncMutexFamily>::create(routee_vec);
-      let routees: ArcShared<ToolboxMutex<Vec<TypedActorRefGeneric<M, TB>>, TB>> = ArcShared::new(mutex);
+      let mutex = RuntimeMutex::new(routee_vec);
+      let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(mutex);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let index = AtomicUsize::new(0);
       let random_seed = AtomicU64::new(0);
-      let dispatch_counts = ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(vec![0_usize; routee_count]));
+      let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
       let strategy_for_msg = strategy.clone();
 
       Behaviors::receive_message(move |_ctx, message: &M| {
-        let mut targets: Vec<TypedActorRefGeneric<M, TB>> = Vec::new();
+        let mut targets: Vec<TypedActorRef<M>> = Vec::new();
         {
           let guard = routees_for_msg.lock();
           if guard.is_empty() {
@@ -195,13 +184,12 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   (mixed as usize) % len
 }
 
-fn select_smallest_mailbox_index<M, TB>(
-  routees: &[TypedActorRefGeneric<M, TB>],
-  dispatch_counts: &ArcShared<ToolboxMutex<Vec<usize>, TB>>,
+fn select_smallest_mailbox_index<M>(
+  routees: &[TypedActorRef<M>],
+  dispatch_counts: &ArcShared<RuntimeMutex<Vec<usize>>>,
 ) -> usize
 where
-  M: Send + Sync + Clone + 'static,
-  TB: RuntimeToolbox + 'static, {
+  M: Send + Sync + Clone + 'static, {
   let routee_count = routees.len();
   let mut best_index = 0_usize;
   let mut best_len = usize::MAX;

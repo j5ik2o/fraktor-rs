@@ -3,13 +3,11 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   actor::Pid,
-  dead_letter::{DeadLetterEntryGeneric, dead_letter_reason::DeadLetterReason},
+  dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
   error::SendError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 const DEFAULT_CAPACITY: usize = 256;
@@ -17,15 +15,15 @@ const DEFAULT_CAPACITY: usize = 256;
 /// Collects undeliverable messages.
 ///
 /// This type uses `&mut self` methods for state modification.
-/// For shared access, use [`DeadLetterSharedGeneric`].
+/// For shared access, use [`DeadLetterShared`].
 ///
-/// [`DeadLetterSharedGeneric`]: super::DeadLetterSharedGeneric
-pub struct DeadLetterGeneric<TB: RuntimeToolbox + 'static> {
-  entries:  Vec<DeadLetterEntryGeneric<TB>>,
+/// [`DeadLetterShared`]: super::DeadLetterShared
+pub struct DeadLetter {
+  entries:  Vec<DeadLetterEntry>,
   capacity: usize,
 }
 
-impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
+impl DeadLetter {
   /// Creates a new deadletter store with the provided buffer capacity.
   #[must_use]
   pub const fn with_capacity(capacity: usize) -> Self {
@@ -37,12 +35,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   /// The caller is responsible for publishing the entry to the event stream
   /// after releasing any locks.
   #[must_use]
-  pub fn record_send_error(
-    &mut self,
-    target: Option<Pid>,
-    error: &SendError<TB>,
-    timestamp: Duration,
-  ) -> DeadLetterEntryGeneric<TB> {
+  pub fn record_send_error(&mut self, target: Option<Pid>, error: &SendError, timestamp: Duration) -> DeadLetterEntry {
     let reason = match error {
       | SendError::Full(_) => DeadLetterReason::MailboxFull,
       | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
@@ -61,12 +54,12 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   #[must_use]
   pub fn record_entry(
     &mut self,
-    message: AnyMessageGeneric<TB>,
+    message: AnyMessage,
     reason: DeadLetterReason,
     target: Option<Pid>,
     timestamp: Duration,
-  ) -> DeadLetterEntryGeneric<TB> {
-    let entry = DeadLetterEntryGeneric::new(message, reason, target, timestamp);
+  ) -> DeadLetterEntry {
+    let entry = DeadLetterEntry::new(message, reason, target, timestamp);
     self.entries.push(entry.clone());
     if self.entries.len() > self.capacity {
       let overflow = self.entries.len() - self.capacity;
@@ -77,7 +70,7 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
 
   /// Returns a snapshot of stored deadletters.
   #[must_use]
-  pub fn snapshot(&self) -> Vec<DeadLetterEntryGeneric<TB>> {
+  pub fn snapshot(&self) -> Vec<DeadLetterEntry> {
     self.entries.clone()
   }
 
@@ -88,11 +81,8 @@ impl<TB: RuntimeToolbox + 'static> DeadLetterGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Default for DeadLetterGeneric<TB> {
+impl Default for DeadLetter {
   fn default() -> Self {
     Self::with_capacity(DEFAULT_CAPACITY)
   }
 }
-
-/// Type alias for `DeadLetterGeneric` with the default `NoStdToolbox`.
-pub type DeadLetter = DeadLetterGeneric<NoStdToolbox>;

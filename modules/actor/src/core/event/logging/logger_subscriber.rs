@@ -3,8 +3,6 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use crate::core::event::{
   logging::{LogLevel, logger_writer::LoggerWriter},
   stream::{EventStreamEvent, EventStreamSubscriber},
@@ -14,13 +12,13 @@ use crate::core::event::{
 mod tests;
 
 /// Subscribes to log events and filters by severity.
-pub struct LoggerSubscriberGeneric<TB: RuntimeToolbox + 'static> {
+pub struct LoggerSubscriber {
   level:   LogLevel,
   writer:  Box<dyn LoggerWriter>,
-  _marker: PhantomData<TB>,
+  _marker: PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LoggerSubscriberGeneric<TB> {
+impl LoggerSubscriber {
   /// Creates a new subscriber with the provided minimum log level.
   #[must_use]
   pub fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
@@ -34,8 +32,8 @@ impl<TB: RuntimeToolbox + 'static> LoggerSubscriberGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for LoggerSubscriberGeneric<TB> {
-  fn on_event(&mut self, event: &EventStreamEvent<TB>) {
+impl EventStreamSubscriber for LoggerSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     if let EventStreamEvent::Log(log) = event
       && log.level() >= self.level
     {
@@ -43,6 +41,3 @@ impl<TB: RuntimeToolbox + 'static> EventStreamSubscriber<TB> for LoggerSubscribe
     }
   }
 }
-
-/// Type alias for backward compatibility.
-pub type LoggerSubscriber = LoggerSubscriberGeneric<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>;

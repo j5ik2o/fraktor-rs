@@ -12,7 +12,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContext},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageViewGeneric},
+  messaging::{AnyMessage, AnyMessageView},
   props::Props,
   scheduler::SchedulerCommand,
   system::ActorSystem,
@@ -41,7 +41,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageViewGeneric<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       #[cfg(not(target_os = "none"))]
       println!("[{:?}] Guardian starting periodic scheduler example...", std::thread::current().id());

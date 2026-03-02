@@ -2,14 +2,14 @@
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{runtime_toolbox::NoStdToolbox, time::TimerInstant};
+use fraktor_utils_rs::core::time::TimerInstant;
 
 use crate::core::scheduler::tick_driver::{SchedulerTickMetricsProbe, TickDriverKind, TickExecutorSignal, TickFeed};
 
 #[test]
 fn snapshot_reports_tick_rate() {
   let signal = TickExecutorSignal::new();
-  let feed = TickFeed::<NoStdToolbox>::new(Duration::from_millis(1), 16, signal);
+  let feed = TickFeed::new(Duration::from_millis(1), 16, signal);
   let probe = SchedulerTickMetricsProbe::new(feed.clone(), Duration::from_millis(1), TickDriverKind::Auto);
   for _ in 0..5 {
     feed.enqueue(1);

@@ -2,15 +2,13 @@
 
 use alloc::string::ToString;
 
-use fraktor_utils_rs::core::runtime_toolbox::{NoStdToolbox, RuntimeToolbox};
-
 use crate::core::{
   error::{ActorError, ActorErrorReason},
   event::stream::EventStreamEvent,
   supervision::SupervisorStrategy,
   typed::{
     UnhandledMessageEvent,
-    actor::{TypedActor, TypedActorContextGeneric},
+    actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
     message_adapter::AdapterError,
@@ -21,22 +19,20 @@ use crate::core::{
 mod tests;
 
 /// Bridges [`Behavior`] objects with the [`TypedActor`] lifecycle.
-pub(crate) struct BehaviorRunner<M, TB = NoStdToolbox>
+pub(crate) struct BehaviorRunner<M>
 where
-  M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static, {
-  current:    Behavior<M, TB>,
+  M: Send + Sync + 'static, {
+  current:    Behavior<M>,
   supervisor: Option<SupervisorStrategy>,
   stopping:   bool,
 }
 
-impl<M, TB> BehaviorRunner<M, TB>
+impl<M> BehaviorRunner<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   /// Creates a runner with the provided initial behavior.
-  pub(crate) fn new(initial: Behavior<M, TB>) -> Self {
+  pub(crate) fn new(initial: Behavior<M>) -> Self {
     let supervisor = initial.supervisor_override().cloned();
     Self { current: initial, supervisor, stopping: false }
   }
@@ -47,11 +43,7 @@ where
     }
   }
 
-  fn apply_transition(
-    &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    next: Behavior<M, TB>,
-  ) -> Result<(), ActorError> {
+  fn apply_transition(&mut self, ctx: &mut TypedActorContext<'_, M>, next: Behavior<M>) -> Result<(), ActorError> {
     let override_strategy = next.supervisor_override().cloned();
 
     match next.directive() {
@@ -91,11 +83,7 @@ where
     .map(|_| self.update_supervisor_override(override_strategy))
   }
 
-  fn dispatch_signal(
-    &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
-    signal: &BehaviorSignal,
-  ) -> Result<(), ActorError> {
+  fn dispatch_signal(&mut self, ctx: &mut TypedActorContext<'_, M>, signal: &BehaviorSignal) -> Result<(), ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
       ctx
         .system()
@@ -107,27 +95,26 @@ where
   }
 }
 
-impl<M, TB> TypedActor<M, TB> for BehaviorRunner<M, TB>
+impl<M> TypedActor<M> for BehaviorRunner<M>
 where
   M: Send + Sync + 'static,
-  TB: RuntimeToolbox + 'static,
 {
-  fn pre_start(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::Started)
   }
 
-  fn receive(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>, message: &M) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut TypedActorContext<'_, M>, message: &M) -> Result<(), ActorError> {
     let next = self.current.handle_message(ctx, message)?;
     self.apply_transition(ctx, next)
   }
 
-  fn post_stop(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::Stopped)
   }
 
   fn on_terminated(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
     let has_signal_handler = self.current.has_signal_handler();
@@ -139,26 +126,26 @@ where
     }
   }
 
-  fn pre_restart(&mut self, ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> Result<(), ActorError> {
+  fn pre_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::PreRestart)
   }
 
   fn on_child_failed(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     child: crate::core::actor::Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContextGeneric<'_, M, TB>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
     self.supervisor.clone().unwrap_or_default()
   }
 
   fn on_adapter_failure(
     &mut self,
-    ctx: &mut TypedActorContextGeneric<'_, M, TB>,
+    ctx: &mut TypedActorContext<'_, M>,
     failure: AdapterError,
   ) -> Result<(), ActorError> {
     let has_signal_handler = self.current.has_signal_handler();

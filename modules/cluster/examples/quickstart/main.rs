@@ -37,7 +37,10 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
+use fraktor_utils_rs::{
+  core::sync::ArcShared,
+  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
+};
 use tokio::sync::oneshot;
 
 const HOST: &str = "127.0.0.1";
@@ -167,7 +170,7 @@ fn build_system(
     .with_system_name(system_name.to_string())
     .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher_config(default_dispatcher)
-    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::<StdToolbox>::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
       ExtensionInstallers::default()

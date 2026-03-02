@@ -4,8 +4,8 @@ use core::cmp;
 
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeMutex,
+  sync::ArcShared,
 };
 
 use super::{UserQueueShared, mailbox_queue_state::QueueState};
@@ -16,16 +16,15 @@ use crate::core::dispatch::mailbox::{
 const DEFAULT_QUEUE_CAPACITY: usize = 16;
 
 /// Internal handles wrapping queue producers/consumers.
-pub(crate) struct QueueStateHandle<T, TB: RuntimeToolbox>
+pub(crate) struct QueueStateHandle<T>
 where
   T: Send + 'static, {
-  pub(crate) state: ArcShared<ToolboxMutex<QueueState<T, TB>, TB>>,
+  pub(crate) state: ArcShared<RuntimeMutex<QueueState<T>>>,
 }
 
-impl<T, TB> QueueStateHandle<T, TB>
+impl<T> QueueStateHandle<T>
 where
   T: Send + 'static,
-  TB: RuntimeToolbox + 'static,
 {
   pub(crate) fn new_user(policy: &MailboxPolicy) -> Self {
     let (capacity, overflow) = match policy.capacity() {
@@ -38,9 +37,9 @@ where
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let sync_queue = SyncQueue::new(backend);
-    let mutex = <TB::MutexFamily as SyncMutexFamily>::create(sync_queue);
-    let queue = UserQueueShared::<T, TB>::new(ArcShared::new(mutex));
-    let state_mutex = <TB::MutexFamily as SyncMutexFamily>::create(QueueState::new(queue));
+    let mutex = RuntimeMutex::new(sync_queue);
+    let queue = UserQueueShared::<T>::new(ArcShared::new(mutex));
+    let state_mutex = RuntimeMutex::new(QueueState::new(queue));
     let state = ArcShared::new(state_mutex);
     Self { state }
   }

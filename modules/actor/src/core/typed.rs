@@ -51,18 +51,18 @@ pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use behavior_signal::BehaviorSignal;
 pub use behaviors::Behaviors;
-pub use fsm_builder::{FsmBuilder, FsmBuilderGeneric};
-pub use pool_router_builder::{PoolRouterBuilder, PoolRouterBuilderGeneric};
-pub use props::{TypedProps, TypedPropsGeneric};
+pub use fsm_builder::FsmBuilder;
+pub use pool_router_builder::PoolRouterBuilder;
+pub use props::TypedProps;
 pub use routers::Routers;
-pub use stash_buffer::{StashBuffer, StashBufferGeneric};
+pub use stash_buffer::StashBuffer;
 pub use supervise::Supervise;
-pub use system::{TypedActorSystem, TypedActorSystemGeneric};
+pub use system::TypedActorSystem;
 pub use timer_key::TimerKey;
-pub use timer_scheduler::{TimerScheduler, TimerSchedulerGeneric, TimerSchedulerShared};
+pub use timer_scheduler::{TimerScheduler, TimerSchedulerShared};
 pub use typed_ask_error::TypedAskError;
-pub use typed_ask_future::{TypedAskFuture, TypedAskFutureGeneric};
-pub use typed_ask_response::{TypedAskResponse, TypedAskResponseGeneric};
+pub use typed_ask_future::TypedAskFuture;
+pub use typed_ask_response::TypedAskResponse;
 pub use unhandled_message_event::UnhandledMessageEvent;
 
 #[cfg(test)]

@@ -1,20 +1,20 @@
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::metrics_event::MailboxPressureEvent;
-use crate::core::dispatch::dispatcher::DispatcherSharedGeneric;
+use crate::core::dispatch::dispatcher::DispatcherShared;
 
 type BackpressureCallback = dyn Fn(&MailboxPressureEvent) + Send + Sync + 'static;
 
 /// Publishes mailbox pressure notifications to interested runtime components.
 #[derive(Clone)]
-pub struct BackpressurePublisherGeneric<TB: RuntimeToolbox + 'static> {
+pub struct BackpressurePublisher {
   callback: ArcShared<BackpressureCallback>,
-  _marker:  PhantomData<TB>,
+  _marker:  PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox + 'static> BackpressurePublisherGeneric<TB> {
+impl BackpressurePublisher {
   /// Creates a publisher from a shared callback.
   #[must_use]
   pub fn new(callback: ArcShared<BackpressureCallback>) -> Self {
@@ -31,7 +31,7 @@ impl<TB: RuntimeToolbox + 'static> BackpressurePublisherGeneric<TB> {
 
   /// Creates a publisher that forwards events to the dispatcher.
   #[must_use]
-  pub fn from_dispatcher(dispatcher: DispatcherSharedGeneric<TB>) -> Self {
+  pub fn from_dispatcher(dispatcher: DispatcherShared) -> Self {
     let publisher = move |event: &MailboxPressureEvent| {
       dispatcher.notify_backpressure(event);
     };

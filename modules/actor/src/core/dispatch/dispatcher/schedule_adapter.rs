@@ -1,13 +1,11 @@
 use core::{any::Any, task::Waker};
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
-use super::dispatcher_shared::DispatcherSharedGeneric;
+use super::dispatcher_shared::DispatcherShared;
 
 /// Adapter responsible for creating wakers and coordinating scheduler hints across runtimes.
-pub trait ScheduleAdapter<TB: RuntimeToolbox + 'static>: Send + Sync {
+pub trait ScheduleAdapter: Send + Sync {
   /// Creates a waker that reschedules the dispatcher when signalled.
-  fn create_waker(&mut self, dispatcher: DispatcherSharedGeneric<TB>) -> Waker;
+  fn create_waker(&mut self, dispatcher: DispatcherShared) -> Waker;
 
   /// Invoked when a mailbox offer future yields `Poll::Pending`.
   fn on_pending(&mut self);

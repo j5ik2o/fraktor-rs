@@ -6,12 +6,10 @@ use std::{
   string::String,
 };
 
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
-
 use crate::{
   core::{
     dispatch::mailbox::MailboxPolicy,
-    props::{ActorFactory, ActorFactorySharedGeneric, MailboxConfig, PropsGeneric as CorePropsGeneric},
+    props::{ActorFactory, ActorFactoryShared, MailboxConfig, Props as CoreProps},
   },
   std::{
     actor::{Actor, ActorAdapter},
@@ -22,14 +20,14 @@ use crate::{
 /// Actor properties specialised for `StdToolbox` with a closure ergonomics layer.
 #[derive(Clone)]
 pub struct Props {
-  inner: CorePropsGeneric<StdToolbox>,
+  inner: CoreProps,
 }
 
 impl Props {
   /// Creates new props from the provided factory.
   #[must_use]
-  pub fn new(factory: Box<dyn ActorFactory<StdToolbox>>) -> Self {
-    Self { inner: CorePropsGeneric::new(factory) }
+  pub fn new(factory: Box<dyn ActorFactory>) -> Self {
+    Self { inner: CoreProps::new(factory) }
   }
 
   /// Convenience helper to build props from a closure returning a [`Actor`].
@@ -39,12 +37,12 @@ impl Props {
     F: FnMut() -> A + Send + Sync + 'static,
     A: Actor + Sync + 'static, {
     let wrapped_factory = move || ActorAdapter::new(factory());
-    Self { inner: CorePropsGeneric::from_fn(wrapped_factory) }
+    Self { inner: CoreProps::from_fn(wrapped_factory) }
   }
 
   /// Returns the actor factory.
   #[must_use]
-  pub const fn factory(&self) -> &ActorFactorySharedGeneric<StdToolbox> {
+  pub const fn factory(&self) -> &ActorFactoryShared {
     self.inner.factory()
   }
 
@@ -111,25 +109,25 @@ impl Props {
 
   /// Borrows the underlying core props reference.
   #[must_use]
-  pub const fn as_core(&self) -> &CorePropsGeneric<StdToolbox> {
+  pub const fn as_core(&self) -> &CoreProps {
     &self.inner
   }
 
   /// Borrows the underlying core props mutably.
   #[must_use]
-  pub const fn as_core_mut(&mut self) -> &mut CorePropsGeneric<StdToolbox> {
+  pub const fn as_core_mut(&mut self) -> &mut CoreProps {
     &mut self.inner
   }
 
   /// Consumes the wrapper and returns the underlying core props.
   #[must_use]
-  pub fn into_inner(self) -> CorePropsGeneric<StdToolbox> {
+  pub fn into_inner(self) -> CoreProps {
     self.inner
   }
 }
 
 impl Deref for Props {
-  type Target = CorePropsGeneric<StdToolbox>;
+  type Target = CoreProps;
 
   fn deref(&self) -> &Self::Target {
     self.as_core()

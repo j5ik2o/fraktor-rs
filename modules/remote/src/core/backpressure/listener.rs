@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
-use fraktor_utils_rs::core::{runtime_toolbox::ToolboxMutex, sync::ArcShared};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 /// Listener invoked whenever backpressure is applied or released for a remote authority.
 ///
@@ -20,5 +20,4 @@ pub trait RemotingBackpressureListener: Send + Sync + 'static {
 }
 
 /// Shared handle to a [`RemotingBackpressureListener`] protected by the runtime mutex family.
-pub(crate) type RemotingBackpressureListenerShared<TB> =
-  ArcShared<ToolboxMutex<Box<dyn RemotingBackpressureListener>, TB>>;
+pub(crate) type RemotingBackpressureListenerShared = ArcShared<RuntimeMutex<Box<dyn RemotingBackpressureListener>>>;

@@ -10,7 +10,6 @@ use core::{
 
 use critical_section::Mutex;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
   sync::ArcShared,
   time::{SchedulerTickHandle, TimerInstant},
 };
@@ -24,11 +23,11 @@ use super::{
 mod tests;
 
 /// Shared tick feed handle type.
-pub type TickFeedHandle<TB> = ArcShared<TickFeed<TB>>;
+pub type TickFeedHandle = ArcShared<TickFeed>;
 
 /// Maintains buffered ticks plus metrics accounting.
-pub struct TickFeed<TB: RuntimeToolbox> {
-  _marker:             PhantomData<TB>,
+pub struct TickFeed {
+  _marker:             PhantomData<()>,
   queue:               Mutex<RefCell<VecDeque<u32>>>,
   capacity:            usize,
   signal:              TickExecutorSignal,
@@ -42,10 +41,10 @@ pub struct TickFeed<TB: RuntimeToolbox> {
   driver_alive:        AtomicBool,
 }
 
-impl<TB: RuntimeToolbox> TickFeed<TB> {
+impl TickFeed {
   /// Creates a new feed with the provided capacity.
   #[must_use]
-  pub fn new(resolution: Duration, capacity: usize, signal: TickExecutorSignal) -> TickFeedHandle<TB> {
+  pub fn new(resolution: Duration, capacity: usize, signal: TickExecutorSignal) -> TickFeedHandle {
     let bounded_capacity = capacity.max(1);
     let queue = VecDeque::with_capacity(bounded_capacity);
     let feed = Self {

@@ -7,19 +7,19 @@ use std::net::TcpListener;
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric, Pid, actor_path::ActorPathParts},
+  actor::{Actor, ActorContext, Pid, actor_path::ActorPathParts},
   error::ActorError,
   event::stream::{
-    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
-    RemotingLifecycleEvent, subscriber_handle,
+    BackpressureSignal, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, RemotingLifecycleEvent,
+    subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::{AnyMessageGeneric, AnyMessageViewGeneric},
-  props::PropsGeneric,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::SerializationExtensionInstaller,
   system::{
-    ActorSystemConfigGeneric, ActorSystemGeneric,
+    ActorSystem, ActorSystemConfig,
     provider::ActorRefProvider,
     remote::{RemoteWatchHook, RemoteWatchHookShared, RemotingConfig},
     state::AuthorityState,
@@ -45,19 +45,15 @@ use fraktor_utils_rs::{
 
 struct NoopActor;
 
-impl Actor<StdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, StdToolbox>,
-    _message: AnyMessageViewGeneric<'_, StdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
 #[derive(Clone)]
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<StdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
@@ -66,35 +62,31 @@ impl RecordingSubscriber {
   }
 }
 
-impl EventStreamSubscriber<StdToolbox> for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<StdToolbox>) {
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
-fn build_system(
-  config: RemotingExtensionConfig,
-) -> (ActorSystemGeneric<StdToolbox>, RemotingControlShared<StdToolbox>) {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("quickstart-guardian");
+fn build_system(config: RemotingExtensionConfig) -> (ActorSystem, RemotingControlShared<StdToolbox>) {
+  let props = Props::from_fn(|| NoopActor).with_name("quickstart-guardian");
   let serialization_installer = SerializationExtensionInstaller::new(default_loopback_setup());
-  let extensions = ExtensionInstallers::<StdToolbox>::default()
+  let extensions = ExtensionInstallers::default()
     .with_extension_installer(serialization_installer)
     .with_extension_installer(RemotingExtensionInstaller::new(config.clone()));
   let remoting_config = RemotingConfig::default().with_canonical_host("127.0.0.1").with_canonical_port(25500);
-  let system_config = ActorSystemConfigGeneric::<StdToolbox>::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::<StdToolbox>::new()))
+  let system_config = ActorSystemConfig::default()
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()))
     .with_extension_installers(extensions)
-    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::default())
+    .with_actor_ref_provider_installer(LoopbackActorRefProviderInstaller::<StdToolbox>::default())
     .with_remoting_config(remoting_config);
-  let system = ActorSystemGeneric::new_with_config(&props, &system_config).expect("system");
+  let system = ActorSystem::new_with_config(&props, &system_config).expect("system");
   let id = RemotingExtensionId::new(config);
   let extension = system.extended().extension(&id).expect("extension registered");
   (system, extension.handle())
 }
 
-fn subscribe(
-  system: &ActorSystemGeneric<StdToolbox>,
-) -> (RecordingSubscriber, EventStreamSubscriptionGeneric<StdToolbox>) {
+fn subscribe(system: &ActorSystem) -> (RecordingSubscriber, EventStreamSubscription) {
   let subscriber_impl = RecordingSubscriber::new();
   let subscriber = subscriber_handle(subscriber_impl.clone());
   let subscription = system.subscribe_event_stream(&subscriber);
@@ -117,7 +109,7 @@ fn remote_path(port: u16) -> fraktor_actor_rs::core::actor::actor_path::ActorPat
 
 #[tokio::test]
 async fn quickstart_loopback_provider_flow() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   // canonical_host/port は ActorSystemConfig の RemotingConfig から自動的に取得される
   let config = RemotingExtensionConfig::default().with_auto_start(false).with_backpressure_listener({
@@ -203,7 +195,7 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
 
 #[tokio::test]
 async fn remote_provider_enqueues_message() -> Result<()> {
-  type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
   let bind_port = alloc_port();
   let config = RemotingExtensionConfig::default().with_auto_start(false);
   let (system, handle) = build_system(config);
@@ -223,7 +215,7 @@ async fn remote_provider_enqueues_message() -> Result<()> {
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", bind_port))))
     .map_err(|error| anyhow!("{error}"))?;
   let remote = provider.clone().actor_ref(remote_path(bind_port)).expect("actor ref");
-  remote.tell(AnyMessageGeneric::new("loopback".to_string())).expect("send succeeds");
+  remote.tell(AnyMessage::new("loopback".to_string())).expect("send succeeds");
 
   let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
   let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope");
@@ -243,7 +235,7 @@ async fn remote_watch_hook_handles_system_watch_messages() -> Result<()> {
     .lock()
     .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
-  type SharedProvider = RemoteWatchHookShared<StdToolbox, LoopbackActorRefProviderGeneric<StdToolbox>>;
+  type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProviderGeneric<StdToolbox>>;
   let provider = system.extended().actor_ref_provider::<SharedProvider>().expect("provider installed");
   let remote = provider.get_actor_ref(remote_path(bind_port)).expect("remote actor ref");
   let watcher = Pid::new(7777, 0);

@@ -1,45 +1,38 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContextGeneric},
+  actor::{Actor, ActorContext},
   error::ActorError,
   event::stream::{
-    BackpressureSignal, CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscriptionGeneric,
+    BackpressureSignal, CorrelationId, EventStreamEvent, EventStreamSubscriber, EventStreamSubscription,
     RemotingLifecycleEvent, subscriber_handle,
   },
-  messaging::AnyMessageViewGeneric,
-  props::PropsGeneric,
+  messaging::AnyMessageView,
+  props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystemConfig, ActorSystemGeneric},
+  system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
 use super::EventPublisher;
 
 struct NoopActor;
 
-impl Actor<NoStdToolbox> for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContextGeneric<'_, NoStdToolbox>,
-    _message: AnyMessageViewGeneric<'_, NoStdToolbox>,
-  ) -> Result<(), ActorError> {
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
 
-fn build_system() -> ActorSystemGeneric<NoStdToolbox> {
-  let props = PropsGeneric::from_fn(|| NoopActor).with_name("event-publisher-tests");
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("event-publisher-tests");
   let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
-  ActorSystemGeneric::new_with_config(&props, &system_config).expect("system")
+  ActorSystem::new_with_config(&props, &system_config).expect("system")
 }
 
 #[derive(Clone)]
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent<NoStdToolbox>>>>,
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
@@ -48,15 +41,13 @@ impl RecordingSubscriber {
   }
 }
 
-impl EventStreamSubscriber<NoStdToolbox> for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent<NoStdToolbox>) {
+impl EventStreamSubscriber for RecordingSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
   }
 }
 
-fn subscribe(
-  system: &ActorSystemGeneric<NoStdToolbox>,
-) -> (RecordingSubscriber, EventStreamSubscriptionGeneric<NoStdToolbox>) {
+fn subscribe(system: &ActorSystem) -> (RecordingSubscriber, EventStreamSubscription) {
   let recorder = RecordingSubscriber::new();
   let handle = subscriber_handle(recorder.clone());
   let subscription = system.subscribe_event_stream(&handle);

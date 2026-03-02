@@ -1,39 +1,43 @@
 //! Handle owning the lifetime of a running tick driver instance.
 
 use alloc::boxed::Box;
-use core::time::Duration;
+use core::{marker::PhantomData, time::Duration};
 
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeToolbox, ToolboxMutex},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
 
 use super::{TickDriverControl, TickDriverId, TickDriverKind};
 
 /// Handle owning the lifetime of a running tick driver instance.
-pub struct TickDriverHandleGeneric<TB: RuntimeToolbox> {
+pub struct TickDriverHandle {
   id:         TickDriverId,
   kind:       TickDriverKind,
   resolution: Duration,
-  control:    ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>>,
+  control:    ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+  _marker:    PhantomData<()>,
 }
 
-impl<TB: RuntimeToolbox> Clone for TickDriverHandleGeneric<TB> {
+impl Clone for TickDriverHandle {
   fn clone(&self) -> Self {
-    Self { id: self.id, kind: self.kind, resolution: self.resolution, control: self.control.clone() }
+    Self {
+      id:         self.id,
+      kind:       self.kind,
+      resolution: self.resolution,
+      control:    self.control.clone(),
+      _marker:    PhantomData,
+    }
   }
 }
 
-impl<TB: RuntimeToolbox> TickDriverHandleGeneric<TB> {
+impl TickDriverHandle {
   /// Creates a new driver handle.
   #[must_use]
   pub fn new(
     id: TickDriverId,
     kind: TickDriverKind,
     resolution: Duration,
-    control: ArcShared<ToolboxMutex<Box<dyn TickDriverControl>, TB>>,
+    control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
   ) -> Self {
-    Self { id, kind, resolution, control }
+    Self { id, kind, resolution, control, _marker: PhantomData }
   }
 
   /// Returns the associated driver identifier.

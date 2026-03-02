@@ -3,33 +3,33 @@
 use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox, ToolboxMutex, sync_mutex_family::SyncMutexFamily},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  runtime_toolbox::RuntimeMutex,
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
   actor::actor_ref::{ActorRefSender, SendOutcome},
   error::SendError,
-  messaging::AnyMessageGeneric,
+  messaging::AnyMessage,
 };
 
 /// Shared wrapper for [`ActorRefSender`] with external mutex synchronization.
-pub struct ActorRefSenderSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<ToolboxMutex<Box<dyn ActorRefSender<TB>>, TB>>,
+pub struct ActorRefSenderShared {
+  inner: ArcShared<RuntimeMutex<Box<dyn ActorRefSender>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for ActorRefSenderSharedGeneric<TB> {
+impl Clone for ActorRefSenderShared {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
+impl ActorRefSenderShared {
   /// Creates a new shared sender.
   #[must_use]
-  pub fn new<S: ActorRefSender<TB> + 'static>(sender: S) -> Self {
-    let boxed: Box<dyn ActorRefSender<TB>> = Box::new(sender);
-    Self { inner: ArcShared::new(<TB::MutexFamily as SyncMutexFamily>::create(boxed)) }
+  pub fn new<S: ActorRefSender + 'static>(sender: S) -> Self {
+    let boxed: Box<dyn ActorRefSender> = Box::new(sender);
+    Self { inner: ArcShared::new(RuntimeMutex::new(boxed)) }
   }
 
   /// Sends a message through the wrapped sender.
@@ -40,7 +40,7 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
-  pub fn send(&self, message: AnyMessageGeneric<TB>) -> Result<(), SendError<TB>> {
+  pub fn send(&self, message: AnyMessage) -> Result<(), SendError> {
     // ロック解放後にアウトカムを適用し、再入によるデッドロックを防ぐ
     let outcome = {
       let mut sender = self.inner.lock();
@@ -56,17 +56,14 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSenderSharedGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ActorRefSender<TB>>> for ActorRefSenderSharedGeneric<TB> {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorRefSender<TB>>) -> R) -> R {
+impl SharedAccess<Box<dyn ActorRefSender>> for ActorRefSenderShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorRefSender>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorRefSender<TB>>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorRefSender>) -> R) -> R {
     let mut guard = self.inner.lock();
     f(&mut guard)
   }
 }
-
-/// Type alias with the default `NoStdToolbox`.
-pub type ActorRefSenderShared = ActorRefSenderSharedGeneric<NoStdToolbox>;

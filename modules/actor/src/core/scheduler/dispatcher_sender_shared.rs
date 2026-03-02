@@ -1,25 +1,25 @@
 //! Shared dispatcher sender handle used by scheduler APIs.
 
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
+use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::dispatch::dispatcher::DispatcherSenderGeneric;
+use crate::core::dispatch::dispatcher::DispatcherSender;
 
 /// Shared dispatcher sender reference resolved from actor contexts or system defaults.
 #[derive(Clone)]
-pub struct DispatcherSenderShared<TB: RuntimeToolbox + 'static> {
-  inner: ArcShared<DispatcherSenderGeneric<TB>>,
+pub struct DispatcherSenderShared {
+  inner: ArcShared<DispatcherSender>,
 }
 
-impl<TB: RuntimeToolbox + 'static> DispatcherSenderShared<TB> {
+impl DispatcherSenderShared {
   /// Wraps a dispatcher sender inside the shared handle.
   #[must_use]
-  pub const fn new(inner: ArcShared<DispatcherSenderGeneric<TB>>) -> Self {
+  pub const fn new(inner: ArcShared<DispatcherSender>) -> Self {
     Self { inner }
   }
 
   /// Returns a clone of the underlying dispatcher sender.
   #[must_use]
-  pub fn sender(&self) -> ArcShared<DispatcherSenderGeneric<TB>> {
+  pub fn sender(&self) -> ArcShared<DispatcherSender> {
     self.inner.clone()
   }
 }
