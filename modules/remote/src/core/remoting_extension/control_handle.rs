@@ -25,7 +25,7 @@ use fraktor_actor_rs::core::{
 };
 #[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
 use fraktor_utils_rs::core::sync::SharedAccess;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
   config::RemotingExtensionConfig, control::RemotingControl, control_backpressure_hook::ControlBackpressureHook,

@@ -13,7 +13,7 @@ use fraktor_actor_rs::core::{
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   system::{ActorSystem, ActorSystemConfig},
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeMutex, sync::ArcShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::RemoteWatcherDaemon;
 use crate::core::{
