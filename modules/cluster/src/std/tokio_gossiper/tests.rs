@@ -5,20 +5,18 @@ use fraktor_remote_rs::core::failure_detector::{
   DefaultFailureDetectorRegistry,
   phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 use crate::{
   core::{
     ClusterExtensionConfig,
     membership::{
-      Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric,
-      MembershipTable,
+      Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
     },
   },
   std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
 };
 
-fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
+fn build_coordinator() -> MembershipCoordinatorShared {
   let config = MembershipCoordinatorConfig {
     phi_threshold:          1.0,
     suspect_timeout:        Duration::from_secs(1),
@@ -33,10 +31,9 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
   let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
     Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
   }));
-  let mut coordinator =
-    MembershipCoordinatorGeneric::<StdToolbox>::new(config, ClusterExtensionConfig::new(), table, registry);
+  let mut coordinator = MembershipCoordinator::new(config, ClusterExtensionConfig::new(), table, registry);
   coordinator.start_member().expect("start_member");
-  MembershipCoordinatorSharedGeneric::new(coordinator)
+  MembershipCoordinatorShared::new(coordinator)
 }
 
 #[tokio::test]

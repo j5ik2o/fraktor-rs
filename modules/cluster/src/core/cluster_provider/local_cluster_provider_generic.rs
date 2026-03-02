@@ -9,14 +9,14 @@
 //! and only available in std environments.
 
 use alloc::{string::String, vec::Vec};
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 
 use fraktor_actor_rs::core::{
   event::stream::{EventStreamEvent, EventStreamShared},
   messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
 use crate::core::{ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
@@ -30,7 +30,6 @@ mod tests;
 /// events when nodes join or leave the cluster. It serves as a reference implementation
 /// for TCP-based cluster providers like etcd, zk, or automanaged providers.
 ///
-/// The core implementation is no_std compatible using `RuntimeToolbox` for
 /// synchronization primitives.
 ///
 /// Phase2 features like seed_nodes for GossipDisseminationCoordinator initialization and
@@ -38,7 +37,7 @@ mod tests;
 ///
 /// Task 4.5: Transport `RemotingLifecycleEvent::Connected` and `Quarantined`
 /// auto-detection is available via `subscribe_remoting_events()` in std environments.
-pub struct LocalClusterProviderGeneric<TB: RuntimeToolbox + 'static> {
+pub struct LocalClusterProvider {
   event_stream:        EventStreamShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   advertised_address:  String,
@@ -52,10 +51,9 @@ pub struct LocalClusterProviderGeneric<TB: RuntimeToolbox + 'static> {
   seed_nodes:          Vec<String>,
   // 起動モード（Member/Client）を追跡
   startup_mode:        Option<StartupMode>,
-  _marker:             PhantomData<TB>,
 }
 
-impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
+impl LocalClusterProvider {
   /// Creates a new local cluster provider.
   #[must_use]
   pub fn new(
@@ -72,7 +70,6 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
       static_topology: None,
       seed_nodes: Vec::new(),
       startup_mode: None,
-      _marker: PhantomData,
     }
   }
 
@@ -258,7 +255,7 @@ impl<TB: RuntimeToolbox + 'static> LocalClusterProviderGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterProvider for LocalClusterProviderGeneric<TB> {
+impl ClusterProvider for LocalClusterProvider {
   fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     // 起動モードを設定
     self.startup_mode = Some(StartupMode::Member);

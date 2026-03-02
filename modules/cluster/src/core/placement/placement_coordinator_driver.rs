@@ -6,21 +6,21 @@ use fraktor_actor_rs::core::{
   event::stream::{EventStreamEvent, EventStreamShared},
   messaging::AnyMessage,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
-use super::{PlacementCommandResult, PlacementCoordinatorOutcome, PlacementCoordinatorSharedGeneric};
+use super::{PlacementCommandResult, PlacementCoordinatorOutcome, PlacementCoordinatorShared};
 use crate::core::{grain::GrainKey, identity::LookupError};
 
 /// Driver that orchestrates placement commands.
-pub struct PlacementCoordinatorDriverGeneric<TB: RuntimeToolbox + 'static> {
-  coordinator:  PlacementCoordinatorSharedGeneric<TB>,
+pub struct PlacementCoordinatorDriver {
+  coordinator:  PlacementCoordinatorShared,
   event_stream: EventStreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static> PlacementCoordinatorDriverGeneric<TB> {
+impl PlacementCoordinatorDriver {
   /// Creates a new driver.
   #[must_use]
-  pub const fn new(coordinator: PlacementCoordinatorSharedGeneric<TB>, event_stream: EventStreamShared) -> Self {
+  pub const fn new(coordinator: PlacementCoordinatorShared, event_stream: EventStreamShared) -> Self {
     Self { coordinator, event_stream }
   }
 

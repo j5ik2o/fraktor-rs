@@ -2,7 +2,7 @@
 
 //! Membership/Gossip failure detection demo (std driver).
 //!
-//! This example uses MembershipCoordinatorDriverGeneric with an in-memory
+//! This example uses MembershipCoordinatorDriver with an in-memory
 //! transport to demonstrate Suspect/Dead transitions and quorum-style branching.
 //!
 //! Run:
@@ -30,14 +30,14 @@ use fraktor_cluster_rs::{
     grain::KindRegistry,
     identity::{IdentityLookupShared, NoopIdentityLookup},
     membership::{
-      GossipOutbound, GossipTransport, GossipTransportError, GossiperShared, MembershipCoordinatorConfig,
-      MembershipCoordinatorGeneric, MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipSnapshot,
-      MembershipTable, NodeStatus, NoopGossiper,
+      GossipOutbound, GossipTransport, GossipTransportError, GossiperShared, MembershipCoordinator,
+      MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable,
+      NodeStatus, NoopGossiper,
     },
     placement::ActivatedKind,
     pub_sub::{ClusterPubSubShared, NoopClusterPubSub},
   },
-  std::MembershipCoordinatorDriverGeneric,
+  std::MembershipCoordinatorDriver,
 };
 use fraktor_remote_rs::core::{
   BlockListProvider,
@@ -51,7 +51,7 @@ use fraktor_utils_rs::{
     sync::{ArcShared, SharedAccess},
     time::TimerInstant,
   },
-  std::runtime_toolbox::{StdMutex, StdToolbox},
+  std::runtime_toolbox::StdMutex,
 };
 
 struct DemoBlockListProvider;
@@ -63,11 +63,11 @@ impl BlockListProvider for DemoBlockListProvider {
 }
 
 struct ClusterEventObserver {
-  core: ClusterCore<StdToolbox>,
+  core: ClusterCore,
 }
 
 impl ClusterEventObserver {
-  fn new(core: ClusterCore<StdToolbox>) -> Self {
+  fn new(core: ClusterCore) -> Self {
     Self { core }
   }
 }
@@ -143,7 +143,7 @@ impl GossipTransport for DemoTransport {
 
 struct DemoNode {
   name:   &'static str,
-  driver: MembershipCoordinatorDriverGeneric<StdToolbox, DemoTransport>,
+  driver: MembershipCoordinatorDriver<DemoTransport>,
 }
 
 impl DemoNode {
@@ -163,11 +163,11 @@ impl DemoNode {
     let registry = DefaultFailureDetectorRegistry::new(Box::new(move || {
       Box::new(PhiFailureDetector::new(PhiFailureDetectorConfig::new(threshold, 10, 1)))
     }));
-    let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
+    let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
     coordinator.start_member().expect("start_member");
-    let shared = MembershipCoordinatorSharedGeneric::new(coordinator);
+    let shared = MembershipCoordinatorShared::new(coordinator);
     let transport = DemoTransport::new(authority.to_string(), bus);
-    let driver = MembershipCoordinatorDriverGeneric::new(shared, transport, event_stream);
+    let driver = MembershipCoordinatorDriver::new(shared, transport, event_stream);
     Self { name, driver }
   }
 
@@ -301,7 +301,7 @@ fn main() {
   println!("\n=== Demo complete ===");
 }
 
-fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore<StdToolbox> {
+fn build_cluster_core(event_stream: EventStreamShared) -> ClusterCore {
   let config = ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true);
   let provider = ClusterProviderShared::new(Box::new(NoopClusterProvider::new()));
   let block_list_provider: ArcShared<dyn BlockListProvider> = ArcShared::new(DemoBlockListProvider);

@@ -10,8 +10,8 @@ use fraktor_cluster_rs::{
   core::{
     ClusterEvent, ClusterExtensionConfig,
     membership::{
-      GossipOutbound, GossipTransport, Gossiper, MembershipCoordinatorConfig, MembershipCoordinatorGeneric,
-      MembershipCoordinatorSharedGeneric, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
+      GossipOutbound, GossipTransport, Gossiper, MembershipCoordinator, MembershipCoordinatorConfig,
+      MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
     },
   },
   std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig},
@@ -20,7 +20,6 @@ use fraktor_remote_rs::core::failure_detector::{
   DefaultFailureDetectorRegistry,
   phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
-use fraktor_utils_rs::std::runtime_toolbox::StdToolbox;
 
 struct EventSink {
   events: Arc<Mutex<Vec<ClusterEvent>>>,
@@ -40,7 +39,7 @@ impl EventStreamSubscriber for EventSink {
   }
 }
 
-fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
+fn build_coordinator() -> MembershipCoordinatorShared {
   let config = MembershipCoordinatorConfig {
     phi_threshold:          1.0,
     suspect_timeout:        Duration::from_secs(1),
@@ -59,9 +58,9 @@ fn build_coordinator() -> MembershipCoordinatorSharedGeneric<StdToolbox> {
     .with_advertised_address("127.0.0.1:22110")
     .with_app_version("1.0.0")
     .with_roles(vec![String::from("member")]);
-  let mut coordinator = MembershipCoordinatorGeneric::<StdToolbox>::new(config, cluster_config, table, registry);
+  let mut coordinator = MembershipCoordinator::new(config, cluster_config, table, registry);
   coordinator.start_member().expect("start_member");
-  MembershipCoordinatorSharedGeneric::new(coordinator)
+  MembershipCoordinatorShared::new(coordinator)
 }
 
 fn join_delta(authority: &str) -> MembershipDelta {

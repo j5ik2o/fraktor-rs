@@ -8,11 +8,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-  time::TimerInstant,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
 
 use super::*;
 use crate::core::{
@@ -46,11 +42,7 @@ fn build_update(
   )
 }
 
-fn apply_update_and_publish(
-  core: &mut ClusterCore<NoStdToolbox>,
-  event_stream: &EventStreamShared,
-  update: &TopologyUpdate,
-) {
+fn apply_update_and_publish(core: &mut ClusterCore, event_stream: &EventStreamShared, update: &TopologyUpdate) {
   let event = core.try_apply_topology(update).expect("topology apply");
   if let Some(event) = event {
     let payload = AnyMessage::new(event);
@@ -359,7 +351,7 @@ impl StubPubSub {
   }
 }
 
-impl ClusterPubSub<NoStdToolbox> for StubPubSub {
+impl ClusterPubSub for StubPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     if self.fail_start {
       return Err(PubSubError::TopicAlreadyExists { topic: crate::core::pub_sub::PubSubTopic::from("pubsub-error") });
@@ -442,13 +434,13 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEven
 }
 
 /// Helper wrapping an `IdentityLookup` in `IdentityLookupShared`.
-fn wrap_identity_lookup<I: IdentityLookup + 'static>(lookup: I) -> IdentityLookupShared<NoStdToolbox> {
+fn wrap_identity_lookup<I: IdentityLookup + 'static>(lookup: I) -> IdentityLookupShared {
   let boxed: Box<dyn IdentityLookup> = Box::new(lookup);
   IdentityLookupShared::new(boxed)
 }
 
 /// Helper wrapping a `ClusterProvider` in `ClusterProviderShared`.
-fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderShared<NoStdToolbox> {
+fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderShared {
   let boxed: Box<dyn ClusterProvider> = Box::new(provider);
   ClusterProviderShared::new(boxed)
 }
@@ -460,18 +452,18 @@ fn wrap_downing_provider<D: DowningProvider + 'static>(
 }
 
 /// Helper wrapping a `ClusterPubSub` in `ClusterPubSubShared`.
-fn wrap_pubsub<P: ClusterPubSub<NoStdToolbox> + 'static>(pubsub: P) -> ClusterPubSubShared<NoStdToolbox> {
-  let boxed: Box<dyn ClusterPubSub<NoStdToolbox>> = Box::new(pubsub);
+fn wrap_pubsub<P: ClusterPubSub + 'static>(pubsub: P) -> ClusterPubSubShared {
+  let boxed: Box<dyn ClusterPubSub> = Box::new(pubsub);
   ClusterPubSubShared::new(boxed)
 }
 
 /// Helper wrapping a `Gossiper` in `GossiperShared`.
-fn wrap_gossiper<G: Gossiper + 'static>(gossiper: G) -> GossiperShared<NoStdToolbox> {
+fn wrap_gossiper<G: Gossiper + 'static>(gossiper: G) -> GossiperShared {
   let boxed: Box<dyn Gossiper> = Box::new(gossiper);
   GossiperShared::new(boxed)
 }
 
-fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore<NoStdToolbox> {
+fn build_core_with_config(config: &ClusterExtensionConfig) -> ClusterCore {
   let provider = wrap_provider(StubProvider);
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec!["blocked-node".to_string()]));
   let event_stream = EventStreamShared::default();

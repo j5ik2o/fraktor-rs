@@ -1,11 +1,9 @@
 //! Delivery endpoint trait for pub/sub.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{DeliverBatchRequest, DeliveryReport, PubSubError};
 
 /// Delivery interface implemented by core/std adapters.
-pub trait DeliveryEndpoint<TB: RuntimeToolbox>: Send + Sync {
+pub trait DeliveryEndpoint: Send + Sync {
   /// Delivers a batch to the provided subscribers.
   ///
   /// # Errors

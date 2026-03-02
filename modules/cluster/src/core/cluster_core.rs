@@ -18,7 +18,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
@@ -35,17 +35,17 @@ use crate::core::{
 };
 
 /// Aggregates configuration and shared dependencies for cluster runtime flows.
-pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
-  provider:            ClusterProviderShared<TB>,
+pub struct ClusterCore {
+  provider:            ClusterProviderShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        EventStreamShared,
   downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
-  gossiper:            GossiperShared<TB>,
-  pub_sub:             ClusterPubSubShared<TB>,
+  gossiper:            GossiperShared,
+  pub_sub:             ClusterPubSubShared,
   startup_state:       ClusterStartupState,
   metrics_enabled:     bool,
   kind_registry:       KindRegistry,
-  identity_lookup:     IdentityLookupShared<TB>,
+  identity_lookup:     IdentityLookupShared,
   virtual_actor_count: i64,
   mode:                Option<StartupMode>,
   metrics:             Option<ClusterMetrics>,
@@ -57,20 +57,20 @@ pub struct ClusterCore<TB: RuntimeToolbox + 'static> {
   observed_at:         TimerInstant,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
+impl ClusterCore {
   /// Builds a new cluster core from the provided dependencies.
   #[must_use]
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     config: &ClusterExtensionConfig,
-    provider: ClusterProviderShared<TB>,
+    provider: ClusterProviderShared,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: EventStreamShared,
     downing_provider: ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
-    gossiper: GossiperShared<TB>,
-    pubsub: ClusterPubSubShared<TB>,
+    gossiper: GossiperShared,
+    pubsub: ClusterPubSubShared,
     kind_registry: KindRegistry,
-    identity_lookup: IdentityLookupShared<TB>,
+    identity_lookup: IdentityLookupShared,
   ) -> Self {
     let advertised_address = config.advertised_address().to_string();
     let startup_state = ClusterStartupState { address: advertised_address };
@@ -173,7 +173,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterCore<TB> {
 
   /// Returns the shared pub/sub handle.
   #[must_use]
-  pub(crate) fn pub_sub_shared(&self) -> ClusterPubSubShared<TB> {
+  pub(crate) fn pub_sub_shared(&self) -> ClusterPubSubShared {
     self.pub_sub.clone()
   }
 

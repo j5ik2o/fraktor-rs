@@ -45,13 +45,13 @@ mod startup_mode;
 mod topology_apply_error;
 mod topology_update;
 
-pub use cluster_api::{ClusterApi, ClusterApiGeneric};
+pub use cluster_api::ClusterApi;
 pub use cluster_api_error::ClusterApiError;
 pub use cluster_core::ClusterCore;
 pub use cluster_error::ClusterError;
 pub use cluster_event::ClusterEvent;
 pub use cluster_event_type::ClusterEventType;
-pub use cluster_extension::ClusterExtensionGeneric;
+pub use cluster_extension::ClusterExtension;
 pub use cluster_extension_config::ClusterExtensionConfig;
 pub use cluster_extension_id::ClusterExtensionId;
 pub use cluster_extension_installer::{ClusterExtensionInstaller, ClusterProviderFactory};

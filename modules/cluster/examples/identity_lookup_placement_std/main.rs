@@ -23,12 +23,11 @@ use fraktor_cluster_rs::core::{
   identity::{LookupError, RendezvousHasher},
   placement::{
     ActivationEntry, ActivationError, ActivationExecutor, ActivationRecord, ActivationStorage, ActivationStorageError,
-    PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorDriverGeneric,
-    PlacementCoordinatorSharedGeneric, PlacementEvent, PlacementLease, PlacementLock, PlacementLockError,
-    PlacementResolution,
+    PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorDriver,
+    PlacementCoordinatorShared, PlacementEvent, PlacementLease, PlacementLock, PlacementLockError, PlacementResolution,
   },
 };
-use fraktor_utils_rs::{core::sync::SharedAccess, std::runtime_toolbox::StdToolbox};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -157,7 +156,7 @@ async fn main() {
   coordinator.set_local_authority(local.to_string());
   coordinator.update_topology(authorities.clone());
   coordinator.set_distributed_activation(true);
-  let coordinator_shared = PlacementCoordinatorSharedGeneric::<StdToolbox>::new(coordinator);
+  let coordinator_shared = PlacementCoordinatorShared::new(coordinator);
 
   let snapshot = coordinator_shared.with_read(|core| core.snapshot());
   println!(
@@ -179,7 +178,7 @@ async fn main() {
 
   let mut lock = DemoLock::new(true);
   let mut executor = DemoExecutor::new();
-  let mut driver = PlacementCoordinatorDriverGeneric::new(coordinator_shared.clone(), event_stream.clone());
+  let mut driver = PlacementCoordinatorDriver::new(coordinator_shared.clone(), event_stream.clone());
 
   println!("\n--- Resolve with lock denial ---");
   match resolve_with_driver(&mut driver, &mut lock, &mut storage, &mut executor, &key_local, now).await {
@@ -240,7 +239,7 @@ fn print_resolution(label: &str, resolution: &PlacementResolution) {
 }
 
 async fn resolve_with_driver(
-  driver: &mut PlacementCoordinatorDriverGeneric<StdToolbox>,
+  driver: &mut PlacementCoordinatorDriver,
   lock: &mut DemoLock,
   storage: &mut DemoStorage,
   executor: &mut DemoExecutor,

@@ -7,7 +7,7 @@ use fraktor_remote_rs::core::failure_detector::{
 };
 use fraktor_utils_rs::core::time::TimerInstant;
 
-use super::MembershipCoordinatorGeneric;
+use super::MembershipCoordinator;
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig,
   membership::{
@@ -51,12 +51,7 @@ fn joining_cluster_config() -> ClusterExtensionConfig {
 fn stopped_rejects_inputs() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   let now = now(1);
 
   assert_eq!(coordinator.handle_heartbeat("node-a", now).unwrap_err(), MembershipCoordinatorError::NotStarted);
@@ -70,12 +65,7 @@ fn stopped_rejects_inputs() {
 fn client_rejects_join_and_leave() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_client().unwrap();
 
   let err =
@@ -90,12 +80,7 @@ fn client_rejects_join_and_leave() {
 fn join_then_heartbeat_promotes_to_up() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let outcome =
@@ -120,12 +105,7 @@ fn join_then_heartbeat_promotes_to_up() {
 fn current_cluster_state_is_emitted_only_when_state_changes() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let join_outcome =
@@ -143,12 +123,7 @@ fn current_cluster_state_is_emitted_only_when_state_changes() {
 fn leave_emits_exiting_then_removed() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let _ =
@@ -181,12 +156,7 @@ fn topology_emits_after_interval() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
   config.topology_emit_interval = Duration::from_secs(2);
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let _ =
@@ -204,12 +174,7 @@ fn quarantine_rejects_join_and_expires() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
   config.quarantine_ttl = Duration::from_secs(1);
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let outcome = coordinator.handle_quarantine("node-a".to_string(), "manual".to_string(), now(1)).unwrap();
@@ -229,12 +194,7 @@ fn suspect_timeout_marks_dead_and_quarantines() {
   let mut config = base_config();
   config.suspect_timeout = Duration::from_secs(1);
   config.topology_emit_interval = Duration::from_secs(10);
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let _ =
@@ -268,12 +228,7 @@ fn join_rejects_incompatible_cluster_config() {
     .with_pubsub_config(PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(30)));
   let joining = ClusterExtensionConfig::new()
     .with_pubsub_config(PubSubConfig::new(Duration::from_secs(5), Duration::from_secs(30)));
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local,
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local, table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let err = coordinator
@@ -290,12 +245,7 @@ fn join_rejects_incompatible_cluster_config() {
 fn join_uses_joining_config_metadata() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let joining = ClusterExtensionConfig::new()
@@ -314,12 +264,7 @@ fn join_uses_joining_config_metadata() {
 fn current_cluster_state_emits_oldest_leader_and_role_leaders() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let joining_backend = ClusterExtensionConfig::new()
@@ -354,12 +299,7 @@ fn current_cluster_state_emits_oldest_leader_and_role_leaders() {
 fn current_cluster_state_keeps_roles_without_eligible_leader_as_none() {
   let table = MembershipTable::new(3);
   let config = base_config();
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let joining_backend =
@@ -392,12 +332,7 @@ fn current_cluster_state_does_not_use_suspect_oldest_for_leader() {
   let mut config = base_config();
   config.suspect_timeout = Duration::from_secs(1);
   config.dead_timeout = Duration::from_secs(30);
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let role = ClusterExtensionConfig::new().with_app_version("1.0.0").with_roles(vec![String::from("backend")]);
@@ -430,12 +365,7 @@ fn suspect_and_heartbeat_emit_unreachable_and_reachable_events() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
   config.suspect_timeout = Duration::from_secs(30);
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let _ =
@@ -461,12 +391,7 @@ fn gossip_seen_changed_event_is_emitted() {
   let table = MembershipTable::new(3);
   let mut config = base_config();
   config.gossip_enabled = true;
-  let mut coordinator = MembershipCoordinatorGeneric::<fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox>::new(
-    config,
-    local_cluster_config(),
-    table,
-    registry(1.0),
-  );
+  let mut coordinator = MembershipCoordinator::new(config, local_cluster_config(), table, registry(1.0));
   coordinator.start_member().unwrap();
 
   let outcome =

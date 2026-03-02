@@ -20,15 +20,12 @@ use fraktor_actor_rs::core::{
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::{
-  ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtensionGeneric, ClusterRequestError,
+  ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterRequestError,
   ClusterResolveError, ClusterSubscriptionInitialStateMode,
-  grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsSharedGeneric},
+  grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsShared},
   identity::ClusterIdentity,
   placement::PlacementEvent,
 };
@@ -66,25 +63,20 @@ impl EventStreamSubscriber for ClusterEventFilterSubscriber {
 }
 
 /// Cluster API facade bound to an actor system.
-pub struct ClusterApiGeneric<TB: RuntimeToolbox + 'static> {
+pub struct ClusterApi {
   system:    ActorSystem,
-  extension: ArcShared<ClusterExtensionGeneric<TB>>,
+  extension: ArcShared<ClusterExtension>,
 }
 
-/// Cluster API bound to the default no_std toolbox.
-pub type ClusterApi = ClusterApiGeneric<NoStdToolbox>;
-
-impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
+impl ClusterApi {
   /// Retrieves the cluster API from an actor system.
   ///
   /// # Errors
   ///
   /// Returns an error if the cluster extension has not been installed.
   pub fn try_from_system(system: &ActorSystem) -> Result<Self, ClusterApiError> {
-    let extension = system
-      .extended()
-      .extension_by_type::<ClusterExtensionGeneric<TB>>()
-      .ok_or(ClusterApiError::ExtensionNotInstalled)?;
+    let extension =
+      system.extended().extension_by_type::<ClusterExtension>().ok_or(ClusterApiError::ExtensionNotInstalled)?;
     Ok(Self { system: system.clone(), extension })
   }
 
@@ -92,7 +84,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterApiGeneric<TB> {
     &self.system
   }
 
-  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsSharedGeneric<TB>> {
+  pub(crate) fn grain_metrics_shared(&self) -> Option<GrainMetricsShared> {
     self.extension.grain_metrics_shared()
   }
 

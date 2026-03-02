@@ -19,15 +19,15 @@ use fraktor_cluster_rs::core::{
   identity::{IdentityLookupShared, NoopIdentityLookup},
   membership::{GossiperShared, NoopGossiper},
   pub_sub::{
-    ClusterPubSubShared, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport,
-    DeliveryStatus, PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic,
-    PublishOptions, PublishRequest, SubscriberDeliveryReport,
+    ClusterPubSubShared, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus,
+    PubSubBatch, PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishOptions,
+    PublishRequest, SubscriberDeliveryReport,
     cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
   },
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
+  runtime_toolbox::NoStdMutex,
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
@@ -85,7 +85,7 @@ impl RecordingEndpoint {
   }
 }
 
-impl DeliveryEndpoint<NoStdToolbox> for RecordingEndpoint {
+impl DeliveryEndpoint for RecordingEndpoint {
   fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let mut failed = Vec::new();
     for subscriber in request.subscribers {
@@ -118,9 +118,9 @@ fn build_pubsub(
   event_stream: EventStreamShared,
   kind_registry: &KindRegistry,
   failed: Vec<PubSubSubscriber>,
-) -> ClusterPubSubImpl<NoStdToolbox> {
+) -> ClusterPubSubImpl {
   let registry = make_registry();
-  let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(RecordingEndpoint::new(failed)));
+  let endpoint = DeliveryEndpointShared::new(Box::new(RecordingEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, registry, endpoint, PubSubConfig::default(), kind_registry)
 }
 

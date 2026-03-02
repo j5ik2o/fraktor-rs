@@ -9,15 +9,11 @@ use fraktor_actor_rs::core::{
   system::ActorSystem,
 };
 use fraktor_remote_rs::core::BlockListProvider;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-  time::TimerInstant,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
 
 use crate::core::{
-  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionId,
-  ClusterProviderError, ClusterTopology, TopologyUpdate,
+  ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError,
+  ClusterTopology, TopologyUpdate,
   cluster_provider::{ClusterProvider, StaticClusterProvider},
   downing_provider::NoopDowningProvider,
   grain::GrainKey,
@@ -144,7 +140,7 @@ impl Gossiper for StubGossiper {
 }
 
 struct StubPubSub;
-impl ClusterPubSub<NoStdToolbox> for StubPubSub {
+impl ClusterPubSub for StubPubSub {
   fn start(&mut self) -> Result<(), crate::core::pub_sub::PubSubError> {
     Ok(())
   }
@@ -202,8 +198,8 @@ impl fraktor_remote_rs::core::BlockListProvider for StubBlockList {
 }
 
 /// Helper to build `ClusterExtensionId` with default stub components.
-fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId<NoStdToolbox> {
-  ClusterExtensionId::<NoStdToolbox>::new(
+fn stub_extension_id(config: ClusterExtensionConfig) -> ClusterExtensionId {
+  ClusterExtensionId::new(
     config,
     Box::new(StubProvider),
     ArcShared::new(StubBlockList),
@@ -291,14 +287,12 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
   assert_eq!(recorded, vec![(String::from("node-self"), String::from("fraktor://demo"))]);
 }
 
-fn run_member_up_during_start_test(
-  start_fn: impl FnOnce(&ClusterExtensionGeneric<NoStdToolbox>) -> Result<(), ClusterError>,
-) {
+fn run_member_up_during_start_test(start_fn: impl FnOnce(&ClusterExtension) -> Result<(), ClusterError>) {
   let system = ActorSystem::new_empty();
   let event_stream = system.event_stream();
   let authority = String::from("fraktor://demo");
 
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = ClusterExtensionId::new(
     ClusterExtensionConfig::new().with_advertised_address(&authority),
     Box::new(StartAndEmitSelfUpProvider::new(event_stream.clone(), authority.clone(), String::from("node-self"))),
     ArcShared::new(StubBlockList),
@@ -635,11 +629,11 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-a")]));
   let static_topology =
     ClusterTopology::new(1000, vec![String::from("node-b"), String::from("node-c")], vec![], Vec::new());
-  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list.clone(), "node-a")
+  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
   // 4. ClusterExtension をセットアップ（metrics 有効）
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = ClusterExtensionId::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(provider),
     block_list,
@@ -691,11 +685,11 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
 
   // 4. StaticClusterProvider を設定
   let static_topology = ClusterTopology::new(3000, vec![String::from("node-b")], vec![], Vec::new());
-  let provider = StaticClusterProvider::<NoStdToolbox>::new(event_stream.clone(), block_list.clone(), "node-a")
+  let provider = StaticClusterProvider::new(event_stream.clone(), block_list.clone(), "node-a")
     .with_static_topology(static_topology);
 
   // 5. ClusterExtension をセットアップ
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = ClusterExtensionId::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(provider),
     block_list,
@@ -886,7 +880,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     ArcShared::new(RecordingBlockList::new(vec![String::from("blocked-node-1"), String::from("blocked-node-2")]));
 
   // 4. ClusterExtension をセットアップ
-  let ext_id = ClusterExtensionId::<NoStdToolbox>::new(
+  let ext_id = ClusterExtensionId::new(
     ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true),
     Box::new(StubProvider),
     block_list,

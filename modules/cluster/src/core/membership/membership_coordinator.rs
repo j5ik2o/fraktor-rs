@@ -9,7 +9,7 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::{marker::PhantomData, time::Duration};
+use core::time::Duration;
 
 use fraktor_remote_rs::core::failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorRegistry};
 use fraktor_utils_rs::core::time::TimerInstant;
@@ -25,7 +25,7 @@ use crate::core::{
 };
 
 /// Membership/Gossip coordinator (no_std).
-pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> {
+pub struct MembershipCoordinator {
   config:                MembershipCoordinatorConfig,
   cluster_config:        ClusterExtensionConfig,
   state:                 MembershipCoordinatorState,
@@ -36,10 +36,9 @@ pub struct MembershipCoordinatorGeneric<TB: fraktor_utils_rs::core::runtime_tool
   topology_accumulator:  TopologyAccumulator,
   next_topology_emit_at: Option<TimerInstant>,
   suspect_since:         BTreeMap<String, TimerInstant>,
-  _marker:               PhantomData<TB>,
 }
 
-impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> MembershipCoordinatorGeneric<TB> {
+impl MembershipCoordinator {
   /// Creates a new coordinator.
   #[must_use]
   pub fn new(
@@ -60,7 +59,6 @@ impl<TB: fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox + 'static> Memb
       topology_accumulator: TopologyAccumulator::new(),
       next_topology_emit_at: None,
       suspect_since: BTreeMap::new(),
-      _marker: PhantomData,
     }
   }
 

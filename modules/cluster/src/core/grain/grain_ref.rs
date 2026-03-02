@@ -1,7 +1,6 @@
 //! Grain reference entry point.
 
 use alloc::{format, string::String};
-use core::marker::PhantomData;
 
 use fraktor_actor_rs::core::{
   actor::{
@@ -15,34 +14,31 @@ use fraktor_actor_rs::core::{
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::{ActorSystem, state::SystemStateShared},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
-  GRAIN_EVENT_STREAM_NAME, GrainCallError, GrainCallOptions, GrainCodec, GrainEvent, GrainMetrics,
-  GrainMetricsSharedGeneric, GrainResolvedRef,
+  GRAIN_EVENT_STREAM_NAME, GrainCallError, GrainCallOptions, GrainCodec, GrainEvent, GrainMetrics, GrainMetricsShared,
+  GrainResolvedRef,
 };
-use crate::core::{ClusterApiGeneric, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity};
+use crate::core::{ClusterApi, ClusterRequestError, ClusterResolveError, identity::ClusterIdentity};
 
 #[cfg(test)]
 mod tests;
 
 /// Grain reference entry point.
-pub struct GrainRefGeneric<TB: RuntimeToolbox + 'static> {
+pub struct GrainRef {
   identity:     ClusterIdentity,
-  api:          ClusterApiGeneric<TB>,
+  api:          ClusterApi,
   options:      GrainCallOptions,
-  codec:        Option<ArcShared<dyn GrainCodec<TB>>>,
+  codec:        Option<ArcShared<dyn GrainCodec>>,
   event_stream: EventStreamShared,
-  metrics:      Option<GrainMetricsSharedGeneric<TB>>,
+  metrics:      Option<GrainMetricsShared>,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
+impl GrainRef {
   /// Creates a new grain reference.
   #[must_use]
-  pub fn new(api: ClusterApiGeneric<TB>, identity: ClusterIdentity) -> Self {
+  pub fn new(api: ClusterApi, identity: ClusterIdentity) -> Self {
     let event_stream = api.system().event_stream();
     let metrics = api.grain_metrics_shared();
     Self { identity, api, options: GrainCallOptions::default(), codec: None, event_stream, metrics }
@@ -57,7 +53,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
 
   /// Attaches a codec to validate serialization.
   #[must_use]
-  pub fn with_codec(mut self, codec: ArcShared<dyn GrainCodec<TB>>) -> Self {
+  pub fn with_codec(mut self, codec: ArcShared<dyn GrainCodec>) -> Self {
     self.codec = Some(codec);
     self
   }
@@ -73,9 +69,9 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
   /// # Errors
   ///
   /// Returns an error if resolution fails.
-  pub fn get(&self) -> Result<GrainResolvedRef<TB>, ClusterResolveError> {
+  pub fn get(&self) -> Result<GrainResolvedRef, ClusterResolveError> {
     let actor_ref = self.resolve_with_retry()?;
-    Ok(GrainResolvedRef { identity: self.identity.clone(), actor_ref, _marker: PhantomData })
+    Ok(GrainResolvedRef { identity: self.identity.clone(), actor_ref })
   }
 
   /// Sends a request and returns the ask response.
@@ -261,10 +257,10 @@ impl<TB: RuntimeToolbox + 'static> GrainRefGeneric<TB> {
   }
 }
 
-struct GrainRetryContext<TB: RuntimeToolbox + 'static> {
+struct GrainRetryContext {
   identity:     ClusterIdentity,
   event_stream: EventStreamShared,
-  metrics:      Option<GrainMetricsSharedGeneric<TB>>,
+  metrics:      Option<GrainMetricsShared>,
   state:        SystemStateShared,
   temp_pid:     Option<Pid>,
 }
@@ -274,15 +270,15 @@ enum GrainRetryAction {
   Timeout,
 }
 
-struct GrainRetryRunnable<TB: RuntimeToolbox + 'static> {
+struct GrainRetryRunnable {
   future:  ActorFutureShared<AskResult>,
-  context: GrainRetryContext<TB>,
+  context: GrainRetryContext,
   action:  GrainRetryAction,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainRetryRunnable<TB> {
+impl GrainRetryRunnable {
   const fn retry(
-    context: GrainRetryContext<TB>,
+    context: GrainRetryContext,
     actor_ref: ActorRef,
     message: AnyMessage,
     reply_ref: ActorRef,
@@ -292,12 +288,12 @@ impl<TB: RuntimeToolbox + 'static> GrainRetryRunnable<TB> {
     Self { future, context, action: GrainRetryAction::Retry { actor_ref, message, reply_ref, attempt } }
   }
 
-  const fn timeout(context: GrainRetryContext<TB>, future: ActorFutureShared<AskResult>) -> Self {
+  const fn timeout(context: GrainRetryContext, future: ActorFutureShared<AskResult>) -> Self {
     Self { future, context, action: GrainRetryAction::Timeout }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainRetryContext<TB> {
+impl GrainRetryContext {
   fn cleanup_temp_reply(&self) {
     if let Some(pid) = &self.temp_pid {
       self.state.unregister_temp_actor_by_pid(pid);
@@ -305,7 +301,7 @@ impl<TB: RuntimeToolbox + 'static> GrainRetryContext<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for GrainRetryRunnable<TB> {
+impl SchedulerRunnable for GrainRetryRunnable {
   fn run(&self, _batch: &ExecutionBatch) {
     if self.future.with_read(|inner| inner.is_ready()) {
       self.context.cleanup_temp_reply();
@@ -339,10 +335,10 @@ impl<TB: RuntimeToolbox + 'static> SchedulerRunnable for GrainRetryRunnable<TB> 
   }
 }
 
-fn schedule_retry_with_system<TB: RuntimeToolbox + 'static>(
+fn schedule_retry_with_system(
   system: &ActorSystem,
   wait: core::time::Duration,
-  runnable: ArcShared<GrainRetryRunnable<TB>>,
+  runnable: ArcShared<GrainRetryRunnable>,
 ) -> Result<(), ClusterRequestError> {
   let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
   system
@@ -374,32 +370,25 @@ fn publish_grain_event(event_stream: &EventStreamShared, event: GrainEvent) {
   event_stream.publish(&extension_event);
 }
 
-fn update_grain_metrics<TB: RuntimeToolbox + 'static>(
-  metrics: &Option<GrainMetricsSharedGeneric<TB>>,
-  f: impl FnOnce(&mut GrainMetrics),
-) {
+fn update_grain_metrics(metrics: &Option<GrainMetricsShared>, f: impl FnOnce(&mut GrainMetrics)) {
   if let Some(metrics) = metrics {
     metrics.with_write(|inner| f(inner));
   }
 }
 
-struct GrainReplySender<TB: RuntimeToolbox + 'static> {
+struct GrainReplySender {
   future:     ActorFutureShared<AskResult>,
   forward_to: Option<ActorRef>,
-  context:    GrainReplyContext<TB>,
+  context:    GrainReplyContext,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainReplySender<TB> {
-  const fn new(
-    future: ActorFutureShared<AskResult>,
-    forward_to: Option<ActorRef>,
-    context: GrainReplyContext<TB>,
-  ) -> Self {
+impl GrainReplySender {
+  const fn new(future: ActorFutureShared<AskResult>, forward_to: Option<ActorRef>, context: GrainReplyContext) -> Self {
     Self { future, forward_to, context }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> ActorRefSender for GrainReplySender<TB> {
+impl ActorRefSender for GrainReplySender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     if self.future.with_read(|inner| inner.is_ready()) {
       self.context.cleanup_temp_reply();
@@ -425,15 +414,15 @@ impl<TB: RuntimeToolbox + 'static> ActorRefSender for GrainReplySender<TB> {
   }
 }
 
-struct GrainReplyContext<TB: RuntimeToolbox + 'static> {
+struct GrainReplyContext {
   identity:     ClusterIdentity,
   event_stream: EventStreamShared,
-  metrics:      Option<GrainMetricsSharedGeneric<TB>>,
+  metrics:      Option<GrainMetricsShared>,
   state:        SystemStateShared,
   temp_pid:     Option<Pid>,
 }
 
-impl<TB: RuntimeToolbox + 'static> GrainReplyContext<TB> {
+impl GrainReplyContext {
   fn cleanup_temp_reply(&self) {
     if let Some(pid) = &self.temp_pid {
       self.state.unregister_temp_actor_by_pid(pid);

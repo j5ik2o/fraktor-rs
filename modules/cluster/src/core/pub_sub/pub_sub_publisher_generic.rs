@@ -10,10 +10,7 @@ use fraktor_actor_rs::core::{
   messaging::AnyMessage,
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   ClusterPubSubShared, PubSubBatch, PubSubEnvelope, PubSubError, PubSubTopic, PublishAck, PublishOptions,
@@ -21,21 +18,21 @@ use super::{
 };
 
 /// Publishes messages by serializing them into pub/sub batches.
-pub struct PubSubPublisherGeneric<TB: RuntimeToolbox + 'static> {
-  pub_sub:  ClusterPubSubShared<TB>,
+pub struct PubSubPublisher {
+  pub_sub:  ClusterPubSubShared,
   registry: ArcShared<SerializationRegistry>,
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for PubSubPublisherGeneric<TB> {
+impl Clone for PubSubPublisher {
   fn clone(&self) -> Self {
     Self { pub_sub: self.pub_sub.clone(), registry: self.registry.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> PubSubPublisherGeneric<TB> {
+impl PubSubPublisher {
   /// Creates a new publisher.
   #[must_use]
-  pub const fn new(pub_sub: ClusterPubSubShared<TB>, registry: ArcShared<SerializationRegistry>) -> Self {
+  pub const fn new(pub_sub: ClusterPubSubShared, registry: ArcShared<SerializationRegistry>) -> Self {
     Self { pub_sub, registry }
   }
 

@@ -1,32 +1,29 @@
 //! Shared wrapper for PlacementCoordinatorCore.
 
-use core::marker::PhantomData;
-
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
 use super::placement_coordinator::PlacementCoordinatorCore;
 
 /// Shared wrapper enabling interior mutability for PlacementCoordinatorCore.
-pub struct PlacementCoordinatorSharedGeneric<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeMutex<PlacementCoordinatorCore>>,
-  _marker: PhantomData<TB>,
+pub struct PlacementCoordinatorShared {
+  inner: ArcShared<RuntimeMutex<PlacementCoordinatorCore>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> PlacementCoordinatorSharedGeneric<TB> {
+impl PlacementCoordinatorShared {
   /// Wraps a placement coordinator in a shared mutex.
   #[must_use]
   pub fn new(coordinator: PlacementCoordinatorCore) -> Self {
     let inner = RuntimeMutex::new(coordinator);
-    Self { inner: ArcShared::new(inner), _marker: PhantomData }
+    Self { inner: ArcShared::new(inner) }
   }
 
   /// Creates from an existing shared inner.
   #[must_use]
   pub const fn from_inner(inner: ArcShared<RuntimeMutex<PlacementCoordinatorCore>>) -> Self {
-    Self { inner, _marker: PhantomData }
+    Self { inner }
   }
 
   /// Returns the inner shared handle.
@@ -36,13 +33,13 @@ impl<TB: RuntimeToolbox + 'static> PlacementCoordinatorSharedGeneric<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> Clone for PlacementCoordinatorSharedGeneric<TB> {
+impl Clone for PlacementCoordinatorShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<PlacementCoordinatorCore> for PlacementCoordinatorSharedGeneric<TB> {
+impl SharedAccess<PlacementCoordinatorCore> for PlacementCoordinatorShared {
   fn with_read<R>(&self, f: impl FnOnce(&PlacementCoordinatorCore) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)

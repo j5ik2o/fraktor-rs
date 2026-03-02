@@ -4,11 +4,7 @@ use core::time::Duration;
 use fraktor_actor_rs::core::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-  time::TimerInstant,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared, time::TimerInstant};
 
 use super::ClusterPubSubImpl;
 use crate::core::{
@@ -16,7 +12,7 @@ use crate::core::{
   grain::KindRegistry,
   identity::ClusterIdentity,
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointSharedGeneric, DeliveryReport, DeliveryStatus, PubSubBatch,
+    DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus, PubSubBatch,
     PubSubConfig, PubSubEnvelope, PubSubError, PubSubEvent, PubSubSubscriber, PubSubTopic, PublishAck, PublishOptions,
     PublishRequest, SubscriberDeliveryReport, cluster_pub_sub::ClusterPubSub,
   },
@@ -90,7 +86,7 @@ impl StubEndpoint {
   }
 }
 
-impl DeliveryEndpoint<NoStdToolbox> for StubEndpoint {
+impl DeliveryEndpoint for StubEndpoint {
   fn deliver(&mut self, request: DeliverBatchRequest) -> Result<DeliveryReport, PubSubError> {
     let failed = request
       .subscribers
@@ -106,12 +102,12 @@ fn make_pubsub(
   event_stream: EventStreamShared,
   registry: &KindRegistry,
   failed: Vec<PubSubSubscriber>,
-) -> ClusterPubSubImpl<NoStdToolbox> {
+) -> ClusterPubSubImpl {
   let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
   let serialization_registry = ArcShared::new(
     fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
   );
-  let endpoint = DeliveryEndpointSharedGeneric::new(Box::new(StubEndpoint::new(failed)));
+  let endpoint = DeliveryEndpointShared::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
 }
 

@@ -19,12 +19,11 @@ use fraktor_actor_rs::core::{
     provider::{ActorRefProvider, ActorRefProviderShared},
   },
 };
-use fraktor_utils_rs::core::runtime_toolbox::NoStdToolbox;
 
 use crate::core::{
-  ClusterApiGeneric, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller,
+  ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
   cluster_provider::NoopClusterProvider,
-  grain::{GrainContextGeneric, GrainContextScope, GrainKey},
+  grain::{GrainContextImpl, GrainContextScope, GrainKey},
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
   placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
 };
@@ -35,9 +34,9 @@ fn grain_context_scope_finishes_and_releases_context() {
   ext.start_member().expect("start member");
   ext.setup_member_kinds(vec![ActivatedKind::new("user")]).expect("setup kinds");
 
-  let api = ClusterApiGeneric::<NoStdToolbox>::try_from_system(&system).expect("cluster api");
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
-  let context = GrainContextGeneric::new(identity, api);
+  let context = GrainContextImpl::new(identity, api);
 
   let mut scope = GrainContextScope::new(context);
   assert!(scope.is_active());
@@ -50,17 +49,16 @@ fn grain_context_scope_finishes_and_releases_context() {
 
 fn build_system_with_extension<F>(
   identity_lookup_factory: F,
-) -> (ActorSystem, fraktor_utils_rs::core::sync::ArcShared<ClusterExtensionGeneric<NoStdToolbox>>)
+) -> (ActorSystem, fraktor_utils_rs::core::sync::ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
   let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
-  let cluster_installer =
-    ClusterExtensionInstaller::<NoStdToolbox>::new(cluster_config, |_event_stream, _block_list, _address| {
-      Box::new(NoopClusterProvider::new())
-    })
-    .with_identity_lookup_factory(identity_lookup_factory);
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  })
+  .with_identity_lookup_factory(identity_lookup_factory);
   let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
@@ -72,8 +70,7 @@ where
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
-  let extension =
-    system.extended().extension_by_type::<ClusterExtensionGeneric<NoStdToolbox>>().expect("cluster extension");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
   (system, extension)
 }
 

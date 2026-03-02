@@ -1,10 +1,9 @@
 //! Shared wrapper for `Gossiper` implementations.
 
 use alloc::boxed::Box;
-use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -15,22 +14,21 @@ use super::Gossiper;
 /// This adapter wraps a gossiper in a `RuntimeMutex`, allowing callers to
 /// access mutable methods via [`SharedAccess`] without requiring a mutable
 /// handle to the wrapper itself.
-pub struct GossiperShared<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeMutex<Box<dyn Gossiper>>>,
-  _marker: PhantomData<TB>,
+pub struct GossiperShared {
+  inner: ArcShared<RuntimeMutex<Box<dyn Gossiper>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> GossiperShared<TB> {
+impl GossiperShared {
   /// Creates a new shared wrapper around the given gossiper.
   #[must_use]
   pub fn new(gossiper: Box<dyn Gossiper>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(gossiper)), _marker: PhantomData }
+    Self { inner: ArcShared::new(RuntimeMutex::new(gossiper)) }
   }
 
   /// Creates a wrapper from an existing shared mutex.
   #[must_use]
   pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn Gossiper>>>) -> Self {
-    Self { inner, _marker: PhantomData }
+    Self { inner }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
@@ -40,13 +38,13 @@ impl<TB: RuntimeToolbox + 'static> GossiperShared<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for GossiperShared<TB> {
+impl Clone for GossiperShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn Gossiper>> for GossiperShared<TB> {
+impl SharedAccess<Box<dyn Gossiper>> for GossiperShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Gossiper>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)

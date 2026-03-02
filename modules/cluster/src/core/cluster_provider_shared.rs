@@ -1,10 +1,9 @@
 //! Shared wrapper for `ClusterProvider` implementations.
 
 use alloc::boxed::Box;
-use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::RuntimeMutex,
   sync::{ArcShared, SharedAccess},
 };
 
@@ -15,22 +14,21 @@ use crate::core::cluster_provider::ClusterProvider;
 /// This adapter wraps a provider in a `RuntimeMutex`, allowing callers to
 /// obtain mutable access through [`SharedAccess`] without requiring a mutable
 /// handle to the wrapper itself.
-pub struct ClusterProviderShared<TB: RuntimeToolbox + 'static> {
-  inner:   ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>>,
-  _marker: PhantomData<TB>,
+pub struct ClusterProviderShared {
+  inner: ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>>,
 }
 
-impl<TB: RuntimeToolbox + 'static> ClusterProviderShared<TB> {
+impl ClusterProviderShared {
   /// Creates a new shared wrapper around the given provider.
   #[must_use]
   pub fn new(provider: Box<dyn ClusterProvider>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(provider)), _marker: PhantomData }
+    Self { inner: ArcShared::new(RuntimeMutex::new(provider)) }
   }
 
   /// Creates a wrapper from an existing shared mutex.
   #[must_use]
   pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>>) -> Self {
-    Self { inner, _marker: PhantomData }
+    Self { inner }
   }
 
   /// Returns a cloned handle to the inner shared mutex.
@@ -40,13 +38,13 @@ impl<TB: RuntimeToolbox + 'static> ClusterProviderShared<TB> {
   }
 }
 
-impl<TB: RuntimeToolbox> Clone for ClusterProviderShared<TB> {
+impl Clone for ClusterProviderShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), _marker: PhantomData }
+    Self { inner: self.inner.clone() }
   }
 }
 
-impl<TB: RuntimeToolbox + 'static> SharedAccess<Box<dyn ClusterProvider>> for ClusterProviderShared<TB> {
+impl SharedAccess<Box<dyn ClusterProvider>> for ClusterProviderShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ClusterProvider>) -> R) -> R {
     let guard = self.inner.lock();
     f(&guard)

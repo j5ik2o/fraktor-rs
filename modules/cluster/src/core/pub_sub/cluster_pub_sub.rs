@@ -1,7 +1,5 @@
 //! Abstraction over cluster-wide pub/sub control.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest};
 use crate::core::TopologyUpdate;
 
@@ -10,7 +8,7 @@ mod cluster_pub_sub_impl;
 pub use cluster_pub_sub_impl::ClusterPubSubImpl;
 
 /// Starts and stops the cluster pub/sub subsystem.
-pub trait ClusterPubSub<TB: RuntimeToolbox>: Send + Sync {
+pub trait ClusterPubSub: Send + Sync {
   /// Starts pub/sub services.
   ///
   /// # Errors

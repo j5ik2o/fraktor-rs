@@ -2,16 +2,13 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::messaging::AnyMessage;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
-use super::BatchingProducerGeneric;
+use super::BatchingProducer;
 use crate::core::{
   TopologyUpdate,
   pub_sub::{
-    BatchingProducerConfig, ClusterPubSubShared, PubSubBatch, PubSubError, PubSubPublisherGeneric, PubSubSubscriber,
+    BatchingProducerConfig, ClusterPubSubShared, PubSubBatch, PubSubError, PubSubPublisher, PubSubSubscriber,
     PubSubTopic, PublishAck, PublishRejectReason, PublishRequest, cluster_pub_sub::ClusterPubSub,
   },
 };
@@ -31,7 +28,7 @@ impl RecordingPubSub {
   }
 }
 
-impl ClusterPubSub<NoStdToolbox> for RecordingPubSub {
+impl ClusterPubSub for RecordingPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
@@ -72,13 +69,13 @@ fn flushes_when_batch_size_reached() {
   let registry = make_registry();
   let pubsub = RecordingPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(pubsub.clone()));
-  let publisher = PubSubPublisherGeneric::new(shared, registry);
+  let publisher = PubSubPublisher::new(shared, registry);
 
   let system = fraktor_actor_rs::core::system::ActorSystem::new_empty();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(2, 8, Duration::from_secs(60));
-  let producer = BatchingProducerGeneric::new(PubSubTopic::from("news"), publisher, scheduler, config);
+  let producer = BatchingProducer::new(PubSubTopic::from("news"), publisher, scheduler, config);
 
   let ack1 = producer.produce(AnyMessage::new(String::from("a"))).expect("produce");
   assert_eq!(ack1, PublishAck::accepted());
@@ -94,13 +91,13 @@ fn rejects_when_queue_full() {
   let registry = make_registry();
   let pubsub = RecordingPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(pubsub));
-  let publisher = PubSubPublisherGeneric::new(shared, registry);
+  let publisher = PubSubPublisher::new(shared, registry);
 
   let system = fraktor_actor_rs::core::system::ActorSystem::new_empty();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(10, 1, Duration::from_secs(60));
-  let producer = BatchingProducerGeneric::new(PubSubTopic::from("news"), publisher, scheduler, config);
+  let producer = BatchingProducer::new(PubSubTopic::from("news"), publisher, scheduler, config);
 
   let _ = producer.produce(AnyMessage::new(String::from("a"))).expect("first");
   let ack = producer.produce(AnyMessage::new(String::from("b"))).expect("second");

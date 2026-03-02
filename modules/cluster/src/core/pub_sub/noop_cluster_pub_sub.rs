@@ -1,7 +1,5 @@
 //! No-op implementation of the ClusterPubSub trait.
 
-use fraktor_utils_rs::core::runtime_toolbox::RuntimeToolbox;
-
 use super::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub};
 use crate::core::TopologyUpdate;
 
@@ -20,7 +18,7 @@ impl NoopClusterPubSub {
   }
 }
 
-impl<TB: RuntimeToolbox> ClusterPubSub<TB> for NoopClusterPubSub {
+impl ClusterPubSub for NoopClusterPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }

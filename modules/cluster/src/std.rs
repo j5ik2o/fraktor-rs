@@ -21,7 +21,7 @@ pub use cluster_api::ClusterApi;
 pub use grain_ref::GrainRef;
 pub use grain_std_call_options::{call_options_with_retry, call_options_with_timeout, default_grain_call_options};
 pub use local_cluster_provider_ext::{subscribe_remoting_events, wrap_local_cluster_provider};
-pub use membership_coordinator_driver::MembershipCoordinatorDriverGeneric;
+pub use membership_coordinator_driver::MembershipCoordinatorDriver;
 pub use pub_sub_delivery_actor::PubSubDeliveryActor;
 pub use tokio_gossip_transport::TokioGossipTransport;
 pub use tokio_gossip_transport_config::TokioGossipTransportConfig;

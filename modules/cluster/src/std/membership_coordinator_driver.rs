@@ -6,36 +6,32 @@ use fraktor_actor_rs::core::{
   event::stream::{EventStreamEvent, EventStreamShared},
   messaging::AnyMessage,
 };
-use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::SharedAccess, time::TimerInstant};
+use fraktor_utils_rs::core::{sync::SharedAccess, time::TimerInstant};
 
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig,
   membership::{
-    GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorSharedGeneric,
+    GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorShared,
   },
 };
 
 /// Driver that applies coordinator outcomes to EventStream and gossip transport.
-pub struct MembershipCoordinatorDriverGeneric<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> {
-  coordinator:  MembershipCoordinatorSharedGeneric<TB>,
+pub struct MembershipCoordinatorDriver<TTransport: GossipTransport> {
+  coordinator:  MembershipCoordinatorShared,
   transport:    TTransport,
   event_stream: EventStreamShared,
 }
 
-impl<TB: RuntimeToolbox + 'static, TTransport: GossipTransport> MembershipCoordinatorDriverGeneric<TB, TTransport> {
+impl<TTransport: GossipTransport> MembershipCoordinatorDriver<TTransport> {
   /// Creates a new driver.
   #[must_use]
-  pub fn new(
-    coordinator: MembershipCoordinatorSharedGeneric<TB>,
-    transport: TTransport,
-    event_stream: EventStreamShared,
-  ) -> Self {
+  pub fn new(coordinator: MembershipCoordinatorShared, transport: TTransport, event_stream: EventStreamShared) -> Self {
     Self { coordinator, transport, event_stream }
   }
 
   /// Returns the shared coordinator handle.
   #[must_use]
-  pub const fn coordinator(&self) -> &MembershipCoordinatorSharedGeneric<TB> {
+  pub const fn coordinator(&self) -> &MembershipCoordinatorShared {
     &self.coordinator
   }
 

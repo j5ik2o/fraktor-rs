@@ -1,10 +1,7 @@
 use fraktor_actor_rs::core::messaging::AnyMessage;
-use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdMutex, NoStdToolbox},
-  sync::ArcShared,
-};
+use fraktor_utils_rs::core::{runtime_toolbox::NoStdMutex, sync::ArcShared};
 
-use super::PubSubPublisherGeneric;
+use super::PubSubPublisher;
 use crate::core::{
   TopologyUpdate,
   pub_sub::{
@@ -28,7 +25,7 @@ impl StubPubSub {
   }
 }
 
-impl ClusterPubSub<NoStdToolbox> for StubPubSub {
+impl ClusterPubSub for StubPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
@@ -64,7 +61,7 @@ fn publish_rejects_when_not_serializable() {
   );
   let stub = StubPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(stub.clone()));
-  let publisher = PubSubPublisherGeneric::new(shared, registry);
+  let publisher = PubSubPublisher::new(shared, registry);
 
   let request =
     PublishRequest::new(PubSubTopic::from("news"), AnyMessage::new(CustomPayload), PublishOptions::default());

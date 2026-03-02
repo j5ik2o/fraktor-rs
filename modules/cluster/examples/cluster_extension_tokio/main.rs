@@ -1,11 +1,11 @@
 #![allow(clippy::print_stdout)]
 
-//! Cluster extension quickstart (Tokio + LocalClusterProviderGeneric)
+//! Cluster extension quickstart (Tokio + LocalClusterProvider)
 //!
 //! # 概要
 //!
 //! このサンプルは EventStream 主導のトポロジ通知方式を実装しています：
-//! 1. `LocalClusterProviderGeneric` が `ClusterEvent::TopologyUpdated` を EventStream に publish
+//! 1. `LocalClusterProvider` が `ClusterEvent::TopologyUpdated` を EventStream に publish
 //! 2. `ClusterExtension` が EventStream を購読し、自動的に `ClusterCore::on_topology` を呼び出す
 //! 3. 手動の `on_topology` 呼び出しは不要
 //!
@@ -16,15 +16,14 @@
 //!
 //! # Phase1 (静的トポロジ) vs Phase2 (動的トポロジ)
 //!
-//! - **Phase1**: `LocalClusterProviderGeneric` に静的トポロジを設定し、`start_member()` 時に
-//!   publish
+//! - **Phase1**: `LocalClusterProvider` に静的トポロジを設定し、`start_member()` 時に publish
 //! - **Phase2**: `subscribe_remoting_events()` で Transport イベント（Connected/Quarantined）を
 //!   自動検知し、動的にトポロジを更新
 //!
 //! # Provider 差し替え方法
 //!
 //! `ClusterProvider` トレイトを実装することで、Provider を差し替えられます：
-//! - `LocalClusterProviderGeneric`: 静的トポロジ + Transport イベント自動検知（本サンプル）
+//! - `LocalClusterProvider`: 静的トポロジ + Transport イベント自動検知（本サンプル）
 //! - `StaticClusterProvider`: no_std 環境向け静的トポロジ
 //! - etcd/zk/automanaged provider: 外部サービス連携（Phase2以降で対応予定）
 //!
@@ -40,7 +39,7 @@
 //!
 //! ```text
 //! === Cluster Extension Tokio Demo ===
-//! Demonstrates EventStream-based topology with LocalClusterProviderGeneric
+//! Demonstrates EventStream-based topology with LocalClusterProvider
 //!
 //! --- Starting cluster members ---
 //! [identity][cluster-node-a] member kinds: ["grain", "topic"]
@@ -86,7 +85,7 @@ use fraktor_actor_rs::{
 };
 use fraktor_cluster_rs::{
   core::{
-    ClusterEvent, ClusterExtensionConfig, ClusterExtensionGeneric, ClusterExtensionInstaller, ClusterTopology,
+    ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
     grain::GrainKey,
     identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError},
     placement::{ActivatedKind, PlacementDecision, PlacementLocality, PlacementResolution},
@@ -98,10 +97,7 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
-use fraktor_utils_rs::{
-  core::sync::ArcShared,
-  std::{StdSyncMutex, runtime_toolbox::StdToolbox},
-};
+use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 
 const HOST: &str = "127.0.0.1";
 const NODE_A_PORT: u16 = 26050;
@@ -114,7 +110,7 @@ const SAMPLE_KEY: &str = "user:va-1";
 #[tokio::main]
 async fn main() -> Result<()> {
   println!("=== Cluster Extension Tokio Demo ===");
-  println!("Demonstrates EventStream-based topology with LocalClusterProviderGeneric\n");
+  println!("Demonstrates EventStream-based topology with LocalClusterProvider\n");
 
   // ノードA: 受信・Grain 起動側（静的トポロジ: node-b が join）
   let static_topology_a = ClusterTopology::new(1, vec![format!("{HOST}:{NODE_B_PORT}")], Vec::new(), Vec::new());
@@ -182,7 +178,7 @@ async fn main() -> Result<()> {
 
 struct ClusterNode {
   system:              ActorSystem,
-  cluster:             ArcShared<fraktor_cluster_rs::core::ClusterExtensionGeneric<StdToolbox>>,
+  cluster:             ArcShared<fraktor_cluster_rs::core::ClusterExtension>,
   // EventStream サブスクリプションを保持（ドロップされると解除されるため）
   #[allow(dead_code)]
   _event_subscription: EventStreamSubscription,
@@ -200,7 +196,7 @@ fn build_cluster_node(
   let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
-  // new_with_local() を使用して LocalClusterProviderGeneric を自動的に作成
+  // new_with_local() を使用して LocalClusterProvider を自動的に作成
   let advertised = format!("{HOST}:{port}");
   let mut cluster_config =
     ClusterExtensionConfig::default().with_advertised_address(&advertised).with_metrics_enabled(true);
@@ -221,14 +217,14 @@ fn build_cluster_node(
     .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
     .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
     .with_default_dispatcher_config(default_dispatcher)
-    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::<StdToolbox>::default())
+    .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
       ExtensionInstallers::default()
         .with_extension_installer(SerializationExtensionInstaller::new(default_loopback_setup()))
         .with_extension_installer(RemotingExtensionInstaller::new(remoting_config.clone()))
         .with_extension_installer(
-          ClusterExtensionInstaller::<StdToolbox>::new_with_local(cluster_config)
+          ClusterExtensionInstaller::new_with_local(cluster_config)
             .with_identity_lookup_factory(identity_lookup_factory),
         ),
     );
@@ -242,7 +238,7 @@ fn build_cluster_node(
 
   let cluster = system
     .extended()
-    .extension_by_type::<ClusterExtensionGeneric<StdToolbox>>()
+    .extension_by_type::<ClusterExtension>()
     .expect("ClusterExtension not installed. Call install() first.");
 
   Ok(ClusterNode { system, cluster, _event_subscription: event_subscription })
