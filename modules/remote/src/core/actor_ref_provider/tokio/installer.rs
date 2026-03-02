@@ -11,10 +11,7 @@ use fraktor_actor_rs::core::{
     remote::RemoteWatchHookShared,
   },
 };
-use fraktor_utils_rs::core::{
-  runtime_toolbox::RuntimeToolbox,
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
-};
+use fraktor_utils_rs::core::{runtime_toolbox::RuntimeToolbox, sync::ArcShared};
 
 use crate::core::{
   actor_ref_provider::{loopback_router, tokio::TokioActorRefProviderGeneric},

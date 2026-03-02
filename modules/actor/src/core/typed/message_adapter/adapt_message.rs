@@ -8,7 +8,7 @@ use core::any::TypeId;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 
 use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};

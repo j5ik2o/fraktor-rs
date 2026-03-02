@@ -7,7 +7,7 @@ use alloc::{boxed::Box, vec::Vec};
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 
 use crate::core::typed::{Behaviors, behavior::Behavior};

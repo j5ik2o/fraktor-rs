@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::BTreeSet, format, string::String, vec, vec::Vec};
+use alloc::{format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -178,9 +178,9 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
   ) {
     let now = self.last_observed_at.unwrap_or_else(|| TimerInstant::from_ticks(0, Duration::from_secs(1)));
 
-    let mut failed_set = BTreeSet::new();
+    let mut failed_subscribers = Vec::new();
     for SubscriberDeliveryReport { subscriber, status } in report.failed {
-      failed_set.insert(subscriber.clone());
+      failed_subscribers.push(subscriber.clone());
       let _ = self.broker.suspend_subscriber(topic, &subscriber, format!("{status:?}"), now);
       self.publish_pubsub_event(PubSubEvent::DeliveryFailed {
         topic: topic.clone(),
@@ -190,7 +190,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterPubSubImpl<TB> {
     }
 
     for subscriber in subscribers {
-      if !failed_set.contains(subscriber) {
+      if !failed_subscribers.contains(subscriber) {
         self.publish_pubsub_event(PubSubEvent::DeliverySucceeded {
           topic:      topic.clone(),
           subscriber: subscriber.label(),

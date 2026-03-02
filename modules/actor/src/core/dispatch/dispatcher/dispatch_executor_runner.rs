@@ -6,7 +6,6 @@ use core::sync::atomic::Ordering;
 use fraktor_utils_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::sync_mutex_like::SyncMutexLike,
 };
 use portable_atomic::AtomicBool;
 

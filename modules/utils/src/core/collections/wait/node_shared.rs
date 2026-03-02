@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use super::node::WaitNode;
 use crate::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.

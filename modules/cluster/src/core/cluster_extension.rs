@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::{ArcShared, SharedAccess},
 };
 
 use crate::core::{
@@ -83,13 +83,12 @@ impl<F> MemberStatusCallbackState<F> {
   }
 }
 
-fn trigger_member_status_callback<TB, F>(
+fn trigger_member_status_callback<F>(
   callback_state: &ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
   node_id: &str,
   authority: &str,
 ) -> bool
 where
-  TB: RuntimeToolbox + 'static,
   F: FnMut(&str, &str) + Send + Sync + 'static, {
   let mut state = callback_state.lock();
   if state.fired {
@@ -165,7 +164,7 @@ where
       && let ClusterEvent::MemberStatusChanged { node_id, authority, to, .. } = cluster_event
       && authority == &self.self_address
       && *to == self.target
-      && trigger_member_status_callback::<TB, F>(&self.callback_state, node_id, authority)
+      && trigger_member_status_callback::<F>(&self.callback_state, node_id, authority)
     {
       let subscription_id = {
         let mut state = self.state.lock();
@@ -454,7 +453,7 @@ impl<TB: RuntimeToolbox + 'static> ClusterExtensionGeneric<TB> {
     if let Some(current) = self.self_member_status.lock().clone()
       && current.authority == self_address.as_str()
       && current.status == target
-      && trigger_member_status_callback::<TB, F>(&callback_state, &current.node_id, &current.authority)
+      && trigger_member_status_callback::<F>(&callback_state, &current.node_id, &current.authority)
     {
       state.lock().unsubscribe_requested = true;
     }

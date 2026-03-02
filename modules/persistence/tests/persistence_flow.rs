@@ -24,7 +24,7 @@ use fraktor_persistence_rs::core::{
   PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::{
-  runtime_toolbox::{NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdToolbox, RuntimeMutex},
   sync::ArcShared,
 };
 

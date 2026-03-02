@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::{
   runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-  sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+  sync::ArcShared,
 };
 
 use super::supervise::Supervise;

@@ -8,7 +8,7 @@ use core::{
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
-  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeMutex, RuntimeToolbox},
+  runtime_toolbox::{NoStdMutex, NoStdToolbox, RuntimeMutex},
   sync::{ArcShared, SharedAccess},
   timing::delay::{DelayFuture, DelayProvider},
 };

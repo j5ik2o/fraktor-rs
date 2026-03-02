@@ -21,10 +21,14 @@ pub trait RuntimeToolbox: Send + Sync + 'static {
   fn tick_source(&self) -> SchedulerTickHandle<'_>;
 }
 
+/// Runtime-selected mutex alias.
 pub type RuntimeMutex<T> = crate::RuntimeMutexBackend<T>;
 
+/// Runtime-selected rwlock alias.
 pub type RuntimeRwLock<T> = crate::RuntimeRwLockBackend<T>;
 
+/// No-std mutex alias.
 pub type NoStdMutex<T> = RuntimeMutex<T>;
 
+/// No-std rwlock alias.
 pub type NoStdRwLock<T> = RuntimeRwLock<T>;

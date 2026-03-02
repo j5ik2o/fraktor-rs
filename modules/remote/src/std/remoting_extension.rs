@@ -12,7 +12,7 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::{
   core::{
     runtime_toolbox::{RuntimeMutex, RuntimeToolbox},
-    sync::{ArcShared, sync_mutex_like::SyncMutexLike},
+    sync::ArcShared,
   },
   std::runtime_toolbox::StdToolbox,
 };

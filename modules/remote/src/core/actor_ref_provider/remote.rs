@@ -28,7 +28,7 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::{
   runtime_toolbox::{NoStdToolbox, RuntimeToolbox},
-  sync::{SharedAccess, sync_mutex_like::SyncMutexLike},
+  sync::SharedAccess,
 };
 use hashbrown::HashMap;
 pub use installer::RemoteActorRefProviderInstaller;
