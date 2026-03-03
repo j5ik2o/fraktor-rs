@@ -1,0 +1,1 @@
+/var/folders/vh/rxm2f5jj5kq6xgdlh43wvhv80000gn/T/takt-sdd-pK8F6w/takt-sdd-0.10.0/.agent/skills/takt-piece/scripts/validate-takt-files.sh
