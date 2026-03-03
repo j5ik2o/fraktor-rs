@@ -1,3 +1,4 @@
 mod mpsc_backend;
 
-pub use mpsc_backend::*;
+#[allow(unused_imports)]
+pub(crate) use mpsc_backend::*;

@@ -16,33 +16,36 @@ mod tests;
 /// thread-safety guarantees, making it suitable for single-threaded runtimes or
 /// bare-metal targets where atomic pointer operations are unavailable.
 #[cfg(feature = "alloc")]
-pub struct RcShared<T: ?Sized>(Rc<T>);
+#[allow(dead_code)]
+pub(crate) struct RcShared<T: ?Sized>(Rc<T>);
 
 #[cfg(feature = "alloc")]
+#[allow(dead_code)]
 impl<T> RcShared<T> {
   /// Creates a new `RcShared` by wrapping the provided value.
-  pub fn new(value: T) -> Self {
+  pub(crate) fn new(value: T) -> Self {
     Self(Rc::new(value))
   }
 }
 
 #[cfg(feature = "alloc")]
+#[allow(dead_code)]
 impl<T: ?Sized> RcShared<T> {
   /// Wraps an existing `Rc` in the shared wrapper.
   #[must_use]
-  pub const fn ___from_rc(inner: Rc<T>) -> Self {
+  pub(crate) const fn ___from_rc(inner: Rc<T>) -> Self {
     Self(inner)
   }
 
   /// Consumes the wrapper and returns the inner `Rc`.
   #[must_use]
-  pub fn ___into_rc(self) -> Rc<T> {
+  pub(crate) fn ___into_rc(self) -> Rc<T> {
     self.0
   }
 
   /// Converts the shared handle into another dynamically sized representation.
   #[cfg(feature = "alloc")]
-  pub fn into_dyn<U: ?Sized, F>(self, cast: F) -> RcShared<U>
+  pub(crate) fn into_dyn<U: ?Sized, F>(self, cast: F) -> RcShared<U>
   where
     F: FnOnce(&T) -> &U, {
     let raw = Rc::into_raw(self.0);

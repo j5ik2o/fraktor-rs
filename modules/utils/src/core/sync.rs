@@ -1,13 +1,13 @@
 #[allow(clippy::disallowed_types)]
 mod arc_shared;
 /// Async-aware mutex abstractions shared across runtimes.
-pub mod async_mutex_like;
+pub(crate) mod async_mutex_like;
 #[allow(clippy::disallowed_types)]
 mod flag;
 /// Helper traits for shared function and factory closures.
-pub mod function;
+pub(crate) mod function;
 /// Policies for detecting interrupt contexts prior to blocking operations.
-pub mod interrupt;
+pub(crate) mod interrupt;
 #[cfg(feature = "alloc")]
 #[allow(clippy::disallowed_types)]
 mod rc_shared;
@@ -26,12 +26,16 @@ pub mod sync_rwlock_like;
 mod weak_shared;
 
 pub use arc_shared::ArcShared;
-pub use flag::Flag;
+#[allow(unused_imports)]
+pub(crate) use flag::Flag;
 #[cfg(feature = "alloc")]
-pub use rc_shared::RcShared;
-pub use runtime_lock_alias::{NoStdMutex, NoStdRwLock, RuntimeMutex, RuntimeRwLock};
+#[allow(unused_imports)]
+pub(crate) use rc_shared::RcShared;
+pub use runtime_lock_alias::{NoStdMutex, RuntimeMutex, RuntimeRwLock};
 pub use shared_access::SharedAccess;
 pub use shared_error::SharedError;
-pub use state::StateCell;
-pub use static_ref_shared::StaticRefShared;
+#[allow(unused_imports)]
+pub(crate) use state::StateCell;
+#[allow(unused_imports)]
+pub(crate) use static_ref_shared::StaticRefShared;
 pub use weak_shared::WeakShared;

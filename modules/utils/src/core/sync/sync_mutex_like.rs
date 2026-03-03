@@ -21,6 +21,3 @@ pub trait SyncMutexLike<T> {
   /// Locks the mutex and returns a guard to the protected value.
   fn lock(&self) -> Self::Guard<'_>;
 }
-
-/// Convenience alias for guards produced by [`SyncMutexLike`].
-pub type SyncMutexLikeGuard<'a, M, T> = <M as SyncMutexLike<T>>::Guard<'a>;

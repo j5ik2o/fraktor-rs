@@ -11,11 +11,12 @@ use crate::core::sync::{
   interrupt::{InterruptContextPolicy, NeverInterruptPolicy},
 };
 
+#[allow(dead_code)]
 type SpinGuard<'a, T> = spin::MutexGuard<'a, T>;
 
 /// Thin wrapper around [`spin::Mutex`] implementing [`AsyncMutexLike`].
 #[allow(dead_code)]
-pub struct SpinAsyncMutex<T, P = NeverInterruptPolicy>
+pub(crate) struct SpinAsyncMutex<T, P = NeverInterruptPolicy>
 where
   P: InterruptContextPolicy, {
   inner:   spin::Mutex<T>,
@@ -29,23 +30,23 @@ where
 {
   /// Creates a new spinlock-protected value.
   #[must_use]
-  pub const fn new(value: T) -> Self {
+  pub(crate) const fn new(value: T) -> Self {
     Self { inner: spin::Mutex::new(value), _policy: PhantomData }
   }
 
   /// Returns a reference to the inner spin mutex.
   #[must_use]
-  pub const fn as_inner(&self) -> &spin::Mutex<T> {
+  pub(crate) const fn as_inner(&self) -> &spin::Mutex<T> {
     &self.inner
   }
 
   /// Consumes the wrapper and returns the underlying value.
-  pub fn into_inner(self) -> T {
+  pub(crate) fn into_inner(self) -> T {
     self.inner.into_inner()
   }
 
   /// Locks the mutex and returns a guard to the protected value.
-  pub fn lock(&self) -> SpinGuard<'_, T> {
+  pub(crate) fn lock(&self) -> SpinGuard<'_, T> {
     self.inner.lock()
   }
 }
@@ -76,9 +77,11 @@ where
 }
 
 /// Default spin-based async mutex that never flags interrupt contexts.
-pub type SpinAsyncMutexDefault<T> = SpinAsyncMutex<T, NeverInterruptPolicy>;
+#[allow(dead_code)]
+pub(crate) type SpinAsyncMutexDefault<T> = SpinAsyncMutex<T, NeverInterruptPolicy>;
 
 /// Spin-based async mutex tailored for Cortex-M targets; operations are only allowed in thread
 /// mode.
 #[cfg(feature = "interrupt-cortex-m")]
-pub type SpinAsyncMutexCritical<T> = SpinAsyncMutex<T, CriticalSectionInterruptPolicy>;
+#[allow(dead_code)]
+pub(crate) type SpinAsyncMutexCritical<T> = SpinAsyncMutex<T, CriticalSectionInterruptPolicy>;

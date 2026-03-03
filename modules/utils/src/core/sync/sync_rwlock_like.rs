@@ -30,8 +30,3 @@ pub trait SyncRwLockLike<T> {
   /// Acquires an exclusive write guard.
   fn write(&self) -> Self::WriteGuard<'_>;
 }
-
-/// Convenience alias for guards produced by [`SyncRwLockLike::read`].
-pub type SyncRwLockReadGuard<'a, L, T> = <L as SyncRwLockLike<T>>::ReadGuard<'a>;
-/// Convenience alias for guards produced by [`SyncRwLockLike::write`].
-pub type SyncRwLockWriteGuard<'a, L, T> = <L as SyncRwLockLike<T>>::WriteGuard<'a>;

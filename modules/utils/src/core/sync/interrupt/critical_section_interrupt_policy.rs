@@ -5,7 +5,8 @@ use crate::core::sync::SharedError;
 mod tests;
 
 /// Policy that consults platform-specific interrupt state before allowing blocking operations.
-pub struct CriticalSectionInterruptPolicy;
+#[allow(dead_code)]
+pub(crate) struct CriticalSectionInterruptPolicy;
 
 impl InterruptContextPolicy for CriticalSectionInterruptPolicy {
   fn check_blocking_allowed() -> Result<(), SharedError> {
