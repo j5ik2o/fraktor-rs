@@ -29,6 +29,4 @@ portable-atomic-util = { version = "0.2", default-features = false, features = [
 thiserror = { workspace = true, default-features = false }
 
 [dev-dependencies]
-criterion = { workspace = true }
-tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
 proptest = "1.5"

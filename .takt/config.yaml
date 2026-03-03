@@ -2,21 +2,4 @@ provider: claude
 model: claude-opus-4-6
 concurrency: 1
 base_branch: main
-submodules:
-  - references/okite-ai
-  - references/pekko-persistence-effector
-  - references/protoactor-go
-
-persona_providers:
-  coder:
-    provider: claude
-    model: claude-opus-4-6
-  planner:
-    provider: claude
-    model: claude-opus-4-6
-  supervisor:
-    provider: claude
-    model: claude-opus-4-6
-  ai-antipattern-reviewer:
-    provider: claude
-    model: claude-opus-4-6
+submodules: all
