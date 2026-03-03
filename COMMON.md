@@ -33,4 +33,4 @@
 mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
 
 ## AI-DLC and Spec-Driven Development
-@.agent/CC-SDD.md を読むこと
+@.agents/CC-SDD.md を読むこと
