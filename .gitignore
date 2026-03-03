@@ -41,7 +41,6 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
-/.agent/
 /.claude/
 /.codex/
 /.gemini/
@@ -54,7 +53,18 @@ Cargo.lock
 /.codex-corporate/
 
 /.serena/cache/
+*.pkl
 
 /.takt/clone-meta/
 
-*.pkl
+/.agents/
+!/.agents/skills/code-review
+!/.agents/skills/creating-fraktor-modules
+!/.agents/skills/designing-fraktor-shared-types
+!/.agents/skills/find-skills
+!/.agents/skills/pekko-gap-analysis
+!/.agents/skills/takt-analyze
+!/.agents/skills/takt-facet
+!/.agents/skills/takt-optimize
+!/.agents/skills/takt-piece
+!/.agents/skills/takt-task
