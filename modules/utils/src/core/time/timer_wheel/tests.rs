@@ -4,9 +4,7 @@ use core::time::Duration;
 use proptest::prelude::*;
 
 use super::TimerWheel;
-use crate::core::time::{
-  ClockKind, DriftMonitor, DriftStatus, ManualClock, MonotonicClock, TimerEntry, TimerInstant, TimerWheelConfig,
-};
+use crate::core::time::{ManualClock, MonotonicClock, TimerEntry, TimerInstant, TimerWheelConfig};
 
 #[test]
 fn fifo_order_within_same_tick() {
@@ -27,24 +25,9 @@ fn fifo_order_within_same_tick() {
 }
 
 #[test]
-fn drift_monitor_emits_warning_when_budget_exceeded() {
-  let resolution = Duration::from_millis(5);
-  let config = TimerWheelConfig::new(resolution, 64, 5);
-  let anchor = TimerInstant::zero(resolution);
-  let mut monitor = DriftMonitor::new(config, anchor);
-
-  let deadline = anchor.saturating_add_ticks(1);
-  let actual = TimerInstant::from_ticks(2, resolution);
-  let status = monitor.observe(deadline, actual);
-  assert!(matches!(status, DriftStatus::Exceeded { .. }));
-  assert!(monitor.last_exceeded().is_some());
-}
-
-#[test]
 fn manual_clock_is_monotonic() {
   let resolution = Duration::from_millis(1);
   let mut clock = ManualClock::new(resolution);
-  assert_eq!(clock.kind(), ClockKind::Deterministic);
 
   let mut last = clock.now();
   for step in 1..=10u32 {

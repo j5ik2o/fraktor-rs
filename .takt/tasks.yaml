@@ -13,3 +13,18 @@ tasks:
     started_at: 2026-03-03T08:53:47.234Z
     completed_at: 2026-03-03T10:14:42.125Z
     owner_pid: null
+  - worktree: false
+    piece: refactoring
+    issue: 478
+    auto_pr: true
+    draft_pr: false
+    name: github-issue-478-refactor-util
+    status: completed
+    slug: github-issue-478-refactor-util
+    summary: "## GitHub Issue #478: refactor: utils の dead_line_timer/time 未使用型 +
+      queue Async系"
+    task_dir: .takt/tasks/20260303-134813-github-issue-478-refactor-util
+    created_at: 2026-03-03T13:48:13.113Z
+    started_at: 2026-03-03T13:49:05.456Z
+    completed_at: 2026-03-03T16:53:30.977Z
+    owner_pid: null

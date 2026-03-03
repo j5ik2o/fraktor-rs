@@ -41,11 +41,7 @@ impl<'a> SchedulerRunner<'a> {
 
   /// Processes the currently pending ticks.
   pub fn run_once(&mut self, scheduler: &mut Scheduler) {
-    while let Some(event) = self.tick_lease.try_pull() {
-      let ticks = event.ticks();
-      if ticks == 0 {
-        continue;
-      }
+    while let Some(ticks) = self.tick_lease.try_pull() {
       scheduler.run_for_ticks(u64::from(ticks));
     }
   }

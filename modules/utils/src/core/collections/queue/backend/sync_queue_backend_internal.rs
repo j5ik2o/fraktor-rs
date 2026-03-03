@@ -37,9 +37,11 @@ pub(crate) trait SyncQueueBackendInternal<T> {
   }
 
   /// Returns the overflow policy currently configured for the backend.
+  #[allow(dead_code)]
   fn overflow_policy(&self) -> OverflowPolicy;
 
   /// Indicates whether the backend has been closed.
+  #[allow(dead_code)]
   fn is_closed(&self) -> bool {
     false
   }
