@@ -1,16 +1,15 @@
 tasks:
   - worktree: false
     piece: refactoring
-    issue: 444
+    issue: 477
     auto_pr: false
     draft_pr: false
-    name: github-issue-444-refactor-phas
-    status: completed
-    slug: github-issue-444-refactor-phas
-    summary: "## GitHub Issue #444: refactor: Phase D — RuntimeToolbox trait /
-      NoStdToolbox / "
-    task_dir: .takt/tasks/20260302-123951-github-issue-444-refactor-phas
-    created_at: 2026-03-02T12:39:51.270Z
-    started_at: 2026-03-02T12:43:16.473Z
-    completed_at: 2026-03-02T14:41:09.343Z
+    name: github-issue-477-refactor-util
+    status: pending
+    slug: github-issue-477-refactor-util
+    summary: "## GitHub Issue #477: refactor: utils の stack/ と concurrent/ 全削除"
+    task_dir: .takt/tasks/20260303-085225-github-issue-477-refactor-util
+    created_at: 2026-03-03T08:52:25.392Z
+    started_at: null
+    completed_at: null
     owner_pid: null
