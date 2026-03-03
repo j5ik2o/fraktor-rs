@@ -21,16 +21,18 @@ use crate::core::{
 /// This backend provides unbounded queue semantics backed by the standard library's
 /// multi-producer, single-consumer channel. It supports concurrent producers and
 /// maintains approximate length tracking via atomic counters.
-pub struct MpscBackend<T> {
+#[allow(dead_code)]
+pub(crate) struct MpscBackend<T> {
   sender:   std::sync::mpsc::Sender<T>,
   receiver: std::sync::mpsc::Receiver<T>,
   len:      ArcShared<AtomicUsize>,
 }
 
+#[allow(dead_code)]
 impl<T> MpscBackend<T> {
   /// Creates a new unbounded MPSC backend.
   #[must_use]
-  pub fn new() -> Self {
+  pub(crate) fn new() -> Self {
     let (sender, receiver) = mpsc::channel();
     Self { sender, receiver, len: ArcShared::new(AtomicUsize::new(0)) }
   }
@@ -39,13 +41,13 @@ impl<T> MpscBackend<T> {
   ///
   /// This can be cloned to create multiple producers.
   #[must_use]
-  pub const fn sender(&self) -> &std::sync::mpsc::Sender<T> {
+  pub(crate) const fn sender(&self) -> &std::sync::mpsc::Sender<T> {
     &self.sender
   }
 
   /// Returns a reference to the receiver half of the channel.
   #[must_use]
-  pub const fn receiver(&self) -> &std::sync::mpsc::Receiver<T> {
+  pub(crate) const fn receiver(&self) -> &std::sync::mpsc::Receiver<T> {
     &self.receiver
   }
 }

@@ -60,7 +60,8 @@ mod tests;
 ///   }
 /// }
 /// ```
-pub trait StateCell<T>: Clone {
+#[allow(dead_code)]
+pub(crate) trait StateCell<T>: Clone {
   /// Immutable reference guard type.
   ///
   /// Functions as an RAII type implementing `Deref<Target = T>` that automatically

@@ -12,18 +12,20 @@ mod tests;
 /// Shared wrapper backed by a `'static` reference.
 ///
 /// Thin wrapper that exposes user-supplied `'static` values through the [`Shared`] abstraction.
-pub struct StaticRefShared<T: ?Sized + 'static>(&'static T);
+#[allow(dead_code)]
+pub(crate) struct StaticRefShared<T: ?Sized + 'static>(&'static T);
 
+#[allow(dead_code)]
 impl<T: ?Sized + 'static> StaticRefShared<T> {
   /// Creates a new wrapper from a `'static` reference.
   #[must_use]
-  pub const fn new(reference: &'static T) -> Self {
+  pub(crate) const fn new(reference: &'static T) -> Self {
     Self(reference)
   }
 
   /// Returns the raw `'static` reference.
   #[must_use]
-  pub const fn as_ref(self) -> &'static T {
+  pub(crate) const fn as_ref(self) -> &'static T {
     self.0
   }
 }

@@ -3,13 +3,15 @@ use core::ops::{Deref, DerefMut};
 
 use async_trait::async_trait;
 mod spin_async_mutex;
-pub use spin_async_mutex::*;
+#[allow(unused_imports)]
+pub(crate) use spin_async_mutex::*;
 
 use crate::core::sync::SharedError;
 
 /// Async-aware mutex abstraction.
+#[allow(dead_code)]
 #[async_trait(?Send)]
-pub trait AsyncMutexLike<T> {
+pub(crate) trait AsyncMutexLike<T> {
   /// Guard type returned by [`AsyncMutexLike::lock`].
   type Guard<'a>: Deref<Target = T> + DerefMut
   where
@@ -27,4 +29,5 @@ pub trait AsyncMutexLike<T> {
 }
 
 /// Convenience alias for guards produced by [`AsyncMutexLike`].
-pub type AsyncMutexLikeGuard<'a, M, T> = <M as AsyncMutexLike<T>>::Guard<'a>;
+#[allow(dead_code)]
+pub(crate) type AsyncMutexLikeGuard<'a, M, T> = <M as AsyncMutexLike<T>>::Guard<'a>;

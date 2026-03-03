@@ -3,14 +3,16 @@ mod never_interrupt_policy;
 #[cfg(test)]
 mod tests;
 
-pub use critical_section_interrupt_policy::CriticalSectionInterruptPolicy;
-pub use never_interrupt_policy::NeverInterruptPolicy;
+#[allow(unused_imports)]
+pub(crate) use critical_section_interrupt_policy::CriticalSectionInterruptPolicy;
+pub(crate) use never_interrupt_policy::NeverInterruptPolicy;
 
 use crate::core::sync::SharedError;
 
 /// Policy interface for determining whether blocking operations are permitted in the
 /// current execution context.
-pub trait InterruptContextPolicy {
+#[allow(dead_code)]
+pub(crate) trait InterruptContextPolicy {
   /// Checks whether blocking operations are allowed.
   ///
   /// # Errors

@@ -19,5 +19,3 @@ pub use sync_rwlock_write_guard::StdSyncRwLockWriteGuard;
 
 /// Convenience alias for the default std mutex.
 pub type StdMutex<T> = crate::core::sync::RuntimeMutex<T>;
-/// Convenience alias for the default std rwlock.
-pub type StdRwLock<T> = crate::core::sync::RuntimeRwLock<T>;

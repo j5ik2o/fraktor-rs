@@ -5,7 +5,8 @@ use crate::core::sync::SharedError;
 mod tests;
 
 /// Policy that never reports an active interrupt context.
-pub struct NeverInterruptPolicy;
+#[allow(dead_code)]
+pub(crate) struct NeverInterruptPolicy;
 
 impl InterruptContextPolicy for NeverInterruptPolicy {
   fn check_blocking_allowed() -> Result<(), SharedError> {
