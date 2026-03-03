@@ -11,11 +11,12 @@
     "takt:cc-sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
     "takt:cc-sdd:steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
     "takt:cc-sdd:steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
-    "takt:add": "takt add",
-    "takt:run": "takt run",
+    "takt": "takt",
+    "ruflo": "ruflo",
     "takt:issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t"
   },
   "devDependencies": {
-    "takt": "0.28.1"
+    "takt": "0.28.1",
+    "ruflo": "^3.5.2"
   }
 }
