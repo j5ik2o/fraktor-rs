@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use super::{ClockKind, MonotonicClock, TimerInstant};
+use super::{MonotonicClock, TimerInstant};
 
 /// Deterministic clock advanced manually during tests.
 #[derive(Clone, Copy, Debug)]
@@ -32,10 +32,6 @@ impl ManualClock {
 impl MonotonicClock for ManualClock {
   fn now(&self) -> TimerInstant {
     self.current
-  }
-
-  fn kind(&self) -> ClockKind {
-    ClockKind::Deterministic
   }
 }
 

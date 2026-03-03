@@ -11,7 +11,7 @@ use crate::core::collections::queue::{
 
 /// Queue backend backed by [`VecDeque`].
 ///
-/// This adapter is meant to be constructed and driven by `AsyncQueue`/`SyncQueue`
+/// This adapter is meant to be constructed and driven by `SyncQueue`
 /// helpers. Prefer those high-level APIs and implement custom backends instead of
 /// invoking this adapter directly from application logic.
 pub struct VecDequeBackend<T> {
