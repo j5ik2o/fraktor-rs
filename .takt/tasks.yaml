@@ -29,16 +29,33 @@ tasks:
     completed_at: 2026-03-03T16:53:30.977Z
     owner_pid: null
   - worktree: true
+    branch: takt/479/github-issue-479-refactor-util
     piece: refactoring
     issue: 479
     auto_pr: true
     draft_pr: true
     name: github-issue-479-refactor-util
-    status: pending
+    status: completed
     slug: github-issue-479-refactor-util
     summary: "## GitHub Issue #479: refactor: utils の pub 可視性整理（内部型の pub 剥がし）"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260303T1745-479-github-issue-479-refactor-util
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/483
     task_dir: .takt/tasks/20260303-173030-github-issue-479-refactor-util
     created_at: 2026-03-03T17:30:30.136Z
+    started_at: 2026-03-03T17:45:56.308Z
+    completed_at: 2026-03-03T19:51:26.338Z
+    owner_pid: null
+  - worktree: true
+    piece: refactoring
+    issue: 411
+    auto_pr: true
+    draft_pr: true
+    name: github-issue-411-refactor-stre
+    status: pending
+    slug: github-issue-411-refactor-stre
+    summary: "## GitHub Issue #411: refactor: streams flow.rs の分割とSource/Flow重複メソッドの共通化"
+    task_dir: .takt/tasks/20260303-223904-github-issue-411-refactor-stre
+    created_at: 2026-03-03T22:39:04.947Z
     started_at: null
     completed_at: null
     owner_pid: null
