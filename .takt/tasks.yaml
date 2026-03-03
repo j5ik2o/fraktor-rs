@@ -28,3 +28,17 @@ tasks:
     started_at: 2026-03-03T13:49:05.456Z
     completed_at: 2026-03-03T16:53:30.977Z
     owner_pid: null
+  - worktree: true
+    piece: refactoring
+    issue: 479
+    auto_pr: true
+    draft_pr: true
+    name: github-issue-479-refactor-util
+    status: pending
+    slug: github-issue-479-refactor-util
+    summary: "## GitHub Issue #479: refactor: utils の pub 可視性整理（内部型の pub 剥がし）"
+    task_dir: .takt/tasks/20260303-173030-github-issue-479-refactor-util
+    created_at: 2026-03-03T17:30:30.136Z
+    started_at: null
+    completed_at: null
+    owner_pid: null
