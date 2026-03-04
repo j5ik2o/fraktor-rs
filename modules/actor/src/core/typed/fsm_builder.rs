@@ -55,7 +55,7 @@ where
   pub fn build(self) -> Behavior<Message> {
     let mut transition_map = HashMap::with_capacity_and_hasher(self.transitions.len(), RandomState::new());
     for (state, handler) in self.transitions {
-      let prev = transition_map.insert(state.clone(), handler);
+      let prev = transition_map.insert(state, handler);
       assert!(prev.is_none(), "FsmBuilder: duplicate transition for same state");
     }
     let transitions = ArcShared::new(transition_map);
