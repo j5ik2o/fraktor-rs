@@ -1,4 +1,7 @@
-use super::{Flow, Sink, StreamDslError};
+use crate::core::{
+  StreamDslError,
+  stage::{Sink, flow::Flow},
+};
 
 #[cfg(test)]
 mod tests;
