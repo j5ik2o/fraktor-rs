@@ -15,12 +15,6 @@ impl GrainMetricsShared {
   pub fn new(metrics: GrainMetrics) -> Self {
     Self { inner: ArcShared::new(RuntimeMutex::new(metrics)) }
   }
-
-  /// Returns a cloned handle to the inner shared mutex.
-  #[must_use]
-  pub fn inner(&self) -> ArcShared<RuntimeMutex<GrainMetrics>> {
-    self.inner.clone()
-  }
 }
 
 impl Clone for GrainMetricsShared {
