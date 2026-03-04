@@ -170,8 +170,9 @@ where
             guard.remove(pos);
             if let Some(ref dc) = dispatch_counts_for_sig {
               let mut counts = dc.lock();
-              debug_assert!(pos < counts.len(), "dispatch_counts size mismatch: pos={}, len={}", pos, counts.len());
-              counts.remove(pos);
+              if pos < counts.len() {
+                counts.remove(pos);
+              }
             }
           }
           if guard.is_empty() {
