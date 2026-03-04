@@ -1,10 +1,8 @@
 //! Tick driver configuration and abstractions.
 
 mod auto_driver_metadata;
-mod auto_profile_kind;
 mod bootstrap;
 mod hardware_driver;
-mod hardware_kind;
 #[cfg(any(test, feature = "test-support"))]
 mod manual_test_driver;
 mod scheduler_tick_executor;
@@ -31,11 +29,9 @@ mod tick_pulse_source;
 #[cfg(test)]
 mod tests;
 
-pub use auto_driver_metadata::AutoDriverMetadata;
-pub use auto_profile_kind::AutoProfileKind;
+pub use auto_driver_metadata::{AutoDriverMetadata, AutoProfileKind};
 pub(crate) use bootstrap::TickDriverBootstrap;
 pub use hardware_driver::HardwareTickDriver;
-pub use hardware_kind::HardwareKind;
 #[cfg(any(test, feature = "test-support"))]
 pub use manual_test_driver::ManualTestDriver;
 pub use scheduler_tick_executor::SchedulerTickExecutor;
@@ -47,7 +43,7 @@ pub use tick_driver_error::TickDriverError;
 pub use tick_driver_factory::{TickDriverFactory, TickDriverFactoryRef};
 pub use tick_driver_handle::TickDriverHandle;
 pub use tick_driver_id::TickDriverId;
-pub use tick_driver_kind::TickDriverKind;
+pub use tick_driver_kind::{HardwareKind, TickDriverKind};
 pub use tick_driver_metadata::TickDriverMetadata;
 pub use tick_driver_provisioning_context::TickDriverProvisioningContext;
 pub use tick_driver_trait::TickDriver;

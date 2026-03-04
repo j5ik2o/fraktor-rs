@@ -1,6 +1,18 @@
 //! Tick driver variant classification.
 
-use super::HardwareKind;
+// Issue #413: HardwareKind は TickDriverKind のフィールド型としてのみ使用されるため同居させる。
+#![allow(multiple_type_definitions)]
+
+/// Hardware timer source classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HardwareKind {
+  /// Embassy-based timer.
+  Embassy,
+  /// SysTick-based timer.
+  SysTick,
+  /// Custom hardware timer.
+  Custom,
+}
 
 /// Classification of tick driver implementations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
