@@ -972,7 +972,9 @@ async fn inbound_system_message_ignores_out_of_window_sequence() {
       | _ => None,
     })
     .collect();
-  assert!(matches!(control_replies.as_slice(), [AckedDelivery::Nack { sequence_no: 0 }]));
+  assert!(matches!(control_replies.as_slice(), [AckedDelivery::Nack { sequence_no: 0 }, AckedDelivery::Nack {
+    sequence_no: 0,
+  }]));
 }
 
 #[tokio::test(flavor = "current_thread")]

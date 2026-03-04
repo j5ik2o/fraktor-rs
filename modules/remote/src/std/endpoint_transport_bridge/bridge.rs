@@ -741,7 +741,7 @@ impl EndpointTransportBridge {
             self.emit_error(format!(
               "inbound system-message sequence {sequence_no} for {authority} exceeds receive window; highest_acked={highest_acked_sequence_no}, max_acceptable={max_acceptable_sequence_no}",
             ));
-            None
+            Some(AckedDelivery::nack(highest_acked_sequence_no))
           },
         };
         if let Some(reply) = reply
