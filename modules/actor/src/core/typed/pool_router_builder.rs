@@ -109,8 +109,7 @@ where
       }
 
       let routee_count = routee_vec.len();
-      let mutex = RuntimeMutex::new(routee_vec);
-      let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(mutex);
+      let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let index = AtomicUsize::new(0);
