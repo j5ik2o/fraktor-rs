@@ -1,12 +1,12 @@
 name: issue-resolve
-description: 複数の GitHub Issue を起点に要件整理・実装・レビュー・Issue単位コミット・完了判定までを実行する
+description: 複数の GitHub Issue を起点に要件整理・実装・レビュー・完了判定・Issue単位コミットまでを実行する
 piece_config:
   provider_options:
     codex:
       network_access: true
     opencode:
       network_access: true
-max_movements: 30
+max_movements: 50
 initial_movement: issue-plan
 
 instructions:
@@ -14,6 +14,7 @@ instructions:
   issue-implement: ../facets/instructions/issue-implement.md
   issue-fix: ../facets/instructions/issue-fix.md
   issue-verify: ../facets/instructions/issue-verify.md
+  issue-commit: ../facets/instructions/issue-commit.md
   ai-review: ../facets/instructions/ai-review.md
 
 report_formats:
@@ -93,12 +94,10 @@ movements:
           format: coder-scope
         - name: coder-decisions.md
           format: coder-decisions
-        - name: issue-commit-log.md
-          format: issue-commit-log
     rules:
-      - condition: 全issueが「実装完了」または「理由をissueに記録してスキップ」され、issue単位コミット完了（またはコミット禁止のため未作成を明記）
+      - condition: 全issue処理完了
         next: review
-      - condition: 1件以上のissueで実装不能かつ理由未記録
+      - condition: 実装不能で理由未記録あり
         next: ABORT
       - condition: 判断不能
         next: ABORT
@@ -144,13 +143,11 @@ movements:
     required_permission_mode: edit
     instruction: issue-fix
     output_contracts:
-      report:
-        - name: issue-commit-log.md
-          format: issue-commit-log
+      report: []
     rules:
-      - condition: 修正完了または理由をissueに記録したスキップで、必要なissue単位コミット完了（またはコミット禁止のため未作成を明記）
+      - condition: 修正完了
         next: review
-      - condition: 修正不能なissueがあり理由未記録
+      - condition: 修正不能で理由未記録あり
         next: ABORT
       - condition: 判断不能
         next: ABORT
@@ -175,8 +172,30 @@ movements:
           use_judge: false
     rules:
       - condition: 全issueの完了条件を満たす
-        next: COMPLETE
+        next: commit
       - condition: 1件以上で未達
         next: fix
       - condition: 判断不能
+        next: ABORT
+
+  - name: commit
+    edit: true
+    allow_git_commit: true
+    persona: coder
+    session: refresh
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    required_permission_mode: edit
+    instruction: issue-commit
+    output_contracts:
+      report:
+        - name: issue-commit-log.md
+          format: issue-commit-log
+    rules:
+      - condition: 全issueのコミット完了
+        next: COMPLETE
+      - condition: コミット作成失敗
         next: ABORT

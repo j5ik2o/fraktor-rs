@@ -8,12 +8,7 @@
 ## Issue 別判定
 
 - #123: 条件={条件} / 判定={PASS|FAIL|SKIPPED} / 根拠={ログ or テスト}
-- SKIPPED は `issue-commit-log.md` と Issue コメントを根拠に明記
-
-## コミット検証
-
-- Issue: #123
-- コミット数 / Conventional 準拠 / 英語メッセージ / `ci-check`: `PASS|FAIL`
+- SKIPPED は Issue コメントを根拠に明記
 
 ## 最終判定
 
