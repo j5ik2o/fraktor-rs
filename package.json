@@ -16,7 +16,7 @@
     "takt:issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t"
   },
   "devDependencies": {
-    "takt": "0.28.1",
+    "takt": "file:references/takt",
     "ruflo": "^3.5.2"
   }
 }
