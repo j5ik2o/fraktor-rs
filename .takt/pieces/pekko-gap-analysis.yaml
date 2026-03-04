@@ -1,0 +1,179 @@
+name: pekko-gap-analysis
+description: >-
+  指定モジュールとApache Pekko参照実装を3層（API抽出→インターフェース比較→設計比較）で
+  ギャップ分析を実施する。統合→レビュー→修正の閉ループで品質を担保する。
+piece_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_movements: 30
+initial_movement: extract
+
+instructions:
+  pekko-gap-extract: ../facets/instructions/pekko-gap-extract.md
+  pekko-gap-interface: ../facets/instructions/pekko-gap-interface.md
+  pekko-gap-design: ../facets/instructions/pekko-gap-design.md
+  pekko-gap-synthesize: ../facets/instructions/pekko-gap-synthesize.md
+  pekko-gap-review: ../facets/instructions/pekko-gap-review.md
+  pekko-gap-fix: ../facets/instructions/pekko-gap-fix.md
+
+report_formats:
+  api-inventory: ../facets/output-contracts/api-inventory.md
+  interface-comparison: ../facets/output-contracts/interface-comparison.md
+  design-comparison: ../facets/output-contracts/design-comparison.md
+  pekko-gap-analysis: ../facets/output-contracts/pekko-gap-analysis.md
+  ai-review: ../facets/output-contracts/ai-review.md
+
+loop_monitors:
+  - cycle:
+      - review
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction_template: |
+        review と fix のループが {cycle_count} 回繰り返されました。
+
+        以下のレポートを確認し、継続の妥当性を判定してください。
+        - レビュー結果: {report:04-pekko-gap-review.md}
+      rules:
+        - condition: 継続妥当
+          next: review
+        - condition: 打ち切り妥当
+          next: COMPLETE
+
+movements:
+  # Layer 1: API インベントリ抽出
+  - name: extract
+    edit: false
+    persona: planner
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: pekko-gap-extract
+    output_contracts:
+      report:
+        - name: 00-api-inventory.md
+          format: api-inventory
+    rules:
+      - condition: 抽出完了
+        next: interface
+      - condition: 対象不明
+        next: ABORT
+
+  # Layer 2: インターフェース比較
+  - name: interface
+    edit: false
+    persona: planner
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: pekko-gap-interface
+    output_contracts:
+      report:
+        - name: 01-interface-comparison.md
+          format: interface-comparison
+    rules:
+      - condition: 比較完了
+        next: design
+      - condition: 入力不備
+        next: ABORT
+
+  # Layer 3: 設計比較
+  - name: design
+    edit: false
+    persona: planner
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: pekko-gap-design
+    output_contracts:
+      report:
+        - name: 02-design-comparison.md
+          format: design-comparison
+    rules:
+      - condition: 設計比較完了
+        next: synthesize
+      - condition: 入力不備
+        next: ABORT
+
+  # 統合レポート生成
+  - name: synthesize
+    edit: false
+    persona: planner
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: pekko-gap-synthesize
+    output_contracts:
+      report:
+        - name: 03-pekko-gap-analysis.md
+          format: pekko-gap-analysis
+    rules:
+      - condition: 統合完了
+        next: review
+      - condition: 入力不備
+        next: ABORT
+      - condition: 判断不能
+        next: ABORT
+
+  # レビュー（3層全体を検証）
+  - name: review
+    edit: false
+    persona: ai-antipattern-reviewer
+    policy: review
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    instruction: pekko-gap-review
+    output_contracts:
+      report:
+        - name: 04-pekko-gap-review.md
+          format: ai-review
+    rules:
+      - condition: AI特有の問題なし
+        next: COMPLETE
+      - condition: AI特有の問題あり
+        next: fix
+
+  # 修正（指摘された Layer のレポートを修正）
+  - name: fix
+    edit: true
+    persona: planner
+    policy: review
+    session: refresh
+    pass_previous_response: false
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+      - Edit
+      - Write
+      - Bash
+    required_permission_mode: edit
+    instruction: pekko-gap-fix
+    output_contracts:
+      report: []
+    rules:
+      - condition: 修正完了
+        next: review
+      - condition: 一部未対応
+        next: COMPLETE
+      - condition: 判断不能
+        next: ABORT
