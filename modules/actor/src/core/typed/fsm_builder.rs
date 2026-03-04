@@ -47,12 +47,16 @@ where
   }
 
   /// Builds a typed behavior that evaluates transitions on each message.
+  ///
+  /// # Panics
+  ///
+  /// Panics if duplicate transition handlers are registered for the same state.
   #[must_use]
   pub fn build(self) -> Behavior<Message> {
     let mut transition_map = HashMap::with_capacity_and_hasher(self.transitions.len(), RandomState::new());
     for (state, handler) in self.transitions {
       let prev = transition_map.insert(state.clone(), handler);
-      debug_assert!(prev.is_none(), "FsmBuilder: duplicate transition for state {:?}", state);
+      assert!(prev.is_none(), "FsmBuilder: duplicate transition for state {:?}", state);
     }
     let transitions = ArcShared::new(transition_map);
     let state = ArcShared::new(RuntimeMutex::new(self.initial_state));
