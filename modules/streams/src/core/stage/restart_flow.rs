@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{Flow, RestartSettings};
+use super::{RestartSettings, flow::Flow};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartFlow` entry points.
 pub struct RestartFlow;

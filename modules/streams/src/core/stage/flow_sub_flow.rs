@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use super::{Flow, StreamDslError};
+use super::{StreamDslError, flow::Flow};
 
 #[cfg(test)]
 mod tests;

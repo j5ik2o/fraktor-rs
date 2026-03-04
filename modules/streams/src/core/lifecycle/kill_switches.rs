@@ -26,8 +26,8 @@ impl KillSwitches {
     T1: Send + Sync + 'static,
     T2: Send + Sync + 'static, {
     crate::core::stage::BidiFlow::from_flows_mat(
-      crate::core::stage::Flow::new(),
-      crate::core::stage::Flow::new(),
+      crate::core::stage::flow::Flow::new(),
+      crate::core::stage::flow::Flow::new(),
       UniqueKillSwitch::new(),
     )
   }

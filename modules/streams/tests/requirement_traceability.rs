@@ -5,7 +5,7 @@ use fraktor_streams_rs::core::{
   hub::{BroadcastHub, MergeHub, PartitionHub},
   lifecycle::{SharedKillSwitch, UniqueKillSwitch},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
-  stage::{Flow, Sink, Source},
+  stage::{Sink, Source, flow::Flow},
 };
 
 type VerifyFn = fn();

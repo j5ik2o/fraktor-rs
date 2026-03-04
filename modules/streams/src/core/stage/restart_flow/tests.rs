@@ -1,7 +1,7 @@
 use super::RestartFlow;
 use crate::core::{
   Completion, KeepRight, RestartSettings,
-  stage::{Flow, Sink, Source},
+  stage::{Sink, Source, flow::Flow},
 };
 
 #[test]

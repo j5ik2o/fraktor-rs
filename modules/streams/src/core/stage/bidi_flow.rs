@@ -1,4 +1,4 @@
-use super::{Flow, StreamNotUsed};
+use super::{StreamNotUsed, flow::Flow};
 
 #[cfg(test)]
 mod tests;

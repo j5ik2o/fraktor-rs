@@ -6,7 +6,7 @@ use super::{
   StreamDslError, StreamError, StreamPlan, SupervisionStrategy,
   lifecycle::{DriveOutcome, StreamState},
   shape,
-  stage::{Flow, Sink, StageContext, StageKind},
+  stage::{Sink, StageContext, StageKind, flow::Flow},
 };
 
 mod graph_dsl;
