@@ -25,6 +25,10 @@ pub struct DispatchExecutorRunner {
   running:  AtomicBool,
 }
 
+// SAFETY: `executor` holds `Box<dyn DispatchExecutor>` where `DispatchExecutor: Send + Sync`,
+// and `queue` holds `TaskQueue` (= `SyncFifoQueue`) which uses `RuntimeMutex` for synchronization.
+// `running` is `AtomicBool` which is inherently `Send + Sync`.
+// All fields are safely shareable across threads.
 unsafe impl Send for DispatchExecutorRunner {}
 unsafe impl Sync for DispatchExecutorRunner {}
 
