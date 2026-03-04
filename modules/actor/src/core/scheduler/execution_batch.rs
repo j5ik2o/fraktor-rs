@@ -1,8 +1,20 @@
 //! Metadata describing how many runs were triggered for a scheduled task.
 
+// Issue #413: BatchMode は ExecutionBatch のフィールド型としてのみ使用されるため同居させる。
+#![allow(multiple_type_definitions)]
+
 use core::num::NonZeroU32;
 
-use crate::core::scheduler::BatchMode;
+/// Execution modes used to interpret batch data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BatchMode {
+  /// Single-shot execution.
+  OneShot,
+  /// Fixed-rate periodic execution.
+  FixedRate,
+  /// Fixed-delay periodic execution.
+  FixedDelay,
+}
 
 /// Execution metadata shared with scheduler tasks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

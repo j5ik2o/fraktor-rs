@@ -1,3 +1,7 @@
+// Issue #413: TaskRunHandle, TaskRunPriority は TaskRunEntry
+// のフィールド型としてのみ使用されるため同居させる。
+#![allow(multiple_type_definitions)]
+
 use alloc::boxed::Box;
 use core::cmp::Ordering;
 
@@ -6,7 +10,48 @@ use fraktor_utils_rs::core::collections::{
   queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},
 };
 
-use crate::core::scheduler::task_run::{TaskRunHandle, TaskRunOnClose, TaskRunPriority};
+use crate::core::scheduler::task_run::TaskRunOnClose;
+
+/// Handle returned when registering shutdown tasks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TaskRunHandle {
+  id: u64,
+}
+
+impl TaskRunHandle {
+  /// Creates a new handle from the provided identifier.
+  #[must_use]
+  pub const fn new(id: u64) -> Self {
+    Self { id }
+  }
+
+  /// Returns the numeric identifier for the handle.
+  #[must_use]
+  pub const fn id(&self) -> u64 {
+    self.id
+  }
+}
+
+/// Priority assigned to shutdown tasks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskRunPriority {
+  /// Executed before all other tasks.
+  SystemCritical,
+  /// Executed after system-critical tasks.
+  Runtime,
+  /// Executed last.
+  User,
+}
+
+impl TaskRunPriority {
+  pub(crate) const fn rank(self) -> u8 {
+    match self {
+      | Self::SystemCritical => 2,
+      | Self::Runtime => 1,
+      | Self::User => 0,
+    }
+  }
+}
 
 pub(crate) struct TaskRunEntry {
   pub(crate) priority: TaskRunPriority,

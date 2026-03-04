@@ -1,10 +1,24 @@
 //! Tick-driven runner that advances the scheduler when new ticks arrive.
 
+// Issue #413: RunnerMode は SchedulerRunner のフィールド型としてのみ使用されるため同居させる。
+#![allow(multiple_type_definitions)]
+
 use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::time::{SchedulerTickHandle, TickLease};
 
-use super::{RunnerMode, Scheduler};
+use super::Scheduler;
+
+/// Runner operating mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunnerMode {
+  /// Manual driver using deterministic tick injection.
+  Manual,
+  /// Placeholder for async host drivers (tokio, std timers).
+  AsyncHost,
+  /// Placeholder for hardware-backed drivers (embassy/SysTick).
+  Hardware,
+}
 
 /// Drives [`Scheduler`] by draining manually injected ticks.
 pub struct SchedulerRunner<'a> {
