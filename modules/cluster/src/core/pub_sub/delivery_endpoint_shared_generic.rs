@@ -9,7 +9,7 @@ use super::DeliveryEndpoint;
 /// Shared wrapper enabling interior mutability for delivery endpoints.
 pub struct DeliveryEndpointShared {
   /// Shared endpoint implementation.
-  pub inner: ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint>>>,
+  pub(crate) inner: ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint>>>,
 }
 
 impl DeliveryEndpointShared {
