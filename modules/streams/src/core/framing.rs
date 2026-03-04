@@ -6,7 +6,7 @@ use super::{
   downcast_value,
   graph::StreamGraph,
   shape::{Inlet, Outlet},
-  stage::{Flow, StageKind},
+  stage::{StageKind, flow::Flow},
 };
 
 #[cfg(test)]

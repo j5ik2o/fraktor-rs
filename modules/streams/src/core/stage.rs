@@ -17,7 +17,7 @@ use super::{
 /// Bidirectional flow definition.
 mod bidi_flow;
 /// Flow stage definitions.
-mod flow;
+pub mod flow;
 /// Flow monitor handle.
 mod flow_monitor;
 /// Flow-oriented substream surface.
@@ -47,14 +47,6 @@ mod stream_stage;
 
 // Internal re-exports for graph_interpreter tests
 pub use bidi_flow::BidiFlow;
-pub use flow::Flow;
-#[allow(unused_imports)]
-pub(in crate::core) use flow::{
-  async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-  flat_map_merge_definition, interleave_definition, merge_definition, merge_latest_definition,
-  merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, split_after_definition,
-  split_when_definition, unzip_definition, unzip_with_definition, zip_all_definition, zip_definition,
-};
 pub use flow_monitor::FlowMonitor;
 pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;

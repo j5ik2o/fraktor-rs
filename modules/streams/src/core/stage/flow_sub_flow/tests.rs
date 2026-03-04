@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use super::FlowSubFlow;
 use crate::core::{
   StreamNotUsed,
-  stage::{Flow, Source},
+  stage::{Source, flow::Flow},
 };
 
 impl<In, Out, Mat> FlowSubFlow<In, Out, Mat> {

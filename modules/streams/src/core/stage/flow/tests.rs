@@ -9,7 +9,7 @@ use crate::core::{
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
-  stage::{Flow, FlowMonitor, Sink, Source, StageKind},
+  stage::{FlowMonitor, Sink, Source, StageKind, flow::Flow},
 };
 
 struct SequenceSourceLogic {

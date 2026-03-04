@@ -1,6 +1,6 @@
 use crate::core::{
   StreamNotUsed,
-  stage::{Flow, FlowWithContext, Source, SourceWithContext},
+  stage::{FlowWithContext, Source, SourceWithContext, flow::Flow},
 };
 
 #[test]
