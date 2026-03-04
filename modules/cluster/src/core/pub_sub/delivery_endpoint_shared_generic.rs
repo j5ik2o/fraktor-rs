@@ -24,12 +24,6 @@ impl DeliveryEndpointShared {
   pub const fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint>>>) -> Self {
     Self { inner }
   }
-
-  /// Returns a cloned handle to the inner shared mutex.
-  #[must_use]
-  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn DeliveryEndpoint>>> {
-    self.inner.clone()
-  }
 }
 
 impl Clone for DeliveryEndpointShared {

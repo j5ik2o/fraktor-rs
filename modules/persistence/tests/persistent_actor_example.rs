@@ -22,6 +22,7 @@ use fraktor_persistence_rs::core::{
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use test_utils::shared_mutex;
 type SharedValue = ArcShared<RuntimeMutex<i32>>;
 type SharedRefs = ArcShared<RuntimeMutex<Vec<ActorRef>>>;
 
@@ -112,8 +113,6 @@ impl Actor for Guardian {
 }
 
 struct Start;
-
-use test_utils::shared_mutex;
 
 #[test]
 fn batch_flow_applies_all_events() {
