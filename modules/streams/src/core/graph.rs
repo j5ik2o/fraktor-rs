@@ -3,10 +3,10 @@
 // Bridge imports from core level for children
 use super::{
   DemandTracker, DynValue, MatCombine, RestartBackoff, SinkDecision, StageDefinition, StreamBuffer, StreamBufferConfig,
-  StreamDslError, StreamError, StreamPlan, SupervisionStrategy,
+  StreamError, StreamPlan, SupervisionStrategy,
   lifecycle::{DriveOutcome, StreamState},
   shape,
-  stage::{Sink, StageContext, StageKind, flow::Flow},
+  stage::{StageContext, StageKind},
 };
 
 mod graph_dsl;

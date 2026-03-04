@@ -14,8 +14,6 @@ pub struct WaitShared<E: Send + 'static> {
   node: WaitNodeShared<E>,
 }
 
-impl<E: Send + 'static> Unpin for WaitShared<E> {}
-
 impl<E: Send + 'static> WaitShared<E> {
   /// Creates a shared wait future bound to the supplied waiter node.
   #[must_use]

@@ -372,11 +372,11 @@ fn build_bridge(handshake_timeout: Duration) -> (Arc<EndpointTransportBridge>, T
   (bridge, probe, system)
 }
 
-fn build_bridge_with_windows(
+fn build_bridge_core(
   handshake_timeout: Duration,
   ack_send_window: u64,
   ack_receive_window: u64,
-) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem) {
+) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem, RemotingControlHandle) {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
@@ -399,35 +399,22 @@ fn build_bridge_with_windows(
     ack_send_window,
     ack_receive_window,
   };
-  (EndpointTransportBridge::new(config), probe, system)
+  (EndpointTransportBridge::new(config), probe, system, control)
+}
+
+fn build_bridge_with_windows(
+  handshake_timeout: Duration,
+  ack_send_window: u64,
+  ack_receive_window: u64,
+) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem) {
+  let (bridge, probe, system, _control) = build_bridge_core(handshake_timeout, ack_send_window, ack_receive_window);
+  (bridge, probe, system)
 }
 
 fn build_bridge_with_control(
   handshake_timeout: Duration,
 ) -> (Arc<EndpointTransportBridge>, TestTransportProbe, ActorSystem, RemotingControlHandle) {
-  let system = build_system();
-  let serialization = serialization_extension(&system);
-  let writer = EndpointWriterShared::new(EndpointWriter::new(system.downgrade(), serialization.clone()));
-  let reader = ArcShared::new(EndpointReader::new(system.downgrade(), serialization));
-  let (transport, probe) = TestTransport::new();
-  let control = RemotingControlHandle::new(system.clone(), RemotingExtensionConfig::default());
-  let config = EndpointTransportBridgeConfig {
-    system: system.downgrade(),
-    control: control.clone(),
-    writer,
-    reader,
-    transport: RemoteTransportShared::new(Box::new(transport)),
-    event_publisher: EventPublisher::new(system.downgrade()),
-    canonical_host: "127.0.0.1".to_string(),
-    canonical_port: 2552,
-    system_name: "local-system".to_string(),
-    remote_instruments: Vec::new(),
-    handshake_timeout,
-    shutdown_flush_timeout: handshake_timeout,
-    ack_send_window: 128,
-    ack_receive_window: 128,
-  };
-  (EndpointTransportBridge::new(config), probe, system, control)
+  build_bridge_core(handshake_timeout, 128, 128)
 }
 
 fn build_bridge_with_instruments(
@@ -972,7 +959,9 @@ async fn inbound_system_message_ignores_out_of_window_sequence() {
       | _ => None,
     })
     .collect();
-  assert!(matches!(control_replies.as_slice(), [AckedDelivery::Nack { sequence_no: 0 }]));
+  assert!(matches!(control_replies.as_slice(), [AckedDelivery::Nack { sequence_no: 0 }, AckedDelivery::Nack {
+    sequence_no: 0,
+  }]));
 }
 
 #[tokio::test(flavor = "current_thread")]

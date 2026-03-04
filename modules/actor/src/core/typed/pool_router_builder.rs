@@ -14,6 +14,8 @@ use crate::core::{
   typed::{Behaviors, actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, props::TypedProps},
 };
 
+type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;
+
 /// Configures and builds a pool router behavior.
 ///
 /// The resulting behavior spawns `pool_size` child actors and distributes
@@ -109,45 +111,50 @@ where
       }
 
       let routee_count = routee_vec.len();
-      let mutex = RuntimeMutex::new(routee_vec);
-      let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(mutex);
+      let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
-      let index = AtomicUsize::new(0);
-      let random_seed = AtomicU64::new(0);
-      let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
-      let strategy_for_msg = strategy.clone();
+
+      let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
+        | PoolRouteStrategy::RoundRobin => {
+          let index = AtomicUsize::new(0);
+          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+            let idx = index.fetch_add(1, Ordering::Relaxed) % guard.len();
+            vec![guard[idx].clone()]
+          })
+        },
+        | PoolRouteStrategy::Broadcast => ArcShared::new(|guard: &[TypedActorRef<M>], _message: &M| guard.to_vec()),
+        | PoolRouteStrategy::Random { seed } => {
+          let random_seed = AtomicU64::new(0);
+          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+            let mixed_seed = random_seed.fetch_add(1, Ordering::Relaxed) ^ seed;
+            let idx = pseudo_random_index(mixed_seed, guard.len());
+            vec![guard[idx].clone()]
+          })
+        },
+        | PoolRouteStrategy::ConsistentHash { hash_fn } => {
+          ArcShared::new(move |guard: &[TypedActorRef<M>], message: &M| {
+            let idx = (hash_fn(message) as usize) % guard.len();
+            vec![guard[idx].clone()]
+          })
+        },
+        | PoolRouteStrategy::SmallestMailbox => {
+          let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
+          ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
+            let idx = select_smallest_mailbox_index(guard, &dispatch_counts);
+            vec![guard[idx].clone()]
+          })
+        },
+      };
 
       Behaviors::receive_message(move |_ctx, message: &M| {
-        let mut targets: Vec<TypedActorRef<M>> = Vec::new();
-        {
+        let targets = {
           let guard = routees_for_msg.lock();
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
-          match &strategy_for_msg {
-            | PoolRouteStrategy::RoundRobin => {
-              let idx = index.fetch_add(1, Ordering::Relaxed) % guard.len();
-              targets.push(guard[idx].clone());
-            },
-            | PoolRouteStrategy::Broadcast => {
-              targets.extend(guard.iter().cloned());
-            },
-            | PoolRouteStrategy::Random { seed } => {
-              let mixed_seed = random_seed.fetch_add(1, Ordering::Relaxed) ^ *seed;
-              let idx = pseudo_random_index(mixed_seed, guard.len());
-              targets.push(guard[idx].clone());
-            },
-            | PoolRouteStrategy::ConsistentHash { hash_fn } => {
-              let idx = (hash_fn(message) as usize) % guard.len();
-              targets.push(guard[idx].clone());
-            },
-            | PoolRouteStrategy::SmallestMailbox => {
-              let idx = select_smallest_mailbox_index(&guard, &dispatch_counts);
-              targets.push(guard[idx].clone());
-            },
-          }
-        }
+          (select_targets)(&guard, message)
+        };
         for mut target in targets {
           let _ = target.tell(message.clone());
         }

@@ -14,13 +14,8 @@ pub struct ClusterRouterGroupSettings {
 
 impl ClusterRouterGroupSettings {
   /// Creates settings with explicit routee paths.
-  ///
-  /// # Panics
-  ///
-  /// Panics when `routee_paths` is empty.
   #[must_use]
-  pub fn new(routee_paths: Vec<String>) -> Self {
-    assert!(!routee_paths.is_empty(), "routee paths must not be empty");
+  pub const fn new(routee_paths: Vec<String>) -> Self {
     Self { routee_paths, allow_local_routees: true }
   }
 

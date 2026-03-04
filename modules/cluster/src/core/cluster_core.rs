@@ -349,6 +349,7 @@ impl ClusterCore {
         self.blocked_members.clear();
         self.current_members.clear();
         self.observed_at = TimerInstant::zero(Duration::from_secs(1));
+        self.last_topology_hash = None;
         self.mode = None;
         self.publish_cluster_event(ClusterEvent::Shutdown { address, mode });
         Ok(())

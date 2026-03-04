@@ -4,41 +4,28 @@
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
+use core::hash::Hash;
 
+use ahash::RandomState;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use hashbrown::HashMap;
 
 use crate::core::typed::{Behaviors, behavior::Behavior};
 
 type TransitionHandler<State, Message> = dyn Fn(&Message) -> Option<State> + Send + Sync;
 
-struct FsmTransition<State, Message>
-where
-  State: Clone + PartialEq + Send + Sync + 'static,
-  Message: Send + Sync + 'static, {
-  state:   State,
-  handler: Box<TransitionHandler<State, Message>>,
-}
-
-struct FsmRuntimeState<State, Message>
-where
-  State: Clone + PartialEq + Send + Sync + 'static,
-  Message: Send + Sync + 'static, {
-  state:       State,
-  transitions: Vec<FsmTransition<State, Message>>,
-}
-
 /// Minimal FSM builder for composing state transition behaviors.
 pub struct FsmBuilder<State, Message>
 where
-  State: Clone + PartialEq + Send + Sync + 'static,
+  State: Clone + Eq + Hash + Send + Sync + 'static,
   Message: Send + Sync + 'static, {
   initial_state: State,
-  transitions:   Vec<FsmTransition<State, Message>>,
+  transitions:   Vec<(State, Box<TransitionHandler<State, Message>>)>,
 }
 
 impl<State, Message> FsmBuilder<State, Message>
 where
-  State: Clone + PartialEq + Send + Sync + 'static,
+  State: Clone + Eq + Hash + Send + Sync + 'static,
   Message: Send + Sync + 'static,
 {
   /// Creates a new FSM builder with the provided initial state.
@@ -55,38 +42,30 @@ where
   pub fn when<F>(mut self, state: State, handler: F) -> Self
   where
     F: Fn(&Message) -> Option<State> + Send + Sync + 'static, {
-    self.transitions.push(FsmTransition { state, handler: Box::new(handler) });
+    self.transitions.push((state, Box::new(handler)));
     self
   }
 
   /// Builds a typed behavior that evaluates transitions on each message.
   #[must_use]
   pub fn build(self) -> Behavior<Message> {
-    let runtime_state = ArcShared::new(RuntimeMutex::new(FsmRuntimeState {
-      state:       self.initial_state,
-      transitions: self.transitions,
-    }));
+    let mut transition_map = HashMap::with_capacity_and_hasher(self.transitions.len(), RandomState::new());
+    for (state, handler) in self.transitions {
+      transition_map.insert(state, handler);
+    }
+    let transitions = ArcShared::new(transition_map);
+    let state = ArcShared::new(RuntimeMutex::new(self.initial_state));
 
     Behaviors::receive_message(move |_ctx, message| {
-      let mut guard = runtime_state.lock();
-      let current_state = guard.state.clone();
-      let mut handler_found = false;
-      let mut next_state: Option<State> = None;
-      for transition in &guard.transitions {
-        if transition.state == current_state {
-          handler_found = true;
-          next_state = (transition.handler)(message);
-          break;
-        }
+      let current_state = state.lock().clone();
+      let next_state = match transitions.get(&current_state) {
+        | Some(handler) => (handler)(message),
+        | None => return Ok(Behaviors::unhandled()),
+      };
+      if let Some(new_state) = next_state {
+        *state.lock() = new_state;
       }
-      if let Some(state) = next_state {
-        guard.state = state;
-        return Ok(Behaviors::same());
-      }
-      if handler_found {
-        return Ok(Behaviors::same());
-      }
-      Ok(Behaviors::unhandled())
+      Ok(Behaviors::same())
     })
   }
 }

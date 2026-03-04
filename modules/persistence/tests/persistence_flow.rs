@@ -1,5 +1,7 @@
 //! Persistent actor flow integration tests.
 
+mod test_utils;
+
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
@@ -137,9 +139,7 @@ impl Actor for Guardian {
 
 struct Start;
 
-fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<RuntimeMutex<T>> {
-  ArcShared::new(RuntimeMutex::new(value))
-}
+use test_utils::shared_mutex;
 
 fn drive_ready<F: Future>(future: F) -> F::Output {
   let waker = Waker::noop();

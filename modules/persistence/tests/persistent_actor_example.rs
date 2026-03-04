@@ -1,5 +1,7 @@
 //! Persistent actor example integration test.
 
+mod test_utils;
+
 extern crate alloc;
 
 use alloc::vec::Vec;
@@ -111,9 +113,7 @@ impl Actor for Guardian {
 
 struct Start;
 
-fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<RuntimeMutex<T>> {
-  ArcShared::new(RuntimeMutex::new(value))
-}
+use test_utils::shared_mutex;
 
 #[test]
 fn batch_flow_applies_all_events() {

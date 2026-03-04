@@ -26,16 +26,6 @@ impl ContextPipeWakerHandle {
   const fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
     Self { system, pid, task }
   }
-
-  fn wake(&mut self) {
-    // send_system_message は内部でロックを取るため、ロック保持を避けるべくクローン後に実行
-    let system = self.system.clone();
-    let pid = self.pid;
-    let task = self.task;
-    if let Err(error) = system.send_system_message(pid, SystemMessage::PipeTask(task)) {
-      system.record_send_error(Some(pid), &error);
-    }
-  }
 }
 
 struct ContextPipeWakerShared {
@@ -50,7 +40,15 @@ impl ContextPipeWakerShared {
   }
 
   fn wake(&self) {
-    self.inner.lock().wake();
+    // ロック保持中に send_system_message を呼ぶとデッドロックするため、
+    // ロックスコープ内でクローンを取得し、解放後に送信する
+    let (system, pid, task) = {
+      let guard = self.inner.lock();
+      (guard.system.clone(), guard.pid, guard.task)
+    };
+    if let Err(error) = system.send_system_message(pid, SystemMessage::PipeTask(task)) {
+      system.record_send_error(Some(pid), &error);
+    }
   }
 }
 
