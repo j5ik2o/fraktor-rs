@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
-use core::hash::Hash;
+use core::{fmt::Debug, hash::Hash};
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
@@ -17,7 +17,7 @@ type TransitionHandler<State, Message> = dyn Fn(&Message) -> Option<State> + Sen
 /// Minimal FSM builder for composing state transition behaviors.
 pub struct FsmBuilder<State, Message>
 where
-  State: Clone + Eq + Hash + Send + Sync + 'static,
+  State: Clone + Debug + Eq + Hash + Send + Sync + 'static,
   Message: Send + Sync + 'static, {
   initial_state: State,
   transitions:   Vec<(State, Box<TransitionHandler<State, Message>>)>,
@@ -25,7 +25,7 @@ where
 
 impl<State, Message> FsmBuilder<State, Message>
 where
-  State: Clone + Eq + Hash + Send + Sync + 'static,
+  State: Clone + Debug + Eq + Hash + Send + Sync + 'static,
   Message: Send + Sync + 'static,
 {
   /// Creates a new FSM builder with the provided initial state.
@@ -51,7 +51,8 @@ where
   pub fn build(self) -> Behavior<Message> {
     let mut transition_map = HashMap::with_capacity_and_hasher(self.transitions.len(), RandomState::new());
     for (state, handler) in self.transitions {
-      transition_map.insert(state, handler);
+      let prev = transition_map.insert(state.clone(), handler);
+      debug_assert!(prev.is_none(), "FsmBuilder: duplicate transition for state {:?}", state);
     }
     let transitions = ArcShared::new(transition_map);
     let state = ArcShared::new(RuntimeMutex::new(self.initial_state));

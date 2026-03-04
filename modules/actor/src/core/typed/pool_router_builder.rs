@@ -115,6 +115,8 @@ where
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
 
+      let mut dispatch_counts_for_sig: Option<ArcShared<RuntimeMutex<Vec<usize>>>> = None;
+
       let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
         | PoolRouteStrategy::RoundRobin => {
           let index = AtomicUsize::new(0);
@@ -140,6 +142,7 @@ where
         },
         | PoolRouteStrategy::SmallestMailbox => {
           let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
+          dispatch_counts_for_sig = Some(dispatch_counts.clone());
           ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
             let idx = select_smallest_mailbox_index(guard, &dispatch_counts);
             vec![guard[idx].clone()]
@@ -163,7 +166,14 @@ where
       .receive_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Terminated(pid) => {
           let mut guard = routees_for_sig.lock();
-          guard.retain(|r| r.pid() != *pid);
+          if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
+            guard.remove(pos);
+            if let Some(ref dc) = dispatch_counts_for_sig {
+              let mut counts = dc.lock();
+              debug_assert!(pos < counts.len(), "dispatch_counts size mismatch: pos={}, len={}", pos, counts.len());
+              counts.remove(pos);
+            }
+          }
           if guard.is_empty() {
             return Ok(Behaviors::stopped());
           }

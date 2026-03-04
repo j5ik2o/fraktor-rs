@@ -12,7 +12,7 @@ use crate::core::{
   },
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ProbeState {
   Idle,
   Active,
