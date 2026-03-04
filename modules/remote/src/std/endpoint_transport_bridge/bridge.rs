@@ -497,6 +497,10 @@ impl EndpointTransportBridge {
     if removed_correlations.is_empty() {
       return;
     }
+    self.emit_error(format!(
+      "ack_send_window exceeded for {authority}: evicted {} pending system message(s)",
+      removed_correlations.len()
+    ));
     let mut correlations = self.system_correlations.lock().await;
     for correlation in removed_correlations {
       correlations.remove(&correlation);
