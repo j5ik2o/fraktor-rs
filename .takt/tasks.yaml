@@ -63,16 +63,35 @@ tasks:
     completed_at: 2026-03-04T00:03:14.352Z
     owner_pid: null
   - worktree: true
+    branch: takt/413/github-issue-413-refactor-acto
     piece: refactoring
     issue: 413
     auto_pr: true
     draft_pr: true
     name: github-issue-413-refactor-acto
-    status: pending
+    status: completed
     slug: github-issue-413-refactor-acto
     summary: "## GitHub Issue #413: refactor: actor scheduler/tick_driver の小型enum統合"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260304T0155-413-github-issue-413-refactor-acto
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/486
     task_dir: .takt/tasks/20260304-015508-github-issue-413-refactor-acto
     created_at: 2026-03-04T01:55:08.941Z
-    started_at: null
-    completed_at: null
+    started_at: 2026-03-04T01:55:46.152Z
+    completed_at: 2026-03-04T02:52:55.297Z
+    owner_pid: null
+  - worktree: true
+    branch: takt/487/github-issue-487-coderabbit-no
+    piece: issue-resolve
+    issue: 487
+    auto_pr: true
+    draft_pr: true
+    name: github-issue-487-coderabbit-no
+    status: completed
+    slug: github-issue-487-coderabbit-no
+    summary: "## GitHub Issue #487: CodeRabbit 指摘事項の棚卸し（19件）"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260304T0413-487-github-issue-487-coderabbit-no
+    task_dir: .takt/tasks/20260304-034253-github-issue-487-coderabbit-19
+    created_at: 2026-03-04T03:42:53.477Z
+    started_at: 2026-03-04T04:13:20.504Z
+    completed_at: 2026-03-04T05:29:13.456Z
     owner_pid: null
