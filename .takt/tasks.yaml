@@ -119,11 +119,16 @@ tasks:
     auto_pr: false
     draft_pr: false
     name: github-issue-577-pekko-rebyuu
-    status: running
+    status: failed
     slug: github-issue-577-pekko-rebyuu
     summary: "## GitHub Issue #577: Pekko整合レビュー(main..HEAD): Mailbox未接続を含む設計乖離の統合対応"
     task_dir: .takt/tasks/20260305-135628-github-issue-577-pekko-main-he
     created_at: 2026-03-05T13:56:28.310Z
-    started_at: 2026-03-05T13:58:08.602Z
-    completed_at: null
-    owner_pid: 82652
+    started_at: 2026-03-05T13:58:08.605Z
+    completed_at: 2026-03-05T16:17:32.287Z
+    owner_pid: null
+    failure:
+      movement: ai_fix
+      error: 'Movement "ai_fix" failed: Codex stream timed out after 10 minutes of
+        inactivity'
+      last_message: Codex stream timed out after 10 minutes of inactivity

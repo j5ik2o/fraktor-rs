@@ -50,11 +50,13 @@ movements:
     edit: false
     persona: planner
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: issue-plan
     output_contracts:
       report:
@@ -78,13 +80,15 @@ movements:
       - testing
       - ../facets/policies/fraktor-coding.md
     session: refresh
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Edit
-      - Write
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
     required_permission_mode: edit
     instruction: issue-implement
     output_contracts:
@@ -107,11 +111,13 @@ movements:
     policy:
       - review
       - ai-antipattern
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: ai-review
     output_contracts:
       report:
@@ -132,13 +138,15 @@ movements:
       - ../facets/policies/fraktor-coding.md
     session: refresh
     pass_previous_response: false
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Edit
-      - Write
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
     required_permission_mode: edit
     instruction: issue-fix
     output_contracts:
@@ -156,11 +164,13 @@ movements:
     persona: supervisor
     policy: review
     pass_previous_response: false
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: issue-verify
     output_contracts:
       report:
@@ -182,11 +192,13 @@ movements:
     allow_git_commit: true
     persona: coder
     session: refresh
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     required_permission_mode: edit
     instruction: issue-commit
     output_contracts:

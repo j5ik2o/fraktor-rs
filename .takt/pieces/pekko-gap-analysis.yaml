@@ -50,11 +50,13 @@ movements:
     edit: false
     persona: planner
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: pekko-gap-extract
     output_contracts:
       report:
@@ -71,11 +73,13 @@ movements:
     edit: false
     persona: planner
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: pekko-gap-interface
     output_contracts:
       report:
@@ -92,11 +96,13 @@ movements:
     edit: false
     persona: planner
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: pekko-gap-design
     output_contracts:
       report:
@@ -113,11 +119,13 @@ movements:
     edit: false
     persona: planner
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: pekko-gap-synthesize
     output_contracts:
       report:
@@ -136,11 +144,13 @@ movements:
     edit: false
     persona: ai-antipattern-reviewer
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     instruction: pekko-gap-review
     output_contracts:
       report:
@@ -159,13 +169,15 @@ movements:
     policy: review
     session: refresh
     pass_previous_response: false
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Edit
-      - Write
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
     required_permission_mode: edit
     instruction: pekko-gap-fix
     output_contracts:
