@@ -874,17 +874,21 @@ run_all() {
 
 main() {
   local lockfile="${REPO_ROOT}/.takt/.ci-check.lock"
-  if [[ -f "${lockfile}" ]]; then
+  while true; do
+    if ( set -o noclobber; printf '%s\n' "$$" > "${lockfile}" ) 2>/dev/null; then
+      break
+    fi
+
     local lock_pid=""
-    lock_pid="$(cat "${lockfile}" 2>/dev/null)"
+    lock_pid="$(cat "${lockfile}" 2>/dev/null || true)"
     if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
       echo "error: ci-check.sh は既に実行中です (PID: ${lock_pid})" >&2
       return 1
     fi
-    rm -f "${lockfile}"
-  fi
-  echo $$ > "${lockfile}"
-  trap 'rm -f "${lockfile}"' EXIT
+
+    rm -f "${lockfile}" >/dev/null 2>&1 || true
+  done
+  trap "rm -f '${lockfile}'" EXIT
 
   if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
     "${SCRIPT_DIR}/check_modrs.sh"
