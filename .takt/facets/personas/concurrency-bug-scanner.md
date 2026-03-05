@@ -44,7 +44,7 @@
 
 | 対象 | リスク |
 |------|--------|
-| `ArcShared<ToolboxMutex<T>>` | ロック取得順序の不整合 |
-| `ToolboxMutex` の `.with_read` / `.with_write` | ネストロックのデッドロック |
+| `ArcShared<SpinSyncMutex<T>>` | ロック取得順序の不整合 |
+| `SpinSyncMutex` のロック操作 | ネストロックのデッドロック |
 | Mailbox 処理 | メッセージ順序の仮定 |
 | Actor のライフサイクル | 停止中のアクターへのメッセージ送信 |

@@ -8,11 +8,11 @@ AI特有の問題はレビューしないでください（ai_reviewムーブメ
 **レビュー観点:**
 - Pekko参照実装とのAPI対応関係の正確性
 - Scala→Rust変換パターンの適切性
-- 型パラメータ（TB: RuntimeToolbox）の正しい配置
+- 型パラメータ（メッセージ型 M 等）の正しい配置
 - no_std/std分離の妥当性
 - CQS原則（&self vs &mut self）の遵守
 - 1ファイル1公開型ルールの遵守
-- 命名規約（snake_case メソッド、*Generic サフィックス等）
+- 命名規約（snake_case メソッド、*Shared サフィックス等）
 - テストの存在と妥当性
 - YAGNI（タスク範囲外の不要な機能追加がないこと）
 
