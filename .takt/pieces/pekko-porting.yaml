@@ -10,7 +10,8 @@ max_movements: 30
 initial_movement: plan
 
 personas:
-  pekko-compat-reviewer: ../facets/personas/pekko-compat-reviewer.md
+  pekko-porting-qa-reviewer: ../facets/personas/pekko-porting-qa-reviewer.md
+  pekko-porting-compat-reviewer: ../facets/personas/pekko-porting-compat-reviewer.md
 
 knowledge:
   pekko-porting: ../facets/knowledge/pekko-porting.md
@@ -20,8 +21,13 @@ policies:
   pekko-compat: ../facets/policies/pekko-compat.md
 
 instructions:
-  plan-pekko-impl: ../facets/instructions/plan-pekko-impl.md
-  review-pekko-compat: ../facets/instructions/review-pekko-compat.md
+  pekko-porting-plan: ../facets/instructions/pekko-porting-plan.md
+  pekko-porting-implement: ../facets/instructions/pekko-porting-implement.md
+  pekko-porting-qa-fix: ../facets/instructions/pekko-porting-qa-fix.md
+  pekko-porting-compat-fix: ../facets/instructions/pekko-porting-compat-fix.md
+  pekko-porting-supervise: ../facets/instructions/pekko-porting-supervise.md
+  pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
+  pekko-porting-review-qa: ../facets/instructions/pekko-porting-review-qa.md
   ai-review: ../facets/instructions/ai-review.md
   ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
@@ -165,7 +171,7 @@ movements:
       - Bash
       - WebSearch
       - WebFetch
-    instruction: plan-pekko-impl
+    instruction: pekko-porting-plan
     output_contracts:
       report:
         - name: 00-plan.md
@@ -203,13 +209,7 @@ movements:
       - WebSearch
       - WebFetch
     required_permission_mode: edit
-    instruction: implement
-    instruction_template: |
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: pekko-porting-implement
     output_contracts:
       report:
         - name: coder-scope.md
@@ -302,7 +302,7 @@ movements:
     parallel:
       - name: qa-review
         edit: false
-        persona: qa-reviewer
+        persona: pekko-porting-qa-reviewer
         policy:
           - review
           - qa
@@ -312,10 +312,7 @@ movements:
           - Grep
           - WebSearch
           - WebFetch
-        instruction: review-qa
-        instruction_template: |
-          **やらないこと:**
-          `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `qa-fix` / `pekko-compat-fix` / `implement` ムーブメントの責務。
+        instruction: pekko-porting-review-qa
         output_contracts:
           report:
             - name: 06-qa-review.md
@@ -351,18 +348,7 @@ movements:
       - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: fix
-    instruction_template: |
-      **QA観点の指摘への対応:**
-      QAレビューの指摘を優先的に解消すること。
-
-      - QAレビュー由来の指摘: `06-qa-review.md`
-
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: pekko-porting-qa-fix
     rules:
       - condition: 修正完了（ci-check.sh all 通過済み）
         next: reviewers
@@ -371,7 +357,7 @@ movements:
 
   - name: pekko-compat-review
     edit: false
-    persona: pekko-compat-reviewer
+    persona: pekko-porting-compat-reviewer
     policy:
       - review
       - pekko-compat
@@ -384,7 +370,7 @@ movements:
       - Grep
       - WebSearch
       - WebFetch
-    instruction: review-pekko-compat
+    instruction: pekko-porting-review-compat
     output_contracts:
       report:
         - name: 05-pekko-compat-review.md
@@ -417,17 +403,7 @@ movements:
       - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: fix
-    instruction_template: |
-      **Pekko互換性の指摘への対応:**
-      pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
-      該当ソースを読み直してからRust実装を修正すること。
-
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: pekko-porting-compat-fix
     rules:
       - condition: 修正完了（ci-check.sh all 通過済み）
         next: pekko-compat-review
@@ -447,14 +423,7 @@ movements:
       - WebSearch
       - WebFetch
     pass_previous_response: false
-    instruction: supervise
-    instruction_template: |
-      **fraktor-rs固有の検証:**
-      - qa-fix / pekko-compat-fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
-      - `06-qa-review.md` の判定がapprovedであることを確認
-      - `05-pekko-compat-review.md` の承認済み判定があることを確認
-      - `qa-fix` / `pekko-compat-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
-      ※ supervisorはCIを自身では実行しない（qa-fix/pekko-compat-fix/implementの実行済み証跡をレポートで確認するのみ）
+    instruction: pekko-porting-supervise
     output_contracts:
       report:
         - name: supervisor-validation.md

@@ -11,7 +11,7 @@ initial_movement: plan
 
 # --- pekko-porting 由来のカスタムファセット ---
 personas:
-  pekko-compat-reviewer: ../facets/personas/pekko-compat-reviewer.md
+  pekko-porting-compat-reviewer: ../facets/personas/pekko-porting-compat-reviewer.md
 
 knowledge:
   pekko-porting: ../facets/knowledge/pekko-porting.md
@@ -24,7 +24,7 @@ policies:
 instructions:
   plan: ../facets/instructions/opsx-apply-plan.md
   implement: ../facets/instructions/opsx-apply-execute.md
-  review-pekko-compat: ../facets/instructions/review-pekko-compat.md
+  pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
 
 report_formats:
   opsx-apply-summary: ../facets/output-contracts/opsx-apply-summary.md
@@ -385,7 +385,7 @@ movements:
   # ===== Pekko互換性レビュー =====
   - name: pekko-compat-review
     edit: false
-    persona: pekko-compat-reviewer
+    persona: pekko-porting-compat-reviewer
     policy:
       - review
       - pekko-compat
@@ -398,7 +398,7 @@ movements:
       - Grep
       - WebSearch
       - WebFetch
-    instruction: review-pekko-compat
+    instruction: pekko-porting-review-compat
     output_contracts:
       report:
         - name: 08-pekko-compat-review.md

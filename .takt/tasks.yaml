@@ -95,3 +95,35 @@ tasks:
     started_at: 2026-03-04T04:13:20.504Z
     completed_at: 2026-03-04T05:29:13.456Z
     owner_pid: null
+  - worktree: true
+    branch: takt/575/github-issue-575-actor-pekko-t
+    piece: pekko-porting
+    issue: 575
+    auto_pr: true
+    draft_pr: true
+    name: github-issue-575-actor-pekko-t
+    status: completed
+    slug: github-issue-575-actor-pekko-t
+    summary: "## GitHub Issue #575: actor: Pekko整合タスク進行トラッカー（#568-#574）"
+    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260305T1151-575-github-issue-575-actor-pekko-t
+    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/576
+    task_dir: .takt/tasks/20260305-114946-github-issue-575-actor-pekko-5
+    created_at: 2026-03-05T11:49:46.210Z
+    started_at: 2026-03-05T11:51:29.100Z
+    completed_at: 2026-03-05T13:29:40.441Z
+    owner_pid: null
+  - worktree: false
+    branch: takt/575/github-issue-575-actor-pekko-t
+    piece: pekko-porting
+    issue: 577
+    auto_pr: false
+    draft_pr: false
+    name: github-issue-577-pekko-rebyuu
+    status: running
+    slug: github-issue-577-pekko-rebyuu
+    summary: "## GitHub Issue #577: Pekko整合レビュー(main..HEAD): Mailbox未接続を含む設計乖離の統合対応"
+    task_dir: .takt/tasks/20260305-135628-github-issue-577-pekko-main-he
+    created_at: 2026-03-05T13:56:28.310Z
+    started_at: 2026-03-05T13:58:08.602Z
+    completed_at: null
+    owner_pid: 82652
