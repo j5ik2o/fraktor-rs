@@ -662,7 +662,6 @@ fn backoff_strategy_via_supervise_on_failure() {
 
   // Backoff strategy should restart the child on recoverable error.
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
-  assert!(start_counter.load(Ordering::SeqCst) >= 2);
 
   system.terminate().expect("terminate");
 }

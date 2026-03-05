@@ -141,12 +141,20 @@ fn backoff_handle_failure_stops_on_fatal() {
   let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
   let config = SupervisorStrategyConfig::Backoff(backoff);
   let mut stats = RestartStatistics::new();
+
+  let directive = config.handle_failure(&mut stats, &ActorError::fatal("fatal"), Duration::from_secs(2));
+  assert_eq!(directive, SupervisorDirective::Stop);
+}
+
+#[test]
+fn backoff_handle_failure_resets_stats_on_fatal() {
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  let config = SupervisorStrategyConfig::Backoff(backoff);
+  let mut stats = RestartStatistics::new();
   // Record some failures first so that reset can be observed.
   stats.record_failure(Duration::from_secs(1), Duration::from_secs(10), None);
   assert_eq!(stats.failure_count(), 1);
 
-  let directive = config.handle_failure(&mut stats, &ActorError::fatal("fatal"), Duration::from_secs(2));
-  assert_eq!(directive, SupervisorDirective::Stop);
-  // Statistics must be reset after a fatal error.
+  let _directive = config.handle_failure(&mut stats, &ActorError::fatal("fatal"), Duration::from_secs(2));
   assert_eq!(stats.failure_count(), 0);
 }

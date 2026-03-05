@@ -401,7 +401,7 @@ fn actor_context_child_by_name_returns_none_for_unknown() {
 }
 
 #[test]
-fn actor_context_stop_child_sends_stop_signal() {
+fn actor_context_stop_child_returns_ok() {
   let system = ActorSystem::new_empty();
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
