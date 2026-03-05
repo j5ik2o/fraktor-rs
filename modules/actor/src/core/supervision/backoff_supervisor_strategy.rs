@@ -5,6 +5,8 @@ use core::time::Duration;
 #[cfg(test)]
 mod tests;
 
+const DEFAULT_STASH_CAPACITY: usize = 1000;
+
 /// Supervisor strategy providing exponential backoff for restart delays.
 ///
 /// The backoff delay is computed as `min(max_backoff, min_backoff * 2^restart_count)`.
@@ -45,7 +47,7 @@ impl BackoffSupervisorStrategy {
       reset_backoff_after,
       max_restarts: 0,
       stop_children: true,
-      stash_capacity: 1000,
+      stash_capacity: DEFAULT_STASH_CAPACITY,
     }
   }
 

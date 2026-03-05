@@ -10,6 +10,8 @@ mod tests;
 
 type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;
 
+const DEFAULT_STASH_CAPACITY: usize = 1000;
+
 /// Supervisor configuration controlling restart policies.
 #[derive(Clone, Debug)]
 pub struct SupervisorStrategy {
@@ -30,7 +32,7 @@ impl SupervisorStrategy {
     within: Duration,
     decider: SupervisorDecider,
   ) -> Self {
-    Self { kind, max_restarts, within, decider, stop_children: true, stash_capacity: 1000 }
+    Self { kind, max_restarts, within, decider, stop_children: true, stash_capacity: DEFAULT_STASH_CAPACITY }
   }
 
   /// Evaluates the supervisor directive for the provided error.
