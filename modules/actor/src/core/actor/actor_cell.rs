@@ -651,6 +651,12 @@ impl ActorCell {
         let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system().monotonic_now());
         self.system().report_failure(escalated);
       },
+      | SupervisorDirective::Resume => {
+        for target in affected {
+          let _ = self.system().send_system_message(target, SystemMessage::Resume);
+        }
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Resume, payload_ref);
+      },
     }
   }
 

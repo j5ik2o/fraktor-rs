@@ -9,4 +9,6 @@ pub enum SupervisorDirective {
   Stop,
   /// Escalate the failure to the parent supervisor.
   Escalate,
+  /// Resume the failing actor without restarting.
+  Resume,
 }
