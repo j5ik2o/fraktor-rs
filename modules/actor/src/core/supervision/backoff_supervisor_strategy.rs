@@ -25,8 +25,18 @@ impl BackoffSupervisorStrategy {
   /// Creates a new backoff supervisor strategy.
   ///
   /// `reset_backoff_after` defaults to `(min_backoff + max_backoff) / 2`.
+  ///
+  /// # Panics
+  ///
+  /// Panics in debug builds if `min_backoff > max_backoff` or `random_factor`
+  /// is outside `[0.0, 1.0]`.
   #[must_use]
   pub fn new(min_backoff: Duration, max_backoff: Duration, random_factor: f64) -> Self {
+    debug_assert!(min_backoff <= max_backoff, "min_backoff must be <= max_backoff");
+    debug_assert!(
+      (0.0..=1.0).contains(&random_factor) && !random_factor.is_nan(),
+      "random_factor must be in [0.0, 1.0]"
+    );
     let reset_backoff_after = (min_backoff + max_backoff) / 2;
     Self {
       min_backoff,
@@ -50,7 +60,7 @@ impl BackoffSupervisorStrategy {
     let delay_nanos = base.saturating_mul(factor);
     let max_nanos = self.max_backoff.as_nanos();
     let capped = delay_nanos.min(max_nanos);
-    Duration::from_nanos(capped as u64)
+    safe_nanos_to_duration(capped)
   }
 
   /// Computes the backoff delay with jitter applied.
@@ -60,11 +70,12 @@ impl BackoffSupervisorStrategy {
   #[must_use]
   pub fn compute_backoff_with_jitter(&self, restart_count: u32, random: f64) -> Duration {
     let base = self.compute_backoff(restart_count);
+    let random = if random.is_nan() { 0.0 } else { random.clamp(0.0, 1.0) };
     let jitter_multiplier = 1.0 + random * self.random_factor;
     let nanos = (base.as_nanos() as f64 * jitter_multiplier) as u128;
     let max_nanos = self.max_backoff.as_nanos();
     let capped = nanos.min(max_nanos);
-    Duration::from_nanos(capped as u64)
+    safe_nanos_to_duration(capped)
   }
 
   /// Sets the duration after which the backoff is reset.
@@ -136,4 +147,10 @@ impl BackoffSupervisorStrategy {
   pub const fn stash_capacity(&self) -> usize {
     self.stash_capacity
   }
+}
+
+/// Converts a u128 nanosecond value to [`Duration`], clamping at `u64::MAX` to avoid truncation.
+fn safe_nanos_to_duration(nanos: u128) -> Duration {
+  let clamped = if nanos > u128::from(u64::MAX) { u64::MAX } else { nanos as u64 };
+  Duration::from_nanos(clamped)
 }

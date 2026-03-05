@@ -117,9 +117,30 @@ fn accessors_return_constructor_values() {
 fn clone_produces_equal_values() {
   let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.2)
     .with_max_restarts(3)
-    .with_stop_children(false);
+    .with_stop_children(false)
+    .with_stash_capacity(42);
   let cloned = strategy.clone();
   assert_eq!(cloned.min_backoff(), strategy.min_backoff());
+  assert_eq!(cloned.max_backoff(), strategy.max_backoff());
+  assert!((cloned.random_factor() - strategy.random_factor()).abs() < f64::EPSILON);
+  assert_eq!(cloned.reset_backoff_after(), strategy.reset_backoff_after());
   assert_eq!(cloned.max_restarts(), strategy.max_restarts());
   assert!(!cloned.stop_children());
+  assert_eq!(cloned.stash_capacity(), 42);
+}
+
+#[test]
+fn compute_backoff_with_jitter_clamps_nan_random() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
+  let delay = strategy.compute_backoff_with_jitter(0, f64::NAN);
+  // NaN is treated as 0.0, so no jitter applied.
+  assert_eq!(delay, Duration::from_millis(100));
+}
+
+#[test]
+fn compute_backoff_with_jitter_clamps_negative_random() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
+  let delay = strategy.compute_backoff_with_jitter(0, -1.0);
+  // Negative is clamped to 0.0.
+  assert_eq!(delay, Duration::from_millis(100));
 }
