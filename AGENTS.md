@@ -6,7 +6,10 @@
 - serena mcpを有効活用すること
 - 当該ディレクトリ以外を読まないこと
 - **タスクの完了条件**: テストはすべてパスすること。行うべきテストをコメントアウトしたり無視したりしないこと
-- 実装の全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。実装タスク以外（ドキュメント編集など）は`./scripts/ci-check.sh all`を実行する必要ない
+- 実装の全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
+- `./scripts/ci-check.sh all` は所要時間が長いが、完了待ってください。
+- 実装タスク以外（ドキュメント編集など）は`./scripts/ci-check.sh all`を実行する必要ない
+- `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
 
@@ -783,7 +786,7 @@ fn pop_item(&mut self) -> Option<Item> {
    └─ Yes → AShared パターンを新設（第2選択）
 
 AShared パターン:
-  inner に ArcShared<ToolboxMutex<A, TB>> を保持する AShared 構造体を新設
+  inner に ArcShared<SpinSyncMutex<A>> を保持する AShared 構造体を新設
   → 詳細は docs/guides/shared_vs_handle.md を参照
 ```
 
@@ -802,17 +805,17 @@ AShared パターン:
 
 ```rust
 // ロジック本体: &mut self
-pub struct XyzGeneric<TB: RuntimeToolbox> { /* state */ }
+pub struct Xyz { /* state */ }
 
-impl<TB: RuntimeToolbox> XyzGeneric<TB> {
+impl Xyz {
     pub fn do_something(&mut self, arg: T) -> Result<()> { /* logic */ }
     pub fn snapshot(&self) -> Snapshot { /* read-only */ }
 }
 
 // 共有ラッパー: 内部可変性はここだけ
 #[derive(Clone)]
-pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
-    inner: ArcShared<ToolboxMutex<XyzGeneric<TB>, TB>>,
+pub struct XyzShared {
+    inner: ArcShared<SpinSyncMutex<Xyz>>,
 }
 ```
 
@@ -825,7 +828,7 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
 ## 禁止パターン
 
 - 既存の `&mut self` trait メソッドを `&self` + 内部可変性に変更（人間許可なし）
-- 共有不要な型に `ArcShared<ToolboxMutex<T>>` を使用
+- 共有不要な型に `ArcShared<SpinSyncMutex<T>>` を使用
 - `AShared` パターン適用時に元の型を削除
 - ガードやロックを外部に返す（ロック区間はメソッド内に閉じる）
 
@@ -835,6 +838,14 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
 ## 原則
 
 **名前は責務・境界・依存方向を最小限の語で符号化する。曖昧な名前は設計が未完成であることを示す。**
+
+## 参照実装の命名優先
+
+**Apache Pekko（および protoactor-go）で確立されたドメイン用語は、プロジェクト内の命名規約より優先する。**
+
+fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go を参照実装としている。
+`SupervisorStrategy`、`Behavior`、`Props` 等のドメイン用語は参照実装に合わせること。
+責務別命名パターン（`*Policy` 等）との衝突が生じた場合は、参照実装の命名を採用する。
 
 ## 禁止サフィックス（ambiguous-suffix-lint で機械的に強制）
 
@@ -867,7 +878,7 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
 
 | サフィックス | 用途 | 条件 |
 |--------------|------|------|
-| `*Shared` | 薄い同期ラッパー | `ArcShared<ToolboxMutex<T>>` を内包するだけ |
+| `*Shared` | 薄い同期ラッパー | `ArcShared<SpinSyncMutex<T>>` を内包するだけ |
 | `*Handle` | ライフサイクル / 管理責務 | 起動・停止・リソース解放・複数構成要素の束ね |
 | サフィックスなし | 所有権一意・同期不要 | `ArcShared` やロックを持たない |
 
@@ -898,7 +909,6 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
 | 型 / trait | `PascalCase` | `ActorCell` |
 | クレート | `fraktor-<domain>-rs` | `fraktor-actor-rs` |
 | Cargo features | `kebab-case` | `tokio-executor` |
-| TB ジェネリクス付き | `*Generic` サフィックス | `ActorCellGeneric<TB>` |
 
 ## ドキュメント言語
 
@@ -941,13 +951,13 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
    ├─ Go goroutine + channel → async + mailbox
    ├─ Go interface{} → Rust の型パラメータまたは dyn Trait
    ├─ Scala trait 階層 → Rust trait + 合成（継承より合成）
-   ├─ Scala implicit → Rust ジェネリクス + RuntimeToolbox
+   ├─ Scala implicit → Rust ジェネリクスまたは通常の引数
    └─ Scala Actor DSL → Rust Behavior パターン
 
 4. no_std 制約の適用
    ├─ ヒープ割り当て → ArcShared / heapless を検討
    ├─ std 依存 → std モジュールに隔離
-   └─ スレッド → ToolboxMutex で抽象化
+   └─ スレッド → SpinSyncMutex で抽象化
 
 5. 最小 API の原則
    ├─ 参照実装の全機能を移植しない
@@ -965,18 +975,18 @@ pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
 | `func(ctx Context)` | `&mut self` メソッド |
 | `go func()` | `spawn` / async task |
 | `chan T` | mailbox / mpsc channel |
-| `sync.Mutex` | `ToolboxMutex` |
+| `sync.Mutex` | `SpinSyncMutex` |
 | `struct embedding` | trait 実装 + 委譲 |
 
 ### Scala/Pekko → Rust
 
 | Pekko パターン | Rust パターン |
 |----------------|--------------|
-| `trait Actor` | `BehaviorGeneric<TB, M>` |
-| `ActorRef[T]` | `TypedActorRefGeneric<TB, M>` |
-| `Props` | `PropsGeneric<TB>` |
-| `Supervision Strategy` | `SupervisorStrategyGeneric<TB>` |
-| `implicit ActorSystem` | `TB: RuntimeToolbox` パラメータ |
+| `trait Actor` | `Behavior<M>` |
+| `ActorRef[T]` | `TypedActorRef<M>` |
+| `Props` | `Props` |
+| `Supervision Strategy` | `SupervisorStrategy` |
+| `implicit ActorSystem` | 通常の引数/ジェネリクス |
 | `sealed trait` + case classes | `enum` |
 | `akka.pattern.ask` | `ask` Future |
 
