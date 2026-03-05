@@ -632,7 +632,7 @@ fn behaviors_supervise_stops_children() {
 
   parent.tell(SupervisorCommand::CrashChild).expect("crash");
 
-  // Child should not restart, so validate the counter stays at 1 for a short period.
+  // 子アクターは再起動しないはずなので、カウンターが 1 のままであることを短期間検証する。
   for _ in 0..1_000 {
     assert_eq!(start_counter.load(Ordering::SeqCst), 1);
     spin_loop();
@@ -660,7 +660,7 @@ fn backoff_strategy_via_supervise_on_failure() {
 
   parent.tell(SupervisorCommand::CrashChild).expect("crash");
 
-  // Backoff strategy should restart the child on recoverable error.
+  // バックオフ戦略では、回復可能なエラー時に子アクターが再起動されることを確認する。
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
 
   system.terminate().expect("terminate");
@@ -672,7 +672,7 @@ fn backoff_strategy_stores_config_in_behavior() {
   let behavior: Behavior<ChildCommand> =
     Behaviors::supervise(Behaviors::receive_message(|_ctx, _msg: &ChildCommand| Ok(Behaviors::same())))
       .on_failure(backoff);
-  // Verify the behavior holds a Backoff config variant.
+  // Behavior が Backoff 設定バリアントを保持していることを検証する。
   let config = behavior.supervisor_override().expect("supervisor override must be set");
   assert!(matches!(config, SupervisorStrategyConfig::Backoff(_)));
 }

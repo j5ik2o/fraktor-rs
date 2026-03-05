@@ -389,7 +389,7 @@ fn actor_context_child_by_name_returns_matching_child() {
   let child_name = system.state().cell(&child.pid()).expect("cell").name().to_owned();
   let found = context.child(&child_name);
   assert!(found.is_some());
-  assert_eq!(found.unwrap().pid(), child.pid());
+  assert_eq!(found.expect("child should be found by name").pid(), child.pid());
 }
 
 #[test]

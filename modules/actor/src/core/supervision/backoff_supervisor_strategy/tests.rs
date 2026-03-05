@@ -133,7 +133,7 @@ fn clone_produces_equal_values() {
 fn compute_backoff_with_jitter_clamps_nan_random() {
   let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
   let delay = strategy.compute_backoff_with_jitter(0, f64::NAN);
-  // NaN is treated as 0.0, so no jitter applied.
+  // NaN は 0.0 として扱われ、ジッターは適用されない。
   assert_eq!(delay, Duration::from_millis(100));
 }
 
@@ -141,6 +141,6 @@ fn compute_backoff_with_jitter_clamps_nan_random() {
 fn compute_backoff_with_jitter_clamps_negative_random() {
   let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
   let delay = strategy.compute_backoff_with_jitter(0, -1.0);
-  // Negative is clamped to 0.0.
+  // 負値は 0.0 にクランプされる。
   assert_eq!(delay, Duration::from_millis(100));
 }

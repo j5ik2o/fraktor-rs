@@ -187,14 +187,15 @@ fn resume_directive_continues_child_without_restart() {
 
   child.tell(AnyMessage::new(TriggerRecoverable)).expect("recoverable");
 
-  // When Resume is used, the child should NOT be restarted. That means:
-  // - pre_start is NOT called again (no second "child_pre_start")
-  // - post_stop is NOT called (no "child_post_stop")
-  // Wait briefly, then verify the log contains exactly one pre_start and one fail,
-  // without any restart lifecycle events.
+  // Resume の場合、子アクターは再起動されない。つまり:
+  // - pre_start は再度呼ばれない（2回目の "child_pre_start" がない）
+  // - post_stop は呼ばれない（"child_post_stop" がない）
+  // 短時間待機後、pre_start が1回かつ fail が1回のみで、
+  // 再起動ライフサイクルイベントがないことを検証する。
   wait_until(|| log.lock().contains(&"child_fail"), Duration::from_millis(100));
 
   let entries = log.lock().clone();
+  assert!(entries.contains(&"child_fail"));
   assert_eq!(entries.iter().filter(|e| **e == "child_pre_start").count(), 1);
   assert!(!entries.contains(&"child_post_stop"));
 }

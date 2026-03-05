@@ -46,7 +46,7 @@ where
     message: &M,
     target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
-    // Best-effort: ignore send failures to the monitor.
+    // ベストエフォート: monitor への送信失敗は無視する。
     let _ = self.monitor_ref.tell(message.clone());
     target(ctx, message)
   }
