@@ -3,11 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
-# ACCOUNT environment variable takes precedence over first positional argument
-ACCOUNT="${ACCOUNT:-${1:-personal}}"
-
-# If ACCOUNT came from $1, shift it off
-if [[ -z "${ACCOUNT+unset}" ]] || [[ "${ACCOUNT}" == "${1:-}" ]]; then
+# ACCOUNT environment variable takes precedence over first positional argument.
+# If ACCOUNT is already set, $1 is treated as a takt argument, not an account name.
+if [[ -z "${ACCOUNT:-}" ]]; then
+  ACCOUNT="${1:-personal}"
   shift 2>/dev/null || true
 fi
 

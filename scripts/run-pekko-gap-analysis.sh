@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-ACCOUNT="${ACCOUNT:-${1:-personal}}"
 
-# If ACCOUNT came from $1, shift it off
-if [[ -z "${ACCOUNT+unset}" ]] || [[ "${ACCOUNT}" == "${1:-}" ]]; then
+# ACCOUNT environment variable takes precedence over first positional argument.
+if [[ -z "${ACCOUNT:-}" ]]; then
+  ACCOUNT="${1:-personal}"
   shift 2>/dev/null || true
 fi
 
@@ -30,11 +30,14 @@ fi
 [[ -f "$CODEX_WRAPPER" ]] && export TAKT_CODEX_CLI_PATH="$CODEX_WRAPPER"
 
 MODULES=("actor" "streams" "remote" "cluster" "persistence")
+LOG_DIR="${SCRIPT_DIR}/../.takt/logs"
+mkdir -p "$LOG_DIR"
 
 pids=()
 for mod in "${MODULES[@]}"; do
-  echo "[INFO] Starting pekko-gap-analysis for module: $mod (account: $ACCOUNT)"
-  npm run takt -- -w pekko-gap-analysis -t "$mod" &
+  log_file="${LOG_DIR}/pekko-gap-analysis-${mod}-${ACCOUNT}.log"
+  echo "[INFO] Starting pekko-gap-analysis for module: $mod (account: $ACCOUNT, log: $log_file)"
+  npm run takt -- -w pekko-gap-analysis -t "$mod" >"$log_file" 2>&1 &
   pids+=($!)
 done
 
@@ -47,7 +50,7 @@ for pid in "${pids[@]}"; do
 done
 
 if [ "$failed" -gt 0 ]; then
-  echo "[WARN] $failed module(s) failed"
+  echo "[WARN] $failed module(s) failed. Check logs in $LOG_DIR"
   exit 1
 else
   echo "[INFO] All modules completed successfully"
