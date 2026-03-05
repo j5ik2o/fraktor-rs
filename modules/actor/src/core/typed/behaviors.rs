@@ -267,6 +267,7 @@ impl Behaviors {
   /// This mirrors Pekko's `Behaviors.monitor`. The monitor receives a copy of
   /// each message on a best-effort basis — delivery failures are silently
   /// ignored.
+  #[must_use]
   pub fn monitor<M, F>(monitor_ref: TypedActorRef<M>, behavior_factory: F) -> Behavior<M>
   where
     M: Send + Sync + Clone + 'static,

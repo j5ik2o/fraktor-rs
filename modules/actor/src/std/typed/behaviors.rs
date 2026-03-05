@@ -143,6 +143,7 @@ impl Behaviors {
   /// This mirrors Pekko's `Behaviors.logMessages`. The message type must
   /// implement [`Debug`](core::fmt::Debug) so it can be formatted in the log
   /// output.
+  #[must_use]
   pub fn log_messages<M, F>(behavior_factory: F) -> Behavior<M>
   where
     M: Send + Sync + core::fmt::Debug + 'static,
