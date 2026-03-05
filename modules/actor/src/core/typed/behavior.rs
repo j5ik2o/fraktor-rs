@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 
 use crate::core::{
   error::ActorError,
-  supervision::SupervisorStrategy,
+  supervision::SupervisorStrategyConfig,
   typed::{actor::TypedActorContext, behavior_signal::BehaviorSignal},
 };
 
@@ -15,7 +15,7 @@ where
   directive:           BehaviorDirective,
   message_handler:     Option<MessageHandler<M>>,
   signal_handler:      Option<SignalHandler<M>>,
-  supervisor_override: Option<SupervisorStrategy>,
+  supervisor_override: Option<SupervisorStrategyConfig>,
 }
 
 /// Represents interpreter directives returned by behaviors.
@@ -159,12 +159,12 @@ where
 
   /// Overrides the supervisor strategy associated with this behavior.
   #[must_use]
-  pub const fn with_supervisor_strategy(mut self, strategy: SupervisorStrategy) -> Self {
-    self.supervisor_override = Some(strategy);
+  pub fn with_supervisor_strategy(mut self, strategy: impl Into<SupervisorStrategyConfig>) -> Self {
+    self.supervisor_override = Some(strategy.into());
     self
   }
 
-  pub(crate) const fn supervisor_override(&self) -> Option<&SupervisorStrategy> {
+  pub(crate) const fn supervisor_override(&self) -> Option<&SupervisorStrategyConfig> {
     self.supervisor_override.as_ref()
   }
 

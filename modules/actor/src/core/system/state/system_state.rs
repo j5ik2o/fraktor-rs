@@ -95,6 +95,7 @@ pub struct SystemState {
   failure_restart_total: AtomicU64,
   failure_stop_total: AtomicU64,
   failure_escalate_total: AtomicU64,
+  failure_resume_total: AtomicU64,
   failure_inflight: AtomicU64,
   extensions: Extensions,
   actor_ref_providers: ActorRefProviders,
@@ -147,6 +148,7 @@ impl SystemState {
       failure_restart_total: AtomicU64::new(0),
       failure_stop_total: AtomicU64::new(0),
       failure_escalate_total: AtomicU64::new(0),
+      failure_resume_total: AtomicU64::new(0),
       failure_inflight: AtomicU64::new(0),
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
@@ -812,12 +814,14 @@ impl SystemState {
       | FailureOutcome::Restart => &self.failure_restart_total,
       | FailureOutcome::Stop => &self.failure_stop_total,
       | FailureOutcome::Escalate => &self.failure_escalate_total,
+      | FailureOutcome::Resume => &self.failure_resume_total,
     };
     counter.fetch_add(1, Ordering::Relaxed);
     let label = match outcome {
       | FailureOutcome::Restart => "restart",
       | FailureOutcome::Stop => "stop",
       | FailureOutcome::Escalate => "escalate",
+      | FailureOutcome::Resume => "resume",
     };
     let message = format!("failure outcome {} for {:?} (reason: {})", label, child, payload.reason().as_str());
     self.emit_log(LogLevel::Info, message, Some(child));
@@ -864,6 +868,11 @@ impl SystemState {
           self.stop_actor(target);
         }
         self.handle_failure(parent_pid, parent_parent, error);
+      },
+      | SupervisorDirective::Resume => {
+        for target in affected {
+          let _ = self.send_system_message(target, SystemMessage::Resume);
+        }
       },
     }
   }

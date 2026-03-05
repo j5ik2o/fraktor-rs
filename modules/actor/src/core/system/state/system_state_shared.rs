@@ -699,6 +699,11 @@ impl SystemStateShared {
         }
         self.handle_failure(parent_pid, parent_parent, error);
       },
+      | SupervisorDirective::Resume => {
+        for target in affected {
+          let _ = self.send_system_message(target, SystemMessage::Resume);
+        }
+      },
     }
   }
 

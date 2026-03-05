@@ -20,7 +20,7 @@ Pekko互換仕様のRust実装を計画してください。
 
 3. **Rust変換設計**
    - ナレッジのScala→Rust変換ルールに従ってAPI設計を決定する
-   - 型パラメータ（TB: RuntimeToolbox）の配置を決める
+   - 型パラメータ（メッセージ型 M 等）の配置を決める
    - `&self` vs `&mut self` をCQS原則に基づいて決定する
    - no_std/std分離の方針を明記する
 

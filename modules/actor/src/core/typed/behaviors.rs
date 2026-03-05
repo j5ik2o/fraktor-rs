@@ -12,7 +12,7 @@ use crate::core::{
   error::ActorError,
   messaging::AnyMessage,
   typed::{
-    actor::TypedActorContext,
+    actor::{TypedActorContext, TypedActorRef},
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
     behavior_signal::BehaviorSignal,
@@ -25,8 +25,31 @@ use crate::core::{
 struct InterceptState<M>
 where
   M: Send + Sync + 'static, {
-  interceptor: Box<dyn BehaviorInterceptor<M>>,
+  interceptor: Box<dyn BehaviorInterceptor<M, M>>,
   inner:       Behavior<M>,
+}
+
+/// Interceptor that clones every received message to a monitor actor.
+struct MonitorInterceptor<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  monitor_ref: TypedActorRef<M>,
+}
+
+impl<M> BehaviorInterceptor<M, M> for MonitorInterceptor<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  fn around_receive(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    // ベストエフォート: monitor への送信失敗は無視する。
+    let _ = self.monitor_ref.tell(message.clone());
+    target(ctx, message)
+  }
 }
 
 /// Provides Pekko-inspired helpers for constructing [`Behavior`] instances.
@@ -195,7 +218,7 @@ impl Behaviors {
   pub fn intercept<M, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    I: Fn() -> Box<dyn BehaviorInterceptor<M>> + Send + Sync + 'static,
+    I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static,
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     Behavior::from_signal_handler(move |ctx, signal| match signal {
       | BehaviorSignal::Started => {
@@ -236,6 +259,21 @@ impl Behaviors {
       },
       | _ => Ok(Behavior::same()),
     })
+  }
+
+  /// Wraps a behavior so that every received message is cloned and sent to a
+  /// monitor actor.
+  ///
+  /// This mirrors Pekko's `Behaviors.monitor`. The monitor receives a copy of
+  /// each message on a best-effort basis — delivery failures are silently
+  /// ignored.
+  #[must_use]
+  pub fn monitor<M, F>(monitor_ref: TypedActorRef<M>, behavior_factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + Clone + 'static,
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    let monitor = monitor_ref;
+    Self::intercept(move || Box::new(MonitorInterceptor { monitor_ref: monitor.clone() }), behavior_factory)
   }
 }
 

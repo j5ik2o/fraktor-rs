@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
   lifecycle::LifecycleStage,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -161,6 +161,43 @@ fn panic_propagates_without_intervention() {
   }));
 
   assert!(result.is_err());
+}
+
+#[test]
+fn resume_directive_continues_child_without_restart() {
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+
+  let props = Props::from_fn({
+    let log = log.clone();
+    let child_slot = child_slot.clone();
+    move || ResumeGuardian::new(log.clone(), child_slot.clone())
+  });
+
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+
+  wait_until(|| child_slot.lock().is_some(), Duration::from_millis(100));
+  let mut child = child_slot.lock().clone().expect("child");
+  wait_until(|| log.lock().contains(&"child_pre_start"), Duration::from_millis(100));
+  assert_eq!(*log.lock(), vec!["child_pre_start"]);
+
+  child.tell(AnyMessage::new(TriggerRecoverable)).expect("recoverable");
+
+  // Resume の場合、子アクターは再起動されない。つまり:
+  // - pre_start は再度呼ばれない（2回目の "child_pre_start" がない）
+  // - post_stop は呼ばれない（"child_post_stop" がない）
+  // 短時間待機後、pre_start が1回かつ fail が1回のみで、
+  // 再起動ライフサイクルイベントがないことを検証する。
+  wait_until(|| log.lock().contains(&"child_fail"), Duration::from_millis(100));
+
+  let entries = log.lock().clone();
+  assert!(entries.contains(&"child_fail"));
+  assert_eq!(entries.iter().filter(|e| **e == "child_pre_start").count(), 1);
+  assert!(!entries.contains(&"child_post_stop"));
 }
 
 fn wait_until(condition: impl Fn() -> bool, timeout: Duration) {
@@ -333,11 +370,12 @@ impl Actor for SupervisorActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Escalate,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
     })
+    .into()
   }
 }
 
@@ -359,6 +397,36 @@ impl Actor for PanicGuardian {
       self.child_slot.lock().replace(child);
     }
     Ok(())
+  }
+}
+
+struct ResumeGuardian {
+  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
+  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+}
+
+impl ResumeGuardian {
+  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+    Self { log, child_slot }
+  }
+}
+
+impl Actor for ResumeGuardian {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
+      let log = self.log.clone();
+      let child_props = Props::from_fn(move || RestartChild::new(log.clone()));
+      let child = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
+      self.child_slot.lock().replace(child);
+    }
+    Ok(())
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), |_| {
+      SupervisorDirective::Resume
+    })
+    .into()
   }
 }
 

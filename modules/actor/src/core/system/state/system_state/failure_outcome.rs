@@ -9,4 +9,6 @@ pub enum FailureOutcome {
   Stop,
   /// Indicates the supervisor escalated the failure to its parent.
   Escalate,
+  /// Indicates the supervisor decided to resume the failed actor without restarting.
+  Resume,
 }

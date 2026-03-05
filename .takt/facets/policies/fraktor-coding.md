@@ -20,7 +20,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 ## 内部可変性ポリシー
 
 - デフォルト禁止。`&mut self` で設計
-- 共有が必要な場合のみ AShared パターン（`ArcShared<ToolboxMutex<T>>`）
+- 共有が必要な場合のみ AShared パターン（`ArcShared<SpinSyncMutex<T>>`）
 
 ## 命名規約
 
@@ -31,7 +31,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 ## Pekko → Rust 変換ルール
 
 - Scala trait 階層 → Rust trait + 合成
-- Scala implicit → Rust ジェネリクス + RuntimeToolbox
+- Scala implicit → Rust ジェネリクスまたは通常の引数
 - sealed trait + case classes → enum
 
 ## テストポリシー

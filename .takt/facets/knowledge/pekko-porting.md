@@ -40,7 +40,7 @@ modules/{name}/src/
 | `sealed trait` + `case class` | `enum` | バリアント網羅性をコンパイラが保証 |
 | `class` | `struct` | |
 | `object` | `impl` ブロック or モジュールレベル関数 | |
-| `implicit` パラメータ | `TB: RuntimeToolbox` ジェネリクス | |
+| `implicit` パラメータ | 通常のジェネリクスまたは引数 | |
 | `Option[T]` | `Option<T>` | |
 | `Future[T]` | `impl Future<Output = T>` or `Pin<Box<dyn Future>>` | |
 | `Try[T]` / `Either[L, R]` | `Result<T, E>` | |
@@ -51,16 +51,13 @@ modules/{name}/src/
 
 | Pekko | fraktor-rs | 変換ルール |
 |-------|-----------|-----------|
-| `ActorRef[T]` | `TypedActorRefGeneric<M, TB>` | メッセージ型 M が第1パラメータ |
-| `Props` | `PropsGeneric<TB>` | TB パラメータ追加 |
-| `Behavior[T]` | `Behavior<M, TB>` | `*Generic` サフィックスなし、`<M, TB>` 順 |
-| `ActorSystem` | `ActorSystemGeneric<TB>` | TB パラメータ追加 |
-| `ActorMaterializer` | `ActorMaterializerGeneric<TB>` | trait `Materializer` も別途存在 |
-| `ActorContext[T]` | `TypedActorContextGeneric<'a, M, TB>` | ライフタイム + メッセージ型 + TB |
+| `ActorRef[T]` | `TypedActorRef<M>` | メッセージ型 M のみ |
+| `Props` | `Props` | TB パラメータなし |
+| `Behavior[T]` | `Behavior<M>` | メッセージ型 M のみ |
+| `ActorSystem` | `ActorSystem` | ジェネリクスなし |
+| `ActorContext[T]` | `TypedActorContext<'a, M>` | ライフタイム + メッセージ型 |
 | メソッドチェーン | メソッドチェーン | 所有権移動に注意 |
 | コンパニオンオブジェクト | `impl` ブロック | ファクトリメソッド |
-
-**パラメータ順の原則**: メッセージ型 `M` が先、`TB` が後。`TB` にはデフォルト型パラメータ（`NoStdToolbox`）が設定されている場合がある。
 
 ### 命名規約
 
@@ -68,10 +65,8 @@ modules/{name}/src/
 |-------|-----------|-----|
 | `camelCase` メソッド | `snake_case` メソッド | `mapAsync` → `map_async` |
 | `PascalCase` 型 | `PascalCase` 型 | `Source` → `Source` |
-| ジェネリクス付き | `*Generic` サフィックス | `ActorCell` → `ActorCellGeneric<TB>` |
-| 型エイリアス（TB固定） | サフィックスなし | `type ActorCell = ActorCellGeneric<StdToolbox>` |
 
-**例外**: `Behavior<M, TB>` のように `*Generic` サフィックスを持たない型もある。既存コードの命名に従うこと。
+※ 以前存在した `*Generic<TB>` サフィックスと型エイリアスのパターンは廃止済み。型は直接使用する。
 
 ## fraktor-rs 固有の制約
 
@@ -81,23 +76,18 @@ modules/{name}/src/
 - `std/` モジュール: `std` 依存OK（Tokio, ネットワーク等）
 - `core/` で `std::` を直接使用禁止（`cfg-std-forbid` lint で強制）
 
-### RuntimeToolbox (TB) パターン
+### no_std / std 分離
 
-すべてのジェネリック型は `TB: RuntimeToolbox` パラメータを持つ。
-これにより `no_std` と `std` で同一APIを提供する。
+`core/` と `std/` のディレクトリ分離により、no_std と std の両方をサポートする。
+以前存在した `RuntimeToolbox` (TB) パターンは廃止済み。型は TB パラメータを持たない。
 
 ```rust
-// ジェネリック版（core/）— デフォルト型パラメータ NoStdToolbox
-pub struct XyzGeneric<TB: RuntimeToolbox = NoStdToolbox> { /* ... */ }
+// core/ — no_std 対応
+pub struct Xyz { /* ... */ }
 
-// 具象版（std/）— StdToolbox で固定
-pub type Xyz = XyzGeneric<StdToolbox>;
+// std/ — std 依存の拡張（Tokio等）がある場合のみ別定義
+pub struct Xyz { /* std固有の追加フィールド */ }
 ```
-
-| Toolbox | 用途 | 配置 |
-|---------|------|------|
-| `NoStdToolbox` | no_std 環境のデフォルト | `modules/utils/src/core/` |
-| `StdToolbox` | std 環境（Tokio統合） | `modules/utils/src/std/` |
 
 ### AShared パターン（共有ラッパー）
 
@@ -105,12 +95,12 @@ pub type Xyz = XyzGeneric<StdToolbox>;
 
 ```rust
 // ロジック本体
-pub struct XyzGeneric<TB: RuntimeToolbox> { /* state */ }
+pub struct Xyz { /* state */ }
 
 // 共有ラッパー
 #[derive(Clone)]
-pub struct XyzSharedGeneric<TB: RuntimeToolbox> {
-    inner: ArcShared<ToolboxMutex<XyzGeneric<TB>, TB>>,
+pub struct XyzShared {
+    inner: ArcShared<SpinSyncMutex<Xyz>>,
 }
 ```
 

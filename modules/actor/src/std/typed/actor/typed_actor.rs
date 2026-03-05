@@ -1,5 +1,5 @@
 use crate::{
-  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy},
+  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategyConfig},
   std::typed::actor::TypedActorContext,
 };
 
@@ -40,7 +40,7 @@ where
 
   /// Provides the supervision strategy for this typed actor.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> SupervisorStrategy {
-    SupervisorStrategy::default()
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> SupervisorStrategyConfig {
+    SupervisorStrategyConfig::default()
   }
 }

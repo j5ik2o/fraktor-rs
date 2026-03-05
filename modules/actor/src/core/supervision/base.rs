@@ -10,13 +10,17 @@ mod tests;
 
 type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;
 
+const DEFAULT_STASH_CAPACITY: usize = 1000;
+
 /// Supervisor configuration controlling restart policies.
 #[derive(Clone, Debug)]
 pub struct SupervisorStrategy {
-  kind:         SupervisorStrategyKind,
-  max_restarts: u32,
-  within:       Duration,
-  decider:      SupervisorDecider,
+  kind:           SupervisorStrategyKind,
+  max_restarts:   u32,
+  within:         Duration,
+  decider:        SupervisorDecider,
+  stop_children:  bool,
+  stash_capacity: usize,
 }
 
 impl SupervisorStrategy {
@@ -28,7 +32,7 @@ impl SupervisorStrategy {
     within: Duration,
     decider: SupervisorDecider,
   ) -> Self {
-    Self { kind, max_restarts, within, decider }
+    Self { kind, max_restarts, within, decider, stop_children: true, stash_capacity: DEFAULT_STASH_CAPACITY }
   }
 
   /// Evaluates the supervisor directive for the provided error.
@@ -68,6 +72,7 @@ impl SupervisorStrategy {
         statistics.reset();
         SupervisorDirective::Escalate
       },
+      | SupervisorDirective::Resume => SupervisorDirective::Resume,
     }
   }
 
@@ -87,6 +92,32 @@ impl SupervisorStrategy {
   #[must_use]
   pub const fn within(&self) -> Duration {
     self.within
+  }
+
+  /// Returns whether sibling children are stopped on restart.
+  #[must_use]
+  pub const fn stop_children(&self) -> bool {
+    self.stop_children
+  }
+
+  /// Returns the stash capacity.
+  #[must_use]
+  pub const fn stash_capacity(&self) -> usize {
+    self.stash_capacity
+  }
+
+  /// Sets whether sibling children should be stopped on restart.
+  #[must_use]
+  pub const fn with_stop_children(mut self, stop_children: bool) -> Self {
+    self.stop_children = stop_children;
+    self
+  }
+
+  /// Sets the stash capacity for message buffering during restart.
+  #[must_use]
+  pub const fn with_stash_capacity(mut self, stash_capacity: usize) -> Self {
+    self.stash_capacity = stash_capacity;
+    self
   }
 }
 

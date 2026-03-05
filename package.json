@@ -1,22 +1,28 @@
 {
   "private": true,
   "scripts": {
-    "takt:cc-sdd:full": "takt --pipeline --skip-git --create-worktree no -w sdd -t",
-    "takt:cc-sdd:requirements": "takt --pipeline --skip-git --create-worktree no -w sdd-requirements -t",
-    "takt:cc-sdd:validate-gap": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-gap -t",
-    "takt:cc-sdd:design": "takt --pipeline --skip-git --create-worktree no -w sdd-design -t",
-    "takt:cc-sdd:validate-design": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-design -t",
-    "takt:cc-sdd:tasks": "takt --pipeline --skip-git --create-worktree no -w sdd-tasks -t",
-    "takt:cc-sdd:impl": "takt --pipeline --skip-git --create-worktree no -w sdd-impl -t",
-    "takt:cc-sdd:validate-impl": "takt --pipeline --skip-git --create-worktree no -w sdd-validate-impl -t",
-    "takt:cc-sdd:steering": "takt --pipeline --skip-git --create-worktree no -w steering -t",
-    "takt:cc-sdd:steering:custom": "takt --pipeline --skip-git --create-worktree no -w steering-custom -t",
-    "takt": "takt",
-    "ruflo": "ruflo",
-    "takt:issue:resolve": "takt --pipeline --skip-git --create-worktree no -w issue-resolve -t"
+    "pekko-porting": "./scripts/run-takt.sh --pipeline --skip-git -w pekko-porting -t",
+    "takt": "./scripts/run-takt.sh",
+    "takt:personal": "./scripts/run-takt.sh personal",
+    "takt:corporate": "./scripts/run-takt.sh corporate",
+    "cc-sdd:full": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-full -t",
+    "cc-sdd:requirements": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-requirements -t",
+    "cc-sdd:validate-gap": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-validate-gap -t",
+    "cc-sdd:design": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-design -t",
+    "cc-sdd:validate-design": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-validate-design -t",
+    "cc-sdd:tasks": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-tasks -t",
+    "cc-sdd:impl": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-impl -t",
+    "cc-sdd:validate-impl": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-validate-impl -t",
+    "cc-sdd:steering": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-steering -t",
+    "cc-sdd:steering-custom": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-steering-custom -t",
+    "opsx:full": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-full -t",
+    "opsx:propose": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-propose -t",
+    "opsx:apply": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-apply -t",
+    "opsx:apply-pekko": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-apply-with-pekko -t",
+    "opsx:archive": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-archive -t",
+    "opsx:explore": "./scripts/run-takt.sh --skip-git -w opsx-explore"
   },
   "devDependencies": {
-    "takt": "file:references/takt",
-    "ruflo": "^3.5.2"
+    "takt": "^0.29.0"
   }
 }

@@ -1,9 +1,12 @@
 extern crate std;
-use std::ops::{Deref, DerefMut};
+use std::{
+  ops::{Deref, DerefMut},
+  vec::Vec,
+};
 
 use crate::{
   core::{
-    actor::Pid,
+    actor::{ChildRef, Pid},
     error::SendError,
     spawn::SpawnError,
     typed::{TypedActorSystem, actor::TypedActorContext as CoreTypedActorContext},
@@ -102,6 +105,49 @@ where
   /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError> {
     self.inner.stop_self()
+  }
+
+  /// Stops the specified typed child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_child<C>(&self, child: &TypedChildRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner.stop_child(child.as_core())
+  }
+
+  /// Stops the actor identified by the provided typed actor reference.
+  ///
+  /// Unlike [`stop_child`](Self::stop_child) which only accepts a child reference,
+  /// this method can stop any actor in the system by its reference.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_actor_by_ref<C>(&self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner.stop_actor_by_ref(actor_ref.as_core())
+  }
+
+  /// Returns the list of supervised children as untyped [`ChildRef`] values.
+  ///
+  /// Children may have different message types, so returning typed references
+  /// is not feasible here. Use [`spawn_child`](Self::spawn_child) to obtain a
+  /// typed [`TypedChildRef`](crate::core::typed::actor::child_ref::TypedChildRef).
+  #[must_use]
+  pub fn children(&self) -> Vec<ChildRef> {
+    self.inner.children()
+  }
+
+  /// Returns the child with the specified name as an untyped [`ChildRef`], if present.
+  ///
+  /// See [`children`](Self::children) for why this returns an untyped reference.
+  #[must_use]
+  pub fn child(&self, name: &str) -> Option<ChildRef> {
+    self.inner.child(name)
   }
 
   /// Creates a fluent builder for registering a typed message adapter.

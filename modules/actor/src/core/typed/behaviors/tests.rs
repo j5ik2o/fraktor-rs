@@ -13,8 +13,11 @@ use crate::core::{
   messaging::AnyMessage,
   system::ActorSystem,
   typed::{
-    actor::TypedActorContext, behavior::Behavior, behavior_interceptor::BehaviorInterceptor,
-    behavior_signal::BehaviorSignal, receive_timeout_config::ReceiveTimeoutConfig,
+    actor::{TypedActorContext, TypedActorRef},
+    behavior::Behavior,
+    behavior_interceptor::BehaviorInterceptor,
+    behavior_signal::BehaviorSignal,
+    receive_timeout_config::ReceiveTimeoutConfig,
   },
 };
 
@@ -248,4 +251,64 @@ fn cancel_receive_timeout_clears_state() {
   }
 
   assert!(timeout_state.is_none(), "timeout should be cleared after cancel");
+}
+
+// --- Behaviors::monitor tests ---
+
+#[test]
+fn monitor_sends_clone_to_monitor_ref() {
+  let monitor_inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let monitor_sender = RecordingSender::new(monitor_inbox.clone());
+  let monitor_actor_ref = ActorRef::new(Pid::new(800, 0), monitor_sender);
+  let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
+
+  let mut behavior =
+    Behaviors::monitor(monitor_typed_ref, || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  // Initialize via Started signal
+  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+
+  // Send a message through the monitored behavior
+  let _next = inner.handle_message(&mut typed_ctx, &42u32).expect("message");
+
+  let captured = monitor_inbox.lock();
+  assert_eq!(captured.len(), 1, "monitor should have received one message");
+  let value = captured[0].payload().downcast_ref::<u32>().expect("u32 clone");
+  assert_eq!(*value, 42);
+}
+
+#[test]
+fn monitor_passes_message_to_inner_behavior() {
+  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received_clone = inner_received.clone();
+
+  let monitor_inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let monitor_sender = RecordingSender::new(monitor_inbox.clone());
+  let monitor_actor_ref = ActorRef::new(Pid::new(801, 0), monitor_sender);
+  let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
+
+  let mut behavior = Behaviors::monitor(monitor_typed_ref, move || {
+    let received = inner_received_clone.clone();
+    Behaviors::receive_message(move |_ctx, msg: &u32| {
+      received.lock().push(*msg);
+      Ok(Behaviors::same())
+    })
+  });
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let _next = inner.handle_message(&mut typed_ctx, &99u32).expect("message");
+
+  let captured = inner_received.lock();
+  assert_eq!(captured.len(), 1, "inner behavior should have received the message");
+  assert_eq!(captured[0], 99);
 }
