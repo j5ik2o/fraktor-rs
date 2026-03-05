@@ -27,11 +27,7 @@ impl SupervisorStrategyConfig {
   pub fn decide(&self, error: &ActorError) -> SupervisorDirective {
     match self {
       | Self::Standard(s) => s.decide(error),
-      // Backoff always restarts on recoverable errors; fatal errors are stopped.
-      | Self::Backoff(_) => match error {
-        | ActorError::Recoverable(_) => SupervisorDirective::Restart,
-        | ActorError::Fatal(_) => SupervisorDirective::Stop,
-      },
+      | Self::Backoff(_) => backoff_decide(error),
     }
   }
 
@@ -55,10 +51,7 @@ impl SupervisorStrategyConfig {
     error: &ActorError,
     now: Duration,
   ) -> SupervisorDirective {
-    let directive = match error {
-      | ActorError::Recoverable(_) => SupervisorDirective::Restart,
-      | ActorError::Fatal(_) => SupervisorDirective::Stop,
-    };
+    let directive = backoff_decide(error);
     match directive {
       | SupervisorDirective::Restart => {
         let max = backoff.max_restarts();
@@ -123,5 +116,13 @@ impl From<SupervisorStrategy> for SupervisorStrategyConfig {
 impl From<BackoffSupervisorStrategy> for SupervisorStrategyConfig {
   fn from(strategy: BackoffSupervisorStrategy) -> Self {
     Self::Backoff(strategy)
+  }
+}
+
+/// Default backoff error→directive mapping: recoverable → Restart, fatal → Stop.
+fn backoff_decide(error: &ActorError) -> SupervisorDirective {
+  match error {
+    | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+    | ActorError::Fatal(_) => SupervisorDirective::Stop,
   }
 }
