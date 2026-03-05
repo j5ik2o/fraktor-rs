@@ -9,7 +9,7 @@
 
 mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
 
-編集前に `./scripts/ci-check.sh dylint -m <module>` を実行すること。
+編集前に対象範囲のlintを実行すること。実行コマンドは各ピースの instruction 指示を優先する。
 
 ## CQS 原則
 
@@ -38,7 +38,7 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 
 - テストは `{type}/tests.rs` に配置
 - テストをコメントアウトや無視しない
-- 全タスク完了時は `./scripts/ci-check.sh all` を通す
+- 全タスク完了時は各ピースで定義された最終CIゲートを通す
 
 ## REJECT 基準
 

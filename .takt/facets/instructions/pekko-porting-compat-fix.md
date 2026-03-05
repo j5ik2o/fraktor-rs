@@ -18,9 +18,9 @@ pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
 
 **修正完了条件（必須）:**
 修正後に必ず以下を実行し、全チェックがパスすることを確認してからレポートに記録すること:
-1. `./scripts/ci-check.sh dylint` （Dylint全lint）
+1. 変更範囲に対応する lint / 型チェック（例: `cargo clippy -p <crate> -- -D warnings`）
 2. 変更範囲に対応する最小限のテスト（例: `cargo test -p <crate>`）
-`./scripts/ci-check.sh all` は `final-ci` ムーブメントで最後に1回だけ実行するため、ここでは実行しないこと。
+`./scripts/ci-check.sh` は `final-ci` ムーブメントで最後に1回だけ実行するため、ここでは実行しないこと。
 成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
 
 **必須出力（見出しを含める）**
@@ -33,7 +33,7 @@ pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
 ## テスト結果
 - {テスト実行コマンドと結果}
 ## 実行結果
-- {ci-check.sh dylint と変更範囲テストの成功ログ}
+- {変更範囲 lint/型チェック と変更範囲テストの成功ログ}
 ## 収束ゲート
 | 指標 | 件数 |
 |------|------|

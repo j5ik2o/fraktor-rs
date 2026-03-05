@@ -1,5 +1,5 @@
 name: pekko-porting
-description: Pekko互換仕様をRustで実装するための開発ピース（ギャップ分析→実装→QA並列レビュー→Pekko互換レビュー→監督）
+description: Pekko互換仕様をRustで実装するための開発ピース（ギャップ分析→実装→QAレビュー→Pekko互換レビュー→監督）
 piece_config:
   provider_options:
     codex:
@@ -310,33 +310,28 @@ movements:
         next: reviewers
 
   - name: reviewers
-    parallel:
-      - name: qa-review
-        edit: false
-        persona: pekko-porting-qa-reviewer
-        policy:
-          - review
-          - qa
-        provider_options:
-          claude:
-            allowed_tools:
-              - Read
-              - Glob
-              - Grep
-              - WebSearch
-              - WebFetch
-        instruction: pekko-porting-review-qa
-        output_contracts:
-          report:
-            - name: 06-qa-review.md
-              format: qa-review
-        rules:
-          - condition: approved
-          - condition: needs_fix
+    edit: false
+    persona: pekko-porting-qa-reviewer
+    policy:
+      - review
+      - qa
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - WebSearch
+          - WebFetch
+    instruction: pekko-porting-review-qa
+    output_contracts:
+      report:
+        - name: 06-qa-review.md
+          format: qa-review
     rules:
-      - condition: all("approved")
+      - condition: approved
         next: pekko-compat-review
-      - condition: any("needs_fix")
+      - condition: needs_fix
         next: qa-fix
 
   - name: qa-fix
