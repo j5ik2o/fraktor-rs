@@ -1,0 +1,125 @@
+use core::time::Duration;
+
+use super::BackoffSupervisorStrategy;
+
+#[test]
+fn compute_backoff_first_restart() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  let delay = strategy.compute_backoff(0);
+  assert_eq!(delay, Duration::from_millis(100));
+}
+
+#[test]
+fn compute_backoff_exponential_growth() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.compute_backoff(1), Duration::from_millis(200));
+  assert_eq!(strategy.compute_backoff(2), Duration::from_millis(400));
+  assert_eq!(strategy.compute_backoff(3), Duration::from_millis(800));
+}
+
+#[test]
+fn compute_backoff_caps_at_max() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_millis(500), 0.0);
+  assert_eq!(strategy.compute_backoff(3), Duration::from_millis(500));
+  assert_eq!(strategy.compute_backoff(10), Duration::from_millis(500));
+}
+
+#[test]
+fn compute_backoff_large_restart_count_does_not_overflow() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(60), 0.0);
+  let delay = strategy.compute_backoff(100);
+  assert_eq!(delay, Duration::from_secs(60));
+}
+
+#[test]
+fn compute_backoff_with_jitter_zero_random() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
+  let delay = strategy.compute_backoff_with_jitter(0, 0.0);
+  assert_eq!(delay, Duration::from_millis(100));
+}
+
+#[test]
+fn compute_backoff_with_jitter_full_random() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.5);
+  let delay = strategy.compute_backoff_with_jitter(0, 1.0);
+  assert_eq!(delay, Duration::from_millis(150));
+}
+
+#[test]
+fn compute_backoff_with_jitter_caps_at_max() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(400), Duration::from_millis(500), 1.0);
+  let delay = strategy.compute_backoff_with_jitter(1, 1.0);
+  assert_eq!(delay, Duration::from_millis(500));
+}
+
+#[test]
+fn default_reset_backoff_after() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  let expected = (Duration::from_millis(100) + Duration::from_secs(10)) / 2;
+  assert_eq!(strategy.reset_backoff_after(), expected);
+}
+
+#[test]
+fn default_max_restarts_is_zero() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.max_restarts(), 0);
+}
+
+#[test]
+fn default_stop_children_is_true() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert!(strategy.stop_children());
+}
+
+#[test]
+fn default_stash_capacity_is_1000() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.stash_capacity(), 1000);
+}
+
+#[test]
+fn with_reset_backoff_after_sets_value() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_reset_backoff_after(Duration::from_secs(30));
+  assert_eq!(strategy.reset_backoff_after(), Duration::from_secs(30));
+}
+
+#[test]
+fn with_max_restarts_sets_value() {
+  let strategy =
+    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_max_restarts(5);
+  assert_eq!(strategy.max_restarts(), 5);
+}
+
+#[test]
+fn with_stop_children_sets_value() {
+  let strategy =
+    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_stop_children(false);
+  assert!(!strategy.stop_children());
+}
+
+#[test]
+fn with_stash_capacity_sets_value() {
+  let strategy =
+    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0).with_stash_capacity(500);
+  assert_eq!(strategy.stash_capacity(), 500);
+}
+
+#[test]
+fn accessors_return_constructor_values() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(200), Duration::from_secs(5), 0.3);
+  assert_eq!(strategy.min_backoff(), Duration::from_millis(200));
+  assert_eq!(strategy.max_backoff(), Duration::from_secs(5));
+  assert!((strategy.random_factor() - 0.3).abs() < f64::EPSILON);
+}
+
+#[test]
+fn clone_produces_equal_values() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.2)
+    .with_max_restarts(3)
+    .with_stop_children(false);
+  let cloned = strategy.clone();
+  assert_eq!(cloned.min_backoff(), strategy.min_backoff());
+  assert_eq!(cloned.max_restarts(), strategy.max_restarts());
+  assert!(!cloned.stop_children());
+}
