@@ -55,6 +55,37 @@ log_step() {
   printf '==> %s\n' "$1"
 }
 
+run_with_heartbeat() {
+  local label="$1"
+  shift
+
+  local interval="${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-60}"
+  local enabled="${CI_CHECK_HEARTBEAT:-1}"
+  local heartbeat_pid=""
+
+  if [[ "${enabled}" != "0" ]]; then
+    (
+      while true; do
+        sleep "${interval}"
+        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')" >&2
+      done
+    ) &
+    heartbeat_pid=$!
+  fi
+
+  set +e
+  "$@"
+  local status=$?
+  set -e
+
+  if [[ -n "${heartbeat_pid}" ]]; then
+    kill "${heartbeat_pid}" >/dev/null 2>&1 || true
+    wait "${heartbeat_pid}" 2>/dev/null || true
+  fi
+
+  return "${status}"
+}
+
 clean_stale_lint_targets() {
   local lint_path=""
   local removed=0
@@ -795,32 +826,24 @@ PY
     local -a cargo_args=(run --package "${package_name}" --example "${example_name}")
     if [[ -n "${features}" ]]; then
       cargo_args+=(--features "${features}")
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --features ${features} --quiet"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --features ${features}"
     else
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --quiet"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name}"
     fi
-    cargo_args+=(--quiet)
-
-    local log_file
-    log_file="$(mktemp)"
     if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
       RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
-        >"${log_file}" 2>&1 || {
-          cat "${log_file}"
-          rm -f "${log_file}" "${example_file}"
+        || {
+          rm -f "${example_file}"
           return 1
         }
     else
       RUSTFLAGS="${rustflags_value}" cargo "${cargo_args[@]}" \
-        >"${log_file}" 2>&1 || {
-          cat "${log_file}"
-          rm -f "${log_file}" "${example_file}"
+        || {
+          rm -f "${example_file}"
           return 1
         }
     fi
-    tail -n 5 "${log_file}" || true
     echo
-    rm -f "${log_file}"
   done <"${example_file}"
 
   rm -f "${example_file}"
@@ -857,7 +880,7 @@ main() {
   clean_stale_lint_targets
 
   if [[ $# -eq 0 ]]; then
-    run_all || return 1
+    run_with_heartbeat "ci-check all" run_all || return 1
     return
   fi
 
@@ -947,7 +970,7 @@ main() {
         shift
         ;;
       all)
-        run_all || return 1
+        run_with_heartbeat "ci-check all" run_all || return 1
         shift
         ;;
       --help|-h|help)
@@ -956,7 +979,7 @@ main() {
         ;;
       --)
         shift
-        if ! run_all; then
+        if ! run_with_heartbeat "ci-check all" run_all; then
           return 1
         fi
         ;;
