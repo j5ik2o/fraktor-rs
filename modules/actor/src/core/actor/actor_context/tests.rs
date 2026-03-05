@@ -384,7 +384,10 @@ fn actor_context_child_by_name_returns_matching_child() {
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child(&child_props).expect("spawn child");
-  let found = context.child(system.state().cell(&child.pid()).expect("cell").name());
+  // spawn_child does not accept a name, so we retrieve the auto-assigned name
+  // via the cell registry to exercise the child-by-name lookup.
+  let child_name = system.state().cell(&child.pid()).expect("cell").name().to_owned();
+  let found = context.child(&child_name);
   assert!(found.is_some());
   assert_eq!(found.unwrap().pid(), child.pid());
 }
