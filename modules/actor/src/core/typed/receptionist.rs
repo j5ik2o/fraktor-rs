@@ -6,18 +6,21 @@ mod tests;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::sync::RuntimeMutex;
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
   typed::{
-    actor::TypedActorRef, behavior::Behavior, behaviors::Behaviors, listing::Listing,
+    actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors, listing::Listing,
     receptionist_command::ReceptionistCommand, service_key::ServiceKey,
   },
 };
 
 /// Composite key for internal registry lookups.
 type RegistryKey = (String, TypeId);
+
+/// Name used for the system-level receptionist top-level registration.
+pub const SYSTEM_RECEPTIONIST_TOP_LEVEL: &str = "receptionist";
 
 /// Internal state for the receptionist actor.
 struct ReceptionistState {
@@ -35,16 +38,22 @@ impl Receptionist {
   /// Returns the initial behavior for the Receptionist actor.
   #[must_use]
   pub fn behavior() -> Behavior<ReceptionistCommand> {
-    let state = RuntimeMutex::new(ReceptionistState { registrations: BTreeMap::new(), subscribers: BTreeMap::new() });
+    let state = ArcShared::new(RuntimeMutex::new(ReceptionistState {
+      registrations: BTreeMap::new(),
+      subscribers:   BTreeMap::new(),
+    }));
+    let state_for_message = state.clone();
+    let state_for_signal = state;
 
-    Behaviors::receive_message(move |_ctx, cmd| {
-      let mut guard = state.lock();
+    Behaviors::receive_message(move |ctx, cmd| {
+      let mut guard = state_for_message.lock();
       match cmd {
         | ReceptionistCommand::Register { service_id, type_id, actor_ref } => {
           let key = (service_id.clone(), *type_id);
           let entry = guard.registrations.entry(key.clone()).or_default();
           if !entry.iter().any(|r| r.pid() == actor_ref.pid()) {
             entry.push(actor_ref.clone());
+            let _ = ctx.as_untyped_mut().watch(actor_ref);
             notify_subscribers(&guard.subscribers, &key, &guard.registrations);
           }
         },
@@ -64,7 +73,22 @@ impl Receptionist {
           let listing = Listing::new(service_id.clone(), *type_id, current);
           let mut sub = subscriber.clone();
           let _ = sub.tell(listing);
-          guard.subscribers.entry(key).or_default().push(subscriber.clone());
+          let subscribers = guard.subscribers.entry(key).or_default();
+          if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
+            let _ = ctx.watch(subscriber);
+            subscribers.push(subscriber.clone());
+          }
+        },
+        | ReceptionistCommand::Unsubscribe { service_id, type_id, subscriber } => {
+          let key = (service_id.clone(), *type_id);
+          let mut remove_key = false;
+          if let Some(subscribers) = guard.subscribers.get_mut(&key) {
+            subscribers.retain(|existing| existing.pid() != subscriber.pid());
+            remove_key = subscribers.is_empty();
+          }
+          if remove_key {
+            guard.subscribers.remove(&key);
+          }
         },
         | ReceptionistCommand::Find { service_id, type_id, reply_to } => {
           let key = (service_id.clone(), *type_id);
@@ -73,6 +97,32 @@ impl Receptionist {
           let mut reply = reply_to.clone();
           let _ = reply.tell(listing);
         },
+      }
+      Ok(Behaviors::same())
+    })
+    .receive_signal(move |_ctx, signal| {
+      let BehaviorSignal::Terminated(terminated_pid) = signal else {
+        return Ok(Behaviors::same());
+      };
+
+      let mut guard = state_for_signal.lock();
+      let mut updated_keys = Vec::new();
+      for (key, refs) in &mut guard.registrations {
+        let before = refs.len();
+        refs.retain(|entry| entry.pid() != *terminated_pid);
+        if refs.len() != before {
+          updated_keys.push(key.clone());
+        }
+      }
+      guard.registrations.retain(|_, refs| !refs.is_empty());
+
+      for subscribers in guard.subscribers.values_mut() {
+        subscribers.retain(|subscriber| subscriber.pid() != *terminated_pid);
+      }
+      guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
+
+      for key in updated_keys {
+        notify_subscribers(&guard.subscribers, &key, &guard.registrations);
       }
       Ok(Behaviors::same())
     })
@@ -108,6 +158,14 @@ impl Receptionist {
   where
     M: Send + Sync + 'static, {
     ReceptionistCommand::Subscribe { service_id: key.id().into(), type_id: key.type_id(), subscriber }
+  }
+
+  /// Creates an [`Unsubscribe`](ReceptionistCommand::Unsubscribe) command from a typed service key.
+  #[must_use]
+  pub fn unsubscribe<M>(key: &ServiceKey<M>, subscriber: TypedActorRef<Listing>) -> ReceptionistCommand
+  where
+    M: Send + Sync + 'static, {
+    ReceptionistCommand::Unsubscribe { service_id: key.id().into(), type_id: key.type_id(), subscriber }
   }
 
   /// Creates a [`Find`](ReceptionistCommand::Find) command from a typed service key.

@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{super::mailbox_queue_state::QueueState, QueuePollFuture};
 use crate::core::{
-  dispatch::mailbox::{Mailbox, MailboxPolicy},
+  dispatch::mailbox::{MailboxPolicy, QueueStateHandle},
   messaging::AnyMessage,
 };
 
@@ -48,14 +48,17 @@ fn noop_waker() -> Waker {
   unsafe { Waker::from_raw(noop_raw_waker()) }
 }
 
+fn create_poll_future(messages: &[i32]) -> super::MailboxPollFuture {
+  let handle = QueueStateHandle::new_user(&MailboxPolicy::unbounded(None));
+  for message in messages.iter().copied() {
+    handle.offer(AnyMessage::new(message)).expect("enqueue failed");
+  }
+  super::MailboxPollFuture::new(handle.state.clone())
+}
+
 #[test]
 fn mailbox_poll_future_completes_with_message() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-
-  // メッセージをエンキュー
-  mailbox.enqueue_user(AnyMessage::new(42)).expect("enqueue failed");
-
-  let mut future = mailbox.poll_user_future();
+  let mut future = create_poll_future(&[42]);
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -72,9 +75,7 @@ fn mailbox_poll_future_completes_with_message() {
 
 #[test]
 fn mailbox_poll_future_pending_when_empty() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-
-  let mut future = mailbox.poll_user_future();
+  let mut future = create_poll_future(&[]);
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -85,8 +86,7 @@ fn mailbox_poll_future_pending_when_empty() {
 
 #[test]
 fn mailbox_poll_future_debug_format() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let future = mailbox.poll_user_future();
+  let future = create_poll_future(&[]);
 
   let debug_str = format!("{:?}", future);
   assert!(debug_str.contains("MailboxPollFuture"));

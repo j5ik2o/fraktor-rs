@@ -6,7 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use crate::core::typed::actor::TypedActorRef;
+use crate::core::{error::ActorError, typed::actor::TypedActorRef};
 
 /// A snapshot of actor references registered under a service key.
 #[derive(Clone, Debug)]
@@ -45,17 +45,18 @@ impl Listing {
     &self.refs
   }
 
-  /// Returns typed actor references by transmuting the erased references.
+  /// Returns typed actor references after validating the requested message type.
   ///
-  /// # Safety
+  /// # Errors
   ///
-  /// The caller must ensure that the message type `M` matches the type used
-  /// during registration.
-  #[must_use]
-  pub fn typed_refs<M>(&self) -> Vec<TypedActorRef<M>>
+  /// Returns an error when `M` does not match the listing key type.
+  pub fn typed_refs<M>(&self) -> Result<Vec<TypedActorRef<M>>, ActorError>
   where
     M: Send + Sync + 'static, {
-    self.refs.iter().map(|r| TypedActorRef::from_untyped(r.clone())).collect()
+    if self.type_id != TypeId::of::<M>() {
+      return Err(ActorError::recoverable("listing type mismatch"));
+    }
+    Ok(self.refs.iter().map(|r| TypedActorRef::from_untyped(r.clone())).collect())
   }
 
   /// Returns whether the listing is empty.

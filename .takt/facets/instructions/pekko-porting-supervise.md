@@ -14,11 +14,11 @@
 未対応の改善提案がないか確認してください。
 
 **fraktor-rs固有の検証:**
-- qa-fix / pekko-compat-fix / implement ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
+- qa-fix / pekko-compat-fix / implement ムーブメントのレポートに、変更範囲に対する検証（dylint/対象テスト）が記録されていることを確認
 - `06-qa-review.md` の判定がapprovedであることを確認
 - `05-pekko-compat-review.md` の承認済み判定があることを確認
 - `qa-fix` / `pekko-compat-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
-※ supervisorはCIを自身では実行しない（qa-fix/pekko-compat-fix/implementの実行済み証跡をレポートで確認するのみ）
+※ `./scripts/ci-check.sh all` は supervise の次の `final-ci` ムーブメントで1回だけ実行する
 
 **Validation出力契約:**
 ```markdown

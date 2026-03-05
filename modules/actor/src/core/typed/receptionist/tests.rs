@@ -1,6 +1,35 @@
-use core::any::TypeId;
+use core::hint::spin_loop;
 
-use crate::core::typed::{receptionist::Receptionist, service_key::ServiceKey};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::typed::{
+  Behaviors, Listing, Receptionist, ReceptionistCommand, ServiceKey, TypedActorSystem, TypedProps, actor::TypedActorRef,
+};
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
+  }
+  assert!(condition());
+}
+
+fn new_test_system() -> TypedActorSystem<u32> {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
+}
+
+fn find_listing(receptionist: &mut TypedActorRef<ReceptionistCommand>, key: &ServiceKey<u32>) -> Listing {
+  let response = receptionist.ask::<Listing, _>(|reply_to| Receptionist::find(key, reply_to)).expect("ask find");
+  let mut future = response.future().clone();
+  wait_until(|| future.is_ready());
+  future.try_take().expect("find result").expect("listing payload")
+}
 
 #[test]
 fn behavior_should_be_constructible() {
@@ -8,29 +37,96 @@ fn behavior_should_be_constructible() {
 }
 
 #[test]
-fn register_command_should_carry_correct_fields() {
+fn unsubscribe_should_stop_listing_updates() {
+  let system = new_test_system();
+  let mut receptionist = system.receptionist_ref().expect("system receptionist");
   let key = ServiceKey::<u32>::new("svc");
-  // Verify the helper builds the right command variant by matching on it.
-  // We cannot easily construct an ActorRef in unit tests without a full system,
-  // so we test the static helpers `subscribe` and `find` using the Listing type.
-  let key2 = ServiceKey::<u32>::new("svc");
-  assert_eq!(key, key2);
+
+  let updates = ArcShared::new(NoStdMutex::new(0_usize));
+  let subscriber_props = TypedProps::<Listing>::from_behavior_factory({
+    let updates = updates.clone();
+    move || {
+      let updates = updates.clone();
+      Behaviors::receive_message(move |_ctx, _listing: &Listing| {
+        *updates.lock() += 1;
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn listing subscriber");
+  let subscriber_ref = TypedActorRef::<Listing>::from_untyped(subscriber.actor_ref().clone());
+
+  receptionist.tell(Receptionist::subscribe(&key, subscriber_ref.clone())).expect("subscribe receptionist");
+  wait_until(|| *updates.lock() == 1);
+
+  receptionist.tell(Receptionist::unsubscribe(&key, subscriber_ref)).expect("unsubscribe receptionist");
+
+  let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+
+  for _ in 0..10_000 {
+    assert_eq!(*updates.lock(), 1);
+    spin_loop();
+  }
+
+  system.terminate().expect("terminate");
 }
 
 #[test]
-fn subscribe_command_should_use_correct_type_id() {
-  let key = ServiceKey::<u64>::new("sub-svc");
-  assert_eq!(key.type_id(), TypeId::of::<u64>());
+fn terminated_routee_should_be_removed_from_listing() {
+  let system = new_test_system();
+  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let key = ServiceKey::<u32>::new("svc");
+
+  let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+
+  wait_until(|| !find_listing(&mut receptionist, &key).is_empty());
+
+  routee.stop().expect("stop routee");
+  wait_until(|| find_listing(&mut receptionist, &key).is_empty());
+
+  system.terminate().expect("terminate");
 }
 
-// --- 統合テスト計画 ---
-//
-// `Receptionist::behavior()` が返す振る舞いロジック（Register/Deregister/Subscribe/Find の
-// 各コマンド処理）は、`ActorRef` と `TypedActorRef` の生成にアクターシステムが必要なため
-// 単体テストでは検証できない。以下の振る舞いを統合テストで検証すべき:
-//
-// 1. Register: 同一 ActorRef の重複登録が排除されること
-// 2. Deregister: 登録解除後に subscriber へ更新された Listing が通知されること
-// 3. Subscribe: 登録時に現在の Listing が即座に返送されること
-// 4. Subscribe: その後の Register/Deregister で subscriber へ通知が送られること
-// 5. Find: 現在の登録状況に基づく Listing が reply_to に返されること
+#[test]
+fn terminated_subscriber_should_be_cleaned_up() {
+  let system = new_test_system();
+  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let key = ServiceKey::<u32>::new("svc");
+
+  let updates = ArcShared::new(NoStdMutex::new(0_usize));
+  let subscriber_props = TypedProps::<Listing>::from_behavior_factory({
+    let updates = updates.clone();
+    move || {
+      let updates = updates.clone();
+      Behaviors::receive_message(move |_ctx, _listing: &Listing| {
+        *updates.lock() += 1;
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn listing subscriber");
+  let subscriber_ref = TypedActorRef::<Listing>::from_untyped(subscriber.actor_ref().clone());
+
+  receptionist.tell(Receptionist::subscribe(&key, subscriber_ref)).expect("subscribe receptionist");
+  wait_until(|| *updates.lock() == 1);
+
+  subscriber.stop().expect("stop listing subscriber");
+
+  let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+
+  for _ in 0..10_000 {
+    assert_eq!(*updates.lock(), 1);
+    spin_loop();
+  }
+
+  system.terminate().expect("terminate");
+}

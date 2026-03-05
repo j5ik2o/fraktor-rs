@@ -26,6 +26,7 @@ instructions:
   pekko-porting-qa-fix: ../facets/instructions/pekko-porting-qa-fix.md
   pekko-porting-compat-fix: ../facets/instructions/pekko-porting-compat-fix.md
   pekko-porting-supervise: ../facets/instructions/pekko-porting-supervise.md
+  pekko-porting-final-ci: ../facets/instructions/pekko-porting-final-ci.md
   pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
   pekko-porting-review-qa: ../facets/instructions/pekko-porting-review-qa.md
   ai-review: ../facets/instructions/ai-review.md
@@ -364,7 +365,7 @@ movements:
     pass_previous_response: false
     instruction: pekko-porting-qa-fix
     rules:
-      - condition: 修正完了（ci-check.sh all 通過済み）
+      - condition: 修正完了
         next: reviewers
       - condition: 判断できない、情報不足
         next: reviewers
@@ -423,7 +424,7 @@ movements:
     pass_previous_response: false
     instruction: pekko-porting-compat-fix
     rules:
-      - condition: 修正完了（ci-check.sh all 通過済み）
+      - condition: 修正完了
         next: pekko-compat-review
       - condition: 判断できない、情報不足
         next: pekko-compat-review
@@ -453,8 +454,31 @@ movements:
           use_judge: false
     rules:
       - condition: すべて問題なし
-        next: COMPLETE
+        next: final-ci
       - condition: テスト失敗、ビルドエラー、要件未達（修正で解決可能）
         next: pekko-compat-fix
       - condition: 根本的な設計変更が必要
         next: plan
+
+  - name: final-ci
+    edit: false
+    persona: coder
+    policy:
+      - testing
+      - fraktor-coding
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+    pass_previous_response: false
+    instruction: pekko-porting-final-ci
+    rules:
+      - condition: ci-check.sh all が成功
+        next: COMPLETE
+      - condition: ci-check.sh all が失敗
+        next: pekko-compat-fix
+      - condition: 判断できない、情報不足
+        next: pekko-compat-fix

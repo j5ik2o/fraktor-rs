@@ -27,10 +27,11 @@ mod tests;
 struct QueueOfferFuture<T>
 where
   T: Send + 'static, {
-  state:   ArcShared<RuntimeMutex<QueueState<T>>>,
-  message: Option<T>,
-  waiter:  Option<WaitShared<QueueError<T>>>,
-  timeout: Option<DelayFuture>,
+  state:           ArcShared<RuntimeMutex<QueueState<T>>>,
+  user_queue_lock: Option<ArcShared<RuntimeMutex<()>>>,
+  message:         Option<T>,
+  waiter:          Option<WaitShared<QueueError<T>>>,
+  timeout:         Option<DelayFuture>,
 }
 
 impl<T> QueueOfferFuture<T>
@@ -38,12 +39,27 @@ where
   T: Send + 'static,
 {
   pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T>>>, message: T) -> Self {
-    Self { state, message: Some(message), waiter: None, timeout: None }
+    Self { state, user_queue_lock: None, message: Some(message), waiter: None, timeout: None }
   }
 
   pub(crate) fn with_timeout(mut self, duration: Duration, provider: &mut dyn DelayProvider) -> Self {
     self.timeout = Some(provider.delay(duration));
     self
+  }
+
+  pub(crate) fn with_user_queue_lock(mut self, user_queue_lock: ArcShared<RuntimeMutex<()>>) -> Self {
+    self.user_queue_lock = Some(user_queue_lock);
+    self
+  }
+
+  fn offer_message(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
+    if let Some(user_queue_lock) = self.user_queue_lock.as_ref() {
+      let _guard = user_queue_lock.lock();
+      let mut state = self.state.lock();
+      return state.offer(message);
+    }
+    let mut state = self.state.lock();
+    state.offer(message)
   }
 
   fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
@@ -80,8 +96,7 @@ where
       }
 
       if let Some(message) = this.message.take() {
-        let mut state = this.state.lock();
-        match state.offer(message) {
+        match this.offer_message(message) {
           | Ok(outcome) => {
             this.waiter.take();
             this.timeout = None;
@@ -124,6 +139,11 @@ pub struct MailboxOfferFuture {
 impl MailboxOfferFuture {
   pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>, message: AnyMessage) -> Self {
     Self { inner: QueueOfferFuture::new(state, message) }
+  }
+
+  pub(crate) fn with_user_queue_lock(mut self, user_queue_lock: ArcShared<RuntimeMutex<()>>) -> Self {
+    self.inner = self.inner.with_user_queue_lock(user_queue_lock);
+    self
   }
 
   /// Configures the offer future to fail with a timeout if the duration elapses before enqueue

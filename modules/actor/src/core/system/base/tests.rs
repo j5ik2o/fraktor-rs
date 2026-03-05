@@ -40,6 +40,7 @@ use crate::core::{
     remote::RemotingConfig,
     state::{SystemStateShared, system_state::SystemState},
   },
+  typed::SYSTEM_RECEPTIONIST_TOP_LEVEL,
 };
 
 struct TestActor;
@@ -220,6 +221,18 @@ fn actor_system_new_with_config_and_allows_extra_top_level_registration_in_confi
 
   let late = system.extended().register_extra_top_level("late", ActorRef::null());
   assert!(matches!(late, Err(crate::core::system::RegisterExtraTopLevelError::AlreadyStarted)));
+}
+
+#[test]
+fn actor_system_registers_system_receptionist_during_bootstrap() {
+  let props = Props::from_fn(|| TestActor);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+
+  let system = ActorSystem::new_with_config_and(&props, &config, |_| Ok(())).expect("system should build");
+
+  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
 }
 
 #[test]

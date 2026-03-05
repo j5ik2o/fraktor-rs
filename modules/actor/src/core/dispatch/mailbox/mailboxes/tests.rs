@@ -1,4 +1,11 @@
+use core::num::NonZeroUsize;
+
 use super::*;
+use crate::core::{
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  error::SendError,
+  messaging::AnyMessage,
+};
 
 #[test]
 fn register_and_resolve_mailbox() {
@@ -23,4 +30,16 @@ fn ensure_default_mailbox_is_available() {
   let mut registry = Mailboxes::new();
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_MAILBOX_ID).is_ok());
+}
+
+#[test]
+fn create_message_queue_uses_registered_mailbox_policy() {
+  let mut registry = Mailboxes::new();
+  let capacity = NonZeroUsize::new(1).expect("capacity");
+  let config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None));
+  registry.register("bounded", config).expect("register mailbox");
+
+  let queue = registry.create_message_queue("bounded").expect("create queue");
+  assert!(queue.enqueue(AnyMessage::new(1_u32)).is_ok());
+  assert!(matches!(queue.enqueue(AnyMessage::new(2_u32)), Err(SendError::Full(_))));
 }

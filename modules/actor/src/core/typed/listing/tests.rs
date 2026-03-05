@@ -11,12 +11,18 @@ fn listing_should_store_fields() {
   assert!(listing.is_empty());
 }
 
-// --- 統合テスト計画 ---
-//
-// `Listing::typed_refs::<M>()` は `ActorRef` → `TypedActorRef<M>` への変換を行う。
-// `ActorRef` の生成にはアクターシステムが必要なため、単体テストでは検証できない。
-// 以下の振る舞いを統合テストで検証すべき:
-//
-// 1. typed_refs() が登録済み ActorRef を TypedActorRef<M> に変換すること
-// 2. 複数の ActorRef が正しく変換されること
-// 3. refs() と typed_refs() の要素数が一致すること
+#[test]
+fn typed_refs_should_fail_when_type_id_mismatches() {
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
+
+  let mismatch = listing.typed_refs::<u64>();
+  assert!(mismatch.is_err());
+}
+
+#[test]
+fn typed_refs_should_succeed_when_type_id_matches() {
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
+
+  let refs = listing.typed_refs::<u32>().expect("matching type should succeed");
+  assert!(refs.is_empty());
+}

@@ -8,8 +8,8 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::collections::queue::QueueError;
 
 use super::{
-  QueueStateHandle, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
+  QueueStateHandle, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_offer_future::MailboxOfferFuture,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
 use crate::core::{error::SendError, messaging::AnyMessage};
 
@@ -48,7 +48,8 @@ impl MessageQueue for BoundedMessageQueue {
       | MailboxOverflowStrategy::Grow => self.offer(message),
       | MailboxOverflowStrategy::Block => {
         if self.handle.len() >= self.capacity {
-          return Err(SendError::full(message));
+          let future = MailboxOfferFuture::new(self.handle.state.clone(), message);
+          return Ok(EnqueueOutcome::Pending(future));
         }
         self.offer(message)
       },

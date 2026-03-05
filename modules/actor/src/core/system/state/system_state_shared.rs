@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  boxed::Box,
   collections::VecDeque,
   format,
   string::{String, ToString},
@@ -26,7 +27,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError},
-    mailbox::MailboxRegistryError,
+    mailbox::{MailboxRegistryError, MessageQueue},
   },
   error::{ActorError, SendError},
   event::{
@@ -758,6 +759,15 @@ impl SystemStateShared {
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
     self.inner.read().resolve_mailbox(id)
+  }
+
+  /// Creates a mailbox queue from the configuration registered under the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn create_mailbox_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
+    self.inner.read().create_mailbox_queue(id)
   }
 
   /// Returns the remoting configuration when it has been configured.

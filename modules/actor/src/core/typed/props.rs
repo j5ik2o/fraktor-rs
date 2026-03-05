@@ -94,7 +94,9 @@ where
       | DispatcherSelector::Default => self,
       | DispatcherSelector::FromConfig(id) => self.map_props(|p| p.with_dispatcher_id(id)),
       | DispatcherSelector::SameAsParent => self,
-      | DispatcherSelector::Blocking => self.map_props(|p| p.with_dispatcher_id("blocking-dispatcher")),
+      | DispatcherSelector::Blocking => {
+        self.map_props(|p| p.with_dispatcher_id(crate::core::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID))
+      },
     }
   }
 

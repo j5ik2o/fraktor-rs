@@ -1,4 +1,22 @@
-use crate::core::typed::{group_router_builder::GroupRouterBuilder, service_key::ServiceKey};
+use alloc::vec::Vec;
+use core::{any::TypeId, hint::spin_loop};
+
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::typed::{
+  Behaviors, Listing, Receptionist, ReceptionistCommand, ServiceKey, TypedActorSystem, TypedProps,
+  actor::TypedActorRef, group_router_builder::GroupRouterBuilder, routers::Routers,
+};
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
+  }
+  assert!(condition());
+}
 
 #[test]
 fn should_create_builder_from_service_key() {
@@ -6,15 +24,237 @@ fn should_create_builder_from_service_key() {
   let _builder = GroupRouterBuilder::new(key);
 }
 
-// --- 統合テスト計画 ---
-//
-// `GroupRouterBuilder::build()` は `TypedActorRef<ReceptionistCommand>` を引数に取り、
-// 完全なアクターシステム（ActorSystem + Receptionist アクター）が必要なため
-// 単体テストでは検証できない。以下の振る舞いを統合テストで検証すべき:
-//
-// 1. build() が有効な Behavior<M> を返すこと
-// 2. Receptionist への Subscribe コマンドが送信されること
-// 3. Listing 更新時に routee セットが更新されること
-// 4. ラウンドロビンでメッセージがルーティングされること
-// 5. routee が空の場合にメッセージがドロップされること（パニックしないこと）
-// 6. routee 追加・削除後もラウンドロビンが正しく動作すること
+#[test]
+fn group_router_should_route_via_system_receptionist() {
+  let key = ServiceKey::<u32>::new("test-group");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let router_props = TypedProps::<u32>::from_behavior_factory({
+    let key = key.clone();
+    move || Routers::group(key.clone()).build()
+  });
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
+  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routee_props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    move || {
+      let records = records.clone();
+      Behaviors::receive_message(move |_ctx, message: &u32| {
+        records.lock().push(*message);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee to receptionist");
+
+  router.tell(42_u32).expect("route message");
+  wait_until(|| records.lock().as_slice() == [42_u32]);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn group_router_should_route_via_explicit_receptionist() {
+  let key = ServiceKey::<u32>::new("test-group-explicit");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior);
+  let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn explicit receptionist");
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+
+  let router_props = TypedProps::<u32>::from_behavior_factory({
+    let key = key.clone();
+    let receptionist_ref = receptionist_ref.clone();
+    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+  });
+  let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
+  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut explicit_receptionist = receptionist_ref;
+
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routee_props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    move || {
+      let records = records.clone();
+      Behaviors::receive_message(move |_ctx, message: &u32| {
+        records.lock().push(*message);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  explicit_receptionist
+    .tell(Receptionist::register(&key, routee_ref))
+    .expect("register routee to explicit receptionist");
+
+  wait_until(|| {
+    let _ = router.tell(64_u32);
+    records.lock().as_slice().contains(&64_u32)
+  });
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn group_router_should_ignore_mismatched_listing_update() {
+  let key = ServiceKey::<u32>::new("test-group-mismatch");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routee_props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    move || {
+      let records = records.clone();
+      Behaviors::receive_message(move |_ctx, message: &u32| {
+        records.lock().push(*message);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+
+  let mismatched_records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let mismatched_routee_props = TypedProps::<u64>::from_behavior_factory({
+    let mismatched_records = mismatched_records.clone();
+    move || {
+      let mismatched_records = mismatched_records.clone();
+      Behaviors::receive_message(move |_ctx, message: &u64| {
+        mismatched_records.lock().push(*message);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let mismatched_routee =
+    system.as_untyped().spawn(mismatched_routee_props.to_untyped()).expect("spawn mismatched routee");
+  let mismatched_routee_ref = TypedActorRef::<u64>::from_untyped(mismatched_routee.actor_ref().clone());
+
+  let subscriber = ArcShared::new(NoStdMutex::new(None::<TypedActorRef<Listing>>));
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory({
+    let key = key.clone();
+    let routee_ref = routee_ref.clone();
+    let mismatched_routee_ref = mismatched_routee_ref.clone();
+    let subscriber = subscriber.clone();
+    let events = events.clone();
+    move || {
+      let key = key.clone();
+      let routee_ref = routee_ref.clone();
+      let mismatched_routee_ref = mismatched_routee_ref.clone();
+      let subscriber = subscriber.clone();
+      let events = events.clone();
+      Behaviors::receive_message(move |_ctx, command: &ReceptionistCommand| {
+        match command {
+          | ReceptionistCommand::Subscribe { service_id, type_id, subscriber: reply_to }
+            if service_id == key.id() && *type_id == key.type_id() =>
+          {
+            *subscriber.lock() = Some(reply_to.clone());
+            events.lock().push("subscribed");
+
+            let listing = Listing::new(service_id.clone(), *type_id, vec![routee_ref.clone().into_untyped()]);
+            let mut reply_to = reply_to.clone();
+            reply_to.tell(listing).expect("send initial listing");
+          },
+          | ReceptionistCommand::Register { .. } => {
+            let reply_to = subscriber.lock().clone();
+            if let Some(mut reply_to) = reply_to {
+              events.lock().push("mismatch_sent");
+              let listing =
+                Listing::new(key.id(), TypeId::of::<u64>(), vec![mismatched_routee_ref.clone().into_untyped()]);
+              reply_to.tell(listing).expect("send mismatched listing");
+            }
+          },
+          | _ => {},
+        }
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn explicit receptionist");
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+
+  let router_props = TypedProps::<u32>::from_behavior_factory({
+    let key = key.clone();
+    let receptionist_ref = receptionist_ref.clone();
+    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+  });
+  let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
+  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut explicit_receptionist = receptionist_ref;
+
+  wait_until(|| {
+    let _ = router.tell(1_u32);
+    records.lock().contains(&1_u32)
+  });
+
+  explicit_receptionist.tell(Receptionist::register(&key, routee_ref)).expect("trigger mismatched listing update");
+  wait_until(|| events.lock().contains(&"mismatch_sent"));
+
+  for _ in 0..10_000 {
+    spin_loop();
+  }
+
+  router.tell(2_u32).expect("route message after mismatched listing");
+  wait_until(|| records.lock().contains(&2_u32));
+  assert!(mismatched_records.lock().is_empty());
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn group_router_should_unsubscribe_when_stopped() {
+  let key = ServiceKey::<u32>::new("test-group-unsubscribe");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory({
+    let events = events.clone();
+    move || {
+      let events = events.clone();
+      Behaviors::receive_message(move |_ctx, command: &ReceptionistCommand| {
+        let mut guard = events.lock();
+        match command {
+          | ReceptionistCommand::Subscribe { .. } => guard.push("subscribe"),
+          | ReceptionistCommand::Unsubscribe { .. } => guard.push("unsubscribe"),
+          | _ => {},
+        }
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn tracking receptionist");
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+
+  let router_props = TypedProps::<u32>::from_behavior_factory({
+    let key = key.clone();
+    let receptionist_ref = receptionist_ref.clone();
+    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+  });
+  let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
+
+  wait_until(|| events.lock().contains(&"subscribe"));
+  router.stop().expect("stop group router");
+  wait_until(|| events.lock().contains(&"unsubscribe"));
+
+  system.terminate().expect("terminate");
+}

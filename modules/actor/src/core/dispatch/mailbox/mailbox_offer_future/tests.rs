@@ -35,31 +35,21 @@ fn noop_waker() -> Waker {
 }
 
 #[test]
-fn mailbox_offer_future_unbounded_completes_immediately() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let message = AnyMessage::new(42);
-
-  let mut future = mailbox.enqueue_user_future(message);
-
-  let waker = noop_waker();
-  let mut context = Context::from_waker(&waker);
-
-  let result = Pin::new(&mut future).poll(&mut context);
-  assert!(matches!(result, Poll::Ready(Ok(()))));
-}
-
-#[test]
-fn mailbox_offer_future_bounded_completes_when_space_available() {
+fn mailbox_offer_future_bounded_block_completes_when_space_available() {
   use core::num::NonZeroUsize;
 
-  let mailbox = Mailbox::new(MailboxPolicy::bounded(
-    NonZeroUsize::new(1).unwrap(),
-    crate::core::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
-    None,
-  ));
+  let mailbox =
+    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::Block, None));
 
-  let message = AnyMessage::new(42);
-  let mut future = mailbox.enqueue_user_future(message);
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(0)), Ok(EnqueueOutcome::Enqueued)));
+
+  let mut future = match mailbox.enqueue_user(AnyMessage::new(1)) {
+    | Ok(EnqueueOutcome::Pending(future)) => future,
+    | Ok(EnqueueOutcome::Enqueued) => panic!("expected pending offer future"),
+    | Err(error) => panic!("unexpected enqueue error: {error:?}"),
+  };
+
+  let _ = mailbox.dequeue();
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -70,9 +60,17 @@ fn mailbox_offer_future_bounded_completes_when_space_available() {
 
 #[test]
 fn mailbox_offer_future_debug_format() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-  let message = AnyMessage::new(42);
-  let future = mailbox.enqueue_user_future(message);
+  use core::num::NonZeroUsize;
+
+  let mailbox =
+    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::Block, None));
+
+  assert!(matches!(mailbox.enqueue_user(AnyMessage::new(0)), Ok(EnqueueOutcome::Enqueued)));
+  let future = match mailbox.enqueue_user(AnyMessage::new(1)) {
+    | Ok(EnqueueOutcome::Pending(future)) => future,
+    | Ok(EnqueueOutcome::Enqueued) => panic!("expected pending offer future"),
+    | Err(error) => panic!("unexpected enqueue error: {error:?}"),
+  };
 
   let debug_str = format!("{:?}", future);
   assert!(debug_str.contains("MailboxOfferFuture"));
@@ -88,8 +86,11 @@ fn mailbox_offer_future_times_out_and_returns_send_error() {
   assert!(matches!(mailbox.enqueue_user(AnyMessage::new(0)), Ok(EnqueueOutcome::Enqueued)));
 
   let mut provider = ManualDelayProvider::new();
-  let mut future =
-    mailbox.enqueue_user_future(AnyMessage::new(1)).with_timeout(Duration::from_millis(5), &mut provider);
+  let mut future = match mailbox.enqueue_user(AnyMessage::new(1)) {
+    | Ok(EnqueueOutcome::Pending(future)) => future.with_timeout(Duration::from_millis(5), &mut provider),
+    | Ok(EnqueueOutcome::Enqueued) => panic!("expected pending offer future"),
+    | Err(error) => panic!("unexpected enqueue error: {error:?}"),
+  };
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);

@@ -79,7 +79,7 @@ pub use listing::Listing;
 pub use mailbox_selector::MailboxSelector;
 pub use pool_router_builder::PoolRouterBuilder;
 pub use props::TypedProps;
-pub use receptionist::Receptionist;
+pub use receptionist::{Receptionist, SYSTEM_RECEPTIONIST_TOP_LEVEL};
 pub use receptionist_command::ReceptionistCommand;
 pub use routers::Routers;
 pub use service_key::ServiceKey;

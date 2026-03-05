@@ -41,6 +41,15 @@ pub enum ReceptionistCommand {
     /// Subscriber that receives updated listings.
     subscriber: TypedActorRef<Listing>,
   },
+  /// Stops listening for listing changes for a service key.
+  Unsubscribe {
+    /// Service identifier string.
+    service_id: String,
+    /// Type identifier of the message type associated with the key.
+    type_id:    TypeId,
+    /// Subscriber that should be removed from the subscription set.
+    subscriber: TypedActorRef<Listing>,
+  },
   /// One-shot query for current registrations under a service key.
   Find {
     /// Service identifier string.

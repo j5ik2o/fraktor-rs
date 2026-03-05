@@ -15,8 +15,10 @@ use crate::core::{
   spawn::SpawnError,
   system::{ActorSystem, ActorSystemConfig, state::SystemStateShared},
   typed::{
+    SYSTEM_RECEPTIONIST_TOP_LEVEL,
     actor::{TypedActorRef, TypedChildRef},
     props::TypedProps,
+    receptionist_command::ReceptionistCommand,
     scheduler::TypedSchedulerShared,
   },
 };
@@ -93,6 +95,12 @@ where
   #[must_use]
   pub fn state(&self) -> SystemStateShared {
     self.inner.state()
+  }
+
+  /// Returns the system receptionist reference when available.
+  #[must_use]
+  pub fn receptionist_ref(&self) -> Option<TypedActorRef<ReceptionistCommand>> {
+    self.inner.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).map(TypedActorRef::from_untyped)
   }
 
   /// Allocates a new pid (testing helper).

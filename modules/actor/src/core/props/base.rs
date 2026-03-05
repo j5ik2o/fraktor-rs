@@ -178,9 +178,8 @@ impl Props {
     self
   }
 
-  pub(crate) fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
+  pub(crate) const fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
     self.mailbox_config = mailbox_config;
-    self.mailbox_id = None;
     self
   }
 }

@@ -42,7 +42,7 @@ pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_registry_error::DispatcherRegistryError;
 pub use dispatcher_sender::DispatcherSender;
 pub use dispatcher_shared::DispatcherShared;
-pub use dispatchers::Dispatchers;
+pub use dispatchers::{DEFAULT_BLOCKING_DISPATCHER_ID, Dispatchers};
 pub use inline_executor::InlineExecutor;
 pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::ScheduleAdapter;
