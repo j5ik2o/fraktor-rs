@@ -33,7 +33,7 @@ where
 struct MonitorInterceptor<M>
 where
   M: Send + Sync + Clone + 'static, {
-  monitor_ref: ArcShared<RuntimeMutex<TypedActorRef<M>>>,
+  monitor_ref: TypedActorRef<M>,
 }
 
 impl<M> BehaviorInterceptor<M, M> for MonitorInterceptor<M>
@@ -47,7 +47,7 @@ where
     target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
     // Best-effort: ignore send failures to the monitor.
-    let _ = self.monitor_ref.lock().tell(message.clone());
+    let _ = self.monitor_ref.tell(message.clone());
     target(ctx, message)
   }
 }
@@ -271,8 +271,8 @@ impl Behaviors {
   where
     M: Send + Sync + Clone + 'static,
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
-    let shared_ref = ArcShared::new(RuntimeMutex::new(monitor_ref));
-    Self::intercept(move || Box::new(MonitorInterceptor { monitor_ref: shared_ref.clone() }), behavior_factory)
+    let monitor = monitor_ref;
+    Self::intercept(move || Box::new(MonitorInterceptor { monitor_ref: monitor.clone() }), behavior_factory)
   }
 }
 
