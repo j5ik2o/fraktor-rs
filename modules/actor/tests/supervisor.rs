@@ -180,7 +180,9 @@ fn resume_directive_continues_child_without_restart() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
+  wait_until(|| child_slot.lock().is_some(), Duration::from_millis(100));
   let mut child = child_slot.lock().clone().expect("child");
+  wait_until(|| log.lock().contains(&"child_pre_start"), Duration::from_millis(100));
   assert_eq!(*log.lock(), vec!["child_pre_start"]);
 
   child.tell(AnyMessage::new(TriggerRecoverable)).expect("recoverable");
@@ -412,7 +414,7 @@ impl Actor for ResumeGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
       let log = self.log.clone();
-      let child_props = Props::from_fn(move || ResumeChild::new(log.clone()));
+      let child_props = Props::from_fn(move || RestartChild::new(log.clone()));
       let child = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child);
     }
@@ -424,36 +426,6 @@ impl Actor for ResumeGuardian {
       SupervisorDirective::Resume
     })
     .into()
-  }
-}
-
-struct ResumeChild {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
-}
-
-impl ResumeChild {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
-    Self { log }
-  }
-}
-
-impl Actor for ResumeChild {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    self.log.lock().push("child_pre_start");
-    Ok(())
-  }
-
-  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    if message.downcast_ref::<TriggerRecoverable>().is_some() {
-      self.log.lock().push("child_fail");
-      return Err(ActorError::recoverable("recoverable error"));
-    }
-    Ok(())
-  }
-
-  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    self.log.lock().push("child_post_stop");
-    Ok(())
   }
 }
 
