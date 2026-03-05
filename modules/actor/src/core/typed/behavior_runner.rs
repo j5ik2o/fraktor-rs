@@ -37,7 +37,7 @@ where
     Self { current: initial, supervisor, stopping: false }
   }
 
-  const fn update_supervisor_override(&mut self, strategy: Option<SupervisorStrategyConfig>) {
+  fn update_supervisor_override(&mut self, strategy: Option<SupervisorStrategyConfig>) {
     if let Some(strategy) = strategy {
       self.supervisor = Some(strategy);
     }

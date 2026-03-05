@@ -82,3 +82,47 @@ fn with_stash_capacity_sets_value() {
   let strategy = SupervisorStrategy::default().with_stash_capacity(500);
   assert_eq!(strategy.stash_capacity(), 500);
 }
+
+#[test]
+fn with_decider_creates_strategy_using_dyn_decider() {
+  let strategy = SupervisorStrategy::with_decider(|_| SupervisorDirective::Resume);
+  let error = ActorError::recoverable("test");
+  assert_eq!(strategy.decide(&error), SupervisorDirective::Resume);
+}
+
+#[test]
+fn with_decider_dyn_decider_takes_priority_over_default() {
+  let strategy = SupervisorStrategy::with_decider(|_| SupervisorDirective::Escalate);
+  // default_decider would return Restart for recoverable, but dyn_decider overrides.
+  let error = ActorError::recoverable("test");
+  assert_eq!(strategy.decide(&error), SupervisorDirective::Escalate);
+  // default_decider would return Stop for fatal, but dyn_decider overrides.
+  let fatal = ActorError::fatal("fatal");
+  assert_eq!(strategy.decide(&fatal), SupervisorDirective::Escalate);
+}
+
+#[test]
+fn default_logging_enabled_is_true() {
+  let strategy = SupervisorStrategy::default();
+  assert!(strategy.logging_enabled());
+}
+
+#[test]
+fn default_log_level_is_error() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = SupervisorStrategy::default();
+  assert_eq!(strategy.log_level(), LogLevel::Error);
+}
+
+#[test]
+fn with_logging_enabled_sets_value() {
+  let strategy = SupervisorStrategy::default().with_logging_enabled(false);
+  assert!(!strategy.logging_enabled());
+}
+
+#[test]
+fn with_log_level_sets_value() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = SupervisorStrategy::default().with_log_level(LogLevel::Warn);
+  assert_eq!(strategy.log_level(), LogLevel::Warn);
+}

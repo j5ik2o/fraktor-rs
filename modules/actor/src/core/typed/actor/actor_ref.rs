@@ -10,7 +10,7 @@ use crate::core::{
   error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult},
-  typed::TypedAskResponse,
+  typed::{TypedAskResponse, status_reply::StatusReply},
 };
 
 /// Provides a typed facade over [`ActorRef`].
@@ -83,6 +83,22 @@ where
     let message = build(reply_typed);
     self.inner.tell(AnyMessage::new(message))?;
     Ok(TypedAskResponse::from_generic(AskResponse::new(reply_ref, future)))
+  }
+
+  /// Sends a typed request expecting a [`StatusReply<R>`] response.
+  ///
+  /// This is a convenience wrapper around [`ask`](Self::ask) that constrains the
+  /// reply type to [`StatusReply<R>`]. The returned [`StatusReply`] can be converted
+  /// to `Result<R, StatusReplyError>` via [`into_result()`](StatusReply::into_result).
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be sent.
+  pub fn ask_with_status<R, F>(&mut self, build: F) -> Result<TypedAskResponse<StatusReply<R>>, SendError>
+  where
+    R: Send + Sync + 'static,
+    F: FnOnce(TypedActorRef<StatusReply<R>>) -> M, {
+    self.ask(build)
   }
 
   /// Maps this reference to a different message type without runtime cost.

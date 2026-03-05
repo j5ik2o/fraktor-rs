@@ -33,7 +33,7 @@ use crate::core::{
   },
   props::{ActorFactoryShared, Props},
   spawn::SpawnError,
-  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
+  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::{
     ActorSystem,
     guardian::GuardianKind,
@@ -790,6 +790,13 @@ impl MessageInvoker for ActorCellInvoker {
 }
 
 impl ActorCell {
+  /// Returns the supervisor strategy configuration for this actor.
+  pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
+  }
+
   pub(crate) fn handle_child_failure(
     &self,
     child: Pid,

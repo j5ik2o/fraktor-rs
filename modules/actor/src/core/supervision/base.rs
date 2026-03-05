@@ -2,29 +2,52 @@
 
 use core::time::Duration;
 
+use fraktor_utils_rs::core::sync::ArcShared;
+
 use super::{supervisor_directive::SupervisorDirective, supervisor_strategy_kind::SupervisorStrategyKind};
-use crate::core::{error::ActorError, supervision::restart_statistics::RestartStatistics};
+use crate::core::{error::ActorError, event::logging::LogLevel, supervision::restart_statistics::RestartStatistics};
 
 #[cfg(test)]
 mod tests;
 
 type SupervisorDecider = fn(&ActorError) -> SupervisorDirective;
 
+/// Boxed closure decider supporting type-discriminated supervision chains.
+type DynDecider = ArcShared<dyn Fn(&ActorError) -> SupervisorDirective + Send + Sync>;
+
 const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Supervisor configuration controlling restart policies.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SupervisorStrategy {
-  kind:           SupervisorStrategyKind,
-  max_restarts:   u32,
-  within:         Duration,
-  decider:        SupervisorDecider,
-  stop_children:  bool,
-  stash_capacity: usize,
+  kind:            SupervisorStrategyKind,
+  max_restarts:    u32,
+  within:          Duration,
+  decider:         SupervisorDecider,
+  dyn_decider:     Option<DynDecider>,
+  stop_children:   bool,
+  stash_capacity:  usize,
+  logging_enabled: bool,
+  log_level:       LogLevel,
+}
+
+impl core::fmt::Debug for SupervisorStrategy {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_struct("SupervisorStrategy")
+      .field("kind", &self.kind)
+      .field("max_restarts", &self.max_restarts)
+      .field("within", &self.within)
+      .field("has_dyn_decider", &self.dyn_decider.is_some())
+      .field("stop_children", &self.stop_children)
+      .field("stash_capacity", &self.stash_capacity)
+      .field("logging_enabled", &self.logging_enabled)
+      .field("log_level", &self.log_level)
+      .finish()
+  }
 }
 
 impl SupervisorStrategy {
-  /// Creates a supervisor strategy.
+  /// Creates a supervisor strategy with a function pointer decider.
   #[must_use]
   pub const fn new(
     kind: SupervisorStrategyKind,
@@ -32,12 +55,51 @@ impl SupervisorStrategy {
     within: Duration,
     decider: SupervisorDecider,
   ) -> Self {
-    Self { kind, max_restarts, within, decider, stop_children: true, stash_capacity: DEFAULT_STASH_CAPACITY }
+    Self {
+      kind,
+      max_restarts,
+      within,
+      decider,
+      dyn_decider: None,
+      stop_children: true,
+      stash_capacity: DEFAULT_STASH_CAPACITY,
+      logging_enabled: true,
+      log_level: LogLevel::Error,
+    }
+  }
+
+  /// Creates a supervisor strategy with a closure-based decider.
+  ///
+  /// This allows type-discriminated supervision chains that capture state.
+  #[must_use]
+  pub fn with_decider<F>(decider: F) -> Self
+  where
+    F: Fn(&ActorError) -> SupervisorDirective + Send + Sync + 'static, {
+    const fn default_decider(error: &ActorError) -> SupervisorDirective {
+      match error {
+        | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+        | ActorError::Fatal(_) => SupervisorDirective::Stop,
+      }
+    }
+    Self {
+      kind:            SupervisorStrategyKind::OneForOne,
+      max_restarts:    10,
+      within:          Duration::from_secs(1),
+      decider:         default_decider,
+      dyn_decider:     Some(ArcShared::new(decider)),
+      stop_children:   true,
+      stash_capacity:  DEFAULT_STASH_CAPACITY,
+      logging_enabled: true,
+      log_level:       LogLevel::Error,
+    }
   }
 
   /// Evaluates the supervisor directive for the provided error.
   #[must_use]
   pub fn decide(&self, error: &ActorError) -> SupervisorDirective {
+    if let Some(ref dyn_decider) = self.dyn_decider {
+      return dyn_decider(error);
+    }
     (self.decider)(error)
   }
 
@@ -117,6 +179,32 @@ impl SupervisorStrategy {
   #[must_use]
   pub const fn with_stash_capacity(mut self, stash_capacity: usize) -> Self {
     self.stash_capacity = stash_capacity;
+    self
+  }
+
+  /// Returns whether failure logging is enabled.
+  #[must_use]
+  pub const fn logging_enabled(&self) -> bool {
+    self.logging_enabled
+  }
+
+  /// Returns the log level used for failure events.
+  #[must_use]
+  pub const fn log_level(&self) -> LogLevel {
+    self.log_level
+  }
+
+  /// Sets whether failure logging is enabled.
+  #[must_use]
+  pub const fn with_logging_enabled(mut self, enabled: bool) -> Self {
+    self.logging_enabled = enabled;
+    self
+  }
+
+  /// Sets the log level for failure events.
+  #[must_use]
+  pub const fn with_log_level(mut self, level: LogLevel) -> Self {
+    self.log_level = level;
     self
   }
 }

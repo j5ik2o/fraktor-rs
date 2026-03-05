@@ -2,6 +2,8 @@
 
 use core::time::Duration;
 
+use crate::core::event::logging::LogLevel;
+
 #[cfg(test)]
 mod tests;
 
@@ -14,13 +16,17 @@ const DEFAULT_STASH_CAPACITY: usize = 1000;
 /// [`compute_backoff_with_jitter`](Self::compute_backoff_with_jitter).
 #[derive(Clone, Debug)]
 pub struct BackoffSupervisorStrategy {
-  min_backoff:         Duration,
-  max_backoff:         Duration,
-  random_factor:       f64,
-  reset_backoff_after: Duration,
-  max_restarts:        u32,
-  stop_children:       bool,
-  stash_capacity:      usize,
+  min_backoff:              Duration,
+  max_backoff:              Duration,
+  random_factor:            f64,
+  reset_backoff_after:      Duration,
+  max_restarts:             u32,
+  stop_children:            bool,
+  stash_capacity:           usize,
+  logging_enabled:          bool,
+  log_level:                LogLevel,
+  critical_log_level:       LogLevel,
+  critical_log_level_after: u32,
 }
 
 impl BackoffSupervisorStrategy {
@@ -45,6 +51,10 @@ impl BackoffSupervisorStrategy {
       max_restarts: 0,
       stop_children: true,
       stash_capacity: DEFAULT_STASH_CAPACITY,
+      logging_enabled: true,
+      log_level: LogLevel::Error,
+      critical_log_level: LogLevel::Error,
+      critical_log_level_after: 0,
     }
   }
 
@@ -145,6 +155,68 @@ impl BackoffSupervisorStrategy {
   #[must_use]
   pub const fn stash_capacity(&self) -> usize {
     self.stash_capacity
+  }
+
+  /// Returns whether failure logging is enabled.
+  #[must_use]
+  pub const fn logging_enabled(&self) -> bool {
+    self.logging_enabled
+  }
+
+  /// Returns the log level used for failure events.
+  #[must_use]
+  pub const fn log_level(&self) -> LogLevel {
+    self.log_level
+  }
+
+  /// Returns the critical log level applied after a threshold of errors.
+  #[must_use]
+  pub const fn critical_log_level(&self) -> LogLevel {
+    self.critical_log_level
+  }
+
+  /// Returns the error count threshold after which the critical log level is used.
+  #[must_use]
+  pub const fn critical_log_level_after(&self) -> u32 {
+    self.critical_log_level_after
+  }
+
+  /// Returns the effective log level for the given error count.
+  ///
+  /// When `critical_log_level_after` is non-zero and `error_count` exceeds that threshold,
+  /// the critical log level is returned instead of the normal log level.
+  #[must_use]
+  pub const fn effective_log_level(&self, error_count: u32) -> LogLevel {
+    if self.critical_log_level_after > 0 && error_count >= self.critical_log_level_after {
+      self.critical_log_level
+    } else {
+      self.log_level
+    }
+  }
+
+  /// Sets whether failure logging is enabled.
+  #[must_use]
+  pub const fn with_logging_enabled(mut self, enabled: bool) -> Self {
+    self.logging_enabled = enabled;
+    self
+  }
+
+  /// Sets the log level for failure events.
+  #[must_use]
+  pub const fn with_log_level(mut self, level: LogLevel) -> Self {
+    self.log_level = level;
+    self
+  }
+
+  /// Sets the critical log level and the error count threshold after which it is applied.
+  ///
+  /// When the number of consecutive errors reaches `after_errors`, subsequent failures
+  /// are logged at `level` instead of the normal log level.
+  #[must_use]
+  pub const fn with_critical_log_level(mut self, level: LogLevel, after_errors: u32) -> Self {
+    self.critical_log_level = level;
+    self.critical_log_level_after = after_errors;
+    self
   }
 }
 
