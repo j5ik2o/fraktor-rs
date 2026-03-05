@@ -176,6 +176,16 @@ impl ActorContext<'_> {
     self.system.children(self.pid)
   }
 
+  /// Returns the child with the specified name, if present.
+  #[must_use]
+  pub fn child(&self, name: &str) -> Option<ChildRef> {
+    let state = self.system.state();
+    state.child_pids(self.pid).into_iter().find_map(|pid| {
+      let cell = state.cell(&pid)?;
+      if cell.name() == name { Some(ChildRef::new(cell.actor_ref(), state.clone())) } else { None }
+    })
+  }
+
   /// Sends a stop signal to the specified child.
   ///
   /// # Errors

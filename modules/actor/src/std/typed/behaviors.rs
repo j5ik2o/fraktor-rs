@@ -1,12 +1,38 @@
 //! Std-specific typed behavior helpers that wrap the core DSL.
 
+#[cfg(test)]
+mod tests;
+
+use alloc::boxed::Box;
+
 use crate::{
   core::{
     error::ActorError,
-    typed::{BehaviorSignal, Behaviors as CoreBehaviors, actor::TypedActorContext as CoreTypedActorContext},
+    typed::{
+      BehaviorInterceptor, BehaviorSignal, Behaviors as CoreBehaviors,
+      actor::TypedActorContext as CoreTypedActorContext,
+    },
   },
   std::typed::{Behavior, StashBuffer, Supervise, actor::TypedActorContext},
 };
+
+/// Interceptor that logs every received message via `tracing::debug!`.
+struct LogMessagesInterceptor;
+
+impl<M> BehaviorInterceptor<M, M> for LogMessagesInterceptor
+where
+  M: Send + Sync + core::fmt::Debug + 'static,
+{
+  fn around_receive(
+    &mut self,
+    ctx: &mut CoreTypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(&mut CoreTypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    tracing::debug!(actor = %ctx.pid(), ?message, "received message");
+    target(ctx, message)
+  }
+}
 
 /// Provides Pekko-inspired helpers that operate on std typed contexts.
 pub struct Behaviors;
@@ -109,6 +135,19 @@ impl Behaviors {
   where
     M: Send + Sync + 'static, {
     CoreBehaviors::supervise(behavior)
+  }
+
+  /// Wraps a behavior so that every received message is logged via
+  /// `tracing::debug!`.
+  ///
+  /// This mirrors Pekko's `Behaviors.logMessages`. The message type must
+  /// implement [`Debug`](core::fmt::Debug) so it can be formatted in the log
+  /// output.
+  pub fn log_messages<M, F>(behavior_factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + core::fmt::Debug + 'static,
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    CoreBehaviors::intercept(|| Box::new(LogMessagesInterceptor), behavior_factory)
   }
 }
 

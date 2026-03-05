@@ -15,7 +15,10 @@ use crate::core::{
   dead_letter::DeadLetterReason,
   error::ActorError,
   messaging::AnyMessage,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{
+    BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
+    SupervisorStrategyKind,
+  },
   typed::{
     Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
     actor::{TypedActor, TypedActorContext, TypedActorRef},
@@ -636,6 +639,43 @@ fn behaviors_supervise_stops_children() {
   }
 
   system.terminate().expect("terminate");
+}
+
+#[test]
+fn backoff_strategy_via_supervise_on_failure() {
+  let start_counter = Arc::new(AtomicUsize::new(0));
+  let child = child_props(&start_counter);
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(1), 0.2);
+  let parent_props = TypedProps::from_behavior_factory(move || {
+    let behavior = supervised_parent_behavior(child.clone());
+    Behaviors::supervise(behavior).on_failure(backoff.clone())
+  });
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let mut parent = system.user_guardian_ref();
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash");
+
+  // Backoff strategy should restart the child on recoverable error.
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+  assert!(start_counter.load(Ordering::SeqCst) >= 2);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn backoff_strategy_stores_config_in_behavior() {
+  let backoff = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(1), 0.2);
+  let behavior: Behavior<ChildCommand> =
+    Behaviors::supervise(Behaviors::receive_message(|_ctx, _msg: &ChildCommand| Ok(Behaviors::same())))
+      .on_failure(backoff);
+  // Verify the behavior holds a Backoff config variant.
+  let config = behavior.supervisor_override().expect("supervisor override must be set");
+  assert!(matches!(config, SupervisorStrategyConfig::Backoff(_)));
 }
 
 fn adapter_counter_behavior(slot: &Arc<NoStdMutex<Option<TypedActorRef<String>>>>) -> Behavior<AdapterCounterCommand> {

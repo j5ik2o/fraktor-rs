@@ -373,3 +373,43 @@ fn spawn_child_watched_installs_watch() {
 
   assert!(child_cell.watchers_snapshot().contains(&parent_pid));
 }
+
+#[test]
+fn actor_context_child_by_name_returns_matching_child() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "parent", &props);
+  let context = ActorContext::new(&system, parent_pid);
+  let child_props = Props::from_fn(|| TestActor);
+
+  let child = context.spawn_child(&child_props).expect("spawn child");
+  let found = context.child(system.state().cell(&child.pid()).expect("cell").name());
+  assert!(found.is_some());
+  assert_eq!(found.unwrap().pid(), child.pid());
+}
+
+#[test]
+fn actor_context_child_by_name_returns_none_for_unknown() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "parent", &props);
+  let context = ActorContext::new(&system, parent_pid);
+
+  assert!(context.child("nonexistent").is_none());
+}
+
+#[test]
+fn actor_context_stop_child_sends_stop_signal() {
+  let system = ActorSystem::new_empty();
+  let parent_pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _parent = register_cell(&system, parent_pid, "parent", &props);
+  let context = ActorContext::new(&system, parent_pid);
+  let child_props = Props::from_fn(|| TestActor);
+
+  let child = context.spawn_child(&child_props).expect("spawn child");
+  let result = context.stop_child(&child);
+  assert!(result.is_ok());
+}

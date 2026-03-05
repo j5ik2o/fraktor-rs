@@ -1,9 +1,12 @@
 extern crate std;
-use std::ops::{Deref, DerefMut};
+use std::{
+  ops::{Deref, DerefMut},
+  vec::Vec,
+};
 
 use crate::{
   core::{
-    actor::Pid,
+    actor::{ChildRef, Pid},
     error::SendError,
     spawn::SpawnError,
     typed::{TypedActorSystem, actor::TypedActorContext as CoreTypedActorContext},
@@ -102,6 +105,40 @@ where
   /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError> {
     self.inner.stop_self()
+  }
+
+  /// Stops the specified typed child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_child<C>(&self, child: &TypedChildRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner.stop_child(child.as_core())
+  }
+
+  /// Stops the actor identified by the provided typed actor reference.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_child_by_ref<C>(&self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner.stop_child_by_ref(actor_ref.as_core())
+  }
+
+  /// Returns the list of supervised children.
+  #[must_use]
+  pub fn children(&self) -> Vec<ChildRef> {
+    self.inner.children()
+  }
+
+  /// Returns the child with the specified name, if present.
+  #[must_use]
+  pub fn child(&self, name: &str) -> Option<ChildRef> {
+    self.inner.child(name)
   }
 
   /// Creates a fluent builder for registering a typed message adapter.

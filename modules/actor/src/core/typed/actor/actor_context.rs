@@ -1,9 +1,10 @@
 //! Typed actor context wrapper.
 
+use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
 use crate::core::{
-  actor::{ActorContext, Pid, PipeSpawnError},
+  actor::{ActorContext, ChildRef, Pid, PipeSpawnError},
   error::{ActorError, SendError},
   messaging::AnyMessage,
   spawn::SpawnError,
@@ -141,6 +142,40 @@ where
   /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError> {
     self.inner().stop_self()
+  }
+
+  /// Stops the specified typed child actor.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_child<C>(&self, child: &TypedChildRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner().stop_child(child.as_untyped())
+  }
+
+  /// Stops the actor identified by the provided typed actor reference.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop signal cannot be sent.
+  pub fn stop_child_by_ref<C>(&self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner().system().stop_actor(actor_ref.as_untyped().pid())
+  }
+
+  /// Returns the list of supervised children.
+  #[must_use]
+  pub fn children(&self) -> Vec<ChildRef> {
+    self.inner().children()
+  }
+
+  /// Returns the child with the specified name, if present.
+  #[must_use]
+  pub fn child(&self, name: &str) -> Option<ChildRef> {
+    self.inner().child(name)
   }
 
   /// Stashes the currently processed message for deferred handling.
