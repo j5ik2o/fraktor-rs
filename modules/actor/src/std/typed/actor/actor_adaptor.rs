@@ -2,7 +2,7 @@ extern crate std;
 
 use crate::{
   core::{
-    actor::Pid, error::ActorError, supervision::SupervisorStrategy,
+    actor::Pid, error::ActorError, supervision::SupervisorStrategyConfig,
     typed::actor::TypedActorContext as CoreTypedActorContext,
   },
   std::typed::actor::{TypedActor, TypedActorContext as StdTypedActorContext},
@@ -47,7 +47,7 @@ where
     self.inner.on_terminated(&mut wrapped_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, core_ctx: &mut CoreTypedActorContext<'_, M>) -> SupervisorStrategyConfig {
     let mut wrapped_ctx = StdTypedActorContext::from_core_mut(core_ctx);
     self.inner.supervisor_strategy(&mut wrapped_ctx)
   }

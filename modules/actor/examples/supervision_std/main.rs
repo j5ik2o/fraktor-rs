@@ -14,7 +14,7 @@ use fraktor_actor_rs::{
   core::{
     error::ActorError,
     event::logging::{LogEvent, LogLevel, LoggerWriter},
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
   std::{
     actor::{Actor, ActorContext},
@@ -128,11 +128,12 @@ impl Actor for GuardianActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, CoreDuration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
     })
+    .into()
   }
 }
 

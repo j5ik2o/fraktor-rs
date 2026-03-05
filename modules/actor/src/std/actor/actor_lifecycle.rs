@@ -1,6 +1,6 @@
 use super::ActorContext;
 use crate::{
-  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategy},
+  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategyConfig},
   std::messaging::AnyMessageView,
 };
 
@@ -61,7 +61,7 @@ pub trait Actor: Send {
   ///
   /// # Default Implementation
   ///
-  /// Returns `SupervisorStrategy::default()` which provides a conservative restart policy:
+  /// Returns `SupervisorStrategyConfig::default()` which provides a conservative restart policy:
   /// - Strategy kind: OneForOne (only restart the failed child)
   /// - Maximum restarts: 10 times
   /// - Time window: 1 second
@@ -81,10 +81,10 @@ pub trait Actor: Send {
   ///
   /// # See Also
   ///
-  /// - [`SupervisorStrategy`] for available strategies
+  /// - [`SupervisorStrategyConfig`] for available strategies
   /// - [`SupervisorDirective`] for failure handling options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategy {
-    SupervisorStrategy::default()
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
+    SupervisorStrategyConfig::default()
   }
 }

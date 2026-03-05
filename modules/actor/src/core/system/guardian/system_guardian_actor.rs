@@ -6,7 +6,7 @@ use crate::core::{
   actor::{Actor, ActorContext, Pid, actor_ref::ActorRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::guardian::SystemGuardianProtocol,
 };
 
@@ -137,9 +137,10 @@ impl Actor for SystemGuardianActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_error| {
       SupervisorDirective::Stop
     })
+    .into()
   }
 }

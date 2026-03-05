@@ -16,7 +16,7 @@ use fraktor_actor_rs::core::{
   lifecycle::LifecycleStage,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -161,6 +161,40 @@ fn panic_propagates_without_intervention() {
   }));
 
   assert!(result.is_err());
+}
+
+#[test]
+fn resume_directive_continues_child_without_restart() {
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(NoStdMutex::new(None));
+
+  let props = Props::from_fn({
+    let log = log.clone();
+    let child_slot = child_slot.clone();
+    move || ResumeGuardian::new(log.clone(), child_slot.clone())
+  });
+
+  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+
+  let mut child = child_slot.lock().clone().expect("child");
+  assert_eq!(*log.lock(), vec!["child_pre_start"]);
+
+  child.tell(AnyMessage::new(TriggerRecoverable)).expect("recoverable");
+
+  // When Resume is used, the child should NOT be restarted. That means:
+  // - pre_start is NOT called again (no second "child_pre_start")
+  // - post_stop is NOT called (no "child_post_stop")
+  // Wait briefly, then verify the log contains exactly one pre_start and one fail,
+  // without any restart lifecycle events.
+  wait_until(|| log.lock().contains(&"child_fail"), Duration::from_millis(100));
+
+  let entries = log.lock().clone();
+  assert_eq!(entries.iter().filter(|e| **e == "child_pre_start").count(), 1);
+  assert!(!entries.contains(&"child_post_stop"));
 }
 
 fn wait_until(condition: impl Fn() -> bool, timeout: Duration) {
@@ -333,11 +367,12 @@ impl Actor for SupervisorActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Escalate,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
     })
+    .into()
   }
 }
 
@@ -358,6 +393,66 @@ impl Actor for PanicGuardian {
       let child = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child);
     }
+    Ok(())
+  }
+}
+
+struct ResumeGuardian {
+  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
+  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+}
+
+impl ResumeGuardian {
+  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+    Self { log, child_slot }
+  }
+}
+
+impl Actor for ResumeGuardian {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_some() && self.child_slot.lock().is_none() {
+      let log = self.log.clone();
+      let child_props = Props::from_fn(move || ResumeChild::new(log.clone()));
+      let child = ctx.spawn_child(&child_props).map_err(|_| ActorError::recoverable("spawn failed"))?;
+      self.child_slot.lock().replace(child);
+    }
+    Ok(())
+  }
+
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, Duration::from_secs(5), |_| {
+      SupervisorDirective::Resume
+    })
+    .into()
+  }
+}
+
+struct ResumeChild {
+  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl ResumeChild {
+  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+    Self { log }
+  }
+}
+
+impl Actor for ResumeChild {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    self.log.lock().push("child_pre_start");
+    Ok(())
+  }
+
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<TriggerRecoverable>().is_some() {
+      self.log.lock().push("child_fail");
+      return Err(ActorError::recoverable("recoverable error"));
+    }
+    Ok(())
+  }
+
+  fn post_stop(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    self.log.lock().push("child_post_stop");
     Ok(())
   }
 }

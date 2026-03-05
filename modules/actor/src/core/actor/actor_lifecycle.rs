@@ -10,7 +10,7 @@ use crate::core::{
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::ActorError,
   messaging::AnyMessageView,
-  supervision::SupervisorStrategy,
+  supervision::SupervisorStrategyConfig,
 };
 
 /// Defines the lifecycle hooks that every actor must implement.
@@ -83,7 +83,7 @@ pub trait Actor: Send {
   ///
   /// # Default Implementation
   ///
-  /// Returns `SupervisorStrategy::default()` which provides a conservative restart policy:
+  /// Returns `SupervisorStrategyConfig::default()` which provides a conservative restart policy:
   /// - Strategy kind: OneForOne (only restart the failed child)
   /// - Maximum restarts: 10 times
   /// - Time window: 1 second
@@ -103,7 +103,9 @@ pub trait Actor: Send {
   ///   actor::{Actor, ActorContext},
   ///   error::ActorError,
   ///   messaging::AnyMessageView,
-  ///   supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  ///   supervision::{
+  ///     SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
+  ///   },
   /// };
   /// use fraktor_utils_rs::core::sync::NoStdMutex;
   ///
@@ -120,7 +122,7 @@ pub trait Actor: Send {
   ///     Ok(())
   ///   }
   ///
-  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
   ///     if self.consecutive_errors > 10 {
   ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(
@@ -129,9 +131,10 @@ pub trait Actor: Send {
   ///         Duration::from_secs(0),
   ///         |_| SupervisorDirective::Stop,
   ///       )
+  ///       .into()
   ///     } else {
   ///       // Normal operation: allow retries
-  ///       SupervisorStrategy::default()
+  ///       SupervisorStrategyConfig::default()
   ///     }
   ///   }
   /// }
@@ -146,12 +149,12 @@ pub trait Actor: Send {
   ///
   /// # See Also
   ///
-  /// - [`SupervisorStrategy`] for available strategies
+  /// - [`SupervisorStrategyConfig`] for available strategies
   /// - [`SupervisorDirective`](crate::core::supervision::SupervisorDirective) for failure handling
   ///   options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
-    SupervisorStrategy::default()
+  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    SupervisorStrategyConfig::default()
   }
 
   /// Called before the actor is restarted by its supervisor.
@@ -208,7 +211,7 @@ where
     (**self).on_mailbox_pressure(ctx, event)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     (**self).supervisor_strategy(ctx)
   }
 

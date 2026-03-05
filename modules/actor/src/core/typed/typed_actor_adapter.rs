@@ -12,7 +12,7 @@ use crate::core::{
   event::logging::LogLevel,
   messaging::{AnyMessage, AnyMessageView},
   scheduler::SchedulerCommand,
-  supervision::SupervisorStrategy,
+  supervision::SupervisorStrategyConfig,
   typed::{
     actor::{TypedActor, TypedActorContext},
     message_adapter::{
@@ -227,7 +227,7 @@ where
     self.actor.on_terminated(&mut typed_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.supervisor_strategy(&mut typed_ctx)
   }

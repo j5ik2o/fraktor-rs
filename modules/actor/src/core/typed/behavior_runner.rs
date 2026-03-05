@@ -5,7 +5,7 @@ use alloc::string::ToString;
 use crate::core::{
   error::{ActorError, ActorErrorReason},
   event::stream::EventStreamEvent,
-  supervision::SupervisorStrategy,
+  supervision::SupervisorStrategyConfig,
   typed::{
     UnhandledMessageEvent,
     actor::{TypedActor, TypedActorContext},
@@ -23,7 +23,7 @@ pub(crate) struct BehaviorRunner<M>
 where
   M: Send + Sync + 'static, {
   current:    Behavior<M>,
-  supervisor: Option<SupervisorStrategy>,
+  supervisor: Option<SupervisorStrategyConfig>,
   stopping:   bool,
 }
 
@@ -37,7 +37,7 @@ where
     Self { current: initial, supervisor, stopping: false }
   }
 
-  const fn update_supervisor_override(&mut self, strategy: Option<SupervisorStrategy>) {
+  const fn update_supervisor_override(&mut self, strategy: Option<SupervisorStrategyConfig>) {
     if let Some(strategy) = strategy {
       self.supervisor = Some(strategy);
     }
@@ -139,7 +139,7 @@ where
     self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })
   }
 
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
     self.supervisor.clone().unwrap_or_default()
   }
 

@@ -4,7 +4,7 @@ use crate::core::{
   actor::Pid,
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
   error::{ActorError, ActorErrorReason},
-  supervision::SupervisorStrategy,
+  supervision::SupervisorStrategyConfig,
   typed::{actor::actor_context::TypedActorContext, message_adapter::AdapterError},
 };
 
@@ -51,8 +51,8 @@ where
 
   /// Provides the supervision strategy for this typed actor.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategy {
-    SupervisorStrategy::default()
+  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
+    SupervisorStrategyConfig::default()
   }
 
   /// Called when this actor's mailbox reaches high pressure while messages are queued.
