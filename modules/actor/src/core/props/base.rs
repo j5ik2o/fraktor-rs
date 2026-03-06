@@ -13,14 +13,14 @@ use crate::core::{
 
 /// Immutable configuration describing how to construct an actor.
 pub struct Props {
-  factory:                   ActorFactoryShared,
-  name:                      Option<String>,
-  mailbox_config:            MailboxConfig,
-  mailbox_id:                Option<String>,
-  middleware:                Vec<String>,
-  dispatcher_config:         DispatcherConfig,
-  dispatcher_id:             Option<String>,
-  dispatcher_custom:         bool,
+  factory: ActorFactoryShared,
+  name: Option<String>,
+  mailbox_config: MailboxConfig,
+  mailbox_id: Option<String>,
+  middleware: Vec<String>,
+  dispatcher_config: DispatcherConfig,
+  dispatcher_id: Option<String>,
+  dispatcher_custom: bool,
   dispatcher_same_as_parent: bool,
 }
 
@@ -29,14 +29,14 @@ impl Props {
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory>) -> Self {
     Self {
-      factory:                   ActorFactoryShared::new(factory),
-      name:                      None,
-      mailbox_config:            MailboxConfig::default(),
-      mailbox_id:                None,
-      middleware:                Vec::new(),
-      dispatcher_config:         DispatcherConfig::default(),
-      dispatcher_id:             None,
-      dispatcher_custom:         false,
+      factory: ActorFactoryShared::new(factory),
+      name: None,
+      mailbox_config: MailboxConfig::default(),
+      mailbox_id: None,
+      middleware: Vec::new(),
+      dispatcher_config: DispatcherConfig::default(),
+      dispatcher_id: None,
+      dispatcher_custom: false,
       dispatcher_same_as_parent: false,
     }
   }
@@ -207,14 +207,14 @@ impl Props {
 impl Clone for Props {
   fn clone(&self) -> Self {
     Self {
-      factory:                   self.factory.clone(),
-      name:                      self.name.clone(),
-      mailbox_config:            self.mailbox_config,
-      mailbox_id:                self.mailbox_id.clone(),
-      middleware:                self.middleware.clone(),
-      dispatcher_config:         self.dispatcher_config.clone(),
-      dispatcher_id:             self.dispatcher_id.clone(),
-      dispatcher_custom:         self.dispatcher_custom,
+      factory: self.factory.clone(),
+      name: self.name.clone(),
+      mailbox_config: self.mailbox_config,
+      mailbox_id: self.mailbox_id.clone(),
+      middleware: self.middleware.clone(),
+      dispatcher_config: self.dispatcher_config.clone(),
+      dispatcher_id: self.dispatcher_id.clone(),
+      dispatcher_custom: self.dispatcher_custom,
       dispatcher_same_as_parent: self.dispatcher_same_as_parent,
     }
   }

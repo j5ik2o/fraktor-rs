@@ -80,19 +80,19 @@ impl ActorCellState {
 /// }
 /// ```
 pub struct ActorCell {
-  pid:        Pid,
-  parent:     Option<Pid>,
-  name:       String,
-  system:     SystemStateWeak,
-  factory:    ActorFactoryShared,
-  actor:      ActorShared,
-  pipeline:   MessageInvokerPipeline,
-  mailbox:    ArcShared<Mailbox>,
+  pid:               Pid,
+  parent:            Option<Pid>,
+  name:              String,
+  system:            SystemStateWeak,
+  factory:           ActorFactoryShared,
+  actor:             ActorShared,
+  pipeline:          MessageInvokerPipeline,
+  mailbox:           ArcShared<Mailbox>,
   dispatcher_config: DispatcherConfig,
-  dispatcher: DispatcherShared,
-  sender:     ActorRefSenderShared,
-  state:      RuntimeMutex<ActorCellState>,
-  terminated: AtomicBool,
+  dispatcher:        DispatcherShared,
+  sender:            ActorRefSenderShared,
+  state:             RuntimeMutex<ActorCellState>,
+  terminated:        AtomicBool,
 }
 
 unsafe impl Send for ActorCell {}
