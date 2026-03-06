@@ -13,14 +13,15 @@ use crate::core::{
 
 /// Immutable configuration describing how to construct an actor.
 pub struct Props {
-  factory:           ActorFactoryShared,
-  name:              Option<String>,
-  mailbox_config:    MailboxConfig,
-  mailbox_id:        Option<String>,
-  middleware:        Vec<String>,
-  dispatcher_config: DispatcherConfig,
-  dispatcher_id:     Option<String>,
-  dispatcher_custom: bool,
+  factory:                   ActorFactoryShared,
+  name:                      Option<String>,
+  mailbox_config:            MailboxConfig,
+  mailbox_id:                Option<String>,
+  middleware:                Vec<String>,
+  dispatcher_config:         DispatcherConfig,
+  dispatcher_id:             Option<String>,
+  dispatcher_custom:         bool,
+  dispatcher_same_as_parent: bool,
 }
 
 impl Props {
@@ -28,14 +29,15 @@ impl Props {
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory>) -> Self {
     Self {
-      factory:           ActorFactoryShared::new(factory),
-      name:              None,
-      mailbox_config:    MailboxConfig::default(),
-      mailbox_id:        None,
-      middleware:        Vec::new(),
-      dispatcher_config: DispatcherConfig::default(),
-      dispatcher_id:     None,
-      dispatcher_custom: false,
+      factory:                   ActorFactoryShared::new(factory),
+      name:                      None,
+      mailbox_config:            MailboxConfig::default(),
+      mailbox_id:                None,
+      middleware:                Vec::new(),
+      dispatcher_config:         DispatcherConfig::default(),
+      dispatcher_id:             None,
+      dispatcher_custom:         false,
+      dispatcher_same_as_parent: false,
     }
   }
 
@@ -101,6 +103,12 @@ impl Props {
     self.dispatcher_custom
   }
 
+  /// Returns true when the dispatcher should be inherited from the parent actor.
+  #[must_use]
+  pub(crate) const fn dispatcher_same_as_parent(&self) -> bool {
+    self.dispatcher_same_as_parent
+  }
+
   /// Returns the configured dispatcher identifier, if any.
   #[must_use]
   pub fn dispatcher_id(&self) -> Option<&str> {
@@ -138,6 +146,7 @@ impl Props {
     self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
+    self.dispatcher_same_as_parent = false;
     self
   }
 
@@ -146,6 +155,16 @@ impl Props {
   pub fn with_dispatcher_id(mut self, id: impl Into<String>) -> Self {
     self.dispatcher_id = Some(id.into());
     self.dispatcher_custom = false;
+    self.dispatcher_same_as_parent = false;
+    self
+  }
+
+  /// Uses the same dispatcher configuration as the parent actor.
+  #[must_use]
+  pub fn with_dispatcher_same_as_parent(mut self) -> Self {
+    self.dispatcher_id = None;
+    self.dispatcher_custom = false;
+    self.dispatcher_same_as_parent = true;
     self
   }
 
@@ -175,6 +194,7 @@ impl Props {
     self.dispatcher_config = dispatcher_config;
     self.dispatcher_id = None;
     self.dispatcher_custom = true;
+    self.dispatcher_same_as_parent = false;
     self
   }
 
@@ -187,14 +207,15 @@ impl Props {
 impl Clone for Props {
   fn clone(&self) -> Self {
     Self {
-      factory:           self.factory.clone(),
-      name:              self.name.clone(),
-      mailbox_config:    self.mailbox_config,
-      mailbox_id:        self.mailbox_id.clone(),
-      middleware:        self.middleware.clone(),
-      dispatcher_config: self.dispatcher_config.clone(),
-      dispatcher_id:     self.dispatcher_id.clone(),
-      dispatcher_custom: self.dispatcher_custom,
+      factory:                   self.factory.clone(),
+      name:                      self.name.clone(),
+      mailbox_config:            self.mailbox_config,
+      mailbox_id:                self.mailbox_id.clone(),
+      middleware:                self.middleware.clone(),
+      dispatcher_config:         self.dispatcher_config.clone(),
+      dispatcher_id:             self.dispatcher_id.clone(),
+      dispatcher_custom:         self.dispatcher_custom,
+      dispatcher_same_as_parent: self.dispatcher_same_as_parent,
     }
   }
 }

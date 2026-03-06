@@ -483,6 +483,25 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 }
 
 #[test]
+fn spawn_child_same_as_parent_inherits_dispatcher_executor() {
+  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher("noop", noop_config));
+
+  let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
+  let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
+
+  let child_props = Props::from_fn(|| TestActor).with_dispatcher_same_as_parent();
+  let child = system.spawn_with_parent(Some(parent.pid()), &child_props).expect("child spawn succeeds");
+
+  let parent_cell = system.state().cell(&parent.pid()).expect("parent cell");
+  let child_cell = system.state().cell(&child.pid()).expect("child cell");
+  let parent_executor = parent_cell.dispatcher_config().executor();
+  let child_executor = child_cell.dispatcher_config().executor();
+
+  assert!(ArcShared::ptr_eq(&parent_executor, &child_executor));
+}
+
+#[test]
 fn spawn_succeeds_even_if_pre_start_fails() {
   let system = ActorSystem::new_empty();
   let props = Props::from_fn(|| FailingStartActor);

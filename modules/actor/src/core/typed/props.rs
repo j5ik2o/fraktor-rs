@@ -54,15 +54,6 @@ where
     Self { props, marker: PhantomData }
   }
 
-  /// Backwards-compatible alias for [`TypedProps::new`].
-  #[must_use]
-  pub fn from_factory<F, A>(factory: F) -> Self
-  where
-    F: Fn() -> A + Send + Sync + 'static,
-    A: TypedActor<M> + 'static, {
-    Self::new(factory)
-  }
-
   /// Wraps existing props after applying an external typed conversion.
   #[must_use]
   pub const fn from_props(props: Props) -> Self {
@@ -93,7 +84,7 @@ where
     match selector {
       | DispatcherSelector::Default => self,
       | DispatcherSelector::FromConfig(id) => self.map_props(|p| p.with_dispatcher_id(id)),
-      | DispatcherSelector::SameAsParent => self,
+      | DispatcherSelector::SameAsParent => self.map_props(|p| p.with_dispatcher_same_as_parent()),
       | DispatcherSelector::Blocking => {
         self.map_props(|p| p.with_dispatcher_id(crate::core::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID))
       },
