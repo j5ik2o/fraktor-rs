@@ -123,9 +123,9 @@ clean_stale_lint_targets() {
 run_cargo() {
   local -a cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    cmd=(cargo "+${DEFAULT_TOOLCHAIN}" "$@")
+    cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v "$@")
   else
-    cmd=(cargo "$@")
+    cmd=(cargo -v "$@")
   fi
 
   if ! "${cmd[@]}"; then
@@ -262,9 +262,9 @@ ensure_dylint_installed() {
 
   local -a install_cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" install cargo-dylint --locked --version "${desired_version}")
+    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v install cargo-dylint --locked --version "${desired_version}")
   else
-    install_cmd=(cargo install cargo-dylint --locked --version "${desired_version}")
+    install_cmd=(cargo -v install cargo-dylint --locked --version "${desired_version}")
   fi
 
   if [[ -n "${current_version}" ]]; then
@@ -283,11 +283,11 @@ ensure_dylint_installed() {
 
 run_lint() {
   if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} fmt -- --check"
-    cargo "+${FMT_TOOLCHAIN}" fmt --all -- --check || return 1
+    log_step "cargo +${FMT_TOOLCHAIN} -v fmt -- --check"
+    cargo "+${FMT_TOOLCHAIN}" -v fmt --all -- --check || return 1
   else
-    log_step "cargo fmt -- --check"
-    cargo fmt --all -- --check || return 1
+    log_step "cargo -v fmt -- --check"
+    cargo -v fmt --all -- --check || return 1
   fi
 }
 
@@ -458,11 +458,11 @@ run_dylint() {
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
 
-    log_step "cargo build --manifest-path ${lint_path}/Cargo.toml --release"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    log_step "cargo -v build --manifest-path ${lint_path}/Cargo.toml --release"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
 
-    log_step "cargo test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    log_step "cargo -v test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -678,25 +678,13 @@ run_no_std() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc"
   run_cargo check -p fraktor-utils-rs --no-default-features --features alloc || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
-  run_cargo check -p fraktor-actor-rs --no-default-features || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features"
-  run_cargo check -p fraktor-streams-rs --no-default-features || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
-  run_cargo check -p fraktor-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features"
+  run_cargo check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
   if ensure_target_installed "${thumb_target}"; then
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc --target ${thumb_target}"
-    run_cargo check -p fraktor-utils-rs --no-default-features --features alloc --target "${thumb_target}" || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features --target ${thumb_target}"
-    run_cargo check -p fraktor-actor-rs --no-default-features --target "${thumb_target}" || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features --target ${thumb_target}"
-    run_cargo check -p fraktor-streams-rs --no-default-features --target "${thumb_target}" || return 1
+    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target ${thumb_target} -F fraktor-utils-rs/alloc"
+    run_cargo check -p fraktor-utils-rs -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc || return 1
   fi
 }
 
@@ -704,14 +692,8 @@ run_std() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs"
   run_cargo test -p fraktor-utils-rs || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --lib"
-  run_cargo test -p fraktor-actor-rs --lib || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-streams-rs --lib --features std"
-  run_cargo test -p fraktor-streams-rs --lib --features std || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
-  run_cargo test -p fraktor-rs --lib || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std"
+  run_cargo test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std || return 1
 }
 
 run_doc_tests() {
@@ -831,18 +813,18 @@ PY
     local -a cargo_args=(run --package "${package_name}" --example "${example_name}")
     if [[ -n "${features}" ]]; then
       cargo_args+=(--features "${features}")
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --features ${features}"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name} --features ${features}"
     else
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name}"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name}"
     fi
     if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
+      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" -v "${cargo_args[@]}" \
         || {
           rm -f "${example_file}"
           return 1
         }
     else
-      RUSTFLAGS="${rustflags_value}" cargo "${cargo_args[@]}" \
+      RUSTFLAGS="${rustflags_value}" cargo -v "${cargo_args[@]}" \
         || {
           rm -f "${example_file}"
           return 1
