@@ -30,6 +30,8 @@ if [[ -n "${RUSTUP_TOOLCHAIN:-}" && "${RUSTUP_TOOLCHAIN}" != "${PINNED_TOOLCHAIN
 fi
 export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
+CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+export CARGO_BUILD_JOBS
 
 usage() {
   cat <<'EOF'
@@ -50,7 +52,7 @@ usage() {
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 
 環境変数:
-  CARGO_BUILD_JOBS            : cargo の並列ジョブ数（例: 8）
+  CARGO_BUILD_JOBS            : cargo の並列ジョブ数（未設定時は 4）
 EOF
 }
 
@@ -885,7 +887,7 @@ main() {
     local lock_pid=""
     lock_pid="$(cat "${lockfile}" 2>/dev/null || true)"
     if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
-      echo "error: ci-check.sh は既に実行中です (PID: ${lock_pid})" >&2
+      echo "error: ci-check.sh は既に実行中です (PID: ${lock_pid})。AIエージェントは二重起動せず、先行プロセスの完了を待ってから同じ作業を再実行してください。" >&2
       return 1
     fi
 
