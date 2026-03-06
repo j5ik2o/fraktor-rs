@@ -35,6 +35,7 @@ instructions:
   arbitrate: ../facets/instructions/arbitrate.md
 
 report_formats:
+  pekko-porting-qa-review: ../facets/output-contracts/pekko-porting-qa-review.md
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
 
 loop_monitors:
@@ -328,7 +329,7 @@ movements:
     output_contracts:
       report:
         - name: 06-qa-review.md
-          format: qa-review
+          format: pekko-porting-qa-review
     rules:
       - condition: approved
         next: pekko-compat-review
