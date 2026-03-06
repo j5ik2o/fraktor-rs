@@ -273,7 +273,7 @@ impl Mailbox {
     self.policy.throughput_limit()
   }
 
-  fn prepend_would_overflow(&self, prepended_count: usize, current_user_len: usize) -> bool {
+  const fn prepend_would_overflow(&self, prepended_count: usize, current_user_len: usize) -> bool {
     let MailboxCapacity::Bounded { capacity } = self.policy.capacity() else {
       return false;
     };
