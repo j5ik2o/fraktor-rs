@@ -9,6 +9,8 @@ cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
+declare -a PARALLEL_PIDS=()
+declare -a PARALLEL_LABELS=()
 
 resolve_pinned_toolchain() {
   if [[ -f "${REPO_ROOT}/rust-toolchain.toml" ]]; then
@@ -130,6 +132,42 @@ run_cargo() {
 
   if ! "${cmd[@]}"; then
     echo "error: ${cmd[*]}" >&2
+    return 1
+  fi
+}
+
+start_parallel_cargo() {
+  local label="$1"
+  local shard="$2"
+  shift 2
+
+  local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
+  mkdir -p "${target_dir}"
+
+  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
+  (
+    CARGO_TARGET_DIR="${target_dir}" run_cargo "$@"
+  ) &
+
+  PARALLEL_PIDS+=("$!")
+  PARALLEL_LABELS+=("${label}")
+}
+
+wait_parallel_cargo() {
+  local failed=0
+  local idx
+  for idx in "${!PARALLEL_PIDS[@]}"; do
+    local pid="${PARALLEL_PIDS[${idx}]}"
+    local label="${PARALLEL_LABELS[${idx}]}"
+    if ! wait "${pid}"; then
+      echo "error: 並行ジョブ失敗: ${label}" >&2
+      failed=1
+    fi
+  done
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+
+  if [[ ${failed} -ne 0 ]]; then
     return 1
   fi
 }
@@ -675,25 +713,46 @@ run_clippy() {
 }
 
 run_no_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc"
-  run_cargo check -p fraktor-utils-rs --no-default-features --features alloc || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features"
-  run_cargo check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features || return 1
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc" \
+    "no-std-host-utils" \
+    check -p fraktor-utils-rs --no-default-features --features alloc
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features" \
+    "no-std-host-core" \
+    check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features
+  wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
   if ensure_target_installed "${thumb_target}"; then
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target ${thumb_target} -F fraktor-utils-rs/alloc"
-    run_cargo check -p fraktor-utils-rs -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc || return 1
+    PARALLEL_PIDS=()
+    PARALLEL_LABELS=()
+    start_parallel_cargo \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --target ${thumb_target} -F fraktor-utils-rs/alloc" \
+      "no-std-thumb-utils" \
+      check -p fraktor-utils-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc
+    start_parallel_cargo \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target ${thumb_target}" \
+      "no-std-thumb-core" \
+      check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target "${thumb_target}"
+    wait_parallel_cargo || return 1
   fi
 }
 
 run_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs"
-  run_cargo test -p fraktor-utils-rs || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std"
-  run_cargo test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std || return 1
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs" \
+    "std-utils" \
+    test -p fraktor-utils-rs
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std" \
+    "std-core" \
+    test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std
+  wait_parallel_cargo || return 1
 }
 
 run_doc_tests() {
