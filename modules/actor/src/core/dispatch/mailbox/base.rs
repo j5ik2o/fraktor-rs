@@ -150,7 +150,8 @@ impl Mailbox {
 
     let _guard = self.user_queue_lock.lock();
 
-    if self.prepend_would_overflow(messages.len()) {
+    let current_user_len = self.user.number_of_messages();
+    if self.prepend_would_overflow(messages.len(), current_user_len) {
       return Err(SendError::full(first_message));
     }
 
@@ -170,14 +171,14 @@ impl Mailbox {
     if let Err(error) = enqueue_result {
       self.user.clean_up();
       if let Err(restore_error) = self.restore_prepend_messages(&existing, &first_message) {
-        self.publish_metrics();
+        self.publish_metrics_with_user_len(self.user.number_of_messages());
         return Err(restore_error);
       }
-      self.publish_metrics();
+      self.publish_metrics_with_user_len(self.user.number_of_messages());
       return Err(error);
     }
 
-    self.publish_metrics();
+    self.publish_metrics_with_user_len(self.user.number_of_messages());
     Ok(())
   }
 
@@ -256,6 +257,7 @@ impl Mailbox {
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
+    let _guard = self.user_queue_lock.lock();
     self.user.number_of_messages()
   }
 
@@ -271,7 +273,7 @@ impl Mailbox {
     self.policy.throughput_limit()
   }
 
-  fn prepend_would_overflow(&self, prepended_count: usize) -> bool {
+  fn prepend_would_overflow(&self, prepended_count: usize, current_user_len: usize) -> bool {
     let MailboxCapacity::Bounded { capacity } = self.policy.capacity() else {
       return false;
     };
@@ -280,7 +282,7 @@ impl Mailbox {
       return false;
     }
 
-    self.user_len().saturating_add(prepended_count) > capacity.get()
+    current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
   fn enqueue_for_prepend(&self, message: AnyMessage, first_message: &AnyMessage) -> Result<(), SendError> {
@@ -303,9 +305,17 @@ impl Mailbox {
   }
 
   fn publish_metrics(&self) {
+    let user_len = {
+      let _guard = self.user_queue_lock.lock();
+      self.user.number_of_messages()
+    };
+    self.publish_metrics_with_user_len(user_len);
+  }
+
+  fn publish_metrics_with_user_len(&self, user_len: usize) {
     let guard = self.instrumentation.lock();
     if let Some(instrumentation) = guard.as_ref() {
-      instrumentation.publish(self.user_len(), self.system_len());
+      instrumentation.publish(user_len, self.system_len());
     }
   }
 }
