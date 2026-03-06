@@ -27,6 +27,7 @@ instructions:
   pekko-porting-compat-fix: ../facets/instructions/pekko-porting-compat-fix.md
   pekko-porting-supervise: ../facets/instructions/pekko-porting-supervise.md
   pekko-porting-final-ci: ../facets/instructions/pekko-porting-final-ci.md
+  pekko-porting-ai-fix: ../facets/instructions/pekko-porting-ai-fix.md
   pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
   pekko-porting-review-qa: ../facets/instructions/pekko-porting-review-qa.md
   ai-review: ../facets/instructions/ai-review.md
@@ -282,7 +283,7 @@ movements:
           - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: ai-fix
+    instruction: pekko-porting-ai-fix
     rules:
       - condition: AI問題の修正完了
         next: ai_review

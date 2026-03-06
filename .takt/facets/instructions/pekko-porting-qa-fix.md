@@ -21,7 +21,8 @@ QAレビューの指摘を優先的に解消すること。
 修正後に必ず以下を実行し、全チェックがパスすることを確認してからレポートに記録すること:
 1. 変更範囲に対応する lint / 型チェック（例: `cargo clippy -p <crate> -- -D warnings`）
 2. 変更範囲に対応する最小限のテスト（例: `cargo test -p <crate>`）
-`./scripts/ci-check.sh` は `final-ci` ムーブメントで最後に1回だけ実行するため、ここでは実行しないこと。
+`./scripts/ci-check.sh all` は `final-ci` ムーブメントの責務のため、ここでは実行しないこと。
+必要最小限の範囲で、単体版 `ci-check.sh`（例: `./scripts/ci-check.sh dylint -m モジュール名`）は実行してよい。
 成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
 
 **必須出力（見出しを含める）**
