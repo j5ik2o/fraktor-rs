@@ -564,7 +564,7 @@ impl ActorSystem {
     name: String,
     props: &Props,
   ) -> Result<ArcShared<ActorCell>, SpawnError> {
-    let resolved = self.resolve_props(props)?;
+    let resolved = self.resolve_props(parent, props)?;
     Self::ensure_mailbox_requirements(&resolved)?;
     ActorCell::create(self.state.clone(), pid, parent, name, &resolved)
   }
@@ -586,9 +586,18 @@ impl ActorSystem {
     }
   }
 
-  fn resolve_props(&self, props: &Props) -> Result<Props, SpawnError> {
+  fn resolve_props(&self, parent: Option<Pid>, props: &Props) -> Result<Props, SpawnError> {
     let mut resolved = props.clone();
-    if let Some(dispatcher_id) = resolved.dispatcher_id() {
+    if resolved.dispatcher_same_as_parent() {
+      if let Some(parent_pid) = parent {
+        let parent_cell = self.state.cell(&parent_pid).ok_or_else(|| SpawnError::invalid_props(PARENT_MISSING))?;
+        resolved = resolved.with_resolved_dispatcher_config(parent_cell.dispatcher_config());
+      } else if !resolved.has_custom_dispatcher()
+        && let Ok(default_config) = self.state.resolve_dispatcher("default")
+      {
+        resolved = resolved.with_resolved_dispatcher_config(default_config);
+      }
+    } else if let Some(dispatcher_id) = resolved.dispatcher_id() {
       let config =
         self.state.resolve_dispatcher(dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
       resolved = resolved.with_resolved_dispatcher_config(config);

@@ -127,6 +127,14 @@ fn typed_props_with_blocking_dispatcher_selector_should_spawn() {
 }
 
 #[test]
+fn typed_props_with_same_as_parent_dispatcher_selector_marks_parent_inheritance() {
+  let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
+    .with_dispatcher_selector(crate::core::typed::DispatcherSelector::SameAsParent);
+
+  assert!(props.to_untyped().dispatcher_same_as_parent());
+}
+
+#[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
