@@ -1,6 +1,12 @@
 //! Pekko-inspired router factories.
 
-use crate::core::typed::{behavior::Behavior, pool_router_builder::PoolRouterBuilder};
+#[cfg(test)]
+mod tests;
+
+use crate::core::typed::{
+  behavior::Behavior, group_router_builder::GroupRouterBuilder, pool_router_builder::PoolRouterBuilder,
+  service_key::ServiceKey,
+};
 
 /// Provides factory methods for creating routers.
 pub struct Routers;
@@ -15,5 +21,16 @@ impl Routers {
     M: Send + Sync + Clone + 'static,
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     PoolRouterBuilder::new(pool_size, behavior_factory)
+  }
+
+  /// Creates a group router that discovers routees via the Receptionist.
+  ///
+  /// The router subscribes to listing changes for the provided [`ServiceKey`]
+  /// and routes messages to discovered actors using round-robin.
+  #[must_use]
+  pub const fn group<M>(key: ServiceKey<M>) -> GroupRouterBuilder<M>
+  where
+    M: Send + Sync + Clone + 'static, {
+    GroupRouterBuilder::new(key)
   }
 }

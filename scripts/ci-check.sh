@@ -9,6 +9,8 @@ cd "${REPO_ROOT}"
 
 THUMB_TARGETS=("thumbv6m-none-eabi" "thumbv8m.main-none-eabi")
 declare -a HARDWARE_PACKAGES=()
+declare -a PARALLEL_PIDS=()
+declare -a PARALLEL_LABELS=()
 
 resolve_pinned_toolchain() {
   if [[ -f "${REPO_ROOT}/rust-toolchain.toml" ]]; then
@@ -30,6 +32,8 @@ if [[ -n "${RUSTUP_TOOLCHAIN:-}" && "${RUSTUP_TOOLCHAIN}" != "${PINNED_TOOLCHAIN
 fi
 export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
+CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+export CARGO_BUILD_JOBS
 
 usage() {
   cat <<'EOF'
@@ -48,11 +52,45 @@ usage() {
   actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
+
+環境変数:
+  CARGO_BUILD_JOBS            : cargo の並列ジョブ数（未設定時は 4）
 EOF
 }
 
 log_step() {
   printf '==> %s\n' "$1"
+}
+
+run_with_heartbeat() {
+  local label="$1"
+  shift
+
+  local interval="${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-60}"
+  local enabled="${CI_CHECK_HEARTBEAT:-1}"
+  local heartbeat_pid=""
+
+  if [[ "${enabled}" != "0" ]]; then
+    (
+      while true; do
+        sleep "${interval}"
+        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')" >&2
+      done
+    ) &
+    heartbeat_pid=$!
+  fi
+
+  set +e
+  "$@"
+  local status=$?
+  set -e
+
+  if [[ -n "${heartbeat_pid}" ]]; then
+    kill "${heartbeat_pid}" >/dev/null 2>&1 || true
+    wait "${heartbeat_pid}" 2>/dev/null || true
+  fi
+
+  return "${status}"
 }
 
 clean_stale_lint_targets() {
@@ -87,13 +125,49 @@ clean_stale_lint_targets() {
 run_cargo() {
   local -a cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    cmd=(cargo "+${DEFAULT_TOOLCHAIN}" "$@")
+    cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v "$@")
   else
-    cmd=(cargo "$@")
+    cmd=(cargo -v "$@")
   fi
 
   if ! "${cmd[@]}"; then
     echo "error: ${cmd[*]}" >&2
+    return 1
+  fi
+}
+
+start_parallel_cargo() {
+  local label="$1"
+  local shard="$2"
+  shift 2
+
+  local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
+  mkdir -p "${target_dir}"
+
+  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
+  (
+    CARGO_TARGET_DIR="${target_dir}" run_cargo "$@"
+  ) &
+
+  PARALLEL_PIDS+=("$!")
+  PARALLEL_LABELS+=("${label}")
+}
+
+wait_parallel_cargo() {
+  local failed=0
+  local idx
+  for idx in "${!PARALLEL_PIDS[@]}"; do
+    local pid="${PARALLEL_PIDS[${idx}]}"
+    local label="${PARALLEL_LABELS[${idx}]}"
+    if ! wait "${pid}"; then
+      echo "error: 並行ジョブ失敗: ${label}" >&2
+      failed=1
+    fi
+  done
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+
+  if [[ ${failed} -ne 0 ]]; then
     return 1
   fi
 }
@@ -226,9 +300,9 @@ ensure_dylint_installed() {
 
   local -a install_cmd
   if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" install cargo-dylint --locked --version "${desired_version}")
+    install_cmd=(cargo "+${DEFAULT_TOOLCHAIN}" -v install cargo-dylint --locked --version "${desired_version}")
   else
-    install_cmd=(cargo install cargo-dylint --locked --version "${desired_version}")
+    install_cmd=(cargo -v install cargo-dylint --locked --version "${desired_version}")
   fi
 
   if [[ -n "${current_version}" ]]; then
@@ -247,11 +321,11 @@ ensure_dylint_installed() {
 
 run_lint() {
   if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} fmt -- --check"
-    cargo "+${FMT_TOOLCHAIN}" fmt --all -- --check || return 1
+    log_step "cargo +${FMT_TOOLCHAIN} -v fmt -- --check"
+    cargo "+${FMT_TOOLCHAIN}" -v fmt --all -- --check || return 1
   else
-    log_step "cargo fmt -- --check"
-    cargo fmt --all -- --check || return 1
+    log_step "cargo -v fmt -- --check"
+    cargo -v fmt --all -- --check || return 1
   fi
 }
 
@@ -422,11 +496,11 @@ run_dylint() {
     local lint_path="${entry#*:}"
     local lib_name="${crate//-/_}"
 
-    log_step "cargo build --manifest-path ${lint_path}/Cargo.toml --release"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    log_step "cargo -v build --manifest-path ${lint_path}/Cargo.toml --release"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
 
-    log_step "cargo test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    log_step "cargo -v test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
+    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -639,43 +713,46 @@ run_clippy() {
 }
 
 run_no_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc"
-  run_cargo check -p fraktor-utils-rs --no-default-features --features alloc || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
-  run_cargo check -p fraktor-actor-rs --no-default-features || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features"
-  run_cargo check -p fraktor-streams-rs --no-default-features || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-rs --no-default-features"
-  run_cargo check -p fraktor-rs --no-default-features || return 1
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc" \
+    "no-std-host-utils" \
+    check -p fraktor-utils-rs --no-default-features --features alloc
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features" \
+    "no-std-host-core" \
+    check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features
+  wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
   if ensure_target_installed "${thumb_target}"; then
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc --target ${thumb_target}"
-    run_cargo check -p fraktor-utils-rs --no-default-features --features alloc --target "${thumb_target}" || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features --target ${thumb_target}"
-    run_cargo check -p fraktor-actor-rs --no-default-features --target "${thumb_target}" || return 1
-
-    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-streams-rs --no-default-features --target ${thumb_target}"
-    run_cargo check -p fraktor-streams-rs --no-default-features --target "${thumb_target}" || return 1
+    PARALLEL_PIDS=()
+    PARALLEL_LABELS=()
+    start_parallel_cargo \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --target ${thumb_target} -F fraktor-utils-rs/alloc" \
+      "no-std-thumb-utils" \
+      check -p fraktor-utils-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc
+    start_parallel_cargo \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target ${thumb_target}" \
+      "no-std-thumb-core" \
+      check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target "${thumb_target}"
+    wait_parallel_cargo || return 1
   fi
 }
 
 run_std() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs"
-  run_cargo test -p fraktor-utils-rs || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --lib"
-  run_cargo test -p fraktor-actor-rs --lib || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-streams-rs --lib --features std"
-  run_cargo test -p fraktor-streams-rs --lib --features std || return 1
-
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-rs --lib"
-  run_cargo test -p fraktor-rs --lib || return 1
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs" \
+    "std-utils" \
+    test -p fraktor-utils-rs
+  start_parallel_cargo \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std" \
+    "std-core" \
+    test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std
+  wait_parallel_cargo || return 1
 }
 
 run_doc_tests() {
@@ -795,32 +872,24 @@ PY
     local -a cargo_args=(run --package "${package_name}" --example "${example_name}")
     if [[ -n "${features}" ]]; then
       cargo_args+=(--features "${features}")
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --features ${features} --quiet"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name} --features ${features}"
     else
-      log_step "cargo +${DEFAULT_TOOLCHAIN} run --package ${package_name} --example ${example_name} --quiet"
+      log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name}"
     fi
-    cargo_args+=(--quiet)
-
-    local log_file
-    log_file="$(mktemp)"
     if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" "${cargo_args[@]}" \
-        >"${log_file}" 2>&1 || {
-          cat "${log_file}"
-          rm -f "${log_file}" "${example_file}"
+      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" -v "${cargo_args[@]}" \
+        || {
+          rm -f "${example_file}"
           return 1
         }
     else
-      RUSTFLAGS="${rustflags_value}" cargo "${cargo_args[@]}" \
-        >"${log_file}" 2>&1 || {
-          cat "${log_file}"
-          rm -f "${log_file}" "${example_file}"
+      RUSTFLAGS="${rustflags_value}" cargo -v "${cargo_args[@]}" \
+        || {
+          rm -f "${example_file}"
           return 1
         }
     fi
-    tail -n 5 "${log_file}" || true
     echo
-    rm -f "${log_file}"
   done <"${example_file}"
 
   rm -f "${example_file}"
@@ -850,6 +919,27 @@ run_all() {
 }
 
 main() {
+  local lockfile="${REPO_ROOT}/.takt/.ci-check.lock"
+  while true; do
+    if ( set -o noclobber; printf '%s\n' "$$" > "${lockfile}" ) 2>/dev/null; then
+      break
+    fi
+
+    local lock_pid=""
+    lock_pid="$(cat "${lockfile}" 2>/dev/null || true)"
+    if [[ -n "${lock_pid}" ]] && kill -0 "${lock_pid}" 2>/dev/null; then
+      echo "error: ci-check.sh は既に実行中です (PID: ${lock_pid})。AIエージェントは二重起動せず、先行プロセスの完了を待ってから同じ作業を再実行してください。" >&2
+      return 1
+    fi
+
+    rm -f "${lockfile}" >/dev/null 2>&1 || true
+  done
+  trap "rm -f '${lockfile}'" EXIT
+
+  if [[ -n "${CARGO_BUILD_JOBS:-}" ]]; then
+    echo "info: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}" >&2
+  fi
+
   if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
     "${SCRIPT_DIR}/check_modrs.sh"
   fi
@@ -857,7 +947,7 @@ main() {
   clean_stale_lint_targets
 
   if [[ $# -eq 0 ]]; then
-    run_all || return 1
+    run_with_heartbeat "ci-check all" run_all || return 1
     return
   fi
 
@@ -947,7 +1037,7 @@ main() {
         shift
         ;;
       all)
-        run_all || return 1
+        run_with_heartbeat "ci-check all" run_all || return 1
         shift
         ;;
       --help|-h|help)
@@ -956,7 +1046,7 @@ main() {
         ;;
       --)
         shift
-        if ! run_all; then
+        if ! run_with_heartbeat "ci-check all" run_all; then
           return 1
         fi
         ;;

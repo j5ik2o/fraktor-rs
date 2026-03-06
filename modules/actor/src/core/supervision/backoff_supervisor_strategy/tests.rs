@@ -144,3 +144,84 @@ fn compute_backoff_with_jitter_clamps_negative_random() {
   // 負値は 0.0 にクランプされる。
   assert_eq!(delay, Duration::from_millis(100));
 }
+
+#[test]
+fn default_logging_enabled_is_true() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert!(strategy.logging_enabled());
+}
+
+#[test]
+fn default_log_level_is_error() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.log_level(), LogLevel::Error);
+}
+
+#[test]
+fn default_critical_log_level_is_error() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.critical_log_level(), LogLevel::Error);
+}
+
+#[test]
+fn default_critical_log_level_after_is_zero() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0);
+  assert_eq!(strategy.critical_log_level_after(), 0);
+}
+
+#[test]
+fn with_logging_enabled_false() {
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_logging_enabled(false);
+  assert!(!strategy.logging_enabled());
+}
+
+#[test]
+fn with_log_level_sets_value() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_log_level(LogLevel::Warn);
+  assert_eq!(strategy.log_level(), LogLevel::Warn);
+}
+
+#[test]
+fn with_critical_log_level_sets_values() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_critical_log_level(LogLevel::Warn, 5);
+  assert_eq!(strategy.critical_log_level(), LogLevel::Warn);
+  assert_eq!(strategy.critical_log_level_after(), 5);
+}
+
+#[test]
+fn effective_log_level_returns_normal_below_threshold() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_log_level(LogLevel::Error)
+    .with_critical_log_level(LogLevel::Warn, 5);
+  assert_eq!(strategy.effective_log_level(0), LogLevel::Error);
+  assert_eq!(strategy.effective_log_level(4), LogLevel::Error);
+}
+
+#[test]
+fn effective_log_level_returns_critical_at_threshold() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_log_level(LogLevel::Error)
+    .with_critical_log_level(LogLevel::Warn, 5);
+  assert_eq!(strategy.effective_log_level(5), LogLevel::Warn);
+  assert_eq!(strategy.effective_log_level(10), LogLevel::Warn);
+}
+
+#[test]
+fn effective_log_level_returns_normal_when_threshold_is_zero() {
+  use crate::core::event::logging::LogLevel;
+  let strategy = BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+    .with_log_level(LogLevel::Error)
+    .with_critical_log_level(LogLevel::Warn, 0);
+  // threshold が 0 の場合は critical log level は使われない。
+  assert_eq!(strategy.effective_log_level(0), LogLevel::Error);
+  assert_eq!(strategy.effective_log_level(100), LogLevel::Error);
+}

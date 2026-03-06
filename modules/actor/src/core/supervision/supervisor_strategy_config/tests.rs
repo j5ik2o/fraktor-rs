@@ -7,7 +7,7 @@ use super::{
   },
   SupervisorStrategyConfig,
 };
-use crate::core::{error::ActorError, supervision::RestartStatistics};
+use crate::core::{error::ActorError, event::logging::LogLevel, supervision::RestartStatistics};
 
 #[test]
 fn standard_decide_delegates_to_inner() {
@@ -157,4 +157,50 @@ fn backoff_handle_failure_resets_stats_on_fatal() {
 
   let _directive = config.handle_failure(&mut stats, &ActorError::fatal("fatal"), Duration::from_secs(2));
   assert_eq!(stats.failure_count(), 0);
+}
+
+#[test]
+fn standard_logging_enabled_delegates_to_inner() {
+  let standard = SupervisorStrategyConfig::Standard(SupervisorStrategy::default().with_logging_enabled(false));
+  assert!(!standard.logging_enabled());
+
+  let standard_enabled = SupervisorStrategyConfig::Standard(SupervisorStrategy::default());
+  assert!(standard_enabled.logging_enabled());
+}
+
+#[test]
+fn backoff_logging_enabled_delegates_to_inner() {
+  let backoff = SupervisorStrategyConfig::Backoff(
+    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+      .with_logging_enabled(false),
+  );
+  assert!(!backoff.logging_enabled());
+
+  let backoff_enabled = SupervisorStrategyConfig::Backoff(BackoffSupervisorStrategy::new(
+    Duration::from_millis(100),
+    Duration::from_secs(10),
+    0.0,
+  ));
+  assert!(backoff_enabled.logging_enabled());
+}
+
+#[test]
+fn standard_effective_log_level_returns_configured_level() {
+  let standard = SupervisorStrategyConfig::Standard(SupervisorStrategy::default().with_log_level(LogLevel::Warn));
+  // Standard always returns its log_level regardless of error_count.
+  assert_eq!(standard.effective_log_level(0), LogLevel::Warn);
+  assert_eq!(standard.effective_log_level(100), LogLevel::Warn);
+}
+
+#[test]
+fn backoff_effective_log_level_delegates_threshold_logic() {
+  let backoff = SupervisorStrategyConfig::Backoff(
+    BackoffSupervisorStrategy::new(Duration::from_millis(100), Duration::from_secs(10), 0.0)
+      .with_log_level(LogLevel::Error)
+      .with_critical_log_level(LogLevel::Warn, 3),
+  );
+  assert_eq!(backoff.effective_log_level(0), LogLevel::Error);
+  assert_eq!(backoff.effective_log_level(2), LogLevel::Error);
+  assert_eq!(backoff.effective_log_level(3), LogLevel::Warn);
+  assert_eq!(backoff.effective_log_level(10), LogLevel::Warn);
 }

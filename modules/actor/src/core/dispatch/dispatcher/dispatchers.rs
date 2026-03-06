@@ -9,6 +9,8 @@ use crate::core::dispatch::dispatcher::{DispatcherConfig, DispatcherRegistryErro
 mod tests;
 
 const DEFAULT_DISPATCHER_ID: &str = "default";
+/// Reserved dispatcher id for blocking workloads (Pekko compatibility).
+pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "pekko.actor.default-blocking-io-dispatcher";
 
 /// Registry that resolves dispatcher identifiers to configurations.
 pub struct Dispatchers {
@@ -62,7 +64,8 @@ impl Dispatchers {
 
   /// Ensures the default dispatcher entry exists.
   pub fn ensure_default(&mut self) {
-    self.entries.entry(DEFAULT_DISPATCHER_ID.to_owned()).or_default();
+    let default_config = self.entries.entry(DEFAULT_DISPATCHER_ID.to_owned()).or_default().clone();
+    self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(default_config);
   }
 }
 

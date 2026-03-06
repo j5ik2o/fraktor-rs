@@ -28,4 +28,5 @@ fn ensure_default_makes_default_id_available() {
   let mut registry = Dispatchers::new();
   registry.ensure_default();
   assert!(registry.resolve(DEFAULT_DISPATCHER_ID).is_ok());
+  assert!(registry.resolve(DEFAULT_BLOCKING_DISPATCHER_ID).is_ok());
 }

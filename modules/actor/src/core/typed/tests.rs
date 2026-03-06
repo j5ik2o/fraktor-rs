@@ -115,6 +115,26 @@ fn typed_actor_system_handles_basic_flow() {
 }
 
 #[test]
+fn typed_props_with_blocking_dispatcher_selector_should_spawn() {
+  let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
+    .with_dispatcher_selector(crate::core::typed::DispatcherSelector::Blocking);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_props_with_same_as_parent_dispatcher_selector_marks_parent_inheritance() {
+  let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
+    .with_dispatcher_selector(crate::core::typed::DispatcherSelector::SameAsParent);
+
+  assert!(props.to_untyped().dispatcher_same_as_parent());
+}
+
+#[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(

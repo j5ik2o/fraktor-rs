@@ -21,6 +21,15 @@ where
   pub(crate) state: ArcShared<RuntimeMutex<QueueState<T>>>,
 }
 
+impl<T> Clone for QueueStateHandle<T>
+where
+  T: Send + 'static,
+{
+  fn clone(&self) -> Self {
+    Self { state: self.state.clone() }
+  }
+}
+
 impl<T> QueueStateHandle<T>
 where
   T: Send + 'static,

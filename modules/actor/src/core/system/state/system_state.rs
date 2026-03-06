@@ -37,7 +37,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntry, DeadLetterShared},
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError, Dispatchers},
-    mailbox::{MailboxRegistryError, Mailboxes},
+    mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   error::{ActorError, SendError},
   event::{
@@ -756,6 +756,15 @@ impl SystemState {
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve_mailbox(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
     self.mailboxes.resolve(id)
+  }
+
+  /// Creates a mailbox queue from the configuration registered under the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn create_mailbox_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
+    self.mailboxes.create_message_queue(id)
   }
 
   /// Returns the remoting configuration when it has been configured.

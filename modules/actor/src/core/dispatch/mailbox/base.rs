@@ -3,18 +3,14 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::VecDeque, string::String};
+use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::num::NonZeroUsize;
 
-use fraktor_utils_rs::core::{
-  collections::queue::{OfferOutcome, QueueError},
-  sync::RuntimeMutex,
-};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  BackpressurePublisher, MailboxOfferFuture, MailboxScheduleState, QueueStateHandle, ScheduleHints, SystemQueue,
-  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_message::MailboxMessage, map_user_queue_error,
+  BackpressurePublisher, MailboxScheduleState, ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
+  mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::{
   actor::Pid,
@@ -29,7 +25,8 @@ use crate::core::{
 pub struct Mailbox {
   policy:          MailboxPolicy,
   system:          SystemQueue,
-  user:            QueueStateHandle<AnyMessage>,
+  user:            Box<dyn MessageQueue>,
+  user_queue_lock: ArcShared<RuntimeMutex<()>>,
   state:           MailboxScheduleState,
   instrumentation: RuntimeMutex<Option<MailboxInstrumentation>>,
 }
@@ -41,11 +38,18 @@ impl Mailbox {
   /// Creates a new mailbox using the provided policy.
   #[must_use]
   pub fn new(policy: MailboxPolicy) -> Self {
-    let user_handles = QueueStateHandle::new_user(&policy);
+    let queue = super::mailboxes::create_message_queue_from_policy(policy);
+    Self::new_with_queue(policy, queue)
+  }
+
+  /// Creates a new mailbox using the provided policy and pre-built queue.
+  #[must_use]
+  pub fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
-      user: user_handles,
+      user: queue,
+      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
       instrumentation: RuntimeMutex::new(None),
     }
@@ -111,11 +115,21 @@ impl Mailbox {
       return Err(SendError::suspended(message));
     }
 
-    match self.policy.capacity() {
-      | MailboxCapacity::Bounded { capacity } => {
-        self.enqueue_bounded_user(capacity.get(), message, self.policy.overflow())
+    let enqueue_result = {
+      let _guard = self.user_queue_lock.lock();
+      self.user.enqueue(message)
+    };
+
+    match enqueue_result {
+      | Ok(EnqueueOutcome::Enqueued) => {
+        self.publish_metrics();
+        Ok(EnqueueOutcome::Enqueued)
       },
-      | MailboxCapacity::Unbounded => self.offer_user(message),
+      | Ok(EnqueueOutcome::Pending(future)) => {
+        let future = future.with_user_queue_lock(self.user_queue_lock.clone());
+        Ok(EnqueueOutcome::Pending(future))
+      },
+      | Err(error) => Err(error),
     }
   }
 
@@ -134,61 +148,37 @@ impl Mailbox {
       return Err(SendError::suspended(first_message));
     }
 
-    if self.prepend_would_overflow(messages.len()) {
+    let _guard = self.user_queue_lock.lock();
+
+    let current_user_len = self.user.number_of_messages();
+    if self.prepend_would_overflow(messages.len(), current_user_len) {
       return Err(SendError::full(first_message));
     }
 
-    let mut state = self.user.state.lock();
     let mut existing = VecDeque::new();
-    loop {
-      match state.poll() {
-        | Ok(message) => existing.push_back(message),
-        | Err(QueueError::Empty | QueueError::Disconnected | QueueError::WouldBlock) => break,
-        | Err(QueueError::Full(_))
-        | Err(QueueError::OfferError(_))
-        | Err(QueueError::Closed(_))
-        | Err(QueueError::AllocError(_))
-        | Err(QueueError::TimedOut(_)) => {
-          drop(state);
-          self.publish_metrics();
-          return Err(SendError::closed(first_message));
-        },
-      }
+    while let Some(message) = self.user.dequeue() {
+      existing.push_back(message);
     }
 
-    let mut inserted = 0_usize;
-    let mut insertion_error = None;
+    let mut enqueue_result = Ok(());
     for message in messages.iter().cloned().chain(existing.iter().cloned()) {
-      match state.offer(message) {
-        | Ok(outcome) => {
-          Self::handle_offer_outcome(outcome);
-          inserted += 1;
-        },
-        | Err(error) => {
-          insertion_error = Some(map_user_queue_error(error));
-          break;
-        },
+      if let Err(error) = self.enqueue_for_prepend(message, &first_message) {
+        enqueue_result = Err(error);
+        break;
       }
     }
 
-    if let Some(error) = insertion_error {
-      for _ in 0..inserted {
-        let _ = state.poll();
+    if let Err(error) = enqueue_result {
+      self.user.clean_up();
+      if let Err(restore_error) = self.restore_prepend_messages(&existing, &first_message) {
+        self.publish_metrics_with_user_len(self.user.number_of_messages());
+        return Err(restore_error);
       }
-      for message in existing.iter().cloned() {
-        if let Err(restore_error) = state.offer(message) {
-          drop(state);
-          self.publish_metrics();
-          return Err(map_user_queue_error(restore_error));
-        }
-      }
-      drop(state);
-      self.publish_metrics();
+      self.publish_metrics_with_user_len(self.user.number_of_messages());
       return Err(error);
     }
 
-    drop(state);
-    self.publish_metrics();
+    self.publish_metrics_with_user_len(self.user.number_of_messages());
     Ok(())
   }
 
@@ -204,7 +194,10 @@ impl Mailbox {
       return None;
     }
 
-    let result = Self::poll_queue(&self.user).map(MailboxMessage::User);
+    let result = {
+      let _guard = self.user_queue_lock.lock();
+      self.user.dequeue().map(MailboxMessage::User)
+    };
     if result.is_some() {
       self.publish_metrics();
     }
@@ -264,7 +257,8 @@ impl Mailbox {
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    self.user.len()
+    let _guard = self.user_queue_lock.lock();
+    self.user.number_of_messages()
   }
 
   /// Returns the number of system messages awaiting processing.
@@ -279,7 +273,7 @@ impl Mailbox {
     self.policy.throughput_limit()
   }
 
-  fn prepend_would_overflow(&self, prepended_count: usize) -> bool {
+  const fn prepend_would_overflow(&self, prepended_count: usize, current_user_len: usize) -> bool {
     let MailboxCapacity::Bounded { capacity } = self.policy.capacity() else {
       return false;
     };
@@ -288,73 +282,40 @@ impl Mailbox {
       return false;
     }
 
-    self.user_len().saturating_add(prepended_count) > capacity.get()
+    current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
-  fn enqueue_bounded_user(
+  fn enqueue_for_prepend(&self, message: AnyMessage, first_message: &AnyMessage) -> Result<(), SendError> {
+    match self.user.enqueue(message) {
+      | Ok(EnqueueOutcome::Enqueued) => Ok(()),
+      | Ok(EnqueueOutcome::Pending(_)) => Err(SendError::full(first_message.clone())),
+      | Err(error) => Err(error),
+    }
+  }
+
+  fn restore_prepend_messages(
     &self,
-    capacity: usize,
-    message: AnyMessage,
-    overflow: MailboxOverflowStrategy,
-  ) -> Result<EnqueueOutcome, SendError> {
-    match overflow {
-      | MailboxOverflowStrategy::DropNewest => {
-        let len = self.user.len();
-        if len >= capacity {
-          return Err(SendError::full(message));
-        }
-        self.offer_user(message)
-      },
-      | MailboxOverflowStrategy::DropOldest => {
-        if self.user.len() >= capacity && self.user.poll().is_ok() {
-          // drop oldest message
-        }
-        self.offer_user(message)
-      },
-      | MailboxOverflowStrategy::Grow => self.offer_user(message),
-      | MailboxOverflowStrategy::Block => {
-        if self.user.len() >= capacity {
-          let future = MailboxOfferFuture::new(self.user.state.clone(), message);
-          return Ok(EnqueueOutcome::Pending(future));
-        }
-        self.offer_user(message)
-      },
+    existing: &VecDeque<AnyMessage>,
+    first_message: &AnyMessage,
+  ) -> Result<(), SendError> {
+    for message in existing.iter().cloned() {
+      self.enqueue_for_prepend(message, first_message)?;
     }
-  }
-
-  fn offer_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    match self.user.offer(message) {
-      | Ok(outcome) => {
-        Self::handle_offer_outcome(outcome);
-        self.publish_metrics();
-        Ok(EnqueueOutcome::Enqueued)
-      },
-      | Err(error) => Err(map_user_queue_error(error)),
-    }
-  }
-
-  fn poll_queue<T: Send + 'static>(handles: &QueueStateHandle<T>) -> Option<T> {
-    match handles.poll() {
-      | Ok(message) => Some(message),
-      | Err(QueueError::Empty) => None,
-      | Err(QueueError::Disconnected) => None,
-      | Err(QueueError::WouldBlock) => None,
-      | Err(QueueError::Full(_))
-      | Err(QueueError::OfferError(_))
-      | Err(QueueError::Closed(_))
-      | Err(QueueError::AllocError(_))
-      | Err(QueueError::TimedOut(_)) => None,
-    }
-  }
-
-  const fn handle_offer_outcome(outcome: OfferOutcome) {
-    let _ = outcome;
+    Ok(())
   }
 
   fn publish_metrics(&self) {
+    let user_len = {
+      let _guard = self.user_queue_lock.lock();
+      self.user.number_of_messages()
+    };
+    self.publish_metrics_with_user_len(user_len);
+  }
+
+  fn publish_metrics_with_user_len(&self, user_len: usize) {
     let guard = self.instrumentation.lock();
     if let Some(instrumentation) = guard.as_ref() {
-      instrumentation.publish(self.user_len(), self.system_len());
+      instrumentation.publish(user_len, self.system_len());
     }
   }
 }

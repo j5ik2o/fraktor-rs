@@ -1,11 +1,13 @@
 //! Typed props.
 
+use alloc::string::String;
 use core::marker::PhantomData;
 
 use crate::core::{
   props::Props,
   typed::{
-    actor::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, typed_actor_adapter::TypedActorAdapter,
+    actor::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, dispatcher_selector::DispatcherSelector,
+    mailbox_selector::MailboxSelector, typed_actor_adapter::TypedActorAdapter,
   },
 };
 
@@ -52,15 +54,6 @@ where
     Self { props, marker: PhantomData }
   }
 
-  /// Backwards-compatible alias for [`TypedProps::new`].
-  #[must_use]
-  pub fn from_factory<F, A>(factory: F) -> Self
-  where
-    F: Fn() -> A + Send + Sync + 'static,
-    A: TypedActor<M> + 'static, {
-    Self::new(factory)
-  }
-
   /// Wraps existing props after applying an external typed conversion.
   #[must_use]
   pub const fn from_props(props: Props) -> Self {
@@ -83,5 +76,60 @@ where
   #[must_use]
   pub fn map_props(self, f: impl FnOnce(Props) -> Props) -> Self {
     Self { props: f(self.props), marker: PhantomData }
+  }
+
+  /// Applies a dispatcher selector to configure the dispatcher assignment.
+  #[must_use]
+  pub fn with_dispatcher_selector(self, selector: DispatcherSelector) -> Self {
+    match selector {
+      | DispatcherSelector::Default => self,
+      | DispatcherSelector::FromConfig(id) => self.map_props(|p| p.with_dispatcher_id(id)),
+      | DispatcherSelector::SameAsParent => self.map_props(|p| p.with_dispatcher_same_as_parent()),
+      | DispatcherSelector::Blocking => {
+        self.map_props(|p| p.with_dispatcher_id(crate::core::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID))
+      },
+    }
+  }
+
+  /// Applies a mailbox selector to configure the mailbox assignment.
+  #[must_use]
+  pub fn with_mailbox_selector(self, selector: MailboxSelector) -> Self {
+    match selector {
+      | MailboxSelector::Default => self,
+      | MailboxSelector::Bounded(capacity) => {
+        let policy = crate::core::dispatch::mailbox::MailboxPolicy::bounded(
+          capacity,
+          crate::core::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
+          None,
+        );
+        let config = crate::core::props::MailboxConfig::new(policy);
+        self.map_props(|p| p.with_mailbox_config(config))
+      },
+      | MailboxSelector::FromConfig(id) => self.map_props(|p| p.with_mailbox_id(id)),
+    }
+  }
+
+  /// Shorthand: use the default dispatcher.
+  #[must_use]
+  pub fn with_dispatcher_default(self) -> Self {
+    self.with_dispatcher_selector(DispatcherSelector::Default)
+  }
+
+  /// Shorthand: use a dispatcher resolved from configuration.
+  #[must_use]
+  pub fn with_dispatcher_from_config(self, id: impl Into<String>) -> Self {
+    self.with_dispatcher_selector(DispatcherSelector::from_config(id))
+  }
+
+  /// Shorthand: use the same dispatcher as the parent actor.
+  #[must_use]
+  pub fn with_dispatcher_same_as_parent(self) -> Self {
+    self.with_dispatcher_selector(DispatcherSelector::SameAsParent)
+  }
+
+  /// Shorthand: use a bounded mailbox with the given capacity.
+  #[must_use]
+  pub fn with_mailbox_bounded(self, capacity: core::num::NonZeroUsize) -> Self {
+    self.with_mailbox_selector(MailboxSelector::bounded(capacity))
   }
 }

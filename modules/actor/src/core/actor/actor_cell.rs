@@ -17,7 +17,7 @@ use crate::core::{
     pipe_spawn_error::PipeSpawnError,
   },
   dispatch::{
-    dispatcher::DispatcherShared,
+    dispatcher::{DispatcherConfig, DispatcherShared},
     mailbox::{
       BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
       metrics_event::MailboxPressureEvent,
@@ -33,7 +33,7 @@ use crate::core::{
   },
   props::{ActorFactoryShared, Props},
   spawn::SpawnError,
-  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
+  supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::{
     ActorSystem,
     guardian::GuardianKind,
@@ -71,19 +71,28 @@ impl ActorCellState {
 }
 
 /// Runtime container responsible for executing an actor instance.
+///
+/// ```compile_fail
+/// use fraktor_actor_rs::core::actor::ActorCell;
+///
+/// fn read_dispatcher_config(cell: &ActorCell) {
+///   let _ = cell.dispatcher_config();
+/// }
+/// ```
 pub struct ActorCell {
-  pid:        Pid,
-  parent:     Option<Pid>,
-  name:       String,
-  system:     SystemStateWeak,
-  factory:    ActorFactoryShared,
-  actor:      ActorShared,
-  pipeline:   MessageInvokerPipeline,
-  mailbox:    ArcShared<Mailbox>,
-  dispatcher: DispatcherShared,
-  sender:     ActorRefSenderShared,
-  state:      RuntimeMutex<ActorCellState>,
-  terminated: AtomicBool,
+  pid:               Pid,
+  parent:            Option<Pid>,
+  name:              String,
+  system:            SystemStateWeak,
+  factory:           ActorFactoryShared,
+  actor:             ActorShared,
+  pipeline:          MessageInvokerPipeline,
+  mailbox:           ArcShared<Mailbox>,
+  dispatcher_config: DispatcherConfig,
+  dispatcher:        DispatcherShared,
+  sender:            ActorRefSenderShared,
+  state:             RuntimeMutex<ActorCellState>,
+  terminated:        AtomicBool,
 }
 
 unsafe impl Send for ActorCell {}
@@ -114,9 +123,21 @@ impl ActorCell {
     name: String,
     props: &Props,
   ) -> Result<ArcShared<Self>, SpawnError> {
-    let mailbox = ArcShared::new(Mailbox::new(props.mailbox_policy()));
+    let mailbox_config = if let Some(mailbox_id) = props.mailbox_id() {
+      system.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
+    } else {
+      *props.mailbox_config()
+    };
+
+    let mailbox = if let Some(mailbox_id) = props.mailbox_id() {
+      let queue = system
+        .create_mailbox_queue(mailbox_id)
+        .map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
+      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
+    } else {
+      ArcShared::new(Mailbox::new(mailbox_config.policy()))
+    };
     {
-      let mailbox_config = props.mailbox_config();
       let policy = mailbox_config.policy();
       let capacity = match policy.capacity() {
         | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
@@ -127,7 +148,8 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let dispatcher = props.dispatcher_config().build_dispatcher(mailbox.clone())?;
+    let dispatcher_config = props.dispatcher_config().clone();
+    let dispatcher = dispatcher_config.build_dispatcher(mailbox.clone())?;
     mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
@@ -143,6 +165,7 @@ impl ActorCell {
       actor,
       pipeline: MessageInvokerPipeline::new(),
       mailbox,
+      dispatcher_config,
       dispatcher,
       sender,
       state,
@@ -197,6 +220,12 @@ impl ActorCell {
   #[must_use]
   pub fn dispatcher(&self) -> DispatcherShared {
     self.dispatcher.clone()
+  }
+
+  /// Returns the dispatcher configuration associated with this cell.
+  #[must_use]
+  pub(crate) fn dispatcher_config(&self) -> DispatcherConfig {
+    self.dispatcher_config.clone()
   }
 
   /// Returns a sender handle targeting this actor cell's mailbox.
@@ -790,6 +819,13 @@ impl MessageInvoker for ActorCellInvoker {
 }
 
 impl ActorCell {
+  /// Returns the supervisor strategy configuration for this actor.
+  pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
+  }
+
   pub(crate) fn handle_child_failure(
     &self,
     child: Pid,

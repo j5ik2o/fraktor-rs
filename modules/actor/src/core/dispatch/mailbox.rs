@@ -11,6 +11,10 @@ use crate::core::{error::SendError, messaging::AnyMessage};
 
 mod backpressure_publisher;
 mod base;
+/// Bounded mailbox type factory.
+mod bounded_mailbox_type;
+/// Bounded message queue with configurable overflow strategy.
+mod bounded_message_queue;
 mod capacity;
 mod mailbox_enqueue_outcome;
 mod mailbox_instrumentation;
@@ -20,7 +24,11 @@ mod mailbox_poll_future;
 mod mailbox_queue_handles;
 mod mailbox_queue_state;
 mod mailbox_registry_error;
+/// Factory trait for creating message queue instances.
+mod mailbox_type;
 mod mailboxes;
+/// Pluggable message queue trait.
+mod message_queue;
 /// Event describing mailbox utilisation metrics.
 pub mod metrics_event;
 mod overflow_strategy;
@@ -28,9 +36,15 @@ mod policy;
 mod schedule_hints;
 mod schedule_state;
 mod system_queue;
+/// Unbounded mailbox type factory.
+mod unbounded_mailbox_type;
+/// Unbounded message queue implementation.
+mod unbounded_message_queue;
 
 pub use backpressure_publisher::BackpressurePublisher;
 pub use base::Mailbox;
+pub use bounded_mailbox_type::BoundedMailboxType;
+pub use bounded_message_queue::BoundedMessageQueue;
 pub use capacity::MailboxCapacity;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
 pub use mailbox_instrumentation::MailboxInstrumentation;
@@ -39,12 +53,16 @@ pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;
 pub use mailbox_registry_error::MailboxRegistryError;
+pub use mailbox_type::MailboxType;
 pub use mailboxes::Mailboxes;
+pub use message_queue::MessageQueue;
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
 pub use schedule_hints::ScheduleHints;
 pub(crate) use schedule_state::MailboxScheduleState;
 pub(crate) use system_queue::SystemQueue;
+pub use unbounded_mailbox_type::UnboundedMailboxType;
+pub use unbounded_message_queue::UnboundedMessageQueue;
 
 #[cfg(test)]
 mod tests;

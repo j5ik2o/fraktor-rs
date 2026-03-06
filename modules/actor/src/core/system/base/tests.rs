@@ -40,6 +40,7 @@ use crate::core::{
     remote::RemotingConfig,
     state::{SystemStateShared, system_state::SystemState},
   },
+  typed::SYSTEM_RECEPTIONIST_TOP_LEVEL,
 };
 
 struct TestActor;
@@ -220,6 +221,18 @@ fn actor_system_new_with_config_and_allows_extra_top_level_registration_in_confi
 
   let late = system.extended().register_extra_top_level("late", ActorRef::null());
   assert!(matches!(late, Err(crate::core::system::RegisterExtraTopLevelError::AlreadyStarted)));
+}
+
+#[test]
+fn actor_system_registers_system_receptionist_during_bootstrap() {
+  let props = Props::from_fn(|| TestActor);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+
+  let system = ActorSystem::new_with_config_and(&props, &config, |_| Ok(())).expect("system should build");
+
+  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
 }
 
 #[test]
@@ -467,6 +480,25 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
   let child = system.spawn_with_parent(None, &props).expect("spawn succeeds");
   assert!(log.lock().is_empty());
   assert!(system.state().cell(&child.pid()).is_some());
+}
+
+#[test]
+fn spawn_child_same_as_parent_inherits_dispatcher_executor() {
+  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher("noop", noop_config));
+
+  let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
+  let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
+
+  let child_props = Props::from_fn(|| TestActor).with_dispatcher_same_as_parent();
+  let child = system.spawn_with_parent(Some(parent.pid()), &child_props).expect("child spawn succeeds");
+
+  let parent_cell = system.state().cell(&parent.pid()).expect("parent cell");
+  let child_cell = system.state().cell(&child.pid()).expect("child cell");
+  let parent_executor = parent_cell.dispatcher_config().executor();
+  let child_executor = child_cell.dispatcher_config().executor();
+
+  assert!(ArcShared::ptr_eq(&parent_executor, &child_executor));
 }
 
 #[test]

@@ -1,14 +1,37 @@
-use alloc::{borrow::ToOwned, string::String};
+use alloc::{borrow::ToOwned, boxed::Box, string::String};
+use core::num::NonZeroUsize;
 
 use ahash::RandomState;
 use hashbrown::HashMap;
 
-use crate::core::{dispatch::mailbox::MailboxRegistryError, props::MailboxConfig};
+use crate::core::{
+  dispatch::mailbox::{
+    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType, capacity::MailboxCapacity,
+    mailbox_type::MailboxType, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+    policy::MailboxPolicy, unbounded_mailbox_type::UnboundedMailboxType,
+  },
+  props::MailboxConfig,
+};
 
 #[cfg(test)]
 mod tests;
 
 const DEFAULT_MAILBOX_ID: &str = "default";
+
+pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn MessageQueue> {
+  mailbox_type_from_policy(policy).create()
+}
+
+fn mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
+  match policy.capacity() {
+    | MailboxCapacity::Bounded { capacity } => bounded_mailbox_type(capacity, policy.overflow()),
+    | MailboxCapacity::Unbounded => Box::new(UnboundedMailboxType::new()),
+  }
+}
+
+fn bounded_mailbox_type(capacity: NonZeroUsize, overflow: MailboxOverflowStrategy) -> Box<dyn MailboxType> {
+  Box::new(BoundedMailboxType::new(capacity, overflow))
+}
 
 /// Registry that manages mailbox configurations keyed by identifier.
 pub struct Mailboxes {
@@ -57,6 +80,16 @@ impl Mailboxes {
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
     self.entries.get(id).copied().ok_or_else(|| MailboxRegistryError::unknown(id))
+  }
+
+  /// Creates a user-message queue from the configuration registered under `id`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn create_message_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
+    let config = self.resolve(id)?;
+    Ok(create_message_queue_from_policy(config.policy()))
   }
 
   /// Ensures the default mailbox configuration is registered.

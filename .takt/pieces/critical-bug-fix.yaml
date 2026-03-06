@@ -55,11 +55,13 @@ movements:
         edit: false
         persona: logic-bug-scanner
         policy: review
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Bash
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - Bash
         instruction: scan-critical-bugs
         output_contracts:
           report:
@@ -74,11 +76,13 @@ movements:
         persona: security-reviewer
         policy: review
         knowledge: security
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Bash
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - Bash
         instruction: scan-critical-bugs
         output_contracts:
           report:
@@ -92,11 +96,13 @@ movements:
         edit: false
         persona: concurrency-bug-scanner
         policy: review
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Bash
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - Bash
         instruction: scan-critical-bugs
         output_contracts:
           report:
@@ -120,13 +126,15 @@ movements:
       - testing
       - ../facets/policies/fraktor-coding.md
     session: refresh
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Edit
-      - Write
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
     required_permission_mode: edit
     pass_previous_response: false
     instruction: fix-critical-bugs
@@ -148,11 +156,13 @@ movements:
     edit: false
     persona: supervisor
     policy: review
-    allowed_tools:
-      - Read
-      - Glob
-      - Grep
-      - Bash
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
     pass_previous_response: false
     instruction: supervise
     output_contracts:

@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{
+  boxed::Box,
   collections::VecDeque,
   format,
   string::{String, ToString},
@@ -26,7 +27,7 @@ use crate::core::{
   dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError},
-    mailbox::MailboxRegistryError,
+    mailbox::{MailboxRegistryError, MessageQueue},
   },
   error::{ActorError, SendError},
   event::{
@@ -760,6 +761,15 @@ impl SystemStateShared {
     self.inner.read().resolve_mailbox(id)
   }
 
+  /// Creates a mailbox queue from the configuration registered under the identifier.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
+  pub fn create_mailbox_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
+    self.inner.read().create_mailbox_queue(id)
+  }
+
   /// Returns the remoting configuration when it has been configured.
   #[must_use]
   pub fn remoting_config(&self) -> Option<RemotingConfig> {
@@ -811,12 +821,16 @@ impl SystemStateShared {
     }
 
     let child_pid = payload.child();
-    let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
-    self.emit_log(LogLevel::Error, message, Some(child_pid));
 
     if let Some(parent_pid) = self.cell(&child_pid).and_then(|cell| cell.parent())
       && let Some(parent_cell) = self.cell(&parent_pid)
     {
+      let strategy = parent_cell.supervisor_strategy_config();
+      if strategy.logging_enabled() {
+        let level = strategy.effective_log_level(payload.restart_stats().failure_count() as u32);
+        let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
+        self.emit_log(level, message, Some(child_pid));
+      }
       if let Some(stats) = parent_cell.snapshot_child_restart_stats(child_pid) {
         payload = payload.with_restart_stats(stats);
       }
@@ -828,6 +842,8 @@ impl SystemStateShared {
       return;
     }
 
+    let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
+    self.emit_log(LogLevel::Error, message, Some(child_pid));
     self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
     let _ = self.send_system_message(child_pid, SystemMessage::Stop);
   }

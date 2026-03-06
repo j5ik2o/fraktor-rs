@@ -10,7 +10,7 @@ use super::{
   restart_statistics::RestartStatistics, supervisor_directive::SupervisorDirective,
   supervisor_strategy_kind::SupervisorStrategyKind,
 };
-use crate::core::error::ActorError;
+use crate::core::{error::ActorError, event::logging::LogLevel};
 
 /// Configuration selecting either a standard or backoff supervisor strategy.
 #[derive(Clone, Debug)]
@@ -97,6 +97,28 @@ impl SupervisorStrategyConfig {
     match self {
       | Self::Standard(s) => s.stash_capacity(),
       | Self::Backoff(b) => b.stash_capacity(),
+    }
+  }
+
+  /// Returns whether failure logging is enabled for this strategy.
+  #[must_use]
+  pub const fn logging_enabled(&self) -> bool {
+    match self {
+      | Self::Standard(s) => s.logging_enabled(),
+      | Self::Backoff(b) => b.logging_enabled(),
+    }
+  }
+
+  /// Returns the effective log level considering the error count.
+  ///
+  /// For standard strategies the configured log level is returned regardless of the count.
+  /// For backoff strategies the critical log level is used once the count exceeds the
+  /// configured threshold.
+  #[must_use]
+  pub const fn effective_log_level(&self, error_count: u32) -> LogLevel {
+    match self {
+      | Self::Standard(s) => s.log_level(),
+      | Self::Backoff(b) => b.effective_log_level(error_count),
     }
   }
 }
