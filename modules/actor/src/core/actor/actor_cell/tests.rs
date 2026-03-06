@@ -1,15 +1,15 @@
 use alloc::{string::ToString, vec, vec::Vec};
-use core::hint::spin_loop;
+use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::ActorCell;
 use crate::core::{
   actor::{Actor, ActorContext, Pid},
-  dispatch::mailbox::ScheduleHints,
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvoker, system_message::SystemMessage},
-  props::Props,
+  props::{MailboxConfig, Props},
   system::ActorSystem,
 };
 
@@ -99,6 +99,25 @@ fn actor_cell_holds_components() {
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
   assert_eq!(cell.dispatcher().mailbox().system_len(), 0);
+}
+
+#[test]
+fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
+  let registered_policy = MailboxPolicy::bounded(
+    NonZeroUsize::new(1).expect("non-zero mailbox capacity"),
+    MailboxOverflowStrategy::DropNewest,
+    None,
+  );
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_mailbox("bounded", MailboxConfig::new(registered_policy))).state();
+
+  let mismatched_policy = MailboxPolicy::unbounded(None);
+  let props =
+    Props::from_fn(|| ProbeActor).with_mailbox_config(MailboxConfig::new(mismatched_policy)).with_mailbox_id("bounded");
+
+  let cell = ActorCell::create(system, Pid::new(2, 0), None, "worker".to_string(), &props).expect("create actor cell");
+
+  assert_eq!(*cell.mailbox().policy(), registered_policy);
 }
 
 #[test]
