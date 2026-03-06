@@ -124,6 +124,6 @@ tasks:
     summary: "## GitHub Issue #577: Pekko整合レビュー(main..HEAD): Mailbox未接続を含む設計乖離の統合対応"
     task_dir: .takt/tasks/20260305-135628-github-issue-577-pekko-main-he
     created_at: 2026-03-05T13:56:28.310Z
-    started_at: 2026-03-05T18:05:25.484Z
+    started_at: 2026-03-06T00:23:56.994Z
     completed_at: null
-    owner_pid: 65859
+    owner_pid: 51655
