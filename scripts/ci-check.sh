@@ -31,11 +31,6 @@ fi
 export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 
-# ci-check 専用の並列度指定（未指定時は cargo のデフォルト並列度を使用）
-if [[ -n "${CI_CHECK_CARGO_BUILD_JOBS:-}" ]]; then
-  export CARGO_BUILD_JOBS="${CI_CHECK_CARGO_BUILD_JOBS}"
-fi
-
 usage() {
   cat <<'EOF'
 使い方: scripts/ci-check.sh [コマンド...]
@@ -56,7 +51,6 @@ usage() {
 
 環境変数:
   CARGO_BUILD_JOBS            : cargo の並列ジョブ数（例: 8）
-  CI_CHECK_CARGO_BUILD_JOBS   : ci-check 専用の並列ジョブ数（CARGO_BUILD_JOBS を上書き）
 EOF
 }
 
