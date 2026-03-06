@@ -1,11 +1,9 @@
 use alloc::{boxed::Box, collections::VecDeque};
 use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
-use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
-
 use crate::core::{
-  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
-  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, RestartSettings, SourceLogic,
+  StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
@@ -205,7 +203,7 @@ fn flat_map_merge_rejects_zero_breadth() {
 #[test]
 fn buffer_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
-    .via(Flow::new().buffer(2, OverflowPolicy::Block).expect("buffer"))
+    .via(Flow::new().buffer(2, OverflowStrategy::Backpressure).expect("buffer"))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -214,7 +212,7 @@ fn buffer_keeps_single_path_behavior() {
 #[test]
 fn buffer_rejects_zero_capacity() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let result = flow.buffer(0, OverflowPolicy::Block);
+  let result = flow.buffer(0, OverflowStrategy::Backpressure);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
@@ -2314,6 +2312,40 @@ fn throttle_shaping_logic_uses_backpressure_at_capacity() {
 
   // shaping モードではキャパシティに達すると入力を拒否する（バックプレッシャー）
   assert!(!logic.can_accept_input());
+}
+
+#[test]
+fn buffer_logic_drop_buffer_clears_pending_and_keeps_newest() {
+  let mut logic = super::BufferLogic::<u32> {
+    capacity:      2,
+    overflow_mode: super::BufferOverflowMode::Strategy(OverflowStrategy::DropBuffer),
+    pending:       VecDeque::new(),
+    source_done:   false,
+  };
+
+  let _ = logic.apply(Box::new(1_u32)).expect("first apply");
+  let _ = logic.apply(Box::new(2_u32)).expect("second apply");
+  let _ = logic.apply(Box::new(3_u32)).expect("third apply");
+  logic.on_source_done().expect("source done");
+
+  let drained = logic.drain_pending().expect("drain");
+  let drained_values: Vec<u32> = drained.into_iter().map(|value| *value.downcast::<u32>().expect("u32")).collect();
+  assert_eq!(drained_values, vec![3_u32]);
+  assert!(logic.drain_pending().expect("drain empty").is_empty());
+}
+
+#[test]
+fn buffer_logic_fail_returns_buffer_overflow_when_full() {
+  let mut logic = super::BufferLogic::<u32> {
+    capacity:      1,
+    overflow_mode: super::BufferOverflowMode::Strategy(OverflowStrategy::Fail),
+    pending:       VecDeque::new(),
+    source_done:   false,
+  };
+
+  let _ = logic.apply(Box::new(1_u32)).expect("first apply");
+  let result = logic.apply(Box::new(2_u32));
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
 
 #[test]

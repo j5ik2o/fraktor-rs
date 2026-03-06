@@ -1,7 +1,11 @@
 /// Stream attributes for stage and graph metadata.
 mod attributes;
+/// Bounded queue materialized by source queue stages.
+mod bounded_source_queue;
 /// Completion polling types.
 mod completion;
+/// Supervision decider function type.
+mod decider;
 /// Demand model types.
 mod demand;
 /// Demand tracking utilities.
@@ -30,12 +34,20 @@ mod mat_combine;
 mod mat_combine_rule;
 /// Operator compatibility catalog.
 pub mod operator;
+/// Overflow strategy definitions compatible with Pekko terminology.
+mod overflow_strategy;
+/// Queue offer result definitions.
+mod queue_offer_result;
 /// Restart/backoff configuration.
 mod restart_settings;
 /// Stream topology shapes and connection points.
 pub mod shape;
 /// Shared pull handle for queue-based sink materialization.
 mod sink_queue;
+/// Source queue materialization handle.
+mod source_queue;
+/// Source queue materialization handle with completion notifications.
+mod source_queue_with_complete;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
 /// Stream buffer implementation.
@@ -52,6 +64,8 @@ mod stream_dsl_error;
 mod stream_error;
 /// Stream not-used marker.
 mod stream_not_used;
+/// Supervision strategy definitions.
+mod supervision_strategy;
 /// Test utilities for stream verification.
 pub mod testing;
 /// Throttle behavior mode.
@@ -63,7 +77,9 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
 pub use attributes::Attributes;
+pub use bounded_source_queue::BoundedSourceQueue;
 pub use completion::Completion;
+pub use decider::Decider;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
 pub use framing::Framing;
@@ -73,9 +89,13 @@ pub use keep_none::KeepNone;
 pub use keep_right::KeepRight;
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
+pub use overflow_strategy::OverflowStrategy;
+pub use queue_offer_result::QueueOfferResult;
 pub use restart_settings::RestartSettings;
 use shape::PortId;
 pub use sink_queue::SinkQueue;
+pub use source_queue::SourceQueue;
+pub use source_queue_with_complete::SourceQueueWithComplete;
 use stage::StageKind;
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;
@@ -84,6 +104,7 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
+pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
 type DynValue = Box<dyn Any + Send + Sync + 'static>;
@@ -158,13 +179,6 @@ struct SinkDefinition {
   supervision: SupervisionStrategy,
   restart:     Option<RestartBackoff>,
   logic:       Box<dyn SinkLogic>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SupervisionStrategy {
-  Stop,
-  Resume,
-  Restart,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -444,6 +458,14 @@ trait FlowLogic: Send {
     Ok(())
   }
 
+  fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
+
+  fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
+
   fn can_accept_input(&self) -> bool {
     true
   }
@@ -504,6 +526,9 @@ trait SinkLogic: Send {
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError>;
   fn on_complete(&mut self) -> Result<(), StreamError>;
   fn on_error(&mut self, error: StreamError);
+  fn on_tick(&mut self, _demand: &mut DemandTracker) -> Result<bool, StreamError> {
+    Ok(false)
+  }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())

@@ -7,12 +7,11 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
-
 use super::{
-  DynValue, MatCombine, MatCombineRule, Materialized, Materializer, RestartBackoff, RestartSettings, RunnableGraph,
-  SourceDefinition, SourceLogic, SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone,
-  StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
+  BoundedSourceQueue, DynValue, MatCombine, MatCombineRule, Materialized, Materializer, OverflowStrategy,
+  RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue, SourceQueueWithComplete,
+  SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
+  StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_substreams_definition, debounce_definition, delay_definition, drop_definition,
@@ -182,13 +181,13 @@ where
     Self::from_iterator(values)
   }
 
-  /// Creates a source from actor-ref with backpressure style push values.
+  /// Creates a source from actor-ref style push values with backpressure semantics.
   #[must_use]
   pub fn actor_ref_with_backpressure<I>(values: I) -> Self
   where
     I: IntoIterator<Item = Out>,
     I::IntoIter: Send + 'static, {
-    Self::actor_ref(values)
+    Self::from_iterator(values)
   }
 
   /// Creates a sink endpoint for actor interop entry points.
@@ -345,13 +344,76 @@ where
     Self::from_option(value)
   }
 
-  /// Creates a source backed by queue-compatible values.
+  /// Creates a source materialized as a bounded source queue.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn queue(capacity: usize) -> Result<Source<Out, BoundedSourceQueue<Out>>, StreamDslError> {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
+    let mut graph = StreamGraph::new();
+    let outlet: Outlet<Out> = Outlet::new();
+    let logic = QueueSourceLogic::<Out> { queue: queue.clone() };
+    let definition = SourceDefinition {
+      kind:        StageKind::Custom,
+      outlet:      outlet.id(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
+      logic:       Box::new(logic),
+    };
+    graph.push_stage(StageDefinition::Source(definition));
+    Ok(Source { graph, mat: queue, _pd: PhantomData })
+  }
+
+  /// Creates a source materialized as a source queue with completion notifications.
+  ///
+  /// `capacity` may be zero to disable the internal buffer.
+  ///
+  /// # Errors
+  ///
+  /// This constructor currently does not fail.
+  pub fn queue_with_overflow(
+    capacity: usize,
+    overflow_strategy: OverflowStrategy,
+  ) -> Result<Source<Out, SourceQueueWithComplete<Out>>, StreamDslError> {
+    let queue = SourceQueueWithComplete::new(capacity, overflow_strategy);
+    let mut graph = StreamGraph::new();
+    let outlet: Outlet<Out> = Outlet::new();
+    let logic = QueueWithOverflowSourceLogic::<Out> { queue: queue.clone() };
+    let definition = SourceDefinition {
+      kind:        StageKind::Custom,
+      outlet:      outlet.id(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
+      logic:       Box::new(logic),
+    };
+    graph.push_stage(StageDefinition::Source(definition));
+    Ok(Source { graph, mat: queue, _pd: PhantomData })
+  }
+
+  /// Creates a source materialized as an unbounded source queue.
   #[must_use]
-  pub fn queue<I>(values: I) -> Self
-  where
-    I: IntoIterator<Item = Out>,
-    I::IntoIter: Send + 'static, {
-    Self::from_iterator(values)
+  pub fn queue_unbounded() -> Source<Out, SourceQueue<Out>> {
+    let queue = SourceQueue::new();
+    let mut graph = StreamGraph::new();
+    let outlet: Outlet<Out> = Outlet::new();
+    let logic = UnboundedQueueSourceLogic::<Out> { queue: queue.clone() };
+    let definition = SourceDefinition {
+      kind:        StageKind::Custom,
+      outlet:      outlet.id(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
+      logic:       Box::new(logic),
+    };
+    graph.push_stage(StageDefinition::Source(definition));
+    Source { graph, mat: queue, _pd: PhantomData }
   }
 
   /// Creates a ticking source by repeating and delaying values.
@@ -924,10 +986,10 @@ where
   pub fn buffer(
     mut self,
     capacity: usize,
-    overflow_policy: OverflowPolicy,
+    overflow_strategy: OverflowStrategy,
   ) -> Result<Source<Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    let definition = buffer_definition::<Out>(capacity, overflow_policy);
+    let definition = buffer_definition::<Out>(capacity, overflow_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -1787,6 +1849,18 @@ struct UnfoldAsyncSourceLogic<State, Out, F, Fut> {
   _pd:     PhantomData<fn() -> Out>,
 }
 
+struct QueueSourceLogic<Out> {
+  queue: BoundedSourceQueue<Out>,
+}
+
+struct QueueWithOverflowSourceLogic<Out> {
+  queue: SourceQueueWithComplete<Out>,
+}
+
+struct UnboundedQueueSourceLogic<Out> {
+  queue: SourceQueue<Out>,
+}
+
 impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
   Out: Send + Sync + 'static,
@@ -1916,6 +1990,60 @@ where
       },
       | Poll::Pending => Err(StreamError::WouldBlock),
     }
+  }
+}
+
+impl<Out> SourceLogic for QueueSourceLogic<Out>
+where
+  Out: Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.queue.poll()? {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None if self.queue.is_drained() => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.queue.complete();
+    Ok(())
+  }
+}
+
+impl<Out> SourceLogic for QueueWithOverflowSourceLogic<Out>
+where
+  Out: Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.queue.poll()? {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None if self.queue.is_drained() => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.queue.complete();
+    Ok(())
+  }
+}
+
+impl<Out> SourceLogic for UnboundedQueueSourceLogic<Out>
+where
+  Out: Send + Sync + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.queue.poll()? {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None if self.queue.is_drained() => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.queue.complete();
+    Ok(())
   }
 }
 

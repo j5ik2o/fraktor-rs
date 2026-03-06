@@ -1,14 +1,18 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
-use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
-
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
+use crate::core::OverflowStrategy;
+
+#[derive(Clone, Copy)]
+pub(in crate::core::stage::flow) enum BufferOverflowMode {
+  Strategy(OverflowStrategy),
+}
 
 pub(in crate::core::stage::flow) struct BufferLogic<In> {
-  pub(in crate::core::stage::flow) capacity:        usize,
-  pub(in crate::core::stage::flow) overflow_policy: OverflowPolicy,
-  pub(in crate::core::stage::flow) pending:         VecDeque<In>,
-  pub(in crate::core::stage::flow) source_done:     bool,
+  pub(in crate::core::stage::flow) capacity:      usize,
+  pub(in crate::core::stage::flow) overflow_mode: BufferOverflowMode,
+  pub(in crate::core::stage::flow) pending:       VecDeque<In>,
+  pub(in crate::core::stage::flow) source_done:   bool,
 }
 
 impl<In> BufferLogic<In>
@@ -24,17 +28,25 @@ where
       return Ok(());
     }
 
-    match self.overflow_policy {
-      | OverflowPolicy::Block => Err(StreamError::BufferOverflow),
-      | OverflowPolicy::DropNewest => Ok(()),
-      | OverflowPolicy::DropOldest => {
-        let _ = self.pending.pop_front();
-        self.pending.push_back(value);
-        Ok(())
-      },
-      | OverflowPolicy::Grow => {
-        self.pending.push_back(value);
-        Ok(())
+    match self.overflow_mode {
+      | BufferOverflowMode::Strategy(overflow_strategy) => match overflow_strategy {
+        | OverflowStrategy::Backpressure => Ok(()),
+        | OverflowStrategy::DropHead => {
+          let _ = self.pending.pop_front();
+          self.pending.push_back(value);
+          Ok(())
+        },
+        | OverflowStrategy::DropTail => {
+          let _ = self.pending.pop_back();
+          self.pending.push_back(value);
+          Ok(())
+        },
+        | OverflowStrategy::DropBuffer => {
+          self.pending.clear();
+          self.pending.push_back(value);
+          Ok(())
+        },
+        | OverflowStrategy::Fail => Err(StreamError::BufferOverflow),
       },
     }
   }
@@ -55,8 +67,18 @@ where
     Ok(())
   }
 
+  fn can_accept_input(&self) -> bool {
+    match self.overflow_mode {
+      | BufferOverflowMode::Strategy(OverflowStrategy::Backpressure) => self.pending.len() < self.capacity,
+      | BufferOverflowMode::Strategy(_) => true,
+    }
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
-    if !self.source_done {
+    let can_emit_on_backpressure =
+      matches!(self.overflow_mode, BufferOverflowMode::Strategy(OverflowStrategy::Backpressure))
+        && self.pending.len() >= self.capacity;
+    if !self.source_done && !can_emit_on_backpressure {
       return Ok(Vec::new());
     }
     let Some(value) = self.pending.pop_front() else {

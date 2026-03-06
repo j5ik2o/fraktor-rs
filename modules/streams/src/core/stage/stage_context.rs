@@ -1,4 +1,6 @@
-use super::StreamError;
+use alloc::vec::Vec;
+
+use super::{AsyncCallback, StreamError, TimerGraphStageLogic};
 
 /// Context passed to stage logic.
 pub trait StageContext<In, Out> {
@@ -12,4 +14,32 @@ pub trait StageContext<In, Out> {
   fn complete(&mut self);
   /// Fails the stream with the provided error.
   fn fail(&mut self, error: StreamError);
+
+  /// Returns the asynchronous callback queue for this stage.
+  fn async_callback(&self) -> &AsyncCallback<Out>;
+  /// Returns the timer helper for this stage.
+  fn timer_graph_stage_logic(&mut self) -> &mut TimerGraphStageLogic;
+
+  /// Drains asynchronous events from the callback queue.
+  #[must_use]
+  fn drain_async_events(&self) -> Vec<Out> {
+    self.async_callback().drain()
+  }
+
+  /// Schedules a one-shot timer.
+  fn schedule_once(&mut self, key: u64, delay_ticks: u64) {
+    self.timer_graph_stage_logic().schedule_once(key, delay_ticks);
+  }
+
+  /// Cancels a one-shot timer.
+  #[must_use]
+  fn cancel_timer(&mut self, key: u64) -> bool {
+    self.timer_graph_stage_logic().cancel(key)
+  }
+
+  /// Advances timer state and returns fired keys.
+  #[must_use]
+  fn advance_timers(&mut self) -> Vec<u64> {
+    self.timer_graph_stage_logic().advance()
+  }
 }

@@ -180,15 +180,15 @@ impl GraphInterpreter {
           },
         }
       }
+    }
 
-      match self.drive_sinks_once() {
-        | Ok(true) => progressed = true,
-        | Ok(false) => {},
-        | Err(error) => {
-          self.fail(&error);
-          return DriveOutcome::Progressed;
-        },
-      }
+    match self.drive_sinks_once() {
+      | Ok(true) => progressed = true,
+      | Ok(false) => {},
+      | Err(error) => {
+        self.fail(&error);
+        return DriveOutcome::Progressed;
+      },
     }
 
     if self.all_sources_done()
@@ -441,6 +441,52 @@ impl GraphInterpreter {
       let mut consumed_input = false;
       let mut outputs = Vec::new();
 
+      let async_outputs = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        flow.logic.on_async_callback()
+      };
+      outputs.extend(match async_outputs {
+        | Ok(outputs) => outputs,
+        | Err(error) => match self.handle_flow_failure(stage_index, error)? {
+          | FailureDisposition::Continue => {
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Complete => {
+            self.set_all_sources_done()?;
+            self.notify_source_done_to_flows()?;
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Fail(error) => return Err(error),
+        },
+      });
+
+      let timer_outputs = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        flow.logic.on_timer()
+      };
+      outputs.extend(match timer_outputs {
+        | Ok(outputs) => outputs,
+        | Err(error) => match self.handle_flow_failure(stage_index, error)? {
+          | FailureDisposition::Continue => {
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Complete => {
+            self.set_all_sources_done()?;
+            self.notify_source_done_to_flows()?;
+            progressed = true;
+            continue;
+          },
+          | FailureDisposition::Fail(error) => return Err(error),
+        },
+      });
+
       let can_accept_input = match &self.stages[stage_index] {
         | StageDefinition::Flow(flow) => flow.logic.can_accept_input(),
         | _ => false,
@@ -458,7 +504,7 @@ impl GraphInterpreter {
           };
           flow.logic.apply_with_edge(edge_index, input)
         };
-        outputs = match apply_result {
+        let input_outputs = match apply_result {
           | Ok(outputs) => outputs,
           | Err(error) => match self.handle_flow_failure(stage_index, error)? {
             | FailureDisposition::Continue => {
@@ -474,6 +520,7 @@ impl GraphInterpreter {
             | FailureDisposition::Fail(error) => return Err(error),
           },
         };
+        outputs.extend(input_outputs);
       }
 
       if outputs.is_empty() && !outgoing_buffered {
@@ -562,9 +609,7 @@ impl GraphInterpreter {
     if self.sink_done[sink_position] {
       return Ok(false);
     }
-    if !self.demand.has_demand() {
-      return Ok(false);
-    }
+
     let sink_index = self.sink_indices[sink_position];
     let (sink_inlet, sink_input_type) = match &self.stages[sink_index] {
       | StageDefinition::Sink(sink) => (sink.inlet, sink.input_type),
@@ -573,6 +618,35 @@ impl GraphInterpreter {
     if self.sink_restart_waiting_at(sink_index) {
       return Ok(false);
     }
+    let mut progressed = false;
+    let on_tick_result = {
+      let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      sink.logic.on_tick(&mut self.demand)
+    };
+    let sink_tick_progressed = match on_tick_result {
+      | Ok(sink_tick_progressed) => sink_tick_progressed,
+      | Err(error) => match self.handle_sink_failure(sink_index, error)? {
+        | FailureDisposition::Continue => return Ok(true),
+        | FailureDisposition::Complete => {
+          self.sink_done[sink_position] = true;
+          if self.all_sinks_done() {
+            self.finish_sinks()?;
+            self.state = StreamState::Completed;
+          }
+          return Ok(true);
+        },
+        | FailureDisposition::Fail(error) => return Err(error),
+      },
+    };
+    if sink_tick_progressed {
+      progressed = true;
+    }
+    if !self.demand.has_demand() {
+      return Ok(progressed);
+    }
+
     let sink_can_accept = {
       let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
         return Err(StreamError::InvalidConnection);
@@ -580,11 +654,11 @@ impl GraphInterpreter {
       sink.logic.can_accept_input()
     };
     if !sink_can_accept {
-      return Ok(false);
+      return Ok(progressed);
     }
 
     let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet)? else {
-      return Ok(false);
+      return Ok(progressed);
     };
     if value.as_ref().type_id() != sink_input_type {
       return Err(StreamError::TypeMismatch);
