@@ -31,6 +31,11 @@ fi
 export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 
+# ci-check 専用の並列度指定（未指定時は cargo のデフォルト並列度を使用）
+if [[ -n "${CI_CHECK_CARGO_BUILD_JOBS:-}" ]]; then
+  export CARGO_BUILD_JOBS="${CI_CHECK_CARGO_BUILD_JOBS}"
+fi
+
 usage() {
   cat <<'EOF'
 使い方: scripts/ci-check.sh [コマンド...]
@@ -48,6 +53,10 @@ usage() {
   actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
+
+環境変数:
+  CARGO_BUILD_JOBS            : cargo の並列ジョブ数（例: 8）
+  CI_CHECK_CARGO_BUILD_JOBS   : ci-check 専用の並列ジョブ数（CARGO_BUILD_JOBS を上書き）
 EOF
 }
 
@@ -889,6 +898,10 @@ main() {
     rm -f "${lockfile}" >/dev/null 2>&1 || true
   done
   trap "rm -f '${lockfile}'" EXIT
+
+  if [[ -n "${CARGO_BUILD_JOBS:-}" ]]; then
+    echo "info: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}" >&2
+  fi
 
   if [[ -x "${SCRIPT_DIR}/check_modrs.sh" ]]; then
     "${SCRIPT_DIR}/check_modrs.sh"
