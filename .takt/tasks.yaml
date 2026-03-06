@@ -1,132 +1,19 @@
 tasks:
   - worktree: false
-    piece: refactoring
-    issue: 477
-    auto_pr: false
-    draft_pr: false
-    name: github-issue-477-refactor-util
-    status: completed
-    slug: github-issue-477-refactor-util
-    summary: "## GitHub Issue #477: refactor: utils の stack/ と concurrent/ 全削除"
-    task_dir: .takt/tasks/20260303-085225-github-issue-477-refactor-util
-    created_at: 2026-03-03T08:52:25.392Z
-    started_at: 2026-03-03T08:53:47.234Z
-    completed_at: 2026-03-03T10:14:42.125Z
-    owner_pid: null
-  - worktree: false
-    piece: refactoring
-    issue: 478
-    auto_pr: true
-    draft_pr: false
-    name: github-issue-478-refactor-util
-    status: completed
-    slug: github-issue-478-refactor-util
-    summary: "## GitHub Issue #478: refactor: utils の dead_line_timer/time 未使用型 +
-      queue Async系"
-    task_dir: .takt/tasks/20260303-134813-github-issue-478-refactor-util
-    created_at: 2026-03-03T13:48:13.113Z
-    started_at: 2026-03-03T13:49:05.456Z
-    completed_at: 2026-03-03T16:53:30.977Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/479/github-issue-479-refactor-util
-    piece: refactoring
-    issue: 479
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-479-refactor-util
-    status: completed
-    slug: github-issue-479-refactor-util
-    summary: "## GitHub Issue #479: refactor: utils の pub 可視性整理（内部型の pub 剥がし）"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260303T1745-479-github-issue-479-refactor-util
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/483
-    task_dir: .takt/tasks/20260303-173030-github-issue-479-refactor-util
-    created_at: 2026-03-03T17:30:30.136Z
-    started_at: 2026-03-03T17:45:56.308Z
-    completed_at: 2026-03-03T19:51:26.338Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/411/github-issue-411-refactor-stre
-    piece: refactoring
-    issue: 411
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-411-refactor-stre
-    status: completed
-    slug: github-issue-411-refactor-stre
-    summary: "## GitHub Issue #411: refactor: streams flow.rs の分割とSource/Flow重複メソッドの共通化"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260303T2239-411-github-issue-411-refactor-stre
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/484
-    task_dir: .takt/tasks/20260303-223904-github-issue-411-refactor-stre
-    created_at: 2026-03-03T22:39:04.947Z
-    started_at: 2026-03-03T22:39:56.444Z
-    completed_at: 2026-03-04T00:03:14.352Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/413/github-issue-413-refactor-acto
-    piece: refactoring
-    issue: 413
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-413-refactor-acto
-    status: completed
-    slug: github-issue-413-refactor-acto
-    summary: "## GitHub Issue #413: refactor: actor scheduler/tick_driver の小型enum統合"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260304T0155-413-github-issue-413-refactor-acto
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/486
-    task_dir: .takt/tasks/20260304-015508-github-issue-413-refactor-acto
-    created_at: 2026-03-04T01:55:08.941Z
-    started_at: 2026-03-04T01:55:46.152Z
-    completed_at: 2026-03-04T02:52:55.297Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/487/github-issue-487-coderabbit-no
-    piece: issue-resolve
-    issue: 487
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-487-coderabbit-no
-    status: completed
-    slug: github-issue-487-coderabbit-no
-    summary: "## GitHub Issue #487: CodeRabbit 指摘事項の棚卸し（19件）"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260304T0413-487-github-issue-487-coderabbit-no
-    task_dir: .takt/tasks/20260304-034253-github-issue-487-coderabbit-19
-    created_at: 2026-03-04T03:42:53.477Z
-    started_at: 2026-03-04T04:13:20.504Z
-    completed_at: 2026-03-04T05:29:13.456Z
-    owner_pid: null
-  - worktree: true
-    branch: takt/575/github-issue-575-actor-pekko-t
+    branch: takt/563/github-issue-563-epic-streams
     piece: pekko-porting
-    issue: 575
-    auto_pr: true
-    draft_pr: true
-    name: github-issue-575-actor-pekko-t
-    status: completed
-    slug: github-issue-575-actor-pekko-t
-    summary: "## GitHub Issue #575: actor: Pekko整合タスク進行トラッカー（#568-#574）"
-    worktree_path: /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/takt-worktrees/20260305T1151-575-github-issue-575-actor-pekko-t
-    pr_url: https://github.com/j5ik2o/fraktor-rs/pull/576
-    task_dir: .takt/tasks/20260305-114946-github-issue-575-actor-pekko-5
-    created_at: 2026-03-05T11:49:46.210Z
-    started_at: 2026-03-05T11:51:29.100Z
-    completed_at: 2026-03-05T13:29:40.441Z
-    owner_pid: null
-  - worktree: false
-    branch: takt/575/github-issue-575-actor-pekko-t
-    piece: pekko-porting
-    issue: 577
-    start_movement: final-ci
+    issue: 563
+    start_movement: supervise
     auto_pr: false
     draft_pr: false
     exceeded_max_movements: 60
     exceeded_current_iteration: 30
-    name: github-issue-577-pekko-rebyuu
-    status: exceeded
-    slug: github-issue-577-pekko-rebyuu
-    summary: "## GitHub Issue #577: Pekko整合レビュー(main..HEAD): Mailbox未接続を含む設計乖離の統合対応"
-    task_dir: .takt/tasks/20260305-135628-github-issue-577-pekko-main-he
-    created_at: 2026-03-05T13:56:28.310Z
-    started_at: 2026-03-06T00:23:56.994Z
-    completed_at: 2026-03-06T03:22:52.789Z
+    name: github-issue-563-epic-streams
+    status: pending
+    slug: github-issue-563-epic-streams
+    summary: "## GitHub Issue #563: Epic: streams モジュール Pekko ギャップ対応"
+    task_dir: .takt/tasks/20260306-072155-github-issue-563-epic-streams
+    created_at: 2026-03-06T07:21:55.710Z
+    started_at: null
+    completed_at: null
     owner_pid: null
