@@ -70,11 +70,15 @@ run_with_heartbeat() {
   local enabled="${CI_CHECK_HEARTBEAT:-1}"
   local heartbeat_pid=""
 
+  if [[ ! "${interval}" =~ ^[0-9]+$ ]] || [[ "${interval}" -lt 1 ]]; then
+    interval=60
+  fi
+
   if [[ "${enabled}" != "0" ]]; then
     (
       while true; do
         sleep "${interval}"
-        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')" >&2
+        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')"
       done
     ) &
     heartbeat_pid=$!
