@@ -3,18 +3,21 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
+# mise で管理されたツール（node 等）を PATH に追加
+eval "$(mise env 2>/dev/null)" || true
+
 # ACCOUNT environment variable takes precedence over first positional argument.
 # If ACCOUNT is already set, $1 is treated as a takt argument, not an account name.
 if [[ -z "${ACCOUNT:-}" ]]; then
-  ACCOUNT="${1:-personal}"
+  ACCOUNT="${1:-corporate}"
   shift 2>/dev/null || true
 fi
 
 # Short aliases
 case "$ACCOUNT" in
-  p) ACCOUNT=personal ;;
-  c) ACCOUNT=corporate ;;
-  z) ACCOUNT=zai ;;
+p) ACCOUNT=personal ;;
+c) ACCOUNT=corporate ;;
+z) ACCOUNT=zai ;;
 esac
 
 CLAUDE_WRAPPER="${SCRIPT_DIR}/run-claude-${ACCOUNT}.sh"

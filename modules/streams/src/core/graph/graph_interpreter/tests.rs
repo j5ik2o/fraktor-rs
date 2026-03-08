@@ -1,4 +1,4 @@
-use alloc::collections::VecDeque;
+use alloc::{boxed::Box, collections::VecDeque};
 use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::{
@@ -7,9 +7,10 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, FlowDefinition, FlowLogic, KeepRight, MatCombine, RestartBackoff,
-  RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition,
-  StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan, SupervisionStrategy,
+  Completion, DemandTracker, DynValue, FlowDefinition, FlowLogic, KeepRight, MatCombine, OverflowStrategy,
+  RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
+  StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
+  SupervisionStrategy,
   graph::GraphInterpreter,
   lifecycle::{DriveOutcome, StreamState},
   shape::{Inlet, Outlet, PortId},
@@ -368,13 +369,39 @@ fn flat_map_merge_fails_stream_when_inner_source_fails_without_recovery() {
 }
 
 #[test]
-fn buffer_flow_fails_with_block_policy_on_overflow() {
+fn buffer_flow_backpressure_keeps_buffered_elements_without_failing() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::<Vec<u32>>::new();
+
+  let source = source_sequence_u32(source_outlet, 3);
+  let buffer = buffer_definition::<u32>(2, OverflowStrategy::Backpressure);
+  let buffer_inlet = buffer.inlet;
+  let buffer_outlet = buffer.outlet;
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![StageDefinition::Source(source), StageDefinition::Flow(buffer), StageDefinition::Sink(sink)],
+    vec![
+      (source_outlet.id(), buffer_inlet, MatCombine::KeepLeft),
+      (buffer_outlet, sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
+}
+
+#[test]
+fn buffer_flow_fail_policy_fails_stream_on_overflow() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
 
   let source = source_sequence_u32(source_outlet, 3);
-  let buffer = buffer_definition::<u32>(2, OverflowPolicy::Block);
+  let buffer = buffer_definition::<u32>(2, OverflowStrategy::Fail);
   let buffer_inlet = buffer.inlet;
   let buffer_outlet = buffer.outlet;
   let sink = SinkDefinition {
@@ -408,7 +435,7 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
   let completion = StreamCompletion::new();
 
   let source = source_sequence_u32(source_outlet, 3);
-  let buffer = buffer_definition::<u32>(2, OverflowPolicy::DropOldest);
+  let buffer = buffer_definition::<u32>(2, OverflowStrategy::DropHead);
   let buffer_inlet = buffer.inlet;
   let buffer_outlet = buffer.outlet;
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
@@ -451,6 +478,83 @@ fn async_boundary_flow_preserves_input_order() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
+}
+
+#[test]
+fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
+  struct AsyncTimerEmissionFlowLogic {
+    callback:    crate::core::stage::AsyncCallback<u32>,
+    timer:       crate::core::stage::TimerGraphStageLogic,
+    initialized: bool,
+  }
+
+  impl AsyncTimerEmissionFlowLogic {
+    fn new() -> Self {
+      Self {
+        callback:    crate::core::stage::AsyncCallback::new(),
+        timer:       crate::core::stage::TimerGraphStageLogic::new(),
+        initialized: false,
+      }
+    }
+  }
+
+  impl FlowLogic for AsyncTimerEmissionFlowLogic {
+    fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+      Ok(Vec::new())
+    }
+
+    fn on_tick(&mut self, _tick_count: u64) -> Result<(), StreamError> {
+      if !self.initialized {
+        self.initialized = true;
+        self.callback.invoke(10_u32);
+        self.timer.schedule_once(1_u64, 1_u64);
+      }
+      Ok(())
+    }
+
+    fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      Ok(self.callback.drain().into_iter().map(|value| Box::new(value) as DynValue).collect())
+    }
+
+    fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+      let mut outputs = Vec::new();
+      for key in self.timer.advance() {
+        outputs.push(Box::new(100_u32.saturating_add(key as u32)) as DynValue);
+      }
+      Ok(outputs)
+    }
+  }
+
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(AsyncTimerEmissionFlowLogic::new()),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan =
+    stream_plan(vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)], vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::KeepLeft),
+      (flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ]);
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
 #[test]

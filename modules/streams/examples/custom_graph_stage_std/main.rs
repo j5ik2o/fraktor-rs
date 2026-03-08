@@ -4,7 +4,7 @@ use fraktor_streams_rs::core::{
   StreamError, StreamNotUsed,
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
-  stage::StageContext,
+  stage::{AsyncCallback, StageContext, TimerGraphStageLogic},
 };
 
 struct MultiplyStage {
@@ -43,16 +43,26 @@ impl GraphStageLogic<u32, u32, StreamNotUsed> for MultiplyStageLogic {
 }
 
 struct DemoStageContext {
-  input:    Option<u32>,
-  output:   Option<u32>,
-  pulled:   bool,
-  complete: bool,
-  failed:   Option<StreamError>,
+  input:          Option<u32>,
+  output:         Option<u32>,
+  pulled:         bool,
+  complete:       bool,
+  failed:         Option<StreamError>,
+  async_callback: AsyncCallback<u32>,
+  timer:          TimerGraphStageLogic,
 }
 
 impl DemoStageContext {
-  const fn with_input(input: u32) -> Self {
-    Self { input: Some(input), output: None, pulled: false, complete: false, failed: None }
+  fn with_input(input: u32) -> Self {
+    Self {
+      input:          Some(input),
+      output:         None,
+      pulled:         false,
+      complete:       false,
+      failed:         None,
+      async_callback: AsyncCallback::new(),
+      timer:          TimerGraphStageLogic::new(),
+    }
   }
 }
 
@@ -76,9 +86,17 @@ impl StageContext<u32, u32> for DemoStageContext {
   fn fail(&mut self, error: StreamError) {
     self.failed = Some(error);
   }
+
+  fn async_callback(&self) -> &AsyncCallback<u32> {
+    &self.async_callback
+  }
+
+  fn timer_graph_stage_logic(&mut self) -> &mut TimerGraphStageLogic {
+    &mut self.timer
+  }
 }
 
-fn main() {
+pub fn main() {
   let stage = MultiplyStage::new(2);
   let _shape = stage.shape();
   let mut logic = stage.create_logic();

@@ -6,12 +6,10 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
-
 use super::{
-  FlowDefinition, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, Source,
-  StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage,
-  SupervisionStrategy,
+  FlowDefinition, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff,
+  RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed,
+  StreamStage, SupervisionStrategy,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   validate_positive_argument,
@@ -437,10 +435,10 @@ where
   pub fn buffer(
     mut self,
     capacity: usize,
-    overflow_policy: OverflowPolicy,
+    overflow_strategy: OverflowStrategy,
   ) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    let definition = buffer_definition::<Out>(capacity, overflow_policy);
+    let definition = buffer_definition::<Out>(capacity, overflow_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -2785,12 +2783,17 @@ where
   }
 }
 
-pub(in crate::core) fn buffer_definition<In>(capacity: usize, overflow_policy: OverflowPolicy) -> FlowDefinition
+pub(in crate::core) fn buffer_definition<In>(capacity: usize, overflow_strategy: OverflowStrategy) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = BufferLogic::<In> { capacity, overflow_policy, pending: VecDeque::new(), source_done: false };
+  let logic = BufferLogic::<In> {
+    capacity,
+    overflow_mode: BufferOverflowMode::Strategy(overflow_strategy),
+    pending: VecDeque::new(),
+    source_done: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowBuffer,
     inlet:       inlet.id(),

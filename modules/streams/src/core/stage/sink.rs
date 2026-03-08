@@ -457,7 +457,7 @@ where
     self.add_attributes(Attributes::named(name))
   }
 
-  fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
+  pub(in crate::core::stage) fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
   where
     L: SinkLogic + 'static, {
     let inlet: Inlet<In> = Inlet::new();

@@ -1,14 +1,16 @@
 use alloc::{boxed::Box, collections::VecDeque};
-use core::{future::ready, marker::PhantomData};
-
-use fraktor_utils_rs::core::{
-  collections::queue::OverflowPolicy,
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+use core::{
+  future::{Future, ready},
+  marker::PhantomData,
+  pin::pin,
+  task::{Context, Poll, Waker},
 };
 
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+
 use crate::core::{
-  Completion, DynValue, KeepBoth, KeepLeft, KeepRight, RestartSettings, SourceLogic, StreamBufferConfig,
-  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
+  SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   mat::{Materialized, Materializer},
   stage::{Sink, Source, StageKind},
@@ -107,6 +109,22 @@ impl SourceLogic for CancelAwareSourceLogic {
     *count = count.saturating_add(1);
     Ok(())
   }
+}
+
+fn poll_ready<F>(future: F) -> F::Output
+where
+  F: Future, {
+  let mut future = pin!(future);
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+  match future.as_mut().poll(&mut context) {
+    | Poll::Ready(output) => output,
+    | Poll::Pending => panic!("future should be ready"),
+  }
+}
+
+fn noop_waker() -> Waker {
+  Waker::noop().clone()
 }
 
 #[test]
@@ -408,8 +426,8 @@ fn source_actor_ref_alias_emits_values() {
 
 #[test]
 fn source_actor_ref_with_backpressure_alias_emits_values() {
-  let values = Source::actor_ref_with_backpressure([3_u32, 4_u32]).collect_values().expect("collect_values");
-  assert_eq!(values, vec![3_u32, 4_u32]);
+  let values = Source::actor_ref_with_backpressure([1_u32, 2_u32]).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
 }
 
 #[test]
@@ -531,9 +549,63 @@ fn source_maybe_alias_matches_from_option_behavior() {
 }
 
 #[test]
-fn source_queue_alias_matches_iterator_behavior() {
-  let values = Source::queue([12_u32, 13_u32]).collect_values().expect("collect_values");
+fn source_queue_materializes_bounded_queue_and_emits_offered_values() {
+  let source = Source::queue(4).expect("queue");
+  let (graph, queue) = source.into_parts();
+  assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
+  queue.complete();
+  let values: Vec<u32> = Source::<u32, _>::from_graph(graph, queue).collect_values().expect("collect_values");
   assert_eq!(values, vec![12_u32, 13_u32]);
+}
+
+#[test]
+fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
+  let source = Source::<u32, _>::queue_unbounded();
+  let (graph, queue) = source.into_parts();
+  assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(21_u32), QueueOfferResult::Enqueued);
+  queue.complete();
+
+  let values: Vec<u32> = Source::<u32, _>::from_graph(graph, queue).collect_values().expect("collect_values");
+  assert_eq!(values, vec![20_u32, 21_u32]);
+}
+
+#[test]
+fn source_queue_rejects_zero_capacity() {
+  let result = Source::<u32, _>::queue(0);
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered_values() {
+  let source = Source::queue_with_overflow(4, OverflowStrategy::DropTail).expect("queue_with_overflow");
+  let (graph, queue) = source.into_parts();
+  assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
+  assert_eq!(poll_ready(queue.offer(31_u32)), QueueOfferResult::Enqueued);
+  let completion = queue.watch_completion();
+  assert_eq!(completion.poll(), Completion::Pending);
+  queue.complete();
+  let values: Vec<u32> = Source::<u32, _>::from_graph(graph, queue).collect_values().expect("collect_values");
+  assert_eq!(values, vec![30_u32, 31_u32]);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn source_queue_with_overflow_allows_zero_capacity() {
+  let source = Source::<u32, _>::queue_with_overflow(0, OverflowStrategy::Backpressure).expect("queue_with_overflow");
+  let (_graph, queue) = source.into_parts();
+  let mut waiting_offer = pin!(queue.offer(30_u32));
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(queue.poll().expect("poll"), Some(30_u32));
+  assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), None);
 }
 
 #[test]
@@ -790,14 +862,17 @@ fn source_flat_map_concat_keeps_order_with_empty_inner_stream() {
 
 #[test]
 fn source_buffer_keeps_single_path_behavior() {
-  let values =
-    Source::single(5_u32).buffer(2, OverflowPolicy::Block).expect("buffer").collect_values().expect("collect_values");
+  let values = Source::single(5_u32)
+    .buffer(2, OverflowStrategy::Backpressure)
+    .expect("buffer")
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
 fn source_buffer_rejects_zero_capacity() {
-  let result = Source::single(1_u32).buffer(0, OverflowPolicy::Block);
+  let result = Source::single(1_u32).buffer(0, OverflowStrategy::Backpressure);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
