@@ -1540,6 +1540,40 @@ fn compression_operators_round_trip_bytes_and_store_attributes() {
   ]);
 }
 
+fn crc32_for_gzip_test(bytes: &[u8]) -> u32 {
+  let mut crc = 0xffff_ffff_u32;
+  for &byte in bytes {
+    crc ^= u32::from(byte);
+    for _ in 0..8 {
+      let mask = (!((crc & 1).wrapping_sub(1))) & 0xedb8_8320;
+      crc = (crc >> 1) ^ mask;
+    }
+  }
+  !crc
+}
+
+fn gzip_member_with_filename(payload: &[u8], filename: &str) -> Vec<u8> {
+  let mut output = Vec::new();
+  output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
+  output.extend_from_slice(filename.as_bytes());
+  output.push(0x00);
+  output.extend_from_slice(&miniz_oxide::deflate::compress_to_vec(payload, 6));
+  output.extend_from_slice(&crc32_for_gzip_test(payload).to_le_bytes());
+  output.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+  output
+}
+
+#[test]
+fn gzip_decompress_accepts_member_with_filename_header() {
+  let payload = b"gzip filename header payload".to_vec();
+  let encoded = gzip_member_with_filename(&payload, "payload.bin");
+  let values = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![payload]);
+}
+
 #[test]
 fn limit_weighted_stops_before_exceeding_budget() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]))
