@@ -31,6 +31,29 @@ impl SourceLogic for SequenceSourceLogic {
   }
 }
 
+struct CountingSequenceSourceLogic {
+  values: VecDeque<u32>,
+  pulls:  ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl CountingSequenceSourceLogic {
+  fn new(values: &[u32], pulls: ArcShared<SpinSyncMutex<usize>>) -> Self {
+    let mut queue = VecDeque::with_capacity(values.len());
+    queue.extend(values.iter().copied());
+    Self { values: queue, pulls }
+  }
+}
+
+impl SourceLogic for CountingSequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    {
+      let mut guard = self.pulls.lock();
+      *guard = guard.saturating_add(1);
+    }
+    Ok(self.values.pop_front().map(|value| Box::new(value) as DynValue))
+  }
+}
+
 struct PulsedSourceLogic {
   schedule: VecDeque<Option<u32>>,
 }
@@ -1588,12 +1611,37 @@ fn gzip_decompress_accepts_member_with_filename_header() {
 }
 
 #[test]
+fn gzip_decompress_accepts_standard_gzip_payload() {
+  let encoded = vec![
+    0x1f, 0x8b, 0x08, 0x00, 0xf6, 0x05, 0xaf, 0x69, 0x00, 0x03, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0xd7, 0x4d, 0xaf, 0xca,
+    0x2c, 0xd0, 0xcd, 0xcc, 0x2b, 0x49, 0x2d, 0xca, 0x2f, 0x00, 0x00, 0xdf, 0x38, 0x73, 0x91, 0x12, 0x00, 0x00, 0x00,
+  ];
+  let values = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![b"hello-gzip-interop".to_vec()]);
+}
+
+#[test]
 fn limit_weighted_stops_before_exceeding_budget() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]))
     .via(Flow::new().limit_weighted(3, |value| *value as usize))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![2_u32]);
+}
+
+#[test]
+fn limit_weighted_requests_shutdown_after_exceeding_budget() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let values =
+    Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[2, 2, 1], pulls.clone()))
+      .via(Flow::new().limit_weighted(3, |value| *value as usize))
+      .collect_values()
+      .expect("collect_values");
+  assert_eq!(values, vec![2_u32]);
+  assert_eq!(*pulls.lock(), 2_usize);
 }
 
 #[test]

@@ -2787,7 +2787,8 @@ where
   FW: FnMut(&In) -> usize + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = LimitWeightedLogic::<In, FW> { remaining: max_weight, weight_fn, _pd: PhantomData };
+  let logic =
+    LimitWeightedLogic::<In, FW> { remaining: max_weight, weight_fn, shutdown_requested: false, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::Custom,
     inlet:       inlet.id(),
