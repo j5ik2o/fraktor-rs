@@ -15,6 +15,7 @@ pub struct GraphInterpreter {
   edges:            Vec<EdgeRuntime>,
   dispatch:         Vec<OutletDispatchState>,
   flow_order:       Vec<usize>,
+  flow_slots:       Vec<Option<usize>>,
   source_indices:   Vec<usize>,
   sink_indices:     Vec<usize>,
   demand:           DemandTracker,
@@ -38,25 +39,30 @@ impl GraphInterpreter {
   pub(in crate::core) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
     let compiled = Self::compile_plan(plan, buffer_config);
     let stage_count = compiled.stages.len();
+    let flow_count = compiled.flow_order.len();
     let source_indices_len = compiled.source_indices.len();
     let sink_indices_len = compiled.sink_indices.len();
-    // flow_* は stage index で直接参照するため、Flow 以外を含む全ステージ長で確保する。
+    let mut flow_slots = vec![None; stage_count];
+    for (flow_slot, stage_index) in compiled.flow_order.iter().copied().enumerate() {
+      flow_slots[stage_index] = Some(flow_slot);
+    }
     Self {
-      stages:           compiled.stages,
-      edges:            compiled.edges,
-      dispatch:         compiled.dispatch,
-      flow_order:       compiled.flow_order,
-      source_indices:   compiled.source_indices,
-      sink_indices:     compiled.sink_indices,
-      demand:           DemandTracker::new(),
-      state:            StreamState::Idle,
-      source_done:      vec![false; source_indices_len],
-      source_canceled:  vec![false; source_indices_len],
-      sink_done:        vec![false; sink_indices_len],
-      flow_source_done: vec![false; stage_count],
-      flow_done:        vec![false; stage_count],
-      on_start_done:    false,
-      tick_count:       0,
+      stages: compiled.stages,
+      edges: compiled.edges,
+      dispatch: compiled.dispatch,
+      flow_order: compiled.flow_order,
+      flow_slots,
+      source_indices: compiled.source_indices,
+      sink_indices: compiled.sink_indices,
+      demand: DemandTracker::new(),
+      state: StreamState::Idle,
+      source_done: vec![false; source_indices_len],
+      source_canceled: vec![false; source_indices_len],
+      sink_done: vec![false; sink_indices_len],
+      flow_source_done: vec![false; flow_count],
+      flow_done: vec![false; flow_count],
+      on_start_done: false,
+      tick_count: 0,
     }
   }
 
@@ -238,7 +244,7 @@ impl GraphInterpreter {
 
     for flow_index in 0..self.flow_order.len() {
       let stage_index = self.flow_order[flow_index];
-      if self.flow_done[stage_index] {
+      if self.flow_done_at(stage_index) {
         continue;
       }
       if self.flow_restart_waiting(stage_index) {
@@ -438,7 +444,7 @@ impl GraphInterpreter {
 
     for flow_index in 0..self.flow_order.len() {
       let stage_index = self.flow_order[flow_index];
-      if self.flow_done[stage_index] {
+      if self.flow_done_at(stage_index) {
         continue;
       }
       if self.flow_restart_waiting(stage_index) {
@@ -510,7 +516,7 @@ impl GraphInterpreter {
       });
 
       let can_accept_input = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => !self.flow_source_done[stage_index] && flow.logic.can_accept_input(),
+        | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
         | _ => false,
       };
 
@@ -945,20 +951,45 @@ impl GraphInterpreter {
     self.sink_done.iter().all(|done| *done)
   }
 
+  fn flow_slot(&self, stage_index: usize) -> usize {
+    match self.flow_slots[stage_index] {
+      | Some(flow_slot) => flow_slot,
+      | None => panic!("flow slot must exist for flow stage"),
+    }
+  }
+
+  fn flow_source_done_at(&self, stage_index: usize) -> bool {
+    self.flow_source_done[self.flow_slot(stage_index)]
+  }
+
+  fn set_flow_source_done_at(&mut self, stage_index: usize, done: bool) {
+    let flow_slot = self.flow_slot(stage_index);
+    self.flow_source_done[flow_slot] = done;
+  }
+
+  fn flow_done_at(&self, stage_index: usize) -> bool {
+    self.flow_done[self.flow_slot(stage_index)]
+  }
+
+  fn set_flow_done_at(&mut self, stage_index: usize, done: bool) {
+    let flow_slot = self.flow_slot(stage_index);
+    self.flow_done[flow_slot] = done;
+  }
+
   fn mark_flow_source_done(&mut self, stage_index: usize) -> Result<bool, StreamError> {
-    if self.flow_source_done[stage_index] || !self.stage_input_exhausted(stage_index) {
+    if self.flow_source_done_at(stage_index) || !self.stage_input_exhausted(stage_index) {
       return Ok(false);
     }
     let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
       return Ok(false);
     };
     flow.logic.on_source_done()?;
-    self.flow_source_done[stage_index] = true;
+    self.set_flow_source_done_at(stage_index, true);
     Ok(true)
   }
 
   fn maybe_finish_flow_stage(&mut self, stage_index: usize) -> bool {
-    if self.flow_done[stage_index] || !self.flow_source_done[stage_index] {
+    if self.flow_done_at(stage_index) || !self.flow_source_done_at(stage_index) {
       return false;
     }
     let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
@@ -970,7 +1001,7 @@ impl GraphInterpreter {
       return false;
     }
     self.close_outgoing_edges_for_stage(stage_index);
-    self.flow_done[stage_index] = true;
+    self.set_flow_done_at(stage_index, true);
     true
   }
 
@@ -993,16 +1024,16 @@ impl GraphInterpreter {
           continue;
         }
         if matches!(self.stages[upstream_stage_index], StageDefinition::Flow(_)) {
-          if self.flow_done[upstream_stage_index] {
+          if self.flow_done_at(upstream_stage_index) {
             continue;
           }
-          if !self.flow_source_done[upstream_stage_index]
+          if !self.flow_source_done_at(upstream_stage_index)
             && let StageDefinition::Flow(flow) = &mut self.stages[upstream_stage_index]
           {
             flow.logic.on_downstream_cancel()?;
           }
-          self.flow_source_done[upstream_stage_index] = true;
-          self.flow_done[upstream_stage_index] = true;
+          self.set_flow_source_done_at(upstream_stage_index, true);
+          self.set_flow_done_at(upstream_stage_index, true);
           self.close_and_clear_incoming_edges_for_stage(upstream_stage_index)?;
           self.cancel_upstream_stage(upstream_stage_index)?;
         }
@@ -1099,11 +1130,17 @@ impl GraphInterpreter {
     let Some(next_stage_index) = self.stage_index_for_inlet(self.edges[edge_index].to) else {
       return Ok((false, FailureDisposition::Fail(error)));
     };
-    let (touched_here, action) = {
+    let action = {
       let StageDefinition::Flow(flow) = &mut self.stages[next_stage_index] else {
         return Ok((false, FailureDisposition::Fail(error)));
       };
-      (flow.logic.handles_failures(), flow.logic.on_failure(error)?)
+      let reports_failure_handling = flow.logic.handles_failures();
+      let action = flow.logic.on_failure(error)?;
+      debug_assert!(
+        reports_failure_handling || matches!(action, FailureAction::Propagate(_)),
+        "FlowLogic returning Resume/Complete should report handles_failures() = true"
+      );
+      action
     };
     match action {
       | FailureAction::Resume | FailureAction::Complete => {
@@ -1112,7 +1149,7 @@ impl GraphInterpreter {
       },
       | FailureAction::Propagate(next_error) => {
         let (touched_downstream, disposition) = self.propagate_failure_to_downstream(next_stage_index, next_error)?;
-        Ok((touched_here || touched_downstream, disposition))
+        Ok((touched_downstream, disposition))
       },
     }
   }
@@ -1156,6 +1193,10 @@ impl GraphInterpreter {
     if handled {
       return Ok(disposition);
     }
+    let fallback_error = match disposition {
+      | FailureDisposition::Fail(next_error) => next_error,
+      | FailureDisposition::Continue | FailureDisposition::Complete => error,
+    };
     let StageDefinition::Source(source) = &mut self.stages[source_index] else {
       return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
     };
@@ -1166,11 +1207,11 @@ impl GraphInterpreter {
       return if restart.complete_on_max_restarts() {
         Ok(FailureDisposition::Complete)
       } else {
-        Ok(FailureDisposition::Fail(error))
+        Ok(FailureDisposition::Fail(fallback_error))
       };
     }
     match source.supervision {
-      | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(error)),
+      | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(fallback_error)),
       | SupervisionStrategy::Resume => Ok(FailureDisposition::Continue),
       | SupervisionStrategy::Restart => {
         source.logic.on_restart()?;
@@ -1184,11 +1225,17 @@ impl GraphInterpreter {
     stage_index: usize,
     error: &StreamError,
   ) -> Result<FailureDisposition, StreamError> {
-    let (touched_self, self_action) = {
+    let self_action = {
       let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
         return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
       };
-      (flow.logic.handles_failures(), flow.logic.on_failure(error.clone())?)
+      let reports_failure_handling = flow.logic.handles_failures();
+      let action = flow.logic.on_failure(error.clone())?;
+      debug_assert!(
+        reports_failure_handling || matches!(action, FailureAction::Propagate(_)),
+        "FlowLogic returning Resume/Complete should report handles_failures() = true"
+      );
+      action
     };
     match self_action {
       | FailureAction::Resume | FailureAction::Complete => {
@@ -1197,9 +1244,13 @@ impl GraphInterpreter {
       },
       | FailureAction::Propagate(error) => {
         let (handled_downstream, disposition) = self.propagate_failure_to_downstream(stage_index, error.clone())?;
-        if touched_self || handled_downstream {
+        if handled_downstream {
           return Ok(disposition);
         }
+        let fallback_error = match disposition {
+          | FailureDisposition::Fail(next_error) => next_error,
+          | FailureDisposition::Continue | FailureDisposition::Complete => error,
+        };
         let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
           return Ok(FailureDisposition::Fail(StreamError::InvalidConnection));
         };
@@ -1210,11 +1261,11 @@ impl GraphInterpreter {
           return if restart.complete_on_max_restarts() {
             Ok(FailureDisposition::Complete)
           } else {
-            Ok(FailureDisposition::Fail(error))
+            Ok(FailureDisposition::Fail(fallback_error))
           };
         }
         match flow.supervision {
-          | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(error)),
+          | SupervisionStrategy::Stop => Ok(FailureDisposition::Fail(fallback_error)),
           | SupervisionStrategy::Resume => Ok(FailureDisposition::Continue),
           | SupervisionStrategy::Restart => {
             if matches!(flow.kind, StageKind::FlowSplitWhen | StageKind::FlowSplitAfter) {

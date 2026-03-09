@@ -94,6 +94,7 @@ where
   }
 
   fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.on_source_done()?;
     self.pending.clear();
     self.secondary_runtime = None;
     Ok(())
@@ -165,6 +166,7 @@ where
   }
 
   fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.on_source_done()?;
     self.pending_primary.clear();
     self.pending_secondary.clear();
     self.secondary_runtime = None;
@@ -239,6 +241,7 @@ where
   }
 
   fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.on_source_done()?;
     self.pending_secondary.clear();
     self.secondary_runtime = None;
     Ok(())
