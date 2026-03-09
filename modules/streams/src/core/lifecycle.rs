@@ -4,6 +4,7 @@
 use super::{StreamBufferConfig, StreamError, StreamPlan, graph::GraphInterpreter};
 
 mod drive_outcome;
+mod kill_switch;
 mod kill_switches;
 mod shared_kill_switch;
 mod stream;
@@ -17,6 +18,7 @@ mod stream_state;
 mod unique_kill_switch;
 
 pub use drive_outcome::DriveOutcome;
+pub use kill_switch::KillSwitch;
 pub use kill_switches::KillSwitches;
 pub use shared_kill_switch::SharedKillSwitch;
 pub(in crate::core) use stream::Stream;
@@ -27,5 +29,5 @@ pub use stream_handle_id::StreamHandleId;
 pub use stream_handle_impl::StreamHandleImpl;
 pub(in crate::core) use stream_shared::StreamShared;
 pub use stream_state::StreamState;
-pub(in crate::core) use unique_kill_switch::KillSwitchStateHandle;
 pub use unique_kill_switch::UniqueKillSwitch;
+pub(in crate::core) use unique_kill_switch::{KillSwitchState, KillSwitchStateHandle};

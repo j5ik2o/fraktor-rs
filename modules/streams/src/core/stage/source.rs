@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::{
   any::TypeId,
   future::Future,
@@ -9,9 +9,9 @@ use core::{
 
 use super::{
   BoundedSourceQueue, DynValue, MatCombine, MatCombineRule, Materialized, Materializer, OverflowStrategy,
-  RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue, SourceQueueWithComplete,
-  SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy,
+  RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceGroupBySubFlow, SourceLogic, SourceQueue,
+  SourceQueueWithComplete, SourceSubFlow, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
+  StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_substreams_definition, debounce_definition, delay_definition, drop_definition,
@@ -19,11 +19,10 @@ use super::{
     group_by_definition, grouped_definition, initial_delay_definition, interleave_definition, intersperse_definition,
     map_async_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
     merge_substreams_definition, merge_substreams_with_parallelism_definition, partition_definition,
-    prepend_definition, recover_definition, recover_with_retries_definition, sample_definition, scan_definition,
-    sliding_definition, split_after_definition, split_when_definition, stateful_map_concat_definition,
-    stateful_map_definition, take_definition, take_until_definition, take_while_definition, take_within_definition,
-    throttle_definition, unzip_definition, unzip_with_definition, watch_termination_definition, zip_all_definition,
-    zip_definition, zip_with_index_definition,
+    prepend_definition, sample_definition, scan_definition, sliding_definition, split_after_definition,
+    split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
+    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
+    unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -1215,7 +1214,28 @@ where
     self.add_attributes(Attributes::named(name))
   }
 
-  /// Adds a group-by stage and returns substream surface for merge operations.
+  /// Adds a group-by stage and returns substream surface for merging grouped elements.
+  ///
+  /// Unsupported `SubFlow` operators, including `concat_substreams`, stay unavailable on the
+  /// returned surface.
+  ///
+  /// ```compile_fail
+  /// use fraktor_streams_rs::core::stage::Source;
+  ///
+  /// let _ = Source::single(1_u32)
+  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .expect("group_by")
+  ///   .drop(1);
+  /// ```
+  ///
+  /// ```compile_fail
+  /// use fraktor_streams_rs::core::stage::Source;
+  ///
+  /// let _ = Source::single(1_u32)
+  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .expect("group_by")
+  ///   .concat_substreams();
+  /// ```
   ///
   /// # Errors
   ///
@@ -1224,7 +1244,7 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
-  ) -> Result<SourceSubFlow<Out, Mat>, StreamDslError>
+  ) -> Result<SourceGroupBySubFlow<Key, Out, Mat>, StreamDslError>
   where
     Key: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> Key + Send + Sync + 'static, {
@@ -1237,7 +1257,7 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     let grouped = Source::<(Key, Out), Mat> { graph: self.graph, mat: self.mat, _pd: PhantomData };
-    Ok(SourceSubFlow::from_source(grouped.map(|(_, value)| vec![value])))
+    Ok(SourceGroupBySubFlow::from_source(grouped))
   }
 
   /// Splits the stream before elements matching `predicate`.
@@ -1640,22 +1660,47 @@ where
   }
 }
 
-impl<Out, Mat> Source<Result<Out, StreamError>, Mat>
+impl<Out, Mat> Source<Out, Mat>
 where
-  Out: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
 {
-  /// Maps error payloads while keeping successful elements unchanged.
+  /// Maps upstream failures into different stream failures.
   #[must_use]
-  pub fn map_error<F>(self, mut mapper: F) -> Source<Result<Out, StreamError>, Mat>
+  pub fn map_error<F>(self, mapper: F) -> Source<Out, Mat>
   where
     F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
-    self.map(move |value| value.map_err(&mut mapper))
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().map_error(mapper))
   }
 
-  /// Drops failing payloads and keeps successful elements.
+  /// Resumes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_continue(self) -> Source<Out, Mat> {
-    self.map_option(Result::ok)
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue())
+  }
+
+  /// Resumes the stream and invokes `error_consumer` when the failure matches.
+  #[must_use]
+  pub fn on_error_continue_with<C>(self, error_consumer: C) -> Source<Out, Mat>
+  where
+    C: FnMut(&StreamError) + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_with(error_consumer))
+  }
+
+  /// Resumes the stream when the upstream failure matches `predicate`.
+  #[must_use]
+  pub fn on_error_continue_if<P>(self, predicate: P) -> Source<Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if(predicate))
+  }
+
+  /// Resumes the stream and invokes `error_consumer` when the failure matches `predicate`.
+  #[must_use]
+  pub fn on_error_continue_if_with<P, C>(self, predicate: P, error_consumer: C) -> Source<Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static,
+    C: FnMut(&StreamError) + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if_with(predicate, error_consumer))
   }
 
   /// Alias of [`Source::on_error_continue`].
@@ -1664,66 +1709,42 @@ where
     self.on_error_continue()
   }
 
-  /// Emits successful payloads until first error payload is observed.
+  /// Completes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_complete(self) -> Source<Out, Mat> {
-    self
-      .stateful_map(|| {
-        let mut seen_error = false;
-        move |value| {
-          if seen_error {
-            return None;
-          }
-          match value {
-            | Ok(value) => Some(value),
-            | Err(_) => {
-              seen_error = true;
-              None
-            },
-          }
-        }
-      })
-      .flatten_optional()
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_complete())
   }
 
-  /// Recovers error payloads with the provided fallback element.
+  /// Completes the stream when the upstream failure matches `predicate`.
   #[must_use]
-  pub fn recover(mut self, fallback: Out) -> Source<Out, Mat> {
-    let definition = recover_definition::<Out>(fallback);
-    let inlet_id = definition.inlet;
-    let from = self.graph.tail_outlet();
-    self.graph.push_stage(StageDefinition::Flow(definition));
-    if let Some(from) = from {
-      let _ = self.graph.connect(
-        &Outlet::<Result<Out, StreamError>>::from_id(from),
-        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
-    }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  pub fn on_error_complete_if<P>(self, predicate: P) -> Source<Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_complete_if(predicate))
   }
 
-  /// Recovers error payloads while retry budget remains, then fails the stream.
+  /// Recovers an upstream failure with a single replacement element.
   #[must_use]
-  pub fn recover_with_retries(mut self, max_retries: usize, fallback: Out) -> Source<Out, Mat> {
-    let definition = recover_with_retries_definition::<Out>(max_retries, fallback);
-    let inlet_id = definition.inlet;
-    let from = self.graph.tail_outlet();
-    self.graph.push_stage(StageDefinition::Flow(definition));
-    if let Some(from) = from {
-      let _ = self.graph.connect(
-        &Outlet::<Result<Out, StreamError>>::from_id(from),
-        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
-    }
-    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  pub fn recover<F>(self, recover: F) -> Source<Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Out> + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().recover(recover))
   }
 
-  /// Alias of [`Source::recover`].
+  /// Recovers upstream failures by switching to alternate sources.
   #[must_use]
-  pub fn recover_with(self, fallback: Out) -> Source<Out, Mat> {
-    self.recover(fallback)
+  pub fn recover_with_retries<F>(self, max_retries: isize, recover: F) -> Source<Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Source<Out, StreamNotUsed>> + Send + Sync + 'static, {
+    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().recover_with_retries(max_retries, recover))
+  }
+
+  /// Alias of [`Source::recover_with_retries`] with infinite retries.
+  #[must_use]
+  pub fn recover_with<F>(self, recover: F) -> Source<Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Source<Out, StreamNotUsed>> + Send + Sync + 'static, {
+    self.recover_with_retries(-1, recover)
   }
 }
 

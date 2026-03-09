@@ -33,6 +33,11 @@ impl DrainingControl {
     (self.drain_fn)();
   }
 
+  /// Starts draining mode and completes the hub when buffered elements are flushed.
+  pub fn drain_and_complete(&self) {
+    self.drain();
+  }
+
   /// Returns true when draining mode is active.
   #[must_use]
   pub fn is_draining(&self) -> bool {

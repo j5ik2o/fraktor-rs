@@ -82,6 +82,7 @@ pub use completion::Completion;
 pub use decider::Decider;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
+use fraktor_utils_rs::core::sync::ArcShared;
 pub use framing::Framing;
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
@@ -277,12 +278,12 @@ impl RestartBackoff {
 /// The plan contains only stage definitions and wiring edges.
 /// Mutable execution state is created by the interpreter during materialization.
 struct StreamPlan {
-  stages:            Vec<StageDefinition>,
-  edges:             Vec<StreamPlanEdge>,
-  source_indices:    Vec<usize>,
-  sink_indices:      Vec<usize>,
-  flow_order:        Vec<usize>,
-  kill_switch_state: Option<lifecycle::KillSwitchStateHandle>,
+  stages:             Vec<StageDefinition>,
+  edges:              Vec<StreamPlanEdge>,
+  source_indices:     Vec<usize>,
+  sink_indices:       Vec<usize>,
+  flow_order:         Vec<usize>,
+  kill_switch_states: Vec<lifecycle::KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
@@ -419,16 +420,19 @@ impl StreamPlan {
       }
     }
 
-    Ok(Self { stages, edges: plan_edges, source_indices, sink_indices, flow_order, kill_switch_state: None })
+    Ok(Self { stages, edges: plan_edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() })
   }
 
   fn with_shared_kill_switch_state(mut self, kill_switch_state: lifecycle::KillSwitchStateHandle) -> Self {
-    self.kill_switch_state = Some(kill_switch_state);
+    if self.kill_switch_states.iter().any(|existing| ArcShared::ptr_eq(existing, &kill_switch_state)) {
+      return self;
+    }
+    self.kill_switch_states.push(kill_switch_state);
     self
   }
 
-  fn shared_kill_switch_state(&self) -> Option<lifecycle::KillSwitchStateHandle> {
-    self.kill_switch_state.clone()
+  fn shared_kill_switch_states(&self) -> Vec<lifecycle::KillSwitchStateHandle> {
+    self.kill_switch_states.clone()
   }
 }
 
@@ -452,6 +456,14 @@ trait SourceLogic: Send {
 
 trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
+
+  fn handles_failures(&self) -> bool {
+    false
+  }
+
+  fn on_failure(&mut self, error: StreamError) -> Result<FailureAction, StreamError> {
+    Ok(FailureAction::Propagate(error))
+  }
 
   fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
     let _ = tick_count;
@@ -514,6 +526,12 @@ trait FlowLogic: Send {
 
 enum SinkDecision {
   Continue,
+  Complete,
+}
+
+enum FailureAction {
+  Propagate(StreamError),
+  Resume,
   Complete,
 }
 

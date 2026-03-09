@@ -12,15 +12,15 @@ use crate::core::{
   StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
   SupervisionStrategy,
   graph::GraphInterpreter,
-  lifecycle::{DriveOutcome, StreamState},
+  lifecycle::{DriveOutcome, KillSwitchState, KillSwitchStateHandle, StreamState},
   shape::{Inlet, Outlet, PortId},
   stage::{
     Sink, Source, StageKind,
     flow::{
       Flow, async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-      flat_map_merge_definition, interleave_definition, merge_definition, merge_substreams_with_parallelism_definition,
-      partition_definition, prepend_definition, split_after_definition, split_when_definition, unzip_definition,
-      zip_all_definition, zip_definition,
+      flat_map_merge_definition, interleave_definition, kill_switch_definition, merge_definition,
+      merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, split_after_definition,
+      split_when_definition, unzip_definition, zip_all_definition, zip_definition,
     },
   },
 };
@@ -572,9 +572,8 @@ fn group_by_uses_key_function() {
 }
 
 #[test]
-fn recover_flow_replaces_error_payload() {
-  let graph =
-    Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover(10_u32).to_mat(Sink::head(), KeepRight);
+fn recover_flow_replaces_upstream_failure() {
+  let graph = Source::<u32, _>::failed(StreamError::Failed).recover(|_| Some(10_u32)).to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
@@ -583,21 +582,21 @@ fn recover_flow_replaces_error_payload() {
 }
 
 #[test]
-fn recover_flow_does_not_intercept_upstream_failure() {
-  let graph = Source::<Result<u32, StreamError>, _>::from_logic(StageKind::Custom, AlwaysFailSourceLogic)
-    .recover(10_u32)
+fn recover_flow_intercepts_upstream_failure() {
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, AlwaysFailSourceLogic)
+    .recover(|_| Some(10_u32))
     .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
-  assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
 }
 
 #[test]
 fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
-  let graph = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .recover_with_retries(0, 10_u32)
+  let graph = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with_retries(0, |_| Some(Source::single(10_u32)))
     .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -1973,6 +1972,95 @@ fn supports_plan_with_multiple_sinks() {
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion1.poll(), Completion::Ready(Ok(vec![1_u32])));
   assert_eq!(completion2.poll(), Completion::Ready(Ok(vec![2_u32])));
+}
+
+#[test]
+fn flow_kill_switch_shutdown_only_closes_bound_branch() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let kill_switch_state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let left_sink_inlet: Inlet<u32> = Inlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let right_sink_inlet: Inlet<u32> = Inlet::new();
+  let left_completion = StreamCompletion::new();
+  let right_completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::Custom,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CancelAwareSequenceSourceLogic {
+      next:    1,
+      end:     5,
+      pulls:   pulls.clone(),
+      cancels: cancels.clone(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let broadcast = broadcast_definition::<u32>(2);
+  let broadcast_inlet = broadcast.inlet;
+  let broadcast_outlet = broadcast.outlet;
+  let kill_switch = kill_switch_definition::<u32>(kill_switch_state.clone());
+  let left_inlet = kill_switch.inlet;
+  let left_outlet = kill_switch.outlet;
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let left_sink = collect_u32_sequence_sink(left_sink_inlet, left_completion.clone());
+  let right_sink = collect_u32_sequence_sink(right_sink_inlet, right_completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(broadcast),
+      StageDefinition::Flow(kill_switch),
+      StageDefinition::Sink(left_sink),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Sink(right_sink),
+    ],
+    vec![
+      (source_outlet.id(), broadcast_inlet, MatCombine::KeepLeft),
+      (broadcast_outlet, left_inlet, MatCombine::KeepLeft),
+      (left_outlet, left_sink_inlet.id(), MatCombine::KeepRight),
+      (broadcast_outlet, right_inlet.id(), MatCombine::KeepLeft),
+      (right_outlet.id(), right_sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  for _ in 0..3 {
+    let _ = interpreter.drive();
+  }
+
+  *kill_switch_state.lock() = KillSwitchState::Shutdown;
+  drive_to_completion(&mut interpreter);
+
+  let Completion::Ready(Ok(left_values)) = left_completion.poll() else {
+    panic!("left branch should complete");
+  };
+  let Completion::Ready(Ok(right_values)) = right_completion.poll() else {
+    panic!("right branch should complete");
+  };
+
+  assert!(!left_values.is_empty());
+  assert!(left_values.len() < 5);
+  assert_eq!(left_values, (1_u32..=left_values.len() as u32).collect::<Vec<u32>>());
+  assert_eq!(right_values, vec![101_u32, 102_u32, 103_u32, 104_u32, 105_u32]);
+  assert_eq!(*cancels.lock(), 0_u32);
+  assert!(*pulls.lock() >= 5_u32);
 }
 
 #[test]

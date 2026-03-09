@@ -87,6 +87,28 @@ impl SourceLogic for SequenceSourceLogic {
   }
 }
 
+struct FailureSequenceSourceLogic {
+  steps: VecDeque<Result<u32, StreamError>>,
+}
+
+impl FailureSequenceSourceLogic {
+  fn new(steps: &[Result<u32, StreamError>]) -> Self {
+    let mut queue = VecDeque::with_capacity(steps.len());
+    queue.extend(steps.iter().cloned());
+    Self { steps: queue }
+  }
+}
+
+impl SourceLogic for FailureSequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.steps.pop_front() {
+      | Some(Ok(value)) => Ok(Some(Box::new(value) as DynValue)),
+      | Some(Err(error)) => Err(error),
+      | None => Ok(None),
+    }
+  }
+}
+
 struct CancelAwareSourceLogic {
   next:         u32,
   cancel_count: ArcShared<SpinSyncMutex<u32>>,
@@ -1313,21 +1335,17 @@ fn source_p2_regression_concat_substreams_with_take_within_and_prepend() {
 }
 
 #[test]
-fn source_map_error_maps_error_payload() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .map_error(|_| StreamError::WouldBlock)
-    .collect_values()
-    .expect("collect_values");
-  assert_eq!(values, vec![Err(StreamError::WouldBlock)]);
+fn source_map_error_transforms_upstream_failure() {
+  let result = Source::<u32, _>::failed(StreamError::Failed).map_error(|_| StreamError::WouldBlock).collect_values();
+  assert_eq!(result, Err(StreamError::WouldBlock));
 }
 
 #[test]
-fn source_on_error_continue_drops_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn source_on_error_continue_resumes_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .on_error_continue()
   .collect_values()
   .expect("collect_values");
@@ -1335,12 +1353,11 @@ fn source_on_error_continue_drops_error_payloads() {
 }
 
 #[test]
-fn source_on_error_resume_alias_drops_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn source_on_error_resume_alias_resumes_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .on_error_resume()
   .collect_values()
   .expect("collect_values");
@@ -1348,12 +1365,43 @@ fn source_on_error_resume_alias_drops_error_payloads() {
 }
 
 #[test]
-fn source_on_error_complete_stops_emitting_after_first_error_payload() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn source_on_error_continue_if_resumes_after_matching_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .on_error_continue_if(|error| matches!(error, StreamError::Failed))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_on_error_continue_if_with_invokes_consumer_for_matching_failure() {
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let captured = observed.clone();
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .on_error_continue_if_with(
+    |error| matches!(error, StreamError::Failed),
+    move |error| {
+      captured.lock().push(error.clone());
+    },
+  )
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+  assert_eq!(observed.lock().as_slice(), &[StreamError::Failed]);
+}
+
+#[test]
+fn source_on_error_complete_stops_after_matching_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .on_error_complete()
   .collect_values()
   .expect("collect_values");
@@ -1361,62 +1409,83 @@ fn source_on_error_complete_stops_emitting_after_first_error_payload() {
 }
 
 #[test]
-fn source_recover_replaces_error_payload_with_fallback() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .recover(5_u32)
-    .collect_values()
-    .expect("collect_values");
+fn source_on_error_complete_if_stops_on_matching_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .on_error_complete_if(|error| matches!(error, StreamError::Failed))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
+fn source_recover_replaces_upstream_failure_with_fallback() {
+  let values =
+    Source::<u32, _>::failed(StreamError::Failed).recover(|_| Some(5_u32)).collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
 #[test]
-fn source_recover_preserves_ok_values_and_replaces_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
-  .recover(5_u32)
+fn source_recover_drops_later_elements_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .recover(|_| Some(5_u32))
   .collect_values()
   .expect("collect_values");
-  assert_eq!(values, vec![1_u32, 5_u32, 2_u32]);
+  assert_eq!(values, vec![1_u32, 5_u32]);
 }
 
 #[test]
-fn source_recover_with_alias_replaces_error_payload_with_fallback() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .recover_with(8_u32)
+fn source_recover_with_alias_switches_to_recovery_source() {
+  let values = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with(|_| Some(Source::from_array([8_u32, 9_u32])))
     .collect_values()
     .expect("collect_values");
-  assert_eq!(values, vec![8_u32]);
+  assert_eq!(values, vec![8_u32, 9_u32]);
 }
 
 #[test]
 fn source_recover_with_retries_fails_when_retry_budget_is_exhausted() {
-  let result =
-    Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover_with_retries(0, 5_u32).collect_values();
+  let result = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with_retries(0, |_| Some(Source::single(5_u32)))
+    .collect_values();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
 #[test]
-fn source_recover_with_retries_emits_fallback_until_budget_exhausts() {
-  let values = Source::from_array([
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(5_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-  ])
-  .recover_with_retries(2, 7_u32)
-  .collect_values()
-  .expect("collect_values");
-  assert_eq!(values, vec![7_u32, 5_u32, 7_u32]);
+fn source_recover_with_retries_switches_recovery_sources_incrementally() {
+  let mut attempts = 0_u8;
+  let values = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with_retries(2, move |_| {
+      attempts = attempts.saturating_add(1);
+      if attempts == 1 {
+        Some(Source::<u32, _>::from_logic(
+          StageKind::Custom,
+          FailureSequenceSourceLogic::new(&[Ok(7_u32), Err(StreamError::Failed)]),
+        ))
+      } else {
+        Some(Source::from_array([8_u32, 9_u32]))
+      }
+    })
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32, 9_u32]);
 }
 
 #[test]
 fn source_recover_with_retries_fails_after_consuming_retry_budget() {
-  let result =
-    Source::from_array([Err::<u32, StreamError>(StreamError::Failed), Err::<u32, StreamError>(StreamError::Failed)])
-      .recover_with_retries(1, 7_u32)
-      .collect_values();
+  let result = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with_retries(1, |_| {
+      Some(Source::<u32, _>::from_logic(
+        StageKind::Custom,
+        FailureSequenceSourceLogic::new(&[Ok(7_u32), Err(StreamError::Failed)]),
+      ))
+    })
+    .collect_values();
   assert_eq!(result, Err(StreamError::Failed));
 }
 

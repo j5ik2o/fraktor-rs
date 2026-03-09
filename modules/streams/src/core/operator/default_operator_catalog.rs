@@ -361,16 +361,16 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       }),
       | "recover" => Ok(OperatorContract {
         key,
-        input_condition: "Accepts Result payloads and substitutes fallback on error payloads.",
-        completion_condition: "Completes when upstream result stream completes.",
-        failure_condition: "Fails on non-result payload type mismatch.",
+        input_condition: "Consumes the upstream element stream and converts matching upstream failures into one replacement element.",
+        completion_condition: "Completes when upstream completes or a matching failure is recovered.",
+        failure_condition: "Propagates unhandled upstream failures.",
         requirement_ids: &["1.1", "1.3", "3.4"],
       }),
       | "recover_with_retries" => Ok(OperatorContract {
         key,
-        input_condition: "Substitutes fallback while retry budget remains.",
+        input_condition: "Switches to alternate recovery sources while retry budget remains.",
         completion_condition: "Completes when upstream completes without exhausting retry budget.",
-        failure_condition: "Fails when retry budget is exhausted.",
+        failure_condition: "Fails when retry budget is exhausted or recovery source creation fails.",
         requirement_ids: &["1.1", "1.3", "3.4"],
       }),
       | "restart" => Ok(OperatorContract {

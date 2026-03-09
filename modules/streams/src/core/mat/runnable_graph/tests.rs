@@ -1,7 +1,7 @@
 use super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  KeepRight, StreamBufferConfig, StreamError,
-  lifecycle::{SharedKillSwitch, StreamHandleId, StreamHandleImpl},
+  KeepLeft, KeepRight, StreamBufferConfig, StreamError,
+  lifecycle::{SharedKillSwitch, StreamHandleId, StreamHandleImpl, StreamState},
   mat::{Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source},
 };
@@ -61,4 +61,35 @@ fn with_shared_kill_switch_keeps_materialized_value() {
   let graph = graph.with_shared_kill_switch(&shared_kill_switch);
 
   assert_eq!(*graph.materialized(), marker);
+}
+
+#[test]
+fn with_shared_kill_switch_allows_conflicting_flow_switch() {
+  let flow_switch = SharedKillSwitch::new();
+  let graph = Source::repeat(1_u32).via_mat(flow_switch.flow::<u32>(), KeepRight).to_mat(Sink::ignore(), KeepLeft);
+  let external_switch = SharedKillSwitch::new();
+
+  let graph = graph.with_shared_kill_switch(&external_switch);
+  let (plan, materialized) = graph.into_parts();
+
+  assert_eq!(plan.shared_kill_switch_states().len(), 1);
+
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+
+  for _ in 0..3 {
+    let _ = stream.drive();
+  }
+  assert_eq!(stream.state(), StreamState::Running);
+
+  external_switch.shutdown();
+  for _ in 0..4 {
+    let _ = stream.drive();
+    if stream.state().is_terminal() {
+      break;
+    }
+  }
+
+  assert_eq!(stream.state(), StreamState::Completed);
+  assert!(!materialized.is_shutdown());
 }

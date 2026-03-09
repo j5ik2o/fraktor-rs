@@ -63,6 +63,8 @@ pub enum StageKind {
   FlowBatch,
   /// Flow stage that annotates elements with a substream key.
   FlowGroupBy,
+  /// Flow stage that observes elements and lifecycle for logging compatibility.
+  FlowLog,
   /// Flow stage that recovers from error payloads with a fallback element.
   FlowRecover,
   /// Flow stage that recovers from error payloads with a bounded retry budget.
@@ -109,6 +111,8 @@ pub enum StageKind {
   FlowZipWithIndex,
   /// Flow stage that concatenates inputs in port order.
   FlowConcat,
+  /// Flow stage that passes through elements until its linked kill switch terminates the graph.
+  FlowKillSwitch,
   /// Flow stage that watches stream termination and completes a handle.
   FlowWatchTermination,
   /// Flow stage that emits the held element after silence period expires.

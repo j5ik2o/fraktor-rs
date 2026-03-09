@@ -1,9 +1,12 @@
+use alloc::string::String;
+
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::{
-  StreamError,
+  KillSwitch, StreamError,
   unique_kill_switch::{KillSwitchState, KillSwitchStateHandle},
 };
+use crate::core::{Attributes, StreamNotUsed, stage::flow::Flow};
 
 #[cfg(test)]
 mod tests;
@@ -12,21 +15,47 @@ mod tests;
 #[derive(Clone)]
 pub struct SharedKillSwitch {
   state: KillSwitchStateHandle,
+  name:  Option<String>,
 }
 
 impl SharedKillSwitch {
   /// Creates a new shared kill switch in running state.
   #[must_use]
   pub fn new() -> Self {
-    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)) }
+    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)), name: None }
+  }
+
+  /// Creates a new shared kill switch with a debug name.
+  #[must_use]
+  pub fn new_named(name: impl Into<String>) -> Self {
+    Self { state: ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running)), name: Some(name.into()) }
   }
 
   pub(in crate::core) const fn from_state(state: KillSwitchStateHandle) -> Self {
-    Self { state }
+    Self { state, name: None }
   }
 
   pub(in crate::core) fn state_handle(&self) -> KillSwitchStateHandle {
     self.state.clone()
+  }
+
+  /// Returns the configured switch name when present.
+  #[must_use]
+  pub fn name(&self) -> Option<&str> {
+    self.name.as_deref()
+  }
+
+  /// Returns a pass-through flow bound to this shared kill switch.
+  #[must_use]
+  pub fn flow<T>(&self) -> Flow<T, T, SharedKillSwitch>
+  where
+    T: Send + Sync + 'static, {
+    let flow =
+      Flow::<T, T, StreamNotUsed>::from_kill_switch_state(self.state_handle()).map_materialized_value(|_| self.clone());
+    match self.name.as_deref() {
+      | Some(name) => flow.add_attributes(Attributes::named(name)),
+      | None => flow,
+    }
   }
 
   /// Requests graceful shutdown.
@@ -66,6 +95,28 @@ impl SharedKillSwitch {
       | KillSwitchState::Aborted(error) => Some(error.clone()),
       | _ => None,
     }
+  }
+}
+
+impl KillSwitch for SharedKillSwitch {
+  fn shutdown(&self) {
+    SharedKillSwitch::shutdown(self);
+  }
+
+  fn abort(&self, error: StreamError) {
+    SharedKillSwitch::abort(self, error);
+  }
+
+  fn is_shutdown(&self) -> bool {
+    SharedKillSwitch::is_shutdown(self)
+  }
+
+  fn is_aborted(&self) -> bool {
+    SharedKillSwitch::is_aborted(self)
+  }
+
+  fn abort_error(&self) -> Option<StreamError> {
+    SharedKillSwitch::abort_error(self)
   }
 }
 

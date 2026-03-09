@@ -1,9 +1,12 @@
 use alloc::{boxed::Box, collections::VecDeque};
 use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+
 use crate::core::{
-  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, RestartSettings, SourceLogic,
-  StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
+  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
+  StreamNotUsed,
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
@@ -48,6 +51,43 @@ impl SourceLogic for PulsedSourceLogic {
     match next {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
       | None => Err(StreamError::WouldBlock),
+    }
+  }
+}
+
+struct FailureSequenceSourceLogic {
+  steps: VecDeque<Result<u32, StreamError>>,
+}
+
+impl FailureSequenceSourceLogic {
+  fn new(steps: &[Result<u32, StreamError>]) -> Self {
+    let mut queue = VecDeque::with_capacity(steps.len());
+    queue.extend(steps.iter().cloned());
+    Self { steps: queue }
+  }
+}
+
+impl SourceLogic for FailureSequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    match self.steps.pop_front() {
+      | Some(Ok(value)) => Ok(Some(Box::new(value) as DynValue)),
+      | Some(Err(error)) => Err(error),
+      | None => Ok(None),
+    }
+  }
+}
+
+fn drive_until_completion<T>(stream: &mut Stream, completion: &StreamCompletion<T>)
+where
+  T: Clone, {
+  let mut idle_budget = 1024_usize;
+  while !matches!(completion.poll(), Completion::Ready(_)) {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
     }
   }
 }
@@ -167,6 +207,90 @@ fn prepend_rejects_zero_fan_in() {
 }
 
 #[test]
+fn concat_lazy_appends_secondary_source_after_primary_completion() {
+  let values = Source::from_array([1_u32, 2])
+    .via(Flow::new().concat_lazy(Source::from_array([3_u32, 4])))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion() {
+  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
+  assert_eq!(secondary_queue.offer(10_u32), QueueOfferResult::Enqueued);
+
+  let graph = Source::single(1_u32).via(Flow::new().concat_lazy(secondary).drop(1));
+  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+
+  drive_until_completion(&mut stream, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
+}
+
+#[test]
+fn prepend_lazy_emits_secondary_source_before_primary_values() {
+  let values = Source::from_array([3_u32, 4])
+    .via(Flow::new().prepend_lazy(Source::from_array([1_u32, 2])))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion() {
+  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
+  assert_eq!(secondary_queue.offer(1_u32), QueueOfferResult::Enqueued);
+
+  let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
+  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+
+  drive_until_completion(&mut stream, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+}
+
+#[test]
+fn or_else_uses_secondary_source_only_when_primary_is_empty() {
+  let values = Source::<u32, _>::empty()
+    .via(Flow::new().or_else(Source::from_array([5_u32, 6])))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn or_else_ignores_secondary_source_after_primary_emits() {
+  let values = Source::from_array([7_u32, 8])
+    .via(Flow::new().or_else(Source::from_array([1_u32, 2])))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
+  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
+  assert_eq!(secondary_queue.offer(5_u32), QueueOfferResult::Enqueued);
+
+  let graph = Source::<u32, _>::empty().via(Flow::new().or_else(secondary));
+  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+
+  drive_until_completion(&mut stream, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+}
+
+#[test]
 fn zip_all_wraps_value_when_single_path() {
   let values = Source::single(7_u32)
     .via(Flow::new().zip_all(1, 0_u32).expect("zip_all"))
@@ -179,6 +303,40 @@ fn zip_all_wraps_value_when_single_path() {
 fn zip_all_rejects_zero_fan_in() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   assert!(flow.zip_all(0, 0_u32).is_err());
+}
+
+#[test]
+fn zip_latest_wraps_single_path_value_into_vec() {
+  let values =
+    Source::single(7_u32).via(Flow::new().zip_latest(1).expect("zip_latest")).collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+fn zip_latest_rejects_zero_fan_in() {
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+  assert!(flow.zip_latest(0).is_err());
+}
+
+#[test]
+fn zip_latest_with_maps_latest_snapshot() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().zip_latest_with(1, |latest: Vec<u32>| latest[0].saturating_add(1)).expect("zip_latest_with"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![8_u32]);
+}
+
+#[test]
+fn materialize_into_source_emits_completed_sink_materialized_value() {
+  let (graph, completion) = Flow::new()
+    .map(|value: u32| value.saturating_add(1))
+    .materialize_into_source(Source::single(1_u32), Sink::head())
+    .into_parts();
+  let materialized: Vec<u32> =
+    Source::from_graph(graph, StreamNotUsed::new()).collect_values().expect("collect_values");
+  assert_eq!(materialized, vec![2_u32]);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(())));
 }
 
 #[test]
@@ -447,6 +605,126 @@ impl<T> Future for YieldThenOutputFuture<T> {
       Poll::Ready(this.value.take().expect("future value"))
     }
   }
+}
+
+struct PartitionedYieldFuture {
+  value:         Option<u32>,
+  partition:     usize,
+  poll_count:    u8,
+  ready_after:   u8,
+  active_counts:
+    fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex<[u32; 2]>>,
+}
+
+impl PartitionedYieldFuture {
+  fn new(
+    value: u32,
+    partition: usize,
+    ready_after: u8,
+    active_counts: fraktor_utils_rs::core::sync::ArcShared<
+      fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex<[u32; 2]>,
+    >,
+  ) -> Self {
+    Self::new_with_overlap(value, partition, ready_after, active_counts, None)
+  }
+
+  fn new_with_overlap(
+    value: u32,
+    partition: usize,
+    ready_after: u8,
+    active_counts: fraktor_utils_rs::core::sync::ArcShared<
+      fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex<[u32; 2]>,
+    >,
+    overlap_seen: Option<
+      &fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex<bool>>,
+    >,
+  ) -> Self {
+    {
+      let mut guard = active_counts.lock();
+      assert_eq!(guard[partition], 0, "same partition started concurrently");
+      guard[partition] = guard[partition].saturating_add(1);
+      if guard.iter().copied().sum::<u32>() > 1
+        && let Some(overlap_seen) = overlap_seen
+      {
+        *overlap_seen.lock() = true;
+      }
+    }
+    Self { value: Some(value), partition, poll_count: 0, ready_after, active_counts }
+  }
+}
+
+impl Future for PartitionedYieldFuture {
+  type Output = u32;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = unsafe { self.get_unchecked_mut() };
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
+      return Poll::Pending;
+    }
+
+    {
+      let mut guard = this.active_counts.lock();
+      guard[this.partition] = guard[this.partition].saturating_sub(1);
+    }
+    Poll::Ready(this.value.take().expect("partitioned future value"))
+  }
+}
+
+#[test]
+fn map_async_partitioned_serializes_same_partition_while_preserving_input_order() {
+  let active_counts = fraktor_utils_rs::core::sync::ArcShared::new(
+    fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex::new([0_u32; 2]),
+  );
+  let values = Source::from_array([1_u32, 3, 2, 4])
+    .via(
+      Flow::new()
+        .map_async_partitioned(2, |value: &u32| (*value as usize) % 2, {
+          let active_counts = active_counts.clone();
+          move |value: u32, partition: usize| {
+            let ready_after = if partition == 1 { 2 } else { 1 };
+            PartitionedYieldFuture::new(value.saturating_add(10), partition, ready_after, active_counts.clone())
+          }
+        })
+        .expect("map_async_partitioned"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![11_u32, 13_u32, 12_u32, 14_u32]);
+}
+
+#[test]
+fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ordering() {
+  let active_counts = fraktor_utils_rs::core::sync::ArcShared::new(
+    fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex::new([0_u32; 2]),
+  );
+  let overlap_seen = fraktor_utils_rs::core::sync::ArcShared::new(
+    fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex::new(false),
+  );
+  let mut values = Source::from_array([1_u32, 2_u32])
+    .via(
+      Flow::new()
+        .map_async_partitioned_unordered(2, |value: &u32| (*value as usize) % 2, {
+          let active_counts = active_counts.clone();
+          let overlap_seen = overlap_seen.clone();
+          move |value: u32, partition: usize| {
+            let ready_after = if partition == 1 { 3 } else { 0 };
+            PartitionedYieldFuture::new_with_overlap(
+              value.saturating_add(10),
+              partition,
+              ready_after,
+              active_counts.clone(),
+              Some(&overlap_seen),
+            )
+          }
+        })
+        .expect("map_async_partitioned_unordered"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  values.sort_unstable();
+  assert_eq!(values, vec![11_u32, 12_u32]);
+  assert!(*overlap_seen.lock(), "different partitions should overlap in flight");
 }
 
 #[test]
@@ -733,21 +1011,19 @@ fn merge_substreams_with_parallelism_rejects_zero_parallelism() {
 }
 
 #[test]
-fn map_error_maps_error_payload() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
+fn map_error_transforms_upstream_failure() {
+  let result = Source::<u32, _>::failed(StreamError::Failed)
     .via(Flow::new().map_error(|_| StreamError::WouldBlock))
-    .collect_values()
-    .expect("collect_values");
-  assert_eq!(values, vec![Err(StreamError::WouldBlock)]);
+    .collect_values();
+  assert_eq!(result, Err(StreamError::WouldBlock));
 }
 
 #[test]
-fn on_error_continue_drops_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn on_error_continue_resumes_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .via(Flow::new().on_error_continue())
   .collect_values()
   .expect("collect_values");
@@ -755,12 +1031,11 @@ fn on_error_continue_drops_error_payloads() {
 }
 
 #[test]
-fn on_error_resume_alias_drops_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn on_error_resume_alias_resumes_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .via(Flow::new().on_error_resume())
   .collect_values()
   .expect("collect_values");
@@ -768,12 +1043,31 @@ fn on_error_resume_alias_drops_error_payloads() {
 }
 
 #[test]
-fn on_error_complete_stops_emitting_after_first_error_payload() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
+fn on_error_continue_if_with_invokes_consumer_for_matching_failure() {
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let captured = observed.clone();
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .via(Flow::new().on_error_continue_if_with(
+    |error| matches!(error, StreamError::Failed),
+    move |error| {
+      captured.lock().push(error.clone());
+    },
+  ))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+  assert_eq!(observed.lock().as_slice(), &[StreamError::Failed]);
+}
+
+#[test]
+fn on_error_complete_stops_after_matching_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
   .via(Flow::new().on_error_complete())
   .collect_values()
   .expect("collect_values");
@@ -781,63 +1075,85 @@ fn on_error_complete_stops_emitting_after_first_error_payload() {
 }
 
 #[test]
-fn recover_replaces_error_payload_with_fallback() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .via(Flow::new().recover(9_u32))
+fn on_error_complete_if_stops_on_matching_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .via(Flow::new().on_error_complete_if(|error| matches!(error, StreamError::Failed)))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![1_u32]);
+}
+
+#[test]
+fn recover_replaces_upstream_failure_with_fallback() {
+  let values = Source::<u32, _>::failed(StreamError::Failed)
+    .via(Flow::new().recover(|_| Some(9_u32)))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![9_u32]);
 }
 
 #[test]
-fn recover_preserves_ok_values_and_replaces_error_payloads() {
-  let values = Source::from_array([
-    Ok::<u32, StreamError>(1_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(2_u32),
-  ])
-  .via(Flow::new().recover(9_u32))
+fn recover_drops_later_elements_after_upstream_failure() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1_u32), Err(StreamError::Failed), Ok(2_u32)]),
+  )
+  .via(Flow::new().recover(|_| Some(9_u32)))
   .collect_values()
   .expect("collect_values");
-  assert_eq!(values, vec![1_u32, 9_u32, 2_u32]);
+  assert_eq!(values, vec![1_u32, 9_u32]);
 }
 
 #[test]
-fn recover_with_alias_replaces_error_payload_with_fallback() {
-  let values = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .via(Flow::new().recover_with(8_u32))
+fn recover_with_alias_switches_to_recovery_source() {
+  let values = Source::<u32, _>::failed(StreamError::Failed)
+    .via(Flow::new().recover_with(|_| Some(Source::from_array([8_u32, 9_u32]))))
     .collect_values()
     .expect("collect_values");
-  assert_eq!(values, vec![8_u32]);
+  assert_eq!(values, vec![8_u32, 9_u32]);
 }
 
 #[test]
 fn recover_with_retries_fails_when_retry_budget_is_exhausted() {
-  let result = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .via(Flow::new().recover_with_retries(0, 9_u32))
+  let result = Source::<u32, _>::failed(StreamError::Failed)
+    .via(Flow::new().recover_with_retries(0, |_| Some(Source::single(9_u32))))
     .collect_values();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
 #[test]
-fn recover_with_retries_emits_fallback_until_budget_exhausts() {
-  let values = Source::from_array([
-    Err::<u32, StreamError>(StreamError::Failed),
-    Ok::<u32, StreamError>(5_u32),
-    Err::<u32, StreamError>(StreamError::Failed),
-  ])
-  .via(Flow::new().recover_with_retries(2, 9_u32))
-  .collect_values()
-  .expect("collect_values");
-  assert_eq!(values, vec![9_u32, 5_u32, 9_u32]);
+fn recover_with_retries_switches_recovery_sources_incrementally() {
+  let mut attempts = 0_u8;
+  let values = Source::<u32, _>::failed(StreamError::Failed)
+    .via(Flow::new().recover_with_retries(2, move |_| {
+      attempts = attempts.saturating_add(1);
+      if attempts == 1 {
+        Some(Source::<u32, _>::from_logic(
+          StageKind::Custom,
+          FailureSequenceSourceLogic::new(&[Ok(9_u32), Err(StreamError::Failed)]),
+        ))
+      } else {
+        Some(Source::from_array([10_u32, 11_u32]))
+      }
+    }))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![9_u32, 10_u32, 11_u32]);
 }
 
 #[test]
 fn recover_with_retries_fails_after_consuming_retry_budget() {
-  let result =
-    Source::from_array([Err::<u32, StreamError>(StreamError::Failed), Err::<u32, StreamError>(StreamError::Failed)])
-      .via(Flow::new().recover_with_retries(1, 9_u32))
-      .collect_values();
+  let result = Source::<u32, _>::failed(StreamError::Failed)
+    .via(Flow::new().recover_with_retries(1, |_| {
+      Some(Source::<u32, _>::from_logic(
+        StageKind::Custom,
+        FailureSequenceSourceLogic::new(&[Ok(9_u32), Err(StreamError::Failed)]),
+      ))
+    }))
+    .collect_values();
   assert_eq!(result, Err(StreamError::Failed));
 }
 
@@ -1153,21 +1469,166 @@ fn detach_preserves_elements_and_order() {
 }
 
 #[test]
-fn log_passes_elements_through_unchanged() {
+fn log_passes_elements_through_unchanged_and_inserts_logging_stage() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().log("test"))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+
+  let (plan, completion) =
+    Source::single(7_u32).via(Flow::new().log("log-stage")).to_mat(Sink::head(), KeepRight).into_parts();
+  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(plan.flow_order.len(), 1);
+  assert!(matches!(
+    plan.stages[plan.flow_order[0]],
+    StageDefinition::Flow(ref definition) if definition.kind == StageKind::FlowLog
+  ));
 }
 
 #[test]
-fn log_with_marker_passes_elements_through_unchanged() {
+fn log_with_marker_passes_elements_through_unchanged_and_inserts_logging_stage() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().log_with_marker("test", "marker"))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+
+  let (plan, completion) = Source::single(7_u32)
+    .via(Flow::new().log_with_marker("log-stage", "marker"))
+    .to_mat(Sink::head(), KeepRight)
+    .into_parts();
+  assert_eq!(completion.poll(), Completion::Pending);
+  assert_eq!(plan.flow_order.len(), 1);
+  assert!(matches!(
+    plan.stages[plan.flow_order[0]],
+    StageDefinition::Flow(ref definition) if definition.kind == StageKind::FlowLog
+  ));
+}
+
+#[test]
+fn log_and_log_with_marker_store_attributes() {
+  let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new().log("log-stage").into_parts();
+  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("log-stage")]);
+
+  let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new().log_with_marker("log-stage", "marker").into_parts();
+  assert_eq!(graph.attributes().names(), &[
+    alloc::string::String::from("log-stage"),
+    alloc::string::String::from("marker")
+  ]);
+}
+
+#[test]
+fn compression_operators_round_trip_bytes_and_store_attributes() {
+  let payload = vec![1_u8, 2, 3, 3, 3, 4, 5];
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip().gzip_decompress())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![payload.clone()]);
+
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate().inflate())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![payload]);
+
+  let (graph, _mat) = Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip().inflate().into_parts();
+  assert_eq!(graph.attributes().names(), &[
+    alloc::string::String::from("compression:gzip"),
+    alloc::string::String::from("compression:inflate"),
+  ]);
+}
+
+#[test]
+fn limit_weighted_stops_before_exceeding_budget() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]))
+    .via(Flow::new().limit_weighted(3, |value| *value as usize))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![2_u32]);
+}
+
+#[test]
+fn grouped_weighted_within_uses_weight_budget() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 1, 2]))
+    .via(Flow::new().grouped_weighted_within(3, 10, |value| *value as usize).expect("grouped_weighted_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
+}
+
+#[test]
+fn batch_weighted_uses_weight_budget() {
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 1, 2]))
+    .via(Flow::new().batch_weighted(3, |value| *value as usize).expect("batch_weighted"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
+}
+
+#[test]
+fn map_async_partitioned_rejects_zero_parallelism() {
+  let result = Flow::<u32, u32, StreamNotUsed>::new().map_async_partitioned(
+    0,
+    |value: &u32| (*value as usize) % 2,
+    |value, _partition| async move { value },
+  );
+  assert!(matches!(
+    result,
+    Err(StreamDslError::InvalidArgument { name: "parallelism", value: 0, reason: "must be greater than zero" })
+  ));
+}
+
+#[test]
+fn flat_map_prefix_uses_prefix_to_build_tail_flow() {
+  let values = Source::from_array([1_u32, 2, 3, 4])
+    .via(
+      Flow::new()
+        .flat_map_prefix(2, |prefix| {
+          let prefix_sum = prefix.into_iter().sum::<u32>();
+          Flow::new().map(move |value: u32| value.saturating_add(prefix_sum))
+        })
+        .expect("flat_map_prefix"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![6_u32, 7_u32]);
+}
+
+#[test]
+fn flat_map_prefix_accepts_zero_prefix() {
+  let values = Source::from_array([1_u32, 2])
+    .via(
+      Flow::new()
+        .flat_map_prefix(0, |_prefix| Flow::new().map(|value: u32| value.saturating_add(5)))
+        .expect("flat_map_prefix"),
+    )
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![6_u32, 7_u32]);
+}
+
+#[test]
+fn prefix_and_tail_emits_prefix_and_remaining_tail() {
+  let values =
+    Source::from_array([1_u32, 2, 3, 4]).via(Flow::new().prefix_and_tail(2)).collect_values().expect("collect_values");
+  assert_eq!(values.len(), 1);
+  let (prefix, tail): (Vec<u32>, crate::core::stage::TailSource<u32>) =
+    values.into_iter().next().expect("prefix and tail");
+  assert_eq!(prefix, vec![1_u32, 2_u32]);
+  assert_eq!(tail.collect_values().expect("tail values"), vec![3_u32, 4_u32]);
+}
+
+#[test]
+fn prefix_and_tail_accepts_zero_prefix() {
+  let values =
+    Source::from_array([7_u32, 8]).via(Flow::new().prefix_and_tail(0)).collect_values().expect("collect_values");
+  assert_eq!(values.len(), 1);
+  let (prefix, tail): (Vec<u32>, crate::core::stage::TailSource<u32>) =
+    values.into_iter().next().expect("prefix and tail");
+  assert_eq!(prefix, vec![]);
+  assert_eq!(tail.collect_values().expect("tail values"), vec![7_u32, 8_u32]);
 }
 
 #[test]

@@ -7,14 +7,17 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff,
-  RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph, StreamNotUsed,
-  StreamStage, SupervisionStrategy,
+  FlowDefinition, FlowGroupBySubFlow, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy,
+  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
+  StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   validate_positive_argument,
 };
-use crate::core::Attributes;
+use crate::core::{
+  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion,
+  lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
+};
 
 #[cfg(test)]
 mod tests;
@@ -34,6 +37,17 @@ impl<T> Flow<T, T, StreamNotUsed> {
   #[must_use]
   pub fn new() -> Self {
     Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+}
+
+impl<T> Flow<T, T, StreamNotUsed>
+where
+  T: Send + Sync + 'static,
+{
+  pub(in crate::core) fn from_kill_switch_state(kill_switch_state: KillSwitchStateHandle) -> Self {
+    let mut graph = StreamGraph::new();
+    graph.push_stage(StageDefinition::Flow(kill_switch_definition::<T>(kill_switch_state)));
+    Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 }
 
@@ -638,7 +652,28 @@ where
     self
   }
 
-  /// Adds a group-by stage and returns substream surface for merge operations.
+  /// Adds a group-by stage and returns substream surface for merging grouped elements.
+  ///
+  /// Unsupported `SubFlow` operators, including `concat_substreams`, stay unavailable on the
+  /// returned surface.
+  ///
+  /// ```compile_fail
+  /// use fraktor_streams_rs::core::{StreamNotUsed, stage::flow::Flow};
+  ///
+  /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
+  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .expect("group_by")
+  ///   .drop(1);
+  /// ```
+  ///
+  /// ```compile_fail
+  /// use fraktor_streams_rs::core::{StreamNotUsed, stage::flow::Flow};
+  ///
+  /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
+  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .expect("group_by")
+  ///   .concat_substreams();
+  /// ```
   ///
   /// # Errors
   ///
@@ -647,7 +682,7 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
-  ) -> Result<FlowSubFlow<In, Out, Mat>, StreamDslError>
+  ) -> Result<FlowGroupBySubFlow<In, K, Out, Mat>, StreamDslError>
   where
     K: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> K + Send + Sync + 'static, {
@@ -660,7 +695,7 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     let grouped = Flow::<In, (K, Out), Mat> { graph: self.graph, mat: self.mat, _pd: PhantomData };
-    Ok(FlowSubFlow::from_flow(grouped.map(|(_, value)| vec![value])))
+    Ok(FlowGroupBySubFlow::from_flow(grouped))
   }
 
   /// Splits the stream before elements matching `predicate`.
@@ -985,23 +1020,62 @@ where
   }
 }
 
-impl<In, Out, Mat> Flow<In, Result<Out, StreamError>, Mat>
+impl<In, Out, Mat> Flow<In, Out, Mat>
 where
   In: Send + Sync + 'static,
-  Out: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
 {
-  /// Maps error payloads while keeping successful elements unchanged.
+  /// Maps upstream failures into different stream failures.
   #[must_use]
-  pub fn map_error<F>(self, mut mapper: F) -> Flow<In, Result<Out, StreamError>, Mat>
+  pub fn map_error<F>(mut self, mapper: F) -> Flow<In, Out, Mat>
   where
     F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
-    self.map(move |value| value.map_err(&mut mapper))
+    let definition = map_error_definition::<Out, F>(mapper);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Drops failing payloads and keeps successful elements.
+  /// Resumes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_continue(self) -> Flow<In, Out, Mat> {
-    self.map_option(Result::ok)
+    self.on_error_continue_if_with(|_| true, |_| {})
+  }
+
+  /// Resumes the stream and invokes `error_consumer` when the failure matches.
+  #[must_use]
+  pub fn on_error_continue_with<C>(self, error_consumer: C) -> Flow<In, Out, Mat>
+  where
+    C: FnMut(&StreamError) + Send + Sync + 'static, {
+    self.on_error_continue_if_with(|_| true, error_consumer)
+  }
+
+  /// Resumes the stream when the upstream failure matches `predicate`.
+  #[must_use]
+  pub fn on_error_continue_if<P>(self, predicate: P) -> Flow<In, Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
+    self.on_error_continue_if_with(predicate, |_| {})
+  }
+
+  /// Resumes the stream and invokes `error_consumer` when the failure matches `predicate`.
+  #[must_use]
+  pub fn on_error_continue_if_with<P, C>(mut self, predicate: P, error_consumer: C) -> Flow<In, Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static,
+    C: FnMut(&StreamError) + Send + Sync + 'static, {
+    let definition = on_error_continue_definition::<Out, P, C>(predicate, error_consumer);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Alias of [`Flow::on_error_continue`].
@@ -1010,66 +1084,63 @@ where
     self.on_error_continue()
   }
 
-  /// Emits successful payloads until first error payload is observed.
+  /// Completes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_complete(self) -> Flow<In, Out, Mat> {
-    self
-      .stateful_map(|| {
-        let mut seen_error = false;
-        move |value| {
-          if seen_error {
-            return None;
-          }
-          match value {
-            | Ok(value) => Some(value),
-            | Err(_) => {
-              seen_error = true;
-              None
-            },
-          }
-        }
-      })
-      .flatten_optional()
+    self.on_error_complete_if(|_| true)
   }
 
-  /// Recovers error payloads with the provided fallback element.
+  /// Completes the stream when the upstream failure matches `predicate`.
   #[must_use]
-  pub fn recover(mut self, fallback: Out) -> Flow<In, Out, Mat> {
-    let definition = recover_definition::<Out>(fallback);
+  pub fn on_error_complete_if<P>(mut self, predicate: P) -> Flow<In, Out, Mat>
+  where
+    P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
+    let definition = on_error_complete_definition::<Out, P>(predicate);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      let _ = self.graph.connect(
-        &Outlet::<Result<Out, StreamError>>::from_id(from),
-        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Recovers error payloads while retry budget remains, then fails the stream.
+  /// Recovers an upstream failure with a single replacement element.
   #[must_use]
-  pub fn recover_with_retries(mut self, max_retries: usize, fallback: Out) -> Flow<In, Out, Mat> {
-    let definition = recover_with_retries_definition::<Out>(max_retries, fallback);
+  pub fn recover<F>(mut self, recover: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Out> + Send + Sync + 'static, {
+    let definition = recover_definition::<Out, F>(recover);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      let _ = self.graph.connect(
-        &Outlet::<Result<Out, StreamError>>::from_id(from),
-        &Inlet::<Result<Out, StreamError>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Alias of [`Flow::recover`].
+  /// Recovers upstream failures by switching to alternate sources.
   #[must_use]
-  pub fn recover_with(self, fallback: Out) -> Flow<In, Out, Mat> {
-    self.recover(fallback)
+  pub fn recover_with_retries<F>(mut self, max_retries: isize, recover: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Source<Out, StreamNotUsed>> + Send + Sync + 'static, {
+    let definition = recover_with_retries_definition::<Out, F>(max_retries, recover);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Alias of [`Flow::recover_with_retries`] with infinite retries.
+  #[must_use]
+  pub fn recover_with<F>(self, recover: F) -> Flow<In, Out, Mat>
+  where
+    F: FnMut(StreamError) -> Option<Source<Out, StreamNotUsed>> + Send + Sync + 'static, {
+    self.recover_with_retries(-1, recover)
   }
 }
 
@@ -1263,13 +1334,21 @@ where
   ///
   /// Returns [`StreamDslError`] when `max_weight` is zero.
   pub fn grouped_weighted<FW>(
-    self,
+    mut self,
     max_weight: usize,
-    _weight_fn: FW,
+    weight_fn: FW,
   ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
-    self.grouped(max_weight)
+    let max_weight = validate_positive_argument("max_weight", max_weight)?;
+    let definition = grouped_weighted_definition::<Out, FW>(max_weight, weight_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Lazily creates a completion-stage flow.
@@ -1339,26 +1418,37 @@ where
 
   /// Limits weighted element count.
   #[must_use]
-  pub fn limit_weighted<FW>(self, max_weight: usize, _weight_fn: FW) -> Flow<In, Out, Mat>
+  pub fn limit_weighted<FW>(mut self, max_weight: usize, weight_fn: FW) -> Flow<In, Out, Mat>
   where
     FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
-    self.take(max_weight)
+    let definition = limit_weighted_definition::<Out, FW>(max_weight, weight_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a logging stage that passes each element through unchanged.
-  ///
-  /// In the current no_std configuration this inserts a wire-tap stage
-  /// without an output sink. When a logging backend is wired in the
-  /// future the tap callback will forward to it.
+  /// Adds a logging observation stage and metadata while passing each element through unchanged.
   #[must_use]
-  pub fn log(self, _name: &'static str) -> Flow<In, Out, Mat> {
-    self.wire_tap(|_| {})
+  pub fn log(mut self, name: &'static str) -> Flow<In, Out, Mat> {
+    let definition = log_definition::<Out>(LogObservationHandle::new());
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named(name))
   }
 
-  /// Adds a marker-tagged logging stage that passes each element through unchanged.
+  /// Adds a marker-tagged logging stage and marker metadata while passing each element through
+  /// unchanged.
   #[must_use]
-  pub fn log_with_marker(self, _name: &'static str, _marker: &'static str) -> Flow<In, Out, Mat> {
-    self.wire_tap(|_| {})
+  pub fn log_with_marker(self, name: &'static str, marker: &'static str) -> Flow<In, Out, Mat> {
+    self.log(name).add_attributes(Attributes::named(marker))
   }
 
   /// Maps values with a mutable resource.
@@ -1376,10 +1466,31 @@ where
     })
   }
 
-  /// Adds a materialize-into-source compatibility placeholder.
+  /// Materializes a source through this flow and emits the resolved sink materialized value.
   #[must_use]
-  pub const fn materialize_into_source(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn materialize_into_source<Mat1, Mat2>(
+    self,
+    source: Source<In, Mat1>,
+    sink: Sink<Out, StreamCompletion<Mat2>>,
+  ) -> Source<Mat2, StreamCompletion<()>>
+  where
+    Mat1: Send + Sync + 'static,
+    Mat: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static, {
+    let logic = MaterializeIntoSourceLogic::<Mat2, _> {
+      factory:    Some(move || {
+        let graph = source.via(self).to_mat(sink, KeepRight);
+        let (plan, materialized) = graph.into_parts();
+        let mut stream = Stream::new(plan, StreamBufferConfig::default());
+        stream.start()?;
+        Ok((stream, materialized))
+      }),
+      stream:     None,
+      completion: None,
+      emitted:    false,
+      _pd:        PhantomData,
+    };
+    Source::from_logic(StageKind::Custom, logic).watch_termination_mat(KeepRight)
   }
 
   /// Optionally composes this flow with another flow.
@@ -1425,40 +1536,62 @@ where
     self.map_async(parallelism, func)
   }
 
-  /// Compatibility alias for map-async partitioned entry points.
+  /// Maps elements asynchronously while allowing at most one in-flight element per partition.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `parallelism` is zero.
-  pub fn map_async_partitioned<T, F, Fut>(
-    self,
+  pub fn map_async_partitioned<T, P, Partitioner, F, Fut>(
+    mut self,
     parallelism: usize,
-    _partitions: usize,
+    partitioner: Partitioner,
     func: F,
   ) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
-    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = T> + Send + 'static, {
-    self.map_async(parallelism, func)
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition =
+      map_async_partitioned_definition::<Out, T, P, Partitioner, F, Fut>(parallelism, true, partitioner, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Compatibility alias for map-async partitioned unordered entry points.
+  /// Maps elements asynchronously with partition serialization and unordered downstream emission.
   ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `parallelism` is zero.
-  pub fn map_async_partitioned_unordered<T, F, Fut>(
-    self,
+  pub fn map_async_partitioned_unordered<T, P, Partitioner, F, Fut>(
+    mut self,
     parallelism: usize,
-    _partitions: usize,
+    partitioner: Partitioner,
     func: F,
   ) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     T: Send + Sync + 'static,
-    F: FnMut(Out) -> Fut + Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = T> + Send + 'static, {
-    self.map_async(parallelism, func)
+    let parallelism = validate_positive_argument("parallelism", parallelism)?;
+    let definition =
+      map_async_partitioned_definition::<Out, T, P, Partitioner, F, Fut>(parallelism, false, partitioner, func);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Asks an actor-like endpoint asynchronously.
@@ -1512,14 +1645,23 @@ where
   ///
   /// Returns [`StreamDslError`] when `max_weight` is zero.
   pub fn grouped_weighted_within<FW>(
-    self,
+    mut self,
     max_weight: usize,
-    _ticks: usize,
-    _weight_fn: FW,
+    ticks: usize,
+    weight_fn: FW,
   ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
-    self.grouped(max_weight)
+    let max_weight = validate_positive_argument("max_weight", max_weight)?;
+    let ticks = validate_positive_argument("ticks", ticks)?;
+    let definition = grouped_weighted_within_definition::<Out, FW>(max_weight, ticks as u64, weight_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Groups elements while tracking both group size and tick window progress.
@@ -1555,13 +1697,21 @@ where
   ///
   /// Returns [`StreamDslError`] when `max_weight` is zero.
   pub fn batch_weighted<FW>(
-    self,
+    mut self,
     max_weight: usize,
-    _weight_fn: FW,
+    weight_fn: FW,
   ) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     FW: FnMut(&Out) -> usize + Send + Sync + 'static, {
-    self.batch(max_weight)
+    let max_weight = validate_positive_argument("max_weight", max_weight)?;
+    let definition = grouped_weighted_definition::<Out, FW>(max_weight, weight_fn);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Conflates upstream elements by repeatedly aggregating all emitted values.
@@ -1638,18 +1788,25 @@ where
     self.add_attributes(Attributes::named(name))
   }
 
-  /// Adds a flat-map-prefix compatibility stage.
+  /// Buffers a prefix before materializing a tail-processing flow.
   ///
   /// # Errors
   ///
-  /// Returns [`StreamDslError`] when `prefix` is zero.
-  pub fn flat_map_prefix<T, Mat2, F>(self, prefix: usize, mut factory: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  /// Returns [`StreamDslError`] when the stage graph cannot be attached to this flow.
+  pub fn flat_map_prefix<T, Mat2, F>(mut self, prefix: usize, factory: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
+    Out: Clone + Send + Sync + 'static,
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
-    F: FnMut(Vec<Out>) -> Source<T, Mat2> + Send + Sync + 'static, {
-    let _ = validate_positive_argument("prefix", prefix)?;
-    self.flat_map_merge(1, move |value| factory(vec![value]))
+    F: FnMut(Vec<Out>) -> Flow<Out, T, Mat2> + Send + Sync + 'static, {
+    let definition = flat_map_prefix_definition::<Out, T, Mat2, F>(prefix, factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
   /// Adds a flatten-merge compatibility stage.
@@ -1665,13 +1822,17 @@ where
     self.flat_map_merge(breadth, func)
   }
 
-  /// Emits prefix-and-tail compatibility output.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when `size` is zero.
-  pub fn prefix_and_tail(self, size: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError> {
-    self.grouped(size)
+  /// Emits a single `(prefix, tail)` tuple with the remaining elements exposed as a source.
+  #[must_use]
+  pub fn prefix_and_tail(mut self, size: usize) -> Flow<In, (Vec<Out>, TailSource<Out>), Mat> {
+    let definition = prefix_and_tail_definition::<Out>(size);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a switch-map compatibility stage.
@@ -1801,13 +1962,20 @@ where
     self.concat(fan_in)
   }
 
-  /// Adds a concat-lazy compatibility stage.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn concat_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.concat(fan_in)
+  /// Concatenates a secondary source after the primary flow completes.
+  #[must_use]
+  pub fn concat_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static, {
+    let definition = concat_lazy_definition::<Out, Mat2>(source);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds an interleave-all compatibility stage.
@@ -1924,22 +2092,36 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
-  /// Adds an or-else compatibility stage.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn or_else(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.prepend(fan_in)
+  /// Falls back to a secondary source when the primary flow emits no elements.
+  #[must_use]
+  pub fn or_else<Mat2>(mut self, secondary: Source<Out, Mat2>) -> Flow<In, Out, Mat>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static, {
+    let definition = or_else_definition::<Out, Mat2>(secondary);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a prepend-lazy compatibility stage.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn prepend_lazy(self, fan_in: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.prepend(fan_in)
+  /// Prepends a secondary source before the primary flow starts emitting.
+  #[must_use]
+  pub fn prepend_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static, {
+    let definition = prepend_lazy_definition::<Out, Mat2>(source);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a zip-latest compatibility stage.
@@ -1947,10 +2129,10 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn zip_latest(self, fan_in: usize, fill_value: Out) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
+  pub fn zip_latest(self, fan_in: usize) -> Result<Flow<In, Vec<Out>, Mat>, StreamDslError>
   where
     Out: Clone, {
-    self.zip_all(fan_in, fill_value)
+    self.merge_latest(fan_in)
   }
 
   /// Adds a zip-latest-with compatibility stage.
@@ -1958,17 +2140,12 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `fan_in` is zero.
-  pub fn zip_latest_with<T, F>(
-    self,
-    fan_in: usize,
-    fill_value: Out,
-    func: F,
-  ) -> Result<Flow<In, T, Mat>, StreamDslError>
+  pub fn zip_latest_with<T, F>(self, fan_in: usize, func: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
     Out: Clone,
     T: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
-    Ok(self.zip_latest(fan_in, fill_value)?.map(func))
+    Ok(self.zip_latest(fan_in)?.map(func))
   }
 
   /// Adds a zip-with compatibility stage.
@@ -2107,26 +2284,66 @@ where
 
   /// Adds a deflate compatibility stage.
   #[must_use]
-  pub const fn deflate(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn deflate(mut self) -> Flow<In, Out, Mat>
+  where
+    Out: AsRef<[u8]> + From<Vec<u8>>, {
+    let definition =
+      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(deflate_bytes(value.as_ref()))]));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:deflate"))
   }
 
   /// Adds a gzip compatibility stage.
   #[must_use]
-  pub const fn gzip(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn gzip(mut self) -> Flow<In, Out, Mat>
+  where
+    Out: AsRef<[u8]> + From<Vec<u8>>, {
+    let definition = try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(gzip_bytes(value.as_ref()))]));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:gzip"))
   }
 
   /// Adds a gzip-decompress compatibility stage.
   #[must_use]
-  pub const fn gzip_decompress(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn gzip_decompress(mut self) -> Flow<In, Out, Mat>
+  where
+    Out: AsRef<[u8]> + From<Vec<u8>>, {
+    let definition =
+      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(gunzip_bytes(value.as_ref())?)]));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+      .add_attributes(Attributes::named("compression:gzip_decompress"))
   }
 
   /// Adds an inflate compatibility stage.
   #[must_use]
-  pub const fn inflate(self) -> Flow<In, Out, Mat> {
-    self
+  pub fn inflate(mut self) -> Flow<In, Out, Mat>
+  where
+    Out: AsRef<[u8]> + From<Vec<u8>>, {
+    let definition =
+      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(inflate_bytes(value.as_ref())?)]));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:inflate"))
   }
 }
 
@@ -2345,6 +2562,54 @@ where
   }
 }
 
+pub(in crate::core) fn map_async_partitioned_definition<In, Out, P, Partitioner, F, Fut>(
+  parallelism: usize,
+  ordered: bool,
+  partitioner: Partitioner,
+  func: F,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  P: Clone + PartialEq + Send + Sync + 'static,
+  Partitioner: FnMut(&In) -> P + Send + Sync + 'static,
+  F: FnMut(In, P) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Out> + Send + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = MapAsyncPartitionedLogic::<In, Out, P, Partitioner, F, Fut>::new(partitioner, func, parallelism, ordered);
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+fn log_definition<In>(observation: LogObservationHandle) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = LogLogic::<In>::new(observation);
+  FlowDefinition {
+    kind:        StageKind::FlowLog,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn stateful_map_definition<In, Out, Factory, Mapper>(factory: Factory) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -2437,6 +2702,27 @@ where
   }
 }
 
+pub(in crate::core) fn try_map_concat_definition<In, Out, F>(func: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  F: FnMut(In) -> Result<Vec<Out>, StreamError> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = TryMapConcatLogic::<In, Out, F> { func, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn filter_definition<In, F>(predicate: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -2484,6 +2770,26 @@ where
   let logic = TakeLogic::<In> { remaining: count, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowTake,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn limit_weighted_definition<In, FW>(max_weight: usize, weight_fn: FW) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  FW: FnMut(&In) -> usize + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = LimitWeightedLogic::<In, FW> { remaining: max_weight, weight_fn, _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::Custom,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -2589,6 +2895,68 @@ where
   };
   FlowDefinition {
     kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn grouped_weighted_definition<In, FW>(max_weight: usize, weight_fn: FW) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  FW: FnMut(&In) -> usize + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedWeightedWithinLogic::<In, FW> {
+    max_weight,
+    duration_ticks: None,
+    tick_count: 0,
+    window_start_tick: None,
+    current: Vec::new(),
+    current_weight: 0,
+    pending: VecDeque::new(),
+    weight_fn,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Vec<In>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn grouped_weighted_within_definition<In, FW>(
+  max_weight: usize,
+  duration_ticks: u64,
+  weight_fn: FW,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  FW: FnMut(&In) -> usize + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Vec<In>> = Outlet::new();
+  let logic = GroupedWeightedWithinLogic::<In, FW> {
+    max_weight,
+    duration_ticks: Some(duration_ticks),
+    tick_count: 0,
+    window_start_tick: None,
+    current: Vec::new(),
+    current_weight: 0,
+    pending: VecDeque::new(),
+    weight_fn,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -2776,6 +3144,55 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn flat_map_prefix_definition<In, Out, Mat2, F>(prefix_len: usize, factory: F) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+  F: FnMut(Vec<In>) -> Flow<In, Out, Mat2> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = FlatMapPrefixLogic::<In, Out, Mat2, F> {
+    prefix_len,
+    factory,
+    prefix_values: Vec::new(),
+    inner_logics: Vec::new(),
+    factory_built: false,
+    source_done: false,
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn prefix_and_tail_definition<In>(prefix_len: usize) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<(Vec<In>, TailSource<In>)> = Outlet::new();
+  let logic = PrefixAndTailLogic::<In>::new(prefix_len);
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<(Vec<In>, TailSource<In>)>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
@@ -3078,17 +3495,18 @@ where
   }
 }
 
-pub(in crate::core) fn recover_definition<In>(fallback: In) -> FlowDefinition
+pub(in crate::core) fn map_error_definition<In, F>(mapper: F) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static, {
-  let inlet: Inlet<Result<In, StreamError>> = Inlet::new();
+  In: Send + Sync + 'static,
+  F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = RecoverLogic::<In> { fallback };
+  let logic = MapErrorLogic { mapper };
   FlowDefinition {
-    kind:        StageKind::FlowRecover,
+    kind:        StageKind::Custom,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
-    input_type:  TypeId::of::<Result<In, StreamError>>(),
+    input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
@@ -3097,17 +3515,81 @@ where
   }
 }
 
-pub(in crate::core) fn recover_with_retries_definition<In>(max_retries: usize, fallback: In) -> FlowDefinition
+pub(in crate::core) fn on_error_continue_definition<In, P, C>(predicate: P, error_consumer: C) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static, {
-  let inlet: Inlet<Result<In, StreamError>> = Inlet::new();
+  In: Send + Sync + 'static,
+  P: FnMut(&StreamError) -> bool + Send + Sync + 'static,
+  C: FnMut(&StreamError) + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = RecoverWithRetriesLogic::<In> { max_retries, retries_left: max_retries, fallback };
+  let logic = OnErrorContinueLogic { predicate, error_consumer };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn on_error_complete_definition<In, F>(predicate: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = OnErrorCompleteLogic { predicate };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn recover_definition<In, F>(recover: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(StreamError) -> Option<In> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = RecoverLogic::<In, F> { recover, pending: VecDeque::new() };
+  FlowDefinition {
+    kind:        StageKind::FlowRecover,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn recover_with_retries_definition<In, F>(max_retries: isize, recover: F) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(StreamError) -> Option<Source<In, StreamNotUsed>> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let retries = if max_retries < 0 { None } else { Some(max_retries as usize) };
+  let logic =
+    RecoverWithRetriesLogic::<In, F> { max_retries: retries, retries_left: retries, recover, recovery_source: None };
   FlowDefinition {
     kind:        StageKind::FlowRecoverWithRetries,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
-    input_type:  TypeId::of::<Result<In, StreamError>>(),
+    input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
     mat_combine: MatCombine::KeepLeft,
     supervision: SupervisionStrategy::Stop,
@@ -3408,6 +3890,31 @@ where
   }
 }
 
+pub(in crate::core) fn prepend_lazy_definition<In, Mat>(source: Source<In, Mat>) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static,
+  Mat: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = PrependSourceLogic::<In, Mat> {
+    secondary:         Some(source),
+    secondary_runtime: None,
+    pending_secondary: VecDeque::new(),
+    pending_primary:   VecDeque::new(),
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn zip_definition<In>(fan_in: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -3495,6 +4002,29 @@ where
   }
 }
 
+pub(in crate::core) fn kill_switch_definition<In>(kill_switch_state: KillSwitchStateHandle) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = KillSwitchLogic::<In> {
+    state:              kill_switch_state,
+    shutdown_requested: false,
+    _pd:                PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowKillSwitch,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn unzip_definition<In>() -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -3554,6 +4084,31 @@ where
   }
 }
 
+pub(in crate::core) fn concat_lazy_definition<In, Mat>(source: Source<In, Mat>) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static,
+  Mat: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = ConcatSourceLogic::<In, Mat> {
+    secondary:         Some(source),
+    secondary_runtime: None,
+    pending:           VecDeque::new(),
+    source_done:       false,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn concat_definition<In>(fan_in: usize) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -3577,6 +4132,173 @@ where
     restart:     None,
     logic:       Box::new(logic),
   }
+}
+
+pub(in crate::core) fn or_else_definition<In, Mat>(secondary: Source<In, Mat>) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static,
+  Mat: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = OrElseSourceLogic::<In, Mat> {
+    secondary:         Some(secondary),
+    secondary_runtime: None,
+    pending_secondary: VecDeque::new(),
+    emitted_primary:   false,
+    source_done:       false,
+  };
+  FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+struct MaterializeIntoSourceLogic<Out, F> {
+  factory:    Option<F>,
+  stream:     Option<Stream>,
+  completion: Option<StreamCompletion<Out>>,
+  emitted:    bool,
+  _pd:        PhantomData<fn() -> Out>,
+}
+
+impl<Out, F> MaterializeIntoSourceLogic<Out, F>
+where
+  Out: Send + Sync + 'static,
+  F: FnOnce() -> Result<(Stream, StreamCompletion<Out>), StreamError> + Send + 'static,
+{
+  fn ensure_stream(&mut self) -> Result<(), StreamError> {
+    if self.stream.is_some() {
+      return Ok(());
+    }
+
+    let Some(factory) = self.factory.take() else {
+      return Err(StreamError::MaterializerNotStarted);
+    };
+    let (stream, completion) = factory()?;
+    self.stream = Some(stream);
+    self.completion = Some(completion);
+    Ok(())
+  }
+
+  fn take_materialized_value(&mut self) -> Result<Option<DynValue>, StreamError> {
+    let Some(completion) = self.completion.as_ref() else {
+      return Ok(None);
+    };
+    let Some(result) = completion.try_take() else {
+      return Ok(None);
+    };
+    self.emitted = true;
+    result.map(|value| Some(Box::new(value) as DynValue))
+  }
+}
+
+impl<Out, F> SourceLogic for MaterializeIntoSourceLogic<Out, F>
+where
+  Out: Send + Sync + 'static,
+  F: FnOnce() -> Result<(Stream, StreamCompletion<Out>), StreamError> + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.emitted {
+      return Ok(None);
+    }
+
+    self.ensure_stream()?;
+
+    if let Some(value) = self.take_materialized_value()? {
+      return Ok(Some(value));
+    }
+
+    let mut idle_budget = 1024_usize;
+    loop {
+      if let Some(value) = self.take_materialized_value()? {
+        return Ok(Some(value));
+      }
+
+      let Some(stream) = self.stream.as_ref() else {
+        return Err(StreamError::MaterializerNotStarted);
+      };
+      if stream.state().is_terminal() {
+        break;
+      }
+
+      let Some(stream) = self.stream.as_mut() else {
+        return Err(StreamError::MaterializerNotStarted);
+      };
+      match stream.drive() {
+        | DriveOutcome::Progressed => idle_budget = 1024,
+        | DriveOutcome::Idle => {
+          if idle_budget == 0 {
+            return Err(StreamError::WouldBlock);
+          }
+          idle_budget = idle_budget.saturating_sub(1);
+        },
+      }
+    }
+
+    self.take_materialized_value()?.ok_or(StreamError::Failed).map(Some)
+  }
+}
+
+fn deflate_bytes(bytes: &[u8]) -> Vec<u8> {
+  let level = 6_u8;
+  miniz_oxide::deflate::compress_to_vec(bytes, level)
+}
+
+fn inflate_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
+  miniz_oxide::inflate::decompress_to_vec(bytes).map_err(|_| StreamError::Failed)
+}
+
+fn gzip_bytes(bytes: &[u8]) -> Vec<u8> {
+  let payload = deflate_bytes(bytes);
+  let mut output = Vec::with_capacity(payload.len() + 18);
+  output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
+  output.extend_from_slice(&payload);
+  output.extend_from_slice(&crc32(bytes).to_le_bytes());
+  output.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+  output
+}
+
+fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
+  if bytes.len() < 18 {
+    return Err(StreamError::Failed);
+  }
+  if bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08 {
+    return Err(StreamError::Failed);
+  }
+  let payload_end = bytes.len().saturating_sub(8);
+  let payload = &bytes[10..payload_end];
+  let decompressed = inflate_bytes(payload)?;
+  let expected_crc =
+    u32::from_le_bytes([bytes[payload_end], bytes[payload_end + 1], bytes[payload_end + 2], bytes[payload_end + 3]]);
+  let expected_len = u32::from_le_bytes([
+    bytes[payload_end + 4],
+    bytes[payload_end + 5],
+    bytes[payload_end + 6],
+    bytes[payload_end + 7],
+  ]) as usize;
+  if crc32(&decompressed) != expected_crc || decompressed.len() != expected_len {
+    return Err(StreamError::Failed);
+  }
+  Ok(decompressed)
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+  let mut crc = 0xffff_ffff_u32;
+  for &byte in bytes {
+    crc ^= u32::from(byte);
+    for _ in 0..8 {
+      let mask = (!((crc & 1).wrapping_sub(1))) & 0xedb8_8320;
+      crc = (crc >> 1) ^ mask;
+    }
+  }
+  !crc
 }
 
 pub(in crate::core::stage::flow) const fn noop_waker() -> Waker {
