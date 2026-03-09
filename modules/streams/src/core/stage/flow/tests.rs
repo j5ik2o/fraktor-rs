@@ -90,6 +90,8 @@ impl FailureSequenceSourceLogic {
   }
 }
 
+struct NonCloneValue(u32);
+
 impl SourceLogic for FailureSequenceSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     match self.steps.pop_front() {
@@ -104,7 +106,10 @@ fn drive_until_completion<T>(stream: &mut Stream, completion: &StreamCompletion<
 where
   T: Clone, {
   let mut idle_budget = 1024_usize;
+  let mut drive_budget = 16384_usize;
   while !matches!(completion.poll(), Completion::Ready(_)) {
+    assert!(drive_budget > 0, "stream did not reach completion within drive budget");
+    drive_budget = drive_budget.saturating_sub(1);
     match stream.drive() {
       | DriveOutcome::Progressed => idle_budget = 1024,
       | DriveOutcome::Idle => {
@@ -311,6 +316,94 @@ fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
   drive_until_completion(&mut stream, &completion);
 
   assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
+}
+
+#[test]
+fn concat_lazy_materializes_secondary_after_primary_finishes() {
+  let materialize_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let secondary = Source::lazy_source({
+    let materialize_calls = materialize_calls.clone();
+    move || {
+      let mut guard = materialize_calls.lock();
+      *guard = guard.saturating_add(1);
+      Source::from_array([3_u32, 4_u32])
+    }
+  });
+  assert_eq!(*materialize_calls.lock(), 0_u32);
+  let primary = Source::<u32, _>::from_logic(StageKind::Custom, PulsedSourceLogic::new(&[Some(1_u32), None, None]));
+  let values = primary.via(Flow::new().concat_lazy(secondary)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 3_u32, 4_u32]);
+  assert_eq!(*materialize_calls.lock(), 1_u32);
+}
+
+#[test]
+fn prepend_lazy_materializes_secondary_on_first_demand() {
+  let materialize_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let secondary = Source::lazy_source({
+    let materialize_calls = materialize_calls.clone();
+    move || {
+      let mut guard = materialize_calls.lock();
+      *guard = guard.saturating_add(1);
+      Source::from_array([1_u32, 2_u32])
+    }
+  });
+  let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
+  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  assert_eq!(*materialize_calls.lock(), 0_u32);
+
+  stream.start().expect("start");
+  drive_until_completion(&mut stream, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*materialize_calls.lock(), 1_u32);
+}
+
+#[test]
+fn or_else_does_not_materialize_secondary_when_primary_emits() {
+  let materialize_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let secondary = Source::lazy_source({
+    let materialize_calls = materialize_calls.clone();
+    move || {
+      let mut guard = materialize_calls.lock();
+      *guard = guard.saturating_add(1);
+      Source::from_array([9_u32, 10_u32])
+    }
+  });
+  let values =
+    Source::from_array([7_u32, 8_u32]).via(Flow::new().or_else(secondary)).collect_values().expect("collect_values");
+  assert_eq!(values, vec![7_u32, 8_u32]);
+  assert_eq!(*materialize_calls.lock(), 0_u32);
+}
+
+#[test]
+fn concat_lazy_accepts_non_clone_elements() {
+  let values = Source::from_array([NonCloneValue(1_u32), NonCloneValue(2_u32)])
+    .via(Flow::new().concat_lazy(Source::from_array([NonCloneValue(3_u32)])))
+    .map(|value: NonCloneValue| value.0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn prepend_lazy_accepts_non_clone_elements() {
+  let values = Source::from_array([NonCloneValue(2_u32), NonCloneValue(3_u32)])
+    .via(Flow::new().prepend_lazy(Source::from_array([NonCloneValue(1_u32)])))
+    .map(|value: NonCloneValue| value.0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn or_else_accepts_non_clone_elements() {
+  let values = Source::from_array([NonCloneValue(7_u32)])
+    .via(Flow::new().or_else(Source::from_array([NonCloneValue(9_u32)])))
+    .map(|value: NonCloneValue| value.0)
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
@@ -680,6 +773,7 @@ impl Future for PartitionedYieldFuture {
   type Output = u32;
 
   fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    // Safety: pin 済みのフィールドを move しないため安全。
     let this = unsafe { self.get_unchecked_mut() };
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
@@ -724,14 +818,14 @@ fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ord
   let overlap_seen = fraktor_utils_rs::core::sync::ArcShared::new(
     fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex::new(false),
   );
-  let mut values = Source::from_array([1_u32, 2_u32])
+  let values = Source::from_array([1_u32, 2_u32])
     .via(
       Flow::new()
         .map_async_partitioned_unordered(2, |value: &u32| (*value as usize) % 2, {
           let active_counts = active_counts.clone();
           let overlap_seen = overlap_seen.clone();
           move |value: u32, partition: usize| {
-            let ready_after = if partition == 1 { 3 } else { 0 };
+            let ready_after = if partition == 1 { 16 } else { 0 };
             PartitionedYieldFuture::new_with_overlap(
               value.saturating_add(10),
               partition,
@@ -745,9 +839,8 @@ fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ord
     )
     .collect_values()
     .expect("collect_values");
-  values.sort_unstable();
-  assert_eq!(values, vec![11_u32, 12_u32]);
   assert!(*overlap_seen.lock(), "different partitions should overlap in flight");
+  assert_eq!(values, vec![12_u32, 11_u32]);
 }
 
 #[test]
@@ -1267,6 +1360,78 @@ fn concat_logic_on_restart_clears_pending_state() {
 }
 
 #[test]
+fn concat_source_logic_on_restart_keeps_secondary_stream() {
+  let mut logic = super::ConcatSourceLogic::<u32, StreamNotUsed> {
+    secondary:         Some(Source::from_array([7_u32, 8_u32])),
+    secondary_runtime: None,
+    pending:           VecDeque::new(),
+    source_done:       false,
+  };
+
+  logic.on_source_done().expect("source done");
+  logic.on_restart().expect("restart");
+  logic.on_source_done().expect("source done after restart");
+
+  let mut values = Vec::new();
+  loop {
+    let outputs = logic.drain_pending().expect("drain");
+    if outputs.is_empty() {
+      break;
+    }
+    values.extend(outputs.into_iter().map(|output| *output.downcast::<u32>().expect("u32")));
+  }
+  assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn prepend_source_logic_on_restart_keeps_secondary_stream() {
+  let mut logic = super::PrependSourceLogic::<u32, StreamNotUsed> {
+    secondary:         Some(Source::from_array([1_u32, 2_u32])),
+    secondary_runtime: None,
+    pending_secondary: VecDeque::new(),
+    pending_primary:   VecDeque::new(),
+  };
+
+  let _ = logic.drain_pending().expect("drain before restart");
+  logic.on_restart().expect("restart");
+
+  let mut values = Vec::new();
+  loop {
+    let outputs = logic.drain_pending().expect("drain");
+    if outputs.is_empty() {
+      break;
+    }
+    values.extend(outputs.into_iter().map(|output| *output.downcast::<u32>().expect("u32")));
+  }
+  assert!(!values.is_empty(), "secondary stream should remain available after restart");
+}
+
+#[test]
+fn or_else_source_logic_on_restart_keeps_secondary_stream() {
+  let mut logic = super::OrElseSourceLogic::<u32, StreamNotUsed> {
+    secondary:         Some(Source::from_array([9_u32, 10_u32])),
+    secondary_runtime: None,
+    pending_secondary: VecDeque::new(),
+    emitted_primary:   false,
+    source_done:       false,
+  };
+
+  logic.on_source_done().expect("source done");
+  logic.on_restart().expect("restart");
+  logic.on_source_done().expect("source done after restart");
+
+  let mut values = Vec::new();
+  loop {
+    let outputs = logic.drain_pending().expect("drain");
+    if outputs.is_empty() {
+      break;
+    }
+    values.extend(outputs.into_iter().map(|output| *output.downcast::<u32>().expect("u32")));
+  }
+  assert_eq!(values, vec![9_u32, 10_u32]);
+}
+
+#[test]
 fn zip_with_index_logic_on_restart_resets_counter() {
   let mut logic = super::ZipWithIndexLogic::<u32> { next_index: 0, _pd: core::marker::PhantomData };
   let first = logic.apply(Box::new(10_u32)).expect("first apply");
@@ -1555,6 +1720,7 @@ fn log_and_log_with_marker_store_attributes() {
 }
 
 #[test]
+#[cfg(feature = "compression")]
 fn compression_operators_round_trip_bytes_and_store_attributes() {
   let payload = vec![1_u8, 2, 3, 3, 3, 4, 5];
   let values = Source::single(payload.clone())
@@ -1576,6 +1742,7 @@ fn compression_operators_round_trip_bytes_and_store_attributes() {
   ]);
 }
 
+#[cfg(feature = "compression")]
 fn crc32_for_gzip_test(bytes: &[u8]) -> u32 {
   let mut crc = 0xffff_ffff_u32;
   for &byte in bytes {
@@ -1588,6 +1755,7 @@ fn crc32_for_gzip_test(bytes: &[u8]) -> u32 {
   !crc
 }
 
+#[cfg(feature = "compression")]
 fn gzip_member_with_filename(payload: &[u8], filename: &str) -> Vec<u8> {
   let mut output = Vec::new();
   output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
@@ -1600,6 +1768,7 @@ fn gzip_member_with_filename(payload: &[u8], filename: &str) -> Vec<u8> {
 }
 
 #[test]
+#[cfg(feature = "compression")]
 fn gzip_decompress_accepts_member_with_filename_header() {
   let payload = b"gzip filename header payload".to_vec();
   let encoded = gzip_member_with_filename(&payload, "payload.bin");
@@ -1611,6 +1780,7 @@ fn gzip_decompress_accepts_member_with_filename_header() {
 }
 
 #[test]
+#[cfg(feature = "compression")]
 fn gzip_decompress_accepts_standard_gzip_payload() {
   let encoded = vec![
     0x1f, 0x8b, 0x08, 0x00, 0xf6, 0x05, 0xaf, 0x69, 0x00, 0x03, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0xd7, 0x4d, 0xaf, 0xca,
@@ -1621,6 +1791,25 @@ fn gzip_decompress_accepts_standard_gzip_payload() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![b"hello-gzip-interop".to_vec()]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_emits_raw_deflate_payload() {
+  let payload = b"gzip-raw-deflate-check".to_vec();
+  let encoded = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
+    .collect_values()
+    .expect("collect_values")
+    .pop()
+    .expect("encoded payload");
+  let payload_end = encoded.len().saturating_sub(8);
+  let deflate_payload = &encoded[10..payload_end];
+  assert_eq!(miniz_oxide::inflate::decompress_to_vec(deflate_payload).expect("raw deflate payload"), payload);
+  assert!(
+    miniz_oxide::inflate::decompress_to_vec_zlib(deflate_payload).is_err(),
+    "gzip payload must not be zlib-wrapped"
+  );
 }
 
 #[test]
@@ -1651,6 +1840,15 @@ fn grouped_weighted_within_uses_weight_budget() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![vec![2_u32, 1_u32], vec![2_u32]]);
+}
+
+#[test]
+fn grouped_weighted_within_flushes_on_weight_add_overflow() {
+  let values = Source::from_array([usize::MAX - 1, 2_usize])
+    .via(Flow::new().grouped_weighted_within(usize::MAX, 10, |value| *value).expect("grouped_weighted_within"))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![usize::MAX - 1], vec![2_usize]]);
 }
 
 #[test]

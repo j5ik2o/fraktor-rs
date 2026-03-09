@@ -43,7 +43,7 @@ where
       self.tail_queue.complete();
     }
     let Some(tail_source) = self.tail_source.take() else {
-      return Err(StreamError::Failed);
+      return Err(StreamError::InvalidConnection);
     };
     let output = (core::mem::take(&mut self.prefix), tail_source);
     Ok(vec![Box::new(output) as DynValue])

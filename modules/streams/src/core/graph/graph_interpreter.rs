@@ -40,6 +40,7 @@ impl GraphInterpreter {
     let stage_count = compiled.stages.len();
     let source_indices_len = compiled.source_indices.len();
     let sink_indices_len = compiled.sink_indices.len();
+    // flow_* は stage index で直接参照するため、Flow 以外を含む全ステージ長で確保する。
     Self {
       stages:           compiled.stages,
       edges:            compiled.edges,
@@ -832,10 +833,14 @@ impl GraphInterpreter {
       return Ok(());
     }
     let sink_index = self.sink_indices[sink_position];
-    let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-      return Err(StreamError::InvalidConnection);
-    };
-    sink.logic.on_complete()?;
+    {
+      let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+        return Err(StreamError::InvalidConnection);
+      };
+      sink.logic.on_complete()?;
+    }
+    self.close_and_clear_incoming_edges_for_stage(sink_index)?;
+    self.cancel_upstream_stage(sink_index)?;
     self.sink_done[sink_position] = true;
     if self.all_sinks_done() {
       self.state = StreamState::Completed;
@@ -994,8 +999,7 @@ impl GraphInterpreter {
           if !self.flow_source_done[upstream_stage_index]
             && let StageDefinition::Flow(flow) = &mut self.stages[upstream_stage_index]
           {
-            flow.logic.on_source_done()?;
-            self.flow_source_done[upstream_stage_index] = true;
+            flow.logic.on_downstream_cancel()?;
           }
           self.flow_source_done[upstream_stage_index] = true;
           self.flow_done[upstream_stage_index] = true;

@@ -58,7 +58,7 @@ mod kill_switch_logic;
 mod lazy_flow_logic;
 /// Limit-weighted logic.
 mod limit_weighted_logic;
-/// Logging observation logic.
+/// Logging pass-through logic.
 mod log_logic;
 /// Map-async logic.
 mod map_async_logic;
@@ -119,6 +119,7 @@ mod take_within_logic;
 /// Timed delay logic.
 mod timed_delay_logic;
 /// Fallible map-concat logic.
+#[cfg(feature = "compression")]
 mod try_map_concat_logic;
 /// Unzip logic.
 mod unzip_logic;
@@ -193,6 +194,7 @@ pub(super) use take_until_logic::*;
 pub(super) use take_while_logic::*;
 pub(super) use take_within_logic::*;
 pub(super) use timed_delay_logic::*;
+#[cfg(feature = "compression")]
 pub(super) use try_map_concat_logic::*;
 pub(super) use unzip_logic::*;
 pub(super) use unzip_with_logic::*;

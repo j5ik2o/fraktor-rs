@@ -6,14 +6,14 @@ use crate::core::{
   lifecycle::{DriveOutcome, Stream},
 };
 
-pub(in crate::core::stage::flow) struct SecondarySourceRuntime<Out> {
+pub(in crate::core::stage::flow) struct SecondarySourceBridge<Out> {
   stream:     Stream,
   completion: StreamCompletion<StreamDone>,
   queue:      SourceQueue<Out>,
   finished:   bool,
 }
 
-impl<Out> SecondarySourceRuntime<Out>
+impl<Out> SecondarySourceBridge<Out>
 where
   Out: Send + Sync + 'static,
 {
@@ -73,7 +73,7 @@ where
 
 pub(in crate::core::stage::flow) struct ConcatSourceLogic<Out, Mat> {
   pub(in crate::core::stage::flow) secondary:         Option<Source<Out, Mat>>,
-  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceRuntime<Out>>,
+  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceBridge<Out>>,
   pub(in crate::core::stage::flow) pending:           VecDeque<Out>,
   pub(in crate::core::stage::flow) source_done:       bool,
 }
@@ -90,11 +90,12 @@ where
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     self.source_done = true;
-    if self.secondary_runtime.is_none()
-      && let Some(source) = self.secondary.take()
-    {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
-    }
+    Ok(())
+  }
+
+  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.pending.clear();
+    self.secondary_runtime = None;
     Ok(())
   }
 
@@ -106,7 +107,7 @@ where
     if self.secondary_runtime.is_none()
       && let Some(source) = self.secondary.take()
     {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
+      self.secondary_runtime = Some(SecondarySourceBridge::new(source)?);
     }
     if let Some(runtime) = self.secondary_runtime.as_mut()
       && let Some(value) = runtime.poll_next()?
@@ -123,20 +124,22 @@ where
     self.source_done
       && (!self.pending.is_empty()
         || self.secondary.is_some()
-        || self.secondary_runtime.as_ref().is_some_and(SecondarySourceRuntime::has_pending_output))
+        || self.secondary_runtime.as_ref().is_some_and(SecondarySourceBridge::has_pending_output))
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.pending.clear();
     self.source_done = false;
-    self.secondary_runtime = None;
+    if self.secondary.is_some() {
+      self.secondary_runtime = None;
+    }
     Ok(())
   }
 }
 
 pub(in crate::core::stage::flow) struct PrependSourceLogic<Out, Mat> {
   pub(in crate::core::stage::flow) secondary:         Option<Source<Out, Mat>>,
-  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceRuntime<Out>>,
+  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceBridge<Out>>,
   pub(in crate::core::stage::flow) pending_secondary: VecDeque<Out>,
   pub(in crate::core::stage::flow) pending_primary:   VecDeque<Out>,
 }
@@ -151,7 +154,7 @@ where
     if self.secondary_runtime.is_none()
       && let Some(source) = self.secondary.take()
     {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
+      self.secondary_runtime = Some(SecondarySourceBridge::new(source)?);
     }
     self.pending_primary.push_back(value);
     self.drain_pending()
@@ -161,11 +164,18 @@ where
     self.pending_primary.is_empty()
   }
 
+  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.pending_primary.clear();
+    self.pending_secondary.clear();
+    self.secondary_runtime = None;
+    Ok(())
+  }
+
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
     if self.secondary_runtime.is_none()
       && let Some(source) = self.secondary.take()
     {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
+      self.secondary_runtime = Some(SecondarySourceBridge::new(source)?);
     }
     if let Some(runtime) = self.secondary_runtime.as_mut()
       && let Some(value) = runtime.poll_next()?
@@ -187,20 +197,22 @@ where
     !self.pending_secondary.is_empty()
       || !self.pending_primary.is_empty()
       || self.secondary.is_some()
-      || self.secondary_runtime.as_ref().is_some_and(SecondarySourceRuntime::has_pending_output)
+      || self.secondary_runtime.as_ref().is_some_and(SecondarySourceBridge::has_pending_output)
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.pending_primary.clear();
     self.pending_secondary.clear();
-    self.secondary_runtime = None;
+    if self.secondary.is_some() {
+      self.secondary_runtime = None;
+    }
     Ok(())
   }
 }
 
 pub(in crate::core::stage::flow) struct OrElseSourceLogic<Out, Mat> {
   pub(in crate::core::stage::flow) secondary:         Option<Source<Out, Mat>>,
-  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceRuntime<Out>>,
+  pub(in crate::core::stage::flow) secondary_runtime: Option<SecondarySourceBridge<Out>>,
   pub(in crate::core::stage::flow) pending_secondary: VecDeque<Out>,
   pub(in crate::core::stage::flow) emitted_primary:   bool,
   pub(in crate::core::stage::flow) source_done:       bool,
@@ -220,16 +232,15 @@ where
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     self.source_done = true;
     if self.emitted_primary {
-      self.secondary = None;
-      self.secondary_runtime = None;
       self.pending_secondary.clear();
       return Ok(());
     }
-    if self.secondary_runtime.is_none()
-      && let Some(source) = self.secondary.take()
-    {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
-    }
+    Ok(())
+  }
+
+  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.pending_secondary.clear();
+    self.secondary_runtime = None;
     Ok(())
   }
 
@@ -240,7 +251,7 @@ where
     if self.secondary_runtime.is_none()
       && let Some(source) = self.secondary.take()
     {
-      self.secondary_runtime = Some(SecondarySourceRuntime::new(source)?);
+      self.secondary_runtime = Some(SecondarySourceBridge::new(source)?);
     }
     if let Some(runtime) = self.secondary_runtime.as_mut()
       && let Some(value) = runtime.poll_next()?
@@ -258,14 +269,16 @@ where
       && !self.emitted_primary
       && (!self.pending_secondary.is_empty()
         || self.secondary.is_some()
-        || self.secondary_runtime.as_ref().is_some_and(SecondarySourceRuntime::has_pending_output))
+        || self.secondary_runtime.as_ref().is_some_and(SecondarySourceBridge::has_pending_output))
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.pending_secondary.clear();
     self.emitted_primary = false;
     self.source_done = false;
-    self.secondary_runtime = None;
+    if self.secondary.is_some() {
+      self.secondary_runtime = None;
+    }
     Ok(())
   }
 }

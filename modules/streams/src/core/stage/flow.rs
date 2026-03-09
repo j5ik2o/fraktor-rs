@@ -1431,10 +1431,10 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
-  /// Adds a logging observation stage and metadata while passing each element through unchanged.
+  /// Adds a logging stage and metadata while passing each element through unchanged.
   #[must_use]
   pub fn log(mut self, name: &'static str) -> Flow<In, Out, Mat> {
-    let definition = log_definition::<Out>(LogObservationHandle::new());
+    let definition = log_definition::<Out>();
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -1795,7 +1795,7 @@ where
   /// Returns [`StreamDslError`] when the stage graph cannot be attached to this flow.
   pub fn flat_map_prefix<T, Mat2, F>(mut self, prefix: usize, factory: F) -> Result<Flow<In, T, Mat>, StreamDslError>
   where
-    Out: Clone + Send + Sync + 'static,
+    Out: Send + Sync + 'static,
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> Flow<Out, T, Mat2> + Send + Sync + 'static, {
@@ -1966,7 +1966,6 @@ where
   #[must_use]
   pub fn concat_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
   where
-    Out: Clone,
     Mat2: Send + Sync + 'static, {
     let definition = concat_lazy_definition::<Out, Mat2>(source);
     let inlet_id = definition.inlet;
@@ -2096,7 +2095,6 @@ where
   #[must_use]
   pub fn or_else<Mat2>(mut self, secondary: Source<Out, Mat2>) -> Flow<In, Out, Mat>
   where
-    Out: Clone,
     Mat2: Send + Sync + 'static, {
     let definition = or_else_definition::<Out, Mat2>(secondary);
     let inlet_id = definition.inlet;
@@ -2112,7 +2110,6 @@ where
   #[must_use]
   pub fn prepend_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
   where
-    Out: Clone,
     Mat2: Send + Sync + 'static, {
     let definition = prepend_lazy_definition::<Out, Mat2>(source);
     let inlet_id = definition.inlet;
@@ -2283,6 +2280,7 @@ where
   }
 
   /// Adds a deflate compatibility stage.
+  #[cfg(feature = "compression")]
   #[must_use]
   pub fn deflate(mut self) -> Flow<In, Out, Mat>
   where
@@ -2299,6 +2297,7 @@ where
   }
 
   /// Adds a gzip compatibility stage.
+  #[cfg(feature = "compression")]
   #[must_use]
   pub fn gzip(mut self) -> Flow<In, Out, Mat>
   where
@@ -2314,6 +2313,7 @@ where
   }
 
   /// Adds a gzip-decompress compatibility stage.
+  #[cfg(feature = "compression")]
   #[must_use]
   pub fn gzip_decompress(mut self) -> Flow<In, Out, Mat>
   where
@@ -2331,6 +2331,7 @@ where
   }
 
   /// Adds an inflate compatibility stage.
+  #[cfg(feature = "compression")]
   #[must_use]
   pub fn inflate(mut self) -> Flow<In, Out, Mat>
   where
@@ -2591,12 +2592,12 @@ where
   }
 }
 
-fn log_definition<In>(observation: LogObservationHandle) -> FlowDefinition
+fn log_definition<In>() -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = LogLogic::<In>::new(observation);
+  let logic = LogLogic::<In>::new();
   FlowDefinition {
     kind:        StageKind::FlowLog,
     inlet:       inlet.id(),
@@ -2702,6 +2703,7 @@ where
   }
 }
 
+#[cfg(feature = "compression")]
 pub(in crate::core) fn try_map_concat_definition<In, Out, F>(func: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -3154,7 +3156,7 @@ where
 
 pub(in crate::core) fn flat_map_prefix_definition<In, Out, Mat2, F>(prefix_len: usize, factory: F) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Mat2: Send + Sync + 'static,
   F: FnMut(Vec<In>) -> Flow<In, Out, Mat2> + Send + Sync + 'static, {
@@ -3563,7 +3565,7 @@ where
   F: FnMut(StreamError) -> Option<In> + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = RecoverLogic::<In, F> { recover, pending: VecDeque::new() };
+  let logic = RecoverLogic::<In, F> { recover, pending: None };
   FlowDefinition {
     kind:        StageKind::FlowRecover,
     inlet:       inlet.id(),
@@ -3893,7 +3895,7 @@ where
 
 pub(in crate::core) fn prepend_lazy_definition<In, Mat>(source: Source<In, Mat>) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Mat: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
@@ -4087,7 +4089,7 @@ where
 
 pub(in crate::core) fn concat_lazy_definition<In, Mat>(source: Source<In, Mat>) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Mat: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
@@ -4137,7 +4139,7 @@ where
 
 pub(in crate::core) fn or_else_definition<In, Mat>(secondary: Source<In, Mat>) -> FlowDefinition
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Mat: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
@@ -4200,6 +4202,8 @@ where
   }
 }
 
+const MATERIALIZE_IDLE_BUDGET: usize = 1024;
+
 impl<Out, F> SourceLogic for MaterializeIntoSourceLogic<Out, F>
 where
   Out: Send + Sync + 'static,
@@ -4216,7 +4220,8 @@ where
       return Ok(Some(value));
     }
 
-    let mut idle_budget = 1024_usize;
+    // 有界の busy-wait。進捗がこの回数だけ観測できなければ WouldBlock を返し、呼び出し側で再試行する。
+    let mut idle_budget = MATERIALIZE_IDLE_BUDGET;
     loop {
       if let Some(value) = self.take_materialized_value()? {
         return Ok(Some(value));
@@ -4233,7 +4238,7 @@ where
         return Err(StreamError::MaterializerNotStarted);
       };
       match stream.drive() {
-        | DriveOutcome::Progressed => idle_budget = 1024,
+        | DriveOutcome::Progressed => idle_budget = MATERIALIZE_IDLE_BUDGET,
         | DriveOutcome::Idle => {
           if idle_budget == 0 {
             return Err(StreamError::WouldBlock);
@@ -4243,51 +4248,63 @@ where
       }
     }
 
-    self.take_materialized_value()?.ok_or(StreamError::Failed).map(Some)
+    self.take_materialized_value()
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    let Some(stream) = self.stream.as_mut() else {
+      return Ok(());
+    };
+    stream.cancel()
   }
 }
 
+#[cfg(feature = "compression")]
 fn deflate_bytes(bytes: &[u8]) -> Vec<u8> {
   let level = 6_u8;
   miniz_oxide::deflate::compress_to_vec(bytes, level)
 }
 
+#[cfg(feature = "compression")]
 fn inflate_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
-  miniz_oxide::inflate::decompress_to_vec(bytes).map_err(|_| StreamError::Failed)
+  miniz_oxide::inflate::decompress_to_vec(bytes).map_err(|_| StreamError::CompressionError { kind: "deflate" })
 }
 
+#[cfg(feature = "compression")]
 fn gzip_bytes(bytes: &[u8]) -> Vec<u8> {
   let payload = deflate_bytes(bytes);
   let mut output = Vec::with_capacity(payload.len() + 18);
   output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
   output.extend_from_slice(&payload);
   output.extend_from_slice(&crc32(bytes).to_le_bytes());
+  // RFC 1952 に従い ISIZE は入力サイズの mod 2^32 を保持する。
   output.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
   output
 }
 
+#[cfg(feature = "compression")]
 fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
   if bytes.len() < 18 {
-    return Err(StreamError::Failed);
+    return Err(StreamError::CompressionError { kind: "gzip_too_short" });
   }
   if bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08 {
-    return Err(StreamError::Failed);
+    return Err(StreamError::CompressionError { kind: "gzip_header" });
   }
   let flags = bytes[3];
   if flags & 0b1110_0000 != 0 {
-    return Err(StreamError::Failed);
+    return Err(StreamError::CompressionError { kind: "gzip_flags" });
   }
   let payload_end = bytes.len().saturating_sub(8);
   let mut payload_start = 10_usize;
 
   if flags & 0x04 != 0 {
     if payload_start + 2 > payload_end {
-      return Err(StreamError::Failed);
+      return Err(StreamError::CompressionError { kind: "gzip_extra_len" });
     }
     let extra_len = u16::from_le_bytes([bytes[payload_start], bytes[payload_start + 1]]) as usize;
     payload_start += 2;
     if payload_start + extra_len > payload_end {
-      return Err(StreamError::Failed);
+      return Err(StreamError::CompressionError { kind: "gzip_extra" });
     }
     payload_start += extra_len;
   }
@@ -4299,12 +4316,12 @@ fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
   }
   if flags & 0x02 != 0 {
     if payload_start + 2 > payload_end {
-      return Err(StreamError::Failed);
+      return Err(StreamError::CompressionError { kind: "gzip_header_crc" });
     }
     payload_start += 2;
   }
   if payload_start > payload_end {
-    return Err(StreamError::Failed);
+    return Err(StreamError::CompressionError { kind: "gzip_payload_bounds" });
   }
 
   let payload = &bytes[payload_start..payload_end];
@@ -4316,13 +4333,14 @@ fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
     bytes[payload_end + 5],
     bytes[payload_end + 6],
     bytes[payload_end + 7],
-  ]) as usize;
-  if crc32(&decompressed) != expected_crc || decompressed.len() != expected_len {
-    return Err(StreamError::Failed);
+  ]);
+  if crc32(&decompressed) != expected_crc || (decompressed.len() as u32) != expected_len {
+    return Err(StreamError::CompressionError { kind: "gzip_trailer" });
   }
   Ok(decompressed)
 }
 
+#[cfg(feature = "compression")]
 fn consume_gzip_zero_terminated_field(
   bytes: &[u8],
   mut index: usize,
@@ -4334,9 +4352,10 @@ fn consume_gzip_zero_terminated_field(
     }
     index = index.saturating_add(1);
   }
-  Err(StreamError::Failed)
+  Err(StreamError::CompressionError { kind: "gzip_string_field" })
 }
 
+#[cfg(feature = "compression")]
 fn crc32(bytes: &[u8]) -> u32 {
   let mut crc = 0xffff_ffff_u32;
   for &byte in bytes {

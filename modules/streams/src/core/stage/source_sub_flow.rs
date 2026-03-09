@@ -41,21 +41,25 @@ where
 
   /// Maps each element inside every substream.
   #[must_use]
-  pub fn map<T, F>(self, mut func: F) -> SourceSubFlow<T, Mat>
+  pub fn map<T, F>(self, func: F) -> SourceSubFlow<T, Mat>
   where
     T: Send + Sync + 'static,
-    F: FnMut(Out) -> T + Send + Sync + 'static, {
-    SourceSubFlow::from_source(self.source.map(move |values| values.into_iter().map(&mut func).collect()))
+    F: FnMut(Out) -> T + Send + Sync + Clone + 'static, {
+    SourceSubFlow::from_source(self.source.map(move |values| {
+      let mut mapper = func.clone();
+      values.into_iter().map(&mut mapper).collect()
+    }))
   }
 
   /// Filters each substream independently.
   #[must_use]
-  pub fn filter<F>(self, mut predicate: F) -> SourceSubFlow<Out, Mat>
+  pub fn filter<F>(self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
-    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    SourceSubFlow::from_source(
-      self.source.map(move |values| values.into_iter().filter(|value| predicate(value)).collect()),
-    )
+    F: FnMut(&Out) -> bool + Send + Sync + Clone + 'static, {
+    SourceSubFlow::from_source(self.source.map(move |values| {
+      let mut checker = predicate.clone();
+      values.into_iter().filter(|value| checker(value)).collect()
+    }))
   }
 
   /// Drops the first `count` elements from every substream.
@@ -72,21 +76,23 @@ where
 
   /// Drops elements from each substream while `predicate` returns `true`.
   #[must_use]
-  pub fn drop_while<F>(self, mut predicate: F) -> SourceSubFlow<Out, Mat>
+  pub fn drop_while<F>(self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
-    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    SourceSubFlow::from_source(
-      self.source.map(move |values| values.into_iter().skip_while(|value| predicate(value)).collect()),
-    )
+    F: FnMut(&Out) -> bool + Send + Sync + Clone + 'static, {
+    SourceSubFlow::from_source(self.source.map(move |values| {
+      let mut checker = predicate.clone();
+      values.into_iter().skip_while(|value| checker(value)).collect()
+    }))
   }
 
   /// Takes elements from each substream while `predicate` returns `true`.
   #[must_use]
-  pub fn take_while<F>(self, mut predicate: F) -> SourceSubFlow<Out, Mat>
+  pub fn take_while<F>(self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
-    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    SourceSubFlow::from_source(
-      self.source.map(move |values| values.into_iter().take_while(|value| predicate(value)).collect()),
-    )
+    F: FnMut(&Out) -> bool + Send + Sync + Clone + 'static, {
+    SourceSubFlow::from_source(self.source.map(move |values| {
+      let mut checker = predicate.clone();
+      values.into_iter().take_while(|value| checker(value)).collect()
+    }))
   }
 }

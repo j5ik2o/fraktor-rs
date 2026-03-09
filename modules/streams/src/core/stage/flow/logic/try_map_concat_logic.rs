@@ -1,3 +1,5 @@
+#![cfg(feature = "compression")]
+
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::PhantomData;
 

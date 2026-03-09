@@ -46,8 +46,10 @@ where
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = downcast_value::<In>(input)?;
     let weight = (self.weight_fn)(&value);
+    let would_exceed_weight =
+      self.current_weight.checked_add(weight).is_none_or(|next_weight| next_weight > self.max_weight);
 
-    if !self.current.is_empty() && self.current_weight.saturating_add(weight) > self.max_weight {
+    if !self.current.is_empty() && would_exceed_weight {
       self.flush_current();
     }
 

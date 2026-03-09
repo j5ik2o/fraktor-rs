@@ -431,8 +431,8 @@ impl StreamPlan {
     self
   }
 
-  fn shared_kill_switch_states(&self) -> Vec<lifecycle::KillSwitchStateHandle> {
-    self.kill_switch_states.clone()
+  fn shared_kill_switch_states(&self) -> &[lifecycle::KillSwitchStateHandle] {
+    &self.kill_switch_states
   }
 }
 
@@ -505,6 +505,10 @@ trait FlowLogic: Send {
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     Ok(())
+  }
+
+  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.on_source_done()
   }
 
   fn take_shutdown_request(&mut self) -> bool {

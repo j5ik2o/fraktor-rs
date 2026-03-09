@@ -81,16 +81,19 @@
 ## 実装優先度の提案
 
 ### Phase 1: trivial（既存組み合わせで即実装可能）
+
 - `concatLazy` / `prependLazy` / `orElse` の契約分離（現在の単純委譲を置換）
 - `limitWeighted` / `batchWeighted` / `groupedWeightedWithin` で weight/ticks を実際に使用
 - `log` / `logWithMarker` を no-op から最小限の観測可能挙動へ改善
 
 ### Phase 2: easy（単純な新規実装）
+
 - `DrainingControl` に `drain_and_complete` 相当契約を追加
 - `on_error_*` の条件付きオーバーロード追加
 - `materialize_into_source` を no-op から実体化
 
 ### Phase 3: medium（中程度の実装工数）
+
 - `map_async_partitioned` 系の partition セマンティクス導入
 - `zip_latest` / `zip_latest_with` の契約整合
 - `recover_with` 系を source ベースの復旧モデルに拡張
@@ -98,8 +101,10 @@
 - `flat_map_prefix` / `prefix_and_tail` の契約整合
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
+
 - `GraphDSL` の `Builder` モデル（`create/add/addEdge/materializedValue`）導入
 - `~>` / `<~` / `<~>` 相当の配線 DSL を no_std 制約内で設計
 
 ### 対象外（n/a）
+
 - JVM 固有型や Java/Scala 相互運用専用 API（`CompletionStage`, `Java DSL` 依存の一部）は Rust/no_std 直輸入対象外として保守的に除外可能

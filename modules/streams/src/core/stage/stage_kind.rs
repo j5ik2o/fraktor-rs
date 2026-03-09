@@ -1,5 +1,6 @@
 /// Minimal stage kinds used by the DSL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StageKind {
   /// Source that emits a single element.
   SourceSingle,

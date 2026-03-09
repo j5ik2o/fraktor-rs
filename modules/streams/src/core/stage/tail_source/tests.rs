@@ -10,7 +10,7 @@ fn tail_source_collects_wrapped_values() {
 #[test]
 fn tail_source_into_source_returns_underlying_source() {
   let tail_source = TailSource::new(Source::single(7_u32));
-  let source = tail_source.into_source().expect("into_source");
+  let source = tail_source.into_source();
   let values = source.collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }

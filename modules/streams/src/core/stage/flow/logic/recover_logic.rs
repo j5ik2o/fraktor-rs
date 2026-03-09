@@ -1,11 +1,11 @@
-use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 
 use super::super::super::{DynValue, FlowLogic, StreamError};
 use crate::core::FailureAction;
 
 pub(in crate::core::stage::flow) struct RecoverLogic<Out, F> {
   pub(in crate::core::stage::flow) recover: F,
-  pub(in crate::core::stage::flow) pending: VecDeque<Out>,
+  pub(in crate::core::stage::flow) pending: Option<Out>,
 }
 
 impl<Out, F> FlowLogic for RecoverLogic<Out, F>
@@ -25,23 +25,23 @@ where
     let Some(value) = (self.recover)(error.clone()) else {
       return Ok(FailureAction::Propagate(error));
     };
-    self.pending.push_back(value);
+    self.pending = Some(value);
     Ok(FailureAction::Complete)
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
-    let Some(value) = self.pending.pop_front() else {
+    let Some(value) = self.pending.take() else {
       return Ok(Vec::new());
     };
     Ok(vec![Box::new(value) as DynValue])
   }
 
   fn has_pending_output(&self) -> bool {
-    !self.pending.is_empty()
+    self.pending.is_some()
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
-    self.pending.clear();
+    self.pending = None;
     Ok(())
   }
 }

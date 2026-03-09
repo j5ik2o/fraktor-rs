@@ -36,6 +36,7 @@ where
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
+    // `remaining` はこの stage インスタンス全体の上限として扱うため restart でも維持する。
     self.shutdown_requested = false;
     Ok(())
   }

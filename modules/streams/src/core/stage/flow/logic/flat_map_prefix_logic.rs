@@ -18,7 +18,7 @@ pub(in crate::core::stage::flow) struct FlatMapPrefixLogic<In, Out, Mat, F> {
 
 impl<In, Out, Mat, F> FlatMapPrefixLogic<In, Out, Mat, F>
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Mat: Send + Sync + 'static,
   F: FnMut(Vec<In>) -> Flow<In, Out, Mat> + Send + Sync + 'static,
@@ -57,7 +57,7 @@ where
 
 impl<In, Out, Mat, F> FlowLogic for FlatMapPrefixLogic<In, Out, Mat, F>
 where
-  In: Clone + Send + Sync + 'static,
+  In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Mat: Send + Sync + 'static,
   F: FnMut(Vec<In>) -> Flow<In, Out, Mat> + Send + Sync + 'static,
@@ -109,7 +109,11 @@ where
   }
 
   fn take_shutdown_request(&mut self) -> bool {
-    self.inner_logics.iter_mut().fold(false, |requested, logic| logic.take_shutdown_request() || requested)
+    let mut requested = false;
+    for logic in &mut self.inner_logics {
+      requested |= logic.take_shutdown_request();
+    }
+    requested
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {

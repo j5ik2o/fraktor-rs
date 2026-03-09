@@ -369,7 +369,7 @@ impl OperatorCatalog for DefaultOperatorCatalog {
       | "recover_with_retries" => Ok(OperatorContract {
         key,
         input_condition: "Switches to alternate recovery sources while retry budget remains.",
-        completion_condition: "Completes when upstream completes without exhausting retry budget.",
+        completion_condition: "Completes when the active stream path (upstream or recovery source) completes.",
         failure_condition: "Fails when retry budget is exhausted or recovery source creation fails.",
         requirement_ids: &["1.1", "1.3", "3.4"],
       }),
