@@ -991,6 +991,12 @@ impl GraphInterpreter {
           if self.flow_done[upstream_stage_index] {
             continue;
           }
+          if !self.flow_source_done[upstream_stage_index]
+            && let StageDefinition::Flow(flow) = &mut self.stages[upstream_stage_index]
+          {
+            flow.logic.on_source_done()?;
+            self.flow_source_done[upstream_stage_index] = true;
+          }
           self.flow_source_done[upstream_stage_index] = true;
           self.flow_done[upstream_stage_index] = true;
           self.close_and_clear_incoming_edges_for_stage(upstream_stage_index)?;

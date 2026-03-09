@@ -2064,6 +2064,63 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
 }
 
 #[test]
+fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
+  let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let tracking_inlet: Inlet<u32> = Inlet::new();
+  let tracking_outlet: Outlet<u32> = Outlet::new();
+  let shutdown_inlet: Inlet<u32> = Inlet::new();
+  let shutdown_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 5);
+  let tracking_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       tracking_inlet.id(),
+    outlet:      tracking_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let shutdown_flow = FlowDefinition {
+    kind:        StageKind::FlowTakeUntil,
+    inlet:       shutdown_inlet.id(),
+    outlet:      shutdown_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(ShutdownAfterFirstOutputFlowLogic::default()),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(tracking_flow),
+      StageDefinition::Flow(shutdown_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), tracking_inlet.id(), MatCombine::KeepLeft),
+      (tracking_outlet.id(), shutdown_inlet.id(), MatCombine::KeepLeft),
+      (shutdown_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32])));
+  assert_eq!(*source_done_calls.lock(), 1_u32);
+}
+
+#[test]
 fn supports_multiple_outgoing_edges_from_source() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let left_inlet: Inlet<u32> = Inlet::new();
@@ -3117,6 +3174,46 @@ impl FlowLogic for AddFlowLogic {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
     Ok(vec![Box::new(value + self.add)])
+  }
+}
+
+struct SourceDoneTrackingFlowLogic {
+  source_done_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for SourceDoneTrackingFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    Ok(vec![Box::new(value)])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    let mut source_done_calls = self.source_done_calls.lock();
+    *source_done_calls = source_done_calls.saturating_add(1);
+    Ok(())
+  }
+}
+
+#[derive(Default)]
+struct ShutdownAfterFirstOutputFlowLogic {
+  shutdown_requested: bool,
+  seen:               bool,
+}
+
+impl FlowLogic for ShutdownAfterFirstOutputFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    if !self.seen {
+      self.seen = true;
+      self.shutdown_requested = true;
+    }
+    Ok(vec![Box::new(value)])
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    requested
   }
 }
 
