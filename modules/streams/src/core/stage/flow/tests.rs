@@ -1487,6 +1487,19 @@ fn log_passes_elements_through_unchanged_and_inserts_logging_stage() {
 }
 
 #[test]
+fn log_does_not_bypass_upstream_source_supervision_resume() {
+  let values = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Err(StreamError::Failed), Ok(7_u32)]),
+  )
+  .supervision_resume()
+  .via(Flow::new().log("log-stage"))
+  .collect_values()
+  .expect("collect_values");
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
 fn log_with_marker_passes_elements_through_unchanged_and_inserts_logging_stage() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().log_with_marker("test", "marker"))

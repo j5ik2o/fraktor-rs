@@ -69,7 +69,7 @@ where
   }
 
   fn handles_failures(&self) -> bool {
-    true
+    false
   }
 
   fn on_failure(&mut self, error: StreamError) -> Result<FailureAction, StreamError> {
