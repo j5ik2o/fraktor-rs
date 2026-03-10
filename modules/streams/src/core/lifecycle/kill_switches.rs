@@ -1,4 +1,8 @@
 use super::{SharedKillSwitch, unique_kill_switch::UniqueKillSwitch};
+use crate::core::{
+  StreamNotUsed,
+  stage::{BidiFlow, flow::Flow},
+};
 
 #[cfg(test)]
 mod tests;
@@ -9,26 +13,28 @@ pub struct KillSwitches;
 impl KillSwitches {
   /// Creates a new shared kill switch.
   #[must_use]
-  pub fn shared() -> SharedKillSwitch {
-    SharedKillSwitch::new()
+  pub fn shared(name: impl Into<alloc::string::String>) -> SharedKillSwitch {
+    SharedKillSwitch::new_named(name)
   }
 
-  /// Creates a new unique kill switch.
+  /// Creates a new unique kill-switch flow.
   #[must_use]
-  pub fn single() -> UniqueKillSwitch {
-    UniqueKillSwitch::new()
+  pub fn single<T>() -> Flow<T, T, UniqueKillSwitch>
+  where
+    T: Send + Sync + 'static, {
+    UniqueKillSwitch::new().flow()
   }
 
   /// Creates a bidirectional kill switch backed by identity flows.
   #[must_use]
-  pub fn single_bidi<T1, T2>() -> crate::core::stage::BidiFlow<T1, T1, T2, T2, UniqueKillSwitch>
+  pub fn single_bidi<T1, T2>() -> BidiFlow<T1, T1, T2, T2, UniqueKillSwitch>
   where
     T1: Send + Sync + 'static,
     T2: Send + Sync + 'static, {
-    crate::core::stage::BidiFlow::from_flows_mat(
-      crate::core::stage::flow::Flow::new(),
-      crate::core::stage::flow::Flow::new(),
-      UniqueKillSwitch::new(),
-    )
+    let switch = UniqueKillSwitch::new();
+    let top = switch.flow::<T1>().map_materialized_value(|_| StreamNotUsed::new());
+    let bottom = switch.flow::<T2>().map_materialized_value(|_| StreamNotUsed::new());
+
+    BidiFlow::from_flows_mat(top, bottom, switch)
   }
 }

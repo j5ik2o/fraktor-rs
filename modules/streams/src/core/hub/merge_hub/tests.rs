@@ -138,6 +138,39 @@ fn merge_hub_rejects_offer_after_drain_started() {
 }
 
 #[test]
+fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
+  let hub = MergeHub::new();
+  let graph = hub.source().to_mat(Sink::last(), KeepRight);
+  hub.offer(1_u32).expect("offer 1");
+  hub.offer(2_u32).expect("offer 2");
+
+  let control = hub.draining_control();
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  for _ in 0..3 {
+    let _ = materialized.handle().drive();
+  }
+  assert_eq!(materialized.handle().state(), StreamState::Running);
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+
+  control.drain_and_complete();
+
+  assert!(control.is_draining());
+  assert_eq!(hub.offer(3_u32), Err(StreamError::WouldBlock));
+
+  for _ in 0..8 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(2_u32)));
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
+  assert!(hub.is_empty());
+}
+
+#[test]
 fn merge_hub_source_completes_after_drain_when_queue_is_empty() {
   let hub = MergeHub::<u32>::new();
   let control = hub.draining_control();

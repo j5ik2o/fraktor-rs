@@ -29,8 +29,19 @@ impl DrainingControl {
   }
 
   /// Starts draining mode.
+  ///
+  /// In this minimal merge hub implementation, the source completes after
+  /// buffered elements are flushed.
   pub fn drain(&self) {
     (self.drain_fn)();
+  }
+
+  /// Alias for [`Self::drain`] kept for API parity.
+  ///
+  /// In this minimal merge hub implementation, draining mode completes the source once buffered
+  /// elements are flushed.
+  pub fn drain_and_complete(&self) {
+    self.drain();
   }
 
   /// Returns true when draining mode is active.

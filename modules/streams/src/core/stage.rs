@@ -22,6 +22,8 @@ mod async_callback;
 mod bidi_flow;
 /// Flow stage definitions.
 pub mod flow;
+/// `group_by`-specific substream surface for flows.
+mod flow_group_by_sub_flow;
 /// Flow monitor handle.
 mod flow_monitor;
 /// Flow-oriented substream surface.
@@ -38,6 +40,8 @@ mod restart_source;
 mod sink;
 /// Source stage definitions.
 mod source;
+/// `group_by`-specific substream surface for sources.
+mod source_group_by_sub_flow;
 /// Source-oriented substream surface.
 mod source_sub_flow;
 /// Context-preserving source wrapper.
@@ -48,6 +52,8 @@ mod stage_context;
 mod stage_kind;
 /// Stream stage trait.
 mod stream_stage;
+/// Lazy tail source wrapper.
+mod tail_source;
 /// Timer helper for stage logic.
 mod timer_graph_stage_logic;
 
@@ -55,6 +61,7 @@ mod timer_graph_stage_logic;
 pub use actor_sink::ActorSink;
 pub use async_callback::AsyncCallback;
 pub use bidi_flow::BidiFlow;
+pub use flow_group_by_sub_flow::FlowGroupBySubFlow;
 pub use flow_monitor::FlowMonitor;
 pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;
@@ -63,9 +70,11 @@ pub use restart_sink::RestartSink;
 pub use restart_source::RestartSource;
 pub use sink::Sink;
 pub use source::Source;
+pub use source_group_by_sub_flow::SourceGroupBySubFlow;
 pub use source_sub_flow::SourceSubFlow;
 pub use source_with_context::SourceWithContext;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
 pub use stream_stage::StreamStage;
+pub use tail_source::TailSource;
 pub use timer_graph_stage_logic::TimerGraphStageLogic;

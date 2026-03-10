@@ -1,5 +1,7 @@
 use alloc::vec::Vec;
 
+use fraktor_utils_rs::core::sync::ArcShared;
+
 #[cfg(test)]
 mod tests;
 
@@ -7,18 +9,19 @@ use super::{
   MatCombine, RestartBackoff, StageDefinition, StageKind, StreamError, StreamPlan, SupervisionStrategy,
   shape::{Inlet, Outlet, PortId},
 };
-use crate::core::Attributes;
+use crate::core::{Attributes, lifecycle::KillSwitchStateHandle};
 
 /// Immutable blueprint that stores stage connectivity.
 ///
 /// This type only captures stage definitions and their port wiring.
 /// Runtime buffers and drive state are allocated later during materialization.
 pub struct StreamGraph {
-  nodes:        Vec<GraphNode>,
-  edges:        Vec<GraphEdge>,
-  ports:        Vec<PortId>,
-  attributes:   Attributes,
-  next_node_id: usize,
+  nodes:              Vec<GraphNode>,
+  edges:              Vec<GraphEdge>,
+  ports:              Vec<PortId>,
+  attributes:         Attributes,
+  kill_switch_states: Vec<KillSwitchStateHandle>,
+  next_node_id:       usize,
 }
 
 impl StreamGraph {
@@ -26,11 +29,12 @@ impl StreamGraph {
   #[must_use]
   pub const fn new() -> Self {
     Self {
-      nodes:        Vec::new(),
-      edges:        Vec::new(),
-      ports:        Vec::new(),
-      attributes:   Attributes::new(),
-      next_node_id: 0,
+      nodes:              Vec::new(),
+      edges:              Vec::new(),
+      ports:              Vec::new(),
+      attributes:         Attributes::new(),
+      kill_switch_states: Vec::new(),
+      next_node_id:       0,
     }
   }
 
@@ -77,6 +81,9 @@ impl StreamGraph {
   pub(in crate::core) fn set_flow_supervision(&mut self, supervision: SupervisionStrategy) {
     for node in &mut self.nodes {
       if let StageDefinition::Flow(definition) = &mut node.stage {
+        if definition.kind == StageKind::FlowKillSwitch {
+          continue;
+        }
         definition.supervision = supervision;
       }
     }
@@ -85,6 +92,9 @@ impl StreamGraph {
   pub(in crate::core) fn set_flow_restart(&mut self, restart: Option<RestartBackoff>) {
     for node in &mut self.nodes {
       if let StageDefinition::Flow(definition) = &mut node.stage {
+        if definition.kind == StageKind::FlowKillSwitch {
+          continue;
+        }
         definition.restart = restart;
       }
     }
@@ -117,21 +127,37 @@ impl StreamGraph {
     self.next_node_id = self.next_node_id.saturating_add(1);
   }
 
-  pub(in crate::core) fn append(&mut self, mut other: StreamGraph) {
+  pub(in crate::core) fn append(&mut self, other: StreamGraph) {
+    let connection = match (self.tail_outlet(), other.head_inlet()) {
+      | (Some(from), Some(to)) => Some((from, to)),
+      | _ => None,
+    };
+    self.append_unwired(other);
+    if let Some((from, to)) = connection {
+      let upstream = Outlet::<()>::from_id(from);
+      let downstream = Inlet::<()>::from_id(to);
+      assert!(
+        self.connect(&upstream, &downstream, MatCombine::KeepLeft).is_ok(),
+        "stream graph appends only known ports"
+      );
+    }
+  }
+
+  pub(in crate::core) fn append_unwired(&mut self, mut other: StreamGraph) {
+    let other_kill_switch_states = core::mem::take(&mut other.kill_switch_states);
     if self.nodes.is_empty() {
       self.nodes = other.nodes;
       self.edges = other.edges;
       self.ports = other.ports;
       self.attributes = other.attributes;
+      self.kill_switch_states = other_kill_switch_states;
       self.next_node_id = other.next_node_id;
       return;
     }
     if other.nodes.is_empty() {
       self.attributes = self.attributes.clone().and(other.attributes);
+      self.merge_kill_switch_states(other_kill_switch_states);
       return;
-    }
-    if let (Some(from), Some(to)) = (self.tail_outlet(), other.head_inlet()) {
-      self.edges.push(GraphEdge { from, to, mat: MatCombine::KeepLeft });
     }
     let offset = self.next_node_id;
     for node in &mut other.nodes {
@@ -142,6 +168,7 @@ impl StreamGraph {
     self.edges.append(&mut other.edges);
     self.nodes.append(&mut other.nodes);
     self.attributes = self.attributes.clone().and(other.attributes);
+    self.merge_kill_switch_states(other_kill_switch_states);
   }
 
   pub(in crate::core) fn into_plan(self) -> Result<StreamPlan, StreamError> {
@@ -154,7 +181,11 @@ impl StreamGraph {
       stages.push(node.stage);
     }
     let edges = self.edges.into_iter().map(|edge| (edge.from, edge.to, edge.mat)).collect();
-    StreamPlan::from_parts(stages, edges)
+    let mut plan = StreamPlan::from_parts(stages, edges)?;
+    for kill_switch_state in self.kill_switch_states {
+      plan = plan.with_shared_kill_switch_state(kill_switch_state);
+    }
+    Ok(plan)
   }
 
   const fn ensure_stage_metadata(stage: &StageDefinition) -> Result<(), StreamError> {
@@ -195,6 +226,7 @@ impl StreamGraph {
             | StageKind::FlowInitialTimeout
             | StageKind::FlowBatch
             | StageKind::FlowGroupBy
+            | StageKind::FlowLog
             | StageKind::FlowRecover
             | StageKind::FlowRecoverWithRetries
             | StageKind::FlowSplitWhen
@@ -218,6 +250,7 @@ impl StreamGraph {
             | StageKind::FlowZipAll
             | StageKind::FlowZipWithIndex
             | StageKind::FlowConcat
+            | StageKind::FlowKillSwitch
             | StageKind::FlowWatchTermination
             | StageKind::FlowDebounce
             | StageKind::FlowSample
@@ -261,6 +294,13 @@ impl StreamGraph {
     self.attributes = self.attributes.clone().and(attributes);
   }
 
+  pub(in crate::core) fn set_shared_kill_switch_state(&mut self, kill_switch_state: KillSwitchStateHandle) {
+    if self.kill_switch_states.iter().any(|existing| ArcShared::ptr_eq(existing, &kill_switch_state)) {
+      return;
+    }
+    self.kill_switch_states.push(kill_switch_state);
+  }
+
   pub(in crate::core) fn expected_fan_out_for_outlet(&self, outlet: PortId) -> Option<usize> {
     for node in &self.nodes {
       if let StageDefinition::Flow(definition) = &node.stage
@@ -270,6 +310,12 @@ impl StreamGraph {
       }
     }
     None
+  }
+
+  fn merge_kill_switch_states(&mut self, kill_switch_states: Vec<KillSwitchStateHandle>) {
+    for kill_switch_state in kill_switch_states {
+      self.set_shared_kill_switch_state(kill_switch_state);
+    }
   }
 }
 

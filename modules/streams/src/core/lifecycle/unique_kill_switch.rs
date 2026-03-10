@@ -1,11 +1,13 @@
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use super::StreamError;
+use super::{KillSwitch, StreamError};
+use crate::core::{StreamNotUsed, stage::flow::Flow};
 
 #[cfg(test)]
 mod tests;
 
 /// Kill switch that controls a single stream instance.
+#[derive(Clone)]
 pub struct UniqueKillSwitch {
   state: KillSwitchStateHandle,
 }
@@ -19,6 +21,18 @@ impl UniqueKillSwitch {
 
   pub(in crate::core) const fn from_state(state: KillSwitchStateHandle) -> Self {
     Self { state }
+  }
+
+  pub(in crate::core) fn state_handle(&self) -> KillSwitchStateHandle {
+    self.state.clone()
+  }
+
+  /// Returns a pass-through flow bound to this unique kill switch.
+  #[must_use]
+  pub fn flow<T>(&self) -> Flow<T, T, UniqueKillSwitch>
+  where
+    T: Send + Sync + 'static, {
+    Flow::<T, T, StreamNotUsed>::from_kill_switch_state(self.state_handle()).map_materialized_value(|_| self.clone())
   }
 
   /// Requests graceful shutdown.
@@ -58,6 +72,28 @@ impl UniqueKillSwitch {
       | KillSwitchState::Aborted(error) => Some(error.clone()),
       | _ => None,
     }
+  }
+}
+
+impl KillSwitch for UniqueKillSwitch {
+  fn shutdown(&self) {
+    UniqueKillSwitch::shutdown(self);
+  }
+
+  fn abort(&self, error: StreamError) {
+    UniqueKillSwitch::abort(self, error);
+  }
+
+  fn is_shutdown(&self) -> bool {
+    UniqueKillSwitch::is_shutdown(self)
+  }
+
+  fn is_aborted(&self) -> bool {
+    UniqueKillSwitch::is_aborted(self)
+  }
+
+  fn abort_error(&self) -> Option<StreamError> {
+    UniqueKillSwitch::abort_error(self)
   }
 }
 

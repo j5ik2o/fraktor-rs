@@ -33,6 +33,11 @@ pub enum StreamError {
   WouldBlock,
   /// Indicates stream processing failed with a user error.
   Failed,
+  /// Indicates compression/decompression failed.
+  CompressionError {
+    /// Compression error kind identifier.
+    kind: &'static str,
+  },
   /// Indicates that a partition route is invalid.
   InvalidRoute {
     /// Route value returned by a partitioner.
@@ -70,6 +75,7 @@ impl fmt::Display for StreamError {
       | Self::TypeMismatch => write!(f, "stream type mismatch"),
       | Self::WouldBlock => write!(f, "stream would block"),
       | Self::Failed => write!(f, "stream failed"),
+      | Self::CompressionError { kind } => write!(f, "compression error: {kind}"),
       | Self::InvalidRoute { route, partition_count } => {
         write!(f, "invalid partition route: route={route} partition_count={partition_count}")
       },

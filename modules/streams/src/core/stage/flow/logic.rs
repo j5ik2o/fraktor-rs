@@ -12,6 +12,8 @@ mod buffer_logic;
 mod completion_timeout_logic;
 /// Concat (ordered fan-in) logic.
 mod concat_logic;
+/// Concat-lazy and prepend-lazy compatibility logic.
+mod concat_source_logic;
 /// Conflate-with-seed logic.
 mod conflate_with_seed_logic;
 /// Debounce logic.
@@ -28,6 +30,8 @@ mod filter_logic;
 mod flat_map_concat_logic;
 /// FlatMap merge logic.
 mod flat_map_merge_logic;
+/// Flat-map-prefix logic.
+mod flat_map_prefix_logic;
 /// Flatten substreams logic.
 mod flatten_substreams_logic;
 /// Flatten substreams with parallelism logic.
@@ -36,6 +40,8 @@ mod flatten_substreams_with_parallelism_logic;
 mod group_by_logic;
 /// Grouped (batch) logic.
 mod grouped_logic;
+/// Grouped-weighted logic.
+mod grouped_weighted_within_logic;
 /// Grouped-within (batch with timeout) logic.
 mod grouped_within_logic;
 /// Idle timeout logic.
@@ -46,12 +52,22 @@ mod initial_timeout_logic;
 mod interleave_logic;
 /// Intersperse logic.
 mod intersperse_logic;
+/// Kill-switch pass-through logic.
+mod kill_switch_logic;
 /// Lazy flow instantiation logic.
 mod lazy_flow_logic;
+/// Limit-weighted logic.
+mod limit_weighted_logic;
+/// Logging pass-through logic.
+mod log_logic;
 /// Map-async logic.
 mod map_async_logic;
+/// Map-async partitioned logic.
+mod map_async_partitioned_logic;
 /// Map-concat logic.
 mod map_concat_logic;
+/// Failure-mapping logic.
+mod map_error_logic;
 /// Map logic.
 mod map_logic;
 /// Map-option logic.
@@ -66,8 +82,14 @@ mod merge_preferred_logic;
 mod merge_prioritized_logic;
 /// Merge-sorted logic.
 mod merge_sorted_logic;
+/// Conditional on-error-complete logic.
+mod on_error_complete_logic;
+/// Conditional on-error-continue logic.
+mod on_error_continue_logic;
 /// Partition logic.
 mod partition_logic;
+/// Prefix-and-tail logic.
+mod prefix_and_tail_logic;
 /// Recover logic.
 mod recover_logic;
 /// Recover-with-retries logic.
@@ -96,6 +118,9 @@ mod take_while_logic;
 mod take_within_logic;
 /// Timed delay logic.
 mod timed_delay_logic;
+/// Fallible map-concat logic.
+#[cfg(feature = "compression")]
+mod try_map_concat_logic;
 /// Unzip logic.
 mod unzip_logic;
 /// Unzip-with logic.
@@ -116,6 +141,7 @@ pub(super) use broadcast_logic::*;
 pub(super) use buffer_logic::*;
 pub(super) use completion_timeout_logic::*;
 pub(super) use concat_logic::*;
+pub(super) use concat_source_logic::*;
 pub(super) use conflate_with_seed_logic::*;
 pub(super) use debounce_logic::*;
 pub(super) use drop_logic::*;
@@ -124,18 +150,25 @@ pub(super) use expand_logic::*;
 pub(super) use filter_logic::*;
 pub(super) use flat_map_concat_logic::*;
 pub(super) use flat_map_merge_logic::*;
+pub(super) use flat_map_prefix_logic::*;
 pub(super) use flatten_substreams_logic::*;
 pub(super) use flatten_substreams_with_parallelism_logic::*;
 pub(super) use group_by_logic::*;
 pub(super) use grouped_logic::*;
+pub(super) use grouped_weighted_within_logic::*;
 pub(super) use grouped_within_logic::*;
 pub(super) use idle_timeout_logic::*;
 pub(super) use initial_timeout_logic::*;
 pub(super) use interleave_logic::*;
 pub(super) use intersperse_logic::*;
+pub(super) use kill_switch_logic::*;
 pub(super) use lazy_flow_logic::*;
+pub(super) use limit_weighted_logic::*;
+pub(super) use log_logic::*;
 pub(super) use map_async_logic::*;
+pub(super) use map_async_partitioned_logic::*;
 pub(super) use map_concat_logic::*;
+pub(super) use map_error_logic::*;
 pub(super) use map_logic::*;
 pub(super) use map_option_logic::*;
 pub(super) use merge_latest_logic::*;
@@ -143,7 +176,10 @@ pub(super) use merge_logic::*;
 pub(super) use merge_preferred_logic::*;
 pub(super) use merge_prioritized_logic::*;
 pub(super) use merge_sorted_logic::*;
+pub(super) use on_error_complete_logic::*;
+pub(super) use on_error_continue_logic::*;
 pub(super) use partition_logic::*;
+pub(super) use prefix_and_tail_logic::*;
 pub(super) use recover_logic::*;
 pub(super) use recover_with_retries_logic::*;
 pub(super) use sample_logic::*;
@@ -158,6 +194,8 @@ pub(super) use take_until_logic::*;
 pub(super) use take_while_logic::*;
 pub(super) use take_within_logic::*;
 pub(super) use timed_delay_logic::*;
+#[cfg(feature = "compression")]
+pub(super) use try_map_concat_logic::*;
 pub(super) use unzip_logic::*;
 pub(super) use unzip_with_logic::*;
 pub(super) use watch_termination_logic::*;

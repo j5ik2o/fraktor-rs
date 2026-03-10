@@ -7,20 +7,20 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, FlowDefinition, FlowLogic, KeepRight, MatCombine, OverflowStrategy,
-  RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
-  StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed, StreamPlan,
-  SupervisionStrategy,
+  Completion, DemandTracker, DynValue, FailureAction, FlowDefinition, FlowLogic, KeepRight, MatCombine,
+  OverflowStrategy, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
+  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed,
+  StreamPlan, SupervisionStrategy,
   graph::GraphInterpreter,
-  lifecycle::{DriveOutcome, StreamState},
+  lifecycle::{DriveOutcome, KillSwitchState, KillSwitchStateHandle, StreamState},
   shape::{Inlet, Outlet, PortId},
   stage::{
     Sink, Source, StageKind,
     flow::{
       Flow, async_boundary_definition, balance_definition, broadcast_definition, buffer_definition, concat_definition,
-      flat_map_merge_definition, interleave_definition, merge_definition, merge_substreams_with_parallelism_definition,
-      partition_definition, prepend_definition, split_after_definition, split_when_definition, unzip_definition,
-      zip_all_definition, zip_definition,
+      flat_map_merge_definition, interleave_definition, kill_switch_definition, merge_definition,
+      merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, split_after_definition,
+      split_when_definition, unzip_definition, zip_all_definition, zip_definition,
     },
   },
 };
@@ -154,6 +154,7 @@ impl<T> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
   fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    // Safety: pin 済みのフィールドを move しないため安全。
     let this = unsafe { self.get_unchecked_mut() };
     if this.pollings == 0 {
       this.pollings = 1;
@@ -572,9 +573,8 @@ fn group_by_uses_key_function() {
 }
 
 #[test]
-fn recover_flow_replaces_error_payload() {
-  let graph =
-    Source::single(Err::<u32, StreamError>(StreamError::Failed)).recover(10_u32).to_mat(Sink::head(), KeepRight);
+fn recover_flow_replaces_upstream_failure() {
+  let graph = Source::<u32, _>::failed(StreamError::Failed).recover(|_| Some(10_u32)).to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
@@ -583,21 +583,21 @@ fn recover_flow_replaces_error_payload() {
 }
 
 #[test]
-fn recover_flow_does_not_intercept_upstream_failure() {
-  let graph = Source::<Result<u32, StreamError>, _>::from_logic(StageKind::Custom, AlwaysFailSourceLogic)
-    .recover(10_u32)
+fn recover_flow_intercepts_upstream_failure() {
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, AlwaysFailSourceLogic)
+    .recover(|_| Some(10_u32))
     .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
-  assert_eq!(interpreter.state(), StreamState::Failed);
-  assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
 }
 
 #[test]
 fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
-  let graph = Source::single(Err::<u32, StreamError>(StreamError::Failed))
-    .recover_with_retries(0, 10_u32)
+  let graph = Source::<u32, _>::failed(StreamError::Failed)
+    .recover_with_retries(0, |_| Some(Source::single(10_u32)))
     .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -980,6 +980,53 @@ fn source_restart_with_backoff_recovers_after_failure_transition() {
 }
 
 #[test]
+fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let source_restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let flow_failure_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(RestartBeforeEmitSourceLogic {
+      value:         13,
+      restarted:     false,
+      emitted:       false,
+      restart_calls: source_restart_calls.clone(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(0, 1)),
+  };
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(MapErrorPropagateFlowLogic { failure_calls: flow_failure_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+  let plan = linear_plan(source, vec![flow], sink);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![13_u32])));
+  assert_eq!(*source_restart_calls.lock(), 1_u32);
+  assert_eq!(*flow_failure_calls.lock(), 1_u32);
+}
+
+#[test]
 fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
@@ -1040,6 +1087,44 @@ fn flow_restart_with_backoff_recovers_after_failure_transition() {
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
   assert_eq!(*restart_calls.lock(), 1_u32);
+}
+
+#[test]
+fn flow_restart_is_not_bypassed_when_on_failure_propagates() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let failure_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = source_sequence_u32(source_outlet, 3);
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(RestartingPropagateFlowLogic {
+      restarted:     false,
+      restart_calls: restart_calls.clone(),
+      failure_calls: failure_calls.clone(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     Some(RestartBackoff::new(0, 1)),
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+  let plan = linear_plan(source, vec![flow], sink);
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2_u32, 3_u32])));
+  assert_eq!(*restart_calls.lock(), 1_u32);
+  assert_eq!(*failure_calls.lock(), 1_u32);
 }
 
 #[test]
@@ -1178,9 +1263,7 @@ fn abort_while_restart_waiting_keeps_restart_callback_uninvoked() {
   interpreter.abort(&StreamError::Failed);
   assert_eq!(interpreter.state(), StreamState::Failed);
 
-  for _ in 0..4 {
-    let _ = interpreter.drive();
-  }
+  let _ = interpreter.drive();
 
   assert_eq!(*restart_calls.lock(), 0_u32);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
@@ -1976,6 +2059,192 @@ fn supports_plan_with_multiple_sinks() {
 }
 
 #[test]
+fn flow_kill_switch_shutdown_only_closes_bound_branch() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let kill_switch_state: KillSwitchStateHandle = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let left_sink_inlet: Inlet<u32> = Inlet::new();
+  let right_inlet: Inlet<u32> = Inlet::new();
+  let right_outlet: Outlet<u32> = Outlet::new();
+  let right_sink_inlet: Inlet<u32> = Inlet::new();
+  let left_completion = StreamCompletion::new();
+  let right_completion = StreamCompletion::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::Custom,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(CancelAwareSequenceSourceLogic {
+      next:    1,
+      end:     5,
+      pulls:   pulls.clone(),
+      cancels: cancels.clone(),
+    }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let broadcast = broadcast_definition::<u32>(2);
+  let broadcast_inlet = broadcast.inlet;
+  let broadcast_outlet = broadcast.outlet;
+  let kill_switch = kill_switch_definition::<u32>(kill_switch_state.clone());
+  let left_inlet = kill_switch.inlet;
+  let left_outlet = kill_switch.outlet;
+  let right_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       right_inlet.id(),
+    outlet:      right_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(AddFlowLogic { add: 100 }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let left_sink = collect_u32_sequence_sink(left_sink_inlet, left_completion.clone());
+  let right_sink = collect_u32_sequence_sink(right_sink_inlet, right_completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(broadcast),
+      StageDefinition::Flow(kill_switch),
+      StageDefinition::Sink(left_sink),
+      StageDefinition::Flow(right_flow),
+      StageDefinition::Sink(right_sink),
+    ],
+    vec![
+      (source_outlet.id(), broadcast_inlet, MatCombine::KeepLeft),
+      (broadcast_outlet, left_inlet, MatCombine::KeepLeft),
+      (left_outlet, left_sink_inlet.id(), MatCombine::KeepRight),
+      (broadcast_outlet, right_inlet.id(), MatCombine::KeepLeft),
+      (right_outlet.id(), right_sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  let mut drive_budget = 32_usize;
+  while *pulls.lock() == 0_u32 {
+    assert!(drive_budget > 0, "expected at least one pull before shutdown");
+    drive_budget = drive_budget.saturating_sub(1);
+    let _ = interpreter.drive();
+    assert_eq!(interpreter.state(), StreamState::Running);
+  }
+
+  *kill_switch_state.lock() = KillSwitchState::Shutdown;
+  drive_to_completion(&mut interpreter);
+
+  let Completion::Ready(Ok(left_values)) = left_completion.poll() else {
+    panic!("left branch should complete");
+  };
+  let Completion::Ready(Ok(right_values)) = right_completion.poll() else {
+    panic!("right branch should complete");
+  };
+
+  assert!(!left_values.is_empty());
+  assert!(left_values.len() < 5);
+  assert_eq!(left_values, (1_u32..=left_values.len() as u32).collect::<Vec<u32>>());
+  assert_eq!(right_values, vec![101_u32, 102_u32, 103_u32, 104_u32, 105_u32]);
+  assert_eq!(*cancels.lock(), 0_u32);
+  assert!(*pulls.lock() >= 5_u32);
+}
+
+#[test]
+fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
+  let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let tracking_inlet: Inlet<u32> = Inlet::new();
+  let tracking_outlet: Outlet<u32> = Outlet::new();
+  let shutdown_inlet: Inlet<u32> = Inlet::new();
+  let shutdown_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 5);
+  let tracking_flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       tracking_inlet.id(),
+    outlet:      tracking_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let shutdown_flow = FlowDefinition {
+    kind:        StageKind::FlowTakeUntil,
+    inlet:       shutdown_inlet.id(),
+    outlet:      shutdown_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(ShutdownAfterFirstOutputFlowLogic::default()),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(tracking_flow),
+      StageDefinition::Flow(shutdown_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), tracking_inlet.id(), MatCombine::KeepLeft),
+      (tracking_outlet.id(), shutdown_inlet.id(), MatCombine::KeepLeft),
+      (shutdown_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32])));
+  assert_eq!(*source_done_calls.lock(), 1_u32);
+}
+
+#[test]
+fn cancel_upstream_stage_calls_on_source_done_in_direct_upstream_cancellation_path() {
+  let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_sequence_u32(source_outlet, 1);
+  let flow = FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion);
+
+  let plan =
+    stream_plan(vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)], vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::KeepLeft),
+      (flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ]);
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.close_and_clear_incoming_edges_for_stage(2).expect("close sink incoming");
+  interpreter.cancel_upstream_stage(2).expect("cancel upstream");
+
+  assert_eq!(*source_done_calls.lock(), 1_u32);
+}
+
+#[test]
 fn supports_multiple_outgoing_edges_from_source() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let left_inlet: Inlet<u32> = Inlet::new();
@@ -2131,6 +2400,54 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(312)));
+}
+
+#[test]
+fn flow_fan_out_failure_uses_local_supervision_fallback() {
+  let failure_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let left_sink_inlet: Inlet<u32> = Inlet::new();
+  let right_sink_inlet: Inlet<u32> = Inlet::new();
+  let left_completion = StreamCompletion::new();
+  let right_completion = StreamCompletion::new();
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepLeft,
+    logic:       Box::new(LocalResumeOnFailureFlowLogic { failure_calls: failure_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let left_sink = collect_u32_sequence_sink(left_sink_inlet, left_completion.clone());
+  let right_sink = collect_u32_sequence_sink(right_sink_inlet, right_completion.clone());
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(flow),
+      StageDefinition::Sink(left_sink),
+      StageDefinition::Sink(right_sink),
+    ],
+    vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::KeepLeft),
+      (flow_outlet.id(), left_sink_inlet.id(), MatCombine::KeepRight),
+      (flow_outlet.id(), right_sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(*failure_calls.lock(), 1_u32);
+  assert_eq!(left_completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(right_completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
 }
 
 #[test]
@@ -3032,6 +3349,66 @@ impl FlowLogic for AddFlowLogic {
   }
 }
 
+struct LocalResumeOnFailureFlowLogic {
+  failure_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for LocalResumeOnFailureFlowLogic {
+  fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    let mut failure_calls = self.failure_calls.lock();
+    *failure_calls = failure_calls.saturating_add(1);
+    Ok(FailureAction::Resume)
+  }
+}
+
+struct SourceDoneTrackingFlowLogic {
+  source_done_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for SourceDoneTrackingFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    Ok(vec![Box::new(value)])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    let mut source_done_calls = self.source_done_calls.lock();
+    *source_done_calls = source_done_calls.saturating_add(1);
+    Ok(())
+  }
+}
+
+#[derive(Default)]
+struct ShutdownAfterFirstOutputFlowLogic {
+  shutdown_requested: bool,
+  seen:               bool,
+}
+
+impl FlowLogic for ShutdownAfterFirstOutputFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    if !self.seen {
+      self.seen = true;
+      self.shutdown_requested = true;
+    }
+    Ok(vec![Box::new(value)])
+  }
+
+  fn take_shutdown_request(&mut self) -> bool {
+    let requested = self.shutdown_requested;
+    self.shutdown_requested = false;
+    requested
+  }
+}
+
 struct RestartCounterFlowLogic {
   restart_calls: ArcShared<SpinSyncMutex<u32>>,
 }
@@ -3075,6 +3452,60 @@ impl FlowLogic for RestartGateFlowLogic {
       return Err(StreamError::Failed);
     }
     Ok(vec![Box::new(value)])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.restarted = true;
+    let mut restart_calls = self.restart_calls.lock();
+    *restart_calls = restart_calls.saturating_add(1);
+    Ok(())
+  }
+}
+
+struct MapErrorPropagateFlowLogic {
+  failure_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for MapErrorPropagateFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    Ok(vec![Box::new(value)])
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    let mut failure_calls = self.failure_calls.lock();
+    *failure_calls = failure_calls.saturating_add(1);
+    Ok(FailureAction::Propagate(StreamError::WouldBlock))
+  }
+}
+
+struct RestartingPropagateFlowLogic {
+  restarted:     bool,
+  restart_calls: ArcShared<SpinSyncMutex<u32>>,
+  failure_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for RestartingPropagateFlowLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    if !self.restarted {
+      return Err(StreamError::Failed);
+    }
+    Ok(vec![Box::new(value)])
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    let mut failure_calls = self.failure_calls.lock();
+    *failure_calls = failure_calls.saturating_add(1);
+    Ok(FailureAction::Propagate(StreamError::WouldBlock))
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
