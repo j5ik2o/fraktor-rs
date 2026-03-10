@@ -53,6 +53,7 @@ Cargo.lock
 /.codex-corporate/
 
 /.serena/cache/
+/.serena-home/
 *.pkl
 
 /.takt/clone-meta/
