@@ -48,7 +48,7 @@ usage() {
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
   test                   : ワークスペース全体のテストを実行します
-  perf                   : Scheduler ストレス／ベンチマークテストを実行します
+  perf                   : Scheduler ストレスと actor ベンチマークを実行します
   actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
   all                    : 上記すべてを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
@@ -906,6 +906,9 @@ PY
 run_perf() {
   log_step "cargo test -p fraktor-actor-rs stress_scheduler_handles_"
   run_cargo test -p fraktor-actor-rs stress_scheduler_handles_ || return 1
+
+  log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-rs --bench actor_baseline --features test-support,std,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
+  run_cargo bench -p fraktor-actor-rs --bench actor_baseline --features test-support,std,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1
 }
 
 run_all() {
