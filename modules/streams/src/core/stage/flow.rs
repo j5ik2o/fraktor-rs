@@ -4260,6 +4260,9 @@ where
 }
 
 #[cfg(feature = "compression")]
+const MAX_DECOMPRESSED_BYTES: usize = 1024 * 1024;
+
+#[cfg(feature = "compression")]
 fn deflate_bytes(bytes: &[u8]) -> Vec<u8> {
   let level = 6_u8;
   miniz_oxide::deflate::compress_to_vec(bytes, level)
@@ -4267,7 +4270,19 @@ fn deflate_bytes(bytes: &[u8]) -> Vec<u8> {
 
 #[cfg(feature = "compression")]
 fn inflate_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
-  miniz_oxide::inflate::decompress_to_vec(bytes).map_err(|_| StreamError::CompressionError { kind: "deflate" })
+  miniz_oxide::inflate::decompress_to_vec_with_limit(bytes, MAX_DECOMPRESSED_BYTES)
+    .map_err(|_| StreamError::CompressionError { kind: "deflate" })
+}
+
+#[cfg(feature = "compression")]
+fn inflate_gzip_payload_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
+  let limit = MAX_DECOMPRESSED_BYTES.saturating_add(1);
+  let decompressed = miniz_oxide::inflate::decompress_to_vec_with_limit(bytes, limit)
+    .map_err(|_| StreamError::CompressionError { kind: "deflate" })?;
+  if decompressed.len() > MAX_DECOMPRESSED_BYTES {
+    return Err(StreamError::CompressionError { kind: "gzip_too_large" });
+  }
+  Ok(decompressed)
 }
 
 #[cfg(feature = "compression")]
@@ -4325,7 +4340,6 @@ fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
   }
 
   let payload = &bytes[payload_start..payload_end];
-  let decompressed = inflate_bytes(payload)?;
   let expected_crc =
     u32::from_le_bytes([bytes[payload_end], bytes[payload_end + 1], bytes[payload_end + 2], bytes[payload_end + 3]]);
   let expected_len = u32::from_le_bytes([
@@ -4334,6 +4348,10 @@ fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
     bytes[payload_end + 6],
     bytes[payload_end + 7],
   ]);
+  if usize::try_from(expected_len).ok().filter(|expected_len| *expected_len <= MAX_DECOMPRESSED_BYTES).is_none() {
+    return Err(StreamError::CompressionError { kind: "gzip_too_large" });
+  }
+  let decompressed = inflate_gzip_payload_bytes(payload)?;
   if crc32(&decompressed) != expected_crc || (decompressed.len() as u32) != expected_len {
     return Err(StreamError::CompressionError { kind: "gzip_trailer" });
   }
