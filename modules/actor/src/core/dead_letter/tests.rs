@@ -94,3 +94,22 @@ fn record_send_error_maps_timeout_reason() {
     entries.iter().any(|entry| entry.recipient() == Some(pid) && entry.reason() == DeadLetterReason::MailboxTimeout)
   );
 }
+
+#[test]
+fn dead_letter_reason_supports_suppressed_and_dropped() {
+  let stream = EventStreamShared::default();
+  let dead_letter = DeadLetterShared::with_default_capacity(stream);
+  let pid = Pid::new(12, 0);
+
+  dead_letter.record_entry(
+    AnyMessage::new("suppressed"),
+    DeadLetterReason::SuppressedDeadLetter,
+    Some(pid),
+    Duration::from_millis(1),
+  );
+  dead_letter.record_entry(AnyMessage::new("dropped"), DeadLetterReason::Dropped, Some(pid), Duration::from_millis(2));
+
+  let entries = dead_letter.entries();
+  assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::SuppressedDeadLetter));
+  assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::Dropped));
+}

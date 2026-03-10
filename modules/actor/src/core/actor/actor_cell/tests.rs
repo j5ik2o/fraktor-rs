@@ -8,7 +8,9 @@ use crate::core::{
   actor::{Actor, ActorContext, Pid},
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   error::ActorError,
-  messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvoker, system_message::SystemMessage},
+  messaging::{
+    ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker, system_message::SystemMessage,
+  },
   props::{MailboxConfig, Props},
   system::ActorSystem,
 };
@@ -83,6 +85,27 @@ impl Actor for OrderedMessageActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<i32>() {
       self.received.lock().push(*value);
+    }
+    Ok(())
+  }
+}
+
+struct IdentityProbeActor {
+  received: ArcShared<NoStdMutex<usize>>,
+  replies:  ArcShared<NoStdMutex<Vec<ActorIdentity>>>,
+}
+
+impl IdentityProbeActor {
+  fn new(received: ArcShared<NoStdMutex<usize>>, replies: ArcShared<NoStdMutex<Vec<ActorIdentity>>>) -> Self {
+    Self { received, replies }
+  }
+}
+
+impl Actor for IdentityProbeActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    *self.received.lock() += 1;
+    if let Some(identity) = message.downcast_ref::<ActorIdentity>() {
+      self.replies.lock().push(identity.clone());
     }
     Ok(())
   }
@@ -217,6 +240,44 @@ fn create_system_message_runs_pre_start() {
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start"]);
+}
+
+#[test]
+fn identify_replies_with_actor_identity_without_invoking_actor() {
+  let system = ActorSystem::new_empty().state();
+  let actor_received = ArcShared::new(NoStdMutex::new(0usize));
+  let actor_replies = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let actor_props = Props::from_fn({
+    let actor_received = actor_received.clone();
+    let actor_replies = actor_replies.clone();
+    move || IdentityProbeActor::new(actor_received.clone(), actor_replies.clone())
+  });
+  let target =
+    ActorCell::create(system.clone(), Pid::new(60, 0), None, "target".to_string(), &actor_props).expect("target");
+  let reply_received = ArcShared::new(NoStdMutex::new(0usize));
+  let reply_replies = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let reply_props = Props::from_fn({
+    let reply_received = reply_received.clone();
+    let reply_replies = reply_replies.clone();
+    move || IdentityProbeActor::new(reply_received.clone(), reply_replies.clone())
+  });
+  let reply_to =
+    ActorCell::create(system.clone(), Pid::new(61, 0), None, "reply".to_string(), &reply_props).expect("reply");
+  system.register_cell(target.clone());
+  system.register_cell(reply_to.clone());
+
+  let mut invoker = super::ActorCellInvoker { cell: target.downgrade() };
+  let identify = Identify::new(AnyMessage::new("corr"));
+  let message = AnyMessage::new(identify).with_sender(reply_to.actor_ref());
+
+  invoker.invoke_user_message(message).expect("identify");
+
+  assert_eq!(*actor_received.lock(), 0, "identify should not reach the actor receive method");
+  let replies = reply_replies.lock();
+  assert_eq!(replies.len(), 1);
+  let correlation_id = replies[0].correlation_id().payload().downcast_ref::<&str>().expect("&str");
+  assert_eq!(*correlation_id, "corr");
+  assert_eq!(replies[0].actor_ref().expect("actor ref").pid(), target.pid());
 }
 
 #[test]

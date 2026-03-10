@@ -27,7 +27,7 @@ use crate::core::{
   event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
-    AnyMessage,
+    ActorIdentity, AnyMessage, Identify,
     message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
     system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
   },
@@ -741,6 +741,13 @@ impl MessageInvoker for ActorCellInvoker {
         },
         | _ => {},
       }
+    }
+    if let Some(identify) = message.payload().downcast_ref::<Identify>() {
+      if let Some(sender) = message.sender().cloned() {
+        let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
+        sender.tell(AnyMessage::new(identity)).map_err(|error| ActorError::from_send_error(&error))?;
+      }
+      return Ok(());
     }
     let system = ActorSystem::from_state(cell.system());
     let mut ctx = ActorContext::new(&system, cell.pid);
