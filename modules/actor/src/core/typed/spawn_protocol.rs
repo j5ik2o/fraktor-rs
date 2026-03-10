@@ -3,10 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{
-  format,
-  string::String,
-};
+use alloc::{format, string::String};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -107,4 +104,3 @@ impl SpawnProtocol {
     })
   }
 }
-

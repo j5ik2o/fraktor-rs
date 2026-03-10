@@ -84,7 +84,6 @@ fn spawn_protocol_spawns_named_children() {
   system.terminate().expect("terminate");
 }
 
-
 #[test]
 fn spawn_protocol_spawns_anonymous_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
