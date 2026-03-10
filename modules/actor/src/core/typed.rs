@@ -42,6 +42,8 @@ mod routers;
 pub mod scheduler;
 /// Type-safe service key for actor discovery.
 mod service_key;
+/// Pekko-inspired spawn protocol for typed actors.
+mod spawn_protocol;
 /// Bounded stash helper used by `Behaviors::with_stash`.
 mod stash_buffer;
 /// Status-aware reply type for typed ask patterns.
@@ -83,6 +85,7 @@ pub use receptionist::{Receptionist, SYSTEM_RECEPTIONIST_TOP_LEVEL};
 pub use receptionist_command::ReceptionistCommand;
 pub use routers::Routers;
 pub use service_key::ServiceKey;
+pub use spawn_protocol::SpawnProtocol;
 pub use stash_buffer::StashBuffer;
 pub use status_reply::StatusReply;
 pub use status_reply_error::StatusReplyError;

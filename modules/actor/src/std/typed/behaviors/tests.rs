@@ -30,9 +30,29 @@ fn log_messages_delegates_to_inner_behavior() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
-  let _next = inner.handle_message(&mut typed_ctx, &77u32).expect("message");
+  inner.handle_message(&mut typed_ctx, &77u32).expect("message");
 
   let captured = inner_received.lock();
   assert_eq!(captured.len(), 1, "inner behavior should have received the message");
   assert_eq!(captured[0], 77);
+}
+
+#[test]
+fn receive_delegates_to_core_receive() {
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received_clone = received.clone();
+
+  let mut behavior = Behaviors::receive(move |_ctx, msg: &u32| {
+    received_clone.lock().push(*msg);
+    Ok(CoreBehaviors::same())
+  });
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  behavior.handle_message(&mut typed_ctx, &11u32).expect("message");
+
+  assert_eq!(received.lock().as_slice(), &[11]);
 }
