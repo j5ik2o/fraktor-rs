@@ -64,8 +64,4 @@ Cargo.lock
 !/.agents/skills/designing-fraktor-shared-types
 !/.agents/skills/find-skills
 !/.agents/skills/pekko-gap-analysis
-!/.agents/skills/takt-analyze
-!/.agents/skills/takt-facet
-!/.agents/skills/takt-optimize
-!/.agents/skills/takt-piece
-!/.agents/skills/takt-task
+!/.agents/skills/takt-*
