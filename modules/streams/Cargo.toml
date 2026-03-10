@@ -21,7 +21,7 @@ compression = ["dep:miniz_oxide"]
 fraktor-utils-rs = { workspace = true, default-features = false, features = ["alloc"] }
 fraktor-actor-rs = { workspace = true }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
-miniz_oxide = { version = "0.8", optional = true, default-features = false, features = ["with-alloc"] }
+miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
