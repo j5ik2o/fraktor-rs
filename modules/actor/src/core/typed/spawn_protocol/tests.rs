@@ -1,9 +1,10 @@
 use alloc::string::ToString;
-use core::{
-  hint::spin_loop,
-  sync::atomic::{AtomicUsize, Ordering},
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+  sync::Arc,
+  thread,
+  time::{Duration, Instant},
 };
-use std::sync::Arc;
 
 use crate::core::typed::{Behaviors, SpawnProtocol, actor::TypedActorRef, props::TypedProps, system::TypedActorSystem};
 
@@ -21,7 +22,7 @@ fn probe_props(start_count: &Arc<AtomicUsize>) -> TypedProps<ProbeCommand> {
   let start_count = Arc::clone(start_count);
   TypedProps::from_behavior_factory(move || {
     let start_count = Arc::clone(&start_count);
-    Behaviors::receive(move |_ctx, _message: &ProbeCommand| Ok(Behaviors::same())).receive_signal(
+    Behaviors::receive_message(move |_ctx, _message: &ProbeCommand| Ok(Behaviors::same())).receive_signal(
       move |_ctx, signal| {
         if matches!(signal, crate::core::typed::BehaviorSignal::Started) {
           start_count.fetch_add(1, Ordering::SeqCst);
@@ -36,7 +37,7 @@ fn other_probe_props(start_count: &Arc<AtomicUsize>) -> TypedProps<OtherProbeCom
   let start_count = Arc::clone(start_count);
   TypedProps::from_behavior_factory(move || {
     let start_count = Arc::clone(&start_count);
-    Behaviors::receive(move |_ctx, _message: &OtherProbeCommand| Ok(Behaviors::same())).receive_signal(
+    Behaviors::receive_message(move |_ctx, _message: &OtherProbeCommand| Ok(Behaviors::same())).receive_signal(
       move |_ctx, signal| {
         if matches!(signal, crate::core::typed::BehaviorSignal::Started) {
           start_count.fetch_add(1, Ordering::SeqCst);
@@ -48,13 +49,14 @@ fn other_probe_props(start_count: &Arc<AtomicUsize>) -> TypedProps<OtherProbeCom
 }
 
 fn wait_until(predicate: impl Fn() -> bool) {
-  for _ in 0..10_000 {
+  let deadline = Instant::now() + Duration::from_secs(5);
+  while Instant::now() < deadline {
     if predicate() {
       return;
     }
-    spin_loop();
+    thread::yield_now();
   }
-  panic!("condition not satisfied");
+  panic!("condition not satisfied within timeout");
 }
 
 #[test]
@@ -82,42 +84,6 @@ fn spawn_protocol_spawns_named_children() {
   system.terminate().expect("terminate");
 }
 
-#[test]
-fn spawn_protocol_adds_suffix_for_duplicate_name() {
-  let start_count = Arc::new(AtomicUsize::new(0));
-  let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
-  );
-  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
-  let mut parent = system.user_guardian_ref();
-
-  let first = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&start_count), "child", reply_to)
-    })
-    .expect("spawn first");
-  let second = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&start_count), "child", reply_to)
-    })
-    .expect("spawn second");
-
-  let mut first_future = first.future().clone();
-  let mut second_future = second.future().clone();
-  wait_until(|| first_future.is_ready() && second_future.is_ready());
-  let first_ref = first_future.try_take().expect("first reply").expect("first child");
-  let second_ref = second_future.try_take().expect("second reply").expect("second child");
-  let first_name = system.state().cell(&first_ref.pid()).expect("first cell").name().to_string();
-  let second_name = system.state().cell(&second_ref.pid()).expect("second cell").name().to_string();
-
-  assert_ne!(first_ref.pid(), second_ref.pid());
-  assert_eq!(first_name, "child");
-  assert_eq!(second_name, "child-1");
-  wait_until(|| start_count.load(Ordering::SeqCst) == 2);
-
-  system.terminate().expect("terminate");
-}
 
 #[test]
 fn spawn_protocol_spawns_anonymous_children() {

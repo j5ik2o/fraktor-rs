@@ -38,11 +38,11 @@ fn log_messages_delegates_to_inner_behavior() {
 }
 
 #[test]
-fn receive_delegates_to_core_receive() {
+fn receive_message_handles_message() {
   let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
-  let mut behavior = Behaviors::receive(move |_ctx, msg: &u32| {
+  let mut behavior = Behaviors::receive_message(move |_ctx, msg: &u32| {
     received_clone.lock().push(*msg);
     Ok(CoreBehaviors::same())
   });

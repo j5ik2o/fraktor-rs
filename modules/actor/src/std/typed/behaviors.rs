@@ -100,15 +100,6 @@ impl Behaviors {
 
   /// Creates a behavior that handles typed messages using the std context.
   #[must_use]
-  pub fn receive<M, F>(handler: F) -> Behavior<M>
-  where
-    M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
-    CoreBehaviors::receive(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
-  }
-
-  /// Creates a behavior that handles typed messages using the std context.
-  #[must_use]
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,

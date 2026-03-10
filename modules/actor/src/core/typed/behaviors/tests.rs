@@ -61,7 +61,7 @@ fn receive_and_reply_sends_response_to_sender() {
 }
 
 #[test]
-fn receive_delegates_to_message_handler() {
+fn receive_message_handles_message() {
   let received = ArcShared::new(NoStdMutex::new(Vec::new()));
   let received_clone = received.clone();
 
@@ -70,7 +70,7 @@ fn receive_delegates_to_message_handler() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut behavior = Behaviors::receive(move |_ctx, message: &u32| {
+  let mut behavior = Behaviors::receive_message(move |_ctx, message: &u32| {
     received_clone.lock().push(*message);
     Ok(Behaviors::same())
   });

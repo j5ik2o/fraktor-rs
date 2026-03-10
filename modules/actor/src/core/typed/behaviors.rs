@@ -137,14 +137,6 @@ impl Behaviors {
   }
 
   /// Creates a behavior that handles typed messages and can return the next behavior.
-  pub fn receive<M, F>(handler: F) -> Behavior<M>
-  where
-    M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
-    Self::receive_message(handler)
-  }
-
-  /// Creates a behavior that handles typed messages and can return the next behavior.
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,

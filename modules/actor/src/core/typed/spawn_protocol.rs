@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{
   format,
-  string::{String, ToString},
+  string::String,
 };
 
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -38,12 +38,10 @@ where
 {
   fn execute(&self, ctx: &TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
     if self.name.is_empty() {
-      return SpawnAnonymousCommand { props: self.props.clone(), reply_to: self.reply_to.clone() }.execute(ctx);
+      return Err(ActorError::recoverable("spawn name must not be empty"));
     }
-
-    let child_name = next_child_name(ctx, &self.name);
     let child = ctx
-      .spawn_child(&self.props.clone().map_props(|current| current.with_name(child_name)))
+      .spawn_child(&self.props.clone().map_props(|current| current.with_name(self.name.clone())))
       .map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
     let mut reply_to = self.reply_to.clone();
     reply_to.tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
@@ -63,8 +61,9 @@ where
   M: Send + Sync + 'static,
 {
   fn execute(&self, ctx: &TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
+    let anonymous_props = self.props.clone().map_props(|p| p.without_name());
     let child =
-      ctx.spawn_child(&self.props).map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
+      ctx.spawn_child(&anonymous_props).map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
     let mut reply_to = self.reply_to.clone();
     reply_to.tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
     Ok(())
@@ -102,24 +101,10 @@ impl SpawnProtocol {
   /// Builds the protocol behavior.
   #[must_use]
   pub fn behavior() -> Behavior<Self> {
-    Behaviors::receive(move |ctx, command: &Self| {
+    Behaviors::receive_message(move |ctx, command: &Self| {
       command.command.execute(ctx)?;
       Ok(Behaviors::same())
     })
   }
 }
 
-fn next_child_name(ctx: &TypedActorContext<'_, SpawnProtocol>, base_name: &str) -> String {
-  if ctx.child(base_name).is_none() {
-    return base_name.to_string();
-  }
-
-  let mut suffix = 1usize;
-  loop {
-    let candidate = format!("{base_name}-{suffix}");
-    if ctx.child(candidate.as_str()).is_none() {
-      return candidate;
-    }
-    suffix += 1;
-  }
-}

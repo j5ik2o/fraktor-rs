@@ -745,8 +745,11 @@ impl MessageInvoker for ActorCellInvoker {
     if let Some(identify) = message.payload().downcast_ref::<Identify>() {
       if let Some(sender) = message.sender().cloned() {
         let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
-        sender.tell(AnyMessage::new(identity)).map_err(|error| ActorError::from_send_error(&error))?;
+        // Silently ignore send errors: the requester may have stopped before the reply arrives.
+        let _ = sender.tell(AnyMessage::new(identity));
       }
+      // NOTE: No reply is sent if sender is None (no deadLetters in no_std).
+      // Use with_sender() to receive ActorIdentity replies.
       return Ok(());
     }
     let system = ActorSystem::from_state(cell.system());

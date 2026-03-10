@@ -273,6 +273,7 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
   invoker.invoke_user_message(message).expect("identify");
 
   assert_eq!(*actor_received.lock(), 0, "identify should not reach the actor receive method");
+  wait_until(|| reply_replies.lock().len() == 1);
   let replies = reply_replies.lock();
   assert_eq!(replies.len(), 1);
   let correlation_id = replies[0].correlation_id().payload().downcast_ref::<&str>().expect("&str");
