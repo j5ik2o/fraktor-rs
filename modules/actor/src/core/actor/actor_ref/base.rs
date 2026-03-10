@@ -6,6 +6,7 @@ mod tests;
 use core::{
   fmt,
   hash::{Hash, Hasher},
+  time::Duration,
 };
 
 use crate::core::{
@@ -17,6 +18,7 @@ use crate::core::{
   error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult, system_message::SystemMessage},
+  pattern,
   system::state::{SystemStateShared, SystemStateWeak},
 };
 
@@ -138,6 +140,15 @@ impl ActorRef {
       system.register_ask_future(future.clone());
     }
     Ok(AskResponse::new(reply_ref, future))
+  }
+
+  /// Sends a request and arranges timeout completion on the returned ask future.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be delivered.
+  pub fn ask_with_timeout(&self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, SendError> {
+    pattern::ask_with_timeout(self, message, timeout)
   }
 
   /// Creates a placeholder reference that rejects all messages.
