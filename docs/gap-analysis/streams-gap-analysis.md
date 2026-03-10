@@ -1,20 +1,20 @@
 # streams モジュール ギャップ分析
 
-分析日: 2026-03-09  
+分析日: 2026-03-10  
 対象: `modules/streams/src/` vs `references/pekko/stream/src/main/scala/`
 
 ## サマリー
 
 | 指標 | 値 |
 |---|---:|
-| Pekko 公開型数 | 417 |
-| fraktor-rs 公開型数 | 152 |
-| カバレッジ（型単位） | 152/417 (36.5%) |
-| ギャップ数 | 16 |
+| Pekko 公開型数 | 272 |
+| fraktor-rs 公開型数 | 91 |
+| カバレッジ（型単位） | 91/272 (33.5%) |
+| ギャップ数 | 12（要対応 9 / n/a 3） |
 
 注記:
-- 公開型数は `pub struct/trait/enum/type` と Scala 側 `class/trait/object/enum` のユニーク型名を機械抽出して計数。
-- ギャップ数は「未実装 + 部分実装」の主要差分のみを対象（YAGNI観点で優先順位づけ可能な粒度）。
+- 公開型数は機械抽出（Pekko側は `impl` / `javadsl` / `snapshot` / `serialization` を除外）。
+- `snake_case` と `camelCase` の命名差は「別名で実装済み」として個別判定した。
 
 ## カテゴリ別ギャップ
 
@@ -22,89 +22,69 @@
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |---|---|---|---|---|
-| `Source` / `Flow` / `Sink` | `scaladsl/Source.scala:46`, `scaladsl/Flow.scala:60`, `scaladsl/Sink.scala:39` | `core/stage/source.rs:40`, `core/stage/flow.rs:26`, `core/stage/sink.rs:20` | - | 実装済み |
-| `RunnableGraph` | `scaladsl/Flow.scala:789` | `core/mat/runnable_graph.rs:11` | - | 実装済み |
-| `Shape` 系 (`SourceShape`, `FlowShape`, `SinkShape`, `BidiShape`, `ClosedShape`) | `stream/Shape.scala:183,293,311,327,353` | `core/shape/*.rs` (`shape.rs:2`, `source_shape.rs:5`, `flow_shape.rs:5`, `sink_shape.rs:5`, `bidi_shape.rs:5`, `closed_shape.rs:2`) | - | 実装済み |
-| `SubFlow extends FlowOps` | `scaladsl/SubFlow.scala:30` | `core/stage/flow_sub_flow.rs:9`, `core/stage/source_sub_flow.rs:9` | medium | `merge/concat_substreams`中心で、`FlowOps` 相当の演算面は限定的 |
-| `KillSwitch` trait + `SharedKillSwitch.flow` | `stream/KillSwitch.scala:153,257,290` | `core/lifecycle/shared_kill_switch.rs:13`, `core/lifecycle/unique_kill_switch.rs:9` | medium | `shutdown/abort` は実装済みだが共通 trait と `flow()` が未提供 |
+| `Source` / `Flow` / `Sink` / `BidiFlow` | `scaladsl/Source.scala:46`, `Flow.scala:60`, `Sink.scala:39`, `BidiFlow.scala:23` | `core/stage/source.rs:39`, `flow.rs:29`, `sink.rs:20`, `bidi_flow.rs:7` | - | 実装済み |
+| `Shape` 系 (`Inlet`, `Outlet`, `Shape`, `SourceShape`, `FlowShape`, `SinkShape`, `BidiShape`, `ClosedShape`) | `stream/Shape.scala:100,142,183,293,311,327,353,265` | `core/shape/inlet.rs:7`, `outlet.rs:7`, `shape.rs:2`, `source_shape.rs:5`, `flow_shape.rs:5`, `sink_shape.rs:5`, `bidi_shape.rs:5`, `closed_shape.rs:2` | - | 実装済み |
+| `KillSwitches` / `KillSwitch` / `SharedKillSwitch` / `UniqueKillSwitch` | `stream/KillSwitch.scala:37,153,257,216` | `core/lifecycle/kill_switches.rs:11`, `kill_switch.rs:7`, `shared_kill_switch.rs:16`, `unique_kill_switch.rs:11` | - | 実装済み |
+| `Materializer` のスケジューリング/停止API | `stream/Materializer.scala:48,85,108,144,151,156` | `core/mat/materializer.rs:4`（`materialize` のみ） | hard | `withNamePrefix` / `schedule*` / `shutdown` / `isShutdown` が未対応 |
+| `StreamRefs` (`SourceRef`, `SinkRef`) | `stream/StreamRefs.scala:55,89`, `scaladsl/StreamRefs.scala:24` | 未対応 | hard | リモート連携を伴うため実装コストが高い |
+| `Tcp` / `TLS` DSL | `scaladsl/Tcp.scala:47`, `scaladsl/TLS.scala:62` | 未対応 | hard | 現状 `streams` モジュール外の責務 |
 
 ### オペレーター
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |---|---|---|---|---|
-| `map` / `filter` / `mapAsync` | `scaladsl/Flow.scala:1088,1562,1327` | `core/stage/flow.rs:125,233,147` | - | 実装済み |
-| `mergeLatest` / `mergePreferred` / `mergePrioritized` / `mergeSorted` | `scaladsl/Flow.scala:3634,3655,3680,3713` | `core/stage/flow.rs:1840,1859,1876,2261` | - | 実装済み（専用 `logic` あり） |
-| `concatLazy` / `prependLazy` / `orElse` | `scaladsl/Flow.scala:3782,3889,3914` | `core/stage/flow.rs:1809,1941,1932` | easy | `concat` / `prepend` への委譲で lazy/fallback 契約を満たしていない |
-| `zipLatest` / `zipLatestWith` | `scaladsl/Flow.scala:3381,3431` | `core/stage/flow.rs:1950,1961` | medium | `zip_all` への委譲・`fill_value` 必須で契約差分あり |
-| `limitWeighted` / `batchWeighted` / `groupedWeightedWithin` | `scaladsl/Flow.scala:1937,2490,2214` | `core/stage/flow.rs:1342,1557,1514` | easy | 重み関数と時間窓が実質未使用 |
-| `mapAsyncPartitioned` | `scaladsl/Flow.scala:1392` | `core/stage/flow.rs:1433,1451` | medium | `map_async` へ委譲し、partition セマンティクス未反映 |
-| `flatMapPrefix` / `prefixAndTail` | `scaladsl/Flow.scala:2622,2597` | `core/stage/flow.rs:1646,1673` | medium | prefix 専用契約ではなく簡略化実装 |
+| `map` / `filter` / `mapAsync` / `flatMapMerge` | `Flow.scala:1088,1562,1327,2965` | `core/stage/flow.rs:139,247,161,428` | - | 実装済み |
+| `groupBy` / `splitWhen` / `splitAfter` / `mergeSubstreamsWithParallelism` | `Flow.scala:2681,2797,2883`, `SubFlow.scala:61` | `core/stage/flow.rs:681,703,718,954`, `flow_sub_flow.rs:33` | - | 実装済み |
+| `concatMat` / `prependMat` / `orElseMat` / `zipLatestMat` / `zipLatestWithMat` | `Flow.scala:4395,4436,4483,4235,4248` | `concat/prepend/or_else/zip_latest/zip_latest_with` のみ (`flow.rs:904,838,2096,2129,2140`) | medium | `Mat` 合成付きオーバーロードが未対応 |
+| `withFilter` | `Flow.scala:1572` | `filter` のみ (`flow.rs:247`) | trivial | for-comprehension 互換のエイリアス未対応 |
+| `alsoToAll` | `Flow.scala:3996` | `also_to_all` (`flow.rs:2203`) | easy | 実装は `sinks` を消費して `self` を返すのみ |
+| `divertTo` | `Flow.scala:4020` | `divert_to` (`flow.rs:2212`) | easy | `sink` を `drop` し `filter_not` にフォールバック |
+| `watch(ref)` | `Flow.scala:1546` | `watch` (`flow.rs:2241`) | easy | 現状 no-op |
+| `zipLatest` / `zipLatestWith` | `Flow.scala:3381,3431` | `zip_latest` / `zip_latest_with` (`flow.rs:2129,2140`) | - | 別名で実装済み |
 
 ### マテリアライゼーション
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |---|---|---|---|---|
-| `viaMat` / `toMat` / `mapMaterializedValue` | `scaladsl/Flow.scala:78,150,162` | `core/stage/flow.rs:85,113,98` | - | 実装済み |
-| `watchTermination` / `monitorMat` | `scaladsl/Flow.scala:4536,4551` | `core/stage/flow.rs:2093,2079`, `core/stage/source.rs:588` | - | 実装済み |
-| `materializeIntoSource` | `scaladsl/Source.scala:122`, `scaladsl/Flow.scala:186` | `core/stage/flow.rs:1381` | easy | no-op（`self` 返却）で同等機能は未提供 |
+| `viaMat` / `toMat` / `mapMaterializedValue` | `Source.scala:62,93,100`, `Flow.scala:78,150,162`, `Sink.scala:68` | `source.rs:561,614,574`, `flow.rs:99,127,112`, `sink.rs:388` | - | 実装済み |
+| `materializeIntoSource` | `Source.scala:122`, `Flow.scala:186` | `flow.rs:1471` | - | 実装済み |
+| `watchTermination` | `Flow.scala:4536` | `flow.rs:2267`, `source.rs:587` | - | `watch_termination_mat` で実装 |
+| `Source.run/runFold/runFoldAsync/runReduce/runForeach` | `Source.scala:133,157,171,190,204` | `run_with` (`source.rs:633`) + `RunnableGraph::run` (`core/mat/runnable_graph.rs:33`) | easy | 便利メソッド群は未対応 |
+| `getAttributes` | `Source.scala:260`, `Flow.scala:836`, `Sink.scala:131` | 未対応（`with_attributes` / `add_attributes` のみ） | easy | 参照系APIが不足 |
 
 ### グラフDSL
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |---|---|---|---|---|
-| `GraphDSL.create` + `Builder.add/addEdge/materializedValue` | `scaladsl/Graph.scala:1583,1596,1605,1624,1681` | `core/graph/graph_dsl.rs:10-93` | hard | 現状は `Flow` 連結ラッパーで、ポート単位配線 DSL は未対応 |
-| `~>`, `<~`, `<~>` 演算子 | `scaladsl/Graph.scala:1742,1788,1894` | 未対応 | hard | Fan-in/Fan-out/Bidi の DSL 表現を欠く |
+| `GraphDSL.Builder` と `~>` / `<~` / `<~>` | `scaladsl/Graph.scala:1577,1596,1742,1788,1894` | `core/graph.rs:3`, `core/graph/flow_fragment.rs:11` | n/a | 意図的に非公開（`GraphDSL.Builder` 互換を提供しない設計） |
 
-### ライフサイクル
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `initial/completion/idle/backpressure timeout` | `scaladsl/Flow.scala:3017,3031,3046,3061` | `core/stage/flow.rs:1698,1719,1741,1762` | - | 実装済み（`logic/*.rs` で動作） |
-| `KillSwitches.shared/single/singleBidi` | `stream/KillSwitch.scala:45,53,62` | `core/lifecycle/kill_switches.rs:12,18,24` | - | 実装済み |
-| `DrainingControl.drainAndComplete` | `scaladsl/Hub.scala:54,60` | `core/hub/draining_control.rs:9,32` | easy | `drain()` はあるが completion 契約が異なる |
-
-### エラー処理
+### その他相互運用
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |---|---|---|---|---|
-| `recover` / `recoverWith` / `recoverWithRetries` | `scaladsl/Flow.scala:897,918,946` | `core/stage/flow.rs:1037,1071,1054` | medium | `PartialFunction`/代替 `Source` 契約ではなく固定 fallback 値中心 |
-| `onErrorComplete` / `onErrorContinue`（条件付き） | `scaladsl/Flow.scala:966,985,1014,1045` | `core/stage/flow.rs:1003,1009,1015` | easy | 条件付きオーバーロード未対応 |
-| `mapError` | `scaladsl/Flow.scala:1072` | `core/stage/flow.rs:995` | medium | エラー変換契約が `Result` ラップ中心で差分あり |
-
-### その他
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `Compression.gzip/gzipDecompress/deflate/inflate` | `scaladsl/Compression.scala:34,50,61,77` | `core/stage/flow.rs:2110,2122,2116,2128` | medium | no-op 実装 |
-| `log` / `logWithMarker` | `scaladsl/Flow.scala:3280,3303` | `core/stage/flow.rs:1354,1360` | easy | `wire_tap(|_| {})` のみで実質 no-op |
+| `fromProcessor` / `toProcessor` (Java Flow interop) | `Flow.scala:429,381`, `JavaFlowSupport.scala:75,95` | 未対応 | n/a | JVM/Java Flow 依存のため Rust/no_std では優先度低 |
 
 ## 実装優先度の提案
 
-### Phase 1: trivial（既存組み合わせで即実装可能）
+### Phase 1: trivial/easy（短期で埋められる差分）
 
-- `concatLazy` / `prependLazy` / `orElse` の契約分離（現在の単純委譲を置換）
-- `limitWeighted` / `batchWeighted` / `groupedWeightedWithin` で weight/ticks を実際に使用
-- `log` / `logWithMarker` を no-op から最小限の観測可能挙動へ改善
+- `with_filter` 互換エイリアス追加
+- `Source::run_*` 便利メソッド（`run_fold` など）追加
+- `get_attributes` 参照系API追加
+- `also_to_all` / `divert_to` / `watch` のセマンティクス実装
 
-### Phase 2: easy（単純な新規実装）
+### Phase 2: medium（API拡張）
 
-- `DrainingControl` に `drain_and_complete` 相当契約を追加
-- `on_error_*` の条件付きオーバーロード追加
-- `materialize_into_source` を no-op から実体化
+- `concat/prepend/or_else/zip_latest` 系に `*Mat` バリアントを追加
 
-### Phase 3: medium（中程度の実装工数）
+### Phase 3: hard（基盤拡張）
 
-- `map_async_partitioned` 系の partition セマンティクス導入
-- `zip_latest` / `zip_latest_with` の契約整合
-- `recover_with` 系を source ベースの復旧モデルに拡張
-- `SharedKillSwitch::flow` と共通 `KillSwitch` 抽象の導入
-- `flat_map_prefix` / `prefix_and_tail` の契約整合
-
-### Phase 4: hard（アーキテクチャ変更を伴う）
-
-- `GraphDSL` の `Builder` モデル（`create/add/addEdge/materializedValue`）導入
-- `~>` / `<~` / `<~>` 相当の配線 DSL を no_std 制約内で設計
+- `Materializer` のスケジューリング/停止API拡張
+- `StreamRefs` 導入（remote 連携含む）
+- `Tcp` / `TLS` ストリームDSL導入
 
 ### 対象外（n/a）
 
-- JVM 固有型や Java/Scala 相互運用専用 API（`CompletionStage`, `Java DSL` 依存の一部）は Rust/no_std 直輸入対象外として保守的に除外可能
+- `GraphDSL.Builder` スタイルの任意ポート配線（現方針: `FlowFragment` 中心）
+- Java Flow (`Processor`) 直接相互運用
+
