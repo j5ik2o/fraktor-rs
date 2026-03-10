@@ -1,17 +1,14 @@
 tasks:
-  - worktree: false
+  - worktree: true
     piece: pekko-porting
-    start_movement: supervise
     auto_pr: true
     draft_pr: true
-    exceeded_max_movements: 150
-    exceeded_current_iteration: 100
-    name: streams-mojuuru-gyappu-2026-03
-    status: exceeded
-    slug: streams-mojuuru-gyappu-2026-03
-    summary: "# streams モジュール ギャップ分析"
-    task_dir: .takt/tasks/20260309-011217-streams-2026-03-09-modules-str
-    created_at: 2026-03-09T01:12:17.877Z
-    started_at: 2026-03-09T12:06:50.600Z
-    completed_at: 2026-03-09T15:18:11.968Z
+    name: actor-mojuuru-gyappu-2026-03-1
+    status: pending
+    slug: actor-mojuuru-gyappu-2026-03-1
+    summary: "# actor モジュール ギャップ分析"
+    task_dir: .takt/tasks/20260310-014155-actor-2026-03-10-fraktor-rs-mo
+    created_at: 2026-03-10T01:41:55.419Z
+    started_at: null
+    completed_at: null
     owner_pid: null
