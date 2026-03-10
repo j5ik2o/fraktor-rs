@@ -38,7 +38,7 @@ export CARGO_BUILD_JOBS
 usage() {
   cat <<'EOF'
 使い方: scripts/ci-check.sh [コマンド...]
-  lint                   : cargo fmt --check を実行します
+  lint                   : cargo fmt --all --check を実行します
   fmt                    : cargo fmt --all を実行します
   dylint [lint...]       : カスタムリントを実行します (デフォルトはすべて、例: dylint mod-file-lint)
                            CSV 形式のショートハンドも利用可能です (例: dylint:mod-file-lint,module-wiring-lint)
@@ -336,11 +336,11 @@ run_fmt() {
 
 run_lint() {
   if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} -v fmt --check"
-    cargo "+${FMT_TOOLCHAIN}" -v fmt --check || return 1
+    log_step "cargo +${FMT_TOOLCHAIN} -v fmt --all --check"
+    cargo "+${FMT_TOOLCHAIN}" -v fmt --all --check || return 1
   else
-    log_step "cargo -v fmt --check"
-    cargo -v fmt --check || return 1
+    log_step "cargo -v fmt --all --check"
+    cargo -v fmt --all --check || return 1
   fi
 }
 
@@ -981,7 +981,7 @@ main() {
         local -a lint_args=()
         while [[ $# -gt 0 ]]; do
           case "$1" in
-            lint|dylint|dylint:*|clippy|no-std|nostd|std|embedded|embassy|test|tests|workspace|all)
+            lint|fmt|dylint|dylint:*|clippy|no-std|nostd|std|embedded|embassy|test|tests|workspace|all)
               break
               ;;
             --)
