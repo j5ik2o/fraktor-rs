@@ -218,3 +218,9 @@ required-features = ["test-support"]
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 required-features = ["test-support"]
+
+[[bench]]
+name = "actor_baseline"
+path = "benches/actor_baseline.rs"
+harness = false
+required-features = ["test-support", "std", "tokio-executor"]
