@@ -1,6 +1,6 @@
 //! Handle used by parents to interact with child actors.
 
-use core::fmt;
+use core::{fmt, time::Duration};
 
 use crate::core::{
   actor::{Pid, actor_ref::ActorRef},
@@ -48,6 +48,15 @@ impl ChildRef {
   /// Returns an error when the message cannot be enqueued.
   pub fn ask(&mut self, message: AnyMessage) -> Result<AskResponse, SendError> {
     self.actor.ask(message)
+  }
+
+  /// Sends a request to the child actor and arranges timeout completion on the response future.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the message cannot be enqueued.
+  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, SendError> {
+    self.actor.ask_with_timeout(message, timeout)
   }
 
   /// Sends a stop signal to the child actor.

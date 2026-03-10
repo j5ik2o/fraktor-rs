@@ -120,6 +120,11 @@ path = "examples/scheduler_diagnostics_typed_no_std/main.rs"
 required-features = ["test-support"]
 
 [[example]]
+name = "pattern_api_no_std"
+path = "examples/pattern_api_no_std/main.rs"
+required-features = ["test-support"]
+
+[[example]]
 name = "ping_pong_tokio_std"
 path = "examples/ping_pong_tokio_std/main.rs"
 required-features = ["tokio-executor"]

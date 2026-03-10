@@ -8,6 +8,7 @@ pub mod extension;
 pub mod futures;
 pub mod lifecycle;
 pub mod messaging;
+pub mod pattern;
 pub mod props;
 pub mod scheduler;
 pub mod serialization;
