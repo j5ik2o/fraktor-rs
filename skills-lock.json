@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "skills": {
+    "takt-analyzer": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "8f5ab80d942643e578b5feb15df5f4f8f002de707a933c2883791b14d95a5a59"
+    },
+    "takt-facet-builder": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "b11e1ba6d5bd703b5ec0c4a854a8155dfb806bda87ff75b7aa6dc7f48338b39e"
+    },
+    "takt-optimizer": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "ca25c684b02acc54748e334037b691edf84fb7df6a44772b22a4192e80c5fccd"
+    },
+    "takt-piece-builder": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "87856be32c95c8453f46a7c9c8fb9982047be0a72d0a0dd449ccb10478aebc82"
+    },
+    "takt-task-builder": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "3acc6533d44a5e5164ea623166e17d0119a2bbcb05b024df068174ed481c38f2"
+    }
+  }
+}
