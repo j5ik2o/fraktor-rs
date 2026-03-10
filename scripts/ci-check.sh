@@ -337,10 +337,10 @@ run_fmt() {
 run_lint() {
   if [[ -n "${FMT_TOOLCHAIN}" ]]; then
     log_step "cargo +${FMT_TOOLCHAIN} -v fmt --check"
-    cargo "+${FMT_TOOLCHAIN}" -v fmt --all || return 1
+    cargo "+${FMT_TOOLCHAIN}" -v fmt --check || return 1
   else
-    log_step "cargo -v fmt --all"
-    cargo -v fmt --all || return 1
+    log_step "cargo -v fmt --check"
+    cargo -v fmt --check || return 1
   fi
 }
 
