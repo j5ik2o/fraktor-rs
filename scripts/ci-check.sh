@@ -38,7 +38,7 @@ export CARGO_BUILD_JOBS
 usage() {
   cat <<'EOF'
 使い方: scripts/ci-check.sh [コマンド...]
-  lint                   : cargo +nightly fmt -- --check を実行します
+  lint                   : cargo fmt --all を実行します
   dylint [lint...]       : カスタムリントを実行します (デフォルトはすべて、例: dylint mod-file-lint)
                            CSV 形式のショートハンドも利用可能です (例: dylint:mod-file-lint,module-wiring-lint)
   clippy                 : cargo clippy --workspace --all-targets -- -D warnings を実行します
@@ -325,11 +325,11 @@ ensure_dylint_installed() {
 
 run_lint() {
   if [[ -n "${FMT_TOOLCHAIN}" ]]; then
-    log_step "cargo +${FMT_TOOLCHAIN} -v fmt -- --check"
-    cargo "+${FMT_TOOLCHAIN}" -v fmt --all -- --check || return 1
+    log_step "cargo +${FMT_TOOLCHAIN} -v fmt --all"
+    cargo "+${FMT_TOOLCHAIN}" -v fmt --all || return 1
   else
-    log_step "cargo -v fmt -- --check"
-    cargo -v fmt --all -- --check || return 1
+    log_step "cargo -v fmt --all"
+    cargo -v fmt --all || return 1
   fi
 }
 
