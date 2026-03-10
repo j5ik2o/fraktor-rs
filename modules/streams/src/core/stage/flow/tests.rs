@@ -1813,6 +1813,34 @@ fn gzip_emits_raw_deflate_payload() {
 }
 
 #[test]
+#[cfg(feature = "compression")]
+fn inflate_rejects_payload_exceeding_decompression_limit() {
+  let payload = vec![0x5a_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
+
+  let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
+
+  assert!(matches!(result, Err(StreamError::CompressionError { .. })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
+  let payload = vec![0x33_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let encoded = Source::single(payload)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
+    .collect_values()
+    .expect("collect_values")
+    .pop()
+    .expect("encoded payload");
+
+  let result =
+    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
+
+  assert!(matches!(result, Err(StreamError::CompressionError { kind: "gzip_too_large" })));
+}
+
+#[test]
 fn limit_weighted_stops_before_exceeding_budget() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[2, 2, 1]))
     .via(Flow::new().limit_weighted(3, |value| *value as usize))
