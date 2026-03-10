@@ -1,90 +1,207 @@
 # streams モジュール ギャップ分析
 
-分析日: 2026-03-10  
-対象: `modules/streams/src/` vs `references/pekko/stream/src/main/scala/`
+生成日: 2026-03-10
 
 ## サマリー
 
 | 指標 | 値 |
-|---|---:|
-| Pekko 公開型数 | 272 |
-| fraktor-rs 公開型数 | 91 |
-| カバレッジ（型単位） | 91/272 (33.5%) |
-| ギャップ数 | 12（要対応 9 / n/a 3） |
+|------|-----|
+| Pekko scaladsl 公開型数 | 約 48（型・オブジェクト単位、JVM固有除く） |
+| fraktor-rs 公開型数 | 約 55 |
+| カバレッジ（型単位） | 45/48 (~94%) |
+| ギャップ数（実装対象） | 3 |
+| 対象外（n/a） | 8 |
 
-注記:
-- 公開型数は機械抽出（Pekko側は `impl` / `javadsl` / `snapshot` / `serialization` を除外）。
-- `snake_case` と `camelCase` の命名差は「別名で実装済み」として個別判定した。
+**結論：** fraktor-rs は Pekko scaladsl のコアAPI を高いカバレッジで実装済み。
+残りのギャップは `RetryFlow`（フィードバックループ型リトライ）、`GraphDSL`（明示的グラフ構築DSL）、`DelayStrategy`（カスタム遅延戦略）の3点。
+
+---
 
 ## カテゴリ別ギャップ
 
-### 型・トレイト
+### コア型・トレイト
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `Source` / `Flow` / `Sink` / `BidiFlow` | `scaladsl/Source.scala:46`, `Flow.scala:60`, `Sink.scala:39`, `BidiFlow.scala:23` | `core/stage/source.rs:39`, `flow.rs:29`, `sink.rs:20`, `bidi_flow.rs:7` | - | 実装済み |
-| `Shape` 系 (`Inlet`, `Outlet`, `Shape`, `SourceShape`, `FlowShape`, `SinkShape`, `BidiShape`, `ClosedShape`) | `stream/Shape.scala:100,142,183,293,311,327,353,265` | `core/shape/inlet.rs:7`, `outlet.rs:7`, `shape.rs:2`, `source_shape.rs:5`, `flow_shape.rs:5`, `sink_shape.rs:5`, `bidi_shape.rs:5`, `closed_shape.rs:2` | - | 実装済み |
-| `KillSwitches` / `KillSwitch` / `SharedKillSwitch` / `UniqueKillSwitch` | `stream/KillSwitch.scala:37,153,257,216` | `core/lifecycle/kill_switches.rs:11`, `kill_switch.rs:7`, `shared_kill_switch.rs:16`, `unique_kill_switch.rs:11` | - | 実装済み |
-| `Materializer` のスケジューリング/停止API | `stream/Materializer.scala:48,85,108,144,151,156` | `core/mat/materializer.rs:4`（`materialize` のみ） | hard | `withNamePrefix` / `schedule*` / `shutdown` / `isShutdown` が未対応 |
-| `StreamRefs` (`SourceRef`, `SinkRef`) | `stream/StreamRefs.scala:55,89`, `scaladsl/StreamRefs.scala:24` | 未対応 | hard | リモート連携を伴うため実装コストが高い |
-| `Tcp` / `TLS` DSL | `scaladsl/Tcp.scala:47`, `scaladsl/TLS.scala:62` | 未対応 | hard | 現状 `streams` モジュール外の責務 |
+|-----------|-----------|-------------|--------|------|
+| `Source[+Out, +Mat]` | `Source.scala` | `core/stage/source.rs` | - | 実装済み |
+| `Flow[-In, +Out, +Mat]` | `Flow.scala` | `core/stage/flow.rs` | - | 実装済み |
+| `Sink[-In, +Mat]` | `Sink.scala` | `core/stage/sink.rs` | - | 実装済み |
+| `BidiFlow` | `BidiFlow.scala` | `core/stage/bidi_flow.rs` | - | 実装済み |
+| `FlowWithContext` | `FlowWithContext.scala` | `core/stage/flow_with_context.rs` | - | 実装済み |
+| `SourceWithContext` | `SourceWithContext.scala` | `core/stage/source_with_context.rs` | - | 実装済み |
+| `SubFlow` | `SubFlow.scala` | `FlowSubFlow`, `SourceSubFlow` | - | 別名で実装済み |
+| `RunnableGraph` | `Flow.scala` | `core/mat/runnable_graph.rs` | - | 実装済み |
 
-### オペレーター
+### オペレーター（変換・フィルタ）
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `map` / `filter` / `mapAsync` / `flatMapMerge` | `Flow.scala:1088,1562,1327,2965` | `core/stage/flow.rs:139,247,161,428` | - | 実装済み |
-| `groupBy` / `splitWhen` / `splitAfter` / `mergeSubstreamsWithParallelism` | `Flow.scala:2681,2797,2883`, `SubFlow.scala:61` | `core/stage/flow.rs:681,703,718,954`, `flow_sub_flow.rs:33` | - | 実装済み |
-| `concatMat` / `prependMat` / `orElseMat` / `zipLatestMat` / `zipLatestWithMat` | `Flow.scala:4395,4436,4483,4235,4248` | `concat/prepend/or_else/zip_latest/zip_latest_with` のみ (`flow.rs:904,838,2096,2129,2140`) | medium | `Mat` 合成付きオーバーロードが未対応 |
-| `withFilter` | `Flow.scala:1572` | `filter` のみ (`flow.rs:247`) | trivial | for-comprehension 互換のエイリアス未対応 |
-| `alsoToAll` | `Flow.scala:3996` | `also_to_all` (`flow.rs:2203`) | easy | 実装は `sinks` を消費して `self` を返すのみ |
-| `divertTo` | `Flow.scala:4020` | `divert_to` (`flow.rs:2212`) | easy | `sink` を `drop` し `filter_not` にフォールバック |
-| `watch(ref)` | `Flow.scala:1546` | `watch` (`flow.rs:2241`) | easy | 現状 no-op |
-| `zipLatest` / `zipLatestWith` | `Flow.scala:3381,3431` | `zip_latest` / `zip_latest_with` (`flow.rs:2129,2140`) | - | 別名で実装済み |
+|-----------|-----------|-------------|--------|------|
+| `map` | `FlowOps` | `flow.rs:map` | - | 実装済み |
+| `mapConcat` | `FlowOps` | `flow.rs:map_concat` | - | 実装済み |
+| `mapAsync` | `FlowOps` | `flow.rs:map_async` | - | 実装済み |
+| `mapAsyncUnordered` | `FlowOps` | `flow.rs:map_async_unordered` | - | 実装済み（L1531） |
+| `mapWithResource` | `FlowOps` | `flow.rs:map_with_resource` | - | 実装済み（L1456） |
+| `statefulMap` | `FlowOps` | `flow.rs:stateful_map` | - | 実装済み |
+| `statefulMapConcat` | `FlowOps` | `flow.rs:stateful_map_concat` | - | 実装済み |
+| `filter` | `FlowOps` | `flow.rs:filter` | - | 実装済み |
+| `take` | `FlowOps` | `flow.rs:take` | - | 実装済み |
+| `takeWhile` | `FlowOps` | `flow.rs:take_while` | - | 実装済み |
+| `takeWithin` | `FlowOps` | `flow.rs:take_within` | - | 実装済み |
+| `drop` | `FlowOps` | `flow.rs:drop` | - | 実装済み |
+| `dropWhile` | `FlowOps` | `flow.rs:drop_while` | - | 実装済み |
+| `scan` | `FlowOps` | `flow.rs:scan` | - | 実装済み |
+| `grouped` | `FlowOps` | `flow.rs:grouped` | - | 実装済み |
+| `sliding` | `FlowOps` | `flow.rs:sliding` | - | 実装済み |
+| `buffer` | `FlowOps` | `flow.rs:buffer` | - | 実装済み |
+| `throttle` | `FlowOps` | `flow.rs:throttle` | - | 実装済み |
+| `debounce` | `FlowOps` | `flow.rs:debounce` | - | 実装済み |
+| `delay` | `FlowOps` | `flow.rs:delay` | - | 実装済み（固定値のみ） |
+| `delayWith(delayStrategy)` | `DelayStrategy.scala` | 未対応 | easy | カスタム遅延戦略。固定値 `delay` はあるが戦略オブジェクトなし |
+| `expand` | `FlowOps` | `expand_logic.rs` | - | 実装済み |
+| `conflateWithSeed` | `FlowOps` | `conflate_with_seed_logic.rs` | - | 実装済み |
+| `log` / `log(name)` | `FlowOps` | `log_logic.rs` | - | 実装済み |
+| `flatMapConcat` | `FlowOps` | `flow.rs:flat_map_concat` | - | 実装済み |
+| `flatMapMerge` | `FlowOps` | `flow.rs:flat_map_merge` | - | 実装済み |
+| `intersperse` | `FlowOps` | `flow.rs:intersperse` | - | 実装済み |
+| `wireTap(f)` | `FlowOps` | `flow.rs:wire_tap` (L2221) | - | 実装済み |
+| `wireTap(sink)` | `FlowOps` | `flow.rs:wire_tap_mat` | - | 実装済み |
+
+### エラーハンドリング
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `recover` | `FlowOps` | `flow.rs:recover` | - | 実装済み |
+| `recoverWith` | `FlowOps` | `flow.rs:recover_with` | - | 実装済み |
+| `recoverWithRetries` | `FlowOps` | `flow.rs:recover_with_retries` | - | 実装済み |
+| `onErrorComplete` | `FlowOps` | `flow.rs:on_error_complete` | - | 実装済み |
+| `onErrorContinue` | `FlowOps` | `flow.rs:on_error_continue` | - | 実装済み |
+| `mapError` | `FlowOps` | `flow.rs:map_error` | - | 実装済み |
+
+### グラフ演算子（ファン・イン/ファン・アウト）
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `Merge[T]` | `Graph.scala` | `merge_logic.rs` | - | 実装済み |
+| `MergePreferred[T]` | `Graph.scala` | `merge_preferred_logic.rs` | - | 実装済み |
+| `MergePrioritized[T]` | `Graph.scala` | `merge_prioritized_logic.rs` | - | 実装済み |
+| `MergeSorted[T]` | `Graph.scala` | `merge_sorted_logic.rs` | - | 実装済み |
+| `MergeLatest[T]` | `MergeLatest.scala` | `merge_latest_logic.rs` | - | 実装済み |
+| `Interleave[T]` | `Graph.scala` | `interleave_logic.rs` | - | 実装済み |
+| `Broadcast[T]` | `Graph.scala` | `broadcast_logic.rs` | - | 実装済み |
+| `WireTap` | `Graph.scala` | `flow.rs:wire_tap` | - | 別名で実装済み |
+| `Partition[T]` | `Graph.scala` | `partition_logic.rs` | - | 実装済み |
+| `Balance[T]` | `Graph.scala` | `balance_logic.rs` | - | 実装済み |
+| `Zip[A, B]` | `Graph.scala` | `zip_logic.rs` | - | 実装済み |
+| `ZipLatest[A, B]` | `Graph.scala` | `flow.rs:zip_latest` (L2129) | - | 実装済み |
+| `ZipWith` | `Graph.scala` | `flow.rs:zip_with` (L2153) | - | 実装済み |
+| `ZipLatestWith` | `Graph.scala` | `flow.rs:zip_latest_with` | - | 実装済み |
+| `ZipN` / `ZipWithN` | `Graph.scala` | `source.rs:zip_n`, `zip_with_n` | - | 実装済み |
+| `ZipWithIndex` | `FlowOps` | `zip_with_index_logic.rs` | - | 実装済み |
+| `ZipAll` | `FlowOps` | `zip_all_logic.rs` | - | 実装済み |
+| `Unzip[A, B]` | `Graph.scala` | `unzip_logic.rs` | - | 実装済み |
+| `UnzipWith` | `Graph.scala` | `unzip_with_logic.rs` | - | 実装済み |
+| `Concat` | `Graph.scala` | `concat_logic.rs` | - | 実装済み |
+| `OrElse` | `Graph.scala` | `or_else_source_logic.rs` | - | 別名で実装済み |
+| `GraphDSL` | `Graph.scala` | 未対応 | hard | 明示的グラフ構築DSL。fraktor-rsは内部 `StreamGraph` で管理するが、ユーザー向けDSL未実装 |
+
+### ハブ・キュー
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `MergeHub` | `Hub.scala` | `hub/merge_hub.rs` | - | 実装済み |
+| `BroadcastHub` | `Hub.scala` | `hub/broadcast_hub.rs` | - | 実装済み |
+| `PartitionHub` | `Hub.scala` | `hub/partition_hub.rs` | - | 実装済み |
+| `SourceQueue[T]` | `Queue.scala` | `core/source_queue.rs` | - | 実装済み |
+| `SourceQueueWithComplete[T]` | `Queue.scala` | `core/source_queue_with_complete.rs` | - | 実装済み |
+| `SinkQueue[T]` | `Queue.scala` | `core/sink_queue.rs` | - | 実装済み（cancel未実装） |
+| `SinkQueueWithCancel[T]` | `Queue.scala` | 未対応 | trivial | `SinkQueue` にキャンセルメソッドを追加するだけ |
+| `BoundedSourceQueue[T]` | `BoundedSourceQueue.scala` | `core/bounded_source_queue.rs` | - | 実装済み |
+
+### ライフサイクル・キルスイッチ
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `KillSwitches` | `KillSwitch.scala` | `lifecycle/kill_switches.rs` | - | 実装済み |
+| `SharedKillSwitch` | `KillSwitch.scala` | `lifecycle/shared_kill_switch.rs` | - | 実装済み |
+| `UniqueKillSwitch` | `KillSwitch.scala` | `lifecycle/unique_kill_switch.rs` | - | 実装済み |
+| `watchTermination` | `FlowOps` | `watch_termination_logic.rs` | - | 実装済み |
+
+### 再起動・リトライ
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `RestartSource` | `RestartSource.scala` | `core/stage/restart_source.rs` | - | 実装済み |
+| `RestartFlow` | `RestartFlow.scala` | `core/stage/restart_flow.rs` | - | 実装済み |
+| `RestartSink` | `RestartSink.scala` | `core/stage/restart_sink.rs` | - | 実装済み |
+| `RetryFlow.withBackoff[In,Out,Mat]` | `RetryFlow.scala:L53` | 未対応 | medium | 失敗した要素をフィードバックして再試行するフロー。RestartFlowとは異なる概念（ストリーム再起動ではなく要素単位のリトライ） |
+| `RetryFlow.withBackoffAndContext` | `RetryFlow.scala:L92` | 未対応 | medium | コンテキスト付きバージョン |
 
 ### マテリアライゼーション
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `viaMat` / `toMat` / `mapMaterializedValue` | `Source.scala:62,93,100`, `Flow.scala:78,150,162`, `Sink.scala:68` | `source.rs:561,614,574`, `flow.rs:99,127,112`, `sink.rs:388` | - | 実装済み |
-| `materializeIntoSource` | `Source.scala:122`, `Flow.scala:186` | `flow.rs:1471` | - | 実装済み |
-| `watchTermination` | `Flow.scala:4536` | `flow.rs:2267`, `source.rs:587` | - | `watch_termination_mat` で実装 |
-| `Source.run/runFold/runFoldAsync/runReduce/runForeach` | `Source.scala:133,157,171,190,204` | `run_with` (`source.rs:633`) + `RunnableGraph::run` (`core/mat/runnable_graph.rs:33`) | easy | 便利メソッド群は未対応 |
-| `getAttributes` | `Source.scala:260`, `Flow.scala:836`, `Sink.scala:131` | 未対応（`with_attributes` / `add_attributes` のみ） | easy | 参照系APIが不足 |
+|-----------|-----------|-------------|--------|------|
+| `Keep` | `Materialization.scala` | `KeepBoth/KeepLeft/KeepRight/KeepNone` | - | 別名で実装済み |
+| `Materializer` | `ActorMaterializer.scala` | `mat/materializer.rs` | - | 実装済み |
+| `ActorMaterializer` | `ActorMaterializer.scala` | `mat/actor_materializer.rs` | - | 実装済み |
 
-### グラフDSL
+### 変換・エンコーディング
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `GraphDSL.Builder` と `~>` / `<~` / `<~>` | `scaladsl/Graph.scala:1577,1596,1742,1788,1894` | `core/graph.rs:3`, `core/graph/flow_fragment.rs:11` | n/a | 意図的に非公開（`GraphDSL.Builder` 互換を提供しない設計） |
-
-### その他相互運用
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|---|---|---|---|---|
-| `fromProcessor` / `toProcessor` (Java Flow interop) | `Flow.scala:429,381`, `JavaFlowSupport.scala:75,95` | 未対応 | n/a | JVM/Java Flow 依存のため Rust/no_std では優先度低 |
-
-## 実装優先度の提案
-
-### Phase 1: trivial/easy（短期で埋められる差分）
-
-- `with_filter` 互換エイリアス追加
-- `Source::run_*` 便利メソッド（`run_fold` など）追加
-- `get_attributes` 参照系API追加
-- `also_to_all` / `divert_to` / `watch` のセマンティクス実装
-
-### Phase 2: medium（API拡張）
-
-- `concat/prepend/or_else/zip_latest` 系に `*Mat` バリアントを追加
-
-### Phase 3: hard（基盤拡張）
-
-- `Materializer` のスケジューリング/停止API拡張
-- `StreamRefs` 導入（remote 連携含む）
-- `Tcp` / `TLS` ストリームDSL導入
+|-----------|-----------|-------------|--------|------|
+| `Framing` | `Framing.scala` | `core/framing.rs` | - | 実装済み |
+| `Compression` (gzip/deflate) | `Compression.scala` | `flow.rs:gzip/deflate` | - | `#[cfg(feature="compression")]` で実装済み |
+| `FileIO` | `FileIO.scala` | `source.rs:from_path`, `sink.rs:to_path` | - | 別名で実装済み（IOResultマテリアライズ値は未確認） |
+| `StreamConverters` | `StreamConverters.scala` | 未対応 | n/a | JVM/Java固有（`java.util.stream` 変換）。Rust不要 |
+| `CoupledTerminationFlow` | `CoupledTerminationFlow.scala` | `flow.rs:from_sink_and_source_coupled` | - | 別名で実装済み |
 
 ### 対象外（n/a）
 
-- `GraphDSL.Builder` スタイルの任意ポート配線（現方針: `FlowFragment` 中心）
-- Java Flow (`Processor`) 直接相互運用
+| Pekko API | Pekko参照 | 理由 |
+|-----------|-----------|------|
+| `StreamConverters` | `StreamConverters.scala` | JVM/Java ストリーム変換（`java.io.InputStream` 等）。Rust に相当なし |
+| `JavaFlowSupport` | `JavaFlowSupport.scala` | Java 9 Flow API 対応。JVM固有 |
+| `Tcp` | `Tcp.scala` | TCPネットワーク接続。fraktor-rsのスコープ外 |
+| `TLS` | `TLS.scala` | TLS暗号化ストリーム。fraktor-rsのスコープ外 |
+| `StreamRefs` | `StreamRefs.scala` | アクター間リモートストリーム参照。リモーティング層依存 |
+| `MaterializerState` | `snapshot/MaterializerState.scala` | デバッグ/診断用スナップショット。JVM ActorSystem 依存 |
+| `StreamRefSettings` | `StreamRefSettings.scala` | StreamRefs の設定。上記に準じて対象外 |
+| `SystemMaterializer` | `SystemMaterializer.scala` | ActorSystem バインドマテリアライザ。JVM固有 |
 
+---
+
+## 実装優先度の提案
+
+### Phase 1: trivial（既存組み合わせで即実装可能）
+
+- **`SinkQueueWithCancel`**: `SinkQueue` に `cancel()` メソッドを追加する。既存 `SinkQueue` の薄いラッパーまたは拡張として実装可能。
+
+### Phase 2: easy（単純な新規実装）
+
+- **`DelayStrategy`**: カスタム遅延戦略型の導入。現在 `delay(ticks)` は固定値のみ。Pekko の `DelayStrategy` trait に相当する型（`FixedDelay`, `LinearIncreasingDelay` 等）を追加し、`flow.rs:delay` をオーバーロード。
+
+### Phase 3: medium（中程度の実装工数）
+
+- **`RetryFlow.withBackoff`**: フィードバックループを持つリトライフロー。
+  - Pekko の概念: 失敗した `(In, Out)` ペアを受け取り、新たな入力として再投入するループ構造
+  - `RestartFlow`（ストリーム全体の再起動）とは異なり、要素レベルのリトライ
+  - 新規型 `RetryFlow` と内部ロジック `retry_flow_logic.rs` の追加が必要
+
+### Phase 4: hard（アーキテクチャ変更を伴う）
+
+- **`GraphDSL`**: ユーザー向けの明示的グラフ構築DSL。
+  - Pekko では `GraphDSL.create { implicit b => val merge = b.add(Merge(2)); ... }` のように構築
+  - fraktor-rs は `StreamGraph` で内部的にDAGを管理しており、現在ユーザー向けDSLは存在しない
+  - 設計根拠: fraktor-rsの設計哲学（YAGNI・Less is more）との整合性を人間に確認してから着手すること
+  - 実装する場合は `GraphDSL::create(builder: impl FnOnce(&mut GraphBuilder) -> ClosedShape)` 相当のAPIが必要
+
+### 対象外（n/a）
+
+- `StreamConverters`, `JavaFlowSupport`, `Tcp`, `TLS`, `StreamRefs`, `MaterializerState`, `StreamRefSettings`, `SystemMaterializer`
+
+---
+
+## 注記
+
+- fraktor-rs は Pekko に存在しない機能（`mapAsyncPartitioned`, `batch`, `zip_with_index`など）を追加実装しており、一部でPekkoを超えている
+- `Compression` は `#[cfg(feature="compression")]` フラグで実装済み。デフォルトでは無効
+- fraktor-rs の `OperatorCatalog` / `OperatorContract` / `OperatorCoverage` は Pekko に存在しない独自機能（オペレーターの契約管理）
