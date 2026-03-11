@@ -31,7 +31,6 @@ where
       let source = Source::queue(capacity).expect("validated capacity");
       let (graph, queue) = source.into_parts();
       let producer_queue = queue.clone();
-      let failure_queue = queue.clone();
       let termination_queue = queue.clone();
       let (started_tx, started_rx) = mpsc::sync_channel(1);
 
@@ -58,7 +57,7 @@ where
           }
         },
         | Err(_) => {
-          let _ = failure_queue.fail_if_open(StreamError::Failed);
+          let _ = queue.fail_if_open(StreamError::Failed);
         },
       }
 
