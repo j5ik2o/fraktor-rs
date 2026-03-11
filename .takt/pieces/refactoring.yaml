@@ -6,14 +6,18 @@ piece_config:
       network_access: true
     opencode:
       network_access: true
-max_movements: 80
+max_movements: 100
 initial_movement: plan
 
 instructions:
   plan-refactoring: ../facets/instructions/plan-refactoring.md
   ai-review: ../facets/instructions/ai-review.md
-  ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
+  refactoring-implement: ../facets/instructions/refactoring-implement.md
+  refactoring-ai-fix: ../facets/instructions/refactoring-ai-fix.md
+  refactoring-fix: ../facets/instructions/refactoring-fix.md
+  refactoring-review-qa: ../facets/instructions/refactoring-review-qa.md
+  refactoring-supervise: ../facets/instructions/refactoring-supervise.md
 
 policies:
   fraktor-coding: ../facets/policies/fraktor-coding.md
@@ -124,22 +128,7 @@ movements:
           - WebSearch
           - WebFetch
     required_permission_mode: full
-    instruction: implement
-    instruction_template: |
-      **リファクタリング固有の注意:**
-      - 変更は Phase 単位で完結させること（Phase をまたがない）
-      - 各ステップでコンパイルが通る状態を維持すること
-      - 既存テストが壊れた場合は、同じステップ内で修正すること
-
-      **やらないこと（重要）:**
-      - `cargo check` / `cargo build` / `cargo test` / `cargo clippy` を直接実行しないこと。必ず `./scripts/ci-check.sh` 経由で実行すること。
-      - `ci-check.sh` を複数同時に実行しないこと（cargo ロック競合が発生する）。前のコマンドの完了を必ず待ってから次を実行すること。
-
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: refactoring-implement
     output_contracts:
       report:
         - name: coder-scope.md
@@ -203,11 +192,7 @@ movements:
           - WebFetch
     required_permission_mode: full
     pass_previous_response: false
-    instruction: ai-fix
-    instruction_template: |
-      **やらないこと（重要）:**
-      - `cargo check` / `cargo build` / `cargo test` / `cargo clippy` を直接実行しないこと。必ず `./scripts/ci-check.sh` 経由で実行すること。
-      - `ci-check.sh` を複数同時に実行しないこと（cargo ロック競合が発生する）。前のコマンドの完了を必ず待ってから次を実行すること。
+    instruction: refactoring-ai-fix
     rules:
       - condition: AI問題の修正完了
         next: ai_review
@@ -273,10 +258,7 @@ movements:
         rules:
           - condition: approved
           - condition: needs_fix
-        instruction: review-qa
-        instruction_template: |
-          **やらないこと:**
-          `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
+        instruction: refactoring-review-qa
         output_contracts:
           report:
             - name: qa-review.md
@@ -308,23 +290,7 @@ movements:
           - WebFetch
     required_permission_mode: full
     pass_previous_response: false
-    instruction: fix
-    instruction_template: |
-      **レビュー指摘への対応:**
-      アーキテクチャレビューとQAレビューの指摘を優先的に解消すること。
-
-      - アーキテクチャレビュー: `architect-review.md`
-      - QAレビュー: `qa-review.md`
-
-      **やらないこと（重要）:**
-      - `cargo check` / `cargo build` / `cargo test` / `cargo clippy` を直接実行しないこと。必ず `./scripts/ci-check.sh` 経由で実行すること。
-      - `ci-check.sh` を複数同時に実行しないこと（cargo ロック競合が発生する）。前のコマンドの完了を必ず待ってから次を実行すること。
-
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: refactoring-fix
     rules:
       - condition: 修正完了（ci-check.sh all 通過済み）
         next: reviewers
@@ -345,15 +311,7 @@ movements:
           - WebSearch
           - WebFetch
     pass_previous_response: false
-    instruction: supervise
-    instruction_template: |
-      **fraktor-rs リファクタリング固有の検証:**
-      - `implement` / `fix` ムーブメントのレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
-      - `architect-review.md` の判定が approved であることを確認
-      - `qa-review.md` の判定が approved であることを確認
-      - リファクタリングが Phase 単位で完結していることを確認（Phase をまたいだ変更がないか）
-      - 削除された型・エイリアスが他モジュールから参照されていないことを確認
-      ※ supervisor は CI を自身では実行しない（implement/fix の実行済み証跡をレポートで確認するのみ）
+    instruction: refactoring-supervise
     output_contracts:
       report:
         - name: supervisor-validation.md
