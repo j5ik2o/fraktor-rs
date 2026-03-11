@@ -41,7 +41,11 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
-/.claude/
+/.claude/agents
+/.claude/commands
+/.claude/rules
+/.claude/skills/*
+/.claude/*.json
 /.codex/
 /.gemini/
 /.cursor/
@@ -74,3 +78,5 @@ Cargo.lock
 !/.agents/skills/find-skills
 !/.agents/skills/pekko-gap-analysis
 !/.agents/skills/takt-*
+
+!/.claude/skills/takt-cc

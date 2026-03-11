@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "takt": {
+      "source": "nrslib/takt",
+      "sourceType": "github",
+      "computedHash": "974a8f78b2622534e738bd4c0a4b6374b4ef58764514454a7a514ec79c34a6e6"
+    },
     "takt-analyzer": {
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
