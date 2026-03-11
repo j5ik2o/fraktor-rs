@@ -256,14 +256,9 @@ fn bench_tell(c: &mut Criterion) {
   group.sample_size(10);
   group.measurement_time(Duration::from_secs(2));
   group.bench_function("single_tell", |b| {
-    b.iter_batched(
-      TellBenchFixture::new,
-      |fixture| {
-        fixture.tell_once();
-        fixture.terminate();
-      },
-      BatchSize::SmallInput,
-    );
+    let fixture = TellBenchFixture::new();
+    b.iter(|| fixture.tell_once());
+    fixture.terminate();
   });
   group.finish();
 }
@@ -276,14 +271,9 @@ fn bench_ping_pong(c: &mut Criterion) {
   for rounds in [100_usize, 1_000_usize] {
     group.throughput(Throughput::Elements(rounds as u64));
     group.bench_with_input(format!("roundtrip_{rounds}"), &rounds, |b, &rounds| {
-      b.iter_batched(
-        PingPongBenchFixture::new,
-        |fixture| {
-          fixture.run_roundtrip(rounds);
-          fixture.terminate();
-        },
-        BatchSize::SmallInput,
-      );
+      let fixture = PingPongBenchFixture::new();
+      b.iter(|| fixture.run_roundtrip(rounds));
+      fixture.terminate();
     });
   }
 
