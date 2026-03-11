@@ -76,10 +76,13 @@ run_with_heartbeat() {
   fi
 
   if [[ "${enabled}" != "0" ]]; then
+    local start_time
+    start_time=$(date +%s)
     (
       while true; do
         sleep "${interval}"
-        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')"
+        local elapsed=$(( $(date +%s) - start_time ))
+        printf 'info: %s still running (%ds elapsed)\n' "${label}" "${elapsed}"
       done
     ) &
     heartbeat_pid=$!
