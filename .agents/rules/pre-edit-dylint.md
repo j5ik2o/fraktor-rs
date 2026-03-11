@@ -10,11 +10,11 @@
 
 ## 基本ルール
 
-1. 編集前に対象モジュールへ次を実行する  
+1. 編集前に対象モジュールへ次を実行する
    `./scripts/ci-check.sh dylint -m <module>`
 2. lint が失敗した場合のみ、該当 lint の実装・テストを読む
 3. 編集後に同コマンドを再実行し、対象テストを通す
-4. 全タスク完了時は `./scripts/ci-check.sh all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
+4. ソースコード変更を伴う、全タスク完了時は `./scripts/ci-check.sh all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
 
 ## 読み込み範囲
 
