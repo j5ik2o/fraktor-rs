@@ -96,7 +96,6 @@ impl<T> BoundedSourceQueue<T> {
   }
 
   pub(crate) fn complete_if_open(&self) -> bool {
-  pub(crate) fn complete_if_open(&self) -> bool {
     let mut guard = self.inner.lock();
     if guard.closed || guard.failure.is_some() {
       return false;
