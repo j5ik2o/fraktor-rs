@@ -43,8 +43,14 @@ where
         }
       });
       match spawn_result {
-        | Ok(_) => {
+        | Ok(handle) => {
           let _ = started_rx.recv();
+          for _ in 0..64 {
+            if !queue.is_empty() || queue.is_closed() || handle.is_finished() {
+              break;
+            }
+            thread::yield_now();
+          }
         },
         | Err(_) => {
           let _ = failure_queue.fail_if_open(StreamError::Failed);
