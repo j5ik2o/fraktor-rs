@@ -37,7 +37,7 @@ config_file = "agents/worker.toml"
 
 [mcp_servers.serena]
 command = "uvx"
-args = ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "codex", "--project", ".", "--enable-web-dashboard", "false"]
+args = ["--from", "git+https://github.com/oraios/serena@d5f90710676b6a7cacc450f59005b4934c49b6db", "serena", "start-mcp-server", "--context", "codex", "--project", ".", "--enable-web-dashboard", "false"]
 
 [mcp_servers.serena.env]
 HOME = ".serena-home"
