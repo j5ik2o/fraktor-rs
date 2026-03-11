@@ -367,35 +367,6 @@ where
     Ok(Source { graph, mat: queue, _pd: PhantomData })
   }
 
-  /// Creates a source backed by a bounded source queue and runs a producer when materialized.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, StreamNotUsed>, StreamDslError>
-  where
-    F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
-    let capacity = validate_positive_argument("capacity", capacity)?;
-    Ok(Self::lazy_source(move || {
-      let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
-      let mut graph = StreamGraph::new();
-      let outlet: Outlet<Out> = Outlet::new();
-      let logic = QueueSourceLogic::<Out> { queue: queue.clone() };
-      let definition = SourceDefinition {
-        kind:        StageKind::Custom,
-        outlet:      outlet.id(),
-        output_type: TypeId::of::<Out>(),
-        mat_combine: MatCombine::KeepRight,
-        supervision: SupervisionStrategy::Stop,
-        restart:     None,
-        logic:       Box::new(logic),
-      };
-      graph.push_stage(StageDefinition::Source(definition));
-      producer(queue);
-      Source { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
-    }))
-  }
-
   /// Creates a source materialized as a source queue with completion notifications.
   ///
   /// `capacity` may be zero to disable the internal buffer.
@@ -2072,7 +2043,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete_if_active();
+    let _ = self.queue.complete_if_open();
     Ok(())
   }
 }
@@ -2090,7 +2061,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete();
+    let _ = self.queue.complete_if_open();
     Ok(())
   }
 }
@@ -2108,7 +2079,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete();
+    let _ = self.queue.complete_if_open();
     Ok(())
   }
 }

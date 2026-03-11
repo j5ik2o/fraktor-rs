@@ -131,23 +131,19 @@ fn bounded_source_queue_should_panic_when_failed_twice() {
 }
 
 #[test]
-fn bounded_source_queue_complete_if_active_should_close_open_queue() {
+fn bounded_source_queue_complete_if_open_should_ignore_already_completed_queue() {
   let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
-  queue.complete_if_active();
-
+  assert!(queue.complete_if_open());
+  assert!(!queue.complete_if_open());
   assert!(queue.is_closed());
 }
 
 #[test]
-fn bounded_source_queue_complete_if_active_should_ignore_terminated_queue() {
-  let completed = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
-  completed.complete();
-  completed.complete_if_active();
-  assert!(completed.is_closed());
+fn bounded_source_queue_fail_if_open_should_ignore_already_completed_queue() {
+  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
-  let failed = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
-  failed.fail(StreamError::Failed);
-  failed.complete_if_active();
-  assert!(failed.is_closed());
+  assert!(queue.complete_if_open());
+  assert!(!queue.fail_if_open(StreamError::Failed));
+  assert!(queue.is_closed());
 }

@@ -69,12 +69,10 @@ impl<T> Clone for SourceQueueWithComplete<T> {
 impl<T> SourceQueueWithComplete<T> {
   /// Creates an empty queue with completion notifications.
   ///
-  /// # Panics
-  ///
-  /// Panics when `max_concurrent_offers` is zero.
+  /// Use [`crate::core::Source::queue_with_overflow_and_max_concurrent_offers`] to validate
+  /// `max_concurrent_offers` before constructing this queue.
   #[must_use]
-  pub fn new(capacity: usize, overflow_strategy: OverflowStrategy, max_concurrent_offers: usize) -> Self {
-    assert!(max_concurrent_offers > 0, "max_concurrent_offers must be greater than zero");
+  pub(crate) fn new(capacity: usize, overflow_strategy: OverflowStrategy, max_concurrent_offers: usize) -> Self {
     let state = SourceQueueWithCompleteState {
       values:         VecDeque::new(),
       pending_offers: VecDeque::new(),
@@ -204,6 +202,21 @@ impl<T> SourceQueueWithComplete<T> {
     if should_complete {
       self.completion.complete(Ok(StreamDone::new()));
     }
+  }
+
+  pub(crate) fn complete_if_open(&self) -> bool {
+    let should_complete = {
+      let mut guard = self.inner.lock();
+      if guard.closed {
+        return false;
+      }
+      guard.closed = true;
+      guard.values.is_empty() && guard.pending_offers.is_empty()
+    };
+    if should_complete {
+      self.completion.complete(Ok(StreamDone::new()));
+    }
+    true
   }
 
   /// Fails the queue and rejects subsequent offers.

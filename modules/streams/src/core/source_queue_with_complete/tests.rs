@@ -136,6 +136,15 @@ fn source_queue_with_complete_should_allow_configured_number_of_pending_offers()
   assert_eq!(queue.poll().expect("poll"), Some(3_u32));
 }
 
+#[test]
+fn source_queue_with_complete_complete_if_open_should_ignore_already_completed_queue() {
+  let queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::DropTail, 1);
+
+  assert!(queue.complete_if_open());
+  assert!(!queue.complete_if_open());
+  assert!(queue.is_closed());
+}
+
 fn poll_ready<F>(future: F) -> F::Output
 where
   F: Future, {

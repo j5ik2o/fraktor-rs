@@ -62,6 +62,15 @@ impl<T> SourceQueue<T> {
     guard.closed = true;
   }
 
+  pub(crate) fn complete_if_open(&self) -> bool {
+    let mut guard = self.inner.lock();
+    if guard.closed {
+      return false;
+    }
+    guard.closed = true;
+    true
+  }
+
   /// Fails the queue and rejects subsequent offers.
   pub fn fail(&self, error: StreamError) {
     let mut guard = self.inner.lock();
