@@ -704,6 +704,18 @@ fn source_create_take_should_not_panic_when_producer_already_completed_queue() {
 }
 
 #[test]
+fn source_create_auto_completes_queue_when_producer_returns_without_termination() {
+  let source = Source::create(2, |queue| {
+    assert_eq!(queue.offer(50_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(51_u32), QueueOfferResult::Enqueued);
+  })
+  .expect("create");
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![50_u32, 51_u32]);
+}
+
+#[test]
 fn source_create_propagates_queue_failure_from_producer() {
   let source = Source::<u32, _>::create(2, |queue| {
     queue.fail(StreamError::Failed);

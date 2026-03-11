@@ -32,14 +32,19 @@ where
       let (graph, queue) = source.into_parts();
       let producer_queue = queue.clone();
       let failure_queue = queue.clone();
-      let panic_queue = queue.clone();
+      let termination_queue = queue.clone();
       let (started_tx, started_rx) = mpsc::sync_channel(1);
 
       let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
         let _ = started_tx.send(());
         let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
-        if result.is_err() {
-          let _ = panic_queue.fail_if_open(StreamError::Failed);
+        match result {
+          | Ok(()) => {
+            let _ = termination_queue.complete_if_open();
+          },
+          | Err(_) => {
+            let _ = termination_queue.fail_if_open(StreamError::Failed);
+          },
         }
       });
       match spawn_result {
