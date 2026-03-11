@@ -64,6 +64,7 @@ Cargo.lock
 /.agents/skills/*
 !/.agents/rules/legacy-code-temporary-usage.md
 !/.agents/rules/pre-edit-dylint.md
+!/.agents/rules/module-dependency-direction.md
 !/.agents/rules/rust
 
 !/.agents/skills/code-review
