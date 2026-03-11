@@ -100,6 +100,13 @@ impl Props {
     self
   }
 
+  /// Clears any previously assigned name, making this an anonymous actor.
+  #[must_use]
+  pub fn without_name(mut self) -> Self {
+    self.inner = self.inner.without_name();
+    self
+  }
+
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
   pub fn with_dispatcher(mut self, dispatcher: DispatcherConfig) -> Self {

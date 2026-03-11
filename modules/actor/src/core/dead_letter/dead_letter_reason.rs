@@ -17,6 +17,10 @@ pub enum DeadLetterReason {
   FatalActorError,
   /// Message was explicitly redirected to deadletter by system logic.
   ExplicitRouting,
+  /// Message was marked as suppressed and therefore not delivered.
+  SuppressedDeadLetter,
+  /// Message was dropped before it could reach the recipient.
+  Dropped,
   /// Serialization failure prevented message delivery.
   SerializationError,
 }

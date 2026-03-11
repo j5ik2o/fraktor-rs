@@ -27,7 +27,7 @@ use crate::core::{
   event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
-    AnyMessage,
+    ActorIdentity, AnyMessage, Identify,
     message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
     system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
   },
@@ -741,6 +741,16 @@ impl MessageInvoker for ActorCellInvoker {
         },
         | _ => {},
       }
+    }
+    if let Some(identify) = message.payload().downcast_ref::<Identify>() {
+      if let Some(sender) = message.sender().cloned() {
+        let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
+        // Silently ignore send errors: the requester may have stopped before the reply arrives.
+        let _ = sender.tell(AnyMessage::new(identity));
+      }
+      // NOTE: No reply is sent if sender is None (no deadLetters in no_std).
+      // Use with_sender() to receive ActorIdentity replies.
+      return Ok(());
     }
     let system = ActorSystem::from_state(cell.system());
     let mut ctx = ActorContext::new(&system, cell.pid);

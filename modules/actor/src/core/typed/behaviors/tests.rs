@@ -52,12 +52,31 @@ fn receive_and_reply_sends_response_to_sender() {
 
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
   let mut behavior = Behaviors::receive_and_reply(|_ctx, message: &Query| Ok(message.0 + 1));
-  let _ = behavior.handle_message(&mut typed_ctx, &Query(41)).expect("reply should succeed");
+  behavior.handle_message(&mut typed_ctx, &Query(41)).expect("reply should succeed");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
   let value = captured[0].payload().downcast_ref::<u32>().expect("u32 reply");
   assert_eq!(*value, 42);
+}
+
+#[test]
+fn receive_message_handles_message() {
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received_clone = received.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message(move |_ctx, message: &u32| {
+    received_clone.lock().push(*message);
+    Ok(Behaviors::same())
+  });
+  behavior.handle_message(&mut typed_ctx, &42).expect("receive should delegate");
+
+  assert_eq!(received.lock().as_slice(), &[42]);
 }
 
 #[test]
@@ -73,8 +92,6 @@ fn receive_and_reply_returns_recoverable_error_without_sender() {
   assert!(matches!(result, Err(ActorError::Recoverable(_))));
 }
 
-// --- AIAP-002: Behaviors::with_timers factory tests ---
-
 #[test]
 fn with_timers_produces_active_behavior_with_signal_handler() {
   let behavior = Behaviors::with_timers::<u32, _>(|_timers| Behaviors::ignore());
@@ -85,25 +102,31 @@ fn with_timers_produces_active_behavior_with_signal_handler() {
 fn with_timers_shared_handle_usable_in_closures() {
   let behavior = Behaviors::with_timers::<u32, _>(|timers| {
     let timers_for_handler = timers.clone();
-    Behaviors::receive_message(move |_ctx, msg: &u32| {
+    Behaviors::receive_message(move |_ctx, _msg: &u32| {
       let key = crate::core::typed::timer_key::TimerKey::new("dynamic");
-      // Verify the shared handle can be locked inside a Fn closure
-      let _ = timers_for_handler.lock().is_timer_active(&key);
-      let _ = msg;
+      assert!(!timers_for_handler.lock().is_timer_active(&key));
       Ok(Behaviors::same())
     })
   });
   assert!(behavior.has_signal_handler());
 }
 
-// --- AIAP-003: Behaviors::intercept factory tests ---
-
 struct RecordingInterceptor {
   receive_count: ArcShared<NoStdMutex<u32>>,
+  start_count:   ArcShared<NoStdMutex<u32>>,
   signal_count:  ArcShared<NoStdMutex<u32>>,
 }
 
 impl BehaviorInterceptor<u32> for RecordingInterceptor {
+  fn around_start(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, u32>,
+    start: &mut dyn FnMut(&mut TypedActorContext<'_, u32>) -> Result<Behavior<u32>, ActorError>,
+  ) -> Result<Behavior<u32>, ActorError> {
+    *self.start_count.lock() += 1;
+    start(ctx)
+  }
+
   fn around_receive(
     &mut self,
     ctx: &mut TypedActorContext<'_, u32>,
@@ -127,6 +150,8 @@ impl BehaviorInterceptor<u32> for RecordingInterceptor {
 
 #[test]
 fn intercept_delegates_started_to_interceptor() {
+  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count_clone = start_count.clone();
   let signal_count = ArcShared::new(NoStdMutex::new(0u32));
   let signal_count_clone = signal_count.clone();
 
@@ -134,6 +159,7 @@ fn intercept_delegates_started_to_interceptor() {
     move || {
       Box::new(RecordingInterceptor {
         receive_count: ArcShared::new(NoStdMutex::new(0)),
+        start_count:   start_count_clone.clone(),
         signal_count:  signal_count_clone.clone(),
       })
     },
@@ -145,13 +171,10 @@ fn intercept_delegates_started_to_interceptor() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  // Trigger Started — this calls interceptor.around_start
-  let _inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
 
-  // around_start default delegates to start callback which calls around_signal indirectly.
-  // The around_start default does NOT call around_signal, it calls the start callback directly.
-  // So signal_count should be 0 (around_start is not around_signal).
-  // But we confirmed the factory ran without panic — that itself is the test.
+  assert_eq!(*start_count.lock(), 1, "start interceptor should have been called once");
+  assert_eq!(*signal_count.lock(), 0, "started should not be counted as a signal interception");
 }
 
 #[test]
@@ -163,6 +186,7 @@ fn intercept_delegates_message_to_interceptor() {
     move || {
       Box::new(RecordingInterceptor {
         receive_count: receive_count_clone.clone(),
+        start_count:   ArcShared::new(NoStdMutex::new(0)),
         signal_count:  ArcShared::new(NoStdMutex::new(0)),
       })
     },
@@ -174,11 +198,9 @@ fn intercept_delegates_message_to_interceptor() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  // First trigger Started to initialize the intercepted behavior
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
 
-  // Now send a message through the intercepted behavior
-  let _next = inner.handle_message(&mut typed_ctx, &42u32).expect("message");
+  inner.handle_message(&mut typed_ctx, &42u32).expect("message");
 
   assert_eq!(*receive_count.lock(), 1, "interceptor should have been called once");
 }
@@ -192,6 +214,7 @@ fn intercept_delegates_signal_to_interceptor() {
     move || {
       Box::new(RecordingInterceptor {
         receive_count: ArcShared::new(NoStdMutex::new(0)),
+        start_count:   ArcShared::new(NoStdMutex::new(0)),
         signal_count:  signal_count_clone.clone(),
       })
     },
@@ -205,13 +228,10 @@ fn intercept_delegates_signal_to_interceptor() {
 
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
 
-  // Send a signal through the intercepted behavior
-  let _next = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("signal");
+  inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("signal");
 
   assert_eq!(*signal_count.lock(), 1, "signal interceptor should have been called once");
 }
-
-// --- AIAP-004: set_receive_timeout / cancel_receive_timeout tests ---
 
 #[test]
 fn receive_timeout_config_stores_duration_and_produces_message() {
@@ -253,8 +273,6 @@ fn cancel_receive_timeout_clears_state() {
   assert!(timeout_state.is_none(), "timeout should be cleared after cancel");
 }
 
-// --- Behaviors::monitor tests ---
-
 #[test]
 fn monitor_sends_clone_to_monitor_ref() {
   let monitor_inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -270,11 +288,9 @@ fn monitor_sends_clone_to_monitor_ref() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  // Initialize via Started signal
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
 
-  // Send a message through the monitored behavior
-  let _next = inner.handle_message(&mut typed_ctx, &42u32).expect("message");
+  inner.handle_message(&mut typed_ctx, &42u32).expect("message");
 
   let captured = monitor_inbox.lock();
   assert_eq!(captured.len(), 1, "monitor should have received one message");
@@ -306,7 +322,7 @@ fn monitor_passes_message_to_inner_behavior() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
-  let _next = inner.handle_message(&mut typed_ctx, &99u32).expect("message");
+  inner.handle_message(&mut typed_ctx, &99u32).expect("message");
 
   let captured = inner_received.lock();
   assert_eq!(captured.len(), 1, "inner behavior should have received the message");
