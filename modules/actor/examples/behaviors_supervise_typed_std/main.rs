@@ -13,8 +13,9 @@ use fraktor_actor_rs::{
   core::{
     error::ActorError,
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    typed::{Behavior, BehaviorSignal},
   },
-  std::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps},
+  std::typed::{Behaviors, TypedActorSystem, TypedProps},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 

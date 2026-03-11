@@ -6,7 +6,10 @@
 #[path = "../std_tick_driver_support.rs"]
 mod std_tick_driver_support;
 
-use fraktor_actor_rs::std::typed::{Behavior, BehaviorSignal, Behaviors, TypedActorSystem, TypedProps};
+use fraktor_actor_rs::{
+  core::typed::{Behavior, BehaviorSignal},
+  std::typed::{Behaviors, TypedActorSystem, TypedProps},
+};
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 #[derive(Clone, Copy)]

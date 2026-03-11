@@ -11,18 +11,18 @@ use fraktor_actor_rs::{
   core::{
     dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
-    event::logging::{LogEvent, LogLevel, LoggerWriter},
+    event::{
+      logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+      stream::EventStreamEvent,
+    },
+    futures::ActorFutureListener,
+    messaging::{AnyMessage, AnyMessageView},
     props::MailboxConfig,
   },
   std::{
     actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    event::{
-      logging::StdLoggerSubscriber,
-      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    },
-    futures::ActorFutureListener,
-    messaging::{AnyMessage, AnyMessageView},
+    event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
     props::Props,
     system::ActorSystem,
   },
@@ -40,11 +40,11 @@ impl LoggerWriter for StdoutLogger {
   }
 }
 
-struct StdLoggerAdapter(StdLoggerSubscriber);
+struct StdLoggerAdapter(LoggerSubscriber);
 
 impl StdLoggerAdapter {
   fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
-    Self(StdLoggerSubscriber::new(level, writer))
+    Self(LoggerSubscriber::new(level, writer))
   }
 }
 

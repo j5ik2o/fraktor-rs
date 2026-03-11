@@ -1,8 +1,10 @@
 use fraktor_actor_rs::{
-  core::error::ActorError,
+  core::{
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+  },
   std::{
     actor::{Actor, ActorContext},
-    messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
 };

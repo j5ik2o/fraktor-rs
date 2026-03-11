@@ -1,8 +1,8 @@
 use tokio::runtime::Handle;
 
 use crate::{
-  core::dispatch::dispatcher::DispatchError,
-  std::dispatch::dispatcher::{DispatchExecutor, DispatchShared},
+  core::dispatch::dispatcher::{DispatchError, DispatchShared},
+  std::dispatch::dispatcher::DispatchExecutor,
 };
 
 /// Executor that drives a dispatcher on a Tokio runtime handle.

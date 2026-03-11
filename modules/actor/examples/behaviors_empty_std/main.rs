@@ -9,11 +9,15 @@ mod std_tick_driver_support;
 
 use std::time::Duration;
 
-use fraktor_actor_rs::std::{
-  event::stream::{
-    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
+use fraktor_actor_rs::{
+  core::{
+    event::stream::{EventStreamEvent, EventStreamSubscription},
+    typed::Behavior,
   },
-  typed::{Behavior, Behaviors, TypedActorSystem, TypedProps},
+  std::{
+    event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
+    typed::{Behaviors, TypedActorSystem, TypedProps},
+  },
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 

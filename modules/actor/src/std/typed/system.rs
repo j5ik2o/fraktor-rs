@@ -3,20 +3,26 @@ use alloc::{string::String, vec::Vec};
 use crate::{
   core::{
     actor::Pid,
-    event::{logging::LogLevel, stream::subscriber_handle as core_subscriber_handle},
+    dead_letter::DeadLetterEntry,
+    error::SendError,
+    event::{
+      logging::LogLevel,
+      stream::{
+        EventStreamEvent, EventStreamShared, EventStreamSubscription, subscriber_handle as core_subscriber_handle,
+      },
+    },
+    futures::ActorFutureShared,
     spawn::SpawnError,
+    system::state::SystemStateShared,
     typed::TypedActorSystem as CoreTypedActorSystem,
   },
   std::{
-    dead_letter::DeadLetterEntry,
-    error::SendError,
-    event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFutureShared,
+    event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared},
     typed::{TypedProps, actor::TypedActorRef},
   },
 };
 
-type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
+type StdSubscriberHandle = EventStreamSubscriberShared;
 
 /// Typed actor system for the standard runtime.
 ///
@@ -59,7 +65,7 @@ where
 
   /// Returns the shared system state handle.
   #[must_use]
-  pub fn state(&self) -> crate::std::system::SystemStateShared {
+  pub fn state(&self) -> SystemStateShared {
     self.inner.state()
   }
 
@@ -71,7 +77,7 @@ where
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> EventStream {
+  pub fn event_stream(&self) -> EventStreamShared {
     self.inner.event_stream()
   }
 

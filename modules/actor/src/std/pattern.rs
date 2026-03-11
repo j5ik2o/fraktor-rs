@@ -13,10 +13,10 @@ mod tests;
 ///
 /// Returns an error if the request cannot be delivered.
 pub fn ask_with_timeout(
-  actor_ref: &crate::std::actor::ActorRef,
-  message: crate::std::messaging::AnyMessage,
+  actor_ref: &crate::core::actor::actor_ref::ActorRef,
+  message: crate::core::messaging::AnyMessage,
   timeout: Duration,
-) -> Result<crate::std::messaging::AskResponse, crate::std::error::SendError> {
+) -> Result<crate::core::messaging::AskResponse, crate::core::error::SendError> {
   crate::core::pattern::ask_with_timeout(actor_ref, message, timeout)
 }
 
@@ -28,7 +28,7 @@ pub fn ask_with_timeout(
 /// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop(
-  target: &crate::std::actor::ActorRef,
+  target: &crate::core::actor::actor_ref::ActorRef,
   timeout: Duration,
 ) -> Result<(), crate::core::messaging::AskError> {
   crate::core::pattern::graceful_stop(target, timeout).await
@@ -43,8 +43,8 @@ pub async fn graceful_stop(
 /// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &crate::std::actor::ActorRef,
-  stop_message: crate::std::messaging::AnyMessage,
+  target: &crate::core::actor::actor_ref::ActorRef,
+  stop_message: crate::core::messaging::AnyMessage,
   timeout: Duration,
 ) -> Result<(), crate::core::messaging::AskError> {
   crate::core::pattern::graceful_stop_with_message(target, stop_message, timeout).await

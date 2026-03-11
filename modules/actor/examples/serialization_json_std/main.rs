@@ -16,6 +16,7 @@ use fraktor_actor_rs::{
   core::{
     error::ActorError,
     extension::ExtensionInstallers,
+    messaging::AnyMessageView,
     serialization::{
       NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
       SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
@@ -24,7 +25,6 @@ use fraktor_actor_rs::{
   },
   std::{
     actor::{Actor, ActorContext},
-    messaging::AnyMessageView,
     props::Props,
     system::{ActorSystem, ActorSystemConfig},
   },

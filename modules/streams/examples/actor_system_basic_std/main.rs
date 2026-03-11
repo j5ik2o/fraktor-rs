@@ -5,6 +5,7 @@ use std::time::Duration;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
+    messaging::AnyMessageView,
     scheduler::{
       SchedulerConfig,
       tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -12,7 +13,6 @@ use fraktor_actor_rs::{
   },
   std::{
     actor::{Actor, ActorContext},
-    messaging::AnyMessageView,
     props::Props,
     system::{ActorSystem, ActorSystemConfig},
   },

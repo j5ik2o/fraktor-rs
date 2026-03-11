@@ -2,8 +2,8 @@ extern crate std;
 use std::{string::String, thread};
 
 use crate::{
-  core::dispatch::dispatcher::DispatchError,
-  std::dispatch::dispatcher::{DispatchExecutor, DispatchShared},
+  core::dispatch::dispatcher::{DispatchError, DispatchShared},
+  std::dispatch::dispatcher::DispatchExecutor,
 };
 
 /// Executor that runs dispatcher batches on newly spawned OS threads.

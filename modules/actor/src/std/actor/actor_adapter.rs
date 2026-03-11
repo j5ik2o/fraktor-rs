@@ -2,12 +2,10 @@ use crate::{
   core::{
     actor::{ActorContext, Pid},
     error::ActorError,
+    messaging::AnyMessageView,
     supervision::SupervisorStrategyConfig,
   },
-  std::{
-    actor::{Actor, ActorContext as StdActorContext},
-    messaging::AnyMessageView,
-  },
+  std::actor::{Actor, ActorContext as StdActorContext},
 };
 
 /// `ActorAdapter` bridges [`Actor`] implementations to the core runtime trait.

@@ -7,10 +7,12 @@ use tokio::runtime::Handle;
 
 #[cfg(feature = "tokio-executor")]
 use super::dispatch_executor::TokioExecutor;
-use super::{DispatchExecutor, DispatchExecutorAdapter, DispatcherShared, StdScheduleAdapter};
+use super::{DispatchExecutor, DispatchExecutorAdapter, StdScheduleAdapter};
 use crate::core::{
   dispatch::{
-    dispatcher::{DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, ScheduleAdapterShared},
+    dispatcher::{
+      DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, DispatcherShared, ScheduleAdapterShared,
+    },
     mailbox::Mailbox,
   },
   spawn::SpawnError,

@@ -1,7 +1,4 @@
-use crate::{
-  core::dispatch::dispatcher::{DispatchError, DispatchExecutorRunner},
-  std::dispatch::dispatcher::DispatchShared,
-};
+use crate::core::dispatch::dispatcher::{DispatchError, DispatchExecutorRunner, DispatchShared};
 
 #[cfg(test)]
 mod tests;

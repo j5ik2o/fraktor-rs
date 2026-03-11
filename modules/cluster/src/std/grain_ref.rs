@@ -1,7 +1,7 @@
 //! Std wrapper for grain references.
 
-use fraktor_actor_rs::std::{
-  actor::ActorRef,
+use fraktor_actor_rs::core::{
+  actor::actor_ref::ActorRef,
   messaging::{AnyMessage, AskResponse},
 };
 use fraktor_utils_rs::core::sync::ArcShared;

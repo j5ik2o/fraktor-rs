@@ -70,14 +70,17 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
+    error::ActorError,
+    event::stream::{EventStreamEvent, EventStreamSubscription},
+    extension::ExtensionInstallers,
+    messaging::{AnyMessage, AnyMessageView},
+    serialization::SerializationExtensionInstaller,
     system::remote::RemotingConfig,
   },
   std::{
     actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
-    messaging::{AnyMessage, AnyMessageView},
+    event::stream::{EventStreamSubscriber, subscriber_handle},
     props::Props,
     scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
