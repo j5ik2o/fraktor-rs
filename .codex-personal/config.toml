@@ -45,3 +45,5 @@ HOME = ".serena-home"
 [tui]
 status_line = ["current-dir", "git-branch"]
 
+[projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
+trust_level = "trusted"
