@@ -2072,9 +2072,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    if !self.queue.is_closed() {
-      self.queue.complete();
-    }
+    self.queue.complete_if_active();
     Ok(())
   }
 }

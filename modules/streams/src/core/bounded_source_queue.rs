@@ -95,6 +95,18 @@ impl<T> BoundedSourceQueue<T> {
     guard.closed = true;
   }
 
+  /// Completes the queue only when it is still active.
+  ///
+  /// This method is used by cancellation paths that must not panic when a
+  /// concurrent producer already terminated the queue.
+  pub(crate) fn complete_if_active(&self) {
+    let mut guard = self.inner.lock();
+    if guard.closed || guard.failure.is_some() {
+      return;
+    }
+    guard.closed = true;
+  }
+
   /// Fails the queue and rejects subsequent offers.
   pub fn fail(&self, error: StreamError) {
     let mut guard = self.inner.lock();
