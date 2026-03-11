@@ -19,6 +19,10 @@ AIレビュー指摘に基づき、実装を修正せよ。
 **やらないこと（重要）:**
 - `cargo check` / `cargo build` / `cargo test` / `cargo clippy` を直接実行しないこと。必ず `./scripts/ci-check.sh` 経由で実行すること。
 - `ci-check.sh` を複数同時に実行しないこと（cargo ロック競合が発生する）。前のコマンドの完了を必ず待ってから次を実行すること。
+**修正完了条件（必須）:**
+修正後に必ず以下を順番に実行し、全チェックがパスすることを確認すること:
+1. `./scripts/ci-check.sh dylint -m actor` （対象モジュールのDylint）
+2. `./scripts/ci-check.sh all` （全CI）
 
 **判定基準:**
 - 全指摘を修正した → 「AI問題の修正完了」
