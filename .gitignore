@@ -41,42 +41,7 @@ Thumbs.db
 .vscode/
 
 Cargo.lock
-/.claude/agents
-/.claude/commands
-/.claude/rules
-/.claude/skills/*
-/.claude/*.json
-/.codex/
-/.gemini/
-/.cursor/
-/.copilot/
-/.opencode/
-/openspec/
-
-/.codex-personal/
-/.codex-corporate/
-
-/.serena/cache/
-/.serena-home/
 *.pkl
 
 /.takt/clone-meta/
 
-/.agents/CC-SDD.md
-/.agents/commands/*
-/.agents/rules/*
-/.agents/skills/*
-!/.agents/rules/legacy-code-temporary-usage.md
-!/.agents/rules/pre-edit-dylint.md
-!/.agents/rules/module-dependency-direction.md
-!/.agents/rules/rust
-
-!/.agents/skills/code-review
-!/.agents/skills/gh-issue-organizer
-!/.agents/skills/creating-fraktor-modules
-!/.agents/skills/designing-fraktor-shared-types
-!/.agents/skills/find-skills
-!/.agents/skills/pekko-gap-analysis
-!/.agents/skills/takt-*
-
-!/.claude/skills/takt-cc
