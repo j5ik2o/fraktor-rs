@@ -9,10 +9,13 @@ use std::{thread, time::Duration};
 mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
-  core::error::ActorError,
-  std::{
-    actor::{Actor, ActorContext, ChildRef},
+  core::{
+    actor::ChildRef,
+    error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
+  },
+  std::{
+    actor::{Actor, ActorContext},
     props::Props,
     system::ActorSystem,
   },

@@ -3,8 +3,8 @@ extern crate std;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
-  core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor},
-  std::dispatch::dispatcher::{DispatchExecutor, DispatchShared},
+  core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor, DispatchShared},
+  std::dispatch::dispatcher::DispatchExecutor,
 };
 
 struct TestExecutor {

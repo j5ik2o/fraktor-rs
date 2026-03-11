@@ -6,11 +6,14 @@
 use std::{string::String, time::Duration};
 
 use fraktor_actor_rs::{
-  core::error::ActorError,
-  std::{
-    actor::{Actor, ActorContext, ActorRef},
+  core::{
+    actor::actor_ref::ActorRef,
+    error::ActorError,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
+  },
+  std::{
+    actor::{Actor, ActorContext},
     props::Props,
     system::ActorSystem,
   },

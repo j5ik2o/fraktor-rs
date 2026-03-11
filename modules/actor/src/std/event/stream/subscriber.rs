@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::EventStreamEvent;
+use crate::core::event::stream::EventStreamEvent;
 
 /// Trait implemented by observers interested in the standard runtime event stream.
 pub trait EventStreamSubscriber: Send + Sync + 'static {

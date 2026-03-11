@@ -196,7 +196,7 @@ where
       | BehaviorDirective::Stopped => Ok(Self::stopped()),
       | BehaviorDirective::Ignore => Ok(Self::same()),
       | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
-      | BehaviorDirective::Empty => Ok(Self::empty()),
+      | BehaviorDirective::Empty => Ok(Self::same()),
       | BehaviorDirective::Active => match &mut self.signal_handler {
         | Some(handler) => handler(ctx, signal),
         | None => Ok(Self::same()),

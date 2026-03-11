@@ -1,8 +1,5 @@
 use super::ActorContext;
-use crate::{
-  core::{actor::Pid, error::ActorError, supervision::SupervisorStrategyConfig},
-  std::messaging::AnyMessageView,
-};
+use crate::core::{actor::Pid, error::ActorError, messaging::AnyMessageView, supervision::SupervisorStrategyConfig};
 
 /// Defines the lifecycle contract for actors executed with the standard runtime.
 pub trait Actor: Send {

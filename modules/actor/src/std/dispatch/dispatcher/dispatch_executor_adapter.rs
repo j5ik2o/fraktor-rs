@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 
-use super::{DispatchExecutor, DispatchShared};
-use crate::core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor};
+use super::DispatchExecutor;
+use crate::core::dispatch::dispatcher::{DispatchError, DispatchExecutor as CoreDispatchExecutor, DispatchShared};
 
 /// Adapter bridging [`DispatchExecutor`] trait objects to the core runtime.
 ///

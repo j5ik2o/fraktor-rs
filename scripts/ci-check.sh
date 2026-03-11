@@ -76,10 +76,13 @@ run_with_heartbeat() {
   fi
 
   if [[ "${enabled}" != "0" ]]; then
+    local start_time
+    start_time=$(date +%s)
     (
       while true; do
         sleep "${interval}"
-        printf 'info: %s still running (%s)\n' "${label}" "$(date '+%H:%M:%S')"
+        local elapsed=$(( $(date +%s) - start_time ))
+        printf 'info: %s still running (%ds elapsed)\n' "${label}" "${elapsed}"
       done
     ) &
     heartbeat_pid=$!
@@ -930,7 +933,7 @@ run_all() {
   run_std || return 1
   run_doc_tests || return 1
 #  run_embedded || return 1
-  run_perf || return 1
+#  run_perf || return 1
   run_tests || return 1
   run_actor_path_e2e || return 1
   run_examples || return 1

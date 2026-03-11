@@ -1,9 +1,6 @@
 use fraktor_actor_rs::{
-  core::error::ActorError,
-  std::{
-    actor::{Actor, ActorContext},
-    messaging::AnyMessageView,
-  },
+  core::{error::ActorError, messaging::AnyMessageView},
+  std::actor::{Actor, ActorContext},
 };
 
 pub struct PrinterActor;

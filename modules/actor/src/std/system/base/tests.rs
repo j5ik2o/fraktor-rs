@@ -1,11 +1,13 @@
 use core::time::Duration;
 
 use crate::{
-  core::error::ActorError,
-  std::{
-    actor::{Actor, ActorContext},
+  core::{
+    error::ActorError,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
+  },
+  std::{
+    actor::{Actor, ActorContext},
     props::Props,
     system::ActorSystem,
   },

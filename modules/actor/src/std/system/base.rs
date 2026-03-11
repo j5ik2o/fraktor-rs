@@ -2,26 +2,27 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{
   core::{
-    actor::{Pid, actor_path::ActorPath},
+    actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef},
+    dead_letter::DeadLetterEntry,
+    error::SendError,
     event::{
       logging::LogLevel,
-      stream::{TickDriverSnapshot, subscriber_handle as core_subscriber_handle},
+      stream::{
+        EventStreamEvent, EventStreamShared, EventStreamSubscription, TickDriverSnapshot,
+        subscriber_handle as core_subscriber_handle,
+      },
     },
+    futures::ActorFutureShared,
+    messaging::AskResult,
     scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
     spawn::SpawnError,
     system::{
-      ActorSystem as CoreActorSystem, ExtendedActorSystem,
-      provider::ActorRefResolveError,
-      state::{SystemStateShared as CoreSystemStateShared, system_state::SystemState as CoreSystemState},
+      ActorSystem as CoreActorSystem, ExtendedActorSystem, provider::ActorRefResolveError,
+      state::SystemStateShared as CoreSystemStateShared,
     },
   },
   std::{
-    actor::ActorRef,
-    dead_letter::DeadLetterEntry,
-    error::SendError,
-    event::stream::{EventStream, EventStreamEvent, EventStreamSubscriberAdapter, EventStreamSubscription},
-    futures::ActorFutureShared,
-    messaging::AskResult,
+    event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared},
     props::Props,
     system::ActorSystemConfig,
   },
@@ -30,7 +31,7 @@ use crate::{
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;
 
-type StdSubscriberHandle = crate::std::event::stream::EventStreamSubscriberShared;
+type StdSubscriberHandle = EventStreamSubscriberShared;
 
 /// Actor system for the standard runtime with ergonomics for standard runtime consumers.
 pub struct ActorSystem {
@@ -144,7 +145,7 @@ impl ActorSystem {
 
   /// Returns the shared system state.
   #[must_use]
-  pub fn state(&self) -> SystemStateShared {
+  pub fn state(&self) -> CoreSystemStateShared {
     self.inner.state()
   }
 
@@ -162,7 +163,7 @@ impl ActorSystem {
 
   /// Returns the shared event stream handle.
   #[must_use]
-  pub fn event_stream(&self) -> EventStream {
+  pub fn event_stream(&self) -> EventStreamShared {
     self.inner.event_stream()
   }
 
@@ -237,9 +238,3 @@ impl ActorSystem {
     self.inner.resolve_actor_ref(path)
   }
 }
-
-/// Shared system state wrapper specialised for the standard runtime.
-pub type SystemStateShared = CoreSystemStateShared;
-
-/// System state container specialised for the standard runtime.
-pub type SystemState = CoreSystemState;

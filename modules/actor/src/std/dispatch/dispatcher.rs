@@ -7,10 +7,8 @@ mod dispatch_executor_adapter;
 /// Dispatcher configuration bindings tailored for the standard runtime.
 mod dispatcher_config;
 mod schedule_adapter;
-mod types;
 
 pub use base::*;
 pub use dispatch_executor_adapter::DispatchExecutorAdapter;
 pub use dispatcher_config::DispatcherConfig;
 pub use schedule_adapter::StdScheduleAdapter;
-pub use types::*;

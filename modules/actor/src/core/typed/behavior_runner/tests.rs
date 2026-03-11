@@ -1,10 +1,13 @@
 use alloc::{string::String, sync::Arc};
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
 use super::BehaviorRunner;
 use crate::core::{
   actor::ActorContext,
   error::ActorError,
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
   typed::{
     Behaviors,
@@ -16,6 +19,24 @@ use crate::core::{
 };
 
 struct ProbeMessage;
+
+struct RecordingUnhandledSubscriber {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+}
+
+impl RecordingUnhandledSubscriber {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for RecordingUnhandledSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if matches!(event, EventStreamEvent::UnhandledMessage(_)) {
+      self.events.lock().push(event.clone());
+    }
+  }
+}
 
 fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessage>) {
   let system = ActorSystem::new_empty();
@@ -115,4 +136,23 @@ fn behavior_runner_death_pact_succeeds_with_signal_handler() {
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
   assert!(result.is_ok());
   assert!(received.load(Ordering::SeqCst));
+}
+
+#[test]
+fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
+  let system = ActorSystem::new_empty();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let mut runner = BehaviorRunner::new(Behaviors::empty());
+
+  let result = runner.post_stop(&mut typed_ctx);
+
+  assert!(result.is_ok());
+  assert!(events.lock().is_empty());
 }

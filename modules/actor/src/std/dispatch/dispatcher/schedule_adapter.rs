@@ -9,9 +9,9 @@ use std::{
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::{
-  core::dispatch::{dispatcher::ScheduleAdapter, mailbox::ScheduleHints},
-  std::dispatch::dispatcher::DispatcherShared,
+use crate::core::dispatch::{
+  dispatcher::{DispatcherShared, ScheduleAdapter},
+  mailbox::ScheduleHints,
 };
 
 #[cfg(test)]

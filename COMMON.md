@@ -9,6 +9,7 @@
 - 実装の全タスクを完了した段階で `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
 - `./scripts/ci-check.sh all` は所要時間が長いが、完了待ってください。
 - 実装タスク以外（ドキュメント編集など）は`./scripts/ci-check.sh all`を実行する必要ない
+- **TAKT ムーブメント経由で作業する場合は、ピースの instruction に記載された CI コマンドに従うこと。** この CLAUDE.md の `ci-check.sh all` 指示より、ピースの instruction が優先される。
 - `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること

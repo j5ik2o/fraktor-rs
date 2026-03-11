@@ -1,4 +1,4 @@
-use fraktor_actor_rs::std::event::stream::{EventStreamEvent, EventStreamSubscriber};
+use fraktor_actor_rs::{core::event::stream::EventStreamEvent, std::event::stream::EventStreamSubscriber};
 
 pub struct LifecyclePrinter;
 

@@ -13,11 +13,13 @@ mod std_tick_driver_support;
 
 use std::{thread, time::Duration};
 
-use fraktor_actor_rs::std::{
-  event::stream::{EventStreamSubscriberShared, subscriber_handle},
-  messaging::AnyMessage,
-  props::Props,
-  system::ActorSystem,
+use fraktor_actor_rs::{
+  core::messaging::AnyMessage,
+  std::{
+    event::stream::{EventStreamSubscriberShared, subscriber_handle},
+    props::Props,
+    system::ActorSystem,
+  },
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 use guardian::GuardianActor;

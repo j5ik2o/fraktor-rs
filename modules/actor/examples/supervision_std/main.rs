@@ -13,16 +13,16 @@ mod std_tick_driver_support;
 use fraktor_actor_rs::{
   core::{
     error::ActorError,
-    event::logging::{LogEvent, LogLevel, LoggerWriter},
+    event::{
+      logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
+      stream::EventStreamEvent,
+    },
+    messaging::{AnyMessage, AnyMessageView},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
   std::{
     actor::{Actor, ActorContext},
-    event::{
-      logging::StdLoggerSubscriber,
-      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    },
-    messaging::{AnyMessage, AnyMessageView},
+    event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
     props::Props,
     system::ActorSystem,
   },
@@ -40,11 +40,11 @@ impl LoggerWriter for StdoutLogger {
   }
 }
 
-struct StdLoggerAdapter(StdLoggerSubscriber);
+struct StdLoggerAdapter(LoggerSubscriber);
 
 impl StdLoggerAdapter {
   fn new(level: LogLevel, writer: Box<dyn LoggerWriter>) -> Self {
-    Self(StdLoggerSubscriber::new(level, writer))
+    Self(LoggerSubscriber::new(level, writer))
   }
 }
 

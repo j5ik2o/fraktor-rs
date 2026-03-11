@@ -1,5 +1,5 @@
-use super::{EventStreamEvent, EventStreamSubscriberShared};
-use crate::core::event::stream::EventStreamSubscriber as CoreEventStreamSubscriber;
+use super::EventStreamSubscriberShared;
+use crate::core::event::stream::{EventStreamEvent, EventStreamSubscriber as CoreEventStreamSubscriber};
 
 /// Adapter bridging standard [`EventStreamSubscriber`] to the core runtime trait.
 pub struct EventStreamSubscriberAdapter {

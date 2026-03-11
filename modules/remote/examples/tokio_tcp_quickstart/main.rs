@@ -13,13 +13,15 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
-    error::ActorError, extension::ExtensionInstallers, serialization::SerializationExtensionInstaller,
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::{AnyMessage, AnyMessageView},
+    serialization::SerializationExtensionInstaller,
     system::remote::RemotingConfig,
   },
   std::{
     actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::tick::TickDriverConfig,
     system::{ActorSystem, ActorSystemConfig},
@@ -148,12 +150,12 @@ impl Actor for ReceiverGuardian {
 
 #[derive(Clone, Debug)]
 struct StartPing {
-  target: fraktor_actor_rs::std::actor::ActorRef,
+  target: fraktor_actor_rs::core::actor::actor_ref::ActorRef,
   text:   String,
 }
 
 #[derive(Clone, Debug)]
 struct Ping {
   text:     String,
-  reply_to: fraktor_actor_rs::std::actor::ActorRef,
+  reply_to: fraktor_actor_rs::core::actor::actor_ref::ActorRef,
 }

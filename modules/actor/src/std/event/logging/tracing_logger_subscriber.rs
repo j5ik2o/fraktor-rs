@@ -13,9 +13,9 @@ use tracing::{Level, event};
 use crate::{
   core::event::{
     logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
-    stream::EventStreamSubscriber as CoreEventStreamSubscriber,
+    stream::{EventStreamEvent, EventStreamSubscriber as CoreEventStreamSubscriber},
   },
-  std::event::stream::{EventStreamEvent, EventStreamSubscriber},
+  std::event::stream::EventStreamSubscriber,
 };
 
 /// Event stream subscriber that forwards runtime log events to the `tracing` crate.

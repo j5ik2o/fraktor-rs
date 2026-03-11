@@ -16,8 +16,11 @@ use tracing::{
 
 use super::TracingLoggerSubscriber;
 use crate::{
-  core::event::logging::{LogEvent, LogLevel},
-  std::event::stream::{EventStreamEvent, EventStreamSubscriber},
+  core::event::{
+    logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
+  },
+  std::event::stream::EventStreamSubscriber,
 };
 
 #[test]

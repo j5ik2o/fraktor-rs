@@ -1,11 +1,8 @@
 use crate::{
-  core::typed::TypedProps as CoreTypedProps,
+  core::typed::{Behavior, TypedProps as CoreTypedProps},
   std::{
     props::Props,
-    typed::{
-      Behavior,
-      actor::{TypedActor, TypedActorAdapter},
-    },
+    typed::actor::{TypedActor, TypedActorAdapter},
   },
 };
 

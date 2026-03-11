@@ -9,11 +9,11 @@ use crate::{
   core::{
     error::ActorError,
     typed::{
-      BehaviorInterceptor, BehaviorSignal, Behaviors as CoreBehaviors,
+      Behavior, BehaviorInterceptor, BehaviorSignal, Behaviors as CoreBehaviors, StashBuffer, Supervise,
       actor::TypedActorContext as CoreTypedActorContext,
     },
   },
-  std::typed::{Behavior, StashBuffer, Supervise, actor::TypedActorContext},
+  std::typed::actor::TypedActorContext,
 };
 
 /// Interceptor that logs every received message via `tracing::debug!`.
