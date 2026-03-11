@@ -137,12 +137,23 @@ fn source_queue_with_complete_should_allow_configured_number_of_pending_offers()
 }
 
 #[test]
-fn source_queue_with_complete_complete_if_open_should_ignore_already_completed_queue() {
-  let queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::DropTail, 1);
+fn source_queue_with_complete_close_for_cancel_should_resolve_pending_offer_and_completion() {
+  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let completion = queue.watch_completion();
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
 
-  assert!(queue.complete_if_open());
-  assert!(!queue.complete_if_open());
+  assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
+
+  let mut pending_offer = pin!(queue.offer(2_u32));
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Pending);
+
+  queue.close_for_cancel();
+
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
+  assert!(queue.is_empty());
 }
 
 fn poll_ready<F>(future: F) -> F::Output

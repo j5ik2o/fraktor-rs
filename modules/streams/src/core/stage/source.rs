@@ -2061,7 +2061,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    let _ = self.queue.complete_if_open();
+    self.queue.close_for_cancel();
     Ok(())
   }
 }

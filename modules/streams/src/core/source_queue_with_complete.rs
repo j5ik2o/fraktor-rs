@@ -204,19 +204,22 @@ impl<T> SourceQueueWithComplete<T> {
     }
   }
 
-  pub(crate) fn complete_if_open(&self) -> bool {
+  pub(crate) fn close_for_cancel(&self) {
     let should_complete = {
       let mut guard = self.inner.lock();
-      if guard.closed {
-        return false;
+      if guard.failure.is_some() {
+        return;
       }
       guard.closed = true;
-      guard.values.is_empty() && guard.pending_offers.is_empty()
+      guard.values.clear();
+      while let Some(pending_offer) = guard.pending_offers.pop_front() {
+        pending_offer.completion.complete(Ok(QueueOfferResult::QueueClosed));
+      }
+      true
     };
     if should_complete {
       self.completion.complete(Ok(StreamDone::new()));
     }
-    true
   }
 
   /// Fails the queue and rejects subsequent offers.

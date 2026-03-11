@@ -671,6 +671,26 @@ fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
 }
 
 #[test]
+fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
+  let queue = crate::core::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let completion = queue.watch_completion();
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+  let mut logic = super::QueueWithOverflowSourceLogic { queue: queue.clone() };
+
+  assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
+
+  let mut pending_offer = pin!(queue.offer(31_u32));
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Pending);
+
+  logic.on_cancel().expect("on_cancel");
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert!(queue.is_closed());
+  assert!(queue.is_empty());
+}
+
+#[test]
 fn source_create_defers_producer_until_source_is_materialized() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
