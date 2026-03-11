@@ -41,9 +41,12 @@ fn log_messages_delegates_to_inner_behavior() {
 fn receive_message_handles_message() {
   let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
+  let captured_pid = ArcShared::new(NoStdMutex::new(0u64));
+  let captured_pid_clone = captured_pid.clone();
 
-  let mut behavior = Behaviors::receive_message(move |_ctx, msg: &u32| {
+  let mut behavior = Behaviors::receive_message(move |ctx, msg: &u32| {
     received_clone.lock().push(*msg);
+    *captured_pid_clone.lock() = ctx.pid().value();
     Ok(CoreBehaviors::same())
   });
 
@@ -55,4 +58,5 @@ fn receive_message_handles_message() {
   behavior.handle_message(&mut typed_ctx, &11u32).expect("message");
 
   assert_eq!(received.lock().as_slice(), &[11]);
+  assert_eq!(*captured_pid.lock(), typed_ctx.pid().value());
 }
