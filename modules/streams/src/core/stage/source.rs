@@ -367,6 +367,35 @@ where
     Ok(Source { graph, mat: queue, _pd: PhantomData })
   }
 
+  /// Creates a source backed by a bounded source queue and runs a producer when materialized.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, StreamNotUsed>, StreamDslError>
+  where
+    F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    Ok(Self::lazy_source(move || {
+      let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
+      let mut graph = StreamGraph::new();
+      let outlet: Outlet<Out> = Outlet::new();
+      let logic = QueueSourceLogic::<Out> { queue: queue.clone() };
+      let definition = SourceDefinition {
+        kind:        StageKind::Custom,
+        outlet:      outlet.id(),
+        output_type: TypeId::of::<Out>(),
+        mat_combine: MatCombine::KeepRight,
+        supervision: SupervisionStrategy::Stop,
+        restart:     None,
+        logic:       Box::new(logic),
+      };
+      graph.push_stage(StageDefinition::Source(definition));
+      producer(queue);
+      Source { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+    }))
+  }
+
   /// Creates a source materialized as a source queue with completion notifications.
   ///
   /// `capacity` may be zero to disable the internal buffer.
@@ -378,7 +407,23 @@ where
     capacity: usize,
     overflow_strategy: OverflowStrategy,
   ) -> Result<Source<Out, SourceQueueWithComplete<Out>>, StreamDslError> {
-    let queue = SourceQueueWithComplete::new(capacity, overflow_strategy);
+    Self::queue_with_overflow_and_max_concurrent_offers(capacity, overflow_strategy, 1)
+  }
+
+  /// Creates a source materialized as a source queue with completion notifications.
+  ///
+  /// `capacity` may be zero to disable the internal buffer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_concurrent_offers` is zero.
+  pub fn queue_with_overflow_and_max_concurrent_offers(
+    capacity: usize,
+    overflow_strategy: OverflowStrategy,
+    max_concurrent_offers: usize,
+  ) -> Result<Source<Out, SourceQueueWithComplete<Out>>, StreamDslError> {
+    let max_concurrent_offers = validate_positive_argument("max_concurrent_offers", max_concurrent_offers)?;
+    let queue = SourceQueueWithComplete::new(capacity, overflow_strategy, max_concurrent_offers);
     let mut graph = StreamGraph::new();
     let outlet: Outlet<Out> = Outlet::new();
     let logic = QueueWithOverflowSourceLogic::<Out> { queue: queue.clone() };

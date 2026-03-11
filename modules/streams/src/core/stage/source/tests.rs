@@ -631,6 +631,59 @@ fn source_queue_with_overflow_allows_zero_capacity() {
 }
 
 #[test]
+fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
+  let source = Source::queue_with_overflow_and_max_concurrent_offers(1, OverflowStrategy::Backpressure, 2)
+    .expect("queue_with_overflow");
+  let (_graph, queue) = source.into_parts();
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
+
+  let mut first_pending_offer = pin!(queue.offer(31_u32));
+  let mut second_pending_offer = pin!(queue.offer(32_u32));
+
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(second_pending_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(poll_ready(queue.offer(33_u32)), QueueOfferResult::Failure(StreamError::WouldBlock));
+
+  assert_eq!(queue.poll().expect("poll"), Some(30_u32));
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(31_u32));
+  assert_eq!(second_pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(32_u32));
+}
+
+#[test]
+fn source_create_defers_producer_until_source_is_materialized() {
+  let called = ArcShared::new(SpinSyncMutex::new(false));
+  let called_clone = called.clone();
+
+  let source = Source::create(2, move |queue| {
+    *called_clone.lock() = true;
+    assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
+    queue.complete();
+  })
+  .expect("create");
+
+  assert!(!*called.lock());
+  let values = source.collect_values().expect("collect_values");
+  assert!(*called.lock());
+  assert_eq!(values, vec![40_u32, 41_u32]);
+}
+
+#[test]
+fn source_create_propagates_queue_failure_from_producer() {
+  let source = Source::<u32, _>::create(2, |queue| {
+    queue.fail(StreamError::Failed);
+  })
+  .expect("create");
+
+  assert!(matches!(source.collect_values(), Err(StreamError::Failed)));
+}
+
+#[test]
 fn source_tick_accepts_positive_interval() {
   let source = Source::tick(1, 1, 14_u32);
   assert!(source.is_ok());

@@ -81,3 +81,51 @@ fn bounded_source_queue_should_report_queue_closed_after_complete() {
   assert_eq!(queue.offer(1_u32), QueueOfferResult::QueueClosed);
   assert!(queue.is_closed());
 }
+
+#[test]
+fn bounded_source_queue_should_drain_buffer_after_complete() {
+  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
+
+  queue.complete();
+
+  assert_eq!(queue.offer(3_u32), QueueOfferResult::QueueClosed);
+  assert!(!queue.is_drained());
+  assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert!(!queue.is_drained());
+  assert_eq!(queue.poll().expect("poll"), Some(2_u32));
+  assert!(queue.is_drained());
+}
+
+#[test]
+fn bounded_source_queue_should_fail_offer_and_poll_after_fail() {
+  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+
+  queue.fail(StreamError::Failed);
+
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::Failure(StreamError::Failed));
+  assert!(queue.is_closed());
+  assert!(matches!(queue.poll(), Err(StreamError::Failed)));
+}
+
+#[test]
+#[should_panic(expected = "bounded source queue already terminated: complete")]
+fn bounded_source_queue_should_panic_when_completed_twice() {
+  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+
+  queue.complete();
+  queue.complete();
+}
+
+#[test]
+#[should_panic(expected = "bounded source queue already terminated: fail")]
+fn bounded_source_queue_should_panic_when_failed_twice() {
+  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+
+  queue.fail(StreamError::Failed);
+  queue.fail(StreamError::Failed);
+}

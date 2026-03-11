@@ -31,6 +31,10 @@ impl<T> Clone for BoundedSourceQueue<T> {
 }
 
 impl<T> BoundedSourceQueue<T> {
+  fn assert_not_terminated(guard: &BoundedSourceQueueState<T>, operation: &str) {
+    assert!(!guard.closed && guard.failure.is_none(), "bounded source queue already terminated: {operation}");
+  }
+
   /// Creates an empty bounded queue.
   ///
   /// # Panics
@@ -87,12 +91,14 @@ impl<T> BoundedSourceQueue<T> {
   /// Completes the queue and rejects subsequent offers.
   pub fn complete(&self) {
     let mut guard = self.inner.lock();
+    Self::assert_not_terminated(&guard, "complete");
     guard.closed = true;
   }
 
   /// Fails the queue and rejects subsequent offers.
   pub fn fail(&self, error: StreamError) {
     let mut guard = self.inner.lock();
+    Self::assert_not_terminated(&guard, "fail");
     guard.failure = Some(error);
     guard.closed = true;
   }
