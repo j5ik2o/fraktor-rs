@@ -142,3 +142,49 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
 
   system.terminate().expect("terminate");
 }
+
+#[test]
+fn spawn_protocol_survives_duplicate_named_spawn_failure() {
+  let start_count = Arc::new(AtomicUsize::new(0));
+  let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
+  let mut parent = system.user_guardian_ref();
+
+  // First spawn with name "probe" succeeds.
+  let first = parent
+    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+      SpawnProtocol::spawn(probe_props(&start_count), "probe", reply_to)
+    })
+    .expect("first spawn");
+  let mut first_future = first.future().clone();
+  wait_until(|| first_future.is_ready());
+  first_future.try_take().expect("first reply").expect("first child ref");
+  wait_until(|| start_count.load(Ordering::SeqCst) == 1);
+
+  // Duplicate name spawn: execute() fails internally; the actor must stay alive.
+  // Drop the response immediately — no reply will ever arrive.
+  let _dup = parent
+    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+      SpawnProtocol::spawn(probe_props(&Arc::new(AtomicUsize::new(0))), "probe", reply_to)
+    })
+    .expect("duplicate spawn accepted");
+
+  // Prove the SpawnProtocol actor is still alive by spawning a survivor.
+  let survivor_count = Arc::new(AtomicUsize::new(0));
+  let survivor = parent
+    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+      SpawnProtocol::spawn(probe_props(&survivor_count), "survivor", reply_to)
+    })
+    .expect("survivor spawn");
+  let mut survivor_future = survivor.future().clone();
+  wait_until(|| survivor_future.is_ready());
+  let survivor_ref = survivor_future.try_take().expect("survivor reply").expect("survivor child ref");
+
+  assert!(survivor_ref.pid().value() > 0);
+  wait_until(|| survivor_count.load(Ordering::SeqCst) == 1);
+
+  system.terminate().expect("terminate");
+}

@@ -99,7 +99,9 @@ impl SpawnProtocol {
   #[must_use]
   pub fn behavior() -> Behavior<Self> {
     Behaviors::receive_message(move |ctx, command: &Self| {
-      command.command.execute(ctx)?;
+      // Ignore execution errors to keep this actor alive for subsequent requests.
+      // On failure the requester's ask future remains pending until its timeout.
+      let _ = command.command.execute(ctx);
       Ok(Behaviors::same())
     })
   }
