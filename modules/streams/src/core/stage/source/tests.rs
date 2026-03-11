@@ -582,6 +582,22 @@ fn source_queue_materializes_bounded_queue_and_emits_offered_values() {
 }
 
 #[test]
+fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
+  let source = Source::queue(4)
+    .expect("queue")
+    .map_materialized_value(|queue| {
+      assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+      assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
+      queue.complete();
+      queue
+    })
+    .take(1);
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![12_u32]);
+}
+
+#[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
   let (graph, queue) = source.into_parts();
@@ -671,6 +687,20 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let values = source.collect_values().expect("collect_values");
   assert!(*called.lock());
   assert_eq!(values, vec![40_u32, 41_u32]);
+}
+
+#[test]
+fn source_create_take_should_not_panic_when_producer_already_completed_queue() {
+  let source = Source::create(2, |queue| {
+    assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
+    queue.complete();
+  })
+  .expect("create")
+  .take(1);
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![40_u32]);
 }
 
 #[test]
