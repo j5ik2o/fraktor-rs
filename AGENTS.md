@@ -30,6 +30,7 @@
 | `type-organization.md` | 1file1type + 例外基準、公開範囲の判断フロー |
 | `naming-conventions.md` | 曖昧サフィックス禁止、Shared/Handle 命名、ドキュメント言語 |
 | `reference-implementation.md` | protoactor-go/pekko 参照手順、Go/Scala → Rust 変換 |
+| `module-structure.md` | modules/*/src/core（no_std）と std（アダプタ）の分離構造 |
 
 ## Dylint lint（8つ、機械的強制）
 
@@ -303,6 +304,78 @@ AIは一般的なベストプラクティスに従った「教科書的に正し
 ## 格言
 
 > "Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupery
+
+
+# モジュール依存方向ルール
+
+## 原則
+
+**依存は必ず上位層から下位層への一方向のみ。逆方向の依存を禁止する。**
+
+これはレイヤードアーキテクチャの普遍的な原則であり、言語を問わず適用する。
+
+## 層構造と依存方向
+
+```
+上位層（std / application）
+   │
+   │  依存可（↓のみ）
+   ▼
+中間層（typed / domain）
+   │
+   │  依存可（↓のみ）
+   ▼
+下位層（untyped / infrastructure / runtime）
+```
+
+各層は「ラップする側（上位）」であり、「ラップされる側（下位）」には依存してよい。逆は禁止。
+
+## fraktor-rs での対応
+
+| 層 | パス | 備考 |
+|----|------|------|
+| 上位 | `std/**` | std あり、ユーザー向けAPI |
+| 中間 | `core/typed/**` | no_std、型付きアクター抽象 |
+| 下位 | `core/actor/**` | no_std、untyped ランタイム基盤 |
+
+## 禁止パターン
+
+| 禁止される依存 | 具体例（fraktor-rs） |
+|----------------|----------------------|
+| 下位 → 中間 | `core/actor` が `core/typed` を import |
+| 下位 → 上位 | `core/actor` が `std` を import |
+| 中間 → 上位 | `core/typed` が `std` を import |
+
+```rust
+// ❌ WRONG: core/actor/actor_context.rs
+use crate::core::typed::actor::TypedActorRef;  // 禁止
+
+// ✅ CORRECT: core/typed/actor/actor_context.rs
+use crate::core::actor::ActorContext;  // typed → untyped は OK
+```
+
+## 判定フロー
+
+```
+1. 今いるファイルはどの層か？
+   ├─ 下位層（core/actor/**） → 中間・上位への import は禁止
+   ├─ 中間層（core/typed/**） → 上位への import は禁止
+   └─ 上位層（std/**）        → 制限なし
+
+2. 書こうとしている import が上の層を指しているか？
+   ├─ Yes → 削除して代替手段を探す
+   └─ No  → OK
+```
+
+## なぜこのルールが必要か
+
+- **循環依存の防止**: 下位層が上位層に依存すると循環参照が発生し、ビルドが不能になる
+- **独立テスト可能性**: 下位層が上位層に依存しなければ、下位層を単独でテスト・再利用できる
+- **環境制約の維持**: 下位層が std 依存の上位層を import すると、no_std 環境で使えなくなる
+
+## 許容される例外
+
+なし。循環依存が必要に見える場合は設計を見直すこと。
 
 
 # 編集前 Dylint 実行
@@ -831,6 +904,88 @@ pub struct XyzShared {
 - 共有不要な型に `ArcShared<SpinSyncMutex<T>>` を使用
 - `AShared` パターン適用時に元の型を削除
 - ガードやロックを外部に返す（ロック区間はメソッド内に閉じる）
+
+
+# fraktor-rs モジュール構造（core / std 分離）
+
+## 原則
+
+**各モジュールの `src/` は `core/`（no_std）と `std/`（アダプタ）に分離する。**
+
+`core/` がポートを定義し、`std/` がそれを実装する依存方向を維持すること。
+
+## ディレクトリ構造
+
+```
+modules/{name}/src/
+├── core/      # no_std コアロジック・ポート（trait）定義
+├── core.rs    # core モジュールの宣言ファイル
+├── std/       # std/tokio アダプタ（core のポートを実装）
+├── std.rs     # std モジュールの宣言ファイル
+└── lib.rs
+```
+
+## 各層の責務
+
+| 層 | パス | no_std | 役割 |
+|----|------|--------|------|
+| コア | `modules/{name}/src/core/` | ✅ | ドメインロジック・ポート（trait）定義 |
+| アダプタ | `modules/{name}/src/std/` | ❌ | `std` / `tokio` を使ったポート実装 |
+
+## 依存方向
+
+```
+std/（アダプタ）
+   │
+   │  依存可（↓のみ）
+   ▼
+core/（コアロジック・ポート定義）
+```
+
+- `std/` は `core/` に依存してよい
+- `core/` は `std/` に依存してはならない（no_std 制約が壊れる）
+
+## コード例
+
+```rust
+// ✅ core/: no_std でポートを定義
+// modules/actor/src/core/dispatch/mailbox.rs
+pub trait Mailbox {
+    fn enqueue(&mut self, msg: Message);
+}
+
+// ✅ std/: core のポートを std/tokio で実装
+// modules/actor/src/std/dispatch/mailbox.rs
+use crate::core::dispatch::Mailbox;
+
+pub struct TokioMailbox { /* ... */ }
+
+impl Mailbox for TokioMailbox {
+    fn enqueue(&mut self, msg: Message) { /* tokio 実装 */ }
+}
+
+// ❌ WRONG: core/ が std/ に依存
+// modules/actor/src/core/dispatch/mailbox.rs
+use crate::std::dispatch::TokioMailbox;  // 禁止
+```
+
+## 禁止パターン
+
+- `core/` 内で `std`, `tokio`, `async-std` 等を直接 `use`（no_std 制約違反）
+- `core/` 内で `std/` のモジュールを参照（依存方向の逆転）
+- `#![no_std]` 制約を `#[cfg(feature = "std")]` で安易に迂回
+- `std/` に no_std でも動くロジックを置く（`core/` に移動すべき）
+
+## モジュール一覧
+
+| モジュール | パス |
+|------------|------|
+| actor | `modules/actor/` |
+| cluster | `modules/cluster/` |
+| persistence | `modules/persistence/` |
+| remote | `modules/remote/` |
+| streams | `modules/streams/` |
+| utils | `modules/utils/` |
 
 
 # fraktor-rs 命名規約

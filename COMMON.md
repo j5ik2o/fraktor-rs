@@ -30,6 +30,7 @@
 | `type-organization.md` | 1file1type + 例外基準、公開範囲の判断フロー |
 | `naming-conventions.md` | 曖昧サフィックス禁止、Shared/Handle 命名、ドキュメント言語 |
 | `reference-implementation.md` | protoactor-go/pekko 参照手順、Go/Scala → Rust 変換 |
+| `module-structure.md` | modules/*/src/core（no_std）と std（アダプタ）の分離構造 |
 
 ## Dylint lint（8つ、機械的強制）
 
