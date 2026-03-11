@@ -165,14 +165,16 @@ fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   wait_until(|| start_count.load(Ordering::SeqCst) == 1);
 
   // Duplicate name spawn: execute() fails internally; the actor must stay alive.
-  // Drop the response immediately — no reply will ever arrive.
-  let _dup = parent
+  let dup = parent
     .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
       SpawnProtocol::spawn(probe_props(&Arc::new(AtomicUsize::new(0))), "probe", reply_to)
     })
     .expect("duplicate spawn accepted");
+  let dup_future = dup.future().clone();
 
   // Prove the SpawnProtocol actor is still alive by spawning a survivor.
+  // Because the mailbox is FIFO, when the survivor reply arrives the duplicate
+  // command has already been processed — so we can assert no reply was sent.
   let survivor_count = Arc::new(AtomicUsize::new(0));
   let survivor = parent
     .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
@@ -183,6 +185,7 @@ fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   wait_until(|| survivor_future.is_ready());
   let survivor_ref = survivor_future.try_take().expect("survivor reply").expect("survivor child ref");
 
+  assert!(!dup_future.is_ready(), "duplicate spawn must not receive a reply");
   assert!(survivor_ref.pid().value() > 0);
   wait_until(|| survivor_count.load(Ordering::SeqCst) == 1);
 
