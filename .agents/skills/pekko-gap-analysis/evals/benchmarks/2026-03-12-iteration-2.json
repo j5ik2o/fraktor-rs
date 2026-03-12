@@ -1,0 +1,418 @@
+{
+  "metadata": {
+    "skill_name": "pekko-gap-analysis",
+    "skill_path": "/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/.agents/skills/pekko-gap-analysis",
+    "executor_model": "claude-sonnet-4-6",
+    "timestamp": "2026-03-12T00:00:00Z",
+    "evals_run": [
+      "eval-streams-gap",
+      "eval-actor-gap",
+      "eval-cluster-gap"
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "eval-streams-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.875,
+        "passed": 7,
+        "failed": 1,
+        "total": 8,
+        "time_seconds": 4980.3,
+        "tokens": 145433,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": true,
+          "evidence": "The サマリー section at the top of gap_analysis.md contains a 4-row table showing: Pekko 公開型数 (約138), fraktor-rs 公開型数 (91), カバレッジ (91/138 = 66%), ギャップ数 (約37)."
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The document contains 11 named categories each with a table: 型・トレイト（コア）, オペレーター（Source）, オペレーター（Flow）, オペレーター（Sink）, マテリアライゼーション, グラフDSL, ライフサイクル, エラー処理, Context付きオペレーター, Framing/テキスト処理, Hub（動的接続）."
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "All gap items (未対応 or 部分実装) in the 難易度 column have explicit values: easy, medium, hard, or n/a. For example: `CompletionStrategy` → easy, `Flow.delayWith` → medium, `GraphDSL.create` → hard, `StreamRefs` → n/a. Items marked as already implemented use '-' which is appropriate as they are not gaps."
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "The 実装優先度の提案 section contains all four phases: '### Phase 1: trivial（既存組み合わせで即実装可能）', '### Phase 2: easy（単純な新規実装）', '### Phase 3: medium（中程度の実装工数）', '### Phase 4: hard（アーキテクチャ変更を伴う）'."
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Throughout the document, Pekko API names are consistently formatted with backticks: `CompletionStrategy`, `Source.mergePrioritizedN`, `Source.optionalVia`, `Flow.delayWith`, `GraphDSL.create`, `RetryFlow`, `Sink.combine`, `FlowWithContext.alsoTo`, etc."
+        },
+        {
+          "text": "Output correctly resolves the pekko reference directory as 'stream' rather than 'streams'",
+          "passed": false,
+          "evidence": "The Pekko参照 column in all tables lists only filenames (e.g., 'Source.scala:L678', 'Flow.scala:L2301', 'Hub.scala:L47') without directory path prefixes. There is no explicit reference to either 'stream/' or 'streams/' directory in the document. It is impossible to verify whether the executor correctly resolved the pekko reference directory from the output alone."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": true,
+          "evidence": "All major category headers include X/Y counts: '型・トレイト（コア）　✅ 実装済み 18/22 (82%)', 'オペレーター（Source）　✅ 実装済み 34/42 (81%)', 'オペレーター（Flow）　✅ 実装済み 55/72 (76%)', 'オペレーター（Sink）　✅ 実装済み 22/28 (79%)', 'マテリアライゼーション　✅ 実装済み 8/10 (80%)', 'グラフDSL　✅ 実装済み 3/8 (38%)', 'ライフサイクル　✅ 実装済み 8/9 (89%)', 'エラー処理　✅ 実装済み 8/9 (89%)', 'Context付きオペレーター　✅ 実装済み 4/14 (29%)', 'Framing / テキスト処理　✅ 実装済み 2/5 (40%)', 'Hub（動的接続）　✅ 実装済み 3/3 (100%)'. The 'その他・JVM固有（n/a）' section has no count, but that is appropriate as it is an exclusion list."
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": true,
+          "evidence": "The document ends with '## まとめ' (line 205) which contains a substantial conclusion covering: overall coverage evaluation (~75% of Pekko operators), high-value gaps in Phase 1-2, major architectural gaps in Phase 3-4, and YAGNI-based omission recommendations."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "eval-streams-gap",
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.75,
+        "passed": 6,
+        "failed": 2,
+        "total": 8,
+        "time_seconds": 368.0,
+        "tokens": 118381,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": true,
+          "evidence": "The サマリー table at the top of gap_analysis.md includes: Pekko公開型数 (~85), fraktor-rs公開型数 (~75), カバレッジ (75/85 = 88%), ギャップ数 (~30). All four required metrics are present."
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The document contains 10 named category sections with tables: 型・トレイト, オペレーター（Flow/Source共通）, マテリアライゼーション, グラフDSL, ライフサイクル, エラー処理, IO/特殊ソース・シンク, Stream Refs（分散ストリーム）, TCP/TLS, DelayStrategy. All contain tables."
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "All gap items (未対応/部分実装 rows) in the category tables have a 難易度 column with values: trivial, easy, medium, or hard. The one row marked 実装済み (doOnFirst) uses '—' since it is not a gap item. Stream Refs and TCP/TLS tables use n/a at the row level in the 判定 column, consistent with the format. No gap item lacks a difficulty rating."
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "The 実装優先度の提案 section contains all four phases: '### Phase 1: trivial', '### Phase 2: easy', '### Phase 3: medium', '### Phase 4: hard'. Each lists specific APIs."
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Extensive use of backtick-formatted Pekko API names throughout, e.g., `FanInShape2` / `FanOutShape2`, `AmorphousShape`, `IOResult`, `SubstreamCancelStrategy`, `GraphDSL.create`, `RetryFlow.withBackoff`, `Sink.never`, `Compression.gzip/deflate`, `JsonFraming.objectScanner`, etc."
+        },
+        {
+          "text": "Output correctly resolves the pekko reference directory as 'stream' rather than 'streams'",
+          "passed": false,
+          "evidence": "The output references Pekko source files by filename only (e.g., 'Flow.scala:L1753', 'Source.scala:L765', 'Shape.scala') without ever specifying a directory path. It is impossible to verify from the output alone whether the analysis used 'references/pekko/stream/' (correct) or 'references/pekko/streams/' (incorrect). The output makes no explicit claim about which directory was used, so the directory resolution cannot be confirmed."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": true,
+          "evidence": "All sections with implementable APIs include X/Y counts in headers: '実装済み 17/22 (77%)', '実装済み 65/72 (90%)', '実装済み 8/12 (67%)', '実装済み 2/6 (33%)', '実装済み 6/7 (86%)', '実装済み 8/8 (100%)', '実装済み 4/10 (40%)', '実装済み 1/3 (33%)'. The two n/a categories (Stream Refs, TCP/TLS) are explicitly marked as not applicable and appropriately omit the count."
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": false,
+          "evidence": "The document ends with '補足: fraktor-rs 独自実装（Pekko にない機能）' — a supplementary section listing fraktor-rs-specific APIs. There is no section titled 'まとめ' or equivalent conclusion/summary section at the end of the document. The サマリー table appears at the top (beginning), not end."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "eval-actor-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 4142.1,
+        "tokens": 114700,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": true,
+          "evidence": "The サマリー section contains a table with all four required columns: '| Pekko 公開型数（actor + actor-typed、主要型のみ） | 約 100（型単位で集約） |', '| fraktor-rs 公開型数 | 310 |', '| カバレッジ（型単位） | 主要機能カテゴリでの対応率：約 70% |', '| ギャップ数 | 約 25 |'"
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The output contains 14 named categories, each with table format for gaps, e.g., '### 型・トレイト（Actor ライフサイクル）', '### アクターコンテキスト（ActorContext）', '### ビヘイビア（Behaviors）', etc. Each gap category section contains a markdown table with columns for Pekko API, Pekko参照, fraktor対応, 難易度, and 備考."
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "Every gap item row in the category tables contains a 難易度 column with explicit difficulty levels. Examples: 'Actor.become(behavior)' → 'medium', 'Behaviors.stopped(postStop)' → 'trivial', 'Behaviors.withMdc' → 'hard', 'ActorContext.delegate' → 'easy', 'AllForOneStrategy' → 'medium'. The n/a category also has a 判定 column with 'n/a' entries."
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "The '## 実装優先度の提案' section contains all four phases: '### Phase 1: trivial（既存組み合わせで即実装可能）', '### Phase 2: easy（単純な新規実装）', '### Phase 3: medium（中程度の実装工数）', '### Phase 4: hard（アーキテクチャ変更を伴う）'"
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Pekko API names are consistently formatted with backticks throughout the document, e.g., '`Actor.become(behavior)`', '`Behaviors.receive[T](ctx, msg => Behavior)`', '`ActorContext.setReceiveTimeout(duration)`', '`AllForOneStrategy`', '`CoordinatedShutdown`', '`ProducerController`', etc."
+        },
+        {
+          "text": "Output mentions key Pekko actor concepts such as Behavior, ActorRef, or TypedActorContext",
+          "passed": true,
+          "evidence": "Multiple mentions of key Pekko concepts: 'Behavior' is mentioned in multiple sections (e.g., 'typed API では `Behavior` 型で表現済み'), 'ActorRef' is referenced via 'TypedActorRef<M>' in the reference-implementation notes (naming-conventions.md), 'TypedActorContext' is explicitly mentioned in the ActorContext section: 'TypedActorContext.set_receive_timeout'は実装済み'. Additionally, 'ActorSystem', 'ActorContext', 'Behaviors', 'SupervisorStrategy' are all mentioned."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": true,
+          "evidence": "Every category section header includes an X/Y count. Examples: '### 型・トレイト（Actor ライフサイクル）　✅ 実装済み 6/8 (75%)', '### アクターコンテキスト（ActorContext）　✅ 実装済み 11/13 (85%)', '### ビヘイビア（Behaviors）　✅ 実装済み 9/12 (75%)', '### Pub/Sub・デリバリー（Delivery）　❌ 未対応 0/4 (0%)', etc."
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": true,
+          "evidence": "The document ends with '## まとめ' section starting at line 206, containing an overall coverage evaluation ('全体カバレッジ評価：約 75〜80%'), immediate value gaps (Phase 1-2), major practical gaps (Phase 3-4), and YAGNI recommendations."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "eval-actor-gap",
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.625,
+        "passed": 5,
+        "failed": 3,
+        "total": 8,
+        "time_seconds": 2577.0,
+        "tokens": 143825,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": false,
+          "evidence": "The summary table contains Pekko 公開型数 (175), fraktor-rs 公開型数 (310), and ギャップ数 (22), but the coverage percentage row says 'カバレッジ（型単位）: 分析対象カテゴリごとに記載' — meaning no single overall coverage percentage is provided in the summary table. Three of four required elements are present; the coverage percentage is deferred to per-category breakdowns rather than appearing in the summary table."
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The output contains 11 named category sections, each with a markdown table: 型・トレイト（ActorRef, Behavior, ActorContext）, ライフサイクル・シグナル, スーパービジョン, Behaviors ファクトリー, TypedActorContext, StashBuffer, ルーター, EventStream / PubSub, リライアブルデリバリー（Reliable Delivery）, 協調シャットダウン（CoordinatedShutdown）, FSM（有限状態機械）."
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "Every row in every category table includes a 難易度 column with explicit values: 'n/a' (Address), 'easy' (ChildFailed, RestartSupervisorStrategy.withStopChildren, etc.), 'medium' (RestartSupervisorStrategy.withStashCapacity, Behaviors.logMessages, etc.), 'hard' (Topic, CoordinatedShutdown), 'medium' (FSM[S,D] is marked 'medium'). All 22 gap items have explicit difficulty levels."
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "Section '実装優先度の提案' contains all four phases: 'Phase 1: trivial（既存組み合わせで即実装可能）', 'Phase 2: easy（単純な新規実装）', 'Phase 3: medium（中程度の実装工数）', 'Phase 4: hard（アーキテクチャ変更を伴う）'."
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Numerous Pekko API names appear with backtick formatting throughout: `Address`, `ChildFailed`, `RestartSupervisorStrategy.withStopChildren(enabled)`, `RestartSupervisorStrategy.withStashCapacity(capacity)`, `BackoffSupervisorStrategy.withCriticalLogLevel(level, afterErrors)`, `Behaviors.receive(ctx, msg)`, `Behaviors.receivePartial(PartialFunction)`, `ctx.ask(target, createRequest)(timeout)`, `ctx.scheduleOnce(delay, target, msg)`, `ctx.log`, `stash.head`, `Topic`, `CoordinatedShutdown`, `FSM[S, D]`, and many more."
+        },
+        {
+          "text": "Output mentions key Pekko actor concepts such as Behavior, ActorRef, or TypedActorContext",
+          "passed": true,
+          "evidence": "All three named concepts appear: 'TypedActorContext' is a category header ('TypedActorContext ✅ 実装済み 10/13 (77%)'), 'ActorRef' appears in the first category header ('型・トレイト（ActorRef, Behavior, ActorContext）'), and 'Behavior' appears in the Behaviors ファクトリー category and throughout the document (e.g., `Behaviors.receive`, `Behaviors.stopped`, `Behavior` as a type in descriptions)."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": false,
+          "evidence": "Most category headers include X/Y counts (e.g., '✅ 実装済み 8/9 (89%)', '✅ 実装済み 5/6 (83%)', '✅ 実装済み 4/5 (80%)', '✅ 実装済み 11/15 (73%)', '✅ 実装済み 10/13 (77%)', '✅ 実装済み 3/8 (38%)', '✅ 実装済み 4/7 (57%)', '✅ 実装済み 2/3 (67%)'), but the last three category sections — 'リライアブルデリバリー（Reliable Delivery）', '協調シャットダウン（CoordinatedShutdown）', and 'FSM（有限状態機械）' — have no X/Y count in their headers. The expectation says 'each category section header', which is not satisfied."
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": false,
+          "evidence": "The document ends with the '対象外（n/a）' bullet list under the Phase 4/対象外 section. There is no まとめ section or any equivalent conclusion section at the end of the document."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "eval-cluster-gap",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 4082.0,
+        "tokens": 110907,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": true,
+          "evidence": "The サマリー section at the top of gap_analysis.md contains a 4-row table: 'Pekko 公開型数: 63', 'fraktor-rs 公開型数: 181', 'カバレッジ（型単位）: ≈ 45/63 (71%)', 'ギャップ数: 25'"
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The document contains 13 named categories with tables: クラスターコア、メンバーシップ状態・Member 型、クラスターイベント、到達可能性（Reachability）、ダウニングプロバイダー・SBR、ゴシッププロトコル、VectorClock、設定・JoinConfig 互換性、クラスタールーター、ハートビート監視、クラスターシングルトン（cluster-tools）、DistributedPubSub（cluster-tools）、ClusterSharding（cluster-sharding）、JMX・シリアライゼーション・ClusterClient"
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "Every row in every category table contains a 難易度 column with one of the specified values. Examples: `Cluster.prepareForFullClusterShutdown()` → easy, `LeaderChanged` → trivial, `SplitBrainResolverProvider` → hard, `DataCenterReachabilityEvent` → n/a, `ClusterSingletonProxy` → medium"
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "The '実装優先度の提案' section contains all four phases: 'Phase 1: trivial（既存組み合わせで即実装可能）', 'Phase 2: easy（単純な新規実装）', 'Phase 3: medium（中程度の実装工数）', 'Phase 4: hard（アーキテクチャ変更を伴う）'"
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Pekko API names are consistently formatted with backticks throughout. Examples from the document: `Cluster.prepareForFullClusterShutdown()`, `MemberStatus.WeaklyUp`, `LeaderChanged`, `RoleLeaderChanged`, `SplitBrainResolverProvider`, `DowningStrategy.Decision`, `KeepMajority`, `GossipEnvelope`, `VectorClock.Ordering`, `ClusterSingletonManager`, `DistributedPubSubMediator.Send`, `ClusterSharding`"
+        },
+        {
+          "text": "Output considers pekko submodules beyond base cluster directory (e.g. cluster-typed, sbr, or cluster-tools)",
+          "passed": true,
+          "evidence": "The document explicitly covers `cluster-tools` in two categories ('クラスターシングルトン（cluster-tools）' and 'DistributedPubSub（cluster-tools）') and `cluster-sharding` in its own category ('ClusterSharding（cluster-sharding）'). The intro note also explicitly mentions 'cluster-tools・cluster-sharding'. SBR is covered in the 'ダウニングプロバイダー・SBR（Split Brain Resolver）' section referencing `SplitBrainResolverProvider.scala`."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": true,
+          "evidence": "Every section header includes the pattern '✅ 実装済み X/Y (Z%)'. Examples: 'クラスターコア（Cluster 拡張）　✅ 実装済み 4/5 (80%)', 'メンバーシップ状態・Member 型　✅ 実装済み 8/9 (89%)', 'ハートビート監視　✅ 実装済み 0/2 (0%)', 'ClusterSharding（cluster-sharding）　✅ 実装済み 0/5 (0%)'"
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": true,
+          "evidence": "The document ends with a '## まとめ' section covering overall coverage evaluation, immediate-value gaps (Phase 1-2), practical major gaps (Phase 3-4), and YAGNI-based omission recommendations"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "eval_name": "eval-cluster-gap",
+      "configuration": "old_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.75,
+        "passed": 6,
+        "failed": 2,
+        "total": 8,
+        "time_seconds": 4330.2,
+        "tokens": 109118,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Output contains a summary table with Pekko type count, fraktor-rs type count, coverage percentage, and gap count",
+          "passed": false,
+          "evidence": "The summary table contains Pekko type count (~80), fraktor-rs type count (182), and gap count (12). However, coverage percentage is NOT provided as a number — the document explicitly states 'カバレッジ（型単位）: 比較対象が異なるため直接比率は困難' and provides no percentage figure. The expectation requires a coverage percentage, which is missing."
+        },
+        {
+          "text": "Output groups gaps into at least 2 named categories with table format",
+          "passed": true,
+          "evidence": "The document contains 6 named categories, each with a Markdown table: 'メンバーシップ・状態管理', 'クラスタイベント', 'DowningProvider / Split Brain Resolver', 'クラスタルーター', 'JoinConfigCompatChecker', and 'マルチ DC'. All categories include tabular gap listings."
+        },
+        {
+          "text": "Each gap item in the category tables includes an explicit difficulty level (trivial/easy/medium/hard/n/a)",
+          "passed": true,
+          "evidence": "All gap rows in all category tables include a '難易度' column with explicit values: 'easy', 'medium', 'hard', 'trivial', or 'n/a'. For example: WeaklyUp → easy, Reachability matrix → medium, SplitBrainResolverProvider → hard, ClusterShuttingDown → trivial, UnreachableDataCenter → n/a."
+        },
+        {
+          "text": "Output contains Phase 1, Phase 2, Phase 3, Phase 4 implementation priority sections",
+          "passed": true,
+          "evidence": "The '実装優先度の提案' section contains all four phases: 'Phase 1: trivial', 'Phase 2: easy', 'Phase 3: medium', 'Phase 4: hard'. Each phase has concrete implementation items."
+        },
+        {
+          "text": "Output includes specific Pekko API names with backtick code formatting",
+          "passed": true,
+          "evidence": "Numerous Pekko API names are formatted with backticks throughout. Examples: `MemberStatus.WeaklyUp`, `Reachability`, `LeaderChanged(leader: Option[Address])`, `RoleLeaderChanged(role, leader)`, `SplitBrainResolverProvider`, `Decision`, `useRoles: Set[String]`, `maxInstancesPerNode`, `JoinConfigCompatCheckCluster`."
+        },
+        {
+          "text": "Output considers pekko submodules beyond base cluster directory (e.g. cluster-typed, sbr, or cluster-tools)",
+          "passed": true,
+          "evidence": "The document explicitly references `sbr/` (Split Brain Resolver submodule) with file references like `sbr/SplitBrainResolverProvider.scala:L34` and `sbr/DowningStrategy.scala:L35`. It also mentions `cluster-sharding` and `cluster-tools` in the summary note: 'Pekko では `cluster-sharding`, `cluster-tools` などに分離されている'."
+        },
+        {
+          "text": "Each category section header includes an implementation count in the format 'X/Y' or similar (e.g., '実装済み 5/10')",
+          "passed": true,
+          "evidence": "All 6 category headers include X/Y counts with percentages: 'メンバーシップ・状態管理 ✅ 実装済み 7/9 (78%)', 'クラスタイベント ✅ 実装済み 9/14 (64%)', 'DowningProvider / Split Brain Resolver ✅ 実装済み 2/5 (40%)', 'クラスタルーター ✅ 実装済み 3/5 (60%)', 'JoinConfigCompatChecker ✅ 実装済み 2/3 (67%)', 'マルチ DC ✅ 実装済み 0/3 (0%)'."
+        },
+        {
+          "text": "Output contains a summary/conclusion section (まとめ) at the end",
+          "passed": false,
+          "evidence": "The document ends with the 'Phase 4: hard' and '対象外（n/a）' subsections under '実装優先度の提案'. There is no dedicated まとめ section or conclusion section. The document closes with a bullet list of out-of-scope items, not a synthesizing summary."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 0.9583,
+        "stddev": 0.0722,
+        "min": 0.875,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 4401.4667,
+        "stddev": 502.1843,
+        "min": 4082.0,
+        "max": 4980.3
+      },
+      "tokens": {
+        "mean": 123680.0,
+        "stddev": 18933.8709,
+        "min": 110907,
+        "max": 145433
+      }
+    },
+    "old_skill": {
+      "pass_rate": {
+        "mean": 0.7083,
+        "stddev": 0.0722,
+        "min": 0.625,
+        "max": 0.75
+      },
+      "time_seconds": {
+        "mean": 2425.0667,
+        "stddev": 1985.4647,
+        "min": 368.0,
+        "max": 4330.2
+      },
+      "tokens": {
+        "mean": 123774.6667,
+        "stddev": 17971.1628,
+        "min": 109118,
+        "max": 143825
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.25",
+      "time_seconds": "+1976.4",
+      "tokens": "-94"
+    }
+  },
+  "notes": []
+}

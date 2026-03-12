@@ -1,0 +1,26 @@
+{
+  "skill_name": "pekko-gap-analysis",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "streamsモジュールのPekkoとのギャップを分析してください。不足しているオペレーターや型を洗い出して欲しいです。",
+      "expected_output": "streamsモジュールのギャップ分析レポート。Pekko側のディレクトリが 'stream'（references/pekko/stream）であることを正しく解決し、カテゴリ別ギャップ一覧・難易度・実装優先度フェーズを含む。",
+      "files": [],
+      "expectations": []
+    },
+    {
+      "id": 2,
+      "prompt": "actorモジュールとApache Pekkoの参照実装を比較して、不足機能を洗い出してください。",
+      "expected_output": "actorモジュールのギャップ分析レポート。公開型数サマリー、カテゴリ別ギャップ（型・trait・メソッド）、難易度、実装優先度フェーズを含む。",
+      "files": [],
+      "expectations": []
+    },
+    {
+      "id": 3,
+      "prompt": "clusterモジュールについてPekkoとのgap analysisをやってください。",
+      "expected_output": "clusterモジュールのギャップ分析レポート。pekko側に cluster-typed 等の複数サブモジュールがある状況を考慮し、関連するディレクトリを参照しながら分析。カテゴリ別ギャップと難易度を含む。",
+      "files": [],
+      "expectations": []
+    }
+  ]
+}
