@@ -63,6 +63,15 @@ where
     Ok(self.len(ctx)? >= self.capacity)
   }
 
+  /// Returns true when at least one message is currently stashed.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn is_not_empty(&self, ctx: &TypedActorContext<'_, M>) -> Result<bool, ActorError> {
+    Ok(!self.is_empty(ctx)?)
+  }
+
   /// Stashes the currently processed message.
   ///
   /// # Errors
