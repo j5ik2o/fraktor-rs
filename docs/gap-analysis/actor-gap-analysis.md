@@ -47,24 +47,35 @@
 | `SpawnProtocol` | `SpawnProtocol.scala` | `spawn_protocol.rs` | - | ✅ |
 | Signal 型（Terminated/ChildFailed/PostStop/PreRestart/MessageAdaptionFailure） | `MessageAndSignals.scala` | `behavior_signal.rs:BehaviorSignal` | - | ✅ |
 | `StatusReply` | Pekko `StatusReply` | `status_reply.rs` | - | ✅ |
-| `GroupRouter/PoolRouter` | `Routers.scala` | `group_router_builder.rs`, `pool_router_builder.rs` | - | ✅ |
+| `GroupRouter/PoolRouter`（基本） | `Routers.scala` | `group_router_builder.rs`, `pool_router_builder.rs` | - | ✅ 基本実装済み（ルーティング戦略の一部は未対応、セクション2参照） |
 | Extension API | `Extensions.scala` | `extension.rs`, `extension_id.rs` | - | ✅ |
 | EventStream（typed） | `EventStream.scala` | `event/stream/event_stream_shared.rs` | - | ✅ 別名実装 |
 
 ---
 
-### 2. 軽微なギャップ（StashBuffer 便利メソッド）
+### 2. 軽微なギャップ（StashBuffer 便利メソッド・ルーター戦略）
+
+#### StashBuffer 便利メソッド
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
 | `StashBuffer.capacity()` | `StashBuffer.scala:L73` | 未対応 | trivial | `max_messages` フィールドから導出可能 |
-| `StashBuffer.nonEmpty` | `StashBuffer.scala:L59` | 未対応 | trivial | `!is_empty()` と同等 |
+| `StashBuffer.nonEmpty` | `StashBuffer.scala:L59` | `stash_buffer.rs:is_not_empty` | - | ✅ 実装済み |
 | `StashBuffer.contains(message)` | `StashBuffer.scala:L111` | 未対応 | easy | メッセージ同一性チェック |
 | `StashBuffer.exists(predicate)` | `StashBuffer.scala:L119` | 未対応 | easy | 述語によるサーチ |
 | `StashBuffer.foreach(f)` | `StashBuffer.scala:L103` | 未対応 | easy | イテレーション |
 | `StashBuffer.head` | `StashBuffer.scala:L95` | 未対応 | easy | 先頭要素参照 |
 | `StashBuffer.clear()` | `StashBuffer.scala:L124` | 未対応 | easy | 全メッセージ廃棄 |
 | `StashBuffer.unstash(n, wrap)` | `StashBuffer.scala:L165` | `stash_buffer.rs:unstash`（一部） | easy | N 件のみ処理する部分アンスタッシュ。`wrap` 変換関数付き |
+
+#### ルーティング戦略
+
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `GroupRouter.withRandomRouting()` | `Routers.scala:L63` | 未対応 | easy | `GroupRouterBuilder` は現在ラウンドロビン固定 |
+| `GroupRouter.withConsistentHashingRouting` | `Routers.scala:L121` | 未対応 | medium | GroupRouter へのコンシステントハッシュ追加 |
+| `PoolRouter.withRoundRobinRouting()` | `Routers.scala:L148` | 未対応 | easy | `PoolRouterBuilder` にラウンドロビン戦略を追加 |
+| `PoolRouter.withBroadcastPredicate(predicate)` | `Routers.scala:L189` | 未対応 | easy | フィルタ付きブロードキャスト（現在は全送信のみ） |
 
 ---
 
@@ -74,7 +85,6 @@
 |-----------|-----------|-------------|--------|------|
 | `Behaviors.logMessages(behavior)` | `Behaviors.scala:L215` | 未対応 | easy | メッセージ受信をデバッグログ出力するラッパー Behavior |
 | `Behaviors.logMessages(opts, behavior)` | `Behaviors.scala:L223` | 未対応 | easy | `LogOptions` 付きバリアント |
-| `Behaviors.withMdc(mdc, behavior)` | `Behaviors.scala:L285,299,321` | 未対応 | medium | MDC（Mapped Diagnostic Context）のロギング文脈設定。no_std 制約上実装要検討 |
 | `LogOptions` 型 | `LogOptions.scala` | 未対応 | easy | ログ有効化フラグ・レベル・ロガーを束ねる設定型 |
 
 ---
@@ -149,12 +159,14 @@
 ### Phase 1: trivial（既存組み合わせで即実装可能）
 
 - `StashBuffer.capacity()` — `max_messages` フィールド公開のみ
-- `StashBuffer.nonEmpty` — `!is_empty()` の別名
 
 ### Phase 2: easy（単純な新規実装）
 
 - `StashBuffer.contains / exists / foreach / head / clear` — コレクション操作の追加
 - `StashBuffer.unstash(n, wrap)` — 部分アンスタッシュ
+- `GroupRouter.withRandomRouting()` — ランダムルーティング戦略の追加
+- `PoolRouter.withRoundRobinRouting()` — ラウンドロビン戦略の追加
+- `PoolRouter.withBroadcastPredicate` — フィルタ付きブロードキャスト
 - `LogOptions` 型の追加 — ログ設定のバリューオブジェクト
 - `Behaviors.logMessages` — デバッグ用メッセージロギング Behavior
 - `RecipientRef` トレイト — `ask` 対象の抽象化
@@ -164,9 +176,9 @@
 ### Phase 3: medium（中程度の実装工数）
 
 - `Topic`（pub/sub）— `Receptionist` + EventStream ベースで実装可能だが自律 Behavior 設計が必要
+- `GroupRouter.withConsistentHashingRouting` — コンシステントハッシュルーティング
 - `ActorContext.delegate` — Behavior 委譲メカニズム
 - `ActorRefResolver` — シリアライズ/パス解決 Extension
-- `Behaviors.withMdc` — no_std 制約上の実現可能性を要検討
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
 
@@ -175,7 +187,7 @@
 
 ### 対象外（n/a）
 
-- `receivePartial`、`receiveMessagePartial`、`AbstractBehavior`、`preferLocalRoutees`、`executionContext`、`ActorSystem.Settings`、`Behaviors.receiveMessageWithSame`、`Behaviors.withMdc`
+- `receivePartial`、`receiveMessagePartial`、`AbstractBehavior`、`preferLocalRoutees`、`executionContext`、`ActorSystem.Settings`、`Behaviors.receiveMessageWithSame`、`Behaviors.withMdc`（JVM MDC 固有。`tracing` クレートで代替）
 
 ---
 
@@ -183,8 +195,11 @@
 
 fraktor-rs の actor モジュールは Pekko の typed API コアの約 75% をカバーしており、主要ユースケース（Behavior 設計・監視・タイマー・スタッシュ・ルーター・レセプショニスト）は実装済みです。
 
-主な未実装領域は次の3つです：
+直近の変更（`StashBuffer.is_not_empty` の追加）により、StashBuffer ギャップが1件解消されました。
+
+主な未実装領域は次の4つです：
 
 1. **StashBuffer の便利メソッド群**（easy、YAGNI 判断で後回し可）
-2. **Pub/Sub（`Topic`）** — Receptionist と組み合わせれば代替可能だが、よく使われるパターン
-3. **Delivery パターン** — 信頼性保証が必要なシステム向け。現フェーズでは不要と判断して差し支えない（hard）
+2. **ルーター戦略の一部**（GroupRouter のランダム・コンシステントハッシュ、PoolRouter のラウンドロビン・フィルタ付きブロードキャスト）
+3. **Pub/Sub（`Topic`）** — Receptionist と組み合わせれば代替可能だが、よく使われるパターン
+4. **Delivery パターン** — 信頼性保証が必要なシステム向け。現フェーズでは不要と判断して差し支えない（hard）
