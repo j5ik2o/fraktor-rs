@@ -1,0 +1,71 @@
+extern crate std;
+
+use std::{panic, string::ToString, sync::mpsc, thread};
+
+use crate::core::{
+  BoundedSourceQueue, StreamDslError, StreamError, StreamNotUsed, stage::Source, validate_positive_argument,
+};
+
+const PRODUCER_STARTUP_YIELD_LIMIT: usize = 64;
+
+impl<Out> Source<Out, StreamNotUsed>
+where
+  Out: Send + Sync + 'static,
+{
+  /// Creates a source backed by a bounded source queue and runs the producer asynchronously.
+  ///
+  /// The producer starts lazily when the source is materialized, but it is executed on a
+  /// background thread instead of the stream pull path.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `capacity` is zero.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the internally created queue cannot be constructed after
+  /// `capacity` has already been validated.
+  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, StreamNotUsed>, StreamDslError>
+  where
+    F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    Ok(Self::lazy_source(move || {
+      let source = Source::queue(capacity).expect("validated capacity");
+      let (graph, queue) = source.into_parts();
+      let producer_queue = queue.clone();
+      let termination_queue = queue.clone();
+      let (started_tx, started_rx) = mpsc::sync_channel(1);
+
+      let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
+        let _ = started_tx.send(());
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
+        match result {
+          | Ok(()) => {
+            let _ = termination_queue.complete_if_open();
+          },
+          | Err(_) => {
+            let _ = termination_queue.fail_if_open(StreamError::Failed);
+          },
+        }
+      });
+      match spawn_result {
+        | Ok(handle) => {
+          let _ = started_rx.recv();
+          // Give the producer thread a short head start so immediate termination
+          // or the first offered value becomes visible before the pull path proceeds.
+          for _ in 0..PRODUCER_STARTUP_YIELD_LIMIT {
+            if !queue.is_empty() || queue.is_closed() || handle.is_finished() {
+              break;
+            }
+            thread::yield_now();
+          }
+        },
+        | Err(_) => {
+          let _ = queue.fail_if_open(StreamError::Failed);
+        },
+      }
+
+      Source::from_graph(graph, StreamNotUsed::new())
+    }))
+  }
+}

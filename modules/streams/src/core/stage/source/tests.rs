@@ -582,6 +582,22 @@ fn source_queue_materializes_bounded_queue_and_emits_offered_values() {
 }
 
 #[test]
+fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
+  let source = Source::queue(4)
+    .expect("queue")
+    .map_materialized_value(|queue| {
+      assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+      assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
+      queue.complete();
+      queue
+    })
+    .take(1);
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![12_u32]);
+}
+
+#[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
   let (graph, queue) = source.into_parts();
@@ -628,6 +644,105 @@ fn source_queue_with_overflow_allows_zero_capacity() {
   assert_eq!(queue.poll().expect("poll"), Some(30_u32));
   assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
   assert_eq!(queue.poll().expect("poll"), None);
+}
+
+#[test]
+fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
+  let source = Source::queue_with_overflow_and_max_concurrent_offers(1, OverflowStrategy::Backpressure, 2)
+    .expect("queue_with_overflow");
+  let (_graph, queue) = source.into_parts();
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+
+  assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
+
+  let mut first_pending_offer = pin!(queue.offer(31_u32));
+  let mut second_pending_offer = pin!(queue.offer(32_u32));
+
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(second_pending_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(poll_ready(queue.offer(33_u32)), QueueOfferResult::Failure(StreamError::WouldBlock));
+
+  assert_eq!(queue.poll().expect("poll"), Some(30_u32));
+  assert_eq!(first_pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(31_u32));
+  assert_eq!(second_pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
+  assert_eq!(queue.poll().expect("poll"), Some(32_u32));
+}
+
+#[test]
+fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
+  let queue = crate::core::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let completion = queue.watch_completion();
+  let waker = noop_waker();
+  let mut context = Context::from_waker(&waker);
+  let mut logic = super::QueueWithOverflowSourceLogic { queue: queue.clone() };
+
+  assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
+
+  let mut pending_offer = pin!(queue.offer(31_u32));
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Pending);
+
+  logic.on_cancel().expect("on_cancel");
+  assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert!(queue.is_closed());
+  assert!(queue.is_empty());
+}
+
+#[test]
+fn source_create_defers_producer_until_source_is_materialized() {
+  let called = ArcShared::new(SpinSyncMutex::new(false));
+  let called_clone = called.clone();
+
+  let source = Source::create(2, move |queue| {
+    *called_clone.lock() = true;
+    assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
+    queue.complete();
+  })
+  .expect("create");
+
+  assert!(!*called.lock());
+  let values = source.collect_values().expect("collect_values");
+  assert!(*called.lock());
+  assert_eq!(values, vec![40_u32, 41_u32]);
+}
+
+#[test]
+fn source_create_take_should_not_panic_when_producer_already_completed_queue() {
+  let source = Source::create(2, |queue| {
+    assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
+    queue.complete();
+  })
+  .expect("create")
+  .take(1);
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![40_u32]);
+}
+
+#[test]
+fn source_create_auto_completes_queue_when_producer_returns_without_termination() {
+  let source = Source::create(2, |queue| {
+    assert_eq!(queue.offer(50_u32), QueueOfferResult::Enqueued);
+    assert_eq!(queue.offer(51_u32), QueueOfferResult::Enqueued);
+  })
+  .expect("create");
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![50_u32, 51_u32]);
+}
+
+#[test]
+fn source_create_propagates_queue_failure_from_producer() {
+  let source = Source::<u32, _>::create(2, |queue| {
+    queue.fail(StreamError::Failed);
+  })
+  .expect("create");
+
+  assert!(matches!(source.collect_values(), Err(StreamError::Failed)));
 }
 
 #[test]

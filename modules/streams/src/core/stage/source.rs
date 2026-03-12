@@ -378,7 +378,23 @@ where
     capacity: usize,
     overflow_strategy: OverflowStrategy,
   ) -> Result<Source<Out, SourceQueueWithComplete<Out>>, StreamDslError> {
-    let queue = SourceQueueWithComplete::new(capacity, overflow_strategy);
+    Self::queue_with_overflow_and_max_concurrent_offers(capacity, overflow_strategy, 1)
+  }
+
+  /// Creates a source materialized as a source queue with completion notifications.
+  ///
+  /// `capacity` may be zero to disable the internal buffer.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `max_concurrent_offers` is zero.
+  pub fn queue_with_overflow_and_max_concurrent_offers(
+    capacity: usize,
+    overflow_strategy: OverflowStrategy,
+    max_concurrent_offers: usize,
+  ) -> Result<Source<Out, SourceQueueWithComplete<Out>>, StreamDslError> {
+    let max_concurrent_offers = validate_positive_argument("max_concurrent_offers", max_concurrent_offers)?;
+    let queue = SourceQueueWithComplete::new(capacity, overflow_strategy, max_concurrent_offers);
     let mut graph = StreamGraph::new();
     let outlet: Outlet<Out> = Outlet::new();
     let logic = QueueWithOverflowSourceLogic::<Out> { queue: queue.clone() };
@@ -2027,7 +2043,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete();
+    let _ = self.queue.complete_if_open();
     Ok(())
   }
 }
@@ -2045,7 +2061,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete();
+    self.queue.close_for_cancel();
     Ok(())
   }
 }
@@ -2063,7 +2079,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    self.queue.complete();
+    let _ = self.queue.complete_if_open();
     Ok(())
   }
 }

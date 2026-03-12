@@ -39,3 +39,12 @@ fn source_queue_should_report_drained_after_complete_and_poll() {
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
   assert!(queue.is_drained());
 }
+
+#[test]
+fn source_queue_complete_if_open_should_ignore_already_completed_queue() {
+  let queue = SourceQueue::<u32>::new();
+
+  assert!(queue.complete_if_open());
+  assert!(!queue.complete_if_open());
+  assert!(queue.is_closed());
+}
