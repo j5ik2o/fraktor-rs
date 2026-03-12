@@ -1,5 +1,8 @@
 //! Typed actor context wrapper.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
@@ -11,6 +14,7 @@ use crate::core::{
   typed::{
     TypedActorSystem,
     actor::{actor_ref::TypedActorRef, child_ref::TypedChildRef},
+    behavior::{Behavior, BehaviorDirective},
     message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilder, MessageAdapterRegistry},
     props::TypedProps,
     receive_timeout_config::ReceiveTimeoutConfig,
@@ -222,6 +226,23 @@ where
   /// Returns an error when actor cell access or unstash dispatch fails.
   pub fn unstash_all(&self) -> Result<usize, ActorError> {
     self.inner().unstash_all()
+  }
+
+  /// Delegates the provided message to another behavior and returns the resulting next behavior.
+  ///
+  /// When the delegated behavior returns [`crate::core::typed::Behaviors::same`] or
+  /// [`crate::core::typed::Behaviors::unhandled`], the delegated behavior itself becomes
+  /// the next active behavior, matching Pekko's `ActorContext.delegate` contract.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the delegated behavior fails while handling the message.
+  pub fn delegate(&mut self, mut delegatee: Behavior<M>, msg: &M) -> Result<Behavior<M>, ActorError> {
+    let next = delegatee.handle_message(self, msg)?;
+    match next.directive() {
+      | BehaviorDirective::Same | BehaviorDirective::Unhandled => Ok(delegatee),
+      | _ => Ok(next),
+    }
   }
 
   /// Provides mutable access to the underlying untyped context.

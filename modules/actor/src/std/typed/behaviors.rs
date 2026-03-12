@@ -13,11 +13,13 @@ use crate::{
       actor::TypedActorContext as CoreTypedActorContext,
     },
   },
-  std::typed::actor::TypedActorContext,
+  std::typed::{LogOptions, actor::TypedActorContext},
 };
 
-/// Interceptor that logs every received message via `tracing::debug!`.
-struct LogMessagesInterceptor;
+/// Interceptor that logs every received message through `tracing`.
+struct LogMessagesInterceptor {
+  options: LogOptions,
+}
 
 impl<M> BehaviorInterceptor<M, M> for LogMessagesInterceptor
 where
@@ -29,7 +31,7 @@ where
     message: &M,
     target: &mut dyn FnMut(&mut CoreTypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
-    tracing::debug!(actor = %ctx.pid(), ?message, "received message");
+    log_received_message(&self.options, ctx.pid(), message);
     target(ctx, message)
   }
 }
@@ -144,11 +146,18 @@ impl Behaviors {
   /// implement [`Debug`](core::fmt::Debug) so it can be formatted in the log
   /// output.
   #[must_use]
-  pub fn log_messages<M, F>(behavior_factory: F) -> Behavior<M>
+  pub fn log_messages<M>(behavior: Behavior<M>) -> Behavior<M>
   where
-    M: Send + Sync + core::fmt::Debug + 'static,
-    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
-    CoreBehaviors::intercept(|| Box::new(LogMessagesInterceptor), behavior_factory)
+    M: Send + Sync + core::fmt::Debug + 'static, {
+    Self::log_messages_with_opts(LogOptions::default(), behavior)
+  }
+
+  /// Wraps a behavior so that every received message is logged using `opts`.
+  #[must_use]
+  pub fn log_messages_with_opts<M>(opts: LogOptions, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + core::fmt::Debug + 'static, {
+    CoreBehaviors::intercept_behavior(move || Box::new(LogMessagesInterceptor { options: opts.clone() }), behavior)
   }
 }
 
@@ -158,4 +167,29 @@ where
   F: FnOnce(&mut TypedActorContext<'_, 'a, M>) -> R, {
   let mut wrapped = TypedActorContext::from_core_mut(ctx);
   f(&mut wrapped)
+}
+
+fn log_received_message<M>(options: &LogOptions, pid: crate::core::actor::Pid, message: &M)
+where
+  M: core::fmt::Debug, {
+  if !options.enabled() {
+    return;
+  }
+
+  match options.logger_name() {
+    | Some(logger_name) => match options.level() {
+      | tracing::Level::TRACE => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
+      | tracing::Level::DEBUG => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
+      | tracing::Level::INFO => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
+      | tracing::Level::WARN => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
+      | tracing::Level::ERROR => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
+    },
+    | None => match options.level() {
+      | tracing::Level::TRACE => tracing::trace!(actor = %pid, ?message, "received message"),
+      | tracing::Level::DEBUG => tracing::debug!(actor = %pid, ?message, "received message"),
+      | tracing::Level::INFO => tracing::info!(actor = %pid, ?message, "received message"),
+      | tracing::Level::WARN => tracing::warn!(actor = %pid, ?message, "received message"),
+      | tracing::Level::ERROR => tracing::error!(actor = %pid, ?message, "received message"),
+    },
+  }
 }

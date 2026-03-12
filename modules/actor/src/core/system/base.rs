@@ -44,7 +44,7 @@ use crate::core::{
     provider::ActorRefResolveError,
     state::{SystemStateShared, system_state::SystemState},
   },
-  typed::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL, TypedProps},
+  typed::{ActorRefResolverId, Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL, TypedProps},
 };
 
 const PARENT_MISSING: &str = "parent actor not found";
@@ -161,6 +161,7 @@ impl ActorSystem {
     }
 
     system.install_default_serialization_extension()?;
+    system.install_default_actor_ref_resolver_extension()?;
 
     system.state.mark_root_started();
 
@@ -281,6 +282,16 @@ impl ActorSystem {
     }
     self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
       SpawnError::SystemBuildError(format!("default serialization extension registration failed: {error:?}"))
+    })
+  }
+
+  fn install_default_actor_ref_resolver_extension(&self) -> Result<(), SpawnError> {
+    let id = ActorRefResolverId::new();
+    if self.extended().has_extension(&id) {
+      return Ok(());
+    }
+    self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
+      SpawnError::SystemBuildError(format!("default actor ref resolver extension registration failed: {error:?}"))
     })
   }
 

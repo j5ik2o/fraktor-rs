@@ -1,0 +1,95 @@
+use alloc::boxed::Box;
+
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use super::BehaviorSignalInterceptor;
+use crate::core::{
+  actor::ActorContext,
+  system::ActorSystem,
+  typed::{BehaviorSignal, Behaviors, actor::TypedActorContext},
+};
+
+struct SignalProbe {
+  start_count:  ArcShared<NoStdMutex<u32>>,
+  signal_count: ArcShared<NoStdMutex<u32>>,
+}
+
+impl BehaviorSignalInterceptor<u32> for SignalProbe {
+  fn around_start(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, u32>,
+    start: &mut (
+           dyn FnMut(
+      &mut TypedActorContext<'_, u32>,
+    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError>
+             + '_
+         ),
+  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError> {
+    *self.start_count.lock() += 1;
+    start(ctx)
+  }
+
+  fn around_signal(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, u32>,
+    signal: &BehaviorSignal,
+    target: &mut (
+           dyn FnMut(
+      &mut TypedActorContext<'_, u32>,
+      &BehaviorSignal,
+    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError>
+             + '_
+         ),
+  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError> {
+    *self.signal_count.lock() += 1;
+    target(ctx, signal)
+  }
+}
+
+#[test]
+fn behavior_signal_interceptor_default_handlers_delegate() {
+  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let mut interceptor = SignalProbe { start_count: start_count.clone(), signal_count: signal_count.clone() };
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut start = |_ctx: &mut TypedActorContext<'_, u32>| Ok(Behaviors::ignore());
+  let mut started_behavior = interceptor.around_start(&mut typed_ctx, &mut start).expect("started");
+
+  let mut signal_target = |_ctx: &mut TypedActorContext<'_, u32>, _signal: &BehaviorSignal| Ok(Behaviors::same());
+  let signal_behavior =
+    interceptor.around_signal(&mut typed_ctx, &BehaviorSignal::Stopped, &mut signal_target).expect("stopped");
+
+  started_behavior.handle_message(&mut typed_ctx, &1_u32).expect("message");
+  let _ = signal_behavior;
+
+  assert_eq!(*start_count.lock(), 1);
+  assert_eq!(*signal_count.lock(), 1);
+}
+
+#[test]
+fn intercept_signal_delegates_to_signal_interceptor() {
+  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count_clone = start_count.clone();
+  let signal_count_clone = signal_count.clone();
+
+  let mut behavior = Behaviors::intercept_signal(
+    move || Box::new(SignalProbe { start_count: start_count_clone.clone(), signal_count: signal_count_clone.clone() }),
+    || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
+  );
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut started = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  started.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("stopped");
+
+  assert_eq!(*start_count.lock(), 1);
+  assert_eq!(*signal_count.lock(), 1);
+}
