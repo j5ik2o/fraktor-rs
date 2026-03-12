@@ -14,7 +14,7 @@
     "takt-analyzer": {
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
-      "computedHash": "8f5ab80d942643e578b5feb15df5f4f8f002de707a933c2883791b14d95a5a59"
+      "computedHash": "85b3c9a3c87148f88ec9f3a3d269952d499bd507140e29dd671feb2cc4577244"
     },
     "takt-facet-builder": {
       "source": "j5ik2o/ai-tools",
@@ -24,12 +24,17 @@
     "takt-optimizer": {
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
-      "computedHash": "ca25c684b02acc54748e334037b691edf84fb7df6a44772b22a4192e80c5fccd"
+      "computedHash": "35d653ef1919fcf2fc65a8233337a9c7fc0f947a05615c3f6c2f10cb25327b5a"
     },
     "takt-piece-builder": {
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
-      "computedHash": "87856be32c95c8453f46a7c9c8fb9982047be0a72d0a0dd449ccb10478aebc82"
+      "computedHash": "5a5f0e50d7cf7b537325f5ffc36580af81fe386efa8412e8100dc1826d266d78"
+    },
+    "takt-skill-updater": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "632c639af8543f984b6d09f20aef17d2830fc1449125f15d60b37a124e208951"
     },
     "takt-task-builder": {
       "source": "j5ik2o/ai-tools",
