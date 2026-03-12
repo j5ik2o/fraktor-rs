@@ -53,7 +53,7 @@ where
       self.finished = true;
       match self.completion.try_take() {
         | Some(Ok(_)) | None => {
-          self.queue.complete();
+          let _ = self.queue.complete_if_open();
           return self.queue.poll();
         },
         | Some(Err(error)) => {

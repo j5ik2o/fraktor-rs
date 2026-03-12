@@ -6,6 +6,8 @@ use crate::core::{
   BoundedSourceQueue, StreamDslError, StreamError, StreamNotUsed, stage::Source, validate_positive_argument,
 };
 
+const PRODUCER_STARTUP_YIELD_LIMIT: usize = 64;
+
 impl<Out> Source<Out, StreamNotUsed>
 where
   Out: Send + Sync + 'static,
@@ -49,7 +51,9 @@ where
       match spawn_result {
         | Ok(handle) => {
           let _ = started_rx.recv();
-          for _ in 0..64 {
+          // Give the producer thread a short head start so immediate termination
+          // or the first offered value becomes visible before the pull path proceeds.
+          for _ in 0..PRODUCER_STARTUP_YIELD_LIMIT {
             if !queue.is_empty() || queue.is_closed() || handle.is_finished() {
               break;
             }

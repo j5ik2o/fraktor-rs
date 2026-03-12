@@ -40,7 +40,7 @@ where
 
     self.emitted = true;
     if self.source_done {
-      self.tail_queue.complete();
+      let _ = self.tail_queue.complete_if_open();
     }
     let Some(tail_source) = self.tail_source.take() else {
       return Err(StreamError::InvalidConnection);
@@ -70,7 +70,7 @@ where
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     self.source_done = true;
-    self.tail_queue.complete();
+    let _ = self.tail_queue.complete_if_open();
     Ok(())
   }
 
