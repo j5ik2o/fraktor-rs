@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "skill-forge": {
+      "source": "j5ik2o/ai-tools",
+      "sourceType": "github",
+      "computedHash": "e8a183c8bdb3b2d6dfb90fd4c696518dfdfd781424f31955ff16de1d1d447d24"
+    },
     "takt": {
       "source": "nrslib/takt",
       "sourceType": "github",
