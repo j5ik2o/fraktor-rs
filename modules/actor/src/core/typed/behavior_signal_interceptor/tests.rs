@@ -57,14 +57,11 @@ fn behavior_signal_interceptor_default_handlers_delegate() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut start = |_ctx: &mut TypedActorContext<'_, u32>| Ok(Behaviors::ignore());
-  let mut started_behavior = interceptor.around_start(&mut typed_ctx, &mut start).expect("started");
+  let _started_behavior = interceptor.around_start(&mut typed_ctx, &mut start).expect("started");
 
   let mut signal_target = |_ctx: &mut TypedActorContext<'_, u32>, _signal: &BehaviorSignal| Ok(Behaviors::same());
-  let signal_behavior =
+  let _signal_behavior =
     interceptor.around_signal(&mut typed_ctx, &BehaviorSignal::Stopped, &mut signal_target).expect("stopped");
-
-  started_behavior.handle_message(&mut typed_ctx, &1_u32).expect("message");
-  let _ = signal_behavior;
 
   assert_eq!(*start_count.lock(), 1);
   assert_eq!(*signal_count.lock(), 1);

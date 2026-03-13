@@ -34,7 +34,7 @@ export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS
-CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-900}"
+CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-0}"
 CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
 CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/.takt/.ci-check.last-hang}"
@@ -67,7 +67,7 @@ usage() {
 
 環境変数:
   CARGO_BUILD_JOBS            : cargo の並列ジョブ数（未設定時は 4）
-  CI_CHECK_GUARD_TIMEOUT_SEC  : cargo test/run/bench/nextest の実行上限秒数（0 で無効、既定 900）
+  CI_CHECK_GUARD_TIMEOUT_SEC  : cargo test/run/bench/nextest の実行上限秒数（0 で無効、既定 0）
   CI_CHECK_GUARD_KILL_AFTER_SEC : タイムアウト後に強制終了へ移るまでの猶予秒数（既定 15）
   CI_CHECK_HANG_COOLDOWN_SEC  : HANG_SUSPECT 後に同一コマンドの再実行を拒否する秒数（既定 1800）
   CI_CHECK_ALLOW_RERUN_AFTER_HANG : 1 のとき HANG_SUSPECT 後の同一コマンド再実行を許可
@@ -163,21 +163,10 @@ guard_against_repeat_hang() {
 }
 
 enable_ai_mode() {
-  if [[ -z "${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-}" ]]; then
-    export CI_CHECK_HEARTBEAT_INTERVAL_SEC="30"
-  fi
-
-  if [[ -z "${CI_CHECK_GUARD_TIMEOUT_SEC:-}" ]]; then
-    export CI_CHECK_GUARD_TIMEOUT_SEC="900"
-  fi
-
-  if [[ -z "${CI_CHECK_GUARD_KILL_AFTER_SEC:-}" ]]; then
-    export CI_CHECK_GUARD_KILL_AFTER_SEC="15"
-  fi
-
-  if [[ -z "${CI_CHECK_HANG_COOLDOWN_SEC:-}" ]]; then
-    export CI_CHECK_HANG_COOLDOWN_SEC="1800"
-  fi
+  export CI_CHECK_HEARTBEAT_INTERVAL_SEC="30"
+  export CI_CHECK_GUARD_TIMEOUT_SEC="900"
+  export CI_CHECK_GUARD_KILL_AFTER_SEC="15"
+  export CI_CHECK_HANG_COOLDOWN_SEC="1800"
 
   echo "info: AI モードを有効化しました (timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s)" >&2
 }
@@ -261,7 +250,7 @@ run_cargo() {
   command_string="$(render_command "${cmd[@]}")"
   local guarded="0"
 
-  if should_guard_cargo_command "$@"; then
+  if should_guard_cargo_command "$1"; then
     guarded="1"
     guard_against_repeat_hang "${command_string}" || return 1
 

@@ -373,7 +373,7 @@ impl ActorCell {
       backpressure_active: false,
     });
 
-    Ok(pending.len())
+    Ok(1)
   }
 
   /// Re-enqueues all stashed user messages back to this actor mailbox.

@@ -30,11 +30,10 @@ fn closed(total: i32, stash: StashBuffer<Command>) -> Behavior<Command> {
       Ok(Behaviors::same())
     },
     | Command::Open => {
-      let unstashed = stash.unstash(ctx, 2, |message| match message {
+      let _ = stash.unstash(ctx, 2, |message| match message {
         | Command::Buffer(value) => Command::Buffer(value + 100),
         | other => other,
       })?;
-      let _ = unstashed;
       Ok(open(total))
     },
     | Command::Read { reply_to } => {
@@ -82,4 +81,6 @@ fn main() {
 }
 
 #[cfg(target_os = "none")]
-fn main() {}
+fn main() {
+  // no_std ターゲットでは実行せず、ビルド専用のサンプルとして扱う。
+}

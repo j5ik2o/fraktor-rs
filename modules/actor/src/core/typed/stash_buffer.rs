@@ -86,13 +86,10 @@ where
     M: Clone, {
     Self::with_cell(ctx, |cell| {
       cell.with_stashed_messages(|messages| {
-        messages
-          .front()
-          .and_then(|message| message.payload().downcast_ref::<M>())
-          .cloned()
-          .ok_or_else(|| ActorError::recoverable("stash buffer is empty"))
+        messages.front().and_then(|message| message.payload().downcast_ref::<M>()).cloned()
       })
     })?
+    .ok_or_else(|| ActorError::recoverable("stash buffer is empty"))
   }
 
   /// Returns true when the stash contains `message`.

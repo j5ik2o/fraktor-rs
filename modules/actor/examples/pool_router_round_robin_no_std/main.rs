@@ -78,4 +78,6 @@ fn main() {
 }
 
 #[cfg(target_os = "none")]
-fn main() {}
+fn main() {
+  // no_std ターゲットでは実行せず、ビルド専用のサンプルとして扱う。
+}

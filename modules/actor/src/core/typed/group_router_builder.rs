@@ -4,10 +4,10 @@
 mod tests;
 
 use alloc::{format, string::String, vec, vec::Vec};
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
-use portable_atomic::{AtomicU64, Ordering};
+use portable_atomic::AtomicU64;
 
 use crate::core::{
   event::logging::LogLevel,
@@ -36,13 +36,13 @@ where
 {
   /// Creates a new group router builder for the given service key.
   pub(crate) const fn new(service_key: ServiceKey<M>) -> Self {
-    Self { service_key, strategy: GroupRouteStrategy::Random }
+    Self { service_key, strategy: GroupRouteStrategy::Random { seed: 0 } }
   }
 
   /// Routes messages by random selection across the available routees.
   #[must_use]
-  pub fn with_random_routing(mut self) -> Self {
-    self.strategy = GroupRouteStrategy::Random;
+  pub fn with_random_routing(mut self, seed: u64) -> Self {
+    self.strategy = GroupRouteStrategy::Random { seed };
     self
   }
 
@@ -134,7 +134,10 @@ where
       let rfm = routees_for_msg.clone();
       let strategy_for_message = strategy.clone();
       let round_robin_index = AtomicUsize::new(0);
-      let random_seed = AtomicU64::new(0);
+      let random_seed = AtomicU64::new(match &strategy_for_message {
+        | GroupRouteStrategy::Random { seed } => *seed,
+        | _ => 0,
+      });
       Behaviors::receive_message(move |_ctx, message: &M| {
         let targets = {
           let guard = rfm.lock();
@@ -143,7 +146,7 @@ where
           }
           let idx = match &strategy_for_message {
             | GroupRouteStrategy::RoundRobin => round_robin_index.fetch_add(1, Ordering::Relaxed) % guard.len(),
-            | GroupRouteStrategy::Random => {
+            | GroupRouteStrategy::Random { seed: _ } => {
               let seed = random_seed.fetch_add(1, Ordering::Relaxed);
               pseudo_random_index(seed, guard.len())
             },
@@ -172,7 +175,7 @@ enum GroupRouteStrategy<M>
 where
   M: Send + Sync + Clone + 'static, {
   RoundRobin,
-  Random,
+  Random { seed: u64 },
   ConsistentHash { hash_fn: ArcShared<dyn Fn(&M) -> String + Send + Sync> },
 }
 
@@ -182,7 +185,7 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
 }
 
 fn stable_hash_index(value: &str, len: usize) -> usize {
-  let mut hash = 1469598103934665603_u64;
+  let mut hash = 14695981039346656037_u64;
   for byte in value.as_bytes() {
     hash ^= u64::from(*byte);
     hash = hash.wrapping_mul(1099511628211);

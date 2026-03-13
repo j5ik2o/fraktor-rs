@@ -1,10 +1,7 @@
 extern crate std;
 
 use alloc::{string::String, vec::Vec};
-use std::{
-  fmt,
-  sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use tracing::{
@@ -205,9 +202,5 @@ impl Visit for EventVisitor {
     }
   }
 
-  fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-    if field.name() == "logger_name" && self.logger_name.is_none() {
-      self.logger_name = Some(format!("{value:?}").trim_matches('"').to_owned());
-    }
-  }
+  fn record_debug(&mut self, _field: &Field, _value: &dyn core::fmt::Debug) {}
 }

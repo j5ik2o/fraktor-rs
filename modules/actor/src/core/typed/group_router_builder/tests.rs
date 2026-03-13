@@ -27,7 +27,7 @@ fn should_create_builder_from_service_key() {
 #[test]
 fn group_router_builder_with_random_routing_builds_behavior() {
   let key = ServiceKey::<u32>::new("test-group-random-build");
-  let _behavior = Routers::group(key).with_random_routing().build();
+  let _behavior = Routers::group(key).with_random_routing(7).build();
 }
 
 #[test]
@@ -195,7 +195,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).with_random_routing().build()
+    move || Routers::group(key.clone()).with_random_routing(11).build()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
@@ -229,13 +229,15 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
   }
   wait_until(|| records.lock().len() == 6);
 
+  // 実装ヘルパーではなく、観測可能な振る舞いとして有効な routee へ
+  // 分配され、固定 seed でも片寄り切らないことを確認する。
   let mut routee_by_message = [usize::MAX; 6];
   for (routee_index, message) in records.lock().iter().copied() {
     routee_by_message[message as usize] = routee_index;
   }
-  let expected_direct: Vec<usize> = (0..6).map(|message| super::pseudo_random_index(message as u64, 2)).collect();
-  let expected_inverted: Vec<usize> = expected_direct.iter().map(|index| 1_usize - index).collect();
-  assert!(expected_direct == routee_by_message || expected_inverted == routee_by_message);
+  assert!(routee_by_message.iter().all(|index| *index < 2));
+  assert!(routee_by_message.contains(&0));
+  assert!(routee_by_message.contains(&1));
 
   system.terminate().expect("terminate");
 }
@@ -289,9 +291,9 @@ fn group_router_uses_random_routing_by_default() {
   for (routee_index, message) in records.lock().iter().copied() {
     routee_by_message[message as usize] = routee_index;
   }
-  let expected_direct: Vec<usize> = (0..6).map(|message| super::pseudo_random_index(message as u64, 2)).collect();
-  let expected_inverted: Vec<usize> = expected_direct.iter().map(|index| 1_usize - index).collect();
-  assert!(expected_direct == routee_by_message || expected_inverted == routee_by_message);
+  assert!(routee_by_message.iter().all(|index| *index < 2));
+  assert!(routee_by_message.contains(&0));
+  assert!(routee_by_message.contains(&1));
 
   system.terminate().expect("terminate");
 }

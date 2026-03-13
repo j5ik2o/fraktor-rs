@@ -9,6 +9,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   error::ActorError,
+  event::logging::LogLevel,
   typed::{
     Behaviors, Listing, Receptionist, ServiceKey, TopicCommand, TopicStats, actor::TypedActorRef, behavior::Behavior,
   },
@@ -27,6 +28,15 @@ pub struct Topic;
 impl Topic {
   /// Creates a topic actor behavior for the provided topic name.
   ///
+  /// Publish uses one of two exclusive delivery paths. When
+  /// `topic_instances` is empty, the topic behaves as a local-only pub/sub and
+  /// forwards messages directly to `local_subscribers`. When
+  /// `topic_instances` is non-empty, the topic forwards a
+  /// `MessagePublished` command to each registered topic instance, and each
+  /// instance then delivers to its own `local_subscribers`. Being present in
+  /// `topic_instances` does not cause duplicate local delivery because only one
+  /// branch executes for each publish.
+  ///
   /// # Errors
   ///
   /// Returns a fatal actor error when the actor system does not provide a
@@ -42,14 +52,22 @@ impl Topic {
 
     Behaviors::setup(move |ctx| {
       let Some(receptionist) = ctx.system().receptionist_ref() else {
+        ctx.system().emit_log(LogLevel::Error, "topic requires receptionist", Some(ctx.pid()));
         return Behaviors::stopped();
       };
-      let Ok(adapter) = ctx.message_adapter(move |listing: Listing| Ok(TopicCommand::topic_instances_updated(listing)))
-      else {
-        return Behaviors::stopped();
-      };
+      let adapter =
+        match ctx.message_adapter(move |listing: Listing| Ok(TopicCommand::topic_instances_updated(listing))) {
+          | Ok(adapter) => adapter,
+          | Err(error) => {
+            let message = alloc::format!("topic failed to create receptionist adapter: {:?}", error);
+            ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
+            return Behaviors::stopped();
+          },
+        };
       let mut receptionist_ref = receptionist.clone();
-      if receptionist_ref.tell(Receptionist::subscribe(&topic_key, adapter)).is_err() {
+      if let Err(error) = receptionist_ref.tell(Receptionist::subscribe(&topic_key, adapter)) {
+        let message = alloc::format!("topic failed to subscribe to receptionist for {}: {:?}", topic_key.id(), error);
+        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
         return Behaviors::stopped();
       }
 

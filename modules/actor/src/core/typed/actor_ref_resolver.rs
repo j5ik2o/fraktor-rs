@@ -89,6 +89,11 @@ impl ActorRefResolver {
 
   /// Resolves a typed actor reference from the serialized format produced by this resolver.
   ///
+  /// This first performs the untyped lookup via [`Self::resolve_actor_ref`] and
+  /// then converts the result with [`TypedActorRef::from_untyped`]. That
+  /// conversion performs no runtime verification of `M`, so callers must ensure
+  /// the resolved actor actually accepts the requested message type.
+  ///
   /// # Errors
   ///
   /// Returns [`ActorRefResolveError`] when parsing or lookup fails.
