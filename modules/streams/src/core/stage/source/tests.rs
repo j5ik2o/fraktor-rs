@@ -759,10 +759,18 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
 fn source_create_tolerates_producer_delay_without_std_sleep() {
   let source = Source::create(1, |queue| {
     assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
+    let mut second_enqueued = false;
     for _ in 0..10_000 {
-      core::hint::spin_loop();
+      match queue.offer(61_u32) {
+        | QueueOfferResult::Enqueued => {
+          second_enqueued = true;
+          break;
+        },
+        | QueueOfferResult::Failure(StreamError::WouldBlock) => std::thread::yield_now(),
+        | other => panic!("unexpected queue result: {other:?}"),
+      }
     }
-    assert_eq!(queue.offer(61_u32), QueueOfferResult::Enqueued);
+    assert!(second_enqueued, "second element should be enqueued after downstream pulls");
     queue.complete();
   })
   .expect("create");
