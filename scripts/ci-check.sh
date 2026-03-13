@@ -34,10 +34,21 @@ export RUSTUP_TOOLCHAIN="${PINNED_TOOLCHAIN}"
 FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS
+CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-900}"
+CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
+CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
+CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/.takt/.ci-check.last-hang}"
+CI_CHECK_ALLOW_RERUN_AFTER_HANG="${CI_CHECK_ALLOW_RERUN_AFTER_HANG:-0}"
+export CI_CHECK_GUARD_TIMEOUT_SEC
+export CI_CHECK_GUARD_KILL_AFTER_SEC
+export CI_CHECK_HANG_COOLDOWN_SEC
+export CI_CHECK_HANG_RECORD_FILE
+export CI_CHECK_ALLOW_RERUN_AFTER_HANG
 
 usage() {
   cat <<'EOF'
 使い方: scripts/ci-check.sh [コマンド...]
+  ai [コマンド...]         : AI 向けガード付きで実行します。後続コマンド省略時は all を実行します
   lint                   : cargo fmt --all --check を実行します
   fmt                    : cargo fmt --all を実行します
   dylint [lint...]       : カスタムリントを実行します (デフォルトはすべて、例: dylint mod-file-lint)
@@ -56,11 +67,119 @@ usage() {
 
 環境変数:
   CARGO_BUILD_JOBS            : cargo の並列ジョブ数（未設定時は 4）
+  CI_CHECK_GUARD_TIMEOUT_SEC  : cargo test/run/bench/nextest の実行上限秒数（0 で無効、既定 900）
+  CI_CHECK_GUARD_KILL_AFTER_SEC : タイムアウト後に強制終了へ移るまでの猶予秒数（既定 15）
+  CI_CHECK_HANG_COOLDOWN_SEC  : HANG_SUSPECT 後に同一コマンドの再実行を拒否する秒数（既定 1800）
+  CI_CHECK_ALLOW_RERUN_AFTER_HANG : 1 のとき HANG_SUSPECT 後の同一コマンド再実行を許可
 EOF
 }
 
 log_step() {
   printf '==> %s\n' "$1"
+}
+
+resolve_timeout_command() {
+  if command -v timeout >/dev/null 2>&1; then
+    echo "timeout"
+    return 0
+  fi
+
+  if command -v gtimeout >/dev/null 2>&1; then
+    echo "gtimeout"
+    return 0
+  fi
+
+  return 1
+}
+
+render_command() {
+  local rendered=""
+  local arg=""
+  for arg in "$@"; do
+    if [[ -n "${rendered}" ]]; then
+      rendered+=" "
+    fi
+    rendered+="$(printf '%q' "${arg}")"
+  done
+  printf '%s\n' "${rendered}"
+}
+
+should_guard_cargo_command() {
+  local subcommand="${1:-}"
+  case "${subcommand}" in
+    test|run|bench|nextest)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+record_hang_suspect() {
+  local command_string="$1"
+  mkdir -p "$(dirname "${CI_CHECK_HANG_RECORD_FILE}")"
+  printf '%s\t%s\n' "$(date +%s)" "${command_string}" > "${CI_CHECK_HANG_RECORD_FILE}"
+}
+
+clear_hang_suspect() {
+  rm -f "${CI_CHECK_HANG_RECORD_FILE}" >/dev/null 2>&1 || true
+}
+
+guard_against_repeat_hang() {
+  local command_string="$1"
+
+  if [[ "${CI_CHECK_ALLOW_RERUN_AFTER_HANG}" == "1" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "${CI_CHECK_HANG_RECORD_FILE}" ]]; then
+    return 0
+  fi
+
+  local recorded_at=""
+  local recorded_command=""
+  IFS=$'\t' read -r recorded_at recorded_command < "${CI_CHECK_HANG_RECORD_FILE}" || true
+
+  if [[ -z "${recorded_at}" || -z "${recorded_command}" ]]; then
+    clear_hang_suspect
+    return 0
+  fi
+
+  local now
+  now=$(date +%s)
+  local age=$(( now - recorded_at ))
+
+  if [[ "${recorded_command}" == "${command_string}" && "${age}" -lt "${CI_CHECK_HANG_COOLDOWN_SEC}" ]]; then
+    echo "error: 直前に HANG_SUSPECT となった同一コマンドの再実行を拒否しました。" >&2
+    echo "error: command=${command_string}" >&2
+    echo "error: ${age}s 前に停止しています。コード・対象範囲・仮説・計測を変えるか、明示的に再実行する場合は CI_CHECK_ALLOW_RERUN_AFTER_HANG=1 を指定してください。" >&2
+    return 1
+  fi
+
+  if [[ "${age}" -ge "${CI_CHECK_HANG_COOLDOWN_SEC}" ]]; then
+    clear_hang_suspect
+  fi
+}
+
+enable_ai_mode() {
+  if [[ -z "${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-}" ]]; then
+    export CI_CHECK_HEARTBEAT_INTERVAL_SEC="30"
+  fi
+
+  if [[ -z "${CI_CHECK_GUARD_TIMEOUT_SEC:-}" ]]; then
+    export CI_CHECK_GUARD_TIMEOUT_SEC="900"
+  fi
+
+  if [[ -z "${CI_CHECK_GUARD_KILL_AFTER_SEC:-}" ]]; then
+    export CI_CHECK_GUARD_KILL_AFTER_SEC="15"
+  fi
+
+  if [[ -z "${CI_CHECK_HANG_COOLDOWN_SEC:-}" ]]; then
+    export CI_CHECK_HANG_COOLDOWN_SEC="1800"
+  fi
+
+  echo "info: AI モードを有効化しました (timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s)" >&2
 }
 
 run_with_heartbeat() {
@@ -138,9 +257,53 @@ run_cargo() {
     cmd=(cargo -v "$@")
   fi
 
-  if ! "${cmd[@]}"; then
-    echo "error: ${cmd[*]}" >&2
-    return 1
+  local command_string=""
+  command_string="$(render_command "${cmd[@]}")"
+  local guarded="0"
+
+  if should_guard_cargo_command "$@"; then
+    guarded="1"
+    guard_against_repeat_hang "${command_string}" || return 1
+
+    if [[ "${CI_CHECK_GUARD_TIMEOUT_SEC}" =~ ^[0-9]+$ ]] && [[ "${CI_CHECK_GUARD_TIMEOUT_SEC}" -gt 0 ]]; then
+      local timeout_command=""
+      timeout_command="$(resolve_timeout_command || true)"
+      if [[ -n "${timeout_command}" ]]; then
+        set +e
+        "${timeout_command}" --foreground --kill-after="${CI_CHECK_GUARD_KILL_AFTER_SEC}" "${CI_CHECK_GUARD_TIMEOUT_SEC}" "${cmd[@]}"
+        local status=$?
+        set -e
+        if [[ "${status}" -ne 0 ]]; then
+          if [[ "${status}" -eq 124 ]]; then
+            record_hang_suspect "${command_string}"
+            echo "error: HANG_SUSPECT: ${command_string}" >&2
+            echo "error: ${CI_CHECK_GUARD_TIMEOUT_SEC}s を超過したため停止しました。盲目的な再実行は禁止です。対象を絞るか計測を追加してください。" >&2
+            return 124
+          fi
+          clear_hang_suspect
+          echo "error: ${command_string}" >&2
+          return "${status}"
+        fi
+
+        clear_hang_suspect
+        return 0
+      fi
+
+      echo "warning: timeout コマンドが見つからないため、ハングガードなしで実行します。" >&2
+    fi
+  fi
+
+  set +e
+  "${cmd[@]}"
+  local status=$?
+  set -e
+  if [[ "${status}" -ne 0 ]]; then
+    echo "error: ${command_string}" >&2
+    return "${status}"
+  fi
+
+  if [[ "${guarded}" == "1" ]]; then
+    clear_hang_suspect
   fi
 }
 
@@ -940,6 +1103,7 @@ run_all() {
 }
 
 main() {
+  mkdir -p "${REPO_ROOT}/.takt"
   local lockfile="${REPO_ROOT}/.takt/.ci-check.lock"
   while true; do
     if ( set -o noclobber; printf '%s\n' "$$" > "${lockfile}" ) 2>/dev/null; then
@@ -966,6 +1130,14 @@ main() {
   fi
 
   clean_stale_lint_targets
+
+  if [[ $# -gt 0 && "$1" == "ai" ]]; then
+    shift
+    enable_ai_mode
+    if [[ $# -eq 0 ]]; then
+      set -- all
+    fi
+  fi
 
   if [[ $# -eq 0 ]]; then
     run_with_heartbeat "ci-check all" run_all || return 1
