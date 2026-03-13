@@ -1,4 +1,5 @@
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   sync::Arc,
   vec::Vec,
@@ -22,6 +23,7 @@ use crate::core::{
   typed::{
     Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
     actor::{TypedActor, TypedActorContext, TypedActorRef},
+    behavior_interceptor::BehaviorInterceptor,
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
     props::TypedProps,
     system::TypedActorSystem,
@@ -588,6 +590,17 @@ fn child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
   TypedProps::from_behavior_factory(move || child_behavior(&counter))
 }
 
+struct PassThroughInterceptor;
+
+impl BehaviorInterceptor<ChildCommand> for PassThroughInterceptor {}
+
+fn intercepted_child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
+  let counter = Arc::clone(counter);
+  TypedProps::from_behavior_factory(move || {
+    Behaviors::intercept_behavior(|| Box::new(PassThroughInterceptor), child_behavior(&counter))
+  })
+}
+
 fn supervised_parent_behavior(child: TypedProps<ChildCommand>) -> Behavior<SupervisorCommand> {
   Behaviors::setup(move |ctx| {
     let child_ref = ctx.spawn_child(&child).expect("spawn child");
@@ -615,6 +628,29 @@ fn supervised_parent_props(
 fn behaviors_supervise_restarts_children() {
   let start_counter = Arc::new(AtomicUsize::new(0));
   let child = child_props(&start_counter);
+  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
+    SupervisorDirective::Restart
+  });
+  let parent_props = supervised_parent_props(restart_strategy, child);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let mut parent = system.user_guardian_ref();
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash");
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn intercepted_behavior_survives_supervised_restart() {
+  let start_counter = Arc::new(AtomicUsize::new(0));
+  let child = intercepted_child_props(&start_counter);
   let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
     SupervisorDirective::Restart
   });

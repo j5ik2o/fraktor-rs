@@ -3,9 +3,10 @@ use core::{any::TypeId, hint::spin_loop};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
+use super::{GroupRouterBuilder, rendezvous_hash_index};
 use crate::core::typed::{
   Behaviors, Listing, Receptionist, ReceptionistCommand, ServiceKey, TypedActorSystem, TypedProps,
-  actor::TypedActorRef, group_router_builder::GroupRouterBuilder, routers::Routers,
+  actor::TypedActorRef, routers::Routers,
 };
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -126,6 +127,31 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
   assert_eq!(routed_indices[0], routed_indices[1]);
 
   system.terminate().expect("terminate");
+}
+
+#[test]
+fn consistent_hash_routing_is_stable_across_routee_order_changes() {
+  let routees = vec![
+    TypedActorRef::<u32>::from_untyped(crate::core::actor::actor_ref::ActorRef::new(
+      crate::core::actor::Pid::new(11, 0),
+      crate::core::actor::actor_ref::NullSender,
+    )),
+    TypedActorRef::<u32>::from_untyped(crate::core::actor::actor_ref::ActorRef::new(
+      crate::core::actor::Pid::new(22, 0),
+      crate::core::actor::actor_ref::NullSender,
+    )),
+    TypedActorRef::<u32>::from_untyped(crate::core::actor::actor_ref::ActorRef::new(
+      crate::core::actor::Pid::new(33, 0),
+      crate::core::actor::actor_ref::NullSender,
+    )),
+  ];
+  let mut reordered = routees.clone();
+  reordered.reverse();
+
+  let original_idx = rendezvous_hash_index("route-key", &routees);
+  let reordered_idx = rendezvous_hash_index("route-key", &reordered);
+
+  assert_eq!(routees[original_idx].pid(), reordered[reordered_idx].pid());
 }
 
 #[test]

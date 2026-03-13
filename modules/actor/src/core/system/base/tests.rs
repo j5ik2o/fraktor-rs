@@ -236,6 +236,31 @@ fn actor_system_registers_system_receptionist_during_bootstrap() {
 }
 
 #[test]
+fn bootstrap_rolls_back_receptionist_when_extra_top_level_registration_fails() {
+  let props = Props::from_fn(|| TestActor);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+  state.register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, ActorRef::null()).expect("pre-register receptionist");
+  let system = ActorSystem::from_state(state);
+
+  let result = system.bootstrap(&props, |_| Ok(()));
+
+  match result {
+    | Err(SpawnError::SystemBuildError(message)) => {
+      assert!(message.contains("system receptionist registration failed"));
+      assert!(message.contains("DuplicateName"));
+    },
+    | other => panic!("unexpected bootstrap result: {other:?}"),
+  }
+
+  let system_guardian_pid = system.state().system_guardian_pid().expect("system guardian pid");
+  assert!(system.children(system_guardian_pid).is_empty());
+  assert!(system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).is_some());
+}
+
+#[test]
 fn actor_system_new_with_config_and_fails_without_tick_driver_config() {
   let props = Props::from_fn(|| TestActor);
   let config = ActorSystemConfig::default();

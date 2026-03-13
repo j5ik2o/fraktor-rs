@@ -28,7 +28,7 @@ pub struct Mailbox {
   user:            Box<dyn MessageQueue>,
   user_queue_lock: ArcShared<RuntimeMutex<()>>,
   state:           MailboxScheduleState,
-  instrumentation: RuntimeMutex<Option<MailboxInstrumentation>>,
+  instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -44,14 +44,14 @@ impl Mailbox {
 
   /// Creates a new mailbox using the provided policy and pre-built queue.
   #[must_use]
-  pub fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+  pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
       user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
-      instrumentation: RuntimeMutex::new(None),
+      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
     }
   }
 
@@ -126,7 +126,9 @@ impl Mailbox {
         Ok(EnqueueOutcome::Enqueued)
       },
       | Ok(EnqueueOutcome::Pending(future)) => {
-        let future = future.with_user_queue_lock(self.user_queue_lock.clone());
+        let future = future
+          .with_user_queue_lock(self.user_queue_lock.clone())
+          .with_metrics(self.instrumentation.clone(), self.system.len_handle());
         Ok(EnqueueOutcome::Pending(future))
       },
       | Err(error) => Err(error),

@@ -57,6 +57,22 @@ where
     state.offer(message)
   }
 
+  pub(crate) fn offer_if_room(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
+    let mut state = self.state.lock();
+    if state.len() >= capacity {
+      return Err(QueueError::Full(message));
+    }
+    state.offer(message)
+  }
+
+  pub(crate) fn drop_oldest_and_offer(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
+    let mut state = self.state.lock();
+    if state.len() >= capacity {
+      let _ = state.poll();
+    }
+    state.offer(message)
+  }
+
   pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
     let mut state = self.state.lock();
     state.poll()

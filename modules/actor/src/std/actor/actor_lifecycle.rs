@@ -74,14 +74,16 @@ pub trait Actor: Send {
   /// - **Must be panic-free**: This method is called during failure handling. Panics will cause
   ///   system instability or termination (especially in no_std environments).
   /// - **Should be lightweight**: Called on every child failure, though failures are infrequent.
-  /// - **May update state**: The `&mut self` receiver allows state updates (e.g., error counters).
+  /// - **Must not mutate actor state**: This method is queried while coordinating supervision.
+  ///   `ctx` remains mutable so implementations can inspect runtime state or emit logs, but they
+  ///   must not update actor-owned state or perform coordination-affecting side effects here.
   ///
   /// # See Also
   ///
   /// - [`SupervisorStrategyConfig`] for available strategies
   /// - [`SupervisorDirective`] for failure handling options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 }

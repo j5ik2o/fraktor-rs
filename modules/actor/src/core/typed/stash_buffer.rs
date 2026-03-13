@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::core::{error::ActorError, messaging::AnyMessage, typed::actor::TypedActorContext};
@@ -93,46 +94,56 @@ where
   }
 
   /// Returns true when the stash contains `message`.
+  /// Comparison is evaluated against a cloned snapshot so `PartialEq` does not run while the
+  /// underlying stash lock is held.
   ///
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
   pub fn contains(&self, ctx: &TypedActorContext<'_, M>, message: &M) -> Result<bool, ActorError>
   where
-    M: PartialEq, {
+    M: Clone + PartialEq, {
     self.exists(ctx, |candidate| candidate == message)
   }
 
   /// Returns true when the predicate matches at least one stashed message.
+  /// Matching runs against a cloned snapshot so user predicates are evaluated outside the
+  /// underlying stash lock.
   ///
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
   pub fn exists<F>(&self, ctx: &TypedActorContext<'_, M>, mut predicate: F) -> Result<bool, ActorError>
   where
+    M: Clone,
     F: FnMut(&M) -> bool, {
-    Self::with_cell(ctx, |cell| {
+    let snapshot = Self::with_cell(ctx, |cell| {
       cell.with_stashed_messages(|messages| {
-        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()).any(&mut predicate)
+        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>().cloned()).collect::<Vec<M>>()
       })
-    })
+    })?;
+    Ok(snapshot.iter().any(&mut predicate))
   }
 
   /// Applies `f` to every stashed message without removing them.
+  /// Iteration uses a cloned snapshot so callbacks are invoked outside the underlying stash lock.
   ///
   /// # Errors
   ///
   /// Returns an error when the actor cell is unavailable.
   pub fn foreach<F>(&self, ctx: &TypedActorContext<'_, M>, mut f: F) -> Result<(), ActorError>
   where
+    M: Clone,
     F: FnMut(&M), {
-    Self::with_cell(ctx, |cell| {
+    let snapshot = Self::with_cell(ctx, |cell| {
       cell.with_stashed_messages(|messages| {
-        for message in messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()) {
-          f(message);
-        }
-      });
-    })
+        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>().cloned()).collect::<Vec<M>>()
+      })
+    })?;
+    for message in &snapshot {
+      f(message);
+    }
+    Ok(())
   }
 
   /// Drops all stashed messages.

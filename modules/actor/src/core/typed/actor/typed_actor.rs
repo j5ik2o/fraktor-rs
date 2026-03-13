@@ -51,7 +51,7 @@ where
 
   /// Provides the supervision strategy for this typed actor.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 

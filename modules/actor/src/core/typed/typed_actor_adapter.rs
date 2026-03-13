@@ -227,8 +227,8 @@ where
     self.actor.on_terminated(&mut typed_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
+  fn supervisor_strategy(&self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    let mut typed_ctx = TypedActorContext::from_untyped(ctx, None);
     self.actor.supervisor_strategy(&mut typed_ctx)
   }
 
