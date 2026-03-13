@@ -667,6 +667,79 @@ impl FlowLogic for AsyncFailureStillRunsTimerFlowLogic {
   }
 }
 
+struct TickFailureCompleteFlowLogic {
+  failed_once: bool,
+}
+
+impl FlowLogic for TickFailureCompleteFlowLogic {
+  fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    Ok(FailureAction::Complete)
+  }
+
+  fn on_tick(&mut self, _tick_count: u64) -> Result<(), StreamError> {
+    if !self.failed_once {
+      self.failed_once = true;
+      return Err(StreamError::Failed);
+    }
+    Ok(())
+  }
+}
+
+struct AsyncAndTimerCompleteFlowLogic {
+  callback:    crate::core::stage::AsyncCallback<u32>,
+  timer:       crate::core::stage::TimerGraphStageLogic,
+  initialized: bool,
+}
+
+impl AsyncAndTimerCompleteFlowLogic {
+  fn new() -> Self {
+    Self {
+      callback:    crate::core::stage::AsyncCallback::new(),
+      timer:       crate::core::stage::TimerGraphStageLogic::new(),
+      initialized: false,
+    }
+  }
+}
+
+impl FlowLogic for AsyncAndTimerCompleteFlowLogic {
+  fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    Ok(FailureAction::Complete)
+  }
+
+  fn on_tick(&mut self, _tick_count: u64) -> Result<(), StreamError> {
+    if !self.initialized {
+      self.initialized = true;
+      self.callback.invoke(10_u32);
+      self.timer.schedule_once(1_u64, 1_u64);
+    }
+    Ok(())
+  }
+
+  fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+}
+
 #[test]
 fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
   let source_outlet: Outlet<u32> = Outlet::new();
@@ -767,6 +840,134 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+}
+
+#[test]
+fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let first_flow_inlet: Inlet<u32> = Inlet::new();
+  let first_flow_outlet: Outlet<u32> = Outlet::new();
+  let second_flow_inlet: Inlet<u32> = Inlet::new();
+  let second_flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let first_flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       first_flow_inlet.id(),
+    outlet:      first_flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(TickFailureCompleteFlowLogic { failed_once: false }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let second_flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       second_flow_inlet.id(),
+    outlet:      second_flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(first_flow),
+      StageDefinition::Flow(second_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), first_flow_inlet.id(), MatCombine::KeepLeft),
+      (first_flow_outlet.id(), second_flow_inlet.id(), MatCombine::KeepLeft),
+      (second_flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  for _ in 0..8 {
+    if interpreter.state() != StreamState::Running {
+      break;
+    }
+    let _ = interpreter.drive();
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(*source_done_calls.lock(), 1);
+}
+
+#[test]
+fn flow_async_and_timer_complete_notifies_downstream_once() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let first_flow_inlet: Inlet<u32> = Inlet::new();
+  let first_flow_outlet: Outlet<u32> = Outlet::new();
+  let second_flow_inlet: Inlet<u32> = Inlet::new();
+  let second_flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+  let source_done_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let first_flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       first_flow_inlet.id(),
+    outlet:      first_flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(AsyncAndTimerCompleteFlowLogic::new()),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let second_flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       second_flow_inlet.id(),
+    outlet:      second_flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan = stream_plan(
+    vec![
+      StageDefinition::Source(source),
+      StageDefinition::Flow(first_flow),
+      StageDefinition::Flow(second_flow),
+      StageDefinition::Sink(sink),
+    ],
+    vec![
+      (source_outlet.id(), first_flow_inlet.id(), MatCombine::KeepLeft),
+      (first_flow_outlet.id(), second_flow_inlet.id(), MatCombine::KeepLeft),
+      (second_flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ],
+  );
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  for _ in 0..8 {
+    if interpreter.state() != StreamState::Running {
+      break;
+    }
+    let _ = interpreter.drive();
+  }
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(Vec::<u32>::new())));
+  assert_eq!(*source_done_calls.lock(), 1);
 }
 
 #[test]

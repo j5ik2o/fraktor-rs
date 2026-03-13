@@ -271,6 +271,8 @@ impl GraphInterpreter {
             if !self.all_sources_done() {
               self.set_all_sources_done()?;
             }
+            self.shutdown_flow_stage(stage_index)?;
+            let _ = self.maybe_finish_flow_stage(stage_index);
             progressed = true;
             continue;
           },
@@ -591,6 +593,8 @@ impl GraphInterpreter {
               if !self.all_sources_done() {
                 self.set_all_sources_done()?;
               }
+              self.shutdown_flow_stage(stage_index)?;
+              let _ = self.maybe_finish_flow_stage(stage_index);
               progressed = true;
               continue;
             },
