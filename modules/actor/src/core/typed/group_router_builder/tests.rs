@@ -243,8 +243,8 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
 }
 
 #[test]
-fn group_router_uses_random_routing_by_default() {
-  let key = ServiceKey::<u32>::new("test-group-default-random-routing");
+fn group_router_uses_round_robin_routing_by_default() {
+  let key = ServiceKey::<u32>::new("test-group-default-round-robin-routing");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::scheduler::tick_driver::ManualTestDriver::new(),
@@ -282,18 +282,19 @@ fn group_router_uses_random_routing_by_default() {
   });
   records.lock().clear();
 
-  for message in 0..6_u32 {
+  for message in 0..4_u32 {
     router.tell(message).expect("tell");
   }
-  wait_until(|| records.lock().len() == 6);
+  wait_until(|| records.lock().len() == 4);
 
-  let mut routee_by_message = [usize::MAX; 6];
+  let mut routee_by_message = [usize::MAX; 4];
   for (routee_index, message) in records.lock().iter().copied() {
     routee_by_message[message as usize] = routee_index;
   }
   assert!(routee_by_message.iter().all(|index| *index < 2));
-  assert!(routee_by_message.contains(&0));
-  assert!(routee_by_message.contains(&1));
+  assert_ne!(routee_by_message[0], routee_by_message[1]);
+  assert_eq!(routee_by_message[0], routee_by_message[2]);
+  assert_eq!(routee_by_message[1], routee_by_message[3]);
 
   system.terminate().expect("terminate");
 }

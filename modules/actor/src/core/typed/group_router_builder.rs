@@ -36,7 +36,7 @@ where
 {
   /// Creates a new group router builder for the given service key.
   pub(crate) const fn new(service_key: ServiceKey<M>) -> Self {
-    Self { service_key, strategy: GroupRouteStrategy::Random { seed: 0 } }
+    Self { service_key, strategy: GroupRouteStrategy::RoundRobin }
   }
 
   /// Routes messages by random selection across the available routees.
@@ -66,7 +66,7 @@ where
   ///
   /// The router subscribes to listing changes for the configured service key
   /// via the Receptionist and routes messages to discovered actors using
-  /// random selection by default.
+  /// round-robin selection by default.
   #[must_use]
   pub fn build(self) -> Behavior<M> {
     self.build_with_optional_receptionist(None)
