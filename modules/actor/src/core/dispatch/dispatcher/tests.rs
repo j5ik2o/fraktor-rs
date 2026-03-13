@@ -143,9 +143,17 @@ fn schedule_adapter_receives_pending_signal() {
   tick.tick();
   handle.join().expect("join");
 
-  let pending_calls = adapter.with_write(|a| {
-    a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
-  });
+  let mut pending_calls = 0;
+  for _ in 0..100 {
+    pending_calls = adapter.with_write(|a| {
+      a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
+    });
+    if pending_calls > 0 {
+      break;
+    }
+    thread::yield_now();
+    thread::sleep(Duration::from_millis(1));
+  }
 
   assert!(pending_calls > 0);
 }

@@ -15,6 +15,7 @@ use crate::core::{
 };
 
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;
+type BroadcastPredicate<M> = dyn Fn(&M) -> bool + Send + Sync;
 
 /// Configures and builds a pool router behavior.
 ///
@@ -23,9 +24,10 @@ type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>>
 pub struct PoolRouterBuilder<M>
 where
   M: Send + Sync + Clone + 'static, {
-  pool_size:        usize,
-  behavior_factory: ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
-  strategy:         PoolRouteStrategy<M>,
+  pool_size:           usize,
+  behavior_factory:    ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
+  strategy:            PoolRouteStrategy<M>,
+  broadcast_predicate: Option<ArcShared<BroadcastPredicate<M>>>,
 }
 
 impl<M> PoolRouterBuilder<M>
@@ -41,7 +43,12 @@ where
   where
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     assert!(pool_size > 0, "pool size must be positive");
-    Self { pool_size, behavior_factory: ArcShared::new(behavior_factory), strategy: PoolRouteStrategy::RoundRobin }
+    Self {
+      pool_size,
+      behavior_factory: ArcShared::new(behavior_factory),
+      strategy: PoolRouteStrategy::RoundRobin,
+      broadcast_predicate: None,
+    }
   }
 
   /// Overrides the pool size.
@@ -63,6 +70,13 @@ where
     self
   }
 
+  /// Routes incoming messages through round-robin selection.
+  #[must_use]
+  pub fn with_round_robin(mut self) -> Self {
+    self.strategy = PoolRouteStrategy::RoundRobin;
+    self
+  }
+
   /// Routes incoming messages pseudo-randomly across routees.
   #[must_use]
   pub fn with_random(mut self, seed: u64) -> Self {
@@ -76,6 +90,15 @@ where
   where
     F: Fn(&M) -> u64 + Send + Sync + 'static, {
     self.strategy = PoolRouteStrategy::ConsistentHash { hash_fn: ArcShared::new(hash_fn) };
+    self
+  }
+
+  /// Broadcasts only messages that satisfy `predicate`.
+  #[must_use]
+  pub fn with_broadcast_predicate<F>(mut self, predicate: F) -> Self
+  where
+    F: Fn(&M) -> bool + Send + Sync + 'static, {
+    self.broadcast_predicate = Some(ArcShared::new(predicate));
     self
   }
 
@@ -93,6 +116,7 @@ where
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
     let strategy = self.strategy;
+    let broadcast_predicate = self.broadcast_predicate;
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
@@ -150,13 +174,18 @@ where
         },
       };
 
+      let broadcast_predicate_for_message = broadcast_predicate.clone();
       Behaviors::receive_message(move |_ctx, message: &M| {
         let targets = {
           let guard = routees_for_msg.lock();
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
-          (select_targets)(&guard, message)
+          if let Some(predicate) = broadcast_predicate_for_message.as_ref() {
+            if predicate(message) { guard.to_vec() } else { (select_targets)(&guard, message) }
+          } else {
+            (select_targets)(&guard, message)
+          }
         };
         for mut target in targets {
           let _ = target.tell(message.clone());

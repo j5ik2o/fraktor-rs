@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::boxed::Box;
+use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
@@ -16,6 +17,7 @@ use crate::core::{
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
     behavior_signal::BehaviorSignal,
+    behavior_signal_interceptor::BehaviorSignalInterceptor,
     stash_buffer::StashBuffer,
     timer_scheduler::{TimerScheduler, TimerSchedulerShared},
   },
@@ -36,6 +38,13 @@ where
   monitor_ref: TypedActorRef<M>,
 }
 
+struct SignalInterceptorAdapter<M>
+where
+  M: Send + Sync + 'static, {
+  interceptor: Box<dyn BehaviorSignalInterceptor<M>>,
+  _message:    PhantomData<fn() -> M>,
+}
+
 impl<M> BehaviorInterceptor<M, M> for MonitorInterceptor<M>
 where
   M: Send + Sync + Clone + 'static,
@@ -49,6 +58,28 @@ where
     // ベストエフォート: monitor への送信失敗は無視する。
     let _ = self.monitor_ref.tell(message.clone());
     target(ctx, message)
+  }
+}
+
+impl<M> BehaviorInterceptor<M, M> for SignalInterceptorAdapter<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn around_start(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    start: &mut (dyn FnMut(&mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> + '_),
+  ) -> Result<Behavior<M>, ActorError> {
+    self.interceptor.around_start(ctx, start)
+  }
+
+  fn around_signal(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    signal: &BehaviorSignal,
+    target: &mut (dyn FnMut(&mut TypedActorContext<'_, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + '_),
+  ) -> Result<Behavior<M>, ActorError> {
+    self.interceptor.around_signal(ctx, signal, target)
   }
 }
 
@@ -220,45 +251,33 @@ impl Behaviors {
     M: Send + Sync + 'static,
     I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static,
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
-    Behavior::from_signal_handler(move |ctx, signal| match signal {
-      | BehaviorSignal::Started => {
-        let mut interceptor = interceptor_factory();
-        let mut inner = behavior_factory();
+    intercept_inner(interceptor_factory, move || Ok(behavior_factory()))
+  }
 
-        let started_result =
-          interceptor.around_start(ctx, &mut |ctx| inner.handle_signal(ctx, &BehaviorSignal::Started))?;
-        if apply_intercepted_directive(&mut inner, started_result).is_err() {
-          return Ok(Behavior::stopped());
-        }
-
-        let state = InterceptState { interceptor, inner };
-        let mutex = RuntimeMutex::new(state);
-        let shared = ArcShared::new(mutex);
-
-        let shared_msg = shared.clone();
-        let shared_sig = shared;
-
-        Ok(
-          Behaviors::receive_message(move |ctx, msg| {
-            let mut guard = shared_msg.lock();
-            let next = {
-              let InterceptState { interceptor, inner } = &mut *guard;
-              interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?
-            };
-            Ok(resolve_intercepted_directive(&mut guard.inner, next))
-          })
-          .receive_signal(move |ctx, signal| {
-            let mut guard = shared_sig.lock();
-            let next = {
-              let InterceptState { interceptor, inner } = &mut *guard;
-              interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?
-            };
-            Ok(resolve_intercepted_directive(&mut guard.inner, next))
-          }),
-        )
-      },
-      | _ => Ok(Behavior::same()),
+  /// Wraps a concrete behavior with a [`BehaviorInterceptor`].
+  ///
+  /// This variant is useful when the caller already has a behavior instance and
+  /// still wants to pass through the standard interception path.
+  pub fn intercept_behavior<M, I>(interceptor_factory: I, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static, {
+    let behavior_slot = ArcShared::new(RuntimeMutex::new(Some(behavior)));
+    intercept_inner(interceptor_factory, move || {
+      behavior_slot.lock().take().ok_or_else(|| ActorError::fatal("intercepted behavior was already initialized"))
     })
+  }
+
+  /// Wraps a behavior with a [`BehaviorSignalInterceptor`] for signal-only concerns.
+  pub fn intercept_signal<M, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    I: Fn() -> Box<dyn BehaviorSignalInterceptor<M>> + Send + Sync + 'static,
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    Self::intercept(
+      move || Box::new(SignalInterceptorAdapter { interceptor: interceptor_factory(), _message: PhantomData }),
+      behavior_factory,
+    )
   }
 
   /// Wraps a behavior so that every received message is cloned and sent to a
@@ -275,6 +294,52 @@ impl Behaviors {
     let monitor = monitor_ref;
     Self::intercept(move || Box::new(MonitorInterceptor { monitor_ref: monitor.clone() }), behavior_factory)
   }
+}
+
+fn intercept_inner<M, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M>
+where
+  M: Send + Sync + 'static,
+  I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static,
+  F: Fn() -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+  Behavior::from_signal_handler(move |ctx, signal| match signal {
+    | BehaviorSignal::Started => {
+      let mut interceptor = interceptor_factory();
+      let mut inner = behavior_factory()?;
+
+      let started_result =
+        interceptor.around_start(ctx, &mut |ctx| inner.handle_signal(ctx, &BehaviorSignal::Started))?;
+      if apply_intercepted_directive(&mut inner, started_result).is_err() {
+        return Ok(Behavior::stopped());
+      }
+
+      let state = InterceptState { interceptor, inner };
+      let mutex = RuntimeMutex::new(state);
+      let shared = ArcShared::new(mutex);
+
+      let shared_msg = shared.clone();
+      let shared_sig = shared;
+
+      Ok(
+        Behaviors::receive_message(move |ctx, msg| {
+          let mut guard = shared_msg.lock();
+          let next = {
+            let InterceptState { interceptor, inner } = &mut *guard;
+            interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?
+          };
+          Ok(resolve_intercepted_directive(&mut guard.inner, next))
+        })
+        .receive_signal(move |ctx, signal| {
+          let mut guard = shared_sig.lock();
+          let next = {
+            let InterceptState { interceptor, inner } = &mut *guard;
+            interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?
+          };
+          Ok(resolve_intercepted_directive(&mut guard.inner, next))
+        }),
+      )
+    },
+    | _ => Ok(Behavior::same()),
+  })
 }
 
 /// Applies the behavior directive from an interceptor result to the inner behavior.

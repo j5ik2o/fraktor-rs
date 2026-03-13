@@ -21,8 +21,8 @@ Piece Contextに示されたReport Directory内のファイルのみ参照して
 
 **修正完了条件（必須）:**
 修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-1. `./scripts/ci-check.sh dylint -m actor` （対象モジュールのDylint）
-2. `./scripts/ci-check.sh all` （全CI）
+1. `./scripts/ci-check.sh ai dylint -m actor` （対象モジュールのDylint）
+2. `./scripts/ci-check.sh ai all` （全CI）
 成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
 
 **必須出力（見出しを含める）**

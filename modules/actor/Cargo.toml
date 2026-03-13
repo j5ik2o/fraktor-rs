@@ -170,6 +170,11 @@ path = "examples/behaviors_counter_typed_std/main.rs"
 required-features = ["std"]
 
 [[example]]
+name = "behaviors_log_messages_opts_std"
+path = "examples/behaviors_log_messages_opts_std/main.rs"
+required-features = ["std"]
+
+[[example]]
 name = "behaviors_receive_signal_std"
 path = "examples/behaviors_receive_signal_std/main.rs"
 required-features = ["std"]
@@ -178,6 +183,14 @@ required-features = ["std"]
 name = "behaviors_supervise_typed_std"
 path = "examples/behaviors_supervise_typed_std/main.rs"
 required-features = ["std"]
+
+[[example]]
+name = "pool_router_round_robin_no_std"
+path = "examples/pool_router_round_robin_no_std/main.rs"
+
+[[example]]
+name = "stash_unstash_typed_no_std"
+path = "examples/stash_unstash_typed_no_std/main.rs"
 
 [[example]]
 name = "death_watch_std"

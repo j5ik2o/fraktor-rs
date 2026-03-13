@@ -26,7 +26,8 @@ impl Routers {
   /// Creates a group router that discovers routees via the Receptionist.
   ///
   /// The router subscribes to listing changes for the provided [`ServiceKey`]
-  /// and routes messages to discovered actors using round-robin.
+  /// and routes messages to discovered actors using random selection by
+  /// default.
   #[must_use]
   pub const fn group<M>(key: ServiceKey<M>) -> GroupRouterBuilder<M>
   where

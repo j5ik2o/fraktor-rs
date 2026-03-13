@@ -3,11 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, vec, vec::Vec};
-use core::sync::atomic::AtomicUsize;
+use alloc::{format, string::String, vec, vec::Vec};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
-use portable_atomic::Ordering;
+use portable_atomic::AtomicU64;
 
 use crate::core::{
   event::logging::LogLevel,
@@ -27,6 +27,7 @@ pub struct GroupRouterBuilder<M>
 where
   M: Send + Sync + Clone + 'static, {
   service_key: ServiceKey<M>,
+  strategy:    GroupRouteStrategy<M>,
 }
 
 impl<M> GroupRouterBuilder<M>
@@ -35,14 +36,37 @@ where
 {
   /// Creates a new group router builder for the given service key.
   pub(crate) const fn new(service_key: ServiceKey<M>) -> Self {
-    Self { service_key }
+    Self { service_key, strategy: GroupRouteStrategy::RoundRobin }
+  }
+
+  /// Routes messages by random selection across the available routees.
+  #[must_use]
+  pub fn with_random_routing(mut self, seed: u64) -> Self {
+    self.strategy = GroupRouteStrategy::Random { seed };
+    self
+  }
+
+  /// Routes messages by round-robin selection across the available routees.
+  #[must_use]
+  pub fn with_round_robin_routing(mut self) -> Self {
+    self.strategy = GroupRouteStrategy::RoundRobin;
+    self
+  }
+
+  /// Routes messages by a stable hash derived from each message.
+  #[must_use]
+  pub fn with_consistent_hash_routing<F>(mut self, hash_fn: F) -> Self
+  where
+    F: Fn(&M) -> String + Send + Sync + 'static, {
+    self.strategy = GroupRouteStrategy::ConsistentHash { hash_fn: ArcShared::new(hash_fn) };
+    self
   }
 
   /// Builds the group router as a [`Behavior`].
   ///
   /// The router subscribes to listing changes for the configured service key
   /// via the Receptionist and routes messages to discovered actors using
-  /// round-robin.
+  /// round-robin selection by default.
   #[must_use]
   pub fn build(self) -> Behavior<M> {
     self.build_with_optional_receptionist(None)
@@ -59,6 +83,7 @@ where
     receptionist_override: Option<TypedActorRef<ReceptionistCommand>>,
   ) -> Behavior<M> {
     let key = self.service_key;
+    let strategy = self.strategy;
     let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(RuntimeMutex::new(Vec::new()));
     let routees_for_listing = routees.clone();
     let routees_for_msg = routees;
@@ -107,14 +132,26 @@ where
       let listing_ref_for_signal = listing_ref;
 
       let rfm = routees_for_msg.clone();
-      let index = AtomicUsize::new(0);
+      let strategy_for_message = strategy.clone();
+      let round_robin_index = AtomicUsize::new(0);
+      let random_seed = AtomicU64::new(match &strategy_for_message {
+        | GroupRouteStrategy::Random { seed } => *seed,
+        | _ => 0,
+      });
       Behaviors::receive_message(move |_ctx, message: &M| {
         let targets = {
           let guard = rfm.lock();
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
-          let idx = index.fetch_add(1, Ordering::Relaxed) % guard.len();
+          let idx = match &strategy_for_message {
+            | GroupRouteStrategy::RoundRobin => round_robin_index.fetch_add(1, Ordering::Relaxed) % guard.len(),
+            | GroupRouteStrategy::Random { seed: _ } => {
+              let seed = random_seed.fetch_add(1, Ordering::Relaxed);
+              pseudo_random_index(seed, guard.len())
+            },
+            | GroupRouteStrategy::ConsistentHash { hash_fn } => stable_hash_index(&hash_fn(message), guard.len()),
+          };
           vec![guard[idx].clone()]
         };
         for mut target in targets {
@@ -131,4 +168,27 @@ where
       })
     })
   }
+}
+
+#[derive(Clone)]
+enum GroupRouteStrategy<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  RoundRobin,
+  Random { seed: u64 },
+  ConsistentHash { hash_fn: ArcShared<dyn Fn(&M) -> String + Send + Sync> },
+}
+
+const fn pseudo_random_index(seed: u64, len: usize) -> usize {
+  let mixed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+  (mixed as usize) % len
+}
+
+fn stable_hash_index(value: &str, len: usize) -> usize {
+  let mut hash = 14695981039346656037_u64;
+  for byte in value.as_bytes() {
+    hash ^= u64::from(*byte);
+    hash = hash.wrapping_mul(1099511628211);
+  }
+  (hash as usize) % len
 }

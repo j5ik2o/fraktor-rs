@@ -1,19 +1,19 @@
-最終ゲートとして `./scripts/ci-check.sh all` を1回だけ実行してください。
+最終ゲートとして `./scripts/ci-check.sh ai all` を1回だけ実行してください。
 
 このムーブメントではコード編集を行わず、CIの成否確認だけを行います。
 失敗時は、最初の失敗箇所（コマンドと要点）を短くまとめて報告してください。
 
 **必須実行:**
-1. `./scripts/ci-check.sh all`
+1. `./scripts/ci-check.sh ai all`
 
 **必須出力（見出しを含める）**
 ## 実行コマンド
-- `./scripts/ci-check.sh all`
+- `./scripts/ci-check.sh ai all`
 ## 実行結果
 - {成功 / 失敗}
 ## 失敗時メモ
 - {失敗した場合のみ、最初の失敗箇所と修正方針}
 
 最後に必ず以下のどちらか1行をそのまま記載してください:
-- `ci-check.sh all が成功`
-- `ci-check.sh all が失敗`
+- `ci-check.sh ai all が成功`
+- `ci-check.sh ai all が失敗`

@@ -5,7 +5,7 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use crate::core::{error::ActorError, typed::actor::TypedActorContext};
+use crate::core::{error::ActorError, messaging::AnyMessage, typed::actor::TypedActorContext};
 
 /// Bounded stash helper inspired by Pekko's `StashBuffer`.
 pub struct StashBuffer<M>
@@ -37,12 +37,7 @@ where
   ///
   /// Returns an error when the actor cell is unavailable.
   pub fn len(&self, ctx: &TypedActorContext<'_, M>) -> Result<usize, ActorError> {
-    let cell = ctx
-      .system()
-      .state()
-      .cell(&ctx.pid())
-      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash buffer access"))?;
-    Ok(cell.stashed_message_len())
+    Self::with_cell(ctx, |cell| cell.stashed_message_len())
   }
 
   /// Returns true when no messages are currently stashed.
@@ -81,6 +76,76 @@ where
     ctx.stash_with_limit(self.capacity)
   }
 
+  /// Returns the oldest stashed message without removing it.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable or the stash is empty.
+  pub fn head(&self, ctx: &TypedActorContext<'_, M>) -> Result<M, ActorError>
+  where
+    M: Clone, {
+    Self::with_cell(ctx, |cell| {
+      cell.with_stashed_messages(|messages| {
+        messages.front().and_then(|message| message.payload().downcast_ref::<M>()).cloned()
+      })
+    })?
+    .ok_or_else(|| ActorError::recoverable("stash buffer is empty"))
+  }
+
+  /// Returns true when the stash contains `message`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn contains(&self, ctx: &TypedActorContext<'_, M>, message: &M) -> Result<bool, ActorError>
+  where
+    M: PartialEq, {
+    self.exists(ctx, |candidate| candidate == message)
+  }
+
+  /// Returns true when the predicate matches at least one stashed message.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn exists<F>(&self, ctx: &TypedActorContext<'_, M>, mut predicate: F) -> Result<bool, ActorError>
+  where
+    F: FnMut(&M) -> bool, {
+    Self::with_cell(ctx, |cell| {
+      cell.with_stashed_messages(|messages| {
+        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()).any(&mut predicate)
+      })
+    })
+  }
+
+  /// Applies `f` to every stashed message without removing them.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn foreach<F>(&self, ctx: &TypedActorContext<'_, M>, mut f: F) -> Result<(), ActorError>
+  where
+    F: FnMut(&M), {
+    Self::with_cell(ctx, |cell| {
+      cell.with_stashed_messages(|messages| {
+        for message in messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()) {
+          f(message);
+        }
+      });
+    })
+  }
+
+  /// Drops all stashed messages.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn clear(&self, ctx: &TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    Self::with_cell(ctx, |cell| {
+      let _ = cell.clear_stashed_messages();
+    })
+  }
+
   /// Re-enqueues all stashed messages back to the mailbox.
   ///
   /// # Errors
@@ -88,6 +153,44 @@ where
   /// Returns an error when unstash dispatch fails.
   pub fn unstash_all(&self, ctx: &TypedActorContext<'_, M>) -> Result<usize, ActorError> {
     ctx.unstash_all()
+  }
+
+  /// Re-enqueues at most `count` stashed messages after applying `wrap`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when actor cell access or unstash dispatch fails.
+  pub fn unstash<F>(&self, ctx: &TypedActorContext<'_, M>, count: usize, mut wrap: F) -> Result<usize, ActorError>
+  where
+    M: Clone,
+    F: FnMut(M) -> M, {
+    Self::with_cell(ctx, |cell| {
+      cell.unstash_messages_with_limit(count, |message| {
+        let payload = message
+          .payload()
+          .downcast_ref::<M>()
+          .cloned()
+          .ok_or_else(|| ActorError::recoverable("stashed message type mismatch"))?;
+        let sender = message.sender().cloned();
+        let wrapped = AnyMessage::new(wrap(payload));
+        Ok(match sender {
+          | Some(sender) => wrapped.with_sender(sender),
+          | None => wrapped,
+        })
+      })
+    })?
+  }
+
+  fn with_cell<R>(
+    ctx: &TypedActorContext<'_, M>,
+    f: impl FnOnce(&crate::core::actor::ActorCell) -> R,
+  ) -> Result<R, ActorError> {
+    let cell = ctx
+      .system()
+      .state()
+      .cell(&ctx.pid())
+      .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash buffer access"))?;
+    Ok(f(&cell))
   }
 }
 

@@ -23,5 +23,5 @@
 ## コミット
 
 - 形式: `fix(area): ... (#123)`
-- `./scripts/ci-check.sh all` 実施想定
+- `./scripts/ci-check.sh ai all` 実施想定
 ```

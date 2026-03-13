@@ -131,4 +131,4 @@ pub struct XyzShared {
 4. `core/` に no_std 実装を配置
 5. 必要に応じて `std/` に具象型エイリアスを追加
 6. テストを `{type}/tests.rs` に作成
-7. `./scripts/ci-check.sh dylint -m <module>` で lint チェック
+7. `./scripts/ci-check.sh ai dylint -m <module>` で lint チェック

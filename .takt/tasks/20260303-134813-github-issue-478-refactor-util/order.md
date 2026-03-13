@@ -19,7 +19,7 @@ Parent issue: #410
 - [ ] `modules/utils/src/core/collections/queue/` の Async系型を削除
 - [ ] 関連する `mod.rs` のリエクスポート・モジュール宣言を除去
 - [ ] 関連テストファイルを削除
-- [ ] `./scripts/ci-check.sh all` でグリーン確認
+- [ ] `./scripts/ci-check.sh ai all` でグリーン確認
 
 ## 受け入れ基準
 

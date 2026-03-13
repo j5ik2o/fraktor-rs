@@ -22,7 +22,7 @@
 5. issue ごとに実装対象ファイルと非対象（スコープ外）を明確化する
 6. issue ごとに完了順序を決める
 7. issue ごとに仮のコミットメッセージ案を作る（解決済み/情報不足は不要）
-8. issue ごとに `./scripts/ci-check.sh all` 実行タイミングを計画に含める（解決済み/情報不足は不要）
+8. issue ごとに `./scripts/ci-check.sh ai all` 実行タイミングを計画に含める（解決済み/情報不足は不要）
 9. 事前にコミット方針を明記する（Issue単位で1コミット以上）
 
 ## 重要
@@ -34,4 +34,4 @@
 - 情報不足 issue は実装対象から除外し、計画に「情報不足」と明記する
 - コミットメッセージは Conventional Commits かつ英語であることを計画段階で明記する
 - コミットメッセージ案は `(#<issue-number>)` を末尾につける
-- 各 issue 完了時点で `./scripts/ci-check.sh all` を実行する前提を明記する
+- 各 issue 完了時点で `./scripts/ci-check.sh ai all` を実行する前提を明記する

@@ -5,8 +5,8 @@
 - **リリース状況**: まだ正式リリース前の開発フェーズ。必要であれば破壊的変更を歓迎し、最適な設計を優先すること
 - serena mcpを有効活用すること
 - 当該ディレクトリ以外を読まないこと
-- 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
-- `./scripts/ci-check.sh all` は所要時間が長いが、完了待ってください。
+- 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh ai all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
+- `./scripts/ci-check.sh ai all` は所要時間が長いが、完了待ってください。
 - `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
@@ -389,10 +389,10 @@ use crate::core::actor::ActorContext;  // typed → untyped は OK
 ## 基本ルール
 
 1. 編集前に対象モジュールへ次を実行する
-   `./scripts/ci-check.sh dylint -m <module>`
+   `./scripts/ci-check.sh ai dylint -m <module>`
 2. lint が失敗した場合のみ、該当 lint の実装・テストを読む
 3. 編集後に同コマンドを再実行し、対象テストを通す
-4. ソースコード変更を伴う、全タスク完了時は `./scripts/ci-check.sh all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
+4. ソースコード変更を伴う、全タスク完了時は `./scripts/ci-check.sh ai all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
 
 ## 読み込み範囲
 
@@ -1265,4 +1265,3 @@ pub struct TickDriverId(u64);
 - lint の `#[allow]` による type-per-file-lint の無効化（人間の許可なしで）
 
 根拠: `claudedocs/actor-module-overengineering-analysis.md`（Phase 1-4 の分析実績）
-

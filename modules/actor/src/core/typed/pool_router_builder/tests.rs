@@ -115,6 +115,12 @@ fn pool_router_builder_with_broadcast_builds_behavior() {
 }
 
 #[test]
+fn pool_router_builder_with_round_robin_builds_behavior() {
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_round_robin();
+  let _behavior: Behavior<u32> = builder.build();
+}
+
+#[test]
 fn pool_router_builder_with_random_builds_behavior() {
   let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_random(42);
   let _behavior: Behavior<u32> = builder.build();
@@ -133,6 +139,12 @@ fn pool_router_builder_with_smallest_mailbox_builds_behavior() {
 }
 
 #[test]
+fn pool_router_builder_with_broadcast_predicate_builds_behavior() {
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_broadcast_predicate(|message| *message == 0);
+  let _behavior: Behavior<u32> = builder.build();
+}
+
+#[test]
 fn pool_router_builder_with_broadcast_delivers_to_all_routees() {
   let pool_size = 3_usize;
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::Broadcast);
@@ -144,6 +156,49 @@ fn pool_router_builder_with_broadcast_delivers_to_all_routees() {
     records.lock().iter().filter_map(|(routee_index, message)| (*message == 11).then_some(*routee_index)).collect();
   routees.sort_unstable();
   assert_eq!(routees, vec![0, 1, 2]);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pool_router_builder_with_broadcast_predicate_only_broadcasts_matching_messages() {
+  let pool_size = 3_usize;
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+
+  let props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    let next_routee_index = next_routee_index.clone();
+    move || {
+      let routee_factory = {
+        let records = records.clone();
+        let next_routee_index = next_routee_index.clone();
+        move || {
+          let routee_index = {
+            let mut guard = next_routee_index.lock();
+            let current = *guard;
+            *guard += 1;
+            current
+          };
+          recording_routee_behavior(routee_index, records.clone())
+        }
+      };
+      Routers::pool::<u32, _>(pool_size, routee_factory).with_broadcast_predicate(|message| *message == 99).build()
+    }
+  });
+
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
+  let mut router = system.user_guardian_ref();
+
+  router.tell(7).expect("tell unicast");
+  wait_until(|| records.lock().len() == 1);
+  assert_eq!(records.lock().iter().filter(|(_, message)| *message == 7).count(), 1);
+
+  router.tell(99).expect("tell broadcast");
+  wait_until(|| records.lock().iter().filter(|(_, message)| *message == 99).count() == pool_size);
 
   system.terminate().expect("terminate");
 }

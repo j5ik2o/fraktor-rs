@@ -326,6 +326,21 @@ impl ActorCell {
     self.state.lock().stashed_messages.len()
   }
 
+  /// Applies a read-only closure to the current stashed messages.
+  pub(crate) fn with_stashed_messages<R>(&self, f: impl FnOnce(&VecDeque<AnyMessage>) -> R) -> R {
+    let state = self.state.lock();
+    f(&state.stashed_messages)
+  }
+
+  /// Removes all currently stashed messages and returns how many were dropped.
+  #[must_use]
+  pub(crate) fn clear_stashed_messages(&self) -> usize {
+    let mut state = self.state.lock();
+    let count = state.stashed_messages.len();
+    state.stashed_messages.clear();
+    count
+  }
+
   /// Re-enqueues the oldest stashed user message back to this actor mailbox.
   ///
   /// # Errors
@@ -358,7 +373,7 @@ impl ActorCell {
       backpressure_active: false,
     });
 
-    Ok(pending.len())
+    Ok(1)
   }
 
   /// Re-enqueues all stashed user messages back to this actor mailbox.
@@ -389,6 +404,66 @@ impl ActorCell {
     });
 
     Ok(pending.len())
+  }
+
+  /// Re-enqueues up to `limit` stashed messages after applying `wrap`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when message conversion or mailbox enqueue fails.
+  pub(crate) fn unstash_messages_with_limit<F>(&self, limit: usize, mut wrap: F) -> Result<usize, ActorError>
+  where
+    F: FnMut(AnyMessage) -> Result<AnyMessage, ActorError>, {
+    if limit == 0 {
+      return Ok(0);
+    }
+
+    let original_messages = {
+      let mut state = self.state.lock();
+      let take_count = limit.min(state.stashed_messages.len());
+      let mut messages = VecDeque::with_capacity(take_count);
+      for _ in 0..take_count {
+        if let Some(message) = state.stashed_messages.pop_front() {
+          messages.push_back(message);
+        }
+      }
+      messages
+    };
+
+    if original_messages.is_empty() {
+      return Ok(0);
+    }
+
+    let mut wrapped_messages = VecDeque::with_capacity(original_messages.len());
+    for message in original_messages.iter().cloned() {
+      match wrap(message) {
+        | Ok(wrapped) => wrapped_messages.push_back(wrapped),
+        | Err(error) => {
+          self.restore_stashed_messages(original_messages);
+          return Err(error);
+        },
+      }
+    }
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&wrapped_messages) {
+      self.restore_stashed_messages(original_messages);
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(wrapped_messages.len())
+  }
+
+  fn restore_stashed_messages(&self, mut messages: VecDeque<AnyMessage>) {
+    let mut state = self.state.lock();
+    while let Some(message) = messages.pop_back() {
+      state.stashed_messages.push_front(message);
+    }
   }
 
   /// Allocates and tracks a new adapter handle for message adapters.

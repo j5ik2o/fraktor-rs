@@ -18,7 +18,7 @@
 - `06-qa-review.md` の判定がapprovedであることを確認
 - `05-pekko-compat-review.md` の承認済み判定があることを確認
 - `qa-fix` / `pekko-compat-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
-※ `./scripts/ci-check.sh all` は supervise の次の `final-ci` ムーブメントで1回だけ実行する
+※ `./scripts/ci-check.sh ai all` は supervise の次の `final-ci` ムーブメントで1回だけ実行する
 
 **Validation出力契約:**
 ```markdown

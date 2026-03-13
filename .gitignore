@@ -43,6 +43,8 @@ Thumbs.db
 Cargo.lock
 *.pkl
 
+/.cargo-home*/
+
 /.takt/clone-meta/
 
 /.claude/settings.local.json
@@ -89,5 +91,4 @@ Cargo.lock
 /.codex-personal/tmp/
 /.codex-personal/version.json
 /.codex-personal/skills/.system
-
 
