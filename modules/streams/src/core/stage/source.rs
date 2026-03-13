@@ -504,7 +504,7 @@ where
     Ok(self.zip_n(n)?.map(func))
   }
 
-  pub(in crate::core) fn from_logic<L>(kind: StageKind, logic: L) -> Self
+  pub(crate) fn from_logic<L>(kind: StageKind, logic: L) -> Self
   where
     L: SourceLogic + 'static, {
     let mut graph = StreamGraph::new();

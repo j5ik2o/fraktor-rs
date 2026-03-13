@@ -46,9 +46,11 @@ fn bounded_source_queue_should_fail_offer_when_backpressure_and_full() {
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(3_u32), QueueOfferResult::Failure(StreamError::WouldBlock));
+  assert_eq!(queue.len(), 3);
 
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
   assert_eq!(queue.poll().expect("poll"), Some(2_u32));
+  assert_eq!(queue.poll().expect("poll"), Some(3_u32));
   assert_eq!(queue.poll().expect("poll"), None);
 }
 

@@ -84,3 +84,21 @@ fn completion_wakes_registered_waker_when_completed() {
   assert_eq!(wake_counter.wake_count(), 1);
   assert_eq!(completion.poll(), Completion::Ready(Ok(7)));
 }
+
+#[test]
+fn completion_wakes_all_registered_wakers_when_completed() {
+  let completion: StreamCompletion<u32> = StreamCompletion::new();
+  let first = Arc::new(WakeCounter::new());
+  let second = Arc::new(WakeCounter::new());
+  let first_waker = std::task::Waker::from(first.clone());
+  let second_waker = std::task::Waker::from(second.clone());
+
+  assert_eq!(completion.poll_with_waker(&first_waker), Completion::Pending);
+  assert_eq!(completion.poll_with_waker(&second_waker), Completion::Pending);
+
+  completion.complete(Ok(9));
+
+  assert_eq!(first.wake_count(), 1);
+  assert_eq!(second.wake_count(), 1);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(9)));
+}

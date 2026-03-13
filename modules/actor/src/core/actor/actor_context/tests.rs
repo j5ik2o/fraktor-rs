@@ -417,5 +417,4 @@ fn actor_context_stop_child_returns_ok() {
   let result = context.stop_child(&child);
   assert!(result.is_ok());
   wait_until(|| context.child(&child_name).is_none());
-  assert!(context.child(&child_name).is_none());
 }

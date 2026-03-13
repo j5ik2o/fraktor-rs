@@ -187,19 +187,13 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
 fn rendezvous_hash_index<M>(value: &str, routees: &[TypedActorRef<M>]) -> usize
 where
   M: Send + Sync + Clone + 'static, {
-  debug_assert!(!routees.is_empty(), "rendezvous_hash_index requires at least one routee");
-
   let key_hash = stable_hash(value.as_bytes());
-  let mut selected = 0_usize;
-  let mut best_score = 0_u64;
-  for (idx, routee) in routees.iter().enumerate() {
-    let score = rendezvous_score(key_hash, routee.pid().value(), routee.pid().generation());
-    if idx == 0 || score > best_score {
-      selected = idx;
-      best_score = score;
-    }
-  }
-  selected
+  routees
+    .iter()
+    .enumerate()
+    .max_by_key(|(_, routee)| rendezvous_score(key_hash, routee.pid().value(), routee.pid().generation()))
+    .map(|(idx, _)| idx)
+    .unwrap_or(0)
 }
 
 fn rendezvous_score(key_hash: u64, pid_value: u64, pid_generation: u32) -> u64 {

@@ -1,54 +1,71 @@
 extern crate std;
 
-use std::{panic, string::ToString, thread, time::Duration};
+use std::{panic, string::ToString, thread};
 
 use crate::core::{
-  BoundedSourceQueue, OverflowStrategy, StreamDslError, StreamError, StreamNotUsed, stage::Source,
+  BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  stage::{Source, StageKind},
   validate_positive_argument,
 };
 
-const CREATE_SOURCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
-
-enum CreateSourceEvent<T> {
-  Item(T),
-  Failed(StreamError),
+struct CreateSourceLogic<T, F> {
+  queue:    BoundedSourceQueue<T>,
+  producer: Option<F>,
 }
 
-struct CreateSourceIterator<T> {
-  queue:           BoundedSourceQueue<T>,
-  emitted_failure: bool,
-}
-
-impl<T> CreateSourceIterator<T> {
-  const fn new(queue: BoundedSourceQueue<T>) -> Self {
-    Self { queue, emitted_failure: false }
+impl<T, F> CreateSourceLogic<T, F> {
+  const fn new(queue: BoundedSourceQueue<T>, producer: F) -> Self {
+    Self { queue, producer: Some(producer) }
   }
-}
 
-impl<T> Iterator for CreateSourceIterator<T> {
-  type Item = CreateSourceEvent<T>;
+  fn start_producer_if_needed(&mut self) -> Result<(), StreamError>
+  where
+    T: Send + Sync + 'static,
+    F: FnOnce(BoundedSourceQueue<T>) + Send + 'static, {
+    let Some(producer) = self.producer.take() else {
+      return Ok(());
+    };
 
-  fn next(&mut self) -> Option<Self::Item> {
-    if self.emitted_failure {
-      return None;
-    }
-    loop {
-      match self.queue.poll() {
-        | Ok(Some(value)) => return Some(CreateSourceEvent::Item(value)),
-        | Ok(None) if self.queue.is_drained() => return None,
-        | Ok(None) => thread::sleep(CREATE_SOURCE_POLL_INTERVAL),
-        | Err(error) => {
-          self.emitted_failure = true;
-          return Some(CreateSourceEvent::Failed(error));
+    let producer_queue = self.queue.clone();
+    let termination_queue = self.queue.clone();
+    let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
+      let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
+      match result {
+        | Ok(()) => {
+          let _ = termination_queue.complete_if_open();
+        },
+        | Err(_) => {
+          let _ = termination_queue.fail_if_open(StreamError::Failed);
         },
       }
+    });
+
+    if spawn_result.is_err() {
+      let _ = self.queue.fail_if_open(StreamError::Failed);
+      return Err(StreamError::Failed);
     }
+
+    Ok(())
   }
 }
 
-impl<T> Drop for CreateSourceIterator<T> {
-  fn drop(&mut self) {
-    let _ = self.queue.complete_if_open();
+impl<T, F> SourceLogic for CreateSourceLogic<T, F>
+where
+  T: Send + Sync + 'static,
+  F: FnOnce(BoundedSourceQueue<T>) + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    self.start_producer_if_needed()?;
+    match self.queue.poll()? {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None if self.queue.is_drained() => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.queue.close_for_cancel();
+    Ok(())
   }
 }
 
@@ -69,36 +86,12 @@ where
   ///
   /// Panics if the internally created queue cannot be constructed after
   /// `capacity` has already been validated.
-  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, StreamNotUsed>, StreamDslError>
+  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, BoundedSourceQueue<Out>>, StreamDslError>
   where
     F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    Ok(Self::lazy_source(move || {
-      let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
-      let producer_queue = queue.clone();
-      let termination_queue = queue.clone();
-
-      let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
-        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
-        match result {
-          | Ok(()) => {
-            let _ = termination_queue.complete_if_open();
-          },
-          | Err(_) => {
-            let _ = termination_queue.fail_if_open(StreamError::Failed);
-          },
-        }
-      });
-
-      if spawn_result.is_err() {
-        let _ = queue.fail_if_open(StreamError::Failed);
-        return Source::failed(StreamError::Failed);
-      }
-
-      Source::from_iterator(CreateSourceIterator::new(queue)).flat_map_concat(|event| match event {
-        | CreateSourceEvent::Item(value) => Source::single(value),
-        | CreateSourceEvent::Failed(error) => Source::failed(error),
-      })
-    }))
+    let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
+    let logic = CreateSourceLogic::new(queue.clone(), producer);
+    Ok(Source::from_logic(StageKind::Custom, logic).map_materialized_value(move |_| queue))
   }
 }

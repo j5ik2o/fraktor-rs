@@ -46,7 +46,7 @@ where
   }
 
   fn supervisor_strategy(&self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
-    self.inner.supervisor_strategy(&mut wrapped_ctx)
+    let wrapped_ctx = StdActorContext::from_core_mut(ctx);
+    self.inner.supervisor_strategy(&wrapped_ctx)
   }
 }

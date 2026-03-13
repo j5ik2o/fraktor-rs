@@ -590,14 +590,37 @@ fn child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
   TypedProps::from_behavior_factory(move || child_behavior(&counter))
 }
 
-struct PassThroughInterceptor;
+struct PassThroughInterceptor {
+  counter: Arc<AtomicUsize>,
+}
 
-impl BehaviorInterceptor<ChildCommand> for PassThroughInterceptor {}
+impl BehaviorInterceptor<ChildCommand> for PassThroughInterceptor {
+  fn around_receive(
+    &mut self,
+    context: &mut TypedActorContext<'_, ChildCommand>,
+    message: &ChildCommand,
+    target: &mut dyn FnMut(
+      &mut TypedActorContext<'_, ChildCommand>,
+      &ChildCommand,
+    ) -> Result<Behavior<ChildCommand>, ActorError>,
+  ) -> Result<Behavior<ChildCommand>, ActorError> {
+    self.counter.fetch_add(1, Ordering::SeqCst);
+    target(context, message)
+  }
+}
 
-fn intercepted_child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
+fn intercepted_child_props(
+  counter: &Arc<AtomicUsize>,
+  interceptor_counter: &Arc<AtomicUsize>,
+) -> TypedProps<ChildCommand> {
   let counter = Arc::clone(counter);
+  let interceptor_counter = Arc::clone(interceptor_counter);
   TypedProps::from_behavior_factory(move || {
-    Behaviors::intercept_behavior(|| Box::new(PassThroughInterceptor), child_behavior(&counter))
+    let interceptor_counter = Arc::clone(&interceptor_counter);
+    Behaviors::intercept_behavior(
+      move || Box::new(PassThroughInterceptor { counter: Arc::clone(&interceptor_counter) }),
+      child_behavior(&counter),
+    )
   })
 }
 
@@ -650,7 +673,8 @@ fn behaviors_supervise_restarts_children() {
 #[test]
 fn intercepted_behavior_survives_supervised_restart() {
   let start_counter = Arc::new(AtomicUsize::new(0));
-  let child = intercepted_child_props(&start_counter);
+  let interceptor_counter = Arc::new(AtomicUsize::new(0));
+  let child = intercepted_child_props(&start_counter, &interceptor_counter);
   let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
     SupervisorDirective::Restart
   });
@@ -664,8 +688,13 @@ fn intercepted_behavior_survives_supervised_restart() {
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
   parent.tell(SupervisorCommand::CrashChild).expect("crash");
+  wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 1);
 
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash again");
+  wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 2);
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 3);
 
   system.terminate().expect("terminate");
 }

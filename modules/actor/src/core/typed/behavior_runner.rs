@@ -139,7 +139,7 @@ where
     self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })
   }
 
-  fn supervisor_strategy(&self, _ctx: &mut TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
     self.supervisor.clone().unwrap_or_default()
   }
 

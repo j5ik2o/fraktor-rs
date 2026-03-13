@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::task::Waker;
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -9,12 +10,12 @@ mod tests;
 
 struct CompletionState<T> {
   result: Option<Result<T, StreamError>>,
-  waker:  Option<Waker>,
+  wakers: Vec<Waker>,
 }
 
 impl<T> CompletionState<T> {
   const fn new() -> Self {
-    Self { result: None, waker: None }
+    Self { result: None, wakers: Vec::new() }
   }
 }
 
@@ -55,7 +56,9 @@ impl<T> StreamCompletion<T> {
     match guard.result.clone() {
       | Some(result) => Completion::Ready(result),
       | None => {
-        guard.waker = Some(waker.clone());
+        if !guard.wakers.iter().any(|registered| registered.will_wake(waker)) {
+          guard.wakers.push(waker.clone());
+        }
         Completion::Pending
       },
     }
@@ -69,16 +72,16 @@ impl<T> StreamCompletion<T> {
   }
 
   pub(crate) fn complete(&self, result: Result<T, StreamError>) {
-    let waker = {
+    let wakers = {
       let mut guard = self.inner.lock();
       // 既存結果の上書きを防止
       if guard.result.is_some() {
         return;
       }
       guard.result = Some(result);
-      guard.waker.take()
+      core::mem::take(&mut guard.wakers)
     };
-    if let Some(waker) = waker {
+    for waker in wakers {
       waker.wake();
     }
   }

@@ -39,8 +39,10 @@ where
   }
 
   /// Provides the supervision strategy for this typed actor.
+  ///
+  /// The actor state and context are queried immutably here.
   #[must_use]
-  fn supervisor_strategy(&self, _ctx: &mut TypedActorContext<'_, '_, M>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &TypedActorContext<'_, '_, M>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 }

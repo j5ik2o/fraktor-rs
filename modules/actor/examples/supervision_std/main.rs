@@ -128,7 +128,7 @@ impl Actor for GuardianActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &ActorContext<'_, '_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, CoreDuration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,

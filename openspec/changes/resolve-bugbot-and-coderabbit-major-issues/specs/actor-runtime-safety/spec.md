@@ -1,53 +1,53 @@
 ## ADDED Requirements
 
-### Requirement: Mailbox construction preserves policy and queue invariants
-The actor runtime SHALL construct mailboxes only through paths that keep `MailboxPolicy` and the actual `MessageQueue` behavior consistent, and bounded queue operations MUST not rely on unsynchronized time-of-check/time-of-use windows.
+### Requirement: Mailbox 構築は policy と queue の不変条件を保持する
+actor runtime は `MailboxPolicy` と実際の `MessageQueue` の挙動が一致する経路だけで mailbox を構築し、bounded queue の操作は非同期化されていない time-of-check/time-of-use の隙間に依存してはならない。
 
-#### Scenario: Registry-backed mailbox keeps resolved policy
-- **WHEN** an actor is created from a mailbox selector or mailbox id resolved through the registry
-- **THEN** the mailbox SHALL use the resolved mailbox configuration as the single source of truth for queue policy, capacity, overflow behavior, and instrumentation
+#### Scenario: registry 経由 mailbox は解決済み policy を使う
+- **WHEN** actor が registry で解決された mailbox selector または mailbox id から作成される
+- **THEN** mailbox は解決済み mailbox configuration を queue policy、capacity、overflow behavior、instrumentation の唯一の真実源として使う
 
-#### Scenario: Externally supplied queue cannot bypass invariants
-- **WHEN** mailbox construction is attempted with a pre-built queue
-- **THEN** the runtime SHALL either reject inconsistent policy/queue pairs or keep the constructor internal so inconsistent pairs cannot be created outside the module
+#### Scenario: 外部から渡された queue で不変条件を迂回できない
+- **WHEN** 事前構築済み queue を使って mailbox を構築しようとする
+- **THEN** runtime は不整合な policy/queue の組を拒否するか、constructor を内部に閉じてモジュール外から不整合な組を作れないようにする
 
-#### Scenario: Bounded queue operations are synchronized
-- **WHEN** prepend, enqueue, metrics publication, or user length checks run concurrently on a bounded mailbox
-- **THEN** the runtime SHALL not observe unsynchronized queue state that can produce false overflow decisions, stale metrics, or data races
+#### Scenario: bounded queue 操作は同期される
+- **WHEN** prepend、enqueue、metrics publication、user length の確認が bounded mailbox で並行実行される
+- **THEN** runtime は overflow 判定の誤り、stale metrics、data race を生む未同期の queue state を観測しない
 
-### Requirement: Typed actor restarts preserve interceptor correctness
-The typed actor runtime SHALL remain restart-safe under supervision, including behaviors created through interceptors or deferred initialization.
+### Requirement: typed actor の再起動は interceptor の正しさを保つ
+typed actor runtime は supervision 下で restart-safe を保ち、interceptor や deferred initialization から作られた behavior でも正しく再起動できなければならない。
 
-#### Scenario: Restarted intercepted behavior is recreated
-- **WHEN** a supervised typed actor using an intercepted behavior receives `Started` again after restart
-- **THEN** the runtime SHALL recreate or retain the intercepted behavior state without panicking or failing due to one-shot initialization
+#### Scenario: restart 後に intercepted behavior が再生成される
+- **WHEN** intercepted behavior を使う supervised typed actor が restart 後に再び `Started` を受け取る
+- **THEN** runtime は one-shot initialization に起因する panic や failure なしに intercepted behavior state を再生成または保持する
 
-#### Scenario: Supervisor strategy access is lock-safe
-- **WHEN** runtime code reads supervision strategy state during restart or failure handling
-- **THEN** it SHALL do so through a lock-safe read path that does not require write-only access for queries
+#### Scenario: supervisor strategy の参照は lock-safe である
+- **WHEN** runtime code が restart や failure handling 中に supervision strategy state を読む
+- **THEN** query のためだけに write access を要求しない lock-safe な read path で参照する
 
-### Requirement: Stash inspection does not execute user callbacks under runtime locks
-The typed stash buffer SHALL release actor cell internal locks before running caller-provided predicates, equality checks, or iteration callbacks.
+### Requirement: stash の観測は runtime lock 下で user callback を実行しない
+typed stash buffer は caller が渡した predicate、equality check、iteration callback を実行する前に actor cell の内部 lock を解放しなければならない。
 
-#### Scenario: `contains` evaluates after snapshot
-- **WHEN** a caller checks whether a typed message exists in the stash
-- **THEN** the stash buffer SHALL snapshot matching typed messages before invoking equality comparison outside the actor cell lock
+#### Scenario: `contains` は snapshot 後に評価される
+- **WHEN** caller が typed message の存在を stash で確認する
+- **THEN** stash buffer は actor cell lock の外で equality comparison を呼ぶ前に、対象 message を snapshot する
 
-#### Scenario: `exists` and `foreach` evaluate after snapshot
-- **WHEN** a caller supplies a predicate or iteration callback to inspect stashed messages
-- **THEN** the stash buffer SHALL invoke that callback only after the lock has been released
+#### Scenario: `exists` と `foreach` は snapshot 後に評価される
+- **WHEN** caller が stashed message を観測する predicate または iteration callback を渡す
+- **THEN** stash buffer は lock 解放後にだけ callback を呼び出す
 
-### Requirement: Router and registration behavior reflect actual runtime guarantees
-The actor runtime SHALL expose routing and registration behavior whose names and effects match the guarantees actually provided.
+### Requirement: router と registration の挙動は実際の runtime 契約と一致する
+actor runtime は、名前と効果が実際に提供する保証と一致する routing / registration behavior だけを公開しなければならない。
 
-#### Scenario: Consistent hashing provides stable affinity
-- **WHEN** a group router exposes a consistent-hash routing mode and the routee set changes
-- **THEN** the selected routee for a key SHALL change only according to a consistent-hashing algorithm rather than a simple `hash % routee_count` remap
+#### Scenario: consistent hashing は stable affinity を提供する
+- **WHEN** group router が consistent-hash routing mode を公開し、routee set が変化する
+- **THEN** key に対応する routee の選択は単純な `hash % routee_count` の再割当てではなく、consistent-hashing algorithm に従ってだけ変化する
 
-#### Scenario: Failed top-level registration rolls back spawned state
-- **WHEN** top-level actor registration or receptionist registration fails during spawn
-- **THEN** the runtime SHALL roll back any partially spawned state so no orphaned receptionist or top-level registration remains
+#### Scenario: top-level registration の失敗は spawn 済み state を rollback する
+- **WHEN** top-level actor registration または receptionist registration が spawn 中に失敗する
+- **THEN** runtime は部分的に生成された state を rollback し、orphaned receptionist や top-level registration を残さない
 
-#### Scenario: Dispatcher selectors resolve the intended blocking dispatcher
-- **WHEN** props select a blocking dispatcher through registry-backed configuration
-- **THEN** the selector and registry lookup SHALL resolve the same dispatcher id and executor semantics
+#### Scenario: dispatcher selector は意図した blocking dispatcher を解決する
+- **WHEN** props が registry-backed configuration を通じて blocking dispatcher を選択する
+- **THEN** selector と registry lookup は同じ dispatcher id と executor semantics を解決する

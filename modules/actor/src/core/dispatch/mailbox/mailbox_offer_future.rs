@@ -133,15 +133,20 @@ where
 }
 
 /// Future completing once a user message has been enqueued.
+struct MailboxMetrics {
+  instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
+  system_len:      ArcShared<AtomicUsize>,
+}
+
+/// Future completing once a user message has been enqueued.
 pub struct MailboxOfferFuture {
-  inner:           QueueOfferFuture<AnyMessage>,
-  instrumentation: Option<ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>>,
-  system_len:      Option<ArcShared<AtomicUsize>>,
+  inner:   QueueOfferFuture<AnyMessage>,
+  metrics: Option<MailboxMetrics>,
 }
 
 impl MailboxOfferFuture {
   pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>, message: AnyMessage) -> Self {
-    Self { inner: QueueOfferFuture::new(state, message), instrumentation: None, system_len: None }
+    Self { inner: QueueOfferFuture::new(state, message), metrics: None }
   }
 
   pub(crate) fn with_user_queue_lock(mut self, user_queue_lock: ArcShared<RuntimeMutex<()>>) -> Self {
@@ -154,25 +159,21 @@ impl MailboxOfferFuture {
     instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
     system_len: ArcShared<AtomicUsize>,
   ) -> Self {
-    self.instrumentation = Some(instrumentation);
-    self.system_len = Some(system_len);
+    self.metrics = Some(MailboxMetrics { instrumentation, system_len });
     self
   }
 
   fn publish_metrics(&self) {
-    let Some(instrumentation) = self.instrumentation.as_ref() else {
-      return;
-    };
-    let Some(system_len) = self.system_len.as_ref() else {
+    let Some(metrics) = self.metrics.as_ref() else {
       return;
     };
     let user_len = {
       let state = self.inner.state.lock();
       state.len()
     };
-    let guard = instrumentation.lock();
+    let guard = metrics.instrumentation.lock();
     if let Some(instrumentation) = guard.as_ref() {
-      instrumentation.publish(user_len, system_len.load(Ordering::Acquire));
+      instrumentation.publish(user_len, metrics.system_len.load(Ordering::Acquire));
     }
   }
 

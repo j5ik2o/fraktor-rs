@@ -1,49 +1,49 @@
 ## ADDED Requirements
 
-### Requirement: `Source::create` honors asynchronous producer pacing
-The std streams API SHALL allow `Source::create` producers to emit values asynchronously without failing solely because the producer is slower than a tight synchronous polling budget.
+### Requirement: `Source::create` は非同期 producer の速度差を許容する
+std streams API は `Source::create` の producer が非同期に値を流しても、producer が同期 polling より遅いという理由だけで失敗しないようにしなければならない。
 
-#### Scenario: Slow producer does not trip idle budget
-- **WHEN** a background producer emits elements with observable delay between `offer()` calls
-- **THEN** `Source::create` SHALL continue waiting according to its asynchronous contract instead of permanently failing with `StreamError::WouldBlock`
+#### Scenario: 遅い producer でも idle budget 超過で失敗しない
+- **WHEN** background producer が `offer()` の間に観測可能な遅延を挟んで要素を送る
+- **THEN** `Source::create` は `StreamError::WouldBlock` で恒久失敗するのではなく、非同期 contract に従って待機を継続する
 
-### Requirement: Source queue backpressure preserves pending work and wake discipline
-Source queue implementations SHALL preserve pending offers until they are accepted or terminally rejected, and they MUST emit wake notifications only when state transitions can make progress.
+### Requirement: source queue の backpressure は pending work と wake discipline を保持する
+source queue の実装は pending offer を accept または terminal reject されるまで保持し、wake notification は state transition によって進捗可能になった場合にだけ送らなければならない。
 
-#### Scenario: Backpressure does not silently drop buffered offers
-- **WHEN** a source queue is in backpressure mode and multiple offers are pending
-- **THEN** the queue SHALL retain or reject each offer explicitly according to the overflow contract rather than silently discarding accepted work
+#### Scenario: backpressure で pending offer を黙って捨てない
+- **WHEN** source queue が backpressure mode で複数 offer を保留している
+- **THEN** queue は overflow contract に従って各 offer を明示的に保持または reject し、accepted work を黙って破棄しない
 
-#### Scenario: Poll does not self-wake without state change
-- **WHEN** `QueueOfferFuture::poll` is called while no progress is possible
-- **THEN** it SHALL not repeatedly wake itself unless a state transition has occurred that can change the poll result
+#### Scenario: state 変化なしでは self-wake しない
+- **WHEN** `QueueOfferFuture::poll` が進捗不能な状態で呼ばれる
+- **THEN** poll result を変えられる state transition がない限り、自分自身を繰り返し wake しない
 
-#### Scenario: Progress wakes waiting tasks
-- **WHEN** capacity becomes available or terminal state changes the outcome of a pending offer
-- **THEN** waiting tasks SHALL receive a wake notification and tests SHALL be able to observe that transition
+#### Scenario: 進捗可能になったら待機 task を wake する
+- **WHEN** capacity が空く、または terminal state が pending offer の結果を変える
+- **THEN** waiting task は wake notification を受け取り、その遷移は test で観測できる
 
-### Requirement: Async callback and timer outputs survive intermediate apply failure
-The graph interpreter SHALL not lose outputs drained from async callbacks or timers when a subsequent stage apply fails with a disposition that continues or completes processing.
+### Requirement: async callback と timer の出力は途中の apply failure で失われない
+graph interpreter は async callback や timer から取り出した出力を、その後の stage apply が continue または complete で失敗した場合でも失ってはならない。
 
-#### Scenario: Continue after apply failure retains drained outputs
-- **WHEN** async or timer outputs are collected and a later `apply` call fails with a disposition that continues execution
-- **THEN** those collected outputs SHALL remain available for later delivery instead of being discarded
+#### Scenario: apply failure が continue でも取り出した出力を保持する
+- **WHEN** async または timer の出力を収集した後、後続の `apply` が continue disposition で失敗する
+- **THEN** 収集済みの出力は破棄されず、後続の delivery に使える状態で保持される
 
-#### Scenario: Complete after apply failure retains drained outputs until terminal handling
-- **WHEN** async or timer outputs are collected and a later `apply` call transitions the stage toward completion
-- **THEN** the runtime SHALL preserve those outputs through terminal handling so they are not irrecoverably lost
+#### Scenario: apply failure が complete でも terminal handling まで出力を保持する
+- **WHEN** async または timer の出力を収集した後、後続の `apply` が stage を complete 側へ遷移させる
+- **THEN** runtime は terminal handling が終わるまでその出力を保持し、取り返しのつかない形で失わせない
 
-### Requirement: Actor-backed source and sink stages match their published contracts
-Actor-backed stream stages SHALL implement the delivery, acknowledgement, cancellation, and terminal-state behavior advertised by their public API names.
+### Requirement: actor-backed stage は公開 API の契約どおりに振る舞う
+actor-backed stream stage は、公開 API 名が示す delivery、acknowledgement、cancellation、terminal-state の契約をそのまま実装しなければならない。
 
-#### Scenario: `actor_ref` forwards elements to the target actor
-- **WHEN** a stage is built with `actor_ref`
-- **THEN** delivered elements SHALL reach the target actor rather than being ignored
+#### Scenario: `actor_ref` は要素を target actor へ転送する
+- **WHEN** stage が `actor_ref` で構築される
+- **THEN** 配送された要素は無視されずに target actor へ届く
 
-#### Scenario: `actor_ref_with_backpressure` waits for acknowledgements
-- **WHEN** a stage is built with `actor_ref_with_backpressure`
-- **THEN** element delivery SHALL honor the advertised acknowledgement protocol before additional elements are considered accepted
+#### Scenario: `actor_ref_with_backpressure` は acknowledgement を待つ
+- **WHEN** stage が `actor_ref_with_backpressure` で構築される
+- **THEN** 追加要素を accepted と見なす前に、公開された acknowledgement protocol を守って配送する
 
-#### Scenario: Graceful cancellation closes handles deterministically
-- **WHEN** a source queue or actor-backed source is cancelled through its graceful completion path
-- **THEN** associated handles and completion watchers SHALL transition to closed or completed state deterministically
+#### Scenario: graceful cancellation は handle を決定的に閉じる
+- **WHEN** source queue または actor-backed source が graceful completion path で cancel される
+- **THEN** 関連する handle と completion watcher は決定的に closed または completed 状態へ遷移する

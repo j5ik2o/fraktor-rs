@@ -468,7 +468,7 @@ impl GraphInterpreter {
 
       let mut consumed_input = false;
       let mut outputs = Vec::new();
-      let mut skip_input_apply = false;
+      let mut skip_stage_input = false;
       let mut force_shutdown = false;
 
       let async_outputs = {
@@ -482,14 +482,14 @@ impl GraphInterpreter {
         | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
           | FailureDisposition::Continue => {
             progressed = true;
-            skip_input_apply = true;
+            skip_stage_input = true;
             Vec::new()
           },
           | FailureDisposition::Complete => {
             self.set_all_sources_done()?;
             self.notify_source_done_to_flows()?;
             progressed = true;
-            skip_input_apply = true;
+            skip_stage_input = true;
             force_shutdown = true;
             Vec::new()
           },
@@ -497,35 +497,33 @@ impl GraphInterpreter {
         },
       });
 
-      if !skip_input_apply {
-        let timer_outputs = {
-          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          flow.logic.on_timer()
+      let timer_outputs = {
+        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+          return Err(StreamError::InvalidConnection);
         };
-        outputs.extend(match timer_outputs {
-          | Ok(outputs) => outputs,
-          | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-            | FailureDisposition::Continue => {
-              progressed = true;
-              skip_input_apply = true;
-              Vec::new()
-            },
-            | FailureDisposition::Complete => {
-              self.set_all_sources_done()?;
-              self.notify_source_done_to_flows()?;
-              progressed = true;
-              skip_input_apply = true;
-              force_shutdown = true;
-              Vec::new()
-            },
-            | FailureDisposition::Fail(error) => return Err(error),
+        flow.logic.on_timer()
+      };
+      outputs.extend(match timer_outputs {
+        | Ok(outputs) => outputs,
+        | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
+          | FailureDisposition::Continue => {
+            progressed = true;
+            skip_stage_input = true;
+            Vec::new()
           },
-        });
-      }
+          | FailureDisposition::Complete => {
+            self.set_all_sources_done()?;
+            self.notify_source_done_to_flows()?;
+            progressed = true;
+            skip_stage_input = true;
+            force_shutdown = true;
+            Vec::new()
+          },
+          | FailureDisposition::Fail(error) => return Err(error),
+        },
+      });
 
-      let can_accept_input = if skip_input_apply {
+      let can_accept_input = if skip_stage_input {
         false
       } else {
         match &self.stages[stage_index] {
@@ -551,14 +549,14 @@ impl GraphInterpreter {
           | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
             | FailureDisposition::Continue => {
               progressed = true;
-              skip_input_apply = true;
+              skip_stage_input = true;
               Vec::new()
             },
             | FailureDisposition::Complete => {
               self.set_all_sources_done()?;
               self.notify_source_done_to_flows()?;
               progressed = true;
-              skip_input_apply = true;
+              skip_stage_input = true;
               force_shutdown = true;
               Vec::new()
             },
@@ -568,7 +566,10 @@ impl GraphInterpreter {
         outputs.extend(input_outputs);
       }
 
-      if outputs.is_empty() && !outgoing_buffered && !skip_input_apply {
+      // apply で新しい出力が出ず、未送信バッファもなく、この tick で input apply を明示的に
+      // skip していないときだけ drain_pending に進める。
+      let can_drain_pending = outputs.is_empty() && !outgoing_buffered && !skip_stage_input;
+      if can_drain_pending {
         let drain_result = {
           let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
             return Err(StreamError::InvalidConnection);

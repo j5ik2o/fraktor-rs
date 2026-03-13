@@ -117,12 +117,25 @@ where
   where
     M: Clone,
     F: FnMut(&M) -> bool, {
-    let snapshot = Self::with_cell(ctx, |cell| {
-      cell.with_stashed_messages(|messages| {
-        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>().cloned()).collect::<Vec<M>>()
-      })
-    })?;
+    let snapshot = Self::snapshot_stashed_messages(ctx)?;
     Ok(snapshot.iter().any(&mut predicate))
+  }
+
+  /// Returns true when the predicate matches at least one stashed message.
+  /// Unlike [`exists`](Self::exists), this variant evaluates the predicate while the stash lock is
+  /// held and avoids cloning stashed values.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the actor cell is unavailable.
+  pub fn exists_borrowed<F>(&self, ctx: &TypedActorContext<'_, M>, mut predicate: F) -> Result<bool, ActorError>
+  where
+    F: FnMut(&M) -> bool, {
+    Self::with_cell(ctx, |cell| {
+      cell.with_stashed_messages(|messages| {
+        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()).any(&mut predicate)
+      })
+    })
   }
 
   /// Applies `f` to every stashed message without removing them.
@@ -135,11 +148,7 @@ where
   where
     M: Clone,
     F: FnMut(&M), {
-    let snapshot = Self::with_cell(ctx, |cell| {
-      cell.with_stashed_messages(|messages| {
-        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>().cloned()).collect::<Vec<M>>()
-      })
-    })?;
+    let snapshot = Self::snapshot_stashed_messages(ctx)?;
     for message in &snapshot {
       f(message);
     }
@@ -202,6 +211,16 @@ where
       .cell(&ctx.pid())
       .ok_or_else(|| ActorError::recoverable("actor cell unavailable during stash buffer access"))?;
     Ok(f(&cell))
+  }
+
+  fn snapshot_stashed_messages(ctx: &TypedActorContext<'_, M>) -> Result<Vec<M>, ActorError>
+  where
+    M: Clone, {
+    Self::with_cell(ctx, |cell| {
+      cell.with_stashed_messages(|messages| {
+        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>().cloned()).collect::<Vec<M>>()
+      })
+    })
   }
 }
 
