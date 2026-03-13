@@ -1,12 +1,58 @@
 extern crate std;
 
-use std::{panic, string::ToString, sync::mpsc, thread};
+use std::{panic, string::ToString, thread, time::Duration};
 
 use crate::core::{
-  BoundedSourceQueue, StreamDslError, StreamError, StreamNotUsed, stage::Source, validate_positive_argument,
+  BoundedSourceQueue, OverflowStrategy, StreamDslError, StreamError, StreamNotUsed, stage::Source,
+  validate_positive_argument,
 };
 
-const PRODUCER_STARTUP_YIELD_LIMIT: usize = 64;
+const CREATE_SOURCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
+
+enum CreateSourceEvent<T> {
+  Item(T),
+  Failed(StreamError),
+}
+
+struct CreateSourceIterator<T> {
+  queue:           BoundedSourceQueue<T>,
+  emitted_failure: bool,
+}
+
+impl<T> CreateSourceIterator<T> {
+  const fn new(queue: BoundedSourceQueue<T>) -> Self {
+    Self { queue, emitted_failure: false }
+  }
+}
+
+impl<T> Iterator for CreateSourceIterator<T> {
+  type Item = CreateSourceEvent<T>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.emitted_failure {
+      return None;
+    }
+    loop {
+      match self.queue.poll() {
+        | Ok(Some(value)) => return Some(CreateSourceEvent::Item(value)),
+        | Ok(None) if self.queue.is_drained() => return None,
+        | Ok(None) => thread::sleep(CREATE_SOURCE_POLL_INTERVAL),
+        | Err(error) => {
+          self.emitted_failure = true;
+          return Some(CreateSourceEvent::Failed(error));
+        },
+      }
+    }
+  }
+}
+
+impl<T> Drop for CreateSourceIterator<T> {
+  fn drop(&mut self) {
+    if !self.queue.is_closed() {
+      self.queue.complete();
+    }
+  }
+}
 
 impl<Out> Source<Out, StreamNotUsed>
 where
@@ -30,42 +76,33 @@ where
     F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
     let capacity = validate_positive_argument("capacity", capacity)?;
     Ok(Self::lazy_source(move || {
-      let source = Source::queue(capacity).expect("validated capacity");
-      let (graph, queue) = source.into_parts();
+      let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
       let producer_queue = queue.clone();
       let termination_queue = queue.clone();
-      let (started_tx, started_rx) = mpsc::sync_channel(1);
 
       let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
-        let _ = started_tx.send(());
         let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
         match result {
           | Ok(()) => {
-            let _ = termination_queue.complete_if_open();
+            if !termination_queue.is_closed() {
+              termination_queue.complete();
+            }
           },
           | Err(_) => {
             let _ = termination_queue.fail_if_open(StreamError::Failed);
           },
         }
       });
-      match spawn_result {
-        | Ok(handle) => {
-          let _ = started_rx.recv();
-          // Give the producer thread a short head start so immediate termination
-          // or the first offered value becomes visible before the pull path proceeds.
-          for _ in 0..PRODUCER_STARTUP_YIELD_LIMIT {
-            if !queue.is_empty() || queue.is_closed() || handle.is_finished() {
-              break;
-            }
-            thread::yield_now();
-          }
-        },
-        | Err(_) => {
-          let _ = queue.fail_if_open(StreamError::Failed);
-        },
+
+      if spawn_result.is_err() {
+        let _ = queue.fail_if_open(StreamError::Failed);
+        return Source::failed(StreamError::Failed);
       }
 
-      Source::from_graph(graph, StreamNotUsed::new())
+      Source::from_iterator(CreateSourceIterator::new(queue)).flat_map_concat(|event| match event {
+        | CreateSourceEvent::Item(value) => Source::single(value),
+        | CreateSourceEvent::Failed(error) => Source::failed(error),
+      })
     }))
   }
 }

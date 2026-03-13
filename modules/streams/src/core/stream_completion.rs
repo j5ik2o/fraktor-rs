@@ -1,3 +1,5 @@
+use core::task::Waker;
+
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::{Completion, StreamError};
@@ -7,11 +9,12 @@ mod tests;
 
 struct CompletionState<T> {
   result: Option<Result<T, StreamError>>,
+  waker:  Option<Waker>,
 }
 
 impl<T> CompletionState<T> {
   const fn new() -> Self {
-    Self { result: None }
+    Self { result: None, waker: None }
   }
 }
 
@@ -45,6 +48,19 @@ impl<T> StreamCompletion<T> {
     }
   }
 
+  pub(crate) fn poll_with_waker(&self, waker: &Waker) -> Completion<T>
+  where
+    T: Clone, {
+    let mut guard = self.inner.lock();
+    match guard.result.clone() {
+      | Some(result) => Completion::Ready(result),
+      | None => {
+        guard.waker = Some(waker.clone());
+        Completion::Pending
+      },
+    }
+  }
+
   /// Attempts to take the completion result.
   #[must_use]
   pub fn try_take(&self) -> Option<Result<T, StreamError>> {
@@ -53,10 +69,17 @@ impl<T> StreamCompletion<T> {
   }
 
   pub(crate) fn complete(&self, result: Result<T, StreamError>) {
-    let mut guard = self.inner.lock();
-    // 既存結果の上書きを防止
-    if guard.result.is_none() {
+    let waker = {
+      let mut guard = self.inner.lock();
+      // 既存結果の上書きを防止
+      if guard.result.is_some() {
+        return;
+      }
       guard.result = Some(result);
+      guard.waker.take()
+    };
+    if let Some(waker) = waker {
+      waker.wake();
     }
   }
 }

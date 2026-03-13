@@ -63,7 +63,7 @@ impl<T> BoundedSourceQueue<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => QueueOfferResult::Dropped,
+      | OverflowStrategy::Backpressure => QueueOfferResult::Failure(StreamError::WouldBlock),
       | OverflowStrategy::DropHead => {
         let _ = guard.values.pop_front();
         guard.values.push_back(value);
@@ -95,13 +95,13 @@ impl<T> BoundedSourceQueue<T> {
     guard.closed = true;
   }
 
-  pub(crate) fn complete_if_open(&self) -> bool {
+  pub(crate) fn close_for_cancel(&self) {
     let mut guard = self.inner.lock();
-    if guard.closed || guard.failure.is_some() {
-      return false;
+    if guard.failure.is_some() {
+      return;
     }
     guard.closed = true;
-    true
+    guard.values.clear();
   }
 
   /// Fails the queue and rejects subsequent offers.

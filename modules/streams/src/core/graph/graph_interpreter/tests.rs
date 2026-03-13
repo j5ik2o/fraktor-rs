@@ -558,6 +558,127 @@ fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
+struct AsyncTimerFailureFlowLogic {
+  callback:            crate::core::stage::AsyncCallback<u32>,
+  timer:               crate::core::stage::TimerGraphStageLogic,
+  initialized:         bool,
+  complete_on_failure: bool,
+}
+
+impl AsyncTimerFailureFlowLogic {
+  fn new(complete_on_failure: bool) -> Self {
+    Self {
+      callback: crate::core::stage::AsyncCallback::new(),
+      timer: crate::core::stage::TimerGraphStageLogic::new(),
+      initialized: false,
+      complete_on_failure,
+    }
+  }
+}
+
+impl FlowLogic for AsyncTimerFailureFlowLogic {
+  fn apply(&mut self, _input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    Err(StreamError::Failed)
+  }
+
+  fn handles_failures(&self) -> bool {
+    true
+  }
+
+  fn on_failure(&mut self, _error: StreamError) -> Result<FailureAction, StreamError> {
+    Ok(if self.complete_on_failure { FailureAction::Complete } else { FailureAction::Resume })
+  }
+
+  fn on_tick(&mut self, _tick_count: u64) -> Result<(), StreamError> {
+    if !self.initialized {
+      self.initialized = true;
+      self.callback.invoke(10_u32);
+      self.timer.schedule_once(1_u64, 1_u64);
+    }
+    Ok(())
+  }
+
+  fn on_async_callback(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Ok(self.callback.drain().into_iter().map(|value| Box::new(value) as DynValue).collect())
+  }
+
+  fn on_timer(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let mut outputs = Vec::new();
+    for key in self.timer.advance() {
+      outputs.push(Box::new(100_u32.saturating_add(key as u32)) as DynValue);
+    }
+    Ok(outputs)
+  }
+}
+
+#[test]
+fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(AsyncTimerFailureFlowLogic::new(false)),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan =
+    stream_plan(vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)], vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::KeepLeft),
+      (flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ]);
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+}
+
+#[test]
+fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let flow_inlet: Inlet<u32> = Inlet::new();
+  let flow_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+  let completion = StreamCompletion::new();
+
+  let source = source_single_u32(source_outlet, 1_u32);
+  let flow = FlowDefinition {
+    kind:        StageKind::Custom,
+    inlet:       flow_inlet.id(),
+    outlet:      flow_outlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    logic:       Box::new(AsyncTimerFailureFlowLogic::new(true)),
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+  };
+  let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
+
+  let plan =
+    stream_plan(vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)], vec![
+      (source_outlet.id(), flow_inlet.id(), MatCombine::KeepLeft),
+      (flow_outlet.id(), sink_inlet.id(), MatCombine::KeepRight),
+    ]);
+
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
+}
+
 #[test]
 fn group_by_uses_key_function() {
   let graph = Source::single(3_u32)

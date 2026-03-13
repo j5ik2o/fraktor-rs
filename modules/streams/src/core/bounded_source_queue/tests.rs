@@ -40,12 +40,12 @@ fn bounded_source_queue_should_drop_tail_when_configured() {
 }
 
 #[test]
-fn bounded_source_queue_should_drop_offer_when_backpressure_and_full() {
+fn bounded_source_queue_should_fail_offer_when_backpressure_and_full() {
   let queue = BoundedSourceQueue::new(2, OverflowStrategy::Backpressure);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
-  assert_eq!(queue.offer(3_u32), QueueOfferResult::Dropped);
+  assert_eq!(queue.offer(3_u32), QueueOfferResult::Failure(StreamError::WouldBlock));
 
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
   assert_eq!(queue.poll().expect("poll"), Some(2_u32));
@@ -131,19 +131,25 @@ fn bounded_source_queue_should_panic_when_failed_twice() {
 }
 
 #[test]
-fn bounded_source_queue_complete_if_open_should_ignore_already_completed_queue() {
+fn bounded_source_queue_fail_if_open_should_ignore_already_completed_queue() {
   let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
-  assert!(queue.complete_if_open());
-  assert!(!queue.complete_if_open());
+  queue.complete();
+  assert!(!queue.fail_if_open(StreamError::Failed));
   assert!(queue.is_closed());
 }
 
 #[test]
-fn bounded_source_queue_fail_if_open_should_ignore_already_completed_queue() {
-  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+fn bounded_source_queue_close_for_cancel_should_discard_buffered_values() {
+  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
-  assert!(queue.complete_if_open());
-  assert!(!queue.fail_if_open(StreamError::Failed));
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
+
+  queue.close_for_cancel();
+
   assert!(queue.is_closed());
+  assert!(queue.is_empty());
+  assert!(queue.is_drained());
+  assert_eq!(queue.offer(3_u32), QueueOfferResult::QueueClosed);
 }

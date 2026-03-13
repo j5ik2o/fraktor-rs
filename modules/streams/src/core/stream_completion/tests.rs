@@ -1,5 +1,37 @@
+use std::{
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
+  task::Wake,
+};
+
 use super::StreamCompletion;
 use crate::core::{Completion, StreamError};
+
+struct WakeCounter {
+  count: AtomicUsize,
+}
+
+impl WakeCounter {
+  const fn new() -> Self {
+    Self { count: AtomicUsize::new(0) }
+  }
+
+  fn wake_count(&self) -> usize {
+    self.count.load(Ordering::SeqCst)
+  }
+}
+
+impl Wake for WakeCounter {
+  fn wake(self: Arc<Self>) {
+    self.count.fetch_add(1, Ordering::SeqCst);
+  }
+
+  fn wake_by_ref(self: &Arc<Self>) {
+    self.count.fetch_add(1, Ordering::SeqCst);
+  }
+}
 
 #[test]
 fn completion_starts_pending() {
@@ -36,4 +68,19 @@ fn completion_preserves_first_error_on_duplicate_complete() {
   completion.complete(Err(StreamError::Failed));
   completion.complete(Ok(99));
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn completion_wakes_registered_waker_when_completed() {
+  let completion: StreamCompletion<u32> = StreamCompletion::new();
+  let wake_counter = Arc::new(WakeCounter::new());
+  let waker = std::task::Waker::from(wake_counter.clone());
+
+  assert_eq!(completion.poll_with_waker(&waker), Completion::Pending);
+  assert_eq!(wake_counter.wake_count(), 0);
+
+  completion.complete(Ok(7));
+
+  assert_eq!(wake_counter.wake_count(), 1);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(7)));
 }

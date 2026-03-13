@@ -171,24 +171,6 @@ where
     Sink::ignore()
   }
 
-  /// Creates a source from actor-ref style push values.
-  #[must_use]
-  pub fn actor_ref<I>(values: I) -> Self
-  where
-    I: IntoIterator<Item = Out>,
-    I::IntoIter: Send + 'static, {
-    Self::from_iterator(values)
-  }
-
-  /// Creates a source from actor-ref style push values with backpressure semantics.
-  #[must_use]
-  pub fn actor_ref_with_backpressure<I>(values: I) -> Self
-  where
-    I: IntoIterator<Item = Out>,
-    I::IntoIter: Send + 'static, {
-    Self::from_iterator(values)
-  }
-
   /// Creates a sink endpoint for actor interop entry points.
   #[must_use]
   pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>> {
@@ -2043,7 +2025,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    let _ = self.queue.complete_if_open();
+    self.queue.close_for_cancel();
     Ok(())
   }
 }
@@ -2079,7 +2061,7 @@ where
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
-    let _ = self.queue.complete_if_open();
+    self.queue.close_for_cancel();
     Ok(())
   }
 }

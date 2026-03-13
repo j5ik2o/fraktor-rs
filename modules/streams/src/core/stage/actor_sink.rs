@@ -13,11 +13,13 @@ pub struct ActorSink;
 
 impl ActorSink {
   /// Creates an actor-ref style sink.
-  #[must_use]
-  pub fn actor_ref<In>() -> Sink<In, StreamCompletion<StreamDone>>
+  pub fn actor_ref<In, Emit>(emit: Emit) -> Sink<In, StreamCompletion<StreamDone>>
   where
-    In: Send + Sync + 'static, {
-    Sink::ignore()
+    In: Send + Sync + 'static,
+    Emit: FnMut(In) + Send + Sync + 'static, {
+    let completion = StreamCompletion::new();
+    let logic = ActorRefSinkLogic { emit, completion: completion.clone(), _pd: PhantomData };
+    Sink::from_definition(StageKind::Custom, logic, completion)
   }
 
   /// Creates an actor-ref sink with backpressure semantics.
@@ -76,6 +78,37 @@ impl ActorSink {
       _pd: PhantomData,
     };
     Sink::from_definition(StageKind::Custom, logic, completion)
+  }
+}
+
+struct ActorRefSinkLogic<In, Emit> {
+  emit:       Emit,
+  completion: StreamCompletion<StreamDone>,
+  _pd:        PhantomData<fn(In)>,
+}
+
+impl<In, Emit> SinkLogic for ActorRefSinkLogic<In, Emit>
+where
+  In: Send + Sync + 'static,
+  Emit: FnMut(In) + Send + Sync + 'static,
+{
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    (self.emit)(downcast_value::<In>(input)?);
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    self.completion.complete(Ok(StreamDone::new()));
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
   }
 }
 

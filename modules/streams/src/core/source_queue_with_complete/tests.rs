@@ -3,8 +3,39 @@ use core::{
   pin::pin,
   task::{Context, Poll, Waker},
 };
+use std::{
+  sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+  },
+  task::Wake,
+};
 
 use crate::core::{Completion, OverflowStrategy, QueueOfferResult, SourceQueueWithComplete, StreamDone, StreamError};
+
+struct WakeCounter {
+  count: AtomicUsize,
+}
+
+impl WakeCounter {
+  const fn new() -> Self {
+    Self { count: AtomicUsize::new(0) }
+  }
+
+  fn wake_count(&self) -> usize {
+    self.count.load(Ordering::SeqCst)
+  }
+}
+
+impl Wake for WakeCounter {
+  fn wake(self: Arc<Self>) {
+    self.count.fetch_add(1, Ordering::SeqCst);
+  }
+
+  fn wake_by_ref(self: &Arc<Self>) {
+    self.count.fetch_add(1, Ordering::SeqCst);
+  }
+}
 
 #[test]
 fn source_queue_with_complete_should_enqueue_and_complete_after_drain() {
@@ -30,10 +61,12 @@ fn source_queue_with_complete_should_wait_for_space_on_backpressure() {
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
   let mut waiting_offer = pin!(queue.offer(2_u32));
-  let waker = noop_waker();
+  let (waker, wake_counter) = tracking_waker();
   let mut context = Context::from_waker(&waker);
   assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(wake_counter.wake_count(), 0);
   assert_eq!(queue.poll().expect("poll"), Some(1_u32));
+  assert_eq!(wake_counter.wake_count(), 1);
   assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
   assert_eq!(queue.poll().expect("poll"), Some(2_u32));
   assert_eq!(queue.poll().expect("poll"), None);
@@ -62,11 +95,13 @@ fn source_queue_with_complete_should_fail_offer_when_pending_offer_limit_is_exce
 fn source_queue_with_complete_should_allow_zero_capacity() {
   let queue = SourceQueueWithComplete::new(0, OverflowStrategy::Backpressure, 1);
   let mut waiting_offer = pin!(queue.offer(10_u32));
-  let waker = noop_waker();
+  let (waker, wake_counter) = tracking_waker();
   let mut context = Context::from_waker(&waker);
 
   assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(wake_counter.wake_count(), 0);
   assert_eq!(queue.poll().expect("poll"), Some(10_u32));
+  assert_eq!(wake_counter.wake_count(), 1);
   assert_eq!(waiting_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::Enqueued));
   assert_eq!(queue.poll().expect("poll"), None);
 }
@@ -140,16 +175,18 @@ fn source_queue_with_complete_should_allow_configured_number_of_pending_offers()
 fn source_queue_with_complete_close_for_cancel_should_resolve_pending_offer_and_completion() {
   let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
-  let waker = noop_waker();
+  let (waker, wake_counter) = tracking_waker();
   let mut context = Context::from_waker(&waker);
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
 
   let mut pending_offer = pin!(queue.offer(2_u32));
   assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Pending);
+  assert_eq!(wake_counter.wake_count(), 0);
 
   queue.close_for_cancel();
 
+  assert_eq!(wake_counter.wake_count(), 1);
   assert_eq!(pending_offer.as_mut().poll(&mut context), Poll::Ready(QueueOfferResult::QueueClosed));
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
   assert!(queue.is_closed());
@@ -170,4 +207,9 @@ where
 
 fn noop_waker() -> Waker {
   Waker::noop().clone()
+}
+
+fn tracking_waker() -> (Waker, Arc<WakeCounter>) {
+  let wake_counter = Arc::new(WakeCounter::new());
+  (Waker::from(wake_counter.clone()), wake_counter)
 }

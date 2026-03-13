@@ -48,3 +48,18 @@ fn source_queue_complete_if_open_should_ignore_already_completed_queue() {
   assert!(!queue.complete_if_open());
   assert!(queue.is_closed());
 }
+
+#[test]
+fn source_queue_close_for_cancel_should_discard_buffered_values() {
+  let queue = SourceQueue::<u32>::new();
+
+  assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
+
+  queue.close_for_cancel();
+
+  assert!(queue.is_closed());
+  assert!(queue.is_empty());
+  assert!(queue.is_drained());
+  assert_eq!(queue.offer(3_u32), QueueOfferResult::QueueClosed);
+}

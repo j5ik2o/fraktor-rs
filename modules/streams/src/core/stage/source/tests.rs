@@ -441,18 +441,6 @@ fn source_as_source_with_context_attaches_unit_context() {
 }
 
 #[test]
-fn source_actor_ref_alias_emits_values() {
-  let values = Source::actor_ref([1_u32, 2_u32]).collect_values().expect("collect_values");
-  assert_eq!(values, vec![1_u32, 2_u32]);
-}
-
-#[test]
-fn source_actor_ref_with_backpressure_alias_emits_values() {
-  let values = Source::actor_ref_with_backpressure([1_u32, 2_u32]).collect_values().expect("collect_values");
-  assert_eq!(values, vec![1_u32, 2_u32]);
-}
-
-#[test]
 fn source_sink_alias_exposes_sink_endpoint() {
   let values = Source::<u32, _>::sink().as_publisher().collect_values().expect("collect_values");
   assert_eq!(values, Vec::<u32>::new());
@@ -598,6 +586,22 @@ fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
 }
 
 #[test]
+fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
+  let queue = crate::core::SourceQueue::new();
+  let mut logic = super::UnboundedQueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
+
+  logic.on_cancel().expect("on_cancel");
+
+  assert!(queue.is_closed());
+  assert!(queue.is_empty());
+  assert!(queue.is_drained());
+  assert_eq!(queue.offer(14_u32), QueueOfferResult::QueueClosed);
+}
+
+#[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
   let (graph, queue) = source.into_parts();
@@ -630,6 +634,22 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
   let values: Vec<u32> = Source::<u32, _>::from_graph(graph, queue).collect_values().expect("collect_values");
   assert_eq!(values, vec![30_u32, 31_u32]);
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
+  let queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut logic = super::QueueSourceLogic { queue: queue.clone() };
+
+  assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
+  assert_eq!(queue.offer(21_u32), QueueOfferResult::Enqueued);
+
+  logic.on_cancel().expect("on_cancel");
+
+  assert!(queue.is_closed());
+  assert!(queue.is_empty());
+  assert!(queue.is_drained());
+  assert_eq!(queue.offer(22_u32), QueueOfferResult::QueueClosed);
 }
 
 #[test]
@@ -733,6 +753,20 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
 
   let values = source.collect_values().expect("collect_values");
   assert_eq!(values, vec![50_u32, 51_u32]);
+}
+
+#[test]
+fn source_create_tolerates_slow_producer() {
+  let source = Source::create(2, |queue| {
+    assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    assert_eq!(queue.offer(61_u32), QueueOfferResult::Enqueued);
+    queue.complete();
+  })
+  .expect("create");
+
+  let values = source.collect_values().expect("collect_values");
+  assert_eq!(values, vec![60_u32, 61_u32]);
 }
 
 #[test]

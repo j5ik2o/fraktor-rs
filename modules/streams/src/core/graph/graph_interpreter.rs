@@ -468,6 +468,8 @@ impl GraphInterpreter {
 
       let mut consumed_input = false;
       let mut outputs = Vec::new();
+      let mut skip_input_apply = false;
+      let mut force_shutdown = false;
 
       let async_outputs = {
         let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
@@ -480,44 +482,56 @@ impl GraphInterpreter {
         | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
           | FailureDisposition::Continue => {
             progressed = true;
-            continue;
+            skip_input_apply = true;
+            Vec::new()
           },
           | FailureDisposition::Complete => {
             self.set_all_sources_done()?;
             self.notify_source_done_to_flows()?;
             progressed = true;
-            continue;
+            skip_input_apply = true;
+            force_shutdown = true;
+            Vec::new()
           },
           | FailureDisposition::Fail(error) => return Err(error),
         },
       });
 
-      let timer_outputs = {
-        let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
-          return Err(StreamError::InvalidConnection);
+      if !skip_input_apply {
+        let timer_outputs = {
+          let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
+            return Err(StreamError::InvalidConnection);
+          };
+          flow.logic.on_timer()
         };
-        flow.logic.on_timer()
-      };
-      outputs.extend(match timer_outputs {
-        | Ok(outputs) => outputs,
-        | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
-          | FailureDisposition::Continue => {
-            progressed = true;
-            continue;
+        outputs.extend(match timer_outputs {
+          | Ok(outputs) => outputs,
+          | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
+            | FailureDisposition::Continue => {
+              progressed = true;
+              skip_input_apply = true;
+              Vec::new()
+            },
+            | FailureDisposition::Complete => {
+              self.set_all_sources_done()?;
+              self.notify_source_done_to_flows()?;
+              progressed = true;
+              skip_input_apply = true;
+              force_shutdown = true;
+              Vec::new()
+            },
+            | FailureDisposition::Fail(error) => return Err(error),
           },
-          | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
-            progressed = true;
-            continue;
-          },
-          | FailureDisposition::Fail(error) => return Err(error),
-        },
-      });
+        });
+      }
 
-      let can_accept_input = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
-        | _ => false,
+      let can_accept_input = if skip_input_apply {
+        false
+      } else {
+        match &self.stages[stage_index] {
+          | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
+          | _ => false,
+        }
       };
 
       if can_accept_input && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet)? {
@@ -537,13 +551,16 @@ impl GraphInterpreter {
           | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
             | FailureDisposition::Continue => {
               progressed = true;
-              continue;
+              skip_input_apply = true;
+              Vec::new()
             },
             | FailureDisposition::Complete => {
               self.set_all_sources_done()?;
               self.notify_source_done_to_flows()?;
               progressed = true;
-              continue;
+              skip_input_apply = true;
+              force_shutdown = true;
+              Vec::new()
             },
             | FailureDisposition::Fail(error) => return Err(error),
           },
@@ -551,7 +568,7 @@ impl GraphInterpreter {
         outputs.extend(input_outputs);
       }
 
-      if outputs.is_empty() && !outgoing_buffered {
+      if outputs.is_empty() && !outgoing_buffered && !skip_input_apply {
         let drain_result = {
           let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
             return Err(StreamError::InvalidConnection);
@@ -587,7 +604,7 @@ impl GraphInterpreter {
         flow.logic.take_shutdown_request()
       };
       if outputs.is_empty() {
-        if shutdown_requested {
+        if shutdown_requested || force_shutdown {
           self.shutdown_flow_stage(stage_index)?;
           progressed = true;
         }
@@ -616,7 +633,7 @@ impl GraphInterpreter {
           | None => self.offer_to_next_outgoing_edge(flow_outlet, output)?,
         }
       }
-      if shutdown_requested {
+      if shutdown_requested || force_shutdown {
         self.shutdown_flow_stage(stage_index)?;
       }
       let _ = self.maybe_finish_flow_stage(stage_index);
