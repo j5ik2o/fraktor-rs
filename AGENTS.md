@@ -389,10 +389,10 @@ use crate::core::actor::ActorContext;  // typed → untyped は OK
 ## 基本ルール
 
 1. 編集前に対象モジュールへ次を実行する
-   `./scripts/ci-check.sh ai dylint -m <module>`
+   `./scripts/ci-check.sh dylint -m <module>`
 2. lint が失敗した場合のみ、該当 lint の実装・テストを読む
 3. 編集後に同コマンドを再実行し、対象テストを通す
-4. ソースコード変更を伴う、全タスク完了時は `./scripts/ci-check.sh ai all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
+4. ソースコード変更を伴う、全タスク完了時は `./scripts/ci-check.sh all` を通す（TAKT ムーブメント経由の場合はピースの instruction に従う）
 
 ## 読み込み範囲
 
@@ -1265,3 +1265,4 @@ pub struct TickDriverId(u64);
 - lint の `#[allow]` による type-per-file-lint の無効化（人間の許可なしで）
 
 根拠: `claudedocs/actor-module-overengineering-analysis.md`（Phase 1-4 の分析実績）
+
