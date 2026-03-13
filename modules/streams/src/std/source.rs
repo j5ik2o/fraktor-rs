@@ -48,9 +48,7 @@ impl<T> Iterator for CreateSourceIterator<T> {
 
 impl<T> Drop for CreateSourceIterator<T> {
   fn drop(&mut self) {
-    if !self.queue.is_closed() {
-      self.queue.complete();
-    }
+    let _ = self.queue.complete_if_open();
   }
 }
 
@@ -84,9 +82,7 @@ where
         let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
         match result {
           | Ok(()) => {
-            if !termination_queue.is_closed() {
-              termination_queue.complete();
-            }
+            let _ = termination_queue.complete_if_open();
           },
           | Err(_) => {
             let _ = termination_queue.fail_if_open(StreamError::Failed);
