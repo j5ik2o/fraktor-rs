@@ -1,10 +1,10 @@
-```markdown
+````markdown
 # {name} モジュール 設計比較
 
 ## トレイト階層比較
 
 ### Pekko側階層
-```
+```text
 TraitA
 ├── TraitB
 │   ├── ClassC
@@ -13,7 +13,7 @@ TraitA
 ```
 
 ### fraktor-rs側階層
-```
+```text
 TraitA
 ├── impl for StructC
 └── impl for StructD
@@ -50,4 +50,4 @@ TraitA
 | # | ギャップ | Layer | 難易度 | YAGNI評価 | 根拠 |
 |---|---------|-------|--------|-----------|------|
 | G-001 | {ギャップの説明} | 型/インターフェース/設計 | trivial/easy/medium/hard/n/a | 必要/不要 | 根拠 |
-```
+````

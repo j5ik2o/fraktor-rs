@@ -1046,19 +1046,11 @@ PY
     else
       log_step "cargo +${DEFAULT_TOOLCHAIN} -v run --package ${package_name} --example ${example_name}"
     fi
-    if [[ -n "${DEFAULT_TOOLCHAIN}" ]]; then
-      RUSTFLAGS="${rustflags_value}" cargo "+${DEFAULT_TOOLCHAIN}" -v "${cargo_args[@]}" \
-        || {
-          rm -f "${example_file}"
-          return 1
-        }
-    else
-      RUSTFLAGS="${rustflags_value}" cargo -v "${cargo_args[@]}" \
-        || {
-          rm -f "${example_file}"
-          return 1
-        }
-    fi
+    RUSTFLAGS="${rustflags_value}" run_cargo "${cargo_args[@]}" \
+      || {
+        rm -f "${example_file}"
+        return 1
+      }
     echo
   done <"${example_file}"
 
