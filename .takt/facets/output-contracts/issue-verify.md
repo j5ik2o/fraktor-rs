@@ -12,7 +12,7 @@
 
 ## 最終判定
 
-- `./scripts/ci-check.sh all`: PASS / FAIL
+- `./scripts/ci-check.sh ai all`: PASS / FAIL
 - 未達時は `Issue` / `不足` / `次アクション` を明示して再オープン
 ```
 

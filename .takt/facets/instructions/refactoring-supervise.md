@@ -17,7 +17,7 @@
 未対応の改善提案がないか確認してください。
 
 **fraktor-rs リファクタリング固有の検証:**
-- `implement` / `fix` ムーブメントのレポートに `./scripts/ci-check.sh dylint -m actor` と `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
+- `implement` / `fix` ムーブメントのレポートに `./scripts/ci-check.sh ai dylint -m actor` と `./scripts/ci-check.sh ai all` の成功ログが記録されていることを確認
 - `architect-review.md` の判定が approved であることを確認
 - `qa-review.md` の判定が approved であることを確認
 - リファクタリングが Phase 単位で完結していることを確認（Phase をまたいだ変更がないか）
@@ -46,8 +46,8 @@
 ## 検証サマリー
 | 項目 | 状態 | 確認方法 |
 |------|------|---------|
-| テスト | ✅ | `./scripts/ci-check.sh all` (N passed) |
-| ビルド | ✅ | `./scripts/ci-check.sh all` 成功 |
+| テスト | ✅ | `./scripts/ci-check.sh ai all` (N passed) |
+| ビルド | ✅ | `./scripts/ci-check.sh ai all` 成功 |
 | 動作確認 | ✅ | 主要フロー確認 |
 
 ## 成果物
@@ -77,6 +77,6 @@
 
 ## 確認コマンド
 ```bash
-./scripts/ci-check.sh all
+./scripts/ci-check.sh ai all
 ```
 ```
