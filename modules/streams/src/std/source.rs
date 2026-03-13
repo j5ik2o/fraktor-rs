@@ -56,11 +56,14 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.start_producer_if_needed()?;
-    match self.queue.poll()? {
-      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None if self.queue.is_drained() => Ok(None),
-      | None => Err(StreamError::WouldBlock),
+    for _ in 0..64 {
+      match self.queue.poll()? {
+        | Some(value) => return Ok(Some(Box::new(value) as DynValue)),
+        | None if self.queue.is_drained() => return Ok(None),
+        | None => thread::yield_now(),
+      }
     }
+    Err(StreamError::WouldBlock)
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {

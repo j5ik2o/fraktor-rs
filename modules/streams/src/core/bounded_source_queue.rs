@@ -8,10 +8,9 @@ use super::{OverflowStrategy, QueueOfferResult, StreamError};
 mod tests;
 
 struct BoundedSourceQueueState<T> {
-  values:        VecDeque<T>,
-  pending_offer: Option<T>,
-  closed:        bool,
-  failure:       Option<StreamError>,
+  values:  VecDeque<T>,
+  closed:  bool,
+  failure: Option<StreamError>,
 }
 
 /// Bounded queue materialized by `Source::queue`.
@@ -40,12 +39,7 @@ impl<T> BoundedSourceQueue<T> {
   #[must_use]
   pub fn new(capacity: usize, overflow_strategy: OverflowStrategy) -> Self {
     assert!(capacity > 0, "capacity must be greater than zero");
-    let state = BoundedSourceQueueState {
-      values:        VecDeque::new(),
-      pending_offer: None,
-      closed:        false,
-      failure:       None,
-    };
+    let state = BoundedSourceQueueState { values: VecDeque::new(), closed: false, failure: None };
     Self { inner: ArcShared::new(SpinSyncMutex::new(state)), capacity, overflow_strategy }
   }
 
@@ -65,12 +59,7 @@ impl<T> BoundedSourceQueue<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => {
-        if guard.pending_offer.is_none() {
-          guard.pending_offer = Some(value);
-        }
-        QueueOfferResult::Failure(StreamError::WouldBlock)
-      },
+      | OverflowStrategy::Backpressure => QueueOfferResult::Failure(StreamError::WouldBlock),
       | OverflowStrategy::DropHead => {
         let _ = guard.values.pop_front();
         guard.values.push_back(value);
@@ -120,7 +109,6 @@ impl<T> BoundedSourceQueue<T> {
     }
     guard.closed = true;
     guard.values.clear();
-    guard.pending_offer = None;
   }
 
   /// Fails the queue and rejects subsequent offers.
@@ -158,7 +146,7 @@ impl<T> BoundedSourceQueue<T> {
   #[must_use]
   pub fn len(&self) -> usize {
     let guard = self.inner.lock();
-    guard.values.len() + usize::from(guard.pending_offer.is_some())
+    guard.values.len()
   }
 
   /// Returns `true` when the queue contains no elements.
@@ -179,19 +167,11 @@ impl<T> BoundedSourceQueue<T> {
     if let Some(error) = &guard.failure {
       return Err(error.clone());
     }
-    let next = guard.values.pop_front();
-    if let Some(value) = guard.pending_offer.take() {
-      if guard.values.len() < self.capacity {
-        guard.values.push_back(value);
-      } else {
-        guard.pending_offer = Some(value);
-      }
-    }
-    Ok(next)
+    Ok(guard.values.pop_front())
   }
 
   pub(crate) fn is_drained(&self) -> bool {
     let guard = self.inner.lock();
-    guard.closed && guard.values.is_empty() && guard.pending_offer.is_none()
+    guard.closed && guard.values.is_empty()
   }
 }
