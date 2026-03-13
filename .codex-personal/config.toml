@@ -9,6 +9,8 @@ developer_instructions = """
 計画が存在しない場合はこの指示は無視して構わない。
 """
 service_tier = "fast"
+model_context_window= 1000000
+model_auto_compact_token_limit = 950000
 
 [features]
 multi_agent = true
