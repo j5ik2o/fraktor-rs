@@ -45,8 +45,8 @@ where
     self.inner.on_terminated(&mut wrapped_ctx, terminated)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    let mut wrapped_ctx = StdActorContext::from_core_mut(ctx);
-    self.inner.supervisor_strategy(&mut wrapped_ctx)
+  fn supervisor_strategy(&self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    let wrapped_ctx = StdActorContext::from_core_mut(ctx);
+    self.inner.supervisor_strategy(&wrapped_ctx)
   }
 }

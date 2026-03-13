@@ -108,7 +108,7 @@ pub use stream_not_used::StreamNotUsed;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
-type DynValue = Box<dyn Any + Send + Sync + 'static>;
+pub(crate) type DynValue = Box<dyn Any + Send + Sync + 'static>;
 
 enum StageDefinition {
   Source(SourceDefinition),
@@ -442,7 +442,7 @@ struct StreamPlanEdge {
   mat:       MatCombine,
 }
 
-trait SourceLogic: Send {
+pub(crate) trait SourceLogic: Send {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError>;
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {

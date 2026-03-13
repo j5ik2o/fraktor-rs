@@ -20,7 +20,10 @@ enum Command {
 
 #[cfg(not(target_os = "none"))]
 fn main() {
-  use std::{thread, time::Duration};
+  use std::{
+    thread,
+    time::{Duration, Instant},
+  };
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
@@ -68,7 +71,9 @@ fn main() {
 
   let response = router.ask::<Vec<(usize, u32)>, _>(|reply_to| Command::Read { reply_to }).expect("ask");
   let mut future = response.future().clone();
+  let deadline = Instant::now() + Duration::from_secs(1);
   while !future.is_ready() {
+    assert!(Instant::now() < deadline, "ask timeout while waiting for round-robin read response");
     thread::sleep(Duration::from_millis(10));
   }
   let records = future.try_take().expect("ready").expect("ok");

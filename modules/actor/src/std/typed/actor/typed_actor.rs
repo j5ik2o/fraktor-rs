@@ -1,6 +1,6 @@
 use crate::{
   core::{actor::Pid, error::ActorError, supervision::SupervisorStrategyConfig},
-  std::typed::actor::TypedActorContext,
+  std::typed::actor::{TypedActorContext, TypedActorContextRef},
 };
 
 /// Trait describing typed actors that can run on the standard runtime.
@@ -39,8 +39,11 @@ where
   }
 
   /// Provides the supervision strategy for this typed actor.
+  ///
+  /// The actor state is queried immutably and the context is exposed as a
+  /// read-only view.
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut TypedActorContext<'_, '_, M>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &TypedActorContextRef<'_, '_, M>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 }

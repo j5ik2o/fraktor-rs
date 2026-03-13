@@ -53,7 +53,7 @@ where
     self
   }
 
-  /// Routes messages by a stable hash derived from each message.
+  /// Routes messages by rendezvous hashing derived from each message.
   #[must_use]
   pub fn with_consistent_hash_routing<F>(mut self, hash_fn: F) -> Self
   where
@@ -150,7 +150,7 @@ where
               let seed = random_seed.fetch_add(1, Ordering::Relaxed);
               pseudo_random_index(seed, guard.len())
             },
-            | GroupRouteStrategy::ConsistentHash { hash_fn } => stable_hash_index(&hash_fn(message), guard.len()),
+            | GroupRouteStrategy::ConsistentHash { hash_fn } => rendezvous_hash_index(&hash_fn(message), &guard),
           };
           vec![guard[idx].clone()]
         };
@@ -184,11 +184,36 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   (mixed as usize) % len
 }
 
-fn stable_hash_index(value: &str, len: usize) -> usize {
+fn rendezvous_hash_index<M>(value: &str, routees: &[TypedActorRef<M>]) -> usize
+where
+  M: Send + Sync + Clone + 'static, {
+  let key_hash = stable_hash(value.as_bytes());
+  routees
+    .iter()
+    .enumerate()
+    .max_by_key(|(_, routee)| rendezvous_score(key_hash, routee.pid().value(), routee.pid().generation()))
+    .map(|(idx, _)| idx)
+    .unwrap_or(0)
+}
+
+fn rendezvous_score(key_hash: u64, pid_value: u64, pid_generation: u32) -> u64 {
+  let mut hash = key_hash;
+  for byte in pid_value.to_le_bytes() {
+    hash ^= u64::from(byte);
+    hash = hash.wrapping_mul(1099511628211);
+  }
+  for byte in pid_generation.to_le_bytes() {
+    hash ^= u64::from(byte);
+    hash = hash.wrapping_mul(1099511628211);
+  }
+  hash
+}
+
+fn stable_hash(bytes: &[u8]) -> u64 {
   let mut hash = 14695981039346656037_u64;
-  for byte in value.as_bytes() {
+  for byte in bytes {
     hash ^= u64::from(*byte);
     hash = hash.wrapping_mul(1099511628211);
   }
-  (hash as usize) % len
+  hash
 }

@@ -61,6 +61,7 @@ Cargo.lock
 /.codex/tmp/
 /.codex/version.json
 /.codex/skills/.system
+/.codex/logs*
 
 /.codex-corporate/cache/
 /.codex-corporate/auth.json
@@ -76,6 +77,7 @@ Cargo.lock
 /.codex-corporate/tmp/
 /.codex-corporate/version.json
 /.codex-corporate/skills/.system
+/.codex-corporate/logs*
 
 /.codex-personal/cache/
 /.codex-personal/auth.json
@@ -91,4 +93,4 @@ Cargo.lock
 /.codex-personal/tmp/
 /.codex-personal/version.json
 /.codex-personal/skills/.system
-
+/.codex-personal/logs*

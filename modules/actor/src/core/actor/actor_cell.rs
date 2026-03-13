@@ -908,7 +908,7 @@ impl ActorCell {
   pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
     let system = ActorSystem::from_state(self.system());
     let mut ctx = ActorContext::new(&system, self.pid);
-    self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
+    self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
   }
 
   pub(crate) fn handle_child_failure(
@@ -921,7 +921,7 @@ impl ActorCell {
     let strategy = {
       let system = ActorSystem::from_state(self.system());
       let mut ctx = ActorContext::new(&system, self.pid);
-      self.actor.with_write(|actor| actor.supervisor_strategy(&mut ctx))
+      self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
     };
 
     let directive = {

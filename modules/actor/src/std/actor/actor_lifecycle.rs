@@ -67,21 +67,23 @@ pub trait Actor: Send {
   /// # Customization
   ///
   /// Override this method to provide dynamic supervision based on actor state.
-  /// The `ctx` parameter allows access to system configuration and logging.
+  /// The `ctx` parameter allows read-only access to system configuration and logging.
   ///
   /// # Implementation Requirements
   ///
   /// - **Must be panic-free**: This method is called during failure handling. Panics will cause
   ///   system instability or termination (especially in no_std environments).
   /// - **Should be lightweight**: Called on every child failure, though failures are infrequent.
-  /// - **May update state**: The `&mut self` receiver allows state updates (e.g., error counters).
+  /// - **Must not mutate actor state**: This method is queried while coordinating supervision.
+  ///   Implementations must treat `ctx` as a read-only view and avoid coordination-affecting side
+  ///   effects here.
   ///
   /// # See Also
   ///
   /// - [`SupervisorStrategyConfig`] for available strategies
   /// - [`SupervisorDirective`] for failure handling options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_, '_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &ActorContext<'_, '_>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 }

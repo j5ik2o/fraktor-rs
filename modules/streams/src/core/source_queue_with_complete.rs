@@ -25,13 +25,10 @@ impl Future for QueueOfferFuture {
   type Output = QueueOfferResult;
 
   fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-    match self.completion.poll() {
+    match self.completion.poll_with_waker(context.waker()) {
       | Completion::Ready(Ok(result)) => Poll::Ready(result),
       | Completion::Ready(Err(error)) => Poll::Ready(QueueOfferResult::Failure(error)),
-      | Completion::Pending => {
-        context.waker().wake_by_ref();
-        Poll::Pending
-      },
+      | Completion::Pending => Poll::Pending,
     }
   }
 }

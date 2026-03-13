@@ -1,4 +1,5 @@
 use alloc::{
+  boxed::Box,
   string::{String, ToString},
   sync::Arc,
   vec::Vec,
@@ -22,6 +23,7 @@ use crate::core::{
   typed::{
     Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
     actor::{TypedActor, TypedActorContext, TypedActorRef},
+    behavior_interceptor::BehaviorInterceptor,
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
     props::TypedProps,
     system::TypedActorSystem,
@@ -588,6 +590,40 @@ fn child_props(counter: &Arc<AtomicUsize>) -> TypedProps<ChildCommand> {
   TypedProps::from_behavior_factory(move || child_behavior(&counter))
 }
 
+struct PassThroughInterceptor {
+  counter: Arc<AtomicUsize>,
+}
+
+impl BehaviorInterceptor<ChildCommand> for PassThroughInterceptor {
+  fn around_receive(
+    &mut self,
+    context: &mut TypedActorContext<'_, ChildCommand>,
+    message: &ChildCommand,
+    target: &mut dyn FnMut(
+      &mut TypedActorContext<'_, ChildCommand>,
+      &ChildCommand,
+    ) -> Result<Behavior<ChildCommand>, ActorError>,
+  ) -> Result<Behavior<ChildCommand>, ActorError> {
+    self.counter.fetch_add(1, Ordering::SeqCst);
+    target(context, message)
+  }
+}
+
+fn intercepted_child_props(
+  counter: &Arc<AtomicUsize>,
+  interceptor_counter: &Arc<AtomicUsize>,
+) -> TypedProps<ChildCommand> {
+  let counter = Arc::clone(counter);
+  let interceptor_counter = Arc::clone(interceptor_counter);
+  TypedProps::from_behavior_factory(move || {
+    let interceptor_counter = Arc::clone(&interceptor_counter);
+    Behaviors::intercept_behavior(
+      move || Box::new(PassThroughInterceptor { counter: Arc::clone(&interceptor_counter) }),
+      child_behavior(&counter),
+    )
+  })
+}
+
 fn supervised_parent_behavior(child: TypedProps<ChildCommand>) -> Behavior<SupervisorCommand> {
   Behaviors::setup(move |ctx| {
     let child_ref = ctx.spawn_child(&child).expect("spawn child");
@@ -630,6 +666,35 @@ fn behaviors_supervise_restarts_children() {
   parent.tell(SupervisorCommand::CrashChild).expect("crash");
 
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn intercepted_behavior_survives_supervised_restart() {
+  let start_counter = Arc::new(AtomicUsize::new(0));
+  let interceptor_counter = Arc::new(AtomicUsize::new(0));
+  let child = intercepted_child_props(&start_counter, &interceptor_counter);
+  let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
+    SupervisorDirective::Restart
+  });
+  let parent_props = supervised_parent_props(restart_strategy, child);
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
+  let mut parent = system.user_guardian_ref();
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash");
+  wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 1);
+
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
+
+  parent.tell(SupervisorCommand::CrashChild).expect("crash again");
+  wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 2);
+  wait_until(|| start_counter.load(Ordering::SeqCst) >= 3);
 
   system.terminate().expect("terminate");
 }

@@ -268,8 +268,11 @@ impl GraphInterpreter {
             continue;
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
+            self.shutdown_flow_stage(stage_index)?;
+            let _ = self.maybe_finish_flow_stage(stage_index);
             progressed = true;
             continue;
           },
@@ -468,6 +471,8 @@ impl GraphInterpreter {
 
       let mut consumed_input = false;
       let mut outputs = Vec::new();
+      let mut skip_stage_input = false;
+      let mut force_shutdown = false;
 
       let async_outputs = {
         let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
@@ -480,13 +485,17 @@ impl GraphInterpreter {
         | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
           | FailureDisposition::Continue => {
             progressed = true;
-            continue;
+            skip_stage_input = true;
+            Vec::new()
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !force_shutdown && !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
             progressed = true;
-            continue;
+            skip_stage_input = true;
+            force_shutdown = true;
+            Vec::new()
           },
           | FailureDisposition::Fail(error) => return Err(error),
         },
@@ -503,21 +512,29 @@ impl GraphInterpreter {
         | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
           | FailureDisposition::Continue => {
             progressed = true;
-            continue;
+            skip_stage_input = true;
+            Vec::new()
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !force_shutdown && !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
             progressed = true;
-            continue;
+            skip_stage_input = true;
+            force_shutdown = true;
+            Vec::new()
           },
           | FailureDisposition::Fail(error) => return Err(error),
         },
       });
 
-      let can_accept_input = match &self.stages[stage_index] {
-        | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
-        | _ => false,
+      let can_accept_input = if skip_stage_input {
+        false
+      } else {
+        match &self.stages[stage_index] {
+          | StageDefinition::Flow(flow) => !self.flow_source_done_at(stage_index) && flow.logic.can_accept_input(),
+          | _ => false,
+        }
       };
 
       if can_accept_input && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet)? {
@@ -537,13 +554,17 @@ impl GraphInterpreter {
           | Err(error) => match self.handle_flow_failure(stage_index, &error)? {
             | FailureDisposition::Continue => {
               progressed = true;
-              continue;
+              skip_stage_input = true;
+              Vec::new()
             },
             | FailureDisposition::Complete => {
-              self.set_all_sources_done()?;
-              self.notify_source_done_to_flows()?;
+              if !force_shutdown && !self.all_sources_done() {
+                self.set_all_sources_done()?;
+              }
               progressed = true;
-              continue;
+              skip_stage_input = true;
+              force_shutdown = true;
+              Vec::new()
             },
             | FailureDisposition::Fail(error) => return Err(error),
           },
@@ -551,7 +572,10 @@ impl GraphInterpreter {
         outputs.extend(input_outputs);
       }
 
-      if outputs.is_empty() && !outgoing_buffered {
+      // apply で新しい出力が出ず、未送信バッファもなく、この tick で input apply を明示的に
+      // skip していないときだけ drain_pending に進める。
+      let can_drain_pending = outputs.is_empty() && !outgoing_buffered && !skip_stage_input;
+      if can_drain_pending {
         let drain_result = {
           let StageDefinition::Flow(flow) = &mut self.stages[stage_index] else {
             return Err(StreamError::InvalidConnection);
@@ -566,8 +590,11 @@ impl GraphInterpreter {
               continue;
             },
             | FailureDisposition::Complete => {
-              self.set_all_sources_done()?;
-              self.notify_source_done_to_flows()?;
+              if !self.all_sources_done() {
+                self.set_all_sources_done()?;
+              }
+              self.shutdown_flow_stage(stage_index)?;
+              let _ = self.maybe_finish_flow_stage(stage_index);
               progressed = true;
               continue;
             },
@@ -587,7 +614,7 @@ impl GraphInterpreter {
         flow.logic.take_shutdown_request()
       };
       if outputs.is_empty() {
-        if shutdown_requested {
+        if shutdown_requested || force_shutdown {
           self.shutdown_flow_stage(stage_index)?;
           progressed = true;
         }
@@ -616,7 +643,7 @@ impl GraphInterpreter {
           | None => self.offer_to_next_outgoing_edge(flow_outlet, output)?,
         }
       }
-      if shutdown_requested {
+      if shutdown_requested || force_shutdown {
         self.shutdown_flow_stage(stage_index)?;
       }
       let _ = self.maybe_finish_flow_stage(stage_index);

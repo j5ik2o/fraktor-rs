@@ -71,6 +71,15 @@ impl<T> SourceQueue<T> {
     true
   }
 
+  pub(crate) fn close_for_cancel(&self) {
+    let mut guard = self.inner.lock();
+    if guard.failure.is_some() {
+      return;
+    }
+    guard.closed = true;
+    guard.values.clear();
+  }
+
   /// Fails the queue and rejects subsequent offers.
   pub fn fail(&self, error: StreamError) {
     let mut guard = self.inner.lock();

@@ -546,10 +546,14 @@ impl ActorSystem {
       TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior).into_untyped();
     let receptionist_props = receptionist_props.with_name(SYSTEM_RECEPTIONIST_TOP_LEVEL);
     let receptionist = self.spawn_child(system_guardian.pid(), &receptionist_props)?;
-    self
-      .extended()
-      .register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist.actor_ref().clone())
-      .map_err(|error| SpawnError::SystemBuildError(format!("system receptionist registration failed: {error:?}")))?;
+    if let Err(error) =
+      self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist.actor_ref().clone())
+    {
+      if let Some(cell) = self.state.cell(&receptionist.pid()) {
+        self.rollback_spawn(Some(system_guardian.pid()), &cell, receptionist.pid());
+      }
+      return Err(SpawnError::SystemBuildError(format!("system receptionist registration failed: {error:?}")));
+    }
 
     configure(self)?;
 

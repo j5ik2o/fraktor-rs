@@ -122,7 +122,7 @@ pub trait Actor: Send {
   ///     Ok(())
   ///   }
   ///
-  ///   fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+  ///   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
   ///     if self.consecutive_errors > 10 {
   ///       // Too many errors: stop immediately
   ///       SupervisorStrategy::new(
@@ -145,7 +145,9 @@ pub trait Actor: Send {
   /// - **Must be panic-free**: This method is called during failure handling. Panics will cause
   ///   system instability or termination (especially in no_std environments).
   /// - **Should be lightweight**: Called on every child failure, though failures are infrequent.
-  /// - **May update state**: The `&mut self` receiver allows state updates (e.g., error counters).
+  /// - **Must not mutate actor state**: This method is queried while coordinating supervision.
+  ///   `ctx` remains mutable so implementations can inspect runtime state or emit logs, but they
+  ///   must not update actor-owned state or perform coordination-affecting side effects here.
   ///
   /// # See Also
   ///
@@ -153,7 +155,7 @@ pub trait Actor: Send {
   /// - [`SupervisorDirective`](crate::core::supervision::SupervisorDirective) for failure handling
   ///   options
   #[must_use]
-  fn supervisor_strategy(&mut self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()
   }
 
@@ -211,7 +213,7 @@ where
     (**self).on_mailbox_pressure(ctx, event)
   }
 
-  fn supervisor_strategy(&mut self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     (**self).supervisor_strategy(ctx)
   }
 

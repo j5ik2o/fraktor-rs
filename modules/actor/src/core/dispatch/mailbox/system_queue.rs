@@ -4,6 +4,8 @@ use core::{
   sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
 };
 
+use fraktor_utils_rs::core::sync::ArcShared;
+
 use crate::core::messaging::system_message::SystemMessage;
 
 #[cfg(test)]
@@ -25,7 +27,7 @@ impl Node {
 pub(crate) struct SystemQueue {
   head:     AtomicPtr<Node>,
   pending:  AtomicPtr<Node>,
-  len:      AtomicUsize,
+  len:      ArcShared<AtomicUsize>,
   // Serializes the slow path (head → pending transfer) to prevent
   // FIFO-breaking interleave during concurrent head → pending transfer.
   draining: AtomicBool,
@@ -40,11 +42,11 @@ impl Default for SystemQueue {
 impl SystemQueue {
   /// Creates an empty queue.
   #[must_use]
-  pub(crate) const fn new() -> Self {
+  pub(crate) fn new() -> Self {
     Self {
       head:     AtomicPtr::new(ptr::null_mut()),
       pending:  AtomicPtr::new(ptr::null_mut()),
-      len:      AtomicUsize::new(0),
+      len:      ArcShared::new(AtomicUsize::new(0)),
       draining: AtomicBool::new(false),
     }
   }
@@ -118,6 +120,11 @@ impl SystemQueue {
   /// Returns the approximate queue length.
   pub(crate) fn len(&self) -> usize {
     self.len.load(Ordering::Acquire)
+  }
+
+  #[must_use]
+  pub(crate) fn len_handle(&self) -> ArcShared<AtomicUsize> {
+    self.len.clone()
   }
 
   /// Returns `true` when the queue has no pending elements.

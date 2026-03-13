@@ -33,25 +33,16 @@ impl BoundedMessageQueue {
 impl MessageQueue for BoundedMessageQueue {
   fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     match self.overflow {
-      | MailboxOverflowStrategy::DropNewest => {
-        if self.handle.len() >= self.capacity {
-          return Err(SendError::full(message));
-        }
-        self.offer(message)
-      },
-      | MailboxOverflowStrategy::DropOldest => {
-        if self.handle.len() >= self.capacity {
-          let _ = self.handle.poll();
-        }
-        self.offer(message)
-      },
+      | MailboxOverflowStrategy::DropNewest => self.offer_if_room(message),
+      | MailboxOverflowStrategy::DropOldest => self.offer_after_dropping_oldest(message),
       | MailboxOverflowStrategy::Grow => self.offer(message),
-      | MailboxOverflowStrategy::Block => {
-        if self.handle.len() >= self.capacity {
+      | MailboxOverflowStrategy::Block => match self.handle.offer_if_room(message, self.capacity) {
+        | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+        | Err(QueueError::Full(message)) => {
           let future = MailboxOfferFuture::new(self.handle.state.clone(), message);
-          return Ok(EnqueueOutcome::Pending(future));
-        }
-        self.offer(message)
+          Ok(EnqueueOutcome::Pending(future))
+        },
+        | Err(error) => Err(super::map_user_queue_error(error)),
       },
     }
   }
@@ -76,6 +67,20 @@ impl MessageQueue for BoundedMessageQueue {
 impl BoundedMessageQueue {
   fn offer(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     match self.handle.offer(message) {
+      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Err(error) => Err(super::map_user_queue_error(error)),
+    }
+  }
+
+  fn offer_if_room(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+    match self.handle.offer_if_room(message, self.capacity) {
+      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Err(error) => Err(super::map_user_queue_error(error)),
+    }
+  }
+
+  fn offer_after_dropping_oldest(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+    match self.handle.drop_oldest_and_offer(message, self.capacity) {
       | Ok(_) => Ok(EnqueueOutcome::Enqueued),
       | Err(error) => Err(super::map_user_queue_error(error)),
     }

@@ -31,10 +31,6 @@ impl<T> Clone for BoundedSourceQueue<T> {
 }
 
 impl<T> BoundedSourceQueue<T> {
-  fn assert_not_terminated(guard: &BoundedSourceQueueState<T>, operation: &str) {
-    assert!(!guard.closed && guard.failure.is_none(), "bounded source queue already terminated: {operation}");
-  }
-
   /// Creates an empty bounded queue.
   ///
   /// # Panics
@@ -63,7 +59,7 @@ impl<T> BoundedSourceQueue<T> {
     }
 
     match self.overflow_strategy {
-      | OverflowStrategy::Backpressure => QueueOfferResult::Dropped,
+      | OverflowStrategy::Backpressure => QueueOfferResult::Failure(StreamError::WouldBlock),
       | OverflowStrategy::DropHead => {
         let _ = guard.values.pop_front();
         guard.values.push_back(value);
@@ -89,10 +85,12 @@ impl<T> BoundedSourceQueue<T> {
   }
 
   /// Completes the queue and rejects subsequent offers.
+  ///
+  /// # Panics
+  ///
+  /// Panics when the queue has already been completed or failed.
   pub fn complete(&self) {
-    let mut guard = self.inner.lock();
-    Self::assert_not_terminated(&guard, "complete");
-    guard.closed = true;
+    assert!(self.complete_if_open(), "bounded source queue already terminated: complete");
   }
 
   pub(crate) fn complete_if_open(&self) -> bool {
@@ -102,6 +100,15 @@ impl<T> BoundedSourceQueue<T> {
     }
     guard.closed = true;
     true
+  }
+
+  pub(crate) fn close_for_cancel(&self) {
+    let mut guard = self.inner.lock();
+    if guard.failure.is_some() {
+      return;
+    }
+    guard.closed = true;
+    guard.values.clear();
   }
 
   /// Fails the queue and rejects subsequent offers.

@@ -82,29 +82,49 @@ enum BackpressureMessage {
 
 #[test]
 fn actor_sink_actor_ref_should_complete_stream() {
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(ActorSink::actor_ref(), KeepRight);
+  let forwarded = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+    ActorSink::actor_ref({
+      let forwarded = forwarded.clone();
+      move |value| {
+        forwarded.lock().push(value);
+      }
+    }),
+    KeepRight,
+  );
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
   assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(forwarded.lock().as_slice(), &[1_u32, 2_u32]);
 }
 
 #[test]
 fn actor_sink_actor_ref_should_not_cancel_upstream() {
   let pull_count = ArcShared::new(SpinSyncMutex::new(0_u32));
   let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let forwarded = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let source = Source::<u32, _>::from_logic(
     StageKind::Custom,
     CancelTrackingSourceLogic::new([1_u32, 2_u32, 3_u32], pull_count.clone(), cancel_count.clone()),
   );
-  let graph = source.to_mat(ActorSink::actor_ref(), KeepRight);
+  let graph = source.to_mat(
+    ActorSink::actor_ref({
+      let forwarded = forwarded.clone();
+      move |value| {
+        forwarded.lock().push(value);
+      }
+    }),
+    KeepRight,
+  );
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
 
   assert!(*pull_count.lock() >= 3_u32);
   assert_eq!(*cancel_count.lock(), 0_u32);
+  assert_eq!(forwarded.lock().as_slice(), &[1_u32, 2_u32, 3_u32]);
 }
 
 #[test]
