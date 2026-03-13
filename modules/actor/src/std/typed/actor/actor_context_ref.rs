@@ -1,8 +1,6 @@
 extern crate std;
-use std::{
-  ops::{Deref, DerefMut},
-  vec::Vec,
-};
+
+use std::{ops::Deref, vec::Vec};
 
 use crate::{
   core::{
@@ -17,20 +15,20 @@ use crate::{
   },
 };
 
-/// Typed actor context wrapper for the standard runtime.
-pub struct TypedActorContext<'ctx, 'inner, M>
+/// Read-only typed actor context wrapper for the standard runtime.
+pub struct TypedActorContextRef<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static, {
-  inner: &'ctx mut CoreTypedActorContext<'inner, M>,
+  inner: &'ctx CoreTypedActorContext<'inner, M>,
 }
 
-impl<'ctx, 'inner, M> TypedActorContext<'ctx, 'inner, M>
+impl<'ctx, 'inner, M> TypedActorContextRef<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
-  /// Builds a std-facing typed context wrapper from the core context.
+  /// Builds a read-only std-facing typed context wrapper from the core context.
   #[must_use]
-  pub const fn from_core_mut(core: &'ctx mut CoreTypedActorContext<'inner, M>) -> Self {
+  pub const fn from_core(core: &'ctx CoreTypedActorContext<'inner, M>) -> Self {
     Self { inner: core }
   }
 
@@ -150,44 +148,20 @@ where
     self.inner.child(name)
   }
 
-  /// Creates a fluent builder for registering a typed message adapter.
-  #[must_use]
-  pub const fn message_adapter_builder<U>(
-    &mut self,
-  ) -> crate::core::typed::message_adapter::MessageAdapterBuilder<'_, 'inner, M, U>
-  where
-    U: Send + Sync + 'static, {
-    self.inner.message_adapter_builder()
-  }
-
   /// Provides access to the underlying core typed context.
   #[must_use]
   pub const fn as_core(&self) -> &CoreTypedActorContext<'inner, M> {
     self.inner
   }
-
-  /// Provides mutable access to the underlying core typed context.
-  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
-    self.inner
-  }
 }
 
-impl<'inner, M> Deref for TypedActorContext<'_, 'inner, M>
+impl<'inner, M> Deref for TypedActorContextRef<'_, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
   type Target = CoreTypedActorContext<'inner, M>;
 
   fn deref(&self) -> &Self::Target {
-    self.inner
-  }
-}
-
-impl<M> DerefMut for TypedActorContext<'_, '_, M>
-where
-  M: Send + Sync + 'static,
-{
-  fn deref_mut(&mut self) -> &mut Self::Target {
     self.inner
   }
 }

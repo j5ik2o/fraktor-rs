@@ -48,7 +48,7 @@ where
   }
 
   fn supervisor_strategy(&self, core_ctx: &CoreTypedActorContext<'_, M>) -> SupervisorStrategyConfig {
-    let wrapped_ctx = StdTypedActorContext::from_core(core_ctx);
+    let wrapped_ctx = crate::std::typed::actor::TypedActorContextRef::from_core(core_ctx);
     self.inner.supervisor_strategy(&wrapped_ctx)
   }
 }

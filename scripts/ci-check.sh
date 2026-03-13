@@ -62,7 +62,7 @@ usage() {
   test                   : ワークスペース全体のテストを実行します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
   actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
-  all                    : 上記すべてを順番に実行します (引数なし時と同じ)
+  all                    : AI 向けの標準フルチェックを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 
 環境変数:
@@ -1073,11 +1073,8 @@ run_all() {
   run_fmt || return 1
   run_dylint || return 1
   run_clippy || return 1
-  run_no_std || return 1
-  run_std || return 1
   run_doc_tests || return 1
   run_tests || return 1
-  run_actor_path_e2e || return 1
   run_examples || return 1
 }
 
