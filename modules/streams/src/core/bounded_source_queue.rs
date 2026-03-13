@@ -85,6 +85,10 @@ impl<T> BoundedSourceQueue<T> {
   }
 
   /// Completes the queue and rejects subsequent offers.
+  ///
+  /// # Panics
+  ///
+  /// Panics when the queue has already been completed or failed.
   pub fn complete(&self) {
     assert!(self.complete_if_open(), "bounded source queue already terminated: complete");
   }
