@@ -268,8 +268,9 @@ impl GraphInterpreter {
             continue;
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
             progressed = true;
             continue;
           },
@@ -486,8 +487,9 @@ impl GraphInterpreter {
             Vec::new()
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !force_shutdown && !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
             progressed = true;
             skip_stage_input = true;
             force_shutdown = true;
@@ -512,8 +514,9 @@ impl GraphInterpreter {
             Vec::new()
           },
           | FailureDisposition::Complete => {
-            self.set_all_sources_done()?;
-            self.notify_source_done_to_flows()?;
+            if !force_shutdown && !self.all_sources_done() {
+              self.set_all_sources_done()?;
+            }
             progressed = true;
             skip_stage_input = true;
             force_shutdown = true;
@@ -553,8 +556,9 @@ impl GraphInterpreter {
               Vec::new()
             },
             | FailureDisposition::Complete => {
-              self.set_all_sources_done()?;
-              self.notify_source_done_to_flows()?;
+              if !force_shutdown && !self.all_sources_done() {
+                self.set_all_sources_done()?;
+              }
               progressed = true;
               skip_stage_input = true;
               force_shutdown = true;
@@ -584,8 +588,9 @@ impl GraphInterpreter {
               continue;
             },
             | FailureDisposition::Complete => {
-              self.set_all_sources_done()?;
-              self.notify_source_done_to_flows()?;
+              if !self.all_sources_done() {
+                self.set_all_sources_done()?;
+              }
               progressed = true;
               continue;
             },
