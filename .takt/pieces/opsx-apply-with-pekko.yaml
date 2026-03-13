@@ -188,8 +188,8 @@ movements:
     instruction_template: |
       **修正完了条件（必須）:**
       修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
+      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
+      2. `./scripts/ci-check.sh ai all` （全CI）
       成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
     output_contracts:
       report:
@@ -391,8 +391,8 @@ movements:
     instruction_template: |
       **修正完了条件（必須）:**
       修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
+      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
+      2. `./scripts/ci-check.sh ai all` （全CI）
       成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
     rules:
       - condition: 修正完了
@@ -461,11 +461,11 @@ movements:
 
       **修正完了条件（必須）:**
       修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh all` （全CI）
+      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
+      2. `./scripts/ci-check.sh ai all` （全CI）
       成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
     rules:
-      - condition: 修正完了（ci-check.sh all 通過済み）
+      - condition: 修正完了（ci-check.sh ai all 通過済み）
         next: pekko-compat-review
       - condition: 判断できない、情報不足
         next: pekko-compat-review
@@ -488,7 +488,7 @@ movements:
     instruction: supervise
     instruction_template: |
       **fraktor-rs固有の検証:**
-      - implement / fix / pekko-compat-fix のレポートに `./scripts/ci-check.sh all` の成功ログが記録されていることを確認
+      - implement / fix / pekko-compat-fix のレポートに `./scripts/ci-check.sh ai all` の成功ログが記録されていることを確認
       - `05-architect-review.md` の判定がapprovedであることを確認
       - `06-qa-review.md` の判定がapprovedであることを確認
       - `07-impl-validation.md` の検証合格を確認

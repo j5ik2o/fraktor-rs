@@ -292,7 +292,7 @@ movements:
     pass_previous_response: false
     instruction: refactoring-fix
     rules:
-      - condition: 修正完了（ci-check.sh all 通過済み）
+      - condition: 修正完了（ci-check.sh ai all 通過済み）
         next: reviewers
       - condition: 判断できない、情報不足
         next: plan

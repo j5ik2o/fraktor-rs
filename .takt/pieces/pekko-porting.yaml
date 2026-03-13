@@ -473,9 +473,9 @@ movements:
     pass_previous_response: false
     instruction: pekko-porting-final-ci
     rules:
-      - condition: ci-check.sh all が成功
+      - condition: ci-check.sh ai all が成功
         next: COMPLETE
-      - condition: ci-check.sh all が失敗
+      - condition: ci-check.sh ai all が失敗
         next: pekko-compat-fix
       - condition: 判断できない、情報不足
         next: pekko-compat-fix
