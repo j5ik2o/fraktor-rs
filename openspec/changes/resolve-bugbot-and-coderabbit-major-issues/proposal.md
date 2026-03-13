@@ -15,6 +15,7 @@ Open な `[BugBot]` と `[CodeRabbit:major]` issue には、actor runtime の安
 ## ケイパビリティ
 
 ### 新規ケイパビリティ
+
 - `actor-runtime-safety`: actor runtime が mailbox policy、dispatcher 選択、supervision 再起動、stash 操作、router 挙動の不整合を起こさないことを定義する
 - `streams-backpressure-integrity`: streams が backpressure、future wake、timer/apply failure、terminal 状態遷移を一貫して扱うことを定義する
 - `workflow-integrity`: `.takt` と CI スクリプトが有効な構造と一貫した実行経路を保つことを定義する

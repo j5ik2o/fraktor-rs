@@ -757,7 +757,7 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
 
 #[test]
 fn source_create_tolerates_producer_delay_without_std_sleep() {
-  let source = Source::create(2, |queue| {
+  let source = Source::create(1, |queue| {
     assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
     for _ in 0..10_000 {
       core::hint::spin_loop();
