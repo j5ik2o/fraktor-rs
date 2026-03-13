@@ -121,23 +121,6 @@ where
     Ok(snapshot.iter().any(&mut predicate))
   }
 
-  /// Returns true when the predicate matches at least one stashed message.
-  /// Unlike [`exists`](Self::exists), this variant evaluates the predicate while the stash lock is
-  /// held and avoids cloning stashed values.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error when the actor cell is unavailable.
-  pub fn exists_borrowed<F>(&self, ctx: &TypedActorContext<'_, M>, mut predicate: F) -> Result<bool, ActorError>
-  where
-    F: FnMut(&M) -> bool, {
-    Self::with_cell(ctx, |cell| {
-      cell.with_stashed_messages(|messages| {
-        messages.iter().filter_map(|message| message.payload().downcast_ref::<M>()).any(&mut predicate)
-      })
-    })
-  }
-
   /// Applies `f` to every stashed message without removing them.
   /// Iteration uses a cloned snapshot so callbacks are invoked outside the underlying stash lock.
   ///

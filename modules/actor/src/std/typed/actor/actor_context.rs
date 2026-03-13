@@ -1,6 +1,8 @@
 extern crate std;
 use std::{
+  marker::PhantomData,
   ops::{Deref, DerefMut},
+  ptr::NonNull,
   vec::Vec,
 };
 
@@ -21,35 +23,54 @@ use crate::{
 pub struct TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static, {
-  inner: &'ctx mut CoreTypedActorContext<'inner, M>,
+  inner:   NonNull<CoreTypedActorContext<'inner, M>>,
+  mutable: bool,
+  _marker: PhantomData<(&'ctx CoreTypedActorContext<'inner, M>, M)>,
 }
 
 impl<'ctx, 'inner, M> TypedActorContext<'ctx, 'inner, M>
 where
   M: Send + Sync + 'static,
 {
+  const fn inner(&self) -> &CoreTypedActorContext<'inner, M> {
+    // SAFETY: `inner` always points to a valid context for lifetime `'ctx`.
+    unsafe { self.inner.as_ref() }
+  }
+
+  fn inner_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
+    assert!(self.mutable, "supervisor_strategy では読み取り専用 TypedActorContext を使用してください");
+    // SAFETY: mutable instances are only constructed from exclusive references.
+    unsafe { self.inner.as_mut() }
+  }
+
   /// Builds a std-facing typed context wrapper from the core context.
   #[must_use]
-  pub const fn from_core_mut(core: &'ctx mut CoreTypedActorContext<'inner, M>) -> Self {
-    Self { inner: core }
+  pub fn from_core_mut(core: &'ctx mut CoreTypedActorContext<'inner, M>) -> Self {
+    Self { inner: NonNull::from(core), mutable: true, _marker: PhantomData }
+  }
+
+  /// Builds a read-only std-facing typed context wrapper from the core context.
+  #[must_use]
+  pub fn from_core(core: &'ctx CoreTypedActorContext<'inner, M>) -> Self {
+    Self { inner: NonNull::from(core), mutable: false, _marker: PhantomData }
   }
 
   /// Returns the actor pid.
   #[must_use]
   pub const fn pid(&self) -> Pid {
-    self.inner.pid()
+    self.inner().pid()
   }
 
   /// Returns the underlying actor system handle.
   #[must_use]
   pub fn system(&self) -> TypedActorSystem<M> {
-    self.inner.system()
+    self.inner().system()
   }
 
   /// Returns the typed self reference.
   #[must_use]
   pub fn self_ref(&self) -> TypedActorRef<M> {
-    TypedActorRef::from_core(self.inner.self_ref())
+    TypedActorRef::from_core(self.inner().self_ref())
   }
 
   /// Spawns a typed child actor using the provided typed props
@@ -60,7 +81,7 @@ where
   pub fn spawn_child<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner.spawn_child(typed_props.as_core())?;
+    let child = self.inner().spawn_child(typed_props.as_core())?;
     Ok(TypedChildRef::from_core(child))
   }
 
@@ -72,7 +93,7 @@ where
   pub fn spawn_child_watched<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner.spawn_child_watched(typed_props.as_core())?;
+    let child = self.inner().spawn_child_watched(typed_props.as_core())?;
     Ok(TypedChildRef::from_core(child))
   }
 
@@ -84,7 +105,7 @@ where
   pub fn watch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner.watch(target.as_core())
+    self.inner().watch(target.as_core())
   }
 
   /// Stops watching the provided typed target.
@@ -95,7 +116,7 @@ where
   pub fn unwatch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner.unwatch(target.as_core())
+    self.inner().unwatch(target.as_core())
   }
 
   /// Stops the running actor.
@@ -104,7 +125,7 @@ where
   ///
   /// Returns an error if the stop signal cannot be sent.
   pub fn stop_self(&self) -> Result<(), SendError> {
-    self.inner.stop_self()
+    self.inner().stop_self()
   }
 
   /// Stops the specified typed child actor.
@@ -115,7 +136,7 @@ where
   pub fn stop_child<C>(&self, child: &TypedChildRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner.stop_child(child.as_core())
+    self.inner().stop_child(child.as_core())
   }
 
   /// Stops the actor identified by the provided typed actor reference.
@@ -129,7 +150,7 @@ where
   pub fn stop_actor_by_ref<C>(&self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner.stop_actor_by_ref(actor_ref.as_core())
+    self.inner().stop_actor_by_ref(actor_ref.as_core())
   }
 
   /// Returns the list of supervised children as untyped [`ChildRef`] values.
@@ -139,7 +160,7 @@ where
   /// typed [`TypedChildRef`](crate::core::typed::actor::child_ref::TypedChildRef).
   #[must_use]
   pub fn children(&self) -> Vec<ChildRef> {
-    self.inner.children()
+    self.inner().children()
   }
 
   /// Returns the child with the specified name as an untyped [`ChildRef`], if present.
@@ -147,28 +168,28 @@ where
   /// See [`children`](Self::children) for why this returns an untyped reference.
   #[must_use]
   pub fn child(&self, name: &str) -> Option<ChildRef> {
-    self.inner.child(name)
+    self.inner().child(name)
   }
 
   /// Creates a fluent builder for registering a typed message adapter.
   #[must_use]
-  pub const fn message_adapter_builder<U>(
+  pub fn message_adapter_builder<U>(
     &mut self,
   ) -> crate::core::typed::message_adapter::MessageAdapterBuilder<'_, 'inner, M, U>
   where
     U: Send + Sync + 'static, {
-    self.inner.message_adapter_builder()
+    self.inner_mut().message_adapter_builder()
   }
 
   /// Provides access to the underlying core typed context.
   #[must_use]
   pub const fn as_core(&self) -> &CoreTypedActorContext<'inner, M> {
-    self.inner
+    self.inner()
   }
 
   /// Provides mutable access to the underlying core typed context.
-  pub const fn as_core_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
-    self.inner
+  pub fn as_core_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
+    self.inner_mut()
   }
 }
 
@@ -179,7 +200,7 @@ where
   type Target = CoreTypedActorContext<'inner, M>;
 
   fn deref(&self) -> &Self::Target {
-    self.inner
+    self.inner()
   }
 }
 
@@ -188,6 +209,6 @@ where
   M: Send + Sync + 'static,
 {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.inner
+    self.inner_mut()
   }
 }

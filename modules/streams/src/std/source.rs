@@ -1,5 +1,7 @@
 extern crate std;
 
+use alloc::boxed::Box;
+use core::time::Duration;
 use std::{panic, string::ToString, thread};
 
 use crate::core::{
@@ -12,6 +14,10 @@ struct CreateSourceLogic<T, F> {
   queue:    BoundedSourceQueue<T>,
   producer: Option<F>,
 }
+
+const CREATE_SOURCE_YIELD_BUDGET: usize = 16;
+const CREATE_SOURCE_PARK_BUDGET: usize = 16;
+const CREATE_SOURCE_PARK_DURATION: Duration = Duration::from_millis(1);
 
 impl<T, F> CreateSourceLogic<T, F> {
   const fn new(queue: BoundedSourceQueue<T>, producer: F) -> Self {
@@ -56,11 +62,17 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.start_producer_if_needed()?;
-    for _ in 0..64 {
+    for attempt in 0..(CREATE_SOURCE_YIELD_BUDGET + CREATE_SOURCE_PARK_BUDGET) {
       match self.queue.poll()? {
         | Some(value) => return Ok(Some(Box::new(value) as DynValue)),
         | None if self.queue.is_drained() => return Ok(None),
-        | None => thread::yield_now(),
+        | None => {
+          if attempt < CREATE_SOURCE_YIELD_BUDGET {
+            thread::yield_now();
+          } else {
+            thread::park_timeout(CREATE_SOURCE_PARK_DURATION);
+          }
+        },
       }
     }
     Err(StreamError::WouldBlock)
