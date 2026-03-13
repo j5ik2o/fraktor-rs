@@ -5,6 +5,14 @@ use core::{
   pin::pin,
   task::{Context, Poll, Waker},
 };
+use std::{
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
@@ -757,8 +765,23 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
 
 #[test]
 fn source_create_tolerates_producer_delay_without_std_sleep() {
-  let source = Source::create(1, |queue| {
+  let resume_second_offer = Arc::new(AtomicBool::new(false));
+  let resume_second_offer_in_closure = Arc::clone(&resume_second_offer);
+  let producer_paused = Arc::new(AtomicBool::new(true));
+  let producer_paused_in_closure = Arc::clone(&producer_paused);
+
+  let source = Source::create(1, move |queue| {
     assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
+    let mut resumed = false;
+    for _ in 0..10_000 {
+      if resume_second_offer_in_closure.load(Ordering::SeqCst) {
+        resumed = true;
+        break;
+      }
+      thread::yield_now();
+    }
+    assert!(resumed, "second offer gate was never opened");
+    producer_paused_in_closure.store(false, Ordering::SeqCst);
     let mut second_enqueued = false;
     for _ in 0..10_000 {
       match queue.offer(61_u32) {
@@ -766,7 +789,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
           second_enqueued = true;
           break;
         },
-        | QueueOfferResult::Failure(StreamError::WouldBlock) => std::thread::yield_now(),
+        | QueueOfferResult::Failure(StreamError::WouldBlock) => thread::yield_now(),
         | other => panic!("unexpected queue result: {other:?}"),
       }
     }
@@ -775,8 +798,56 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   })
   .expect("create");
 
-  let values = source.collect_values().expect("collect_values");
-  assert_eq!(values, vec![60_u32, 61_u32]);
+  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let sink_queue = &materialized.materialized().1;
+
+  let mut first_value = None;
+  for _ in 0..32 {
+    let started_at = Instant::now();
+    let outcome = materialized.handle().drive();
+    assert!(started_at.elapsed() < Duration::from_millis(12), "producer start wait must not block drive");
+    if outcome == DriveOutcome::Progressed
+      && let Some(value) = sink_queue.pull()
+    {
+      first_value = Some(value);
+      break;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(first_value, Some(60_u32));
+
+  for _ in 0..4 {
+    let started_at = Instant::now();
+    let outcome = materialized.handle().drive();
+    assert_eq!(outcome, DriveOutcome::Idle, "paused producer must leave the stream idle without synthetic progress");
+    assert!(started_at.elapsed() < Duration::from_millis(12), "paused producer must not block drive");
+    assert!(producer_paused.load(Ordering::SeqCst));
+    assert_eq!(sink_queue.pull(), None);
+  }
+
+  resume_second_offer.store(true, Ordering::SeqCst);
+
+  let mut second_value = None;
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if let Some(value) = sink_queue.pull() {
+      second_value = Some(value);
+      break;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(second_value, Some(61_u32));
+
+  for _ in 0..16 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+    thread::yield_now();
+  }
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
 }
 
 #[test]

@@ -25,7 +25,7 @@ where
   M: Send + Sync + 'static, {
   inner:   NonNull<CoreTypedActorContext<'inner, M>>,
   mutable: bool,
-  _marker: PhantomData<(&'ctx CoreTypedActorContext<'inner, M>, M)>,
+  _marker: PhantomData<&'ctx mut CoreTypedActorContext<'inner, M>>,
 }
 
 impl<'ctx, 'inner, M> TypedActorContext<'ctx, 'inner, M>
@@ -33,13 +33,13 @@ where
   M: Send + Sync + 'static,
 {
   const fn inner(&self) -> &CoreTypedActorContext<'inner, M> {
-    // SAFETY: `inner` always points to a valid context for lifetime `'ctx`.
+    // 安全性: `inner` はライフタイム `'ctx` の間、有効なコンテキストを指す。
     unsafe { self.inner.as_ref() }
   }
 
   fn inner_mut(&mut self) -> &mut CoreTypedActorContext<'inner, M> {
     assert!(self.mutable, "supervisor_strategy では読み取り専用 TypedActorContext を使用してください");
-    // SAFETY: mutable instances are only constructed from exclusive references.
+    // 安全性: 可変インスタンスは排他的参照からのみ構築される。
     unsafe { self.inner.as_mut() }
   }
 

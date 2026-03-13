@@ -1,6 +1,8 @@
 model = "gpt-5.4"
 model_reasoning_effort = "high"
-hide_agent_reasoning = true
+model_reasoning_summary = "detailed"
+hide_agent_reasoning = false
+show_raw_agent_reasoning = true
 network_access = true
 web_search = "live"
 personality = "pragmatic"
