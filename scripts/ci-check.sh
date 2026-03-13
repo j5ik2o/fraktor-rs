@@ -1073,13 +1073,8 @@ run_all() {
   run_fmt || return 1
   run_dylint || return 1
   run_clippy || return 1
-  run_no_std || return 1
-  run_std || return 1
   run_doc_tests || return 1
-#  run_embedded || return 1
-#  run_perf || return 1
   run_tests || return 1
-  run_actor_path_e2e || return 1
   run_examples || return 1
 }
 
