@@ -228,8 +228,8 @@ where
   }
 
   fn supervisor_strategy(&self, ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    let typed_ctx = TypedActorContext::from_untyped(ctx, None);
-    self.actor.supervisor_strategy(&typed_ctx)
+    let mut typed_ctx = TypedActorContext::from_untyped(ctx, None);
+    self.actor.supervisor_strategy(&mut typed_ctx)
   }
 
   fn on_mailbox_pressure(
