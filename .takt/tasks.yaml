@@ -1,0 +1,48 @@
+tasks:
+  - worktree: false
+    base_branch: fix/actor-gap-0314
+    piece: pekko-porting
+    auto_pr: true
+    draft_pr: true
+    name: actor-mojuuru-gyappu-fraktor-r
+    status: failed
+    slug: actor-mojuuru-gyappu-fraktor-r
+    summary: "# actor モジュール ギャップ分析"
+    task_dir: .takt/tasks/20260314-084742-actor-fraktor-rs-modules-actor
+    created_at: 2026-03-14T08:47:42.192Z
+    started_at: 2026-03-14T13:40:57.265Z
+    completed_at: 2026-03-14T15:29:24.035Z
+    owner_pid: null
+    failure:
+      movement: pekko-compat-review
+      error: "Movement execution failed: Report phase failed for
+        supervisor-validation.md: Unknown error"
+      last_message: |-
+        前回の3件は `persists / resolved` を line 単位で再判定し、そのうえで修正差分の副作用を Pekko 参照実装と突き合わせます。まず修正対象の `behaviors.rs`、`Address`、dead letter subscriber まわりを読み、前回 finding の解消確認から入ります。
+
+        スキル: reviewing-fraktor-types  
+        目的: Pekko互換性に加えて、fraktor-rs 固有の公開面、命名、YAGNI、1ファイル1型の逸脱が修正差分で混入していないかを併せて確認するためです。
+        前回の3件そのものは、修正差分を見る限りほぼ狙いどおり直っています。ここからは再発や置き換え残しがないか、そして修正で新しい互換性ギャップを作っていないかを確認します。
+        再判定の結論に近づきました。前回の3件は実装上も命名上も解消方向で、いまの論点は「新しい互換性欠陥が残っていないか」の一点です。最後に該当行を固定して、`resolved / new / persists` を確定します。
+        **結果**
+
+        APPROVE です。前回の open finding 3 件はすべて `resolved` と判定しました。今回確認した修正範囲では、新しい `new` / `persists` は見つかっていません。
+
+        **Pekko API対応状況**
+
+        | Pekko API | fraktor-rs 対応 | 状態 |
+        |-----------|----------------|------|
+        | `Behaviors.receivePartial` | [`Behaviors::receive_partial`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/typed\/behaviors.rs#L221) | OK |
+        | `Behaviors.receiveMessagePartial` | [`Behaviors::receive_message_partial`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/typed\/behaviors.rs#L203) | OK |
+        | `Address(protocol, system)` / `Address(protocol, system, host, port)` / `hostPort` | [`Address::new`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L29), [`Address::new_remote`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L37), [`Address::host_port`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L109) | OK |
+        | Pekko actor 互換名との非互換 subscriber surface の明示 | [`DeadLetterLogSubscriber`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/std\/event\/stream\/dead_letter_log_subscriber.rs#L20) | OK |
+
+        **解消済み**
+
+        | finding_id | 解消根拠 |
+        |------------|----------|
+        | `PEKKO-NEW-behaviors-L219` | [`receive_partial`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/typed\/behaviors.rs#L221) が message handler 1 引数になり、Pekko の [`receivePartial`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/references\/pekko\/actor-typed\/src\/main\/scala\/org\/apache\/pekko\/actor\/typed\/scaladsl\/Behaviors.scala#L161) と同じ使用形に揃いました。さらに [`receive_partial_handles_message`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/typed\/behaviors\/tests.rs#L149) と [`receive_partial_chains_with_receive_signal`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/typed\/behaviors\/tests.rs#L167) で回帰を固定しています。 |
+        | `PEKKO-NEW-dead-letter-listener-L17` | 互換名 `DeadLetterListener` は撤去され、[`DeadLetterLogSubscriber`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/std\/event\/stream\/dead_letter_log_subscriber.rs#L20) に改名されています。コメントも Pekko の actor 実装とは別物の subscriber adapter であることを明示し、example も [`dead_letter_listener_std/main.rs`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/examples\/dead_letter_listener_std\/main.rs#L1) で新名称へ追従済みです。 |
+        | `PEKKO-NEW-address-L16` | [`Address`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L17) の `protocol` が `String` に開かれ、[`new`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L29) / [`new_remote`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L37) / [`host_port`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L109) が追加されました。Pekko の [`Address`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/references\/pekko\/actor\/src\/main\/scala\/org\/apache\/pekko\/actor\/Address.scala#L38) に対する今回の指摘範囲は解消されています。 |
+
+        今回のレビューでは `cargo` 系コマンドは再実行していません。ビルドとテストの成功確認は `Previous Response` に記録された `cargo clippy -p fraktor-actor-rs -- -D warnings` と `cargo test -p fraktor-actor-rs --lib` の結果を根拠にしています。
