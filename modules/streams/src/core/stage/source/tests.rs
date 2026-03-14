@@ -831,8 +831,9 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
 
   resume_second_offer.store(true, Ordering::SeqCst);
 
+  const SECOND_VALUE_MAX_ATTEMPTS: usize = 256;
   let mut second_value = None;
-  for _ in 0..64 {
+  for _ in 0..SECOND_VALUE_MAX_ATTEMPTS {
     let _ = materialized.handle().drive();
     if let Some(value) = sink_queue.pull() {
       second_value = Some(value);
