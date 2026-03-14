@@ -1,9 +1,9 @@
 //! Error returned by typed ask futures.
 
-use crate::core::messaging::AskError;
+use crate::core::{messaging::AskError, typed::status_reply_error::StatusReplyError};
 
 /// Reports failures during typed ask resolution.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum TypedAskError {
   /// The reply payload could not be converted to the requested type `R`.
   TypeMismatch,
@@ -11,6 +11,8 @@ pub enum TypedAskError {
   SharedReferences,
   /// The underlying ask operation failed.
   AskFailed(AskError),
+  /// The responder returned a `StatusReply::Error` with a domain-level failure reason.
+  StatusError(StatusReplyError),
 }
 
 impl core::fmt::Display for TypedAskError {
@@ -19,6 +21,7 @@ impl core::fmt::Display for TypedAskError {
       | TypedAskError::TypeMismatch => f.write_str("typed ask received unexpected reply type"),
       | TypedAskError::SharedReferences => f.write_str("typed ask reply still has outstanding references"),
       | TypedAskError::AskFailed(ask_error) => write!(f, "typed ask failed: {ask_error}"),
+      | TypedAskError::StatusError(status_err) => write!(f, "typed ask status error: {status_err}"),
     }
   }
 }
@@ -26,5 +29,11 @@ impl core::fmt::Display for TypedAskError {
 impl From<AskError> for TypedAskError {
   fn from(error: AskError) -> Self {
     TypedAskError::AskFailed(error)
+  }
+}
+
+impl From<StatusReplyError> for TypedAskError {
+  fn from(error: StatusReplyError) -> Self {
+    TypedAskError::StatusError(error)
   }
 }

@@ -3,7 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, collections::BTreeMap, string::String};
+
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::{
@@ -21,6 +23,21 @@ struct LogMessagesInterceptor {
   options: LogOptions,
 }
 
+/// Computes per-message MDC entries for [`WithMdcInterceptor`].
+type MdcForMessageFn<M> = dyn Fn(&M) -> BTreeMap<String, String> + Send + Sync;
+
+/// Interceptor that sets tracing span fields for each message and signal.
+///
+/// Corresponds to Pekko's `WithMdcBehaviorInterceptor`. Static MDC entries
+/// are applied to every message and signal. Per-message MDC entries are
+/// computed from each message and merged with the static entries.
+struct WithMdcInterceptor<M>
+where
+  M: Send + Sync + 'static, {
+  static_mdc:      BTreeMap<String, String>,
+  mdc_for_message: Option<Box<MdcForMessageFn<M>>>,
+}
+
 impl<M> BehaviorInterceptor<M, M> for LogMessagesInterceptor
 where
   M: Send + Sync + core::fmt::Debug + 'static,
@@ -33,6 +50,37 @@ where
   ) -> Result<Behavior<M>, ActorError> {
     log_received_message(&self.options, ctx.pid(), message);
     target(ctx, message)
+  }
+}
+
+impl<M> BehaviorInterceptor<M, M> for WithMdcInterceptor<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn around_receive(
+    &mut self,
+    ctx: &mut CoreTypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(&mut CoreTypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let mut mdc = self.static_mdc.clone();
+    if let Some(ref f) = self.mdc_for_message {
+      mdc.extend(f(message));
+    }
+    let span = tracing::info_span!("actor_mdc", actor = %ctx.pid(), mdc = ?mdc);
+    let _guard = span.enter();
+    target(ctx, message)
+  }
+
+  fn around_signal(
+    &mut self,
+    ctx: &mut CoreTypedActorContext<'_, M>,
+    signal: &BehaviorSignal,
+    target: &mut dyn FnMut(&mut CoreTypedActorContext<'_, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let span = tracing::info_span!("actor_mdc", actor = %ctx.pid(), mdc = ?self.static_mdc);
+    let _guard = span.enter();
+    target(ctx, signal)
   }
 }
 
@@ -158,6 +206,52 @@ impl Behaviors {
   where
     M: Send + Sync + core::fmt::Debug + 'static, {
     CoreBehaviors::intercept_behavior(move || Box::new(LogMessagesInterceptor { options: opts.clone() }), behavior)
+  }
+
+  /// Wraps a behavior with MDC (Mapped Diagnostic Context) support.
+  ///
+  /// Static MDC entries are applied to all messages and signals. Per-message
+  /// MDC entries are computed from each message and override static entries
+  /// with the same key.
+  ///
+  /// In Rust, MDC values are emitted as a `tracing::Span` field, which
+  /// subscribers can extract for structured logging. This mirrors Pekko's
+  /// `Behaviors.withMdc`.
+  #[must_use]
+  pub fn with_mdc<M, F>(
+    static_mdc: BTreeMap<String, String>,
+    mdc_for_message: F,
+    behavior: Behavior<M>,
+  ) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn(&M) -> BTreeMap<String, String> + Send + Sync + 'static, {
+    let shared_fn: ArcShared<MdcForMessageFn<M>> = ArcShared::new(mdc_for_message);
+    CoreBehaviors::intercept_behavior(
+      move || {
+        let fn_clone = shared_fn.clone();
+        Box::new(WithMdcInterceptor {
+          static_mdc:      static_mdc.clone(),
+          mdc_for_message: Some(Box::new(move |msg: &M| fn_clone(msg))),
+        })
+      },
+      behavior,
+    )
+  }
+
+  /// Wraps a behavior with static-only MDC entries.
+  ///
+  /// The provided entries are applied as tracing span fields on every
+  /// message and signal delivery. This is a convenience shorthand for
+  /// [`with_mdc`](Self::with_mdc) without per-message MDC.
+  #[must_use]
+  pub fn with_static_mdc<M>(static_mdc: BTreeMap<String, String>, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + 'static, {
+    CoreBehaviors::intercept_behavior(
+      move || Box::new(WithMdcInterceptor::<M> { static_mdc: static_mdc.clone(), mdc_for_message: None }),
+      behavior,
+    )
   }
 }
 

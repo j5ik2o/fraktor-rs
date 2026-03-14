@@ -6,18 +6,24 @@ mod tests;
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
+
 use crate::core::{
   actor::{ActorContext, ChildRef, Pid, PipeSpawnError},
   error::{ActorError, SendError},
-  messaging::AnyMessage,
+  futures::ActorFutureListener,
+  messaging::{AnyMessage, AskError},
+  pattern::install_ask_timeout,
   spawn::SpawnError,
   typed::{
     TypedActorSystem,
-    actor::{actor_ref::TypedActorRef, child_ref::TypedChildRef},
+    actor::{actor_ref::TypedActorRef, ask_on_context_error::AskOnContextError, child_ref::TypedChildRef},
     behavior::{Behavior, BehaviorDirective},
     message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilder, MessageAdapterRegistry},
     props::TypedProps,
     receive_timeout_config::ReceiveTimeoutConfig,
+    status_reply::StatusReply,
+    typed_ask_error::TypedAskError,
   },
 };
 
@@ -71,6 +77,12 @@ where
   #[must_use]
   pub fn system(&self) -> TypedActorSystem<M> {
     TypedActorSystem::from_untyped(self.inner().system().clone())
+  }
+
+  /// Returns the metadata tags associated with the running actor.
+  #[must_use]
+  pub fn tags(&self) -> alloc::collections::BTreeSet<alloc::string::String> {
+    self.inner().tags()
   }
 
   /// Returns the typed self reference.
@@ -245,6 +257,43 @@ where
     }
   }
 
+  /// Forwards a message to the target, preserving the current sender.
+  ///
+  /// This mirrors Pekko's `ActorRef.forward`. The message envelope retains the
+  /// original sender so that the final recipient can reply to the original
+  /// requester.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if sending the message fails.
+  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C) -> Result<(), SendError>
+  where
+    C: Send + Sync + 'static, {
+    self.inner().forward(target.as_untyped(), AnyMessage::new(message))
+  }
+
+  /// Schedules a message to be sent to the specified target after `delay`.
+  ///
+  /// This mirrors Pekko's `ActorContext.scheduleOnce`. The message is
+  /// delivered to `target` after the given delay using the system scheduler.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler cannot enqueue the command.
+  pub fn schedule_once<C>(
+    &self,
+    delay: Duration,
+    target: TypedActorRef<C>,
+    message: C,
+  ) -> Result<crate::core::scheduler::SchedulerHandle, crate::core::scheduler::SchedulerError>
+  where
+    C: Send + Sync + 'static, {
+    let scheduler = self.inner().system().scheduler();
+    scheduler.with_write(|guard| {
+      crate::core::typed::scheduler::TypedScheduler::new(guard).schedule_once(delay, target, message, None, None)
+    })
+  }
+
   /// Provides mutable access to the underlying untyped context.
   pub const fn as_untyped_mut(&mut self) -> &mut ActorContext<'a> {
     self.inner_mut()
@@ -348,5 +397,112 @@ where
       let state = unsafe { ptr.as_mut() };
       *state = None;
     }
+  }
+
+  /// Sends a request to `target` and pipes the result back to this actor.
+  ///
+  /// Each ask spawns an independent future, so multiple concurrent asks
+  /// with the same response type do not interfere. Timeout and failure
+  /// are surfaced through `map_response` as `Err(TypedAskError)`.
+  /// This mirrors Pekko's `pipeToSelf(target.ask(...))` pattern.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be sent or the pipe task cannot be spawned.
+  pub fn ask<Req, Res, F, G>(
+    &mut self,
+    target: &mut TypedActorRef<Req>,
+    create_request: F,
+    map_response: G,
+    timeout: Duration,
+  ) -> Result<(), AskOnContextError>
+  where
+    Req: Send + Sync + 'static,
+    Res: Send + Sync + 'static,
+    F: FnOnce(TypedActorRef<Res>) -> Req,
+    G: Fn(Result<Res, TypedAskError>) -> M + Send + Sync + 'static, {
+    let ask_response = target.ask::<Res, _>(create_request)?;
+    let (_, ask_future) = ask_response.into_parts();
+    let raw_future = ask_future.into_inner();
+
+    let system_state = self.inner().system().state();
+    install_ask_timeout(&raw_future, &system_state, timeout);
+
+    let listener = ActorFutureListener::new(raw_future);
+    let map_fn = ArcShared::new(map_response);
+    let map_fn_ok = map_fn.clone();
+    let map_fn_err = map_fn;
+    self.pipe_to_self(
+      listener,
+      move |message: AnyMessage| {
+        let payload = message.payload_arc();
+        drop(message);
+        let typed_result: Result<Res, TypedAskError> = match payload.downcast::<Res>() {
+          | Ok(concrete) => match concrete.try_unwrap() {
+            | Ok(value) => Ok(value),
+            | Err(_) => Err(TypedAskError::SharedReferences),
+          },
+          | Err(_) => Err(TypedAskError::TypeMismatch),
+        };
+        Ok(map_fn_ok(typed_result))
+      },
+      move |ask_error: AskError| Ok(map_fn_err(Err(TypedAskError::AskFailed(ask_error)))),
+    )?;
+    Ok(())
+  }
+
+  /// Sends a request expecting a [`StatusReply<Res>`] and pipes the result back.
+  ///
+  /// Success values are passed as `Ok(value)`, status errors as
+  /// `Err(TypedAskError::StatusError(...))`. Timeout is delivered as
+  /// `Err(TypedAskError::AskFailed(AskError::Timeout))`.
+  /// This mirrors Pekko's `ActorContext.askWithStatus`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the request cannot be sent or the pipe task cannot be spawned.
+  pub fn ask_with_status<Req, Res, F, G>(
+    &mut self,
+    target: &mut TypedActorRef<Req>,
+    create_request: F,
+    map_response: G,
+    timeout: Duration,
+  ) -> Result<(), AskOnContextError>
+  where
+    Req: Send + Sync + 'static,
+    Res: Send + Sync + 'static,
+    F: FnOnce(TypedActorRef<StatusReply<Res>>) -> Req,
+    G: Fn(Result<Res, TypedAskError>) -> M + Send + Sync + 'static, {
+    let ask_response = target.ask::<StatusReply<Res>, _>(create_request)?;
+    let (_, ask_future) = ask_response.into_parts();
+    let raw_future = ask_future.into_inner();
+
+    let system_state = self.inner().system().state();
+    install_ask_timeout(&raw_future, &system_state, timeout);
+
+    let listener = ActorFutureListener::new(raw_future);
+    let map_fn = ArcShared::new(map_response);
+    let map_fn_ok = map_fn.clone();
+    let map_fn_err = map_fn;
+    self.pipe_to_self(
+      listener,
+      move |message: AnyMessage| {
+        let payload = message.payload_arc();
+        drop(message);
+        let typed_result: Result<Res, TypedAskError> = match payload.downcast::<StatusReply<Res>>() {
+          | Ok(concrete) => match concrete.try_unwrap() {
+            | Ok(reply) => match StatusReply::<Res>::into_result(reply) {
+              | Ok(value) => Ok(value),
+              | Err(status_err) => Err(TypedAskError::StatusError(status_err)),
+            },
+            | Err(_) => Err(TypedAskError::SharedReferences),
+          },
+          | Err(_) => Err(TypedAskError::TypeMismatch),
+        };
+        Ok(map_fn_ok(typed_result))
+      },
+      move |ask_error: AskError| Ok(map_fn_err(Err(TypedAskError::AskFailed(ask_error)))),
+    )?;
+    Ok(())
   }
 }

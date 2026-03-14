@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData};
 
 use crate::core::{
@@ -300,6 +300,31 @@ impl ActorContext<'_> {
       return Err(error);
     }
     Ok(())
+  }
+
+  /// Forwards the given message to the target, preserving the current sender.
+  ///
+  /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
+  /// original sender of the currently processed message so the final recipient
+  /// can reply to the original requester.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if sending the message fails.
+  pub fn forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+    let envelope = match &self.sender {
+      | Some(sender) => message.with_sender(sender.clone()),
+      | None => message,
+    };
+    target.tell(envelope)
+  }
+
+  /// Returns the metadata tags associated with the running actor.
+  ///
+  /// Returns an empty set if the actor cell is unavailable.
+  #[must_use]
+  pub fn tags(&self) -> BTreeSet<String> {
+    self.system.state().cell(&self.pid).map(|cell| cell.tags().clone()).unwrap_or_default()
   }
 
   /// Emits a log event associated with the running actor.

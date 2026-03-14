@@ -195,6 +195,37 @@ impl Behaviors {
     })
   }
 
+  /// Creates a behavior that handles messages partially.
+  ///
+  /// The handler returns `Option<Behavior<M>>`. When `None` is returned the
+  /// message is treated as unhandled (equivalent to [`Behaviors::unhandled`]).
+  /// This mirrors Pekko's `Behaviors.receiveMessagePartial`.
+  pub fn receive_message_partial<M, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Option<Behavior<M>>, ActorError> + Send + Sync + 'static,
+  {
+    Behavior::from_message_handler(move |ctx, message| match handler(ctx, message)? {
+      | Some(behavior) => Ok(behavior),
+      | None => Ok(Behavior::unhandled()),
+    })
+  }
+
+  /// Creates a behavior that handles messages partially.
+  ///
+  /// The handler returns `Option<Behavior<M>>`. When `None` is returned
+  /// the message is treated as unhandled. This mirrors Pekko's
+  /// `Behaviors.receivePartial` which accepts a partial message handler.
+  ///
+  /// To also handle signals, chain `.receive_signal(...)` on the result.
+  pub fn receive_partial<M, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Option<Behavior<M>>, ActorError> + Send + Sync + 'static,
+  {
+    Self::receive_message_partial(handler)
+  }
+
   /// Creates a behavior that only reacts to signals.
   pub fn receive_signal<M, F>(handler: F) -> Behavior<M>
   where

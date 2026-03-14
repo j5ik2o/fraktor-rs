@@ -156,6 +156,14 @@ impl ActorRef {
   pub fn null() -> Self {
     Self { pid: Pid::new(0, 0), sender: ActorRefSenderShared::new(NullSender), system: None }
   }
+
+  /// Returns a sentinel reference indicating "no sender".
+  ///
+  /// This mirrors Pekko's `Actor.noSender` and is equivalent to [`ActorRef::null`].
+  #[must_use]
+  pub fn no_sender() -> Self {
+    Self::null()
+  }
 }
 
 impl Clone for ActorRef {

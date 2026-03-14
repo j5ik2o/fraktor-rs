@@ -1,6 +1,6 @@
 extern crate std;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use std::sync::{Arc, Mutex};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -145,6 +145,119 @@ fn receive_message_handles_message() {
   assert_eq!(*captured_pid.lock(), typed_ctx.pid().value());
 }
 
+#[test]
+fn with_static_mdc_delegates_to_inner_behavior() {
+  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received_clone = inner_received.clone();
+
+  let mut mdc = BTreeMap::new();
+  mdc.insert("service".into(), "test-actor".into());
+
+  let mut behavior = Behaviors::with_static_mdc(
+    mdc,
+    CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
+      inner_received_clone.clone().lock().push(*msg);
+      Ok(CoreBehaviors::same())
+    }),
+  );
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  inner.handle_message(&mut typed_ctx, &55_u32).expect("message");
+
+  assert_eq!(inner_received.lock().as_slice(), &[55]);
+}
+
+#[test]
+fn with_static_mdc_creates_span_on_message() {
+  let collector = SpanRecordingSubscriber::default();
+  let shared = collector.clone();
+
+  with_default(shared, || {
+    let mut mdc = BTreeMap::new();
+    mdc.insert("service".into(), "my-actor".into());
+
+    let mut behavior =
+      Behaviors::with_static_mdc(mdc, CoreBehaviors::receive_message(|_ctx, _msg: &u32| Ok(CoreBehaviors::same())));
+
+    let system = ActorSystem::new_empty();
+    let pid = system.allocate_pid();
+    let mut context = ActorContext::new(&system, pid);
+    let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
+  });
+
+  let spans = collector.spans();
+  assert!(!spans.is_empty(), "at least one span should be created");
+  assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+}
+
+#[test]
+fn with_mdc_merges_static_and_per_message_entries() {
+  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received_clone = inner_received.clone();
+
+  let mut static_mdc = BTreeMap::new();
+  static_mdc.insert("service".into(), "test-actor".into());
+
+  let mut behavior = Behaviors::with_mdc(
+    static_mdc,
+    |msg: &u32| {
+      let mut mdc = BTreeMap::new();
+      mdc.insert("msg_value".into(), alloc::format!("{msg}"));
+      mdc
+    },
+    CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
+      inner_received_clone.clone().lock().push(*msg);
+      Ok(CoreBehaviors::same())
+    }),
+  );
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  inner.handle_message(&mut typed_ctx, &66_u32).expect("message");
+
+  assert_eq!(inner_received.lock().as_slice(), &[66]);
+}
+
+#[test]
+fn with_static_mdc_creates_span_on_signal() {
+  let collector = SpanRecordingSubscriber::default();
+  let shared = collector.clone();
+
+  with_default(shared, || {
+    let mut mdc = BTreeMap::new();
+    mdc.insert("service".into(), "signal-actor".into());
+
+    let mut behavior =
+      Behaviors::with_static_mdc(mdc, CoreBehaviors::receive_message(|_ctx, _msg: &u32| Ok(CoreBehaviors::same())));
+
+    let system = ActorSystem::new_empty();
+    let pid = system.allocate_pid();
+    let mut context = ActorContext::new(&system, pid);
+    let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+    // Started signal goes through around_start; subsequent signals use around_signal
+    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    // Stopped signal triggers around_signal which creates the MDC span
+    let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped);
+  });
+
+  let spans = collector.spans();
+  assert!(!spans.is_empty(), "span should be created for Stopped signal");
+  assert!(spans.iter().any(|s| s.name == "actor_mdc"));
+}
+
 #[derive(Clone, Debug)]
 struct CapturedEvent {
   level:       Level,
@@ -203,4 +316,42 @@ impl Visit for EventVisitor {
   }
 
   fn record_debug(&mut self, _field: &Field, _value: &dyn core::fmt::Debug) {}
+}
+
+#[derive(Clone, Debug)]
+struct CapturedSpan {
+  name: String,
+}
+
+#[derive(Clone, Default)]
+struct SpanRecordingSubscriber {
+  spans: Arc<Mutex<Vec<CapturedSpan>>>,
+}
+
+impl SpanRecordingSubscriber {
+  fn spans(&self) -> Vec<CapturedSpan> {
+    self.spans.lock().expect("lock").clone()
+  }
+}
+
+impl Subscriber for SpanRecordingSubscriber {
+  fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+    true
+  }
+
+  fn new_span(&self, attrs: &Attributes<'_>) -> Id {
+    let name = attrs.metadata().name().into();
+    self.spans.lock().expect("lock").push(CapturedSpan { name });
+    Id::from_u64(self.spans.lock().expect("lock").len() as u64)
+  }
+
+  fn record(&self, _: &Id, _: &Record<'_>) {}
+
+  fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+  fn event(&self, _: &Event<'_>) {}
+
+  fn enter(&self, _: &Id) {}
+
+  fn exit(&self, _: &Id) {}
 }
