@@ -18,7 +18,7 @@
 | カバレッジ（代表 actor surface） | 約 31/46 (67%) |
 | ギャップ数 | 15 |
 
-生 count では fraktor-rs 側が多いが、これは `core/std` 分離、typed API 同居、設定型・補助型の細分化による。  
+生 count では fraktor-rs 側が多いが、これは `core/std` 分離、typed API 同居、設定型・補助型の細分化による。
 実質的な比較では、**基本 actor runtime はかなり揃っている一方、classic Pekko 特有の ActorSelection / deployment / CoordinatedShutdown / classic router 設定群が不足**している。
 
 ## カテゴリ別ギャップ
@@ -137,3 +137,29 @@
 - すぐ価値を出せる不足は、`ActorRef.forward`、classic `ReceiveTimeout`、薄い classic router surface で、いずれも既存基盤の組み合わせで寄せやすい。
 - 実用上の大きなギャップは、`ActorSelection` の公開 handle、`CoordinatedShutdown`、`Resizer`、classic `become/unbecome`。
 - YAGNI 観点では、`japi` / `io` / `serialization` の JVM 依存 surface を actor モジュールで追いかける必要は薄い。typed 比較は `actor-typed` を対象に別レポートへ分けるのが妥当。
+
+
+はい。現状は「untyped core の上に typed を載せている」が、typed が薄いラッパーだけではない状態です。
+
+薄いラッパーに近い部分:
+
+- actor_context.rs
+  TypedActorContext は内部で untyped の [ActorContext] を包んでいます。
+- typed_actor_adapter.rs
+  typed actor を untyped の Actor として実行する adapter です。
+
+typed 側だけで実装を持っている部分:
+
+- behavior_runner.rs
+  Behavior / BehaviorSignal / directive 遷移は typed 側のロジックです。
+- typed_actor_adapter.rs
+  message adapter registry、receive-timeout、dead letter 変換なども typed 側で持っています。
+- core/typed 配下の receptionist、topic、group_router_builder、pool_router_builder、stash_buffer も typed 専用の実装です。
+
+要するに、
+
+- 実行基盤: untyped core
+- 型付きの意味論: typed 側でかなり実装
+
+です。
+なので「classic 相当 core(untyped) をただラップして typed を作る」設計に寄せたいなら、まだ途中です。特に Behavior 系と adapter/timeout/router 周りは、いまは typed 側に実装が残っています。
