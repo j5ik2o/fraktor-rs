@@ -1,205 +1,139 @@
 # actor モジュール ギャップ分析
 
-参照実装: `references/pekko/actor-typed/`、`references/pekko/actor/`
-対象実装: `modules/actor/src/`
+## 前提
+
+- 比較対象:
+  - fraktor-rs 側: `modules/actor/src`
+  - Pekko 側: `references/pekko/actor/src`
+- ただし、Pekko の `actor` モジュールは `org.apache.pekko.actor` だけでなく `routing` / `event` / `serialization` / `io` まで含み、fraktor-rs の `modules/actor` より守備範囲が広い。
+- そのため、**生の公開型総数**は参考値に留め、**actor ドメインで直接比較可能な代表 public surface** を中心にギャップを整理する。
+- `typed` については、Pekko では `actor-typed` が別モジュールであり、この比較では **対象外** とする。
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko actor-typed 公開型数（scaladsl、delivery 除く） | 約 55 |
-| Pekko actor-typed 公開型数（delivery 含む） | 約 70 |
-| fraktor-rs typed 公開型数 | 41 |
-| fraktor-rs core 公開型数（全体） | 285 |
-| Pekko classic actor 公開型数 | 約 182 |
-| typed カバレッジ（delivery 除く） | 41/55 (≈75%) |
-| typed ギャップ数 | 14 項目 |
+| Pekko 公開型数（actor+routing の生 count） | 258 |
+| fraktor-rs 公開型数（modules/actor の生 count） | 385 |
+| カバレッジ（代表 actor surface） | 約 31/46 (67%) |
+| ギャップ数 | 15 |
 
----
+生 count では fraktor-rs 側が多いが、これは `core/std` 分離、typed API 同居、設定型・補助型の細分化による。  
+実質的な比較では、**基本 actor runtime はかなり揃っている一方、classic Pekko 特有の ActorSelection / deployment / CoordinatedShutdown / classic router 設定群が不足**している。
 
 ## カテゴリ別ギャップ
 
-### 1. コアAPI（ほぼ実装済み ✅）
+### Actor Core ✅ 実装済み 5/9 (56%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Behavior` sentinel values (same/stopped/ignore/unhandled/empty) | `Behaviors.scala` | `behavior.rs:Behaviors::same/stopped/..` | - | ✅ 実装済み |
-| `Behaviors.setup` | `Behaviors.scala:L40` | `behaviors.rs:Behaviors::setup` | - | ✅ |
-| `Behaviors.withStash` | `Behaviors.scala:L46` | `behaviors.rs:Behaviors::with_stash` | - | ✅ |
-| `Behaviors.receive/receiveMessage` | `Behaviors.scala:L115,134` | `behaviors.rs:Behaviors::receive_message` | - | ✅ |
-| `Behaviors.receiveSignal` | `Behaviors.scala:L177` | `behaviors.rs:Behaviors::receive_signal` | - | ✅ |
-| `Behaviors.supervise` | `Behaviors.scala:L250` | `supervise.rs:Supervise<M>` | - | ✅ |
-| `Behaviors.withTimers` | `Behaviors.scala:L270` | `behaviors.rs:Behaviors::with_timers` | - | ✅ |
-| `Behaviors.intercept` | `Behaviors.scala:L191` | `behaviors.rs:Behaviors::intercept` | - | ✅ |
-| `Behaviors.monitor` | `Behaviors.scala:L207` | `behaviors.rs:Behaviors::monitor` | - | ✅ |
-| `ActorContext.self` | `ActorContext.scala:L70` | `actor_context.rs:self_ref` | - | ✅ |
-| `ActorContext.spawn/spawnAnonymous` | `ActorContext.scala:L134,142` | `actor_context.rs:spawn_child` | - | ✅ |
-| `ActorContext.watch/watchWith/unwatch` | `ActorContext.scala:L178,193,202` | `actor_context.rs:watch/watch_with/unwatch` | - | ✅ |
-| `ActorContext.setReceiveTimeout/cancel` | `ActorContext.scala:L213,221` | `actor_context.rs:set_receive_timeout` | - | ✅ |
-| `ActorContext.messageAdapter` | `ActorContext.scala:L294` | `actor_context.rs:message_adapter` | - | ✅ |
-| `ActorContext.ask/askWithStatus` | `ActorContext.scala:L319,328` | `actor_context.rs`（ActorRef 経由） | - | ✅ |
-| `ActorContext.pipeToSelf` | `ActorContext.scala:L338` | `actor_context.rs:pipe_to_self` | - | ✅ |
-| `SupervisorStrategy`（restart/backoff/stop） | `SupervisorStrategy.scala` | `supervision/base.rs`, `backoff_supervisor_strategy.rs` | - | ✅ |
-| `TimerScheduler`（全メソッド） | `TimerScheduler.scala` | `timer_scheduler.rs` | - | ✅ |
-| `StashBuffer`（基本操作 stash/unstashAll） | `StashBuffer.scala` | `stash_buffer.rs` | - | ✅ |
-| `BehaviorInterceptor` | `BehaviorInterceptor.scala` | `behavior_interceptor.rs` | - | ✅ |
-| `ServiceKey/Receptionist` | `Receptionist.scala` | `service_key.rs`, `receptionist.rs` | - | ✅ |
-| `SpawnProtocol` | `SpawnProtocol.scala` | `spawn_protocol.rs` | - | ✅ |
-| Signal 型（Terminated/ChildFailed/PostStop/PreRestart/MessageAdaptionFailure） | `MessageAndSignals.scala` | `behavior_signal.rs:BehaviorSignal` | - | ✅ |
-| `StatusReply` | Pekko `StatusReply` | `status_reply.rs` | - | ✅ |
-| `GroupRouter/PoolRouter`（基本） | `Routers.scala` | `group_router_builder.rs`, `pool_router_builder.rs` | - | ✅ 基本実装済み（ルーティング戦略の一部は未対応、セクション2参照） |
-| Extension API | `Extensions.scala` | `extension.rs`, `extension_id.rs` | - | ✅ |
-| EventStream（typed） | `EventStream.scala` | `event/stream/event_stream_shared.rs` | - | ✅ 別名実装 |
+| `PoisonPill` | `actor/Actor.scala:52` | 別名で実装済み | easy | fraktor は [`SystemMessage::PoisonPill`](../../modules/actor/src/core/messaging/system_message.rs) ベースで実装。公開 API 名は一致しない |
+| `Kill` | `actor/Actor.scala:67` | 別名で実装済み | easy | fraktor は [`SystemMessage::Kill`](../../modules/actor/src/core/messaging/system_message.rs) |
+| `Identify` / `ActorIdentity` | `actor/Actor.scala:81`, `actor/Actor.scala:91` | 実装済み | trivial | [`messaging::Identify`](../../modules/actor/src/core/messaging.rs), [`ActorIdentity`](../../modules/actor/src/core/messaging/actor_identity.rs) |
+| `ReceiveTimeout` / `setReceiveTimeout` | `actor/Actor.scala:154`, `actor/ActorCell.scala:103` | 部分実装 | medium | typed 側の receive-timeout はあるが、classic untyped で Pekko 互換の公開 API にはなっていない |
+| `become` / `unbecome` | `actor/Actor.scala`, `AbstractActor.scala` | 未対応 | hard | fraktor untyped actor は behavior stack を公開していない |
 
----
-
-### 2. 軽微なギャップ（StashBuffer 便利メソッド・ルーター戦略）
-
-#### StashBuffer 便利メソッド
+### ActorRef / Path / Selection ✅ 実装済み 5/8 (63%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `StashBuffer.capacity()` | `StashBuffer.scala:L73` | 未対応 | trivial | `max_messages` フィールドから導出可能 |
-| `StashBuffer.nonEmpty` | `StashBuffer.scala:L59` | `stash_buffer.rs:is_not_empty` | - | ✅ 実装済み |
-| `StashBuffer.contains(message)` | `StashBuffer.scala:L111` | 未対応 | easy | メッセージ同一性チェック |
-| `StashBuffer.exists(predicate)` | `StashBuffer.scala:L119` | 未対応 | easy | 述語によるサーチ |
-| `StashBuffer.foreach(f)` | `StashBuffer.scala:L103` | 未対応 | easy | イテレーション |
-| `StashBuffer.head` | `StashBuffer.scala:L95` | 未対応 | easy | 先頭要素参照 |
-| `StashBuffer.clear()` | `StashBuffer.scala:L124` | 未対応 | easy | 全メッセージ廃棄 |
-| `StashBuffer.unstash(n, wrap)` | `StashBuffer.scala:L165` | `stash_buffer.rs:unstash`（一部） | easy | N 件のみ処理する部分アンスタッシュ。`wrap` 変換関数付き |
+| `ActorSelection` | `actor/ActorSelection.scala:35` | 部分実装 | medium | fraktor は [`ActorSelectionResolver`](../../modules/actor/src/core/actor/actor_selection/resolver.rs) まで。Pekko の selection handle API は未提供 |
+| `ActorRef.forward` | `actor/ActorRef.scala:154` | 未対応 | easy | `tell` はあるが classic `forward` 相当の公開メソッドは見当たらない |
+| `ActorRef.noSender` | `actor/ActorRef.scala:35` | 未対応 | trivial | sender 省略は可能だが、同名の sentinel API はない |
 
-#### ルーティング戦略
+### ActorSystem / Bootstrap / Extension ✅ 実装済み 6/9 (67%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `GroupRouter.withRandomRouting()` | `Routers.scala:L63` | 未対応 | easy | `GroupRouterBuilder` は現在ラウンドロビン固定 |
-| `GroupRouter.withConsistentHashingRouting` | `Routers.scala:L121` | 未対応 | medium | GroupRouter へのコンシステントハッシュ追加 |
-| `PoolRouter.withRoundRobinRouting()` | `Routers.scala:L148` | 未対応 | easy | `PoolRouterBuilder` にラウンドロビン戦略を追加 |
-| `PoolRouter.withBroadcastPredicate(predicate)` | `Routers.scala:L189` | 未対応 | easy | フィルタ付きブロードキャスト（現在は全送信のみ） |
+| `CoordinatedShutdown` | `actor/CoordinatedShutdown.scala:41`, `actor/ActorSystem.scala:663` | 未対応 | hard | terminate はあるが phase 付き coordinated shutdown はない |
+| `ActorSystemSetup` / `BootstrapSetup` | `actor/ActorSystem.scala:41`, `actor/setup/ActorSystemSetup.scala:64` | 未対応 | medium | fraktor は [`ActorSystemConfig`](../../modules/actor/src/std/system/actor_system_config.rs) ベースで、setup 合成 DSL はない |
+| `DynamicAccess` / `ReflectiveDynamicAccess` | `actor/DynamicAccess.scala`, `actor/ReflectiveDynamicAccess.scala` | 未対応 | n/a | JVM reflection 前提で、Rust では直接移植の価値が薄い |
 
----
-
-### 3. ロギング関連
+### Props / Mailbox / Dispatcher ✅ 実装済み 5/9 (56%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Behaviors.logMessages(behavior)` | `Behaviors.scala:L215` | 未対応 | easy | メッセージ受信をデバッグログ出力するラッパー Behavior |
-| `Behaviors.logMessages(opts, behavior)` | `Behaviors.scala:L223` | 未対応 | easy | `LogOptions` 付きバリアント |
-| `LogOptions` 型 | `LogOptions.scala` | 未対応 | easy | ログ有効化フラグ・レベル・ロガーを束ねる設定型 |
+| `Props.withDeploy` | `actor/Props.scala:204` | 未対応 | medium | fraktor Props は mailbox / dispatcher / name 中心で deploy オブジェクトを持たない |
+| `Props.withRouter` | `actor/Props.scala:199` | 未対応 | medium | router は builder 側で構成し、Props に埋め込まない |
+| `Props.withActorTags` | `actor/Props.scala:210` 付近 | 未対応 | easy | metadata tag API はない |
+| mailbox id / dispatcher id からの classic 配置 | `actor/Props.scala:142-170` | 別名で実装済み | trivial | [`with_mailbox_id`](../../modules/actor/src/core/props/base.rs), [`with_dispatcher_id`](../../modules/actor/src/core/props/base.rs) |
 
----
-
-### 4. ActorContext 追加メソッド
-
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `ActorContext.delegate(delegator, msg)` | `ActorContext.scala:L152` | 未対応 | medium | 現在の Behavior を別 Behavior に委譲して処理させる。`Behaviors.same` を返す |
-| `ActorContext.setLoggerName` | `ActorContext.scala:L99` | 未対応 | easy | ロガー名の動的変更。`log` メソッド前提なので低優先 |
-
----
-
-### 5. 型抽象化
+### Supervision / Fault Handling ✅ 実装済み 4/7 (57%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `RecipientRef[-T]` | `ActorRef.scala` | 未対応 | easy | `ActorRef` と typed `ActorRef` の共通スーパートレイト。`ask` パターンの対象を抽象化できる |
-| `BehaviorSignalInterceptor[Inner]` | `BehaviorInterceptor.scala` | 未対応 | easy | シグナルのみ傍受する簡略版 `BehaviorInterceptor` |
-| `ExtensionSetup[T]` | `Extensions.scala` | 未対応 | easy | ActorSystem ブートアップ時に Extension を設定する抽象基底型 |
-| `ActorRefResolver` | `ActorRefResolver.scala` | 未対応 | medium | `ActorRef` を文字列にシリアライズ/デシリアライズする Extension |
+| `AllForOneStrategy` | `actor/FaultHandling.scala` | 部分実装 | medium | fraktor は strategy kind を持つが、classic API 名と builder surface はまだ薄い |
+| `Escalate` を含む classic directive DSL | `actor/FaultHandling.scala` | 部分実装 | medium | core には outcome があるが、Pekko 互換の classic surface は限定的 |
+| `preRestart` / `postRestart` classic hooks の完全互換 | `actor/Actor.scala` | 部分実装 | medium | fraktor は hook 群を持つが、classic lifecycle 契約は Pekko と完全一致ではない |
 
----
-
-### 6. Pub/Sub
+### Scheduler / Timers / Stash ✅ 実装済み 4/7 (57%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `Topic`（pub/sub actor） | `pubsub/Topic.scala` | 未対応 | medium | トピックベースの Pub/Sub。`Receptionist` + 集約で代替可能だが、`Topic` は自律 Behavior として動作 |
-| `Topic.Publish` コマンド | `pubsub/Topic.scala:L50` | 未対応 | medium | 上記に付随 |
-| `Topic.Subscribe/Unsubscribe` | `pubsub/Topic.scala:L63,75` | 未対応 | medium | 上記に付随 |
-| `Topic.GetTopicStats` | `pubsub/Topic.scala:L111` | 未対応 | easy | 統計取得（優先度低） |
+| `scheduleAtFixedRate` | `actor/Scheduler.scala:188` 付近 | 未対応 | medium | fraktor は `schedule_once` / `schedule_with_fixed_delay` が中心 |
+| classic `Timers` mixin | `actor/Timers.scala` | 未対応 | medium | typed / scheduler command で代替しているが classic mixin surface はない |
+| `UnboundedStash` / `UnrestrictedStash` | `actor/Stash.scala:71-78` | 未対応 | medium | fraktor は typed `StashBuffer` が中心で classic trait ベースではない |
 
----
-
-### 7. 信頼性のあるメッセージ配信（Delivery）
+### Routing ✅ 実装済み 2/6 (33%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `ProducerController` | `delivery/ProducerController.scala` | 未対応 | hard | Point-to-point の信頼性メッセージ配信（プロデューサー側） |
-| `ConsumerController` | `delivery/ConsumerController.scala` | 未対応 | hard | 同上（コンシューマー側）。シーケンス番号管理付き |
-| `WorkPullingProducerController` | `delivery/WorkPullingProducerController.scala` | 未対応 | hard | ワーカープル型の負荷分散付き配信 |
-| `DurableProducerQueue` | `delivery/DurableProducerQueue.scala` | 未対応 | hard | 耐久性のあるキューバックエンドの抽象化 |
+| `RoundRobinPool` / `RoundRobinGroup` classic config objects | `routing/RoundRobin.scala:83`, `routing/RoundRobin.scala:148` | 部分実装 | medium | fraktor は typed builder (`PoolRouterBuilder` / `GroupRouterBuilder`) で提供 |
+| `BroadcastPool` / `BroadcastGroup` | `routing/Broadcast.scala:73`, `routing/Broadcast.scala:137` | 部分実装 | medium | fraktor は pool 側 broadcast predicate はあるが classic config object はない |
+| `ConsistentHashingPool` / `ConsistentHashingGroup` | `routing/ConsistentHashing.scala:311`, `routing/ConsistentHashing.scala:385` | 部分実装 | medium | fraktor は rendezvous hash ベースの typed builder のみ |
+| `Resizer` | `routing/Resizer.scala:40` | 未対応 | hard | 動的 routee resize は未実装 |
 
----
-
-### 8. シャットダウン
+### Event / Logging ✅ 実装済み 3/5 (60%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `CoordinatedShutdown` | `actor/CoordinatedShutdown.scala` | 未対応 | hard | 多フェーズ順序付きシステムシャットダウン。クラスター統合と絡む |
-
----
-
-### 9. 対象外（n/a）
-
-| Pekko API | 理由 |
-|-----------|------|
-| `receivePartial / receiveMessagePartial` | Scala の `PartialFunction` は Rust に対応概念なし |
-| `GroupRouter.preferLocalRoutees` | クラスター機能。単独 actor モジュールの範囲外 |
-| `ActorContext.executionContext` | JVM `ExecutionContext` 固有 |
-| `AbstractBehavior`（OOP 継承スタイル） | fraktor-rs の `TypedActor` trait が同等の役割を担う |
-| `ActorSystem.Settings`（Typesafe Config） | JVM の HOCON 設定システム依存 |
-| `ActorRefResolverSetup` | JVM setup 機構（ExtensionSetup 派生） |
-| `Behaviors.receiveMessageWithSame` | `receive_message` で `Behavior::same()` を返せば同等 |
-| `Behaviors.withMdc` | JVM MDC ログ固有。`tracing` クレートで代替 |
-
----
-
-## 実装優先度の提案
-
-### Phase 1: trivial（既存組み合わせで即実装可能）
-
-- `StashBuffer.capacity()` — `max_messages` フィールド公開のみ
-
-### Phase 2: easy（単純な新規実装）
-
-- `StashBuffer.contains / exists / foreach / head / clear` — コレクション操作の追加
-- `StashBuffer.unstash(n, wrap)` — 部分アンスタッシュ
-- `GroupRouter.withRandomRouting()` — ランダムルーティング戦略の追加
-- `PoolRouter.withRoundRobinRouting()` — ラウンドロビン戦略の追加
-- `PoolRouter.withBroadcastPredicate` — フィルタ付きブロードキャスト
-- `LogOptions` 型の追加 — ログ設定のバリューオブジェクト
-- `Behaviors.logMessages` — デバッグ用メッセージロギング Behavior
-- `RecipientRef` トレイト — `ask` 対象の抽象化
-- `BehaviorSignalInterceptor` — シグナルのみ傍受する簡略 Interceptor
-- `ExtensionSetup` — ブートアップ時の Extension 設定
-
-### Phase 3: medium（中程度の実装工数）
-
-- `Topic`（pub/sub）— `Receptionist` + EventStream ベースで実装可能だが自律 Behavior 設計が必要
-- `GroupRouter.withConsistentHashingRouting` — コンシステントハッシュルーティング
-- `ActorContext.delegate` — Behavior 委譲メカニズム
-- `ActorRefResolver` — シリアライズ/パス解決 Extension
-
-### Phase 4: hard（アーキテクチャ変更を伴う）
-
-- Delivery patterns（`ProducerController` / `ConsumerController` / `WorkPullingProducerController` / `DurableProducerQueue`）— シーケンス番号管理・耐久キュー抽象化・バックプレッシャー統合が必要
-- `CoordinatedShutdown` — クラスターモジュールと連携する多フェーズシャットダウン基盤
+| `LoggingAdapter` / `DiagnosticLoggingAdapter` | `event/Logging.scala:1203`, `event/Logging.scala:1635` | 部分実装 | medium | fraktor は event stream と subscriber はあるが、Pekko の adapter 階層までは未対応 |
+| `DeadLetterListener` | `event/DeadLetterListener.scala:33` | 未対応 | easy | dead letter store はあるが listener actor の classic surface はない |
 
 ### 対象外（n/a）
 
-- `receivePartial`、`receiveMessagePartial`、`AbstractBehavior`、`preferLocalRoutees`、`executionContext`、`ActorSystem.Settings`、`Behaviors.receiveMessageWithSame`、`Behaviors.withMdc`（JVM MDC 固有。`tracing` クレートで代替）
+| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
+|-----------|-----------|-------------|--------|------|
+| `IO/Tcp/Udp/Dns` 系 | `io/Tcp.scala`, `io/UdpConnected.scala`, `io/Dns.scala` | 対象外 | n/a | fraktor-rs の actor モジュールだけではなく remote/network サブシステムの領域 |
+| Java/Scala utility API | `japi/JavaAPI.scala`, `util/ByteString.scala` | 対象外 | n/a | JVM/Scala 標準 API への適応層 |
+| `serialization` 詳細 API | `serialization/Serialization.scala`, `Serializer.scala` | 部分比較のみ | n/a | Rust の serde/bincode ベース設計とは責務境界が異なる |
+| `actor-typed` 相当 | `references/pekko/actor-typed/**` | 別比較対象 | n/a | 今回の対象は `references/pekko/actor` のみ |
 
----
+## 実装優先度の提案
 
-## 所見
+### Phase 1: trivial
 
-fraktor-rs の actor モジュールは Pekko の typed API コアの約 75% をカバーしており、主要ユースケース（Behavior 設計・監視・タイマー・スタッシュ・ルーター・レセプショニスト）は実装済みです。
+- `ActorRef.forward` 相当の追加
+- `ActorRef.noSender` 相当の明示 API 追加
+- `DeadLetterListener` 相当の公開 listener surface 追加
 
-直近の変更（`StashBuffer.is_not_empty` の追加）により、StashBuffer ギャップが1件解消されました。
+### Phase 2: easy
 
-主な未実装領域は次の4つです：
+- classic `ReceiveTimeout` の公開 API 整備
+- `Props.withActorTags` 相当の軽量 metadata
+- classic router surface へ typed builder の薄い adapter を追加
 
-1. **StashBuffer の便利メソッド群**（easy、YAGNI 判断で後回し可）
-2. **ルーター戦略の一部**（GroupRouter のランダム・コンシステントハッシュ、PoolRouter のラウンドロビン・フィルタ付きブロードキャスト）
-3. **Pub/Sub（`Topic`）** — Receptionist と組み合わせれば代替可能だが、よく使われるパターン
-4. **Delivery パターン** — 信頼性保証が必要なシステム向け。現フェーズでは不要と判断して差し支えない（hard）
+### Phase 3: medium
+
+- `ActorSelection` を resolver だけでなく handle API まで引き上げる
+- `Props.withDeploy` / `withRouter` の責務を Rust 流に再設計して導入する
+- `Broadcast*` / `RoundRobin*` / `ConsistentHashing*` の classic surface を整理する
+- `UnboundedStash` / `UnrestrictedStash` に相当する classic stash 契約を追加する
+
+### Phase 4: hard
+
+- `CoordinatedShutdown` の phase model
+- dynamic `Resizer`
+- `become` / `unbecome` を含む classic behavior stack
+
+### 対象外（n/a）
+
+- `io` / `serialization` / `japi` の JVM 依存 API
+- `actor-typed` モジュールに属する typed surface
+
+## まとめ
+
+- 全体として、**fraktor-rs の actor モジュールは「基本 actor runtime」「mailbox/dispatcher 設定」「event stream」「scheduler 基盤」まではかなり揃っている**。
+- すぐ価値を出せる不足は、`ActorRef.forward`、classic `ReceiveTimeout`、薄い classic router surface で、いずれも既存基盤の組み合わせで寄せやすい。
+- 実用上の大きなギャップは、`ActorSelection` の公開 handle、`CoordinatedShutdown`、`Resizer`、classic `become/unbecome`。
+- YAGNI 観点では、`japi` / `io` / `serialization` の JVM 依存 surface を actor モジュールで追いかける必要は薄い。typed 比較は `actor-typed` を対象に別レポートへ分けるのが妥当。
