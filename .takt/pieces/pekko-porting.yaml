@@ -33,12 +33,26 @@ instructions:
   ai-review: ../facets/instructions/ai-review.md
   ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
+  loop-monitor-plan-implement: ../facets/instructions/loop-monitor-plan-implement.md
 
 report_formats:
   pekko-porting-qa-review: ../facets/output-contracts/pekko-porting-qa-review.md
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
 
 loop_monitors:
+  - cycle:
+      - plan
+      - implement
+    threshold: 5
+    judge:
+      persona: supervisor
+      instruction: loop-monitor-plan-implement
+      rules:
+        - condition: 健全（進捗あり）
+          next: plan
+        - condition: 非生産的（改善なし）
+          next: ai_review
+
   - cycle:
       - ai_review
       - ai_fix
@@ -182,8 +196,10 @@ movements:
         - name: 00-plan.md
           format: plan
     rules:
-      - condition: 要件が明確で実装可能
+      - condition: 未実装タスクあり（バッチ選定完了）
         next: implement
+      - condition: 全タスク完了（ギャップ分析の対象範囲をすべて実装済み）
+        next: ai_review
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
       - condition: 要件が不明確、情報不足
@@ -224,12 +240,14 @@ movements:
         - name: coder-decisions.md
           format: coder-decisions
     rules:
-      - condition: 実装完了
+      - condition: バッチの実装完了（未実装タスクが残っている）
+        next: plan
+      - condition: 全タスク完了（ギャップ分析の対象範囲をすべて実装済み）
         next: ai_review
-      - condition: 実装未着手（レポートのみ）
-        next: ai_review
+      - condition: 実装中に問題発生、計画の見直しが必要
+        next: plan
       - condition: 判断できない、情報不足
-        next: ai_review
+        next: plan
       - condition: ユーザー入力が必要
         next: implement
         requires_user_input: true
