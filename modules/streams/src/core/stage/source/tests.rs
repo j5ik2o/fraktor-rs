@@ -803,8 +803,10 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let materialized = graph.run(&mut materializer).expect("materialize");
   let sink_queue = &materialized.materialized().1;
 
+  const FIRST_VALUE_MAX_ATTEMPTS: usize = 256;
+
   let mut first_value = None;
-  for attempt in 0..256 {
+  for _ in 0..FIRST_VALUE_MAX_ATTEMPTS {
     let started_at = Instant::now();
     let outcome = materialized.handle().drive();
     assert!(started_at.elapsed() < Duration::from_millis(12), "producer start wait must not block drive");
@@ -814,11 +816,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
       first_value = Some(value);
       break;
     }
-    if attempt < 32 {
-      thread::yield_now();
-    } else {
-      thread::sleep(Duration::from_millis(1));
-    }
+    thread::yield_now();
   }
   assert_eq!(first_value, Some(60_u32));
 
