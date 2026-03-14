@@ -23,9 +23,27 @@ description: >-
 /pekko-gap-analysis cluster
 ```
 
+## fraktor-rs のアーキテクチャ層構造
+
+層構造の詳細は `.agents/rules/rust/module-structure.md` を参照すること。
+分析においては、そこで定義された core / std / embedded の分離と、
+core 内部の untyped kernel / typed ラッパーの区別を正確に反映すること。
+
+### Pekko との層マッピング
+
+| Pekko | fraktor-rs |
+|-------|------------|
+| `pekko-actor/classic` (untyped) | `modules/actor/src/core/actor/` (untyped kernel) |
+| `pekko-actor-typed` | `modules/actor/src/core/typed/` (typed ラッパー) |
+| `pekko-stream` | `modules/streams/src/core/` |
+| ランタイム固有実装 | `modules/{name}/src/std/` |
+
+**注意**: すべてのモジュールが `typed/` サブ層を持つわけではない。
+`list_dir` で実際の構造を確認してからマッピングを決定すること。
+
 ## ワークフロー
 
-### 1. 対象ディレクトリの特定
+### 1. 対象ディレクトリの特定と層構造の把握
 
 引数 `{name}` から以下のパスを導出する：
 
@@ -36,6 +54,17 @@ description: >-
 
 Pekko側のディレクトリ名が異なる場合（例: `stream` vs `streams`）は、
 `references/pekko/` 配下を `list_dir` で確認して対応するディレクトリを特定する。
+
+**層構造の把握（必須）**:
+```
+# fraktor-rs側の層構造を確認
+list_dir: modules/{name}/src/core/
+list_dir: modules/{name}/src/std/
+
+# typed サブ層の有無を確認
+list_dir: modules/{name}/src/core/typed/  (存在する場合)
+list_dir: modules/{name}/src/std/typed/   (存在する場合)
+```
 
 ### 2. Pekko側のAPI抽出
 
@@ -67,25 +96,46 @@ search_for_pattern: "^\s+(?:final |override |protected |private )*def\s+\S+"
 | エラー処理 | recover, recoverWith, supervision |
 | その他 | ユーティリティ、設定、テストキット |
 
-### 3. fraktor-rs側のAPI抽出
+### 3. fraktor-rs側のAPI抽出（層別）
 
-fraktor-rs実装から公開APIを抽出する。
+fraktor-rs実装から **層ごとに** 公開APIを抽出する。
 
 ```
-# Rust の公開型を列挙
+# core層（方針）の公開型を列挙
 search_for_pattern: "^\s*pub(?:\([^)]*\))?\s+(?:struct|trait|enum|type)\s+"
-  relative_path: modules/{name}/src/
+  relative_path: modules/{name}/src/core/
   restrict_search_to_code_files: true
 
-# 公開メソッドを列挙（トップレベル・async・const・unsafe 含む）
+# std層（詳細）の公開型を列挙
+search_for_pattern: "^\s*pub(?:\([^)]*\))?\s+(?:struct|trait|enum|type)\s+"
+  relative_path: modules/{name}/src/std/
+  restrict_search_to_code_files: true
+
+# 公開メソッドも同様に層別で列挙
 search_for_pattern: "^\s*pub(?:\([^)]*\))?\s+(?:async\s+)?(?:const\s+)?(?:unsafe\s+)?fn\s+\w+"
-  relative_path: modules/{name}/src/
+  relative_path: modules/{name}/src/core/
+  restrict_search_to_code_files: true
+
+search_for_pattern: "^\s*pub(?:\([^)]*\))?\s+(?:async\s+)?(?:const\s+)?(?:unsafe\s+)?fn\s+\w+"
+  relative_path: modules/{name}/src/std/
   restrict_search_to_code_files: true
 ```
 
-同じカテゴリ体系で分類する。
+typed サブ層が存在する場合は、さらに細分化する：
 
-### 4. ギャップの特定
+```
+# core/typed 層（typed ラッパー）
+search_for_pattern: "^\s*pub(?:\([^)]*\))?\s+(?:struct|trait|enum|type)\s+"
+  relative_path: modules/{name}/src/core/typed/
+  restrict_search_to_code_files: true
+
+# core の typed 以外（untyped kernel）
+# → core/ 全体から typed/ を除いた結果を使う
+```
+
+同じカテゴリ体系で分類し、各APIに **所属層** を付記する。
+
+### 4. ギャップの特定（層を考慮）
 
 Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 
@@ -94,6 +144,15 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 - **別名で実装済み**: 名前は異なるが同じ機能を提供 → 対応シンボルを明記して根拠を示す
 - **部分実装**: シグネチャは存在するが本体が `todo!()` / `unimplemented!()` → スタブ
 - **未実装**: 対応する機能が存在しない → ギャップ
+
+**層の判定（必須）**: 各ギャップについて、実装すべき層を判定する：
+
+| 判定基準 | 実装先 |
+|----------|--------|
+| コアロジック・trait定義・no_stdで実現可能 | core |
+| tokio/std依存・ネットワーク・ファイルIO | std |
+| 型パラメータ化されたラッパーAPI | core/typed |
+| untyped kernel の拡張 | core/{domain} |
 
 ### 5. 難易度の分類
 
@@ -119,9 +178,17 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 | 指標 | 値 |
 |------|-----|
 | Pekko 公開型数 | N（型単位で計数、オーバーロードは1つとして集約） |
-| fraktor-rs 公開型数 | M |
+| fraktor-rs 公開型数 | M（core: X, std: Y） |
 | カバレッジ（型単位） | M/N (XX%) |
-| ギャップ数 | G |
+| ギャップ数 | G（core: Gc, std: Gs） |
+
+## 層別カバレッジ
+
+| 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
+|----|-------------|------------------|-----------|
+| core / untyped kernel | N1 | M1 | XX% |
+| core / typed ラッパー | N2 | M2 | XX% |
+| std / アダプタ | N3 | M3 | XX% |
 
 ## カテゴリ別ギャップ
 
@@ -133,16 +200,18 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 
 ### カテゴリ名　✅ 実装済み X/Y (ZZ%)
 
-| Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
-|-----------|-----------|-------------|--------|------|
-| `methodName` | `Flow.scala:L123` | 未対応 | easy | 説明 |
-| `ClassName` | `Graph.scala:L45` | 部分実装 | trivial | `foo.rs:L12` にスタブあり |
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `methodName` | `Flow.scala:L123` | 未対応 | core/typed | easy | 説明 |
+| `ClassName` | `Graph.scala:L45` | 部分実装 | core/kernel | trivial | `foo.rs:L12` にスタブあり |
+| `RuntimeX` | `Runtime.scala:L78` | 未対応 | std | medium | tokio依存 |
 
 ### ...（カテゴリごとに繰り返し）
 
 ## 実装優先度の提案
 
 ### Phase 1: trivial（既存組み合わせで即実装可能）
+- 各項目に実装先層（core/kernel, core/typed, std）を明記
 - ...
 
 ### Phase 2: easy（単純な新規実装）
@@ -152,6 +221,7 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 - ...
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
+- core層の変更が必要な場合は特に明記（std層への波及を評価）
 - ...
 
 ### 対象外（n/a）
