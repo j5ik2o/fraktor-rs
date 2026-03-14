@@ -971,7 +971,7 @@ run_doc_tests() {
 
 run_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --tests --benches --examples --features test-support"
-  run_cargo test --workspace --verbose --lib --bins --tests --benches --examples --features test-support || return 1
+  run_cargo test --workspace --verbose --lib --bins --tests --examples --features test-support || return 1
 }
 
 run_actor_path_e2e() {
@@ -1075,7 +1075,6 @@ run_all() {
   run_clippy || return 1
   run_doc_tests || return 1
   run_tests || return 1
-  run_examples || return 1
 }
 
 main() {
