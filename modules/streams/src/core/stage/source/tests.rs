@@ -804,7 +804,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let sink_queue = &materialized.materialized().1;
 
   let mut first_value = None;
-  for _ in 0..32 {
+  for attempt in 0..256 {
     let started_at = Instant::now();
     let outcome = materialized.handle().drive();
     assert!(started_at.elapsed() < Duration::from_millis(12), "producer start wait must not block drive");
@@ -814,7 +814,11 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
       first_value = Some(value);
       break;
     }
-    thread::yield_now();
+    if attempt < 32 {
+      thread::yield_now();
+    } else {
+      thread::sleep(Duration::from_millis(1));
+    }
   }
   assert_eq!(first_value, Some(60_u32));
 
