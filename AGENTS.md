@@ -5,12 +5,13 @@
 - **リリース状況**: まだ正式リリース前の開発フェーズ。必要であれば破壊的変更を歓迎し、最適な設計を優先すること
 - serena mcpを有効活用すること
 - 当該ディレクトリ以外を読まないこと
-- 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh ai all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。
+- 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh ai all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。ただし **TAKT ピース実行中は、`final-ci` ムーブメント以外で `./scripts/ci-check.sh ai all` を実行してはならない**（各ムーブメントのインストラクションに従うこと）。
 - `./scripts/ci-check.sh ai all` は所要時間が長いが、完了待ってください。
 - `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
 - TOCTOUを避ける設計をすること
+- 優先順位や依存関係を考慮した上でボーイスカウトルールを適用すること
 
 # 基本原則
 
@@ -307,74 +308,14 @@ AIは一般的なベストプラクティスに従った「教科書的に正し
 
 # モジュール依存方向ルール
 
-## 原則
-
-**依存は必ず上位層から下位層への一方向のみ。逆方向の依存を禁止する。**
-
 これはレイヤードアーキテクチャの普遍的な原則であり、言語を問わず適用する。
 
-## 層構造と依存方向
+`modules/core/typed`は`modules/core(typed以外)`に依存できる
+`modules/std`は`modules/core(typed含む)`に依存できる
 
-```
-上位層（std / application）
-   │
-   │  依存可（↓のみ）
-   ▼
-中間層（typed / domain）
-   │
-   │  依存可（↓のみ）
-   ▼
-下位層（untyped / infrastructure / runtime）
-```
+重要なロジックはすべて`modules/core(typed以外)`に集約する。この部分はメッセージ型をジェネリックにするとロジックが複雑化するため意図的に`untyped`になっている。
+`modules/core/typed`はメッセージの型付けのための薄いラッパーとする。ただし`Behavior`などの`typed`の固有ロジックが必要な場合はこの限りではない。
 
-各層は「ラップする側（上位）」であり、「ラップされる側（下位）」には依存してよい。逆は禁止。
-
-## fraktor-rs での対応
-
-| 層 | パス | 備考 |
-|----|------|------|
-| 上位 | `std/**` | std あり、ユーザー向けAPI |
-| 中間 | `core/typed/**` | no_std、型付きアクター抽象 |
-| 下位 | `core/actor/**` | no_std、untyped ランタイム基盤 |
-
-## 禁止パターン
-
-| 禁止される依存 | 具体例（fraktor-rs） |
-|----------------|----------------------|
-| 下位 → 中間 | `core/actor` が `core/typed` を import |
-| 下位 → 上位 | `core/actor` が `std` を import |
-| 中間 → 上位 | `core/typed` が `std` を import |
-
-```rust
-// ❌ WRONG: core/actor/actor_context.rs
-use crate::core::typed::actor::TypedActorRef;  // 禁止
-
-// ✅ CORRECT: core/typed/actor/actor_context.rs
-use crate::core::actor::ActorContext;  // typed → untyped は OK
-```
-
-## 判定フロー
-
-```
-1. 今いるファイルはどの層か？
-   ├─ 下位層（core/actor/**） → 中間・上位への import は禁止
-   ├─ 中間層（core/typed/**） → 上位への import は禁止
-   └─ 上位層（std/**）        → 制限なし
-
-2. 書こうとしている import が上の層を指しているか？
-   ├─ Yes → 削除して代替手段を探す
-   └─ No  → OK
-```
-
-## なぜこのルールが必要か
-
-- **循環依存の防止**: 下位層が上位層に依存すると循環参照が発生し、ビルドが不能になる
-- **独立テスト可能性**: 下位層が上位層に依存しなければ、下位層を単独でテスト・再利用できる
-- **環境制約の維持**: 下位層が std 依存の上位層を import すると、no_std 環境で使えなくなる
-
-## 許容される例外
-
-なし。循環依存が必要に見える場合は設計を見直すこと。
 
 
 # イミュータブルを推奨
@@ -890,6 +831,8 @@ modules/{name}/src/
 ├── core.rs    # core モジュールの宣言ファイル
 ├── std/       # std/tokio アダプタ（core のポートを実装）
 ├── std.rs     # std モジュールの宣言ファイル
+├── embedded/  # 組み込み向け（embassy）アダプタ（将来配置予定）
+├── embedded.rs
 └── lib.rs
 ```
 
@@ -897,21 +840,35 @@ modules/{name}/src/
 
 | 層 | パス | no_std | 役割 |
 |----|------|--------|------|
-| コア | `modules/{name}/src/core/` | ✅ | ドメインロジック・ポート（trait）定義 |
-| アダプタ | `modules/{name}/src/std/` | ❌ | `std` / `tokio` を使ったポート実装 |
+| core | `modules/{name}/src/core/` | ✅ | コアロジック・ポート（trait）定義 |
+| std | `modules/{name}/src/std/` | ❌ | std/tokio を使ったアダプタ実装。core に依存する |
+| embedded | `modules/{name}/src/embedded/` | ✅ | 組み込み向け（embassy）アダプタ実装。core に依存する。将来配置予定 |
+
+## core 内部の層構造
+
+core 内部は機能別サブモジュールがフラットに並ぶ。
+actor モジュールのように `typed/` サブ層を持つ場合がある。
+
+| サブ層 | パス例 | 役割 |
+|--------|--------|------|
+| untyped kernel | `core/actor/`, `core/dispatch/`, `core/supervision/` | 型パラメータなしのコアロジック。`dyn Any` ベースのメッセージング。ロジックはここに集約する |
+| typed ラッパー | `core/typed/` | untyped kernel を型安全にラップ。`Behavior<M>`, `TypedActorRef<M>` 等。できるだけ薄く保ち、ロジックを持たせない |
+
+**注意**: すべてのモジュールが `typed/` サブ層を持つわけではない。
 
 ## 依存方向
 
 ```
-std/（アダプタ）
-   │
-   │  依存可（↓のみ）
-   ▼
-core/（コアロジック・ポート定義）
+std/（アダプタ）  embedded/（アダプタ）
+   │                  │
+   │  依存可（↓のみ）  │
+   ▼                  ▼
+   core/（コアロジック・ポート定義）
 ```
 
-- `std/` は `core/` に依存してよい
-- `core/` は `std/` に依存してはならない（no_std 制約が壊れる）
+- `std/` と `embedded/` は `core/` に依存してよい
+- `core/` は `std/` や `embedded/` に依存してはならない（no_std 制約が壊れる）
+- `std/` と `embedded/` は互いに依存してはならない
 
 ## コード例
 
