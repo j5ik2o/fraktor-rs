@@ -19,3 +19,5 @@ impl fmt::Display for TimerWheelError {
     }
   }
 }
+
+impl core::error::Error for TimerWheelError {}

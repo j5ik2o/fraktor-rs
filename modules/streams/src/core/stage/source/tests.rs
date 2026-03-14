@@ -159,11 +159,16 @@ fn noop_waker() -> Waker {
 }
 
 fn test_time_factor() -> f64 {
-  env::var("TEST_TIME_FACTOR")
-    .ok()
-    .and_then(|value| value.parse::<f64>().ok())
-    .filter(|factor| *factor > 0.0)
-    .unwrap_or(1.0)
+  match env::var("TEST_TIME_FACTOR") {
+    | Err(_) => 1.0,
+    | Ok(raw) => {
+      let factor = raw
+        .parse::<f64>()
+        .unwrap_or_else(|e| panic!("test_time_factor: TEST_TIME_FACTOR={raw:?} is not a valid f64: {e}"));
+      assert!(factor > 0.0, "test_time_factor: TEST_TIME_FACTOR={raw:?} must be positive, got {factor}");
+      factor
+    },
+  }
 }
 
 fn scaled_attempts(base: usize) -> usize {
