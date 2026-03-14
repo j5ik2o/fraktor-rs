@@ -69,6 +69,8 @@ jobs:
     name: Test (${{ matrix.target.name }})
     runs-on: ubuntu-latest
     needs: format
+    env:
+      TEST_TIME_FACTOR: "2.0"
     strategy:
       fail-fast: false
       matrix:

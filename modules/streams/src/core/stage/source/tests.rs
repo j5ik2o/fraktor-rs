@@ -6,6 +6,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 use std::{
+  env,
   sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -155,6 +156,22 @@ where
 
 fn noop_waker() -> Waker {
   Waker::noop().clone()
+}
+
+fn test_time_factor() -> f64 {
+  env::var("TEST_TIME_FACTOR")
+    .ok()
+    .and_then(|value| value.parse::<f64>().ok())
+    .filter(|factor| *factor > 0.0)
+    .unwrap_or(1.0)
+}
+
+fn scaled_attempts(base: usize) -> usize {
+  ((base as f64) * test_time_factor()).ceil() as usize
+}
+
+fn scaled_duration(base: Duration) -> Duration {
+  base.mul_f64(test_time_factor())
 }
 
 #[test]
@@ -738,7 +755,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..64 {
+  for _ in 0..scaled_attempts(64) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
@@ -782,7 +799,7 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..64 {
+  for _ in 0..scaled_attempts(64) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
@@ -807,7 +824,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let source = Source::create(1, move |queue| {
     assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
     let mut resumed = false;
-    for _ in 0..10_000 {
+    for _ in 0..scaled_attempts(10_000) {
       if resume_second_offer_in_closure.load(Ordering::SeqCst) {
         resumed = true;
         break;
@@ -817,7 +834,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
     assert!(resumed, "second offer gate was never opened");
     producer_paused_in_closure.store(false, Ordering::SeqCst);
     let mut second_enqueued = false;
-    for _ in 0..10_000 {
+    for _ in 0..scaled_attempts(10_000) {
       match queue.offer(61_u32) {
         | QueueOfferResult::Enqueued => {
           second_enqueued = true;
@@ -841,7 +858,10 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   for _ in 0..scaled_attempts(64) {
     let started_at = Instant::now();
     let _ = materialized.handle().drive();
-    assert!(started_at.elapsed() < Duration::from_millis(12), "producer start wait must not block drive");
+    assert!(
+      started_at.elapsed() < scaled_duration(Duration::from_millis(12)),
+      "producer start wait must not block drive"
+    );
     if let Some(value) = sink_queue.pull() {
       first_value = Some(value);
       break;
@@ -850,11 +870,11 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   }
   assert_eq!(first_value, Some(60_u32));
 
-  for _ in 0..4 {
+  for _ in 0..scaled_attempts(4) {
     let started_at = Instant::now();
     let outcome = materialized.handle().drive();
     assert_eq!(outcome, DriveOutcome::Idle, "paused producer must leave the stream idle without synthetic progress");
-    assert!(started_at.elapsed() < Duration::from_millis(12), "paused producer must not block drive");
+    assert!(started_at.elapsed() < scaled_duration(Duration::from_millis(12)), "paused producer must not block drive");
     assert!(producer_paused.load(Ordering::SeqCst));
     assert_eq!(sink_queue.pull(), None);
   }
@@ -872,7 +892,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   }
   assert_eq!(second_value, Some(61_u32));
 
-  for _ in 0..16 {
+  for _ in 0..scaled_attempts(16) {
     let _ = materialized.handle().drive();
     if materialized.handle().state().is_terminal() {
       break;
