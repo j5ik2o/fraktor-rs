@@ -301,6 +301,68 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
   assert_eq!(received.lock().clone(), vec![1, 2]);
 }
 
+#[test]
+fn actor_context_forward_preserves_sender() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct CapturingSender {
+    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  }
+
+  impl ActorRefSender for CapturingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      self.inbox.lock().push(message);
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+
+  let original_sender = ActorRef::new(Pid::new(800, 0), crate::core::actor::actor_ref::NullSender);
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_sender(Some(original_sender.clone()));
+
+  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+
+  let captured = inbox.lock();
+  assert_eq!(captured.len(), 1);
+  let forwarded = &captured[0];
+  assert_eq!(forwarded.sender().expect("sender preserved").pid(), original_sender.pid());
+}
+
+#[test]
+fn actor_context_forward_without_sender_sends_without_sender() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct CapturingSender {
+    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  }
+
+  impl ActorRefSender for CapturingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      self.inbox.lock().push(message);
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+
+  let captured = inbox.lock();
+  assert_eq!(captured.len(), 1);
+  assert!(captured[0].sender().is_none());
+}
+
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
   let cell = ActorCell::create(system.state(), pid, None, String::from(name), props).expect("create actor cell");
   system.state().register_cell(cell.clone());
@@ -417,4 +479,29 @@ fn actor_context_stop_child_returns_ok() {
   let result = context.stop_child(&child);
   assert!(result.is_ok());
   wait_until(|| context.child(&child_name).is_none());
+}
+
+#[test]
+fn actor_context_tags_returns_props_tags_at_runtime() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor).with_tags(["observer", "critical"]);
+  let _cell = register_cell(&system, pid, "tagged-actor", &props);
+  let context = ActorContext::new(&system, pid);
+
+  let tags = context.tags();
+  assert_eq!(tags.len(), 2);
+  assert!(tags.contains("observer"));
+  assert!(tags.contains("critical"));
+}
+
+#[test]
+fn actor_context_tags_returns_empty_without_tags() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "plain-actor", &props);
+  let context = ActorContext::new(&system, pid);
+
+  assert!(context.tags().is_empty());
 }

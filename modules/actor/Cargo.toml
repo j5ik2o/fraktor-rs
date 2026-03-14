@@ -202,6 +202,28 @@ name = "scheduler_once_tokio_std"
 path = "examples/scheduler_once_tokio_std/main.rs"
 required-features = ["tokio-executor"]
 
+[[example]]
+name = "forward_typed_no_std"
+path = "examples/forward_typed_no_std/main.rs"
+
+[[example]]
+name = "receive_partial_no_std"
+path = "examples/receive_partial_no_std/main.rs"
+
+[[example]]
+name = "ask_typed_no_std"
+path = "examples/ask_typed_no_std/main.rs"
+
+[[example]]
+name = "with_mdc_std"
+path = "examples/with_mdc_std/main.rs"
+required-features = ["std"]
+
+[[example]]
+name = "dead_letter_listener_std"
+path = "examples/dead_letter_listener_std/main.rs"
+required-features = ["std"]
+
 [[test]]
 name = "actor_path_e2e"
 path = "tests/actor_path_e2e.rs"

@@ -1,4 +1,7 @@
-use alloc::{boxed::Box, string::String, vec::Vec};
+#[cfg(test)]
+mod tests;
+
+use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};
 
 use fraktor_utils_rs::core::collections::queue::capabilities::QueueCapabilityRegistry;
 
@@ -15,6 +18,7 @@ use crate::core::{
 pub struct Props {
   factory: ActorFactoryShared,
   name: Option<String>,
+  tags: BTreeSet<String>,
   mailbox_config: MailboxConfig,
   mailbox_id: Option<String>,
   middleware: Vec<String>,
@@ -31,6 +35,7 @@ impl Props {
     Self {
       factory: ActorFactoryShared::new(factory),
       name: None,
+      tags: BTreeSet::new(),
       mailbox_config: MailboxConfig::default(),
       mailbox_id: None,
       middleware: Vec::new(),
@@ -60,6 +65,15 @@ impl Props {
   #[must_use]
   pub fn name(&self) -> Option<&str> {
     self.name.as_deref()
+  }
+
+  /// Returns the metadata tags associated with the actor.
+  ///
+  /// This mirrors Pekko's `ActorTags`. Tags are arbitrary string labels for
+  /// observability, grouping, or routing purposes.
+  #[must_use]
+  pub const fn tags(&self) -> &BTreeSet<String> {
+    &self.tags
   }
 
   /// Returns the mailbox configuration.
@@ -147,6 +161,25 @@ impl Props {
     self
   }
 
+  /// Attaches metadata tags to the actor for observability and routing.
+  ///
+  /// This mirrors Pekko's `ActorTags`.
+  #[must_use]
+  pub fn with_tags<I, S>(mut self, tags: I) -> Self
+  where
+    I: IntoIterator<Item = S>,
+    S: Into<String>, {
+    self.tags = tags.into_iter().map(Into::into).collect();
+    self
+  }
+
+  /// Adds a single metadata tag to the actor.
+  #[must_use]
+  pub fn with_tag(mut self, tag: impl Into<String>) -> Self {
+    self.tags.insert(tag.into());
+    self
+  }
+
   /// Overrides the dispatcher configuration used when constructing actors.
   #[must_use]
   pub fn with_dispatcher_config(mut self, dispatcher_config: DispatcherConfig) -> Self {
@@ -216,6 +249,7 @@ impl Clone for Props {
     Self {
       factory: self.factory.clone(),
       name: self.name.clone(),
+      tags: self.tags.clone(),
       mailbox_config: self.mailbox_config,
       mailbox_id: self.mailbox_id.clone(),
       middleware: self.middleware.clone(),

@@ -31,6 +31,12 @@ where
     Self { inner, marker: PhantomData }
   }
 
+  /// Consumes the typed future and returns the underlying untyped shared future.
+  #[must_use]
+  pub(crate) fn into_inner(self) -> ActorFutureShared<AskResult> {
+    self.inner
+  }
+
   /// Returns whether the underlying future has resolved.
   #[must_use]
   pub fn is_ready(&self) -> bool {

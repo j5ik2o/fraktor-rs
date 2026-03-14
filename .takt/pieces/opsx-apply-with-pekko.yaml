@@ -25,6 +25,15 @@ instructions:
   plan: ../facets/instructions/opsx-apply-plan.md
   implement: ../facets/instructions/opsx-apply-execute.md
   pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
+  opsx-apply-with-pekko-implement: ../facets/instructions/opsx-apply-with-pekko-implement.md
+  opsx-apply-with-pekko-fix: ../facets/instructions/opsx-apply-with-pekko-fix.md
+  opsx-apply-with-pekko-qa-review: ../facets/instructions/opsx-apply-with-pekko-qa-review.md
+  opsx-apply-with-pekko-compat-fix: ../facets/instructions/opsx-apply-with-pekko-compat-fix.md
+  opsx-apply-with-pekko-supervise: ../facets/instructions/opsx-apply-with-pekko-supervise.md
+  loop-monitor-plan-implement-batch: ../facets/instructions/loop-monitor-plan-implement-batch.md
+  loop-monitor-ai-review-fix: ../facets/instructions/loop-monitor-ai-review-fix.md
+  loop-monitor-reviewers-fix: ../facets/instructions/loop-monitor-reviewers-fix.md
+  loop-monitor-pekko-compat-review-fix: ../facets/instructions/loop-monitor-pekko-compat-review-fix.md
 
 report_formats:
   opsx-apply-summary: ../facets/output-contracts/opsx-apply-summary.md
@@ -39,16 +48,7 @@ loop_monitors:
     threshold: 5
     judge:
       persona: supervisor
-      instruction_template: |
-        plan と implement のバッチループが {cycle_count} 回繰り返されました。
-
-        **参照するレポート:**
-        - バッチ計画: {report:00-plan.md}
-        - 実装スコープ: {report:coder-scope.md}
-
-        **判断基準:**
-        - 各サイクルで新しいタスクが完了しているか
-        - タスクのチェック数が増えているか
+      instruction: loop-monitor-plan-implement-batch
       rules:
         - condition: 健全（進捗あり）
           next: plan
@@ -61,15 +61,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        ai_review と ai_fix のループが {cycle_count} 回繰り返されました。
-
-        **参照するレポート:**
-        - AIレビュー結果: {report:04-ai-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
+      instruction: loop-monitor-ai-review-fix
       rules:
         - condition: 健全（進捗あり）
           next: ai_review
@@ -82,16 +74,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        レビュー・修正サイクルが {cycle_count} 回繰り返されました。
-
-        **参照するレポート:**
-        - アーキテクチャレビュー: {report:05-architect-review.md}
-        - QAレビュー: {report:06-qa-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
+      instruction: loop-monitor-reviewers-fix
       rules:
         - condition: 健全（進捗あり）
           next: reviewers
@@ -104,15 +87,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        pekko-compat-review と pekko-compat-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
-
-        **参照するレポート:**
-        - Pekko互換性レビュー: {report:08-pekko-compat-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
+      instruction: loop-monitor-pekko-compat-review-fix
       rules:
         - condition: 健全（進捗あり）
           next: pekko-compat-review
@@ -184,13 +159,7 @@ movements:
           - WebSearch
           - WebFetch
     required_permission_mode: edit
-    instruction: implement
-    instruction_template: |
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh ai all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: opsx-apply-with-pekko-implement
     output_contracts:
       report:
         - name: coder-scope.md
@@ -324,10 +293,7 @@ movements:
               - Grep
               - WebSearch
               - WebFetch
-        instruction: review-qa
-        instruction_template: |
-          **やらないこと:**
-          `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `pekko-compat-fix` / `implement` ムーブメントの責務。
+        instruction: opsx-apply-with-pekko-qa-review
         output_contracts:
           report:
             - name: 06-qa-review.md
@@ -387,13 +353,7 @@ movements:
           - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: fix
-    instruction_template: |
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh ai all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: opsx-apply-with-pekko-fix
     rules:
       - condition: 修正完了
         next: reviewers
@@ -453,17 +413,7 @@ movements:
           - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: fix
-    instruction_template: |
-      **Pekko互換性の指摘への対応:**
-      pekko-compat-review の指摘がある場合は、必ず `references/pekko/` の
-      該当ソースを読み直してからRust実装を修正すること。
-
-      **修正完了条件（必須）:**
-      修正後に必ず以下を順番に実行し、全チェックがパスすることを確認してからレポートに記録すること:
-      1. `./scripts/ci-check.sh ai dylint` （Dylint全lint）
-      2. `./scripts/ci-check.sh ai all` （全CI）
-      成功ログをcoder-decisionsレポートの「実行結果」セクションに含めること。
+    instruction: opsx-apply-with-pekko-compat-fix
     rules:
       - condition: 修正完了（ci-check.sh ai all 通過済み）
         next: pekko-compat-review
@@ -485,15 +435,7 @@ movements:
           - WebSearch
           - WebFetch
     pass_previous_response: false
-    instruction: supervise
-    instruction_template: |
-      **fraktor-rs固有の検証:**
-      - implement / fix / pekko-compat-fix のレポートに `./scripts/ci-check.sh ai all` の成功ログが記録されていることを確認
-      - `05-architect-review.md` の判定がapprovedであることを確認
-      - `06-qa-review.md` の判定がapprovedであることを確認
-      - `07-impl-validation.md` の検証合格を確認
-      - `08-pekko-compat-review.md` の承認済み判定があることを確認
-      ※ supervisorはCIを自身では実行しない（修正ムーブメントの実行済み証跡をレポートで確認するのみ）
+    instruction: opsx-apply-with-pekko-supervise
     output_contracts:
       report:
         - name: supervisor-validation.md

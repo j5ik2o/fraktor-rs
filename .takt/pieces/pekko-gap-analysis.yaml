@@ -18,6 +18,7 @@ instructions:
   pekko-gap-synthesize: ../facets/instructions/pekko-gap-synthesize.md
   pekko-gap-review: ../facets/instructions/pekko-gap-review.md
   pekko-gap-fix: ../facets/instructions/pekko-gap-fix.md
+  loop-monitor-pekko-gap-review-fix: ../facets/instructions/loop-monitor-pekko-gap-review-fix.md
 
 report_formats:
   api-inventory: ../facets/output-contracts/api-inventory.md
@@ -33,11 +34,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        review と fix のループが {cycle_count} 回繰り返されました。
-
-        以下のレポートを確認し、継続の妥当性を判定してください。
-        - レビュー結果: {report:04-pekko-gap-review.md}
+      instruction: loop-monitor-pekko-gap-review-fix
       rules:
         - condition: 継続妥当
           next: review

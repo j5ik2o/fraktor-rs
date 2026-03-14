@@ -3,7 +3,13 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
+use alloc::{
+  boxed::Box,
+  collections::{BTreeSet, VecDeque},
+  string::String,
+  vec,
+  vec::Vec,
+};
 use core::{mem, task::Poll, time::Duration};
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
@@ -83,6 +89,7 @@ pub struct ActorCell {
   pid:               Pid,
   parent:            Option<Pid>,
   name:              String,
+  tags:              BTreeSet<String>,
   system:            SystemStateWeak,
   factory:           ActorFactoryShared,
   actor:             ActorShared,
@@ -156,10 +163,12 @@ impl ActorCell {
     let actor = ActorShared::new(factory.with_write(|f| f.create()));
     let state = RuntimeMutex::new(ActorCellState::new());
 
+    let tags = props.tags().clone();
     let cell = ArcShared::new(Self {
       pid,
       parent,
       name,
+      tags,
       system: system.downgrade(),
       factory,
       actor,
@@ -208,6 +217,12 @@ impl ActorCell {
   #[must_use]
   pub const fn parent(&self) -> Option<Pid> {
     self.parent
+  }
+
+  /// Returns the metadata tags associated with this actor.
+  #[must_use]
+  pub const fn tags(&self) -> &BTreeSet<String> {
+    &self.tags
   }
 
   /// Returns a handle to the mailbox managed by this cell.

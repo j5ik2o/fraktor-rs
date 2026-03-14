@@ -169,6 +169,14 @@ fn actor_ref_hash() {
 }
 
 #[test]
+fn no_sender_is_equivalent_to_null() {
+  let no_sender: ActorRef = ActorRef::no_sender();
+  let null: ActorRef = ActorRef::null();
+  assert_eq!(no_sender.pid(), null.pid());
+  assert!(no_sender.tell(AnyMessage::new(1_u32)).is_err());
+}
+
+#[test]
 fn actor_ref_poison_pill_without_system_uses_user_channel() {
   let (count, sender) = RecordingSender::new();
   let actor: ActorRef = ActorRef::new(Pid::new(10, 0), sender);

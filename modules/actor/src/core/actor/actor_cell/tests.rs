@@ -497,6 +497,29 @@ fn handle_terminated_skips_on_terminated_when_watch_with_registered() {
   assert!(log.lock().is_empty(), "on_terminated should not be called when watch_with is registered");
 }
 
+#[test]
+fn tags_propagated_from_props_to_cell() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor).with_tags(["metrics", "routing"]);
+  let cell = ActorCell::create(state.clone(), Pid::new(90, 0), None, "tagged".to_string(), &props).expect("create");
+  state.register_cell(cell.clone());
+
+  let tags = cell.tags();
+  assert_eq!(tags.len(), 2);
+  assert!(tags.contains("metrics"));
+  assert!(tags.contains("routing"));
+}
+
+#[test]
+fn tags_empty_when_props_has_no_tags() {
+  let state = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(91, 0), None, "untagged".to_string(), &props).expect("create");
+  state.register_cell(cell.clone());
+
+  assert!(cell.tags().is_empty());
+}
+
 fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..10_000 {
     if condition() {

@@ -132,4 +132,21 @@ where
   pub fn with_mailbox_bounded(self, capacity: core::num::NonZeroUsize) -> Self {
     self.with_mailbox_selector(MailboxSelector::bounded(capacity))
   }
+
+  /// Attaches metadata tags to the actor for observability and routing.
+  ///
+  /// This mirrors Pekko's `ActorTags`.
+  #[must_use]
+  pub fn with_tags<I, S>(self, tags: I) -> Self
+  where
+    I: IntoIterator<Item = S>,
+    S: Into<alloc::string::String>, {
+    self.map_props(|p| p.with_tags(tags))
+  }
+
+  /// Adds a single metadata tag to the actor.
+  #[must_use]
+  pub fn with_tag(self, tag: impl Into<alloc::string::String>) -> Self {
+    self.map_props(|p| p.with_tag(tag))
+  }
 }

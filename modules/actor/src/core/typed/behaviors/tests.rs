@@ -111,6 +111,73 @@ fn with_timers_shared_handle_usable_in_closures() {
   assert!(behavior.has_signal_handler());
 }
 
+#[test]
+fn receive_message_partial_returns_behavior_on_some() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message_partial(
+    |_ctx, msg: &u32| {
+      if *msg > 10 { Ok(Some(Behaviors::same())) } else { Ok(None) }
+    },
+  );
+
+  let result = behavior.handle_message(&mut typed_ctx, &20u32).expect("should handle");
+  assert!(matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same));
+}
+
+#[test]
+fn receive_message_partial_returns_unhandled_on_none() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message_partial(
+    |_ctx, msg: &u32| {
+      if *msg > 10 { Ok(Some(Behaviors::same())) } else { Ok(None) }
+    },
+  );
+
+  let result = behavior.handle_message(&mut typed_ctx, &5u32).expect("should return unhandled");
+  assert!(matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Unhandled));
+}
+
+#[test]
+fn receive_partial_handles_message() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior =
+    Behaviors::receive_partial(|_ctx, msg: &u32| if *msg == 42 { Ok(Some(Behaviors::same())) } else { Ok(None) });
+
+  let result = behavior.handle_message(&mut typed_ctx, &42u32).expect("handled");
+  assert!(matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same));
+
+  let unhandled = behavior.handle_message(&mut typed_ctx, &7u32).expect("unhandled");
+  assert!(matches!(unhandled.directive(), crate::core::typed::behavior::BehaviorDirective::Unhandled));
+}
+
+#[test]
+fn receive_partial_chains_with_receive_signal() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior =
+    Behaviors::receive_partial(|_ctx, msg: &u32| if *msg == 42 { Ok(Some(Behaviors::same())) } else { Ok(None) })
+      .receive_signal(|_ctx, _signal| Ok(Behaviors::same()));
+
+  assert!(behavior.has_signal_handler());
+  let result = behavior.handle_message(&mut typed_ctx, &42u32).expect("handled");
+  assert!(matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same));
+}
+
 struct RecordingInterceptor {
   receive_count: ArcShared<NoStdMutex<u32>>,
   start_count:   ArcShared<NoStdMutex<u32>>,

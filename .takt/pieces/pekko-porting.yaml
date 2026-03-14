@@ -33,6 +33,12 @@ instructions:
   ai-review: ../facets/instructions/ai-review.md
   ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
+  loop-monitor-plan-implement: ../facets/instructions/loop-monitor-plan-implement.md
+  loop-monitor-ai-review-fix-pekko: ../facets/instructions/loop-monitor-ai-review-fix-pekko.md
+  loop-monitor-ai-fix-no-fix: ../facets/instructions/loop-monitor-ai-fix-no-fix.md
+  loop-monitor-reviewers-qa-fix-pekko: ../facets/instructions/loop-monitor-reviewers-qa-fix-pekko.md
+  loop-monitor-pekko-compat-review-fix-pekko: ../facets/instructions/loop-monitor-pekko-compat-review-fix-pekko.md
+  loop-monitor-supervise-pekko-compat-fix: ../facets/instructions/loop-monitor-supervise-pekko-compat-fix.md
 
 report_formats:
   pekko-porting-qa-review: ../facets/output-contracts/pekko-porting-qa-review.md
@@ -40,24 +46,25 @@ report_formats:
 
 loop_monitors:
   - cycle:
+      - plan
+      - implement
+    threshold: 5
+    judge:
+      persona: supervisor
+      instruction: loop-monitor-plan-implement
+      rules:
+        - condition: 健全（進捗あり）
+          next: plan
+        - condition: 非生産的（改善なし）
+          next: ai_review
+
+  - cycle:
       - ai_review
       - ai_fix
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        ai_review と ai_fix のループが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-        非生産的（同じ問題を繰り返している）かを判断してください。
-
-        **参照するレポート:**
-        - AIレビュー結果: {report:04-ai-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
-        - 修正が実際に反映されているか
+      instruction: loop-monitor-ai-review-fix-pekko
       rules:
         - condition: 健全（進捗あり）
           next: ai_review
@@ -70,16 +77,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        ai_fix と ai_no_fix のループが {cycle_count} 回繰り返されました。
-
-        ai_fix が修正不要と判断し、ai_no_fix が修正必要と差し戻すサイクルが
-        繰り返されています。このループが健全か判断してください。
-
-        **判断基準:**
-        - ai_fix と ai_no_fix の間で同じ指摘について意見が分かれ続けていないか
-        - 新しい観点や情報が各サイクルで追加されているか
-        - 合意に向かう進捗があるか
+      instruction: loop-monitor-ai-fix-no-fix
       rules:
         - condition: 健全（進捗あり）
           next: ai_fix
@@ -92,19 +90,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        reviewers と qa-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-        非生産的（同じ問題を繰り返している）かを判断してください。
-
-        **参照するレポート:**
-        - QAレビュー: {report:06-qa-review.md}
-
-        **判断基準:**
-        - 各サイクルで修正対象が収束しているか
-        - 同じ指摘が繰り返されていないか
-        - 反映履歴から改善進捗が確認できるか
+      instruction: loop-monitor-reviewers-qa-fix-pekko
       rules:
         - condition: 健全（進捗あり）
           next: reviewers
@@ -117,19 +103,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        pekko-compat-review と pekko-compat-fix のレビュー・修正サイクルが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-        非生産的（同じ問題を繰り返している）かを判断してください。
-
-        **参照するレポート:**
-        - Pekko互換性レビュー: {report:05-pekko-compat-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
-        - 修正が実際に反映されているか
+      instruction: loop-monitor-pekko-compat-review-fix-pekko
       rules:
         - condition: 健全（進捗あり）
           next: pekko-compat-review
@@ -142,18 +116,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        supervise と pekko-compat-fix のサイクルが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-        非生産的（同じ問題を繰り返している）かを判断してください。
-
-        **参照するレポート:**
-        - スーパーバイザー検証: {report:supervisor-validation.md}
-
-        **判断基準:**
-        - 各サイクルで修正が実際に反映され、前回の指摘が解消されているか
-        - 同じテスト失敗やビルドエラーが繰り返されていないか
+      instruction: loop-monitor-supervise-pekko-compat-fix
       rules:
         - condition: 健全（進捗あり）
           next: supervise
@@ -182,8 +145,10 @@ movements:
         - name: 00-plan.md
           format: plan
     rules:
-      - condition: 要件が明確で実装可能
+      - condition: 未実装タスクあり（バッチ選定完了）
         next: implement
+      - condition: 全タスク完了（ギャップ分析の対象範囲をすべて実装済み）
+        next: ai_review
       - condition: ユーザーが質問をしている（実装タスクではない）
         next: COMPLETE
       - condition: 要件が不明確、情報不足
@@ -224,12 +189,14 @@ movements:
         - name: coder-decisions.md
           format: coder-decisions
     rules:
-      - condition: 実装完了
+      - condition: バッチの実装完了（未実装タスクが残っている）
+        next: plan
+      - condition: 全タスク完了（ギャップ分析の対象範囲をすべて実装済み）
         next: ai_review
-      - condition: 実装未着手（レポートのみ）
-        next: ai_review
+      - condition: 実装中に問題発生、計画の見直しが必要
+        next: plan
       - condition: 判断できない、情報不足
-        next: ai_review
+        next: plan
       - condition: ユーザー入力が必要
         next: implement
         requires_user_input: true

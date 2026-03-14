@@ -40,6 +40,11 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - テストをコメントアウトや無視しない
 - 全タスク完了時は各ピースで定義された最終CIゲートを通す
 
+## CI 実行制限
+
+- `./scripts/ci-check.sh ai all` は `final-ci` ムーブメント専用。他のムーブメントでは実行禁止
+- 変更範囲に限定した単体版（例: `./scripts/ci-check.sh ai dylint -m モジュール名`）は許可
+
 ## REJECT 基準
 
 - `#[allow]` による lint 回避（人間許可なし）
@@ -47,3 +52,4 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - 1ファイル複数公開型（lint 違反）
 - テストなしの実装
 - 後方互換のための不要なコード
+- `./scripts/ci-check.sh ai all` の `final-ci` 以外での実行

@@ -18,6 +18,8 @@ instructions:
   refactoring-fix: ../facets/instructions/refactoring-fix.md
   refactoring-review-qa: ../facets/instructions/refactoring-review-qa.md
   refactoring-supervise: ../facets/instructions/refactoring-supervise.md
+  loop-monitor-ai-review-fix-refactoring: ../facets/instructions/loop-monitor-ai-review-fix-refactoring.md
+  loop-monitor-reviewers-fix-refactoring: ../facets/instructions/loop-monitor-reviewers-fix-refactoring.md
 
 policies:
   fraktor-coding: ../facets/policies/fraktor-coding.md
@@ -35,19 +37,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        ai_review と ai_fix のループが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全（進捗がある）か、
-        非生産的（同じ問題を繰り返している）かを判断してください。
-
-        **参照するレポート:**
-        - AIレビュー結果: {report:ai-review.md}
-
-        **判断基準:**
-        - 各サイクルで新しい問題が発見・修正されているか
-        - 同じ指摘が繰り返されていないか
-        - 修正が実際に反映されているか
+      instruction: loop-monitor-ai-review-fix-refactoring
       rules:
         - condition: 健全（進捗あり）
           next: ai_review
@@ -60,18 +50,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        reviewers と fix のループが {cycle_count} 回繰り返されました。
-
-        各サイクルのレポートを確認し、このループが健全か判断してください。
-
-        **参照するレポート:**
-        - アーキテクチャレビュー: {report:architect-review.md}
-        - QAレビュー: {report:qa-review.md}
-
-        **判断基準:**
-        - 各サイクルで指摘が解消されているか
-        - 同じ問題が繰り返されていないか
+      instruction: loop-monitor-reviewers-fix-refactoring
       rules:
         - condition: 健全（進捗あり）
           next: reviewers
