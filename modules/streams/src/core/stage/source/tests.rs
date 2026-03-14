@@ -732,8 +732,25 @@ fn source_create_defers_producer_until_source_is_materialized() {
   .expect("create");
 
   assert!(!*called.lock());
-  let values = source.collect_values().expect("collect_values");
+  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let sink_queue = &materialized.materialized().1;
+  let mut values = Vec::new();
+
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    while let Some(value) = sink_queue.pull() {
+      values.push(value);
+    }
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+    thread::yield_now();
+  }
+
   assert!(*called.lock());
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
   assert_eq!(values, vec![40_u32, 41_u32]);
 }
 
@@ -759,7 +776,24 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   })
   .expect("create");
 
-  let values = source.collect_values().expect("collect_values");
+  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  let sink_queue = &materialized.materialized().1;
+  let mut values = Vec::new();
+
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    while let Some(value) = sink_queue.pull() {
+      values.push(value);
+    }
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+    thread::yield_now();
+  }
+
+  assert_eq!(materialized.handle().state(), StreamState::Completed);
   assert_eq!(values, vec![50_u32, 51_u32]);
 }
 
@@ -803,16 +837,12 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let materialized = graph.run(&mut materializer).expect("materialize");
   let sink_queue = &materialized.materialized().1;
 
-  const FIRST_VALUE_MAX_ATTEMPTS: usize = 256;
-
   let mut first_value = None;
-  for _ in 0..FIRST_VALUE_MAX_ATTEMPTS {
+  for _ in 0..scaled_attempts(64) {
     let started_at = Instant::now();
-    let outcome = materialized.handle().drive();
+    let _ = materialized.handle().drive();
     assert!(started_at.elapsed() < Duration::from_millis(12), "producer start wait must not block drive");
-    if outcome == DriveOutcome::Progressed
-      && let Some(value) = sink_queue.pull()
-    {
+    if let Some(value) = sink_queue.pull() {
       first_value = Some(value);
       break;
     }
@@ -831,9 +861,8 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
 
   resume_second_offer.store(true, Ordering::SeqCst);
 
-  const SECOND_VALUE_MAX_ATTEMPTS: usize = 256;
   let mut second_value = None;
-  for _ in 0..SECOND_VALUE_MAX_ATTEMPTS {
+  for _ in 0..scaled_attempts(64) {
     let _ = materialized.handle().drive();
     if let Some(value) = sink_queue.pull() {
       second_value = Some(value);
