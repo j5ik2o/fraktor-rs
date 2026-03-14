@@ -16,6 +16,7 @@ instructions:
   issue-verify: ../facets/instructions/issue-verify.md
   issue-commit: ../facets/instructions/issue-commit.md
   ai-review: ../facets/instructions/ai-review.md
+  loop-monitor-issue-review-fix: ../facets/instructions/loop-monitor-issue-review-fix.md
 
 report_formats:
   issue-plan: ../facets/output-contracts/issue-plan.md
@@ -33,12 +34,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction_template: |
-        review と fix のループが {cycle_count} 回繰り返されました。
-
-        以下のレポートを確認し、継続の妥当性を判定してください。
-        - AIレビュー: {report:01-ai-review.md}
-        - Issue検証: {report:02-issue-verify.md}
+      instruction: loop-monitor-issue-review-fix
       rules:
         - condition: 継続妥当
           next: review
