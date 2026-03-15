@@ -10,6 +10,9 @@ use super::super::super::super::{DynValue, FlowLogic, StreamError, downcast_valu
 /// backoff doubles on each retry (clamped to `max_backoff_ticks`) with optional
 /// jitter.
 ///
+/// Each pending retry carries its own retry count and backoff state so that
+/// sibling retries do not starve each other's retry budget.
+///
 /// # Experimental
 ///
 /// This corresponds to Pekko's `@ApiMayChange` `RetryFlow` and may change in
@@ -18,12 +21,12 @@ pub(in crate::core::stage::flow) struct RetryFlowLogic<In, Out, R> {
   inner_logics:           Vec<Box<dyn FlowLogic>>,
   decide_retry:           R,
   element_in_progress:    Option<In>,
-  retry_count:            usize,
+  active_retry_count:     usize,
+  active_backoff_ticks:   u32,
   max_retries:            usize,
   min_backoff_ticks:      u32,
   max_backoff_ticks:      u32,
   random_factor_permille: u16,
-  current_backoff_ticks:  u32,
   jitter_state:           u64,
   pending_retries:        VecDeque<PendingRetry<In>>,
   tick_count:             u64,
@@ -31,8 +34,10 @@ pub(in crate::core::stage::flow) struct RetryFlowLogic<In, Out, R> {
 }
 
 struct PendingRetry<In> {
-  element:  In,
-  ready_at: u64,
+  element:       In,
+  ready_at:      u64,
+  retry_count:   usize,
+  backoff_ticks: u32,
 }
 
 impl<In, Out, R> RetryFlowLogic<In, Out, R>
@@ -53,12 +58,12 @@ where
       inner_logics,
       decide_retry,
       element_in_progress: None,
-      retry_count: 0,
+      active_retry_count: 0,
+      active_backoff_ticks: min_backoff_ticks,
       max_retries,
       min_backoff_ticks,
       max_backoff_ticks,
       random_factor_permille,
-      current_backoff_ticks: min_backoff_ticks,
       jitter_state: 0xcafe_u64,
       pending_retries: VecDeque::new(),
       tick_count: 0,
@@ -78,27 +83,17 @@ where
     Ok(current)
   }
 
-  fn process_element(&mut self, input: In) -> Result<Vec<DynValue>, StreamError> {
+  fn process_element(&mut self, input: In, retry_count: usize, backoff_ticks: u32) -> Result<Vec<DynValue>, StreamError> {
     self.element_in_progress = Some(input.clone());
+    self.active_retry_count = retry_count;
+    self.active_backoff_ticks = backoff_ticks;
     let outputs = self.apply_through_inner(input)?;
     self.check_outputs(outputs)
-  }
-
-  const fn reset_retry_state(&mut self) {
-    self.retry_count = 0;
-    self.current_backoff_ticks = self.min_backoff_ticks;
-  }
-
-  fn reset_retry_state_if_idle(&mut self) {
-    if self.pending_retries.is_empty() {
-      self.reset_retry_state();
-    }
   }
 
   fn check_outputs(&mut self, outputs: Vec<DynValue>) -> Result<Vec<DynValue>, StreamError> {
     if outputs.is_empty() {
       self.element_in_progress = None;
-      self.reset_retry_state_if_idle();
       return Ok(outputs);
     }
     let Some(element) = self.element_in_progress.clone() else {
@@ -109,13 +104,14 @@ where
     for output in outputs {
       let out_value = output.downcast::<Out>().map_err(|_| StreamError::TypeMismatch)?;
       if let Some(retry_elem) = (self.decide_retry)(&element, &out_value) {
-        if self.retry_count >= self.max_retries {
+        if self.active_retry_count >= self.max_retries {
           result.push(Box::new(*out_value) as DynValue);
         } else {
-          self.retry_count = self.retry_count.saturating_add(1);
+          let retry_count = self.active_retry_count.saturating_add(1);
           let cooldown = self.next_cooldown_ticks();
+          let backoff_ticks = self.active_backoff_ticks;
           let ready_at = self.tick_count.saturating_add(u64::from(cooldown));
-          self.pending_retries.push_back(PendingRetry { element: retry_elem, ready_at });
+          self.pending_retries.push_back(PendingRetry { element: retry_elem, ready_at, retry_count, backoff_ticks });
           scheduled_retry = true;
         }
       } else {
@@ -125,16 +121,14 @@ where
     self.element_in_progress = None;
     if scheduled_retry {
       self.restart_inner_logics()?;
-    } else {
-      self.reset_retry_state_if_idle();
     }
     Ok(result)
   }
 
   fn next_cooldown_ticks(&mut self) -> u32 {
-    let base = self.current_backoff_ticks.max(self.min_backoff_ticks).min(self.max_backoff_ticks);
+    let base = self.active_backoff_ticks.max(self.min_backoff_ticks).min(self.max_backoff_ticks);
     let jitter_ticks = self.compute_jitter_ticks(base);
-    self.current_backoff_ticks = base.saturating_mul(2).min(self.max_backoff_ticks).max(self.min_backoff_ticks);
+    self.active_backoff_ticks = base.saturating_mul(2).min(self.max_backoff_ticks).max(self.min_backoff_ticks);
     base.saturating_add(jitter_ticks).min(self.max_backoff_ticks)
   }
 
@@ -164,7 +158,7 @@ where
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = downcast_value::<In>(input)?;
-    self.process_element(value)
+    self.process_element(value, 0, self.min_backoff_ticks)
   }
 
   fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
@@ -182,7 +176,7 @@ where
     let Some(pending) = self.pending_retries.pop_front() else {
       return Ok(Vec::new());
     };
-    self.process_element(pending.element)
+    self.process_element(pending.element, pending.retry_count, pending.backoff_ticks)
   }
 
   fn has_pending_output(&self) -> bool {
@@ -195,7 +189,8 @@ where
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.element_in_progress = None;
-    self.reset_retry_state();
+    self.active_retry_count = 0;
+    self.active_backoff_ticks = self.min_backoff_ticks;
     self.pending_retries.clear();
     self.tick_count = 0;
     self.restart_inner_logics()
