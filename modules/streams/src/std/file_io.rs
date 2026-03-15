@@ -93,10 +93,10 @@ impl SinkLogic for WriteToPathSinkLogic {
     let io_result = if let Some(mut writer) = self.writer.take() {
       match writer.flush() {
         | Ok(()) => IOResult::successful(self.count),
-        | Err(_) => IOResult::failed(0, StreamError::Failed),
+        | Err(_) => IOResult::failed(self.count, StreamError::Failed),
       }
     } else {
-      IOResult::failed(0, StreamError::Failed)
+      IOResult::failed(self.count, StreamError::Failed)
     };
     self.completion.complete(Ok(io_result));
     Ok(())
@@ -104,6 +104,6 @@ impl SinkLogic for WriteToPathSinkLogic {
 
   fn on_error(&mut self, error: StreamError) {
     self.writer = None;
-    self.completion.complete(Ok(IOResult::failed(0, error)));
+    self.completion.complete(Ok(IOResult::failed(self.count, error)));
   }
 }
