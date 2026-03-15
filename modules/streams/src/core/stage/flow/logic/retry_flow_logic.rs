@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
@@ -25,7 +25,7 @@ pub(in crate::core::stage::flow) struct RetryFlowLogic<In, Out, R> {
   random_factor_permille: u16,
   current_backoff_ticks:  u32,
   jitter_state:           u64,
-  pending_retry:          Option<PendingRetry<In>>,
+  pending_retries:        VecDeque<PendingRetry<In>>,
   tick_count:             u64,
   _pd:                    PhantomData<fn() -> Out>,
 }
@@ -60,7 +60,7 @@ where
       random_factor_permille,
       current_backoff_ticks: min_backoff_ticks,
       jitter_state: 0xcafe_u64,
-      pending_retry: None,
+      pending_retries: VecDeque::new(),
       tick_count: 0,
       _pd: PhantomData,
     }
@@ -84,38 +84,49 @@ where
     self.check_outputs(outputs)
   }
 
+  const fn reset_retry_state(&mut self) {
+    self.retry_count = 0;
+    self.current_backoff_ticks = self.min_backoff_ticks;
+  }
+
+  fn reset_retry_state_if_idle(&mut self) {
+    if self.pending_retries.is_empty() {
+      self.reset_retry_state();
+    }
+  }
+
   fn check_outputs(&mut self, outputs: Vec<DynValue>) -> Result<Vec<DynValue>, StreamError> {
     if outputs.is_empty() {
       self.element_in_progress = None;
-      self.retry_count = 0;
-      self.current_backoff_ticks = self.min_backoff_ticks;
+      self.reset_retry_state_if_idle();
       return Ok(outputs);
     }
+    let Some(element) = self.element_in_progress.clone() else {
+      return Err(StreamError::Failed);
+    };
     let mut result = Vec::new();
+    let mut scheduled_retry = false;
     for output in outputs {
       let out_value = output.downcast::<Out>().map_err(|_| StreamError::TypeMismatch)?;
-      let Some(element) = self.element_in_progress.as_ref() else {
-        return Err(StreamError::Failed);
-      };
-      if let Some(retry_elem) = (self.decide_retry)(element, &out_value) {
+      if let Some(retry_elem) = (self.decide_retry)(&element, &out_value) {
         if self.retry_count >= self.max_retries {
           result.push(Box::new(*out_value) as DynValue);
-          self.element_in_progress = None;
-          self.retry_count = 0;
-          self.current_backoff_ticks = self.min_backoff_ticks;
         } else {
           self.retry_count = self.retry_count.saturating_add(1);
           let cooldown = self.next_cooldown_ticks();
           let ready_at = self.tick_count.saturating_add(u64::from(cooldown));
-          self.pending_retry = Some(PendingRetry { element: retry_elem, ready_at });
-          self.restart_inner_logics();
+          self.pending_retries.push_back(PendingRetry { element: retry_elem, ready_at });
+          scheduled_retry = true;
         }
       } else {
         result.push(Box::new(*out_value) as DynValue);
-        self.element_in_progress = None;
-        self.retry_count = 0;
-        self.current_backoff_ticks = self.min_backoff_ticks;
       }
+    }
+    self.element_in_progress = None;
+    if scheduled_retry {
+      self.restart_inner_logics();
+    } else {
+      self.reset_retry_state_if_idle();
     }
     Ok(result)
   }
@@ -161,31 +172,30 @@ where
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
-    let Some(pending) = &self.pending_retry else {
+    let Some(pending) = self.pending_retries.front() else {
       return Ok(Vec::new());
     };
     if pending.ready_at > self.tick_count {
       return Ok(Vec::new());
     }
-    let Some(pending) = self.pending_retry.take() else {
+    let Some(pending) = self.pending_retries.pop_front() else {
       return Ok(Vec::new());
     };
     self.process_element(pending.element)
   }
 
   fn has_pending_output(&self) -> bool {
-    self.pending_retry.is_some()
+    !self.pending_retries.is_empty()
   }
 
   fn can_accept_input(&self) -> bool {
-    self.pending_retry.is_none()
+    self.pending_retries.is_empty()
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.element_in_progress = None;
-    self.retry_count = 0;
-    self.current_backoff_ticks = self.min_backoff_ticks;
-    self.pending_retry = None;
+    self.reset_retry_state();
+    self.pending_retries.clear();
     self.tick_count = 0;
     self.restart_inner_logics();
     Ok(())
