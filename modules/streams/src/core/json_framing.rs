@@ -67,19 +67,27 @@ struct JsonFramingLogic {
 impl JsonFramingLogic {
   fn scan_objects(&mut self) -> Result<Vec<DynValue>, StreamError> {
     let mut results: Vec<DynValue> = Vec::new();
+    let mut deferred_error: Option<StreamError> = None;
 
     while let Some(start) = self.buffer.iter().position(|&b| b == b'{' || b == b'[') {
-      let Some(object_bytes) = self.try_extract_object(start)? else {
-        break;
-      };
-      results.push(Box::new(object_bytes) as DynValue);
+      match self.try_extract_object(start) {
+        | Ok(Some(object_bytes)) => results.push(Box::new(object_bytes) as DynValue),
+        | Ok(None) => break,
+        | Err(e) => {
+          deferred_error = Some(e);
+          break;
+        },
+      }
     }
 
-    if self.buffer.len() > self.maximum_object_length {
-      return Err(StreamError::BufferOverflow);
+    if deferred_error.is_none() && self.buffer.len() > self.maximum_object_length {
+      deferred_error = Some(StreamError::BufferOverflow);
     }
 
-    Ok(results)
+    match deferred_error {
+      | Some(e) if results.is_empty() => Err(e),
+      | _ => Ok(results),
+    }
   }
 
   fn try_extract_object(&mut self, start: usize) -> Result<Option<Vec<u8>>, StreamError> {
@@ -117,13 +125,13 @@ impl JsonFramingLogic {
           depth -= 1;
           if depth == 0 {
             let end = pos + 1;
-            let object_bytes = self.buffer[start..end].to_vec();
-            self.buffer = self.buffer[end..].to_vec();
 
-            if object_bytes.len() > self.maximum_object_length {
+            if end - start > self.maximum_object_length {
               return Err(StreamError::BufferOverflow);
             }
 
+            let object_bytes = self.buffer[start..end].to_vec();
+            self.buffer = self.buffer[end..].to_vec();
             return Ok(Some(object_bytes));
           }
         },
