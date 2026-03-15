@@ -3035,6 +3035,26 @@ impl FlowLogic for ShutdownFlagFlowLogic {
   }
 }
 
+struct MultiOutputRetryTestLogic {
+  restart_calls: ArcShared<SpinSyncMutex<u32>>,
+}
+
+impl FlowLogic for MultiOutputRetryTestLogic {
+  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+    let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
+    Ok(alloc::vec![
+      Box::new(value.saturating_add(1)) as DynValue,
+      Box::new(value.saturating_add(2)) as DynValue,
+    ])
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    let mut guard = self.restart_calls.lock();
+    *guard = guard.saturating_add(1);
+    Ok(())
+  }
+}
+
 #[test]
 fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
   // Given: 3つの inner logic すべてにシャットダウンフラグが設定された LazyFlowLogic
@@ -3062,6 +3082,40 @@ fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
   // any() 短絡評価の場合、2番目以降のフラグが未クリアで true になりテスト失敗
   assert!(!second_call);
 }
+
+#[test]
+fn retry_flow_logic_queues_multiple_retries_before_restarting_inner() {
+  let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let mut logic = super::RetryFlowLogic::<u32, u32, _>::new(
+    alloc::vec![Box::new(MultiOutputRetryTestLogic { restart_calls: restart_calls.clone() })],
+    |input: &u32, output: &u32| {
+      if *input < 10 { Some(output.saturating_add(100)) } else { None }
+    },
+    4,
+    0,
+    0,
+    0,
+  );
+
+  logic.on_tick(0).expect("tick");
+  let first_outputs = logic.apply(Box::new(1_u32)).expect("apply");
+  assert!(first_outputs.is_empty());
+  assert_eq!(*restart_calls.lock(), 1_u32);
+  assert!(logic.has_pending_output());
+
+  let first_retry = logic.drain_pending().expect("first retry");
+  let first_values: alloc::vec::Vec<u32> =
+    first_retry.into_iter().map(|value| *value.downcast::<u32>().expect("u32 output")).collect();
+  assert_eq!(first_values, vec![103_u32, 104_u32]);
+  assert!(logic.has_pending_output());
+
+  let second_retry = logic.drain_pending().expect("second retry");
+  let second_values: alloc::vec::Vec<u32> =
+    second_retry.into_iter().map(|value| *value.downcast::<u32>().expect("u32 output")).collect();
+  assert_eq!(second_values, vec![104_u32, 105_u32]);
+  assert!(!logic.has_pending_output());
+}
+
 #[test]
 fn throttle_enforcing_mode_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
