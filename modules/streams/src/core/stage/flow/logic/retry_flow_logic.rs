@@ -124,7 +124,7 @@ where
     }
     self.element_in_progress = None;
     if scheduled_retry {
-      self.restart_inner_logics();
+      self.restart_inner_logics()?;
     } else {
       self.reset_retry_state_if_idle();
     }
@@ -148,10 +148,11 @@ where
     base_ticks.saturating_mul(factor).saturating_mul(ratio_permille) / 1_000_000
   }
 
-  fn restart_inner_logics(&mut self) {
+  fn restart_inner_logics(&mut self) -> Result<(), StreamError> {
     for logic in &mut self.inner_logics {
-      let _ = logic.on_restart();
+      logic.on_restart()?;
     }
+    Ok(())
   }
 }
 
@@ -197,7 +198,6 @@ where
     self.reset_retry_state();
     self.pending_retries.clear();
     self.tick_count = 0;
-    self.restart_inner_logics();
-    Ok(())
+    self.restart_inner_logics()
   }
 }
