@@ -3,7 +3,7 @@ name: pekko-gap-analysis
 description: >-
   fraktor-rsの指定モジュール（modules/{name}）とApache Pekkoの参照実装（references/pekko/{name}）を比較し、
   不足機能を洗い出すギャップ分析スキル。公開API・trait・オペレーター・パターンを両側から抽出し、
-  カテゴリ別に分類して難易度を付与する。制約カード（spec-constraint-card）作成の入力として活用可能。
+  カテゴリ別に分類して難易度を付与する。
   トリガー：「Pekkoと比較して不足機能を洗い出して」「gap analysis」「ギャップ分析」
   「references/pekkoとの差分」「不足オペレーターを調べて」「Pekko対応状況」
   「modules/{name}の不足機能」といったPekko参照実装との比較リクエストで起動。
@@ -11,7 +11,8 @@ description: >-
 
 # Pekko ギャップ分析
 
-`modules/{name}` と `references/pekko/{name}` を比較し、不足機能を体系的に洗い出す。
+`modules/{name}` と `references/pekko/{name}` を比較し、不足機能を体系的に完全に洗い出す。
+※YAGNIはここでは適用しないこと。完了のための計画を出す必要があります。
 
 ## 引数
 
@@ -42,6 +43,7 @@ core 内部の untyped kernel / typed ラッパーの区別を正確に反映す
 `list_dir` で実際の構造を確認してからマッピングを決定すること。
 
 ## ワークフロー
+
 
 ※必要に応じて、sub-agents, multi-agentsを使って効率的に調査してもよい。
 
@@ -236,14 +238,12 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 - 全体カバレッジの一言評価（「主要機能はカバー済み」「基盤部分が手薄」等）
 - 即座に価値を提供できる未実装機能（Phase 1〜2 の代表例）
 - 実用上の主要ギャップ（Phase 3〜4 の代表例）
-- YAGNI観点での省略推奨（意図的な非実装と判断できるもの）
 ```
 
 ## 注意事項
 
-- 出力したファイルがあるか必ず`ls`コマンドで確認すること
-- Pekkoの全機能を移植することが目的ではない（YAGNI原則）
-- 結果は「何が足りないか」の可視化であり、すべてを実装すべきという提案ではない
+- 完了のための計画になっているか確認し、漏れがある場合は是正すること
+- 出力したファイルを `ls -al ${PROJECT_ROOT}/ddocs/gap-analysis/${name}-gap-analysis.md` コマンドで更新されているか確認すること
 - `n/a` 判定は保守的に行う（JVM固有、Akka互換層、deprecated機能のみ）
 - Rust/no_std 固有の制約（`cfg_std_forbid` lint等）を考慮する
 

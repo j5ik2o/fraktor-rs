@@ -7,9 +7,9 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowGroupBySubFlow, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy,
-  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
+  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule,
+  OverflowStrategy, RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError,
+  StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   validate_positive_argument,
@@ -922,6 +922,19 @@ where
   pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
+
+  /// Extracts the flow logics from this flow's graph, consuming it.
+  ///
+  /// Returns the extracted logics and the materialized value.
+  pub(in crate::core) fn into_logics(self) -> (Vec<Box<dyn FlowLogic>>, Mat) {
+    let (graph, mat) = self.into_parts();
+    let stages = graph.into_stages();
+    let logics = stages
+      .into_iter()
+      .filter_map(|s| if let StageDefinition::Flow(def) = s { Some(def.logic) } else { None })
+      .collect();
+    (logics, mat)
+  }
 }
 
 impl<In, Out, Mat> Flow<In, Vec<Out>, Mat>
@@ -1620,13 +1633,25 @@ where
     self.ask(parallelism, func)
   }
 
-  /// Compatibility alias for delay-with entry points.
+  /// Adds a per-element delay stage driven by a [`DelayStrategy`].
   ///
-  /// # Errors
+  /// Each element is delayed by the number of ticks returned by the
+  /// strategy.  Unlike [`delay`](Self::delay), the delay can vary
+  /// per element depending on the strategy implementation.
   ///
-  /// Returns [`StreamDslError`] when `ticks` is zero.
-  pub fn delay_with(self, ticks: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
-    self.delay(ticks)
+  /// [`DelayStrategy`]: crate::core::delay_strategy::DelayStrategy
+  #[must_use]
+  pub fn delay_with<S>(mut self, strategy: S) -> Flow<In, Out, Mat>
+  where
+    S: crate::core::delay_strategy::DelayStrategy<Out> + 'static, {
+    let definition = strategy_delay_definition::<Out, S>(strategy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Drops elements within a count-compatible window.
@@ -3289,6 +3314,26 @@ where
   }
 }
 
+fn strategy_delay_definition<In, S>(strategy: S) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  S: crate::core::delay_strategy::DelayStrategy<In> + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = StrategyDelayLogic::new(strategy);
+  FlowDefinition {
+    kind:        StageKind::FlowDelay,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn initial_delay_definition<In>(initial_delay_ticks: u64) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -4410,4 +4455,41 @@ fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
 where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)
+}
+
+/// Creates a flow definition that retries elements through inner logics with
+/// exponential backoff.
+pub(in crate::core) fn retry_flow_definition<In, Out, R>(
+  inner_logics: Vec<Box<dyn FlowLogic>>,
+  decide_retry: R,
+  max_retries: usize,
+  min_backoff_ticks: u32,
+  max_backoff_ticks: u32,
+  random_factor_permille: u16,
+) -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  R: Fn(&In, &Out) -> Option<In> + Send + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = RetryFlowLogic::<In, Out, R>::new(
+    inner_logics,
+    decide_retry,
+    max_retries,
+    min_backoff_ticks,
+    max_backoff_ticks,
+    random_factor_permille,
+  );
+  FlowDefinition {
+    kind:        StageKind::FlowMap,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
 }

@@ -57,6 +57,8 @@ pub enum StreamError {
     /// Configured tick threshold.
     ticks: u64,
   },
+  /// Downstream canceled without triggering lazy source materialization.
+  NeverMaterialized,
 }
 
 impl fmt::Display for StreamError {
@@ -84,6 +86,9 @@ impl fmt::Display for StreamError {
       },
       | Self::Timeout { kind, ticks } => {
         write!(f, "{kind} timeout after {ticks} ticks")
+      },
+      | Self::NeverMaterialized => {
+        write!(f, "downstream canceled without triggering lazy source materialization")
       },
     }
   }

@@ -94,6 +94,8 @@ mod prefix_and_tail_logic;
 mod recover_logic;
 /// Recover-with-retries logic.
 mod recover_with_retries_logic;
+/// Retry flow logic with exponential backoff.
+mod retry_flow_logic;
 /// Sample logic.
 mod sample_logic;
 /// Scan logic.
@@ -108,6 +110,8 @@ mod split_when_logic;
 mod stateful_map_concat_logic;
 /// Stateful map logic.
 mod stateful_map_logic;
+/// Strategy-based per-element delay logic.
+mod strategy_delay_logic;
 /// Take (first N) logic.
 mod take_logic;
 /// Take-until logic.
@@ -182,6 +186,7 @@ pub(super) use partition_logic::*;
 pub(super) use prefix_and_tail_logic::*;
 pub(super) use recover_logic::*;
 pub(super) use recover_with_retries_logic::*;
+pub(super) use retry_flow_logic::*;
 pub(super) use sample_logic::*;
 pub(super) use scan_logic::*;
 pub(super) use sliding_logic::*;
@@ -189,6 +194,7 @@ pub(super) use split_after_logic::*;
 pub(super) use split_when_logic::*;
 pub(super) use stateful_map_concat_logic::*;
 pub(super) use stateful_map_logic::*;
+pub(super) use strategy_delay_logic::*;
 pub(super) use take_logic::*;
 pub(super) use take_until_logic::*;
 pub(super) use take_while_logic::*;

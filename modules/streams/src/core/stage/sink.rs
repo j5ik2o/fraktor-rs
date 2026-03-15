@@ -234,7 +234,11 @@ where
 
 impl Sink<u8, StreamCompletion<Vec<u8>>> {
   /// Creates a sink that collects bytes for path-compatible output.
+  ///
+  /// This stub ignores the path and simply collects bytes.
+  /// For actual file IO, use `FileIO::to_path` in the `std` module.
   #[must_use]
+  #[deprecated(note = "Use FileIO::to_path from the std module for actual file writing")]
   pub fn to_path(path: &str) -> Self {
     let _ = path;
     Self::collect()
@@ -457,7 +461,7 @@ where
     self.add_attributes(Attributes::named(name))
   }
 
-  pub(in crate::core::stage) fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
+  pub(crate) fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
   where
     L: SinkLogic + 'static, {
     let inlet: Inlet<In> = Inlet::new();

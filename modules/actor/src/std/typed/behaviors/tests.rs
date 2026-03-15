@@ -1,14 +1,15 @@
 extern crate std;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use tracing::{
   Event, Level, Metadata, Subscriber,
   field::{Field, Visit},
+  metadata::LevelFilter,
   span::{Attributes, Id, Record},
-  subscriber::with_default,
+  subscriber::{Interest, with_default},
 };
 
 use crate::{
@@ -19,6 +20,42 @@ use crate::{
   },
   std::typed::{Behaviors, LogOptions},
 };
+
+/// Ensures that tracing's global callsite interest cache does not permanently
+/// disable callsites before any subscriber is set.  A permissive global
+/// subscriber is installed once so that `Interest::sometimes()` is returned
+/// for every callsite, which forces per-dispatch `enabled()` checks and lets
+/// thread-local subscribers (via `with_default`) work correctly.
+fn ensure_tracing_interest_cache_permissive() {
+  static INIT: Once = Once::new();
+  INIT.call_once(|| {
+    struct PermissiveGlobalSubscriber;
+    impl Subscriber for PermissiveGlobalSubscriber {
+      fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
+        Interest::sometimes()
+      }
+
+      fn enabled(&self, _: &Metadata<'_>) -> bool {
+        false
+      }
+
+      fn new_span(&self, _: &Attributes<'_>) -> Id {
+        Id::from_u64(1)
+      }
+
+      fn record(&self, _: &Id, _: &Record<'_>) {}
+
+      fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+      fn event(&self, _: &Event<'_>) {}
+
+      fn enter(&self, _: &Id) {}
+
+      fn exit(&self, _: &Id) {}
+    }
+    let _ = tracing::subscriber::set_global_default(PermissiveGlobalSubscriber);
+  });
+}
 
 #[test]
 fn log_messages_delegates_to_inner_behavior() {
@@ -73,6 +110,7 @@ fn log_messages_with_opts_delegates_to_inner_behavior() {
 
 #[test]
 fn log_messages_with_opts_skips_logging_when_disabled() {
+  ensure_tracing_interest_cache_permissive();
   let collector = RecordingSubscriber::default();
   let shared = collector.clone();
 
@@ -96,6 +134,7 @@ fn log_messages_with_opts_skips_logging_when_disabled() {
 
 #[test]
 fn log_messages_with_opts_records_level_and_logger_name() {
+  ensure_tracing_interest_cache_permissive();
   let collector = RecordingSubscriber::default();
   let shared = collector.clone();
 
@@ -174,6 +213,7 @@ fn with_static_mdc_delegates_to_inner_behavior() {
 
 #[test]
 fn with_static_mdc_creates_span_on_message() {
+  ensure_tracing_interest_cache_permissive();
   let collector = SpanRecordingSubscriber::default();
   let shared = collector.clone();
 
@@ -191,11 +231,11 @@ fn with_static_mdc_creates_span_on_message() {
 
     let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
     inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
-  });
 
-  let spans = collector.spans();
-  assert!(!spans.is_empty(), "at least one span should be created");
-  assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "at least one span should be created");
+    assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+  });
 }
 
 #[test]
@@ -232,6 +272,7 @@ fn with_mdc_merges_static_and_per_message_entries() {
 
 #[test]
 fn with_static_mdc_creates_span_on_signal() {
+  ensure_tracing_interest_cache_permissive();
   let collector = SpanRecordingSubscriber::default();
   let shared = collector.clone();
 
@@ -251,11 +292,11 @@ fn with_static_mdc_creates_span_on_signal() {
     let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
     // Stopped signal triggers around_signal which creates the MDC span
     let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped);
-  });
 
-  let spans = collector.spans();
-  assert!(!spans.is_empty(), "span should be created for Stopped signal");
-  assert!(spans.iter().any(|s| s.name == "actor_mdc"));
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "span should be created for Stopped signal");
+    assert!(spans.iter().any(|s| s.name == "actor_mdc"));
+  });
 }
 
 #[derive(Clone, Debug)]
@@ -335,14 +376,23 @@ impl SpanRecordingSubscriber {
 }
 
 impl Subscriber for SpanRecordingSubscriber {
+  fn register_callsite(&self, _metadata: &'static Metadata<'static>) -> Interest {
+    Interest::sometimes()
+  }
+
   fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
     true
   }
 
+  fn max_level_hint(&self) -> Option<LevelFilter> {
+    Some(LevelFilter::TRACE)
+  }
+
   fn new_span(&self, attrs: &Attributes<'_>) -> Id {
     let name = attrs.metadata().name().into();
-    self.spans.lock().expect("lock").push(CapturedSpan { name });
-    Id::from_u64(self.spans.lock().expect("lock").len() as u64)
+    let mut spans = self.spans.lock().expect("lock");
+    spans.push(CapturedSpan { name });
+    Id::from_u64(spans.len() as u64)
   }
 
   fn record(&self, _: &Id, _: &Record<'_>) {}
