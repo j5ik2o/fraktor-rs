@@ -79,16 +79,17 @@ fn retry_flow_preserves_multiple_pending_retries_in_order() {
   let inner_flow: Flow<u32, u32, StreamNotUsed> =
     Flow::from_function(|x: u32| x).map_concat(|x: u32| alloc::vec![x.saturating_add(1), x.saturating_add(2)]);
 
-  let retry_flow = RetryFlow::with_backoff(
-    0,
-    0,
-    0,
-    4,
-    inner_flow,
-    |input: &u32, output: &u32| {
-      if *input < 10 { Some(output.saturating_add(100)) } else { None }
-    },
-  );
+  let retry_flow =
+    RetryFlow::with_backoff(
+      0,
+      0,
+      0,
+      4,
+      inner_flow,
+      |input: &u32, output: &u32| {
+        if *input < 10 { Some(output.saturating_add(100)) } else { None }
+      },
+    );
 
   let values = Source::single(1_u32).via(retry_flow).collect_values().expect("collect_values");
   assert_eq!(values, vec![103_u32, 104_u32, 104_u32, 105_u32]);
@@ -99,16 +100,9 @@ fn retry_flow_accepts_remaining_outputs_after_scheduling_retry() {
   let inner_flow: Flow<u32, u32, StreamNotUsed> =
     Flow::from_function(|x: u32| x).map_concat(|x: u32| alloc::vec![x.saturating_mul(2), 0_u32]);
 
-  let retry_flow = RetryFlow::with_backoff(
-    0,
-    0,
-    0,
-    3,
-    inner_flow,
-    |input: &u32, output: &u32| {
-      if *input < 10 && *output == 0 { Some(input.saturating_add(100)) } else { None }
-    },
-  );
+  let retry_flow = RetryFlow::with_backoff(0, 0, 0, 3, inner_flow, |input: &u32, output: &u32| {
+    if *input < 10 && *output == 0 { Some(input.saturating_add(100)) } else { None }
+  });
 
   let values = Source::single(1_u32).via(retry_flow).collect_values().expect("collect_values");
   assert_eq!(values, vec![2_u32, 202_u32, 0_u32]);

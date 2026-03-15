@@ -3042,10 +3042,7 @@ struct MultiOutputRetryTestLogic {
 impl FlowLogic for MultiOutputRetryTestLogic {
   fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
     let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
-    Ok(alloc::vec![
-      Box::new(value.saturating_add(1)) as DynValue,
-      Box::new(value.saturating_add(2)) as DynValue,
-    ])
+    Ok(alloc::vec![Box::new(value.saturating_add(1)) as DynValue, Box::new(value.saturating_add(2)) as DynValue,])
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
