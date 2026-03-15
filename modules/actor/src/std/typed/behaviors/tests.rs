@@ -7,6 +7,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use tracing::{
   Event, Level, Metadata, Subscriber,
   field::{Field, Visit},
+  metadata::LevelFilter,
   span::{Attributes, Id, Record},
   subscriber::with_default,
 };
@@ -339,10 +340,15 @@ impl Subscriber for SpanRecordingSubscriber {
     true
   }
 
+  fn max_level_hint(&self) -> Option<LevelFilter> {
+    Some(LevelFilter::TRACE)
+  }
+
   fn new_span(&self, attrs: &Attributes<'_>) -> Id {
     let name = attrs.metadata().name().into();
-    self.spans.lock().expect("lock").push(CapturedSpan { name });
-    Id::from_u64(self.spans.lock().expect("lock").len() as u64)
+    let mut spans = self.spans.lock().expect("lock");
+    spans.push(CapturedSpan { name });
+    Id::from_u64(spans.len() as u64)
   }
 
   fn record(&self, _: &Id, _: &Record<'_>) {}
