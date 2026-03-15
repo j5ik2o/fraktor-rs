@@ -243,7 +243,7 @@ Pekkoに存在してfraktor-rsに存在しない機能を特定する。
 ## 注意事項
 
 - 完了のための計画になっているか確認し、漏れがある場合は是正すること
-- 出力したファイルを `ls -al ${PROJECT_ROOT}/ddocs/gap-analysis/${name}-gap-analysis.md` コマンドで更新されているか確認すること
+- 出力したファイルを `ls -al ${PROJECT_ROOT}/docs/gap-analysis/${name}-gap-analysis.md` コマンドで更新されているか確認すること
 - `n/a` 判定は保守的に行う（JVM固有、Akka互換層、deprecated機能のみ）
 - Rust/no_std 固有の制約（`cfg_std_forbid` lint等）を考慮する
 
