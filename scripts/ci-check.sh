@@ -164,7 +164,12 @@ guard_against_repeat_hang() {
 
 enable_ai_mode() {
   export CI_CHECK_HEARTBEAT_INTERVAL_SEC="${CI_CHECK_HEARTBEAT_INTERVAL_SEC:-30}"
-  export CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-1800}"
+  # Unconditionally set: the top-level default initialises the variable to 0,
+  # so the ${..:-1800} expansion never fires.  Override explicitly for AI runs.
+  if [[ "${CI_CHECK_GUARD_TIMEOUT_SEC}" == "0" ]]; then
+    CI_CHECK_GUARD_TIMEOUT_SEC=1800
+  fi
+  export CI_CHECK_GUARD_TIMEOUT_SEC
   export CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
   export CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 
