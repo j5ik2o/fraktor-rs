@@ -190,10 +190,13 @@ where
         let props = TypedProps::<M>::from_behavior_factory(move || {
           let q2 = q.clone();
           let bf2 = bf.clone();
-          Behaviors::intercept(move || Box::new(WorkPullInterceptor { queue: q2.clone() }), move || {
-            let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf2;
-            factory()
-          })
+          Behaviors::intercept(
+            move || Box::new(WorkPullInterceptor { queue: q2.clone() }),
+            move || {
+              let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf2;
+              factory()
+            },
+          )
         });
         match ctx.spawn_child_watched(&props) {
           | Ok(child) => {
@@ -209,9 +212,7 @@ where
 
       // routee が1体も起動できなかった場合はルーターを停止する
       if routee_pids.is_empty() {
-        ctx
-          .system()
-          .emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()));
         return Behaviors::stopped();
       }
 

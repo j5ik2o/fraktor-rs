@@ -13,7 +13,12 @@ impl QueueCapabilitySet {
   /// Creates a fully disabled capability set.
   #[must_use]
   pub const fn empty() -> Self {
-    Self { has_mpsc: false, has_deque: false, has_blocking_future: false, has_control_aware: false }
+    Self {
+      has_mpsc:            false,
+      has_deque:           false,
+      has_blocking_future: false,
+      has_control_aware:   false,
+    }
   }
 
   /// Creates a capability set with all runtime-provided defaults enabled.

@@ -91,7 +91,6 @@ impl AnyMessage {
   pub(crate) fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool) {
     (self.payload, self.sender, self.is_control)
   }
-
 }
 
 impl Clone for AnyMessage {

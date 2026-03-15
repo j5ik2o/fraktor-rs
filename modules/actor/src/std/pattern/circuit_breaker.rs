@@ -36,8 +36,8 @@ pub struct CircuitBreaker {
 impl CircuitBreaker {
   /// Creates a new circuit breaker in the **Closed** state.
   ///
-  /// * `max_failures` — number of consecutive failures before the circuit trips.
-  ///   Must be greater than zero.
+  /// * `max_failures` — number of consecutive failures before the circuit trips. Must be greater
+  ///   than zero.
   /// * `reset_timeout` — how long to wait in the **Open** state before allowing a probe call.
   ///
   /// # Panics

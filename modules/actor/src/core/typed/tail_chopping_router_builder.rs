@@ -123,11 +123,7 @@ where
 
       // routee が1体も起動できなかった場合はルーターを停止する
       if routee_vec.is_empty() {
-        ctx.system().emit_log(
-          LogLevel::Error,
-          "tail-chopping router has no routees, stopping",
-          Some(ctx.pid()),
-        );
+        ctx.system().emit_log(LogLevel::Error, "tail-chopping router has no routees, stopping", Some(ctx.pid()));
         return Behaviors::stopped();
       }
 

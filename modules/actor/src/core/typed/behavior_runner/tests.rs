@@ -152,7 +152,10 @@ fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
   let error = result.unwrap_err();
-  assert!(error.is_source_type::<DeathPactException>(), "handler が Unhandled を返した場合も DeathPactException になるべき");
+  assert!(
+    error.is_source_type::<DeathPactException>(),
+    "handler が Unhandled を返した場合も DeathPactException になるべき"
+  );
   assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
 }
 

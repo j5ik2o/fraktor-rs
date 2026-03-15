@@ -10,7 +10,6 @@ use crate::core::{
     DeathPactException, UnhandledMessageEvent,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
-
     behavior_signal::BehaviorSignal,
     message_adapter::AdapterError,
   },
