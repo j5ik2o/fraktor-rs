@@ -70,7 +70,12 @@ impl JsonFramingLogic {
     let mut deferred_error: Option<StreamError> = None;
 
     while let Some(start) = self.buffer.iter().position(|&b| b == b'{' || b == b'[') {
-      match self.try_extract_object(start) {
+      // Discard leading non-bracket data so it cannot accumulate without limit.
+      if start > 0 {
+        self.buffer = self.buffer[start..].to_vec();
+      }
+
+      match self.try_extract_object(0) {
         | Ok(Some(object_bytes)) => results.push(Box::new(object_bytes) as DynValue),
         | Ok(None) => break,
         | Err(e) => {

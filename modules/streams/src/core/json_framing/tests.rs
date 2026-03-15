@@ -107,3 +107,23 @@ fn should_handle_empty_array() {
   let frames: Vec<Vec<u8>> = result.unwrap();
   assert_eq!(frames, vec![br#"[]"#.to_vec()]);
 }
+
+#[test]
+fn should_error_when_leading_garbage_exceeds_max_length() {
+  let framing = JsonFraming::object_scanner(10);
+  // 20 bytes of whitespace/garbage before the bracket — exceeds limit
+  let source = Source::single(b"                    {\"a\":1}".to_vec());
+  let result = source.via(framing).collect_values();
+  // Leading data is discarded, so the object itself (7 bytes) fits within the limit
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames, vec![br#"{"a":1}"#.to_vec()]);
+}
+
+#[test]
+fn should_error_when_no_bracket_data_exceeds_max_length() {
+  let framing = JsonFraming::object_scanner(5);
+  // No brackets at all — buffer grows beyond limit
+  let source = Source::single(b"garbage_no_bracket_data".to_vec());
+  let result = source.via(framing).collect_values();
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
