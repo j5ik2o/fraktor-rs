@@ -3,7 +3,7 @@ name: pekko-gap-analysis
 description: >-
   fraktor-rsの指定モジュール（modules/{name}）とApache Pekkoの参照実装（references/pekko/{name}）を比較し、
   不足機能を洗い出すギャップ分析スキル。公開API・trait・オペレーター・パターンを両側から抽出し、
-  カテゴリ別に分類して難易度を付与する。制約カード（spec-constraint-card）作成の入力として活用可能。
+  カテゴリ別に分類して難易度を付与する。
   トリガー：「Pekkoと比較して不足機能を洗い出して」「gap analysis」「ギャップ分析」
   「references/pekkoとの差分」「不足オペレーターを調べて」「Pekko対応状況」
   「modules/{name}の不足機能」といったPekko参照実装との比較リクエストで起動。
