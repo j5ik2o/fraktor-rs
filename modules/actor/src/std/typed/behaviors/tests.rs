@@ -192,11 +192,11 @@ fn with_static_mdc_creates_span_on_message() {
 
     let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
     inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
-  });
 
-  let spans = collector.spans();
-  assert!(!spans.is_empty(), "at least one span should be created");
-  assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "at least one span should be created");
+    assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+  });
 }
 
 #[test]
@@ -252,11 +252,11 @@ fn with_static_mdc_creates_span_on_signal() {
     let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
     // Stopped signal triggers around_signal which creates the MDC span
     let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped);
-  });
 
-  let spans = collector.spans();
-  assert!(!spans.is_empty(), "span should be created for Stopped signal");
-  assert!(spans.iter().any(|s| s.name == "actor_mdc"));
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "span should be created for Stopped signal");
+    assert!(spans.iter().any(|s| s.name == "actor_mdc"));
+  });
 }
 
 #[derive(Clone, Debug)]
