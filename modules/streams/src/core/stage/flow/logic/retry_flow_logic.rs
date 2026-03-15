@@ -84,7 +84,7 @@ where
     self.check_outputs(outputs)
   }
 
-  fn reset_retry_state(&mut self) {
+  const fn reset_retry_state(&mut self) {
     self.retry_count = 0;
     self.current_backoff_ticks = self.min_backoff_ticks;
   }
