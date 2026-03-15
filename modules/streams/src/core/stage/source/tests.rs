@@ -158,6 +158,13 @@ fn noop_waker() -> Waker {
   Waker::noop().clone()
 }
 
+/// Base loop count for tests that must wait for a background producer thread to be
+/// scheduled and execute.  The actual count is multiplied by `TEST_TIME_FACTOR`
+/// (default 1.0, set to 2.0 in CI) so the value needs to be large enough to
+/// tolerate OS-level thread scheduling delays in resource-constrained CI environments
+/// while remaining fast on local machines where threads are scheduled promptly.
+const THREAD_SYNC_ATTEMPTS: usize = 4096;
+
 fn test_time_factor() -> f64 {
   match env::var("TEST_TIME_FACTOR") {
     | Err(_) => 1.0,
@@ -761,7 +768,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
@@ -861,7 +868,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let sink_queue = &materialized.materialized().1;
 
   let mut first_value = None;
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let started_at = Instant::now();
     let _ = materialized.handle().drive();
     assert!(
@@ -888,7 +895,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   resume_second_offer.store(true, Ordering::SeqCst);
 
   let mut second_value = None;
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let _ = materialized.handle().drive();
     if let Some(value) = sink_queue.pull() {
       second_value = Some(value);
