@@ -44,9 +44,13 @@ fn ensure_tracing_interest_cache_permissive() {
       }
 
       fn record(&self, _: &Id, _: &Record<'_>) {}
+
       fn record_follows_from(&self, _: &Id, _: &Id) {}
+
       fn event(&self, _: &Event<'_>) {}
+
       fn enter(&self, _: &Id) {}
+
       fn exit(&self, _: &Id) {}
     }
     let _ = tracing::subscriber::set_global_default(PermissiveGlobalSubscriber);

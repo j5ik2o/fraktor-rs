@@ -83,7 +83,12 @@ where
     Ok(current)
   }
 
-  fn process_element(&mut self, input: In, retry_count: usize, backoff_ticks: u32) -> Result<Vec<DynValue>, StreamError> {
+  fn process_element(
+    &mut self,
+    input: In,
+    retry_count: usize,
+    backoff_ticks: u32,
+  ) -> Result<Vec<DynValue>, StreamError> {
     self.element_in_progress = Some(input.clone());
     self.active_retry_count = retry_count;
     self.active_backoff_ticks = backoff_ticks;
