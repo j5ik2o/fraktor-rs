@@ -598,6 +598,7 @@ impl ActorSystem {
       | QueueCapability::Mpsc => "mailbox requires MPSC capability",
       | QueueCapability::Deque => "mailbox requires deque capability",
       | QueueCapability::BlockingFuture => "mailbox requires blocking-future capability",
+      | QueueCapability::ControlAware => "mailbox requires control-aware capability",
     }
   }
 

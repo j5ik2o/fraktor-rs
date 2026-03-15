@@ -78,16 +78,16 @@ fn drop_oldest_evicts_earliest_inserted_message() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = BoundedStablePriorityMessageQueue::new(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // Insert priority 10 first, then priority 30.
+  // 最初に優先度10を挿入、次に優先度30を挿入。
   queue.enqueue(AnyMessage::new(10_i32)).unwrap();
   queue.enqueue(AnyMessage::new(30_i32)).unwrap();
   assert_eq!(queue.number_of_messages(), 2);
 
-  // Enqueue priority 20 — should evict priority 10 (oldest inserted).
+  // 優先度20をエンキュー — 優先度10（最も古い挿入）が退避される。
   queue.enqueue(AnyMessage::new(20_i32)).unwrap();
   assert_eq!(queue.number_of_messages(), 2);
 
-  // Remaining: priority 20 and 30, dequeued in priority order.
+  // 残り: 優先度20と30、優先度順にデキューされる。
   let first = queue.dequeue().unwrap();
   assert_eq!(*first.payload().downcast_ref::<i32>().unwrap(), 20);
 
@@ -102,14 +102,14 @@ fn drop_oldest_with_equal_priority_evicts_earliest() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> = ArcShared::new(|_msg: &AnyMessage| -> i32 { 5 });
   let queue = BoundedStablePriorityMessageQueue::new(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // All messages have the same priority. DropOldest evicts the earliest
-  // inserted (lowest sequence number).
+  // 全メッセージが同一優先度。DropOldest は最も早く挿入された
+  // （最小シーケンス番号の）メッセージを退避する。
   queue.enqueue(AnyMessage::new("a")).unwrap();
   queue.enqueue(AnyMessage::new("b")).unwrap();
   queue.enqueue(AnyMessage::new("c")).unwrap();
   assert_eq!(queue.number_of_messages(), 2);
 
-  // "a" was oldest, so it was evicted. "b" and "c" remain in FIFO order.
+  // "a" が最も古いため退避された。"b" と "c" が FIFO 順で残る。
   let first = queue.dequeue().unwrap();
   assert_eq!(*first.payload().downcast_ref::<&str>().unwrap(), "b");
 

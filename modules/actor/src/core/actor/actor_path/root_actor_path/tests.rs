@@ -24,7 +24,7 @@ fn from_parts_preserves_metadata() {
     .with_guardian(GuardianKind::System)
     .with_authority_host("host.example.com".into())
     .with_authority_port(2552);
-  let root = RootActorPath::from_parts(parts);
+  let root = RootActorPath::from_parts(parts).expect("有効なルートパスのパーツ");
   assert_eq!(root.parts().system(), "testsys");
   assert_eq!(root.guardian(), GuardianKind::System);
 }

@@ -45,7 +45,13 @@ impl MessageBuffer {
     self.entries.front().map(|(m, r)| (m, r))
   }
 
-  /// Removes the first element from the buffer.
+  /// Removes and returns the first element from the buffer.
+  #[must_use]
+  pub fn pop_head(&mut self) -> Option<(AnyMessage, ActorRef)> {
+    self.entries.pop_front()
+  }
+
+  /// Removes the first element from the buffer, discarding it.
   pub fn drop_head(&mut self) {
     self.entries.pop_front();
   }

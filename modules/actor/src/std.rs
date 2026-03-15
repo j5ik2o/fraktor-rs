@@ -6,6 +6,7 @@ pub mod dispatch;
 pub mod event;
 /// Pekko-inspired helper patterns for the standard toolbox.
 pub mod pattern;
+pub use pattern::*;
 /// Props and dispatcher configuration bindings for the standard toolbox.
 pub mod props;
 /// Scheduler bindings for the standard toolbox.

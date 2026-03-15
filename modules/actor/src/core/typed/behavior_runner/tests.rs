@@ -140,6 +140,22 @@ fn behavior_runner_death_pact_succeeds_with_signal_handler() {
   assert!(received.load(Ordering::SeqCst));
 }
 
+/// signal handler が存在するが Behaviors::unhandled() を返す場合、
+/// DeathPactException が発行されることを検証する回帰テスト。
+#[test]
+fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
+  let behavior = Behaviors::receive_signal(|_, _signal| Ok(Behaviors::unhandled()));
+  let mut runner = BehaviorRunner::new(behavior);
+  let (system, pids) = build_context_with_pids(2);
+  let mut ctx = ActorContext::new(&system, pids[0]);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let result = runner.on_terminated(&mut typed_ctx, pids[1]);
+  let error = result.unwrap_err();
+  assert!(error.is_source_type::<DeathPactException>(), "handler が Unhandled を返した場合も DeathPactException になるべき");
+  assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
+}
+
 #[test]
 fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
   let system = ActorSystem::new_empty();

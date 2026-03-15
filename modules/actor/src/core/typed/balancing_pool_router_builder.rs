@@ -46,7 +46,10 @@ where
   /// Enqueue a message. If an idle worker exists, dispatch immediately.
   fn enqueue(&mut self, message: M) {
     if let Some(mut worker) = self.idle_workers.pop() {
-      let _ = worker.tell(message);
+      if worker.tell(message.clone()).is_err() {
+        // worker が停止済み — メッセージを pending に戻す（worker は再登録しない）
+        self.pending.push_back(message);
+      }
     } else {
       self.pending.push_back(message);
     }
@@ -56,7 +59,10 @@ where
   fn register_idle(&mut self, worker: TypedActorRef<M>) {
     if let Some(msg) = self.pending.pop_front() {
       let mut w = worker;
-      let _ = w.tell(msg);
+      if w.tell(msg.clone()).is_err() {
+        // worker が停止済み — メッセージを pending の先頭に戻す（worker は再登録しない）
+        self.pending.push_front(msg);
+      }
     } else {
       self.idle_workers.push(worker);
     }
@@ -170,7 +176,6 @@ where
 
   /// Builds the balancing pool router as a [`Behavior`].
   #[must_use]
-  #[allow(clippy::redundant_closure)]
   pub fn build(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
@@ -185,7 +190,10 @@ where
         let props = TypedProps::<M>::from_behavior_factory(move || {
           let q2 = q.clone();
           let bf2 = bf.clone();
-          Behaviors::intercept(move || Box::new(WorkPullInterceptor { queue: q2.clone() }), move || bf2())
+          Behaviors::intercept(move || Box::new(WorkPullInterceptor { queue: q2.clone() }), move || {
+            let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf2;
+            factory()
+          })
         });
         match ctx.spawn_child_watched(&props) {
           | Ok(child) => {
@@ -197,6 +205,14 @@ where
             break;
           },
         }
+      }
+
+      // routee が1体も起動できなかった場合はルーターを停止する
+      if routee_pids.is_empty() {
+        ctx
+          .system()
+          .emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()));
+        return Behaviors::stopped();
       }
 
       let queue_for_msg = queue.clone();

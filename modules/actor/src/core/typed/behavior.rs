@@ -231,6 +231,7 @@ where
   where
     Outer: Send + Sync + 'static,
     F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
+    let supervisor_override = self.supervisor_override.clone();
     let inner_slot = ArcShared::new(RuntimeMutex::new(Some(self)));
     let mapper = ArcShared::new(mapper);
 
@@ -258,23 +259,26 @@ where
           let state_sig = state;
           let mapper_msg = mapper.clone();
 
-          Ok(
-            Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
-              | Some(inner_msg) => {
-                let mut guard = state_msg.lock();
-                let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-                let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
-                Ok(resolve_transform_directive(&mut guard, next))
-              },
-              | None => Ok(Behavior::unhandled()),
-            })
-            .receive_signal(move |ctx, signal| {
-              let mut guard = state_sig.lock();
+          let mut outer = Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
+            | Some(inner_msg) => {
+              let mut guard = state_msg.lock();
               let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-              let next = guard.handle_signal(&mut inner_ctx, signal)?;
+              let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
               Ok(resolve_transform_directive(&mut guard, next))
-            }),
-          )
+            },
+            | None => Ok(Behavior::unhandled()),
+          })
+          .receive_signal(move |ctx, signal| {
+            let mut guard = state_sig.lock();
+            let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+            let next = guard.handle_signal(&mut inner_ctx, signal)?;
+            Ok(resolve_transform_directive(&mut guard, next))
+          });
+          // 内部 Behavior の supervisor_override を外部 Behavior に引き継ぐ
+          if let Some(strategy) = &supervisor_override {
+            outer = outer.with_supervisor_strategy(strategy.clone());
+          }
+          Ok(outer)
         },
         | _ => Ok(Behavior::same()),
       }

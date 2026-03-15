@@ -49,6 +49,7 @@ where
     &mut self,
     ctx: &mut ActorContext<'_>,
     envelope: &AdapterEnvelope,
+    is_control: bool,
   ) -> Result<(), ActorError> {
     let sender = envelope.sender().cloned();
     let Some(payload) = envelope.take_payload() else {
@@ -56,17 +57,18 @@ where
       return Ok(());
     };
     if payload.type_id() != envelope.type_id() {
-      Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting);
+      Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting, is_control);
       ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
       return Ok(());
     }
     let (outcome, leftover) = self.adapters.adapt(payload);
-    self.handle_adapter_outcome(ctx, outcome, sender.as_ref(), leftover)
+    self.handle_adapter_outcome(ctx, outcome, sender.as_ref(), leftover, is_control)
   }
 
   fn handle_adapt_message(&mut self, ctx: &mut ActorContext<'_>, message: &AdaptMessage<M>) -> Result<(), ActorError> {
     let outcome = message.execute();
-    self.handle_adapter_outcome(ctx, outcome, None, None)
+    // AdaptMessage はローカル生成のため control フラグは不要
+    self.handle_adapter_outcome(ctx, outcome, None, None, false)
   }
 
   fn handle_adapter_outcome(
@@ -75,13 +77,14 @@ where
     outcome: AdapterOutcome<M>,
     sender: Option<&ActorRef>,
     original_payload: Option<AdapterPayload>,
+    is_control: bool,
   ) -> Result<(), ActorError> {
     match outcome {
       | AdapterOutcome::Converted(message) => self.deliver_converted_message(ctx, message, sender),
       | AdapterOutcome::Failure(failure) => self.forward_adapter_failure(ctx, failure),
       | AdapterOutcome::NotFound => {
         if let Some(payload) = original_payload {
-          Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting);
+          Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting, is_control);
         }
         ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()));
         Ok(())
@@ -173,9 +176,10 @@ where
     payload: AdapterPayload,
     sender: Option<&ActorRef>,
     reason: DeadLetterReason,
+    is_control: bool,
   ) {
     let system_state = ctx.system().state();
-    let message = AnyMessage::from_parts(payload.into_erased(), sender.cloned(), false);
+    let message = AnyMessage::from_parts(payload.into_erased(), sender.cloned(), is_control);
     system_state.record_dead_letter(message, reason, Some(ctx.pid()));
   }
 }
@@ -191,7 +195,7 @@ where
 
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(envelope) = message.downcast_ref::<AdapterEnvelope>() {
-      let result = self.handle_adapter_envelope(ctx, envelope);
+      let result = self.handle_adapter_envelope(ctx, envelope, message.is_control());
       self.reschedule_receive_timeout(ctx);
       return result;
     }

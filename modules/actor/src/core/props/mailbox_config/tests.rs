@@ -43,3 +43,23 @@ fn validate_accepts_default_config() {
   let config = MailboxConfig::default();
   assert!(config.validate().is_ok());
 }
+
+#[test]
+fn validate_rejects_control_aware_with_bounded_policy() {
+  use core::num::NonZeroUsize;
+
+  use crate::core::dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy};
+
+  let capacity = NonZeroUsize::new(10).unwrap();
+  let bounded_policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
+  let config =
+    MailboxConfig::new(bounded_policy).with_requirement(MailboxRequirement::requires_control_aware());
+  assert_eq!(config.validate(), Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy));
+}
+
+#[test]
+fn validate_accepts_control_aware_with_unbounded_policy() {
+  let config =
+    MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
+  assert!(config.validate().is_ok());
+}

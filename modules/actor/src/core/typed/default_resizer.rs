@@ -51,14 +51,17 @@ impl DefaultResizer {
 
 impl Resizer for DefaultResizer {
   fn is_time_for_resize(&self, message_counter: u64) -> bool {
-    message_counter.is_multiple_of(self.messages_per_resize)
+    // 0u64.is_multiple_of(n) は全ての n で true を返すため、初回メッセージでの不要なリサイズを防ぐ
+    message_counter > 0 && message_counter.is_multiple_of(self.messages_per_resize)
   }
 
   fn resize(&self, current_routee_count: usize) -> i32 {
     if current_routee_count < self.lower_bound {
-      (self.lower_bound - current_routee_count) as i32
+      let diff = self.lower_bound - current_routee_count;
+      i32::try_from(diff).unwrap_or(i32::MAX)
     } else if current_routee_count > self.upper_bound {
-      -((current_routee_count - self.upper_bound) as i32)
+      let diff = current_routee_count - self.upper_bound;
+      i32::try_from(diff).map(|v| -v).unwrap_or(i32::MIN)
     } else {
       0
     }

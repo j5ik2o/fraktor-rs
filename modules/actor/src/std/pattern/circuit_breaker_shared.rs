@@ -19,14 +19,9 @@ mod tests;
 /// Wraps [`CircuitBreaker`] in `ArcShared<RuntimeMutex<..>>` and provides an
 /// async [`call`](Self::call) method that checks permission, executes the
 /// operation, and records the outcome automatically.
+#[derive(Clone)]
 pub struct CircuitBreakerShared {
   inner: ArcShared<RuntimeMutex<CircuitBreaker>>,
-}
-
-impl Clone for CircuitBreakerShared {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
-  }
 }
 
 impl CircuitBreakerShared {

@@ -93,7 +93,6 @@ where
 
   /// Builds the tail-chopping pool router as a [`Behavior`].
   #[must_use]
-  #[allow(clippy::redundant_closure)]
   pub fn build(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
@@ -105,7 +104,10 @@ where
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
-      let props = TypedProps::<M>::from_behavior_factory(move || bf());
+      let props = TypedProps::<M>::from_behavior_factory(move || {
+        let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
+        factory()
+      });
 
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
@@ -117,6 +119,16 @@ where
             break;
           },
         }
+      }
+
+      // routee が1体も起動できなかった場合はルーターを停止する
+      if routee_vec.is_empty() {
+        ctx.system().emit_log(
+          LogLevel::Error,
+          "tail-chopping router has no routees, stopping",
+          Some(ctx.pid()),
+        );
+        return Behaviors::stopped();
       }
 
       let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
@@ -146,8 +158,9 @@ where
             timeout_reply: (*timeout_reply).clone(),
           });
         } else {
-          for routee in guard.iter() {
-            let mut r = routee.clone();
+          // reply_to なし（fire-and-forget）— 最初の1台のみに送信する（broadcast しない）
+          if let Some(first) = guard.first() {
+            let mut r = first.clone();
             let _ = r.tell(message.clone());
           }
         }
@@ -203,17 +216,30 @@ where
 }
 
 /// Spawns a tail-chopping coordinator child actor.
+/// spawn 失敗時は timeout_reply を caller に返し、ask 側が待ちぼうけにならないようにする。
 fn spawn_chop_coordinator<'a, M, R>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'a, M>,
   params: ChopCoordinatorParams<M, R>,
 ) where
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
+  // spawn 失敗時に timeout_reply を返すため、事前に控えておく
+  let mut fallback_reply_to = params.reply_to.clone();
+  let fallback_timeout_reply = params.timeout_reply.clone();
   let coord_props = chop_coordinator_props(params);
 
-  if let Err(e) = ctx.spawn_child(&coord_props) {
-    let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
-    ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+  match ctx.spawn_child(&coord_props) {
+    | Ok(_) => {},
+    | Err(e) => {
+      let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
+      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      // caller が無応答にならないよう timeout_reply を即時返却する。
+      // tell 自体が失敗してもログ済みなのでここでは抑制する。
+      if let Err(tell_err) = fallback_reply_to.tell(fallback_timeout_reply) {
+        let msg = alloc::format!("failed to send timeout_reply after coordinator spawn failure: {:?}", tell_err);
+        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      }
+    },
   }
 }
 

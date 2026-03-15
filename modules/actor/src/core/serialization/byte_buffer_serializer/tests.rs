@@ -43,7 +43,7 @@ fn appends_to_existing_buffer_content() {
   let mut buf: Vec<u8> = vec![0x01, 0x02];
   serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf).unwrap();
 
-  // The serializer appends; existing bytes are preserved.
+  // シリアライザは追記する。既存バイトは保持される。
   assert_eq!(&buf[..2], &[0x01, 0x02]);
   assert_eq!(&buf[2..], b"world");
 }
@@ -67,8 +67,8 @@ fn trait_object_is_send_sync() {
 }
 
 #[test]
-fn debug_representation_of_trait_name() {
-  // Ensure the trait can be used as a trait object.
+fn serialize_via_trait_object() {
+  // トレイトオブジェクト経由でシリアライズできることを確認する。
   let serializer: &dyn ByteBufferSerializer = &StubByteBufferSerializer;
   let mut buf: Vec<u8> = Vec::new();
   let message = String::from("test");

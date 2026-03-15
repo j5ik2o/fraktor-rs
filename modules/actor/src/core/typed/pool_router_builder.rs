@@ -127,7 +127,6 @@ where
 
   /// Builds the pool router as a [`Behavior`].
   #[must_use]
-  #[allow(clippy::redundant_closure)]
   pub fn build(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
@@ -137,7 +136,10 @@ where
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
-      let props = TypedProps::<M>::from_behavior_factory(move || bf());
+      let props = TypedProps::<M>::from_behavior_factory(move || {
+        let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
+        factory()
+      });
 
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
@@ -160,6 +162,7 @@ where
       let routees_for_sig = routees;
 
       let mut dispatch_counts_for_sig: Option<ArcShared<RuntimeMutex<Vec<usize>>>> = None;
+      let mut dispatch_counts_for_msg: Option<ArcShared<RuntimeMutex<Vec<usize>>>> = None;
 
       let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
         | PoolRouteStrategy::RoundRobin => {
@@ -187,6 +190,7 @@ where
         | PoolRouteStrategy::SmallestMailbox => {
           let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
           dispatch_counts_for_sig = Some(dispatch_counts.clone());
+          dispatch_counts_for_msg = Some(dispatch_counts.clone());
           ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
             let idx = select_smallest_mailbox_index(guard, &dispatch_counts);
             vec![guard[idx].clone()]
@@ -196,6 +200,7 @@ where
 
       let broadcast_predicate_for_message = broadcast_predicate.clone();
       let resizer_for_msg = resizer.clone();
+      let dispatch_counts_for_resize = dispatch_counts_for_msg;
       let message_counter = AtomicU64::new(0);
       Behaviors::receive_message(move |ctx, message: &M| {
         // --- Resize check ---
@@ -218,17 +223,31 @@ where
                   }
                 }
                 if !new_routees.is_empty() {
-                  routees_for_msg.lock().extend(new_routees);
+                  // routee 配列と dispatch_counts を同一 routees guard 内で更新する。
+                  // select_targets も routees guard を取得してから dispatch_counts を参照するため、
+                  // この guard を保持している間は select_targets が割り込めず不整合は発生しない。
+                  let mut guard = routees_for_msg.lock();
+                  guard.extend(new_routees);
+                  if let Some(ref dc) = dispatch_counts_for_resize {
+                    let mut counts = dc.lock();
+                    counts.resize(guard.len(), 0);
+                  }
                 }
               }
             } else if delta < 0 {
               let abs_delta = (-delta) as usize;
               let to_stop: Vec<TypedActorRef<M>> = {
                 let mut guard = routees_for_msg.lock();
-                // Never remove all routees — keep at least one.
+                // routee を全て削除しない — 最低1台は残す
                 let remove_count = abs_delta.min(guard.len().saturating_sub(1));
                 let split_at = guard.len() - remove_count;
-                guard.split_off(split_at)
+                let removed = guard.split_off(split_at);
+                // SmallestMailbox 用 dispatch_counts も routees guard 内で同期して縮小する
+                if let Some(ref dc) = dispatch_counts_for_resize {
+                  let mut counts = dc.lock();
+                  counts.truncate(guard.len());
+                }
+                removed
               };
               for routee in &to_stop {
                 let _ = ctx.stop_actor_by_ref(routee);

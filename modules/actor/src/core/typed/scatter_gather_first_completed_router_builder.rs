@@ -88,7 +88,6 @@ where
 
   /// Builds the scatter-gather pool router as a [`Behavior`].
   #[must_use]
-  #[allow(clippy::redundant_closure)]
   pub fn build(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
@@ -99,7 +98,10 @@ where
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
-      let props = TypedProps::<M>::from_behavior_factory(move || bf());
+      let props = TypedProps::<M>::from_behavior_factory(move || {
+        let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
+        factory()
+      });
 
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {

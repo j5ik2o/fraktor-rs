@@ -58,7 +58,7 @@ impl AnyMessage {
   /// Converts the owned message into a borrowed view.
   #[must_use]
   pub fn as_view(&self) -> AnyMessageView<'_> {
-    AnyMessageView::new(&*self.payload, self.sender.as_ref())
+    AnyMessageView::with_control(&*self.payload, self.sender.as_ref(), self.is_control)
   }
 
   /// Reconstructs a message from an erased payload pointer.
@@ -87,10 +87,11 @@ impl AnyMessage {
     Self { payload, sender, is_control }
   }
 
-  /// Consumes the message and returns the payload alongside the sender.
-  pub(crate) fn into_payload_and_sender(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>) {
-    (self.payload, self.sender)
+  /// Consumes the message and returns the payload, sender, and control flag.
+  pub(crate) fn into_parts(self) -> (ArcShared<dyn Any + Send + Sync + 'static>, Option<ActorRef>, bool) {
+    (self.payload, self.sender, self.is_control)
   }
+
 }
 
 impl Clone for AnyMessage {

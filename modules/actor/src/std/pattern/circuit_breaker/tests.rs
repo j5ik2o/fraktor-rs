@@ -7,6 +7,13 @@ use super::CircuitBreaker;
 use crate::std::pattern::circuit_breaker_state::CircuitBreakerState;
 
 #[test]
+#[should_panic(expected = "max_failures must be greater than zero")]
+fn rejects_zero_max_failures() {
+  // max_failures == 0 は意味が曖昧なため拒否される
+  let _ = CircuitBreaker::new(0, Duration::from_millis(100));
+}
+
+#[test]
 fn new_starts_in_closed_state() {
   let cb = CircuitBreaker::new(3, Duration::from_millis(100));
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
@@ -62,7 +69,10 @@ fn open_rejects_calls() {
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  let err = cb.is_call_permitted().unwrap_err();
+  let err = match cb.is_call_permitted() {
+    | Err(e) => e,
+    | Ok(()) => panic!("expected Err but got Ok(())"),
+  };
   assert!(err.remaining() > Duration::ZERO);
 }
 

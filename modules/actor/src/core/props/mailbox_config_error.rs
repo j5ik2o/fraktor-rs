@@ -6,6 +6,8 @@ use core::fmt;
 pub enum MailboxConfigError {
   /// `stable_priority` was enabled without attaching a priority generator.
   StablePriorityWithoutGenerator,
+  /// Control-aware mailbox requires an unbounded policy (bounded is not supported).
+  ControlAwareRequiresUnboundedPolicy,
 }
 
 impl fmt::Display for MailboxConfigError {
@@ -13,6 +15,9 @@ impl fmt::Display for MailboxConfigError {
     match self {
       | Self::StablePriorityWithoutGenerator => {
         write!(f, "stable_priority requires a priority generator to be attached")
+      },
+      | Self::ControlAwareRequiresUnboundedPolicy => {
+        write!(f, "control-aware mailbox requires an unbounded policy")
       },
     }
   }

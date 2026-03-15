@@ -32,7 +32,10 @@ async fn call_succeeds_in_closed() {
   let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
 
   let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
-  assert_eq!(result.unwrap(), 42);
+  match result {
+    | Ok(value) => assert_eq!(value, 42),
+    | Err(err) => panic!("期待値: Ok(42), 実際: Err({err:?})"),
+  }
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
 }
 
@@ -67,7 +70,10 @@ async fn call_recovers_after_reset_timeout() {
   thread::sleep(Duration::from_millis(20));
 
   let result = cb.call(|| async { Ok::<_, &str>(99) }).await;
-  assert_eq!(result.unwrap(), 99);
+  match result {
+    | Ok(value) => assert_eq!(value, 99),
+    | Err(err) => panic!("期待値: Ok(99), 実際: Err({err:?})"),
+  }
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
 }
 

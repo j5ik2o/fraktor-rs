@@ -9,7 +9,7 @@ use crate::core::{
 #[test]
 fn creates_priority_queue() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> =
-    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(0) });
+    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
   let factory = UnboundedPriorityMailboxType::new(pgen);
   let queue = factory.create();
 

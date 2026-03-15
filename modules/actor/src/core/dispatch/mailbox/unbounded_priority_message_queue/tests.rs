@@ -86,7 +86,7 @@ fn has_messages_reflects_queue_state() {
 #[test]
 fn closure_based_priority_generator() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> =
-    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(0) });
+    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
   let queue = UnboundedPriorityMessageQueue::new(pgen);
 
   queue.enqueue(AnyMessage::new(50_i32)).unwrap();

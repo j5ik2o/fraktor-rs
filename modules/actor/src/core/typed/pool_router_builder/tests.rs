@@ -318,7 +318,7 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
           recording_routee_behavior(routee_index, records.clone())
         }
       };
-      // Start with 2 routees, resizer lower_bound=4 ⇒ should spawn 2 more on first message.
+      // 初期2台、resizer下限4 ⇒ 最初のメッセージでさらに2台追加される
       let resizer = DefaultResizer::new(lower_bound, 10, 1);
       Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
     }
@@ -330,13 +330,13 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
-  // Send enough messages to exercise all routees via round-robin.
+  // ラウンドロビンで全routeeを使い切るのに十分なメッセージを送信
   for msg in 0..lower_bound as u32 {
     router.tell(msg).expect("tell");
   }
   wait_until(|| records.lock().len() == lower_bound);
 
-  // Collect unique routee indices that received messages.
+  // メッセージを受信したrouteeのユニークなインデックスを収集
   let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
   seen_routees.sort_unstable();
   seen_routees.dedup();
@@ -369,7 +369,7 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
           recording_routee_behavior(routee_index, records.clone())
         }
       };
-      // Start with 5 routees, resizer upper_bound=3 ⇒ should remove 2 on first message.
+      // 初期5台、resizer上限3 ⇒ 最初のメッセージで2台削除される
       let resizer = DefaultResizer::new(1, upper_bound, 1);
       Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
     }
@@ -381,15 +381,15 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
-  // Send enough messages to cycle through all remaining routees.
+  // 残存する全routeeを巡回するのに十分なメッセージを送信
   let message_count = upper_bound * 2;
   for msg in 0..message_count as u32 {
     router.tell(msg).expect("tell");
   }
   wait_until(|| records.lock().len() == message_count);
 
-  // After resize-down, only routees 0..upper_bound should receive messages.
-  // Routees 3 and 4 (indices from initial spawn) should be stopped.
+  // リサイズ縮小後、routee 0..upper_bound のみがメッセージを受信するべき
+  // routee 3, 4（初期spawn分）は停止されているはず
   let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
   seen_routees.sort_unstable();
   seen_routees.dedup();

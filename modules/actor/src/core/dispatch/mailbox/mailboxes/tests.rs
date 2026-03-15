@@ -5,7 +5,7 @@ use crate::core::{
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
   error::SendError,
   messaging::AnyMessage,
-  props::MailboxConfigError,
+  props::{MailboxConfigError, MailboxRequirement},
 };
 
 #[test]
@@ -56,4 +56,17 @@ fn create_message_queue_rejects_stable_priority_without_generator() {
     result,
     Err(MailboxRegistryError::InvalidConfig(MailboxConfigError::StablePriorityWithoutGenerator))
   ));
+}
+
+#[test]
+fn create_message_queue_from_control_aware_requirement() {
+  // control-aware 要件を持つ config から制御認識キューが生成できることを検証
+  let mut registry = Mailboxes::new();
+  let config = MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
+  registry.register("ctrl", config).expect("register mailbox");
+
+  let queue = registry.create_message_queue("ctrl").expect("create queue");
+  // 制御認識キューは通常メッセージも受け入れられる
+  assert!(queue.enqueue(AnyMessage::new(42_u32)).is_ok());
+  assert!(queue.has_messages());
 }

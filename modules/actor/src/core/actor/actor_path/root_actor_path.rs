@@ -31,9 +31,13 @@ impl RootActorPath {
   }
 
   /// Creates a root path from explicit parts.
-  #[must_use]
-  pub fn from_parts(parts: ActorPathParts) -> Self {
-    Self { inner: ActorPath::from_parts(parts) }
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorPathError::NotRootPath`] if the resulting path has child segments.
+  pub fn from_parts(parts: ActorPathParts) -> Result<Self, ActorPathError> {
+    let path = ActorPath::from_parts(parts);
+    Self::try_from_path(path)
   }
 
   /// Attempts to interpret a generic [`ActorPath`] as a root path.

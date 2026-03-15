@@ -39,6 +39,22 @@ fn responding_routee_behavior(source: usize) -> Behavior<TestReq> {
   })
 }
 
+/// fan-out 検証用: クエリ受信を共有コレクションに記録した上で応答する routee
+fn tracking_routee_behavior(
+  source: usize,
+  tracker: ArcShared<NoStdMutex<Vec<usize>>>,
+) -> Behavior<TestReq> {
+  Behaviors::receive_message(move |_ctx, msg: &TestReq| {
+    match msg {
+      | TestReq::Query { id, reply_to } => {
+        tracker.lock().push(source);
+        let _ = reply_to.clone().tell(TestReply { id: *id, source });
+      },
+    }
+    Ok(Behaviors::same())
+  })
+}
+
 fn silent_routee_behavior() -> Behavior<TestReq> {
   Behaviors::receive_message(|_ctx, _msg: &TestReq| Ok(Behaviors::same()))
 }
@@ -83,8 +99,12 @@ fn scatter_gather_returns_first_reply() {
   let next_source = ArcShared::new(NoStdMutex::new(0_usize));
   let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
+  // fan-out 検証用: 各 routee がクエリを受信したことを記録する
+  let fanout_tracker = ArcShared::new(NoStdMutex::new(Vec::<usize>::new()));
+  let fanout_for_check = fanout_tracker.clone();
 
   let ns = next_source.clone();
+  let ft = fanout_tracker.clone();
   let routee_factory = ArcShared::new(move || -> Behavior<TestReq> {
     let source = {
       let mut guard = ns.lock();
@@ -92,7 +112,7 @@ fn scatter_gather_returns_first_reply() {
       *guard += 1;
       s
     };
-    responding_routee_behavior(source)
+    tracking_routee_behavior(source, ft.clone())
   });
 
   let replies_for_collector = replies.clone();
@@ -163,6 +183,11 @@ fn scatter_gather_returns_first_reply() {
   guardian.tell(TestReq::Query { id: 42, reply_to: dummy_reply_to }).expect("tell");
 
   wait_until(|| !replies_for_check.lock().is_empty());
+
+  // 全 routee がクエリを受信したことを検証 (fan-out)
+  wait_until(|| fanout_for_check.lock().len() == pool_size);
+  let tracked = fanout_for_check.lock();
+  assert_eq!(tracked.len(), pool_size, "scatter-gather は全 routee にファンアウトすべき");
 
   let got = replies_for_check.lock();
   assert_eq!(got.len(), 1, "scatter-gather should return exactly one reply");
@@ -243,7 +268,7 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
   let dummy_reply_to = TypedActorRef::from_untyped(crate::core::actor::actor_ref::ActorRef::no_sender());
   guardian.tell(TestReq::Query { id: 99, reply_to: dummy_reply_to }).expect("tell");
 
-  // Allow message propagation, then fire the scheduler to trigger the timeout.
+  // メッセージ伝播を待ち、スケジューラを駆動してタイムアウトを発火させる
   for _ in 0..20 {
     spin_loop();
   }

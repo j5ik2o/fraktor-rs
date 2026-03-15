@@ -118,9 +118,17 @@ impl MailboxConfig {
   ///
   /// Returns [`MailboxConfigError::StablePriorityWithoutGenerator`] when
   /// `stable_priority` is enabled but no priority generator has been attached.
+  ///
+  /// Returns [`MailboxConfigError::ControlAwareRequiresUnboundedPolicy`] when
+  /// `needs_control_aware()` is set but the policy is bounded.
   pub fn validate(&self) -> Result<(), MailboxConfigError> {
     if self.stable_priority && self.priority_generator.is_none() {
       return Err(MailboxConfigError::StablePriorityWithoutGenerator);
+    }
+    if self.requirement.needs_control_aware()
+      && matches!(self.policy.capacity(), crate::core::dispatch::mailbox::MailboxCapacity::Bounded { .. })
+    {
+      return Err(MailboxConfigError::ControlAwareRequiresUnboundedPolicy);
     }
     Ok(())
   }

@@ -12,6 +12,7 @@ use crate::core::{
     bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
     mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
     overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
+    unbounded_control_aware_mailbox_type::UnboundedControlAwareMailboxType,
     unbounded_deque_mailbox_type::UnboundedDequeMailboxType, unbounded_mailbox_type::UnboundedMailboxType,
     unbounded_priority_mailbox_type::UnboundedPriorityMailboxType,
     unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType,
@@ -48,6 +49,10 @@ pub(crate) fn create_message_queue_from_config(
       return Ok(stable_priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
     }
     return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+  }
+  if config.requirement().needs_control_aware() {
+    let mailbox_type: Box<dyn MailboxType> = Box::new(UnboundedControlAwareMailboxType::new());
+    return Ok(mailbox_type.create());
   }
   if config.requirement().needs_deque() {
     return Ok(deque_mailbox_type_from_policy(config.policy()).create());

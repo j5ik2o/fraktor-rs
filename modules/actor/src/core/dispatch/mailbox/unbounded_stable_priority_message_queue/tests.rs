@@ -15,6 +15,15 @@ impl MessagePriorityGenerator for PayloadPriorityGenerator {
   }
 }
 
+/// 全メッセージに同一優先度を割り当てるジェネレータ（挿入順テスト用）。
+struct ConstantPriorityGenerator(i32);
+
+impl MessagePriorityGenerator for ConstantPriorityGenerator {
+  fn priority(&self, _message: &AnyMessage) -> i32 {
+    self.0
+  }
+}
+
 #[test]
 fn dequeues_in_priority_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
@@ -36,7 +45,7 @@ fn dequeues_in_priority_order() {
 
 #[test]
 fn equal_priority_preserves_insertion_order() {
-  let pgen: ArcShared<dyn MessagePriorityGenerator> = ArcShared::new(|_msg: &AnyMessage| -> i32 { 0 });
+  let pgen = ArcShared::new(ConstantPriorityGenerator(0));
   let queue = UnboundedStablePriorityMessageQueue::new(pgen);
 
   queue.enqueue(AnyMessage::new("first")).unwrap();
@@ -58,20 +67,20 @@ fn mixed_priorities_with_stable_ordering() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = UnboundedStablePriorityMessageQueue::new(pgen);
 
-  // Two messages with priority 10, two with priority 20
+  // 優先度10のメッセージ2つと優先度20のメッセージ2つ
   queue.enqueue(AnyMessage::new(10_i32)).unwrap();
   queue.enqueue(AnyMessage::new(20_i32)).unwrap();
   queue.enqueue(AnyMessage::new(10_i32)).unwrap();
   queue.enqueue(AnyMessage::new(20_i32)).unwrap();
 
-  // Priority 10 first, in insertion order
+  // 優先度10が先、挿入順を維持
   let m1 = queue.dequeue().unwrap();
   assert_eq!(*m1.payload().downcast_ref::<i32>().unwrap(), 10);
 
   let m2 = queue.dequeue().unwrap();
   assert_eq!(*m2.payload().downcast_ref::<i32>().unwrap(), 10);
 
-  // Priority 20 next, in insertion order
+  // 次に優先度20、挿入順を維持
   let m3 = queue.dequeue().unwrap();
   assert_eq!(*m3.payload().downcast_ref::<i32>().unwrap(), 20);
 

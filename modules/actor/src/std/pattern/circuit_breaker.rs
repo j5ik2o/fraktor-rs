@@ -37,9 +37,15 @@ impl CircuitBreaker {
   /// Creates a new circuit breaker in the **Closed** state.
   ///
   /// * `max_failures` — number of consecutive failures before the circuit trips.
+  ///   Must be greater than zero.
   /// * `reset_timeout` — how long to wait in the **Open** state before allowing a probe call.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `max_failures` is zero.
   #[must_use]
-  pub const fn new(max_failures: u32, reset_timeout: Duration) -> Self {
+  pub fn new(max_failures: u32, reset_timeout: Duration) -> Self {
+    assert!(max_failures > 0, "max_failures must be greater than zero");
     Self {
       max_failures,
       reset_timeout,

@@ -30,7 +30,8 @@ fn default_resizer_rejects_zero_messages_per_resize() {
 #[test]
 fn is_time_for_resize_returns_true_on_modulo_boundary() {
   let resizer = DefaultResizer::new(1, 10, 5);
-  assert!(resizer.is_time_for_resize(0));
+  // カウンタ0は初回メッセージのため、不要なリサイズを防ぐ
+  assert!(!resizer.is_time_for_resize(0));
   assert!(!resizer.is_time_for_resize(1));
   assert!(!resizer.is_time_for_resize(4));
   assert!(resizer.is_time_for_resize(5));
@@ -38,11 +39,21 @@ fn is_time_for_resize_returns_true_on_modulo_boundary() {
 }
 
 #[test]
-fn is_time_for_resize_with_period_one_always_returns_true() {
+fn is_time_for_resize_with_period_one_returns_true_except_zero() {
   let resizer = DefaultResizer::new(1, 10, 1);
-  for counter in 0..10 {
+  // カウンタ0は初回メッセージのため false
+  assert!(!resizer.is_time_for_resize(0));
+  for counter in 1..10 {
     assert!(resizer.is_time_for_resize(counter));
   }
+}
+
+#[test]
+fn is_time_for_resize_rejects_zero_counter() {
+  // 0u64.is_multiple_of(n) は全ての n で true を返すため、
+  // 初回メッセージでの不要なリサイズチェックを防ぐ回帰テスト
+  let resizer = DefaultResizer::new(1, 10, 100);
+  assert!(!resizer.is_time_for_resize(0), "カウンタ0でリサイズが発火してはならない");
 }
 
 #[test]
