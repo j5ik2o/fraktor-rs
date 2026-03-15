@@ -761,7 +761,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(4096) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
@@ -861,7 +861,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let sink_queue = &materialized.materialized().1;
 
   let mut first_value = None;
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(4096) {
     let started_at = Instant::now();
     let _ = materialized.handle().drive();
     assert!(
@@ -888,7 +888,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   resume_second_offer.store(true, Ordering::SeqCst);
 
   let mut second_value = None;
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(4096) {
     let _ = materialized.handle().drive();
     if let Some(value) = sink_queue.pull() {
       second_value = Some(value);
