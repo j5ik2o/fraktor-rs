@@ -135,10 +135,12 @@ FSMBuilder が typed 層に存在。Pekko の classic FSM は複雑な Scala DSL
 ## 実装優先度の提案
 
 ### Phase 1: trivial（既存組み合わせで即実装可能）
+
 - `MessageAdaptionFailure` (core/typed) — MessageAdapter のエラー通知シグナル
 - `GetTopicStats` (core/typed) — TopicStats 取得コマンド追加
 
 ### Phase 2: easy（単純な新規実装）
+
 - `PoisonPill` / `Kill` (core/kernel) — 標準停止メッセージ
 - `Deregister` (core/typed) — Receptionist の登録解除
 - `Unsubscribe` (std) — EventStream の購読解除
@@ -146,15 +148,18 @@ FSMBuilder が typed 層に存在。Pekko の classic FSM は複雑な Scala DSL
 - `RootActorPath` / `ChildActorPath` (core/kernel) — ActorPath の型区別
 
 ### Phase 3: medium（中程度の実装工数）
+
 - `ChildFailed` (core/typed) — 子アクター失敗シグナル（Supervision 連携）
 - `SpawnProtocol` (core/typed) — メッセージ経由のアクター生成
 - `ActorRefResolver` (core/typed) — ActorRef シリアライゼーション（remote 前提）
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
+
 - `CoordinatedShutdown` (std) — フェーズ付きシャットダウン。ActorSystem のライフサイクルに深く関わる
 - `DurableProducerQueue` / `ConsumerController` (core/typed + std) — 永続化 + フロー制御。persistence モジュール統合が前提
 
 ### 対象外（n/a）
+
 - Java API 重複、Classic 互換層、JVM 固有機能（上記 n/a テーブル参照）
 
 ## まとめ

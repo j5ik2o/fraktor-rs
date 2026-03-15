@@ -50,14 +50,14 @@
 
 ギャップなし。
 
-### 3. ハートビート・障害検知 ⚠️ 部分実装 0/2 (0%)
+### 3. ハートビート・障害検知 ⚠️ 部分実装 1/2 (50%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `ClusterHeartbeat` | `ClusterHeartbeat.scala` | 部分実装 | core | medium | MembershipCoordinator の poll() で heartbeat miss を検知。専用のハートビートアクターはない |
 | `CrossDcClusterHeartbeat` | `CrossDcClusterHeartbeat.scala` | 未対応 | core | hard | マルチDC対応が前提 |
 
-### 4. シードノードプロセス ⚠️ 部分実装 0/1 (0%)
+### 4. シードノードプロセス ⚠️ 部分実装 1/1 (部分)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
@@ -91,14 +91,19 @@
 | `Cluster` (typed) | `cluster-typed/Cluster.scala` | 未対応 | core/typed | medium | typed ラッパー |
 | `ClusterCommand` | `cluster-typed/Cluster.scala` | 未対応 | core/typed | easy | sealed trait + case classes |
 | `ClusterStateSubscription` | `cluster-typed/Cluster.scala` | 未対応 | core/typed | easy | サブスクリプション管理 |
-| `SelfUp` / `SelfRemoved` | `cluster-typed/Cluster.scala` | 未対応 | core/typed | trivial | typed 固有イベント |
+| `SelfUp` | `cluster-typed/Cluster.scala` | 未対応 | core/typed | trivial | typed 固有イベント |
+| `SelfRemoved` | `cluster-typed/Cluster.scala` | 未対応 | core/typed | trivial | typed 固有イベント |
 
-### 8. クラスタルーティング ✅ 実装済み 4/4 (100%)
+### 8. クラスタルーティング ✅ 実装済み 2/2 (100%)
 
 | Pekko 概念 | fraktor-rs 対応 | 備考 |
 |-----------|----------------|------|
-| `ClusterRouterConfig` | `ClusterRouterPool` + `ClusterRouterGroup` | 分離設計 |
-| `ClusterRouterSettings` | `ClusterRouterPoolSettings` + `ClusterRouterGroupSettings` | 同等 |
+| `ClusterRouterConfig` | `ClusterRouterPool` + `ClusterRouterGroup` | Pekko の統合型を Pool/Group に分離設計 |
+| `ClusterRouterSettings` | `ClusterRouterPoolSettings` + `ClusterRouterGroupSettings` | 同上。Pekko 1型 → fraktor 2型 |
+
+> **注記**: Pekko は `ClusterRouterConfig` と `ClusterRouterSettings` の2概念で Pool/Group の両方をカバーするが、
+> fraktor-rs は Pool 用と Group 用に分離して4型（`ClusterRouterPool`, `ClusterRouterGroup`,
+> `ClusterRouterPoolSettings`, `ClusterRouterGroupSettings`）を提供している。
 
 ギャップなし。
 

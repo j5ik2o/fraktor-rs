@@ -294,7 +294,7 @@ persistence-query モジュールは CQRS の読み取り側を担当する。fr
 ### Phase 3: medium（中程度の実装工数）
 
 - `AtomicWrite` + Journal trait 拡張 → core（バッチ書き込みの原子性保証）
-- `MessageSerializer`, `SnapshotSerializer` → core（serde 統合）
+- `MessageSerializer`, `SnapshotSerializer` → core（シリアライゼーション統合。**注意**: core は no_std のため serde 前提の設計は不可。no_std 対応の軽量シリアライザ（bincode 等）やカスタム trait、feature-gated な serde サポート等の設計レビューが必要）
 - `RetentionCriteria` / `SnapshotCountRetentionCriteria` → core/typed
 - `OpCrdt` trait → core
 - `PublishedEvent` → core/typed
