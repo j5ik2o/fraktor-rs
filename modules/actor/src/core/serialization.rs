@@ -1,9 +1,11 @@
 //! Serialization subsystem aggregation.
 
+mod async_serializer;
 mod builder;
 mod builder_error;
 /// Built-in serializer implementations registered by the extension.
 pub mod builtin;
+mod byte_buffer_serializer;
 mod call_scope;
 mod config_adapter;
 mod default_setup;
@@ -25,8 +27,10 @@ mod serializer_id_error;
 mod string_manifest_serializer;
 mod transport_information;
 
+pub use async_serializer::{AsyncSerializer, SerializationFuture};
 pub use builder::SerializationSetupBuilder;
 pub use builder_error::SerializationBuilderError;
+pub use byte_buffer_serializer::ByteBufferSerializer;
 pub use call_scope::SerializationCallScope;
 pub use config_adapter::SerializationConfigAdapter;
 pub use default_setup::{default_serialization_extension_id, default_serialization_setup};

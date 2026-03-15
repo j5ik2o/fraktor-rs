@@ -60,7 +60,7 @@ impl Props {
 
   /// Returns the mailbox policy.
   #[must_use]
-  pub const fn mailbox_policy(&self) -> MailboxPolicy {
+  pub fn mailbox_policy(&self) -> MailboxPolicy {
     self.inner.mailbox_policy()
   }
 

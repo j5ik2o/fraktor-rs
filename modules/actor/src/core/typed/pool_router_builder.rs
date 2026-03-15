@@ -11,7 +11,10 @@ use portable_atomic::{AtomicU64, Ordering};
 
 use crate::core::{
   event::logging::LogLevel,
-  typed::{Behaviors, actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, props::TypedProps},
+  typed::{
+    Behaviors, actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, props::TypedProps,
+    resizer::Resizer,
+  },
 };
 
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;
@@ -28,6 +31,7 @@ where
   behavior_factory:    ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
   strategy:            PoolRouteStrategy<M>,
   broadcast_predicate: Option<ArcShared<BroadcastPredicate<M>>>,
+  resizer:             Option<ArcShared<dyn Resizer>>,
 }
 
 impl<M> PoolRouterBuilder<M>
@@ -48,6 +52,7 @@ where
       behavior_factory: ArcShared::new(behavior_factory),
       strategy: PoolRouteStrategy::RoundRobin,
       broadcast_predicate: None,
+      resizer: None,
     }
   }
 
@@ -109,6 +114,17 @@ where
     self
   }
 
+  /// Attaches a resizer that dynamically adjusts the pool size.
+  ///
+  /// The resizer is consulted on each message to decide whether to add or
+  /// remove routees. When no resizer is set (the default), the pool size
+  /// remains fixed.
+  #[must_use]
+  pub fn with_resizer<R: Resizer + 'static>(mut self, resizer: R) -> Self {
+    self.resizer = Some(ArcShared::new(resizer));
+    self
+  }
+
   /// Builds the pool router as a [`Behavior`].
   #[must_use]
   #[allow(clippy::redundant_closure)]
@@ -117,6 +133,7 @@ where
     let behavior_factory = self.behavior_factory;
     let strategy = self.strategy;
     let broadcast_predicate = self.broadcast_predicate;
+    let resizer = self.resizer;
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
@@ -133,6 +150,9 @@ where
           },
         }
       }
+
+      // Clone props for potential resize spawning.
+      let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
       let routee_count = routee_vec.len();
       let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
@@ -175,7 +195,49 @@ where
       };
 
       let broadcast_predicate_for_message = broadcast_predicate.clone();
-      Behaviors::receive_message(move |_ctx, message: &M| {
+      let resizer_for_msg = resizer.clone();
+      let message_counter = AtomicU64::new(0);
+      Behaviors::receive_message(move |ctx, message: &M| {
+        // --- Resize check ---
+        if let Some(ref resizer) = resizer_for_msg {
+          let counter = message_counter.fetch_add(1, Ordering::Relaxed);
+          if resizer.is_time_for_resize(counter) {
+            let current_count = routees_for_msg.lock().len();
+            let delta = resizer.resize(current_count);
+            if delta > 0 {
+              if let Some(ref resize_props) = props_for_resize {
+                let mut new_routees = Vec::new();
+                for _ in 0..delta {
+                  match ctx.spawn_child_watched(resize_props) {
+                    | Ok(child) => new_routees.push(child.actor_ref().clone()),
+                    | Err(e) => {
+                      let msg = alloc::format!("pool router resize failed to spawn child: {:?}", e);
+                      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+                      break;
+                    },
+                  }
+                }
+                if !new_routees.is_empty() {
+                  routees_for_msg.lock().extend(new_routees);
+                }
+              }
+            } else if delta < 0 {
+              let abs_delta = (-delta) as usize;
+              let to_stop: Vec<TypedActorRef<M>> = {
+                let mut guard = routees_for_msg.lock();
+                // Never remove all routees — keep at least one.
+                let remove_count = abs_delta.min(guard.len().saturating_sub(1));
+                let split_at = guard.len() - remove_count;
+                guard.split_off(split_at)
+              };
+              for routee in &to_stop {
+                let _ = ctx.stop_actor_by_ref(routee);
+              }
+            }
+          }
+        }
+
+        // --- Route message ---
         let targets = {
           let guard = routees_for_msg.lock();
           if guard.is_empty() {

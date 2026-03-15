@@ -133,7 +133,7 @@ impl ActorCell {
     let mailbox_config = if let Some(mailbox_id) = props.mailbox_id() {
       system.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
     } else {
-      *props.mailbox_config()
+      props.mailbox_config().clone()
     };
 
     let mailbox = if let Some(mailbox_id) = props.mailbox_id() {
@@ -142,7 +142,10 @@ impl ActorCell {
         .map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
       ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
     } else {
-      ArcShared::new(Mailbox::new(mailbox_config.policy()))
+      ArcShared::new(
+        Mailbox::new_from_config(&mailbox_config)
+          .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
+      )
     };
     {
       let policy = mailbox_config.policy();

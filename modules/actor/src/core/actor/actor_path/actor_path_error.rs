@@ -28,6 +28,10 @@ pub enum ActorPathError {
   MissingSystemName,
   /// Invalid authority string structure.
   InvalidAuthority,
+  /// Path is not a root path (has child segments beyond guardian).
+  NotRootPath,
+  /// Path is not a child path (has no child segments beyond guardian).
+  NotChildPath,
 }
 
 impl fmt::Display for ActorPathError {
@@ -44,6 +48,8 @@ impl fmt::Display for ActorPathError {
       | ActorPathError::UnsupportedScheme => write!(f, "unsupported actor path scheme"),
       | ActorPathError::MissingSystemName => write!(f, "missing actor system name"),
       | ActorPathError::InvalidAuthority => write!(f, "invalid authority segment"),
+      | ActorPathError::NotRootPath => write!(f, "path is not a root path"),
+      | ActorPathError::NotChildPath => write!(f, "path is not a child path"),
     }
   }
 }

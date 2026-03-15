@@ -4,6 +4,22 @@ use core::{future::Future, time::Duration};
 
 use fraktor_utils_rs::core::timing::delay::DelayProvider;
 
+/// Inner circuit breaker state machine.
+mod circuit_breaker;
+/// Error produced by a circuit-breaker-protected call.
+mod circuit_breaker_call_error;
+/// Error returned when a circuit breaker rejects a call.
+mod circuit_breaker_open_error;
+/// Thread-safe shared wrapper for the circuit breaker.
+mod circuit_breaker_shared;
+/// Circuit breaker state representation.
+mod circuit_breaker_state;
+pub use circuit_breaker::CircuitBreaker;
+pub use circuit_breaker_call_error::CircuitBreakerCallError;
+pub use circuit_breaker_open_error::CircuitBreakerOpenError;
+pub use circuit_breaker_shared::CircuitBreakerShared;
+pub use circuit_breaker_state::CircuitBreakerState;
+
 #[cfg(test)]
 mod tests;
 

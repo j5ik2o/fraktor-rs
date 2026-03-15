@@ -1,0 +1,99 @@
+//! Thread-safe shared wrapper for [`CircuitBreaker`](super::CircuitBreaker).
+
+extern crate std;
+
+use core::{future::Future, time::Duration};
+
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+
+use super::{
+  circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
+  circuit_breaker_state::CircuitBreakerState,
+};
+
+#[cfg(test)]
+mod tests;
+
+/// Thread-safe, clonable circuit breaker.
+///
+/// Wraps [`CircuitBreaker`] in `ArcShared<RuntimeMutex<..>>` and provides an
+/// async [`call`](Self::call) method that checks permission, executes the
+/// operation, and records the outcome automatically.
+pub struct CircuitBreakerShared {
+  inner: ArcShared<RuntimeMutex<CircuitBreaker>>,
+}
+
+impl Clone for CircuitBreakerShared {
+  fn clone(&self) -> Self {
+    Self { inner: self.inner.clone() }
+  }
+}
+
+impl CircuitBreakerShared {
+  /// Creates a new shared circuit breaker in the **Closed** state.
+  ///
+  /// * `max_failures` — consecutive failure threshold before the circuit trips.
+  /// * `reset_timeout` — delay in the **Open** state before a probe call is allowed.
+  #[must_use]
+  pub fn new(max_failures: u32, reset_timeout: Duration) -> Self {
+    Self { inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new(max_failures, reset_timeout))) }
+  }
+
+  /// Executes `operation` through the circuit breaker.
+  ///
+  /// 1. Checks whether a call is currently permitted.
+  /// 2. If permitted, runs `operation` **without** holding the lock.
+  /// 3. Records the outcome (success / failure) and updates the state.
+  ///
+  /// Timeout enforcement is **not** built in — wrap `operation` with your own
+  /// timeout mechanism (e.g. `tokio::time::timeout`) and return an error on
+  /// expiry.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`CircuitBreakerCallError::Open`] when the circuit is open, or
+  /// [`CircuitBreakerCallError::Failed`] when `operation` returns `Err`.
+  pub async fn call<T, E, F, Fut>(&self, operation: F) -> Result<T, CircuitBreakerCallError<E>>
+  where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T, E>>, {
+    self.with_write(|cb| cb.is_call_permitted()).map_err(CircuitBreakerCallError::Open)?;
+
+    match operation().await {
+      | Ok(value) => {
+        self.with_write(|cb| cb.record_success());
+        Ok(value)
+      },
+      | Err(e) => {
+        self.with_write(|cb| cb.record_failure());
+        Err(CircuitBreakerCallError::Failed(e))
+      },
+    }
+  }
+
+  /// Returns the current state of the circuit breaker.
+  #[must_use]
+  pub fn state(&self) -> CircuitBreakerState {
+    self.with_read(|cb| cb.state())
+  }
+
+  /// Returns the current consecutive failure count.
+  #[must_use]
+  pub fn failure_count(&self) -> u32 {
+    self.with_read(|cb| cb.failure_count())
+  }
+}
+
+impl SharedAccess<CircuitBreaker> for CircuitBreakerShared {
+  #[inline]
+  fn with_read<R>(&self, f: impl FnOnce(&CircuitBreaker) -> R) -> R {
+    let guard = self.inner.lock();
+    f(&guard)
+  }
+
+  #[inline]
+  fn with_write<R>(&self, f: impl FnOnce(&mut CircuitBreaker) -> R) -> R {
+    let mut guard = self.inner.lock();
+    f(&mut guard)
+  }
+}

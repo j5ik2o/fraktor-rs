@@ -2,15 +2,21 @@ use alloc::{borrow::ToOwned, boxed::Box, string::String};
 use core::num::NonZeroUsize;
 
 use ahash::RandomState;
+use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use crate::core::{
   dispatch::mailbox::{
-    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType, capacity::MailboxCapacity,
-    mailbox_type::MailboxType, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
-    policy::MailboxPolicy, unbounded_mailbox_type::UnboundedMailboxType,
+    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
+    bounded_priority_mailbox_type::BoundedPriorityMailboxType,
+    bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
+    mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
+    overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
+    unbounded_deque_mailbox_type::UnboundedDequeMailboxType, unbounded_mailbox_type::UnboundedMailboxType,
+    unbounded_priority_mailbox_type::UnboundedPriorityMailboxType,
+    unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType,
   },
-  props::MailboxConfig,
+  props::{MailboxConfig, MailboxConfigError},
 };
 
 #[cfg(test)]
@@ -20,6 +26,64 @@ const DEFAULT_MAILBOX_ID: &str = "default";
 
 pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn MessageQueue> {
   mailbox_type_from_policy(policy).create()
+}
+
+/// Creates a message queue considering the policy, requirement, and priority generator
+/// from the config.
+///
+/// When a priority generator is present, a priority-based queue is returned regardless
+/// of other requirements. When the config declares deque semantics and the policy is
+/// unbounded, this returns an [`UnboundedDequeMessageQueue`].
+///
+/// # Errors
+///
+/// Returns [`MailboxConfigError`] when the configuration contract is violated
+/// (e.g. `stable_priority` enabled without a priority generator).
+pub(crate) fn create_message_queue_from_config(
+  config: &MailboxConfig,
+) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
+  config.validate()?;
+  if let Some(generator) = config.priority_generator() {
+    if config.stable_priority() {
+      return Ok(stable_priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+    }
+    return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+  }
+  if config.requirement().needs_deque() {
+    return Ok(deque_mailbox_type_from_policy(config.policy()).create());
+  }
+  Ok(create_message_queue_from_policy(config.policy()))
+}
+
+fn priority_mailbox_type_from_config(
+  generator: ArcShared<dyn MessagePriorityGenerator>,
+  policy: MailboxPolicy,
+) -> Box<dyn MailboxType> {
+  match policy.capacity() {
+    | MailboxCapacity::Bounded { capacity } => {
+      Box::new(BoundedPriorityMailboxType::new(generator, capacity, policy.overflow()))
+    },
+    | MailboxCapacity::Unbounded => Box::new(UnboundedPriorityMailboxType::new(generator)),
+  }
+}
+
+fn stable_priority_mailbox_type_from_config(
+  generator: ArcShared<dyn MessagePriorityGenerator>,
+  policy: MailboxPolicy,
+) -> Box<dyn MailboxType> {
+  match policy.capacity() {
+    | MailboxCapacity::Bounded { capacity } => {
+      Box::new(BoundedStablePriorityMailboxType::new(generator, capacity, policy.overflow()))
+    },
+    | MailboxCapacity::Unbounded => Box::new(UnboundedStablePriorityMailboxType::new(generator)),
+  }
+}
+
+fn deque_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
+  match policy.capacity() {
+    | MailboxCapacity::Bounded { capacity } => bounded_mailbox_type(capacity, policy.overflow()),
+    | MailboxCapacity::Unbounded => Box::new(UnboundedDequeMailboxType::new()),
+  }
 }
 
 fn mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
@@ -79,17 +143,21 @@ impl Mailboxes {
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve(&self, id: &str) -> Result<MailboxConfig, MailboxRegistryError> {
-    self.entries.get(id).copied().ok_or_else(|| MailboxRegistryError::unknown(id))
+    self.entries.get(id).cloned().ok_or_else(|| MailboxRegistryError::unknown(id))
   }
 
   /// Creates a user-message queue from the configuration registered under `id`.
+  ///
+  /// When a priority generator is present, a priority-based queue is produced.
+  /// When the registered configuration declares deque semantics and the policy is
+  /// unbounded, this returns a deque-capable queue.
   ///
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn create_message_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
     let config = self.resolve(id)?;
-    Ok(create_message_queue_from_policy(config.policy()))
+    Ok(create_message_queue_from_config(&config)?)
   }
 
   /// Ensures the default mailbox configuration is registered.

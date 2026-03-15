@@ -10,7 +10,7 @@ use crate::core::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
   typed::{
-    Behaviors,
+    Behaviors, DeathPactException,
     actor::{TypedActor, TypedActorContext},
     behavior::Behavior,
     behavior_signal::BehaviorSignal,
@@ -121,7 +121,9 @@ fn behavior_runner_death_pact_errors_without_signal_handler() {
   let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
-  assert!(result.is_err());
+  let error = result.unwrap_err();
+  assert!(error.is_source_type::<DeathPactException>(), "error should be typed as DeathPactException");
+  assert!(error.reason().as_str().contains("death pact"), "message should describe death pact");
 }
 
 #[test]

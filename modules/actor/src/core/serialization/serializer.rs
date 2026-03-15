@@ -4,7 +4,8 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
 use super::{
-  error::SerializationError, serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
+  async_serializer::AsyncSerializer, byte_buffer_serializer::ByteBufferSerializer, error::SerializationError,
+  serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
 };
 
 /// Represents a synchronous serializer implementation.
@@ -45,6 +46,20 @@ pub trait Serializer: Send + Sync {
   ///
   /// Defaults to `None`.
   fn as_string_manifest(&self) -> Option<&dyn SerializerWithStringManifest> {
+    None
+  }
+
+  /// Returns a reference to the [`ByteBufferSerializer`] view if implemented.
+  ///
+  /// Defaults to `None`.
+  fn as_byte_buffer(&self) -> Option<&dyn ByteBufferSerializer> {
+    None
+  }
+
+  /// Returns a reference to the [`AsyncSerializer`] view if implemented.
+  ///
+  /// Defaults to `None`.
+  fn as_async(&self) -> Option<&dyn AsyncSerializer> {
     None
   }
 }

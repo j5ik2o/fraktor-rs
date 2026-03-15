@@ -1,6 +1,7 @@
 use fraktor_utils_rs::core::collections::queue::capabilities::{QueueCapability, QueueCapabilitySet};
 
 use super::*;
+use crate::core::props::MailboxConfigError;
 
 #[test]
 fn builder_overrides_requirement_and_capabilities() {
@@ -11,4 +12,34 @@ fn builder_overrides_requirement_and_capabilities() {
 
   assert!(config.requirement().needs_deque());
   assert!(config.capabilities().ensure(QueueCapability::Deque).is_err());
+}
+
+#[test]
+fn validate_rejects_stable_priority_without_generator() {
+  let config = MailboxConfig::default().with_stable_priority(true);
+  assert_eq!(config.validate(), Err(MailboxConfigError::StablePriorityWithoutGenerator));
+}
+
+#[test]
+fn validate_accepts_stable_priority_with_generator() {
+  use fraktor_utils_rs::core::sync::ArcShared;
+
+  use crate::core::{dispatch::mailbox::MessagePriorityGenerator, messaging::AnyMessage};
+
+  struct ConstPriority;
+  impl MessagePriorityGenerator for ConstPriority {
+    fn priority(&self, _msg: &AnyMessage) -> i32 {
+      0
+    }
+  }
+
+  let config =
+    MailboxConfig::default().with_priority_generator(ArcShared::new(ConstPriority)).with_stable_priority(true);
+  assert!(config.validate().is_ok());
+}
+
+#[test]
+fn validate_accepts_default_config() {
+  let config = MailboxConfig::default();
+  assert!(config.validate().is_ok());
 }

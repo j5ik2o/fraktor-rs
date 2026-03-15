@@ -311,6 +311,20 @@ impl Behaviors {
     )
   }
 
+  /// Wraps a behavior to accept a different outer message type.
+  ///
+  /// This is the factory counterpart of [`Behavior::transform_messages`].
+  /// The `mapper` converts incoming `Outer` messages to `Option<Inner>`.
+  /// `Some(inner)` is forwarded; `None` means unhandled.
+  /// Signals pass through without transformation.
+  pub fn transform_messages<Inner, Outer, F>(behavior: Behavior<Inner>, mapper: F) -> Behavior<Outer>
+  where
+    Inner: Send + Sync + 'static,
+    Outer: Send + Sync + 'static,
+    F: Fn(&Outer) -> Option<Inner> + Send + Sync + 'static, {
+    behavior.transform_messages(mapper)
+  }
+
   /// Wraps a behavior so that every received message is cloned and sent to a
   /// monitor actor.
   ///

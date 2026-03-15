@@ -7,7 +7,7 @@ use crate::core::{
   event::stream::EventStreamEvent,
   supervision::SupervisorStrategyConfig,
   typed::{
-    UnhandledMessageEvent,
+    DeathPactException, UnhandledMessageEvent,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
@@ -122,7 +122,8 @@ where
     if has_signal_handler {
       Ok(())
     } else {
-      Err(ActorError::recoverable(ActorErrorReason::new("death pact: unhandled Terminated signal")))
+      let ex = DeathPactException::new(terminated);
+      Err(ActorError::recoverable_typed::<DeathPactException>(ex.to_string()))
     }
   }
 
