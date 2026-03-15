@@ -25,6 +25,7 @@ miniz_oxide = { version = "0.9", optional = true, default-features = false, feat
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
+tempfile = "3"
 
 [[example]]
 name = "actor_system_basic_std"

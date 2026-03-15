@@ -20,7 +20,7 @@ tasks:
       last_message: |-
         前回の3件は `persists / resolved` を line 単位で再判定し、そのうえで修正差分の副作用を Pekko 参照実装と突き合わせます。まず修正対象の `behaviors.rs`、`Address`、dead letter subscriber まわりを読み、前回 finding の解消確認から入ります。
 
-        スキル: reviewing-fraktor-types  
+        スキル: reviewing-fraktor-types
         目的: Pekko互換性に加えて、fraktor-rs 固有の公開面、命名、YAGNI、1ファイル1型の逸脱が修正差分で混入していないかを併せて確認するためです。
         前回の3件そのものは、修正差分を見る限りほぼ狙いどおり直っています。ここからは再発や置き換え残しがないか、そして修正で新しい互換性ギャップを作っていないかを確認します。
         再判定の結論に近づきました。前回の3件は実装上も命名上も解消方向で、いまの論点は「新しい互換性欠陥が残っていないか」の一点です。最後に該当行を固定して、`resolved / new / persists` を確定します。
@@ -46,3 +46,17 @@ tasks:
         | `PEKKO-NEW-address-L16` | [`Address`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L17) の `protocol` が `String` に開かれ、[`new`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L29) / [`new_remote`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L37) / [`host_port`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/modules\/actor\/src\/core\/actor\/address.rs#L109) が追加されました。Pekko の [`Address`](\/Users\/j5ik2o\/Sources\/j5ik2o.github.com\/j5ik2o\/fraktor-rs\/references\/pekko\/actor\/src\/main\/scala\/org\/apache\/pekko\/actor\/Address.scala#L38) に対する今回の指摘範囲は解消されています。 |
 
         今回のレビューでは `cargo` 系コマンドは再実行していません。ビルドとテストの成功確認は `Previous Response` に記録された `cargo clippy -p fraktor-actor-rs -- -D warnings` と `cargo test -p fraktor-actor-rs --lib` の結果を根拠にしています。
+  - worktree: false
+    piece: pekko-porting
+    start_movement: pekko-compat-fix
+    auto_pr: true
+    draft_pr: true
+    name: streams-mojuuru-gyappu-2026-03
+    status: running
+    slug: streams-mojuuru-gyappu-2026-03
+    summary: "# streams モジュール ギャップ分析"
+    task_dir: .takt/tasks/20260314-232956-streams-2026-03-14-2026-03-12
+    created_at: 2026-03-14T23:29:56.748Z
+    started_at: 2026-03-15T03:35:44.941Z
+    completed_at: null
+    owner_pid: 87252

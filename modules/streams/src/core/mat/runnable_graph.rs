@@ -42,7 +42,7 @@ impl<Mat> RunnableGraph<Mat> {
     &self.materialized
   }
 
-  pub(in crate::core) fn into_parts(self) -> (StreamPlan, Mat) {
+  pub(crate) fn into_parts(self) -> (StreamPlan, Mat) {
     (self.plan, self.materialized)
   }
 }

@@ -15,7 +15,7 @@ pub(crate) struct Stream {
 }
 
 impl Stream {
-  pub(in crate::core) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
+  pub(crate) fn new(plan: StreamPlan, buffer_config: StreamBufferConfig) -> Self {
     let linked_kill_switch_states = plan.shared_kill_switch_states().to_vec();
     let kill_switch_state = ArcShared::new(SpinSyncMutex::new(KillSwitchState::Running));
     Self { interpreter: GraphInterpreter::new(plan, buffer_config), kill_switch_state, linked_kill_switch_states }

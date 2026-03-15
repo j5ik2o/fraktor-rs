@@ -1,0 +1,193 @@
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::marker::PhantomData;
+
+use super::super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
+
+/// Flow logic that retries individual elements with exponential backoff.
+///
+/// When `decide_retry` returns `Some(retry_element)` for an output, the element
+/// is re-applied through the inner flow logics after a backoff delay. The
+/// backoff doubles on each retry (clamped to `max_backoff_ticks`) with optional
+/// jitter.
+///
+/// # Experimental
+///
+/// This corresponds to Pekko's `@ApiMayChange` `RetryFlow` and may change in
+/// future releases.
+pub(in crate::core::stage::flow) struct RetryFlowLogic<In, Out, R> {
+  inner_logics:           Vec<Box<dyn FlowLogic>>,
+  decide_retry:           R,
+  element_in_progress:    Option<In>,
+  retry_count:            usize,
+  max_retries:            usize,
+  min_backoff_ticks:      u32,
+  max_backoff_ticks:      u32,
+  random_factor_permille: u16,
+  current_backoff_ticks:  u32,
+  jitter_state:           u64,
+  pending_retry:          Option<PendingRetry<In>>,
+  tick_count:             u64,
+  _pd:                    PhantomData<fn() -> Out>,
+}
+
+struct PendingRetry<In> {
+  element:  In,
+  ready_at: u64,
+}
+
+impl<In, Out, R> RetryFlowLogic<In, Out, R>
+where
+  In: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  R: Fn(&In, &Out) -> Option<In> + Send + 'static,
+{
+  pub(in crate::core::stage::flow) fn new(
+    inner_logics: Vec<Box<dyn FlowLogic>>,
+    decide_retry: R,
+    max_retries: usize,
+    min_backoff_ticks: u32,
+    max_backoff_ticks: u32,
+    random_factor_permille: u16,
+  ) -> Self {
+    Self {
+      inner_logics,
+      decide_retry,
+      element_in_progress: None,
+      retry_count: 0,
+      max_retries,
+      min_backoff_ticks,
+      max_backoff_ticks,
+      random_factor_permille,
+      current_backoff_ticks: min_backoff_ticks,
+      jitter_state: 0xcafe_u64,
+      pending_retry: None,
+      tick_count: 0,
+      _pd: PhantomData,
+    }
+  }
+
+  fn apply_through_inner(&mut self, input: In) -> Result<Vec<DynValue>, StreamError> {
+    let mut current: Vec<DynValue> = vec![Box::new(input) as DynValue];
+    for logic in &mut self.inner_logics {
+      let mut next = Vec::new();
+      for value in current {
+        next.extend(logic.apply(value)?);
+      }
+      current = next;
+    }
+    Ok(current)
+  }
+
+  fn process_element(&mut self, input: In) -> Result<Vec<DynValue>, StreamError> {
+    self.element_in_progress = Some(input.clone());
+    let outputs = self.apply_through_inner(input)?;
+    self.check_outputs(outputs)
+  }
+
+  fn check_outputs(&mut self, outputs: Vec<DynValue>) -> Result<Vec<DynValue>, StreamError> {
+    if outputs.is_empty() {
+      self.element_in_progress = None;
+      self.retry_count = 0;
+      self.current_backoff_ticks = self.min_backoff_ticks;
+      return Ok(outputs);
+    }
+    let mut result = Vec::new();
+    for output in outputs {
+      let out_value = output.downcast::<Out>().map_err(|_| StreamError::TypeMismatch)?;
+      let Some(element) = self.element_in_progress.as_ref() else {
+        return Err(StreamError::Failed);
+      };
+      if let Some(retry_elem) = (self.decide_retry)(element, &out_value) {
+        if self.retry_count >= self.max_retries {
+          result.push(Box::new(*out_value) as DynValue);
+          self.element_in_progress = None;
+          self.retry_count = 0;
+          self.current_backoff_ticks = self.min_backoff_ticks;
+        } else {
+          self.retry_count = self.retry_count.saturating_add(1);
+          let cooldown = self.next_cooldown_ticks();
+          let ready_at = self.tick_count.saturating_add(u64::from(cooldown));
+          self.pending_retry = Some(PendingRetry { element: retry_elem, ready_at });
+          self.restart_inner_logics();
+        }
+      } else {
+        result.push(Box::new(*out_value) as DynValue);
+        self.element_in_progress = None;
+        self.retry_count = 0;
+        self.current_backoff_ticks = self.min_backoff_ticks;
+      }
+    }
+    Ok(result)
+  }
+
+  fn next_cooldown_ticks(&mut self) -> u32 {
+    let base = self.current_backoff_ticks.max(self.min_backoff_ticks).min(self.max_backoff_ticks);
+    let jitter_ticks = self.compute_jitter_ticks(base);
+    self.current_backoff_ticks = base.saturating_mul(2).min(self.max_backoff_ticks).max(self.min_backoff_ticks);
+    base.saturating_add(jitter_ticks).min(self.max_backoff_ticks)
+  }
+
+  fn compute_jitter_ticks(&mut self, base_ticks: u32) -> u32 {
+    let factor = u32::from(self.random_factor_permille);
+    if factor == 0 || base_ticks == 0 {
+      return 0;
+    }
+    self.jitter_state = self.jitter_state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+    let ratio_permille = (self.jitter_state >> 32) as u32 % 1001;
+    base_ticks.saturating_mul(factor).saturating_mul(ratio_permille) / 1_000_000
+  }
+
+  fn restart_inner_logics(&mut self) {
+    for logic in &mut self.inner_logics {
+      let _ = logic.on_restart();
+    }
+  }
+}
+
+impl<In, Out, R> FlowLogic for RetryFlowLogic<In, Out, R>
+where
+  In: Clone + Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  R: Fn(&In, &Out) -> Option<In> + Send + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    self.process_element(value)
+  }
+
+  fn on_tick(&mut self, tick_count: u64) -> Result<(), StreamError> {
+    self.tick_count = tick_count;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let Some(pending) = &self.pending_retry else {
+      return Ok(Vec::new());
+    };
+    if pending.ready_at > self.tick_count {
+      return Ok(Vec::new());
+    }
+    let Some(pending) = self.pending_retry.take() else {
+      return Ok(Vec::new());
+    };
+    self.process_element(pending.element)
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.pending_retry.is_some()
+  }
+
+  fn can_accept_input(&self) -> bool {
+    self.pending_retry.is_none()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.element_in_progress = None;
+    self.retry_count = 0;
+    self.current_backoff_ticks = self.min_backoff_ticks;
+    self.pending_retry = None;
+    self.tick_count = 0;
+    self.restart_inner_logics();
+    Ok(())
+  }
+}
