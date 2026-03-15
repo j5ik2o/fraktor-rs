@@ -45,7 +45,7 @@ impl JsonFraming {
 fn json_framing_definition(maximum_object_length: usize) -> FlowDefinition {
   let inlet: Inlet<Vec<u8>> = Inlet::new();
   let outlet: Outlet<Vec<u8>> = Outlet::new();
-  let logic = JsonFramingLogic { buffer: Vec::new(), maximum_object_length, source_done: false };
+  let logic = JsonFramingLogic { buffer: Vec::new(), maximum_object_length };
   FlowDefinition {
     kind:        StageKind::FlowStatefulMapConcat,
     inlet:       inlet.id(),
@@ -62,7 +62,6 @@ fn json_framing_definition(maximum_object_length: usize) -> FlowDefinition {
 struct JsonFramingLogic {
   buffer:                Vec<u8>,
   maximum_object_length: usize,
-  source_done:           bool,
 }
 
 impl JsonFramingLogic {
@@ -74,6 +73,10 @@ impl JsonFramingLogic {
         break;
       };
       results.push(Box::new(object_bytes) as DynValue);
+    }
+
+    if self.buffer.len() > self.maximum_object_length {
+      return Err(StreamError::BufferOverflow);
     }
 
     Ok(results)
@@ -147,7 +150,6 @@ impl FlowLogic for JsonFramingLogic {
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
-    self.source_done = true;
     if self.buffer.iter().any(|&b| b == b'{' || b == b'[') {
       return Err(StreamError::Failed);
     }
