@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
 use core::any::Any;
 
 use super::ByteBufferSerializer;
