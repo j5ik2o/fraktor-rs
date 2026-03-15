@@ -177,12 +177,46 @@ where
     Self::as_subscriber()
   }
 
-  /// Combines multiple sources by selecting the first source when available.
+  /// Combines multiple sources by merging them into a single output stream.
+  ///
+  /// Elements from all sources are interleaved as they become available.
+  /// The materialized value of the first source is kept (`KeepLeft` semantics).
+  ///
+  /// Returns an empty source when the iterator yields no elements.
   #[must_use]
   pub fn combine<I>(sources: I) -> Self
   where
     I: IntoIterator<Item = Self>, {
-    sources.into_iter().next().unwrap_or_else(Self::empty)
+    let mut iter = sources.into_iter();
+    let Some(first) = iter.next() else {
+      return Self::empty();
+    };
+    let rest: Vec<Self> = iter.collect();
+    if rest.is_empty() {
+      return first;
+    }
+    let fan_in = rest.len().saturating_add(1);
+    let (mut graph, mat) = first.into_parts();
+    let first_outlet = graph.tail_outlet();
+    let mut other_outlets = Vec::new();
+    for source in rest {
+      let (other_graph, _other_mat) = source.into_parts();
+      let other_outlet = other_graph.tail_outlet();
+      graph.append_unwired(other_graph);
+      if let Some(port) = other_outlet {
+        other_outlets.push(port);
+      }
+    }
+    let definition = merge_definition::<Out>(fan_in);
+    let merge_inlet = definition.inlet;
+    graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = first_outlet {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    for from in other_outlets {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    Source { graph, mat, _pd: PhantomData }
   }
 
   /// Creates a source from a Java-stream compatible iterator.
@@ -536,7 +570,11 @@ impl Source<i32, StreamNotUsed> {
 
 impl Source<u8, StreamNotUsed> {
   /// Creates a source from a path-compatible value.
+  ///
+  /// This stub converts a string to its UTF-8 byte representation.
+  /// For actual file IO, use `FileIO::from_path` in the `std` module.
   #[must_use]
+  #[deprecated(note = "Use FileIO::from_path from the std module for actual file reading")]
   pub fn from_path(path: &str) -> Self {
     Self::from_iterator(path.as_bytes().to_vec())
   }
@@ -546,6 +584,33 @@ impl<Out, Mat> Source<Out, Mat>
 where
   Out: Send + Sync + 'static,
 {
+  /// Combines two sources using merge fan-in with a custom materialized value
+  /// combination rule.
+  ///
+  /// This is the Pekko `Source.combineMat` equivalent: two sources are merged
+  /// and their materialized values are combined via the supplied rule `C`.
+  #[must_use]
+  pub fn combine_mat<Mat2, C>(first: Source<Out, Mat>, second: Source<Out, Mat2>, _combine: C) -> Source<Out, C::Out>
+  where
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = first.into_parts();
+    let first_outlet = graph.tail_outlet();
+    let (second_graph, right_mat) = second.into_parts();
+    let second_outlet = second_graph.tail_outlet();
+    graph.append_unwired(second_graph);
+    let definition = merge_definition::<Out>(2);
+    let merge_inlet = definition.inlet;
+    graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = first_outlet {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    if let Some(from) = second_outlet {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Source { graph, mat, _pd: PhantomData }
+  }
+
   /// Composes this source with a flow.
   #[must_use]
   pub fn via<T, Mat2>(self, flow: super::flow::Flow<Out, T, Mat2>) -> Source<T, Mat>

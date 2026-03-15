@@ -2,6 +2,8 @@
 
 mod bidi_shape;
 mod closed_shape;
+mod fan_in_shape2;
+mod fan_out_shape2;
 mod flow_shape;
 mod inlet;
 mod outlet;
@@ -15,6 +17,8 @@ mod uniform_fan_in_shape;
 
 pub use bidi_shape::BidiShape;
 pub use closed_shape::ClosedShape;
+pub use fan_in_shape2::FanInShape2;
+pub use fan_out_shape2::FanOutShape2;
 pub use flow_shape::FlowShape;
 pub use inlet::Inlet;
 pub use outlet::Outlet;

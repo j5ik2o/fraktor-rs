@@ -504,11 +504,12 @@ fn source_watch_termination_mat_keep_both() {
 }
 
 #[test]
-fn source_combine_selects_first_available_source() {
-  let values = Source::combine([Source::from_array([1_u32, 2_u32]), Source::from_array([9_u32])])
+fn source_combine_merges_all_sources() {
+  let mut values = Source::combine([Source::from_array([1_u32, 2_u32]), Source::from_array([9_u32])])
     .collect_values()
     .expect("collect_values");
-  assert_eq!(values, vec![1_u32, 2_u32]);
+  values.sort();
+  assert_eq!(values, vec![1_u32, 2_u32, 9_u32]);
 }
 
 #[test]
@@ -1005,6 +1006,7 @@ fn source_as_output_stream_collects_values() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn source_from_path_emits_path_bytes() {
   let values = Source::from_path("ab").collect_values().expect("collect_values");
   assert_eq!(values, vec![b'a', b'b']);
@@ -1977,4 +1979,61 @@ fn source_debounce_keeps_single_path_behavior() {
 fn source_sample_keeps_single_path_behavior() {
   let values = Source::single(7_u32).sample(1).expect("sample").collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn combine_empty_returns_empty_source() {
+  let sources: Vec<Source<u32, StreamNotUsed>> = Vec::new();
+  let combined = Source::combine(sources);
+  let values = combined.collect_values().expect("collect_values");
+  assert!(values.is_empty());
+}
+
+#[test]
+fn combine_single_source_returns_identity() {
+  let sources = vec![Source::from_iterator(vec![1_u32, 2, 3])];
+  let combined = Source::combine(sources);
+  let values = combined.collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn combine_two_sources_merges_all_elements() {
+  let s1 = Source::from_iterator(vec![1_u32, 2, 3]);
+  let s2 = Source::from_iterator(vec![4_u32, 5, 6]);
+  let combined = Source::combine(vec![s1, s2]);
+  let mut values = combined.collect_values().expect("collect_values");
+  values.sort();
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5, 6]);
+}
+
+#[test]
+fn combine_three_sources_merges_all_elements() {
+  let s1 = Source::from_iterator(vec![1_u32]);
+  let s2 = Source::from_iterator(vec![2_u32]);
+  let s3 = Source::from_iterator(vec![3_u32]);
+  let combined = Source::combine(vec![s1, s2, s3]);
+  let mut values = combined.collect_values().expect("collect_values");
+  values.sort();
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn combine_mat_merges_two_sources_with_keep_both() {
+  let s1: Source<u32, u32> = Source::from_iterator(vec![10_u32, 20]).map_materialized_value(|_| 1_u32);
+  let s2: Source<u32, u32> = Source::from_iterator(vec![30_u32, 40]).map_materialized_value(|_| 2_u32);
+  let combined: Source<u32, (u32, u32)> = Source::combine_mat(s1, s2, KeepBoth);
+  let mut values = combined.collect_values().expect("collect_values");
+  values.sort();
+  assert_eq!(values, vec![10_u32, 20, 30, 40]);
+}
+
+#[test]
+fn combine_mat_merges_two_sources_with_keep_left() {
+  let s1: Source<u32, u32> = Source::from_iterator(vec![1_u32]).map_materialized_value(|_| 10_u32);
+  let s2: Source<u32, u32> = Source::from_iterator(vec![2_u32]).map_materialized_value(|_| 20_u32);
+  let combined: Source<u32, u32> = Source::combine_mat(s1, s2, KeepLeft);
+  let mut values = combined.collect_values().expect("collect_values");
+  values.sort();
+  assert_eq!(values, vec![1_u32, 2]);
 }

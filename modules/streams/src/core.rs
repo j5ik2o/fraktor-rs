@@ -6,16 +6,24 @@ mod bounded_source_queue;
 mod completion;
 /// Supervision decider function type.
 mod decider;
+/// Per-element delay strategy trait.
+mod delay_strategy;
 /// Demand model types.
 mod demand;
 /// Demand tracking utilities.
 mod demand_tracker;
+/// Fixed delay strategy implementation.
+mod fixed_delay;
 /// Byte stream framing utilities.
 mod framing;
 /// Graph-related abstractions.
 pub mod graph;
 /// Dynamic fan-in/fan-out connectors.
 pub mod hub;
+/// IO operation result type.
+mod io_result;
+/// JSON object framing utilities.
+mod json_framing;
 /// Keep-both materialization rule.
 mod keep_both;
 /// Keep-left materialization rule.
@@ -26,6 +34,8 @@ mod keep_none;
 mod keep_right;
 /// Stream lifecycle and execution management.
 pub mod lifecycle;
+/// Linear increasing delay strategy implementation.
+mod linear_increasing_delay;
 /// Materialization pipeline.
 pub mod mat;
 /// Materialization combination kinds.
@@ -40,6 +50,8 @@ mod overflow_strategy;
 mod queue_offer_result;
 /// Restart/backoff configuration.
 mod restart_settings;
+/// Retry flow with exponential backoff for individual element failures.
+mod retry_flow;
 /// Stream topology shapes and connection points.
 pub mod shape;
 /// Shared pull handle for queue-based sink materialization.
@@ -50,6 +62,8 @@ mod source_queue;
 mod source_queue_with_complete;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
+/// Stateful map-concat accumulator trait.
+mod stateful_map_concat_accumulator;
 /// Stream buffer implementation.
 mod stream_buffer;
 /// Stream buffer configuration.
@@ -80,24 +94,31 @@ pub use attributes::Attributes;
 pub use bounded_source_queue::BoundedSourceQueue;
 pub use completion::Completion;
 pub use decider::Decider;
+pub use delay_strategy::DelayStrategy;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
+pub use fixed_delay::FixedDelay;
 use fraktor_utils_rs::core::sync::ArcShared;
 pub use framing::Framing;
+pub use io_result::IOResult;
+pub use json_framing::JsonFraming;
 pub use keep_both::KeepBoth;
 pub use keep_left::KeepLeft;
 pub use keep_none::KeepNone;
 pub use keep_right::KeepRight;
+pub use linear_increasing_delay::LinearIncreasingDelay;
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use overflow_strategy::OverflowStrategy;
 pub use queue_offer_result::QueueOfferResult;
 pub use restart_settings::RestartSettings;
+pub use retry_flow::RetryFlow;
 use shape::PortId;
 pub use sink_queue::SinkQueue;
 pub use source_queue::SourceQueue;
 pub use source_queue_with_complete::SourceQueueWithComplete;
 use stage::StageKind;
+pub use stateful_map_concat_accumulator::StatefulMapConcatAccumulator;
 pub use stream_buffer::StreamBuffer;
 pub use stream_buffer_config::StreamBufferConfig;
 pub use stream_completion::StreamCompletion;
@@ -277,7 +298,7 @@ impl RestartBackoff {
 ///
 /// The plan contains only stage definitions and wiring edges.
 /// Mutable execution state is created by the interpreter during materialization.
-struct StreamPlan {
+pub(crate) struct StreamPlan {
   stages:             Vec<StageDefinition>,
   edges:              Vec<StreamPlanEdge>,
   source_indices:     Vec<usize>,
@@ -528,7 +549,7 @@ trait FlowLogic: Send {
   }
 }
 
-enum SinkDecision {
+pub(crate) enum SinkDecision {
   Continue,
   Complete,
 }
@@ -539,7 +560,7 @@ enum FailureAction {
   Complete,
 }
 
-trait SinkLogic: Send {
+pub(crate) trait SinkLogic: Send {
   fn can_accept_input(&self) -> bool {
     true
   }
