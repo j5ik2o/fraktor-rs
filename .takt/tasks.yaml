@@ -48,6 +48,7 @@ tasks:
         今回のレビューでは `cargo` 系コマンドは再実行していません。ビルドとテストの成功確認は `Previous Response` に記録された `cargo clippy -p fraktor-actor-rs -- -D warnings` と `cargo test -p fraktor-actor-rs --lib` の結果を根拠にしています。
   - worktree: false
     piece: pekko-porting
+    start_movement: pekko-compat-fix
     auto_pr: true
     draft_pr: true
     name: streams-mojuuru-gyappu-2026-03
@@ -56,6 +57,6 @@ tasks:
     summary: "# streams モジュール ギャップ分析"
     task_dir: .takt/tasks/20260314-232956-streams-2026-03-14-2026-03-12
     created_at: 2026-03-14T23:29:56.748Z
-    started_at: 2026-03-15T01:02:43.215Z
+    started_at: 2026-03-15T03:35:44.941Z
     completed_at: null
-    owner_pid: 82194
+    owner_pid: 87252
