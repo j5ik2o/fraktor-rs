@@ -5,6 +5,7 @@ mod tests;
 
 use std::{
   fs,
+  io::{BufWriter, Write},
   path::{Path, PathBuf},
 };
 
@@ -40,11 +41,13 @@ impl FileIO {
     }
   }
 
-  /// Creates a sink that writes all received bytes to a file at the given path.
+  /// Creates a sink that writes received bytes to a file at the given path.
   ///
-  /// Bytes are accumulated internally and written to disk when the stream
-  /// completes. The materialized value is a [`StreamCompletion<IOResult>`]
-  /// that completes with the number of bytes written and the completion status.
+  /// The file is opened when the stream starts. Each byte is written through a
+  /// buffered writer so that intermediate data is flushed to disk incrementally
+  /// rather than accumulated entirely in memory. The materialized value is a
+  /// [`StreamCompletion<IOResult>`] that completes with the number of bytes
+  /// written and the completion status.
   ///
   /// The file is created (or truncated) at the given path. On write failure the
   /// `IOResult` records the error with a byte count of zero.
@@ -53,40 +56,54 @@ impl FileIO {
     let path_buf = path.as_ref().to_path_buf();
     let completion = StreamCompletion::new();
     let logic =
-      WriteToPathSinkLogic { path: path_buf, buffer: alloc::vec::Vec::new(), completion: completion.clone() };
+      WriteToPathSinkLogic { path: path_buf, writer: None, count: 0, completion: completion.clone() };
     Sink::from_definition(StageKind::Custom, logic, completion)
   }
 }
 
 struct WriteToPathSinkLogic {
   path:       PathBuf,
-  buffer:     alloc::vec::Vec<u8>,
+  writer:     Option<BufWriter<fs::File>>,
+  count:      u64,
   completion: StreamCompletion<IOResult>,
 }
 
 impl SinkLogic for WriteToPathSinkLogic {
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    if let Ok(file) = fs::File::create(&self.path) {
+      self.writer = Some(BufWriter::new(file));
+    }
     demand.request(1)
   }
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
-    self.buffer.push(byte);
+    if let Some(writer) = &mut self.writer {
+      if writer.write_all(&[byte]).is_err() {
+        self.writer = None;
+      } else {
+        self.count += 1;
+      }
+    }
     demand.request(1)?;
     Ok(SinkDecision::Continue)
   }
 
   fn on_complete(&mut self) -> Result<(), StreamError> {
-    let count = self.buffer.len() as u64;
-    let io_result = match fs::write(&self.path, &self.buffer) {
-      | Ok(()) => IOResult::successful(count),
-      | Err(_) => IOResult::failed(0, StreamError::Failed),
+    let io_result = if let Some(mut writer) = self.writer.take() {
+      match writer.flush() {
+        | Ok(()) => IOResult::successful(self.count),
+        | Err(_) => IOResult::failed(0, StreamError::Failed),
+      }
+    } else {
+      IOResult::failed(0, StreamError::Failed)
     };
     self.completion.complete(Ok(io_result));
     Ok(())
   }
 
   fn on_error(&mut self, error: StreamError) {
+    self.writer = None;
     self.completion.complete(Ok(IOResult::failed(0, error)));
   }
 }

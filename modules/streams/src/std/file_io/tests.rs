@@ -37,9 +37,10 @@ fn drive_to_completion<Mat>(materialized: &Materialized<Mat>) {
   for _ in 0..256 {
     let _ = materialized.handle().drive();
     if materialized.handle().state().is_terminal() {
-      break;
+      return;
     }
   }
+  panic!("stream did not reach terminal state after 256 drive iterations");
 }
 
 // --- from_path tests ---
