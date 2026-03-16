@@ -11,14 +11,14 @@ use crate::core::{
 #[test]
 fn creates_bounded_priority_queue() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> =
-    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(0) });
-  let capacity = NonZeroUsize::new(10).unwrap();
+    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
+  let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
   let factory = BoundedPriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
   let queue = factory.create();
 
-  queue.enqueue(AnyMessage::new(30_i32)).unwrap();
-  queue.enqueue(AnyMessage::new(10_i32)).unwrap();
+  queue.enqueue(AnyMessage::new(30_i32)).expect("enqueue 30");
+  queue.enqueue(AnyMessage::new(10_i32)).expect("enqueue 10");
 
-  let first = queue.dequeue().unwrap();
-  assert_eq!(*first.payload().downcast_ref::<i32>().unwrap(), 10);
+  let first = queue.dequeue().expect("dequeue 1st");
+  assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 10);
 }

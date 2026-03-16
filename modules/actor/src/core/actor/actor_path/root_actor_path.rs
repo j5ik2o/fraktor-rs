@@ -72,7 +72,7 @@ impl RootActorPath {
   /// Returns the guardian kind of this root path.
   #[must_use]
   pub const fn guardian(&self) -> GuardianKind {
-    self.inner.parts().guardian()
+    self.inner.guardian()
   }
 }
 

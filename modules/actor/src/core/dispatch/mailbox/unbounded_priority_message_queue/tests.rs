@@ -84,14 +84,13 @@ fn has_messages_reflects_queue_state() {
 }
 
 #[test]
-fn closure_based_priority_generator() {
-  let pgen: ArcShared<dyn MessagePriorityGenerator> =
-    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
+fn struct_based_priority_generator_dequeues_in_order() {
+  let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = UnboundedPriorityMessageQueue::new(pgen);
 
-  queue.enqueue(AnyMessage::new(50_i32)).unwrap();
-  queue.enqueue(AnyMessage::new(5_i32)).unwrap();
+  queue.enqueue(AnyMessage::new(50_i32)).expect("enqueue 50");
+  queue.enqueue(AnyMessage::new(5_i32)).expect("enqueue 5");
 
-  let first = queue.dequeue().unwrap();
-  assert_eq!(*first.payload().downcast_ref::<i32>().unwrap(), 5);
+  let first = queue.dequeue().expect("dequeue 1st");
+  assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 5);
 }

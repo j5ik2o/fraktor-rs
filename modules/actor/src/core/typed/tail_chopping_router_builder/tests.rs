@@ -1,3 +1,5 @@
+extern crate std;
+
 use alloc::vec::Vec;
 use core::{hint::spin_loop, time::Duration};
 
@@ -23,7 +25,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
     if condition() {
       return;
     }
-    spin_loop();
+    std::thread::yield_now();
   }
   assert!(condition(), "wait_until timed out");
 }

@@ -39,7 +39,7 @@ fn responding_routee_behavior(source: usize) -> Behavior<TestReq> {
   })
 }
 
-/// fan-out 検証用: クエリ受信を共有コレクションに記録した上で応答する routee
+// fan-out 検証用: クエリ受信を共有コレクションに記録した上で応答する routee
 fn tracking_routee_behavior(source: usize, tracker: ArcShared<NoStdMutex<Vec<usize>>>) -> Behavior<TestReq> {
   Behaviors::receive_message(move |_ctx, msg: &TestReq| {
     match msg {

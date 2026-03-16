@@ -95,11 +95,11 @@ fn half_open_rejects_second_call() {
 
   thread::sleep(Duration::from_millis(20));
 
-  // First call is allowed (transitions to HalfOpen).
+  // 最初の呼び出しは許可される（HalfOpen に遷移）
   assert!(cb.is_call_permitted().is_ok());
   assert_eq!(cb.state(), CircuitBreakerState::HalfOpen);
 
-  // Second call is rejected.
+  // 2回目の呼び出しは拒否される
   assert!(cb.is_call_permitted().is_err());
 }
 
@@ -164,7 +164,7 @@ fn recovery_cycle_closed_open_half_open_closed() {
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 
-  // Can fail and recover again
+  // 再度失敗・回復が可能であることを確認
   cb.record_failure();
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);

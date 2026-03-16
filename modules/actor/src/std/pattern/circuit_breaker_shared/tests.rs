@@ -19,7 +19,7 @@ fn clone_shares_state() {
   let cb1 = CircuitBreakerShared::new(3, Duration::from_millis(100));
   let cb2 = cb1.clone();
 
-  // Mutating through cb1 is visible through cb2.
+  // cb1 を介した変更は cb2 から見える
   fraktor_utils_rs::core::sync::SharedAccess::with_write(&cb1, |inner| {
     inner.record_failure();
   });
@@ -109,28 +109,28 @@ async fn open_error_contains_remaining_duration() {
 async fn cancel_during_half_open_records_failure() {
   let cb = CircuitBreakerShared::new(1, Duration::from_millis(10));
 
-  // Trip to Open
+  // Open に遷移させる
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  // Wait for reset timeout to transition to HalfOpen
+  // リセットタイムアウトを待って HalfOpen に遷移させる
   tokio::time::sleep(Duration::from_millis(20)).await;
 
-  // Cancel the operation mid-flight via timeout
+  // タイムアウトで操作を途中キャンセルする
   let result = tokio::time::timeout(
     Duration::from_millis(1),
     cb.call(|| async {
-      // Simulate a long-running operation that will be cancelled
+      // キャンセルされる長時間実行操作をシミュレートする
       tokio::time::sleep(Duration::from_secs(60)).await;
       Ok::<_, &str>(42)
     }),
   )
   .await;
 
-  // The outer timeout should have fired
+  // 外部タイムアウトが発火するべき
   assert!(result.is_err(), "expected timeout");
 
-  // The RAII guard should have recorded a failure, transitioning back to Open
+  // RAII ガードが失敗を記録し、Open に戻るべき
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 }
 
@@ -144,7 +144,7 @@ async fn cancel_during_half_open_records_failure() {
 async fn successful_calls_do_not_leak_guard_resources() {
   let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
 
-  // Perform many successful calls — guard must be properly dropped each time
+  // 多数の成功呼び出しを実行 — ガードが毎回適切にドロップされるべき
   for _ in 0..100 {
     let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
     assert!(result.is_ok());
@@ -152,7 +152,7 @@ async fn successful_calls_do_not_leak_guard_resources() {
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 
-  // Perform additional calls mixing success and failure
+  // 成功と失敗を混ぜた追加呼び出しを実行
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.failure_count(), 1);
 

@@ -33,6 +33,7 @@ pub trait AsyncSerializer: Send + Sync {
   /// # Errors
   ///
   /// The returned future resolves to [`SerializationError`] if decoding fails.
+  // Pekko API 互換: AsyncSerializer は from_* を &self で実装する
   #[allow(clippy::wrong_self_convention)]
   fn from_binary_async(&self, bytes: Vec<u8>, manifest: &str) -> SerializationFuture<'_, Box<dyn Any + Send + Sync>>;
 }

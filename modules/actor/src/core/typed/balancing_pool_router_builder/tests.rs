@@ -97,11 +97,11 @@ fn balancing_pool_distributes_to_idle_workers() {
 
 #[test]
 fn balancing_pool_does_not_support_resizer() {
-  // BalancingPoolRouterBuilder has no with_resizer method.
-  // This is a compile-time constraint. We verify the API is minimal.
+  // BalancingPoolRouterBuilder に with_resizer メソッドが存在しないことはコンパイル時制約。
+  // このテストは with_pool_size + build が通ることだけを確認する。
+  // with_resizer の不在はコンパイルレベルで保証されるため、ランタイムテストでは検出できない。
   let builder =
     Routers::balancing_pool(2, || Behaviors::receive_message(|_ctx, _msg: &WorkItem| Ok(Behaviors::same())));
-  // Only with_pool_size is available, no with_resizer.
   let _behavior = builder.with_pool_size(4).build();
 }
 

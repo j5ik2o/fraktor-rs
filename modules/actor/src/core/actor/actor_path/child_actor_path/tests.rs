@@ -97,3 +97,18 @@ fn system_guardian_child_path() {
   assert_eq!(child.name(), "logger");
   assert_eq!(child.parts().guardian(), GuardianKind::System);
 }
+
+#[test]
+fn try_from_trait_accepts_child() {
+  let path = ActorPath::root().child("worker");
+  let child = ChildActorPath::try_from(path);
+  assert!(child.is_ok());
+  assert_eq!(child.unwrap().name(), "worker");
+}
+
+#[test]
+fn try_from_trait_rejects_root() {
+  let path = ActorPath::root();
+  let result = ChildActorPath::try_from(path);
+  assert_eq!(result, Err(ActorPathError::NotChildPath));
+}

@@ -105,8 +105,10 @@ fn transform_messages_forwards_signals_to_inner() {
       Ok(Behaviors::same())
     });
 
-  let mut outer: Behavior<Outer> =
-    inner.transform_messages(|msg: &Outer| if let Outer::Num(n) = msg { Some(*n) } else { None });
+  let mut outer: Behavior<Outer> = inner.transform_messages(|msg: &Outer| match msg {
+    | Outer::Num(n) => Some(*n),
+    | Outer::Text(_) => None,
+  });
 
   let system = ActorSystem::new_empty();
   let (_pid, mut context) = make_ctx(&system);
@@ -125,8 +127,10 @@ fn transform_messages_forwards_signals_to_inner() {
 fn transform_messages_propagates_stopped_from_inner() {
   let inner: Behavior<u32> = Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::stopped()));
 
-  let mut outer: Behavior<Outer> =
-    inner.transform_messages(|msg: &Outer| if let Outer::Num(n) = msg { Some(*n) } else { None });
+  let mut outer: Behavior<Outer> = inner.transform_messages(|msg: &Outer| match msg {
+    | Outer::Num(n) => Some(*n),
+    | Outer::Text(_) => None,
+  });
 
   let system = ActorSystem::new_empty();
   let (_pid, mut context) = make_ctx(&system);
@@ -208,8 +212,10 @@ fn transform_messages_inner_behavior_evolves_on_active() {
     }))
   });
 
-  let mut outer: Behavior<Outer> =
-    inner.transform_messages(|msg: &Outer| if let Outer::Num(n) = msg { Some(*n) } else { None });
+  let mut outer: Behavior<Outer> = inner.transform_messages(|msg: &Outer| match msg {
+    | Outer::Num(n) => Some(*n),
+    | Outer::Text(_) => None,
+  });
 
   let system = ActorSystem::new_empty();
   let (_pid, mut context) = make_ctx(&system);

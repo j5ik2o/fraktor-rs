@@ -111,6 +111,14 @@ impl fmt::Debug for ChildActorPath {
   }
 }
 
+impl TryFrom<ActorPath> for ChildActorPath {
+  type Error = ActorPathError;
+
+  fn try_from(path: ActorPath) -> Result<Self, Self::Error> {
+    Self::try_from_path(path)
+  }
+}
+
 impl From<ChildActorPath> for ActorPath {
   fn from(child: ChildActorPath) -> Self {
     child.inner

@@ -140,8 +140,8 @@ fn behavior_runner_death_pact_succeeds_with_signal_handler() {
   assert!(received.load(Ordering::SeqCst));
 }
 
-/// signal handler が存在するが Behaviors::unhandled() を返す場合、
-/// DeathPactException が発行されることを検証する回帰テスト。
+/// Regression test: when a signal handler returns `Behaviors::unhandled()`,
+/// `DeathPactException` must be emitted.
 #[test]
 fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   let behavior = Behaviors::receive_signal(|_, _signal| Ok(Behaviors::unhandled()));

@@ -32,7 +32,7 @@ impl AsyncSerializer for StubAsyncSerializer {
 ///
 /// Only works for futures that resolve immediately (no real I/O).
 fn block_on<F: Future>(mut f: F) -> F::Output {
-  // Safety: the future is pinned and never moved after this point.
+  // 安全性: この時点で future はピン留めされ、以降移動しない
   let mut f = unsafe { Pin::new_unchecked(&mut f) };
 
   fn noop_raw_waker() -> RawWaker {
@@ -65,11 +65,20 @@ fn round_trip_async() {
   let serializer = StubAsyncSerializer;
   let message: Box<dyn Any + Send + Sync> = Box::new(String::from("async_hello"));
 
-  let bytes = block_on(serializer.to_binary_async(message)).unwrap();
+  let bytes = match block_on(serializer.to_binary_async(message)) {
+    | Ok(v) => v,
+    | Err(e) => panic!("to_binary_async failed: {e:?}"),
+  };
   assert_eq!(bytes, b"async_hello");
 
-  let restored = block_on(serializer.from_binary_async(bytes, "")).unwrap();
-  let restored_str = restored.downcast_ref::<String>().unwrap();
+  let restored = match block_on(serializer.from_binary_async(bytes, "")) {
+    | Ok(v) => v,
+    | Err(e) => panic!("from_binary_async failed: {e:?}"),
+  };
+  let restored_str = match restored.downcast_ref::<String>() {
+    | Some(v) => v,
+    | None => panic!("downcast to String failed"),
+  };
   assert_eq!(restored_str, "async_hello");
 }
 
@@ -79,8 +88,10 @@ fn invalid_message_type_returns_error() {
   let message: Box<dyn Any + Send + Sync> = Box::new(42_i32);
 
   let result = block_on(serializer.to_binary_async(message));
-  assert!(result.is_err());
-  assert!(result.unwrap_err().is_invalid_format());
+  match result {
+    | Err(err) => assert!(err.is_invalid_format()),
+    | Ok(_) => panic!("expected InvalidFormat error"),
+  }
 }
 
 #[test]
@@ -88,8 +99,14 @@ fn empty_bytes_produces_empty_string() {
   let serializer = StubAsyncSerializer;
   let bytes: Vec<u8> = Vec::new();
 
-  let restored = block_on(serializer.from_binary_async(bytes, "")).unwrap();
-  let restored_str = restored.downcast_ref::<String>().unwrap();
+  let restored = match block_on(serializer.from_binary_async(bytes, "")) {
+    | Ok(v) => v,
+    | Err(e) => panic!("from_binary_async failed: {e:?}"),
+  };
+  let restored_str = match restored.downcast_ref::<String>() {
+    | Some(v) => v,
+    | None => panic!("downcast to String failed"),
+  };
   assert_eq!(restored_str, "");
 }
 

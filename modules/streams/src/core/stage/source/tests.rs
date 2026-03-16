@@ -922,11 +922,11 @@ fn source_create_propagates_queue_failure_from_producer() {
   })
   .expect("create");
 
-  // `collect_values` has a fixed idle budget (1024). On slow CI machines the
-  // producer thread may not have called `fail` within that budget, causing
-  // `WouldBlock` instead of the expected `Failed`. Both outcomes indicate
-  // correct propagation; `WouldBlock` simply means the drive loop timed out
-  // before the background thread ran.
+  // `collect_values` は固定の idle budget (1024) を持つ。遅い CI マシンでは
+  // producer スレッドがその budget 内に `fail` を呼び出せない場合があり、
+  // 期待する `Failed` ではなく `WouldBlock` が返される。どちらも正しい伝播を
+  // 示しており、`WouldBlock` は drive ループがバックグラウンドスレッド実行前に
+  // タイムアウトしたことを意味する。
   let result = source.collect_values();
   assert!(
     matches!(result, Err(StreamError::Failed) | Err(StreamError::WouldBlock)),

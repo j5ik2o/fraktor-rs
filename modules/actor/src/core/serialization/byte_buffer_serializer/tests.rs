@@ -26,12 +26,21 @@ fn round_trip_via_buffer() {
   let message = String::from("hello");
 
   let mut buf: Vec<u8> = Vec::new();
-  serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf).unwrap();
+  match serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf) {
+    | Ok(()) => {},
+    | Err(e) => panic!("to_binary_buf failed: {e:?}"),
+  }
 
   assert_eq!(buf, b"hello");
 
-  let restored = serializer.from_binary_buf(&buf, "").unwrap();
-  let restored_str = restored.downcast_ref::<String>().unwrap();
+  let restored = match serializer.from_binary_buf(&buf, "") {
+    | Ok(v) => v,
+    | Err(e) => panic!("from_binary_buf failed: {e:?}"),
+  };
+  let restored_str = match restored.downcast_ref::<String>() {
+    | Some(v) => v,
+    | None => panic!("downcast to String failed"),
+  };
   assert_eq!(restored_str, "hello");
 }
 
@@ -41,7 +50,10 @@ fn appends_to_existing_buffer_content() {
   let message = String::from("world");
 
   let mut buf: Vec<u8> = vec![0x01, 0x02];
-  serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf).unwrap();
+  match serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf) {
+    | Ok(()) => {},
+    | Err(e) => panic!("to_binary_buf failed: {e:?}"),
+  }
 
   // シリアライザは追記する。既存バイトは保持される。
   assert_eq!(&buf[..2], &[0x01, 0x02]);
@@ -56,8 +68,10 @@ fn invalid_message_type_returns_error() {
   let mut buf: Vec<u8> = Vec::new();
   let result = serializer.to_binary_buf(&message as &(dyn Any + Send + Sync), &mut buf);
 
-  assert!(result.is_err());
-  assert!(result.unwrap_err().is_invalid_format());
+  match result {
+    | Err(err) => assert!(err.is_invalid_format()),
+    | Ok(_) => panic!("expected InvalidFormat error"),
+  }
 }
 
 #[test]

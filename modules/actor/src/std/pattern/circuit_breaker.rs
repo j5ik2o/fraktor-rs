@@ -98,7 +98,7 @@ impl CircuitBreaker {
         let opened_at = self.opened_at_or_now();
         let elapsed = opened_at.elapsed();
         if elapsed >= self.reset_timeout {
-          // Transition to HalfOpen and permit the probe call.
+          // HalfOpen に遷移してプローブ呼び出しを許可する
           self.state = CircuitBreakerState::HalfOpen;
           self.half_open_attempted = true;
           Ok(())
@@ -108,7 +108,7 @@ impl CircuitBreaker {
       },
       | CircuitBreakerState::HalfOpen => {
         if self.half_open_attempted {
-          // A probe call is already in progress — reject.
+          // プローブ呼び出しが既に進行中 — 拒否する
           let remaining = self.remaining_in_open();
           Err(CircuitBreakerOpenError::new(remaining))
         } else {
@@ -126,7 +126,7 @@ impl CircuitBreaker {
         self.transition_to_closed();
       },
       | CircuitBreakerState::Closed => {
-        // Reset consecutive failure count on success.
+        // 成功時に連続失敗カウントをリセットする
         self.failure_count = 0;
       },
       | CircuitBreakerState::Open => {},
@@ -149,6 +149,7 @@ impl CircuitBreaker {
     }
   }
 
+  // TODO: Instant::now() を直接呼び出している。テスト容易性のため Clock トレイトの導入を検討する。
   fn transition_to_open(&mut self) {
     self.state = CircuitBreakerState::Open;
     self.opened_at = Some(Instant::now());

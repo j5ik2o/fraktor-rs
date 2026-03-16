@@ -181,7 +181,7 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// Internal coordinator
+// 内部コーディネーター
 // ---------------------------------------------------------------------------
 
 /// Internal command type for the tail-chopping coordinator.
@@ -262,24 +262,24 @@ where
     let timeout_reply = timeout_reply.clone();
 
     Behaviors::setup(move |ctx| {
-      // Create a message adapter: when routees send R, it is delivered as ChopCommand::Reply(R).
+      // メッセージアダプターを作成: routee からの R を ChopCommand::Reply(R) として受け取る
       let Ok(adapter_ref) =
         ctx.message_adapter::<R, _>(|r: R| -> Result<ChopCommand<R>, AdapterError> { Ok(ChopCommand::Reply(r)) })
       else {
         return Behaviors::stopped();
       };
 
-      // Send to first routee immediately.
+      // 最初の routee へ即時送信する
       if let Some(first) = routees.first() {
         let mut r = first.clone();
         let _ = r.tell((create_request)(&message, adapter_ref.clone()));
       }
 
-      // Schedule next-send interval timer (only if more than one routee).
+      // 次送信のインターバルタイマーを設定する（routee が2体以上の場合のみ）
       if routees.len() > 1 {
         let _ = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext);
       }
-      // Schedule overall timeout.
+      // 全体タイムアウトを設定する
       let _ = ctx.schedule_once(within, ctx.self_ref(), ChopCommand::<R>::FinalTimeout);
 
       let current_index = ArcShared::new(RuntimeMutex::new(1_usize));

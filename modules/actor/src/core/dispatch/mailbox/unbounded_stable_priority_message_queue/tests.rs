@@ -15,7 +15,7 @@ impl MessagePriorityGenerator for PayloadPriorityGenerator {
   }
 }
 
-/// 全メッセージに同一優先度を割り当てるジェネレータ（挿入順テスト用）。
+/// Priority generator that assigns the same priority to all messages (for insertion-order tests).
 struct ConstantPriorityGenerator(i32);
 
 impl MessagePriorityGenerator for ConstantPriorityGenerator {

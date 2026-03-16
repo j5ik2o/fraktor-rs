@@ -67,6 +67,9 @@ struct PriorityEntry {
   message:  AnyMessage,
 }
 
+// BinaryHeap での使用を前提としているため、priority のみで比較する。
+// message の比較は不要（AnyMessage は PartialEq を実装しない）。
+// 将来この型を公開する場合は比較セマンティクスの再検討が必要。
 impl PartialEq for PriorityEntry {
   fn eq(&self, other: &Self) -> bool {
     self.priority == other.priority
