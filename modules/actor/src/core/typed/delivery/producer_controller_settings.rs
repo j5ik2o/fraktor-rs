@@ -7,7 +7,7 @@ mod tests;
 ///
 /// This covers only the in-memory reliable delivery settings.
 /// Durable queue settings are out of scope for the current implementation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ProducerControllerSettings;
 
 impl ProducerControllerSettings {
@@ -15,11 +15,5 @@ impl ProducerControllerSettings {
   #[must_use]
   pub(crate) const fn new() -> Self {
     Self
-  }
-}
-
-impl Default for ProducerControllerSettings {
-  fn default() -> Self {
-    Self::new()
   }
 }
