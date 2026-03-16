@@ -128,7 +128,7 @@ impl ProducerController {
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
 
-      // Create a message adapter: A → ProducerControllerCommand::Msg
+      // メッセージアダプタを作成: A → ProducerControllerCommand::Msg
       let send_adapter = match ctx.message_adapter(|a: A| Ok(ProducerControllerCommand::msg(a))) {
         | Ok(adapter) => adapter,
         | Err(error) => {
@@ -145,8 +145,8 @@ impl ProducerController {
       }
 
       Behaviors::receive_message(move |_ctx, command: &ProducerControllerCommand<A>| {
-        // Collect deferred actions while holding the lock, then execute them
-        // after releasing it to avoid re-entrant deadlock via message adapters.
+        // ロック保持中に遅延アクションを収集し、ロック解放後に実行する。
+        // メッセージアダプタ経由の再入デッドロックを回避するため。
         let deferred = {
           let mut state = state.lock();
           let mut deferred = Vec::new();
@@ -190,7 +190,7 @@ impl ProducerController {
             },
           }
           deferred
-        }; // state lock released here
+        }; // ステートロックはここで解放される
 
         execute_deferred(deferred)?;
         Ok(Behaviors::same())
@@ -240,10 +240,10 @@ fn collect_on_msg<A>(
   }
 
   state.current_seq_nr += 1;
-  // NOTE: do NOT call collect_request_next here.  With inline dispatch the
-  // CC's Request arrives in the same processing chain, creating an infinite
-  // feedback loop (PC→producer→PC→CC→PC).  Demand is refreshed only when
-  // an explicit Request command arrives from the ConsumerController.
+  // 注意: ここで collect_request_next を呼ばないこと。インラインディスパッチでは
+  // CC の Request が同じ処理チェーン内に到着し、無限フィードバックループ
+  // (PC→producer→PC→CC→PC) が発生する。デマンドの更新は ConsumerController
+  // からの明示的な Request コマンド到着時のみ行う。
 }
 
 fn collect_resend<A>(state: &ProducerControllerState<A>, from_seq_nr: SeqNr, deferred: &mut Vec<DeferredAction<A>>)

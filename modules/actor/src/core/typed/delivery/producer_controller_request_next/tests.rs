@@ -2,12 +2,12 @@ use alloc::string::String;
 
 use crate::core::typed::delivery::ProducerControllerRequestNext;
 
-// ProducerControllerRequestNext is tested through integration tests
-// in the delivery module tests since it requires a running actor system.
+// ProducerControllerRequestNext は実行中のアクターシステムが必要なため、
+// delivery モジュールの統合テストでテストされる。
 
 #[test]
 fn request_next_accessor_consistency() {
-  // Compile-time check: ensure the type is generic and Clone.
+  // コンパイル時チェック: 型がジェネリックかつ Clone であることを確認する。
   fn _assert_clone<T: Clone>() {}
   _assert_clone::<ProducerControllerRequestNext<String>>();
 }

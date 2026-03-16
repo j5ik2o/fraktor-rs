@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{
-  collections::BTreeMap,
+  collections::{BTreeMap, VecDeque},
   string::{String, ToString},
   vec::Vec,
 };
@@ -78,7 +78,7 @@ where
   /// Round-robin index for distributing messages.
   next_worker:    usize,
   /// Buffered messages when no worker has demand.
-  buffered:       Vec<A>,
+  buffered:       VecDeque<A>,
   /// Maximum buffer size.
   buffer_size:    u32,
   /// Whether we have sent a RequestNext to the producer and are awaiting a Msg.
@@ -98,7 +98,7 @@ where
       demand_adapter: None,
       workers: BTreeMap::new(),
       next_worker: 0,
-      buffered: Vec::new(),
+      buffered: VecDeque::new(),
       buffer_size,
       awaiting_msg: false,
     }
@@ -195,7 +195,7 @@ impl WorkPullingProducerController {
     Behaviors::setup(move |ctx| {
       let _self_ref = ctx.self_ref();
 
-      // Create a message adapter: A → WorkPullingProducerControllerCommand::Msg
+      // メッセージアダプタを作成: A → WorkPullingProducerControllerCommand::Msg
       let send_adapter = match ctx.message_adapter(|a: A| Ok(WorkPullingProducerControllerCommand::msg(a))) {
         | Ok(adapter) => adapter,
         | Err(error) => {
@@ -205,7 +205,7 @@ impl WorkPullingProducerController {
         },
       };
 
-      // Create a message adapter: ProducerControllerRequestNext<A> →
+      // メッセージアダプタを作成: ProducerControllerRequestNext<A> →
       // WorkPullingProducerControllerCommand::InternalDemand
       let demand_adapter = match ctx.message_adapter(|req: ProducerControllerRequestNext<A>| {
         Ok(WorkPullingProducerControllerCommand::internal_demand(req))
@@ -218,7 +218,7 @@ impl WorkPullingProducerController {
         },
       };
 
-      // Create a message adapter: Listing →
+      // メッセージアダプタを作成: Listing →
       // WorkPullingProducerControllerCommand::WorkerListing
       let listing_adapter = match ctx
         .message_adapter(|listing: Listing| Ok(WorkPullingProducerControllerCommand::worker_listing(listing)))
@@ -231,7 +231,7 @@ impl WorkPullingProducerController {
         },
       };
 
-      // Subscribe to the Receptionist for worker discovery.
+      // ワーカー検出のために Receptionist をサブスクライブする。
       subscribe_to_receptionist(ctx, &worker_service_key, &listing_adapter);
 
       let state = ArcShared::new(RuntimeMutex::new(WorkPullingState::<A>::new(producer_id.clone(), buffer_size)));
@@ -267,7 +267,7 @@ impl WorkPullingProducerController {
             },
           }
           deferred
-        }; // state lock released here
+        }; // ステートロックはここで解放される
 
         execute_wppc_deferred(deferred, ctx, &state)?;
         Ok(Behaviors::same())
@@ -300,14 +300,14 @@ fn collect_on_worker_listing<A>(
   A: Clone + Send + Sync + 'static, {
   let current_keys: Vec<u64> = listing.refs().iter().map(pid_key).collect();
 
-  // Remove workers that are no longer in the listing.
+  // リスティングに存在しなくなったワーカーを削除する。
   let removed_keys: Vec<u64> = state.workers.keys().filter(|k| !current_keys.contains(k)).copied().collect();
 
   for key in &removed_keys {
     state.workers.remove(key);
   }
 
-  // Schedule spawning of new workers (done outside lock).
+  // 新規ワーカーの生成をスケジュールする（ロック外で実行）。
   if let Some(demand_adapter) = state.demand_adapter.clone() {
     for actor_ref in listing.refs() {
       let key = pid_key(actor_ref);
@@ -325,7 +325,7 @@ fn collect_on_worker_listing<A>(
     }
   }
 
-  // Drain buffered messages to workers that already have demand.
+  // バッファ済みメッセージをデマンドのあるワーカーに排出する。
   collect_drain_buffered(state, deferred);
   collect_maybe_request_next(state, deferred);
 }
@@ -337,8 +337,9 @@ where
   if let Some(worker_key) = state.find_worker_with_demand() {
     collect_send_to_worker(state, worker_key, message, deferred);
   } else if (state.buffered.len() as u32) < state.buffer_size {
-    state.buffered.push(message);
+    state.buffered.push_back(message);
   }
+  // バッファが満杯かつデマンドのあるワーカーがない場合、メッセージは暗黙的に破棄される。
 
   state.current_seq_nr += 1;
   collect_maybe_request_next(state, deferred);
@@ -364,7 +365,7 @@ where
   A: Clone + Send + Sync + 'static, {
   while !state.buffered.is_empty() {
     if let Some(worker_key) = state.find_worker_with_demand() {
-      let message = state.buffered.remove(0);
+      let message = state.buffered.pop_front().unwrap();
       collect_send_to_worker(state, worker_key, message, deferred);
     } else {
       break;
@@ -443,7 +444,7 @@ where
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         if let Some(entry) = spawn_and_wire_worker::<A>(ctx, &worker_ref, &pc_producer_id, &demand_adapter)? {
-          // Re-acquire lock briefly to register the new worker entry.
+          // 新しいワーカーエントリを登録するためロックを短時間再取得する。
           state.lock().workers.insert(pid_key(&worker_ref), entry);
         }
       },
@@ -480,11 +481,11 @@ where
 
   let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.actor_ref().clone());
 
-  // Start the per-worker ProducerController.
+  // ワーカー単位の ProducerController を開始する。
   let mut pc_ref_start = pc_ref.clone();
   pc_ref_start.tell(ProducerController::start(demand_adapter.clone())).map_err(|e| ActorError::from_send_error(&e))?;
 
-  // Register the worker's ConsumerController.
+  // ワーカーの ConsumerController を登録する。
   let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
   let mut pc_ref_clone = pc_ref.clone();
   pc_ref_clone.tell(ProducerController::register_consumer(cc_ref)).map_err(|e| ActorError::from_send_error(&e))?;
