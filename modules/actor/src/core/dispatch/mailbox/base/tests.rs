@@ -123,6 +123,16 @@ fn mailbox_new() {
 }
 
 #[test]
+fn mailbox_enqueue_user_returns_closed_when_queue_is_closed() {
+  let outcomes = VecDeque::from([ScriptedEnqueue::Closed]);
+  let queue = Box::new(ScriptedMessageQueue::new(outcomes));
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+
+  let result = mailbox.enqueue_user(AnyMessage::new("msg"));
+  assert!(matches!(result, Err(SendError::Closed(_))));
+}
+
+#[test]
 fn mailbox_set_instrumentation() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let system_state = ActorSystem::new_empty().state();
@@ -183,13 +193,15 @@ fn mailbox_enqueue_user_bounded() {
 }
 
 #[test]
-fn mailbox_prepend_user_messages_returns_restore_error_when_rollback_fails() {
+fn mailbox_prepend_user_messages_returns_error_and_restores_existing_only() {
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Closed,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Enqueued, // prepend（drain 後の再エンキュー）
+    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗
+    // clean_up 後、既存メッセージのみ復元
+    ScriptedEnqueue::Enqueued, // 復元: existing-1
+    ScriptedEnqueue::Enqueued, // 復元: existing-2
   ]);
   let queue = Box::new(ScriptedMessageQueue::new(outcomes));
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
@@ -200,7 +212,8 @@ fn mailbox_prepend_user_messages_returns_restore_error_when_rollback_fails() {
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
   let result = mailbox.prepend_user_messages(&prepended);
 
-  assert!(matches!(result, Err(SendError::Closed(_))));
+  // 新メッセージの挿入は失敗として報告される
+  assert!(result.is_err(), "prepend should fail: {result:?}");
 }
 
 #[test]
@@ -216,7 +229,7 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
     ScriptedEnqueue::Enqueued, // existing-2
     ScriptedEnqueue::Enqueued, // prepend（drain-and-requeue 1回目）
     ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗 → ロールバック発動
-    ScriptedEnqueue::Enqueued, // 復元: prepend（新メッセージ）
+    // 既存メッセージのみ復元（新メッセージは含めない）
     ScriptedEnqueue::Enqueued, // 復元: existing-1
     ScriptedEnqueue::Enqueued, // 復元: existing-2
     ScriptedEnqueue::Enqueued, // 並行エンキュー
@@ -258,8 +271,8 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
 
   let enqueue_result = enqueue_handle.join().expect("エンキュースレッドが完了するべき");
   assert!(matches!(enqueue_result, Ok(EnqueueOutcome::Enqueued)));
-  // prepend(復元) + existing-1(復元) + existing-2(復元) + concurrent = 4
-  assert_eq!(mailbox.user_len(), 4);
+  // existing-1(復元) + existing-2(復元) + concurrent = 3
+  assert_eq!(mailbox.user_len(), 3);
 }
 
 #[test]

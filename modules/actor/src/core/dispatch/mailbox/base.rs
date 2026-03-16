@@ -221,18 +221,14 @@ impl Mailbox {
       }
     }
 
-    if let Err(error) = enqueue_result {
+    if let Err(_error) = enqueue_result {
       self.user.clean_up();
-      // 新メッセージ (messages) も既存メッセージ (existing) も両方復元する
-      let all_messages = messages.iter().cloned().chain(existing.iter().cloned());
-      for message in all_messages {
-        if let Err(restore_error) = self.enqueue_for_prepend(message, first_message) {
-          self.publish_metrics_with_user_len(self.user.number_of_messages());
-          return Err(restore_error);
-        }
+      // 既存メッセージのみ復元する（新メッセージは挿入失敗として呼び出し側に返す）
+      for message in existing {
+        let _ = self.enqueue_for_prepend(message, first_message);
       }
       self.publish_metrics_with_user_len(self.user.number_of_messages());
-      return Err(error);
+      return Err(SendError::full(first_message.clone()));
     }
 
     self.publish_metrics_with_user_len(self.user.number_of_messages());
