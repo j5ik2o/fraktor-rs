@@ -212,7 +212,9 @@ where
 }
 
 /// Spawns a tail-chopping coordinator child actor.
-/// spawn 失敗時は timeout_reply を caller に返し、ask 側が待ちぼうけにならないようにする。
+///
+/// On spawn failure the `timeout_reply` is sent back to the caller so that the
+/// ask side does not hang indefinitely.
 fn spawn_chop_coordinator<'a, M, R>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'a, M>,
   params: ChopCoordinatorParams<M, R>,
