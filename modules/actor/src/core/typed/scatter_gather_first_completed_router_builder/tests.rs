@@ -359,7 +359,7 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
     let rs = rs.clone();
     Behaviors::setup(move |ctx| {
       let router_behavior_factory = ArcShared::new(move || {
-        Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
+        let mut builder = Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
           pool_size,
           || responding_routee_behavior(0),
           Duration::from_secs(5),
@@ -370,9 +370,9 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
             | TestReq::Query { reply_to, .. } => Some(reply_to.clone()),
           },
           TestReply { id: 0, source: usize::MAX },
-        )
-        .force_routee_spawn_failure()
-        .build()
+        );
+        builder.force_routee_spawn_failure = true;
+        builder.build()
       });
 
       let rbf = router_behavior_factory.clone();
@@ -439,7 +439,7 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
 
       let tr2 = tr.clone();
       let router_behavior_factory = ArcShared::new(move || {
-        Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
+        let mut builder = Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
           pool_size,
           || responding_routee_behavior(0),
           Duration::from_millis(500),
@@ -450,9 +450,9 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
             | TestReq::Query { reply_to, .. } => Some(reply_to.clone()),
           },
           tr2.clone(),
-        )
-        .force_coord_spawn_failure()
-        .build()
+        );
+        builder.force_coord_spawn_failure = true;
+        builder.build()
       });
 
       let rbf = router_behavior_factory.clone();

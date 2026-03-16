@@ -121,7 +121,6 @@ pub use receptionist_command::ReceptionistCommand;
 pub use recipient_ref::RecipientRef;
 pub use resizer::Resizer;
 pub use routers::Routers;
-pub use scatter_gather_first_completed_router_builder::ScatterGatherFirstCompletedRouterBuilder;
 pub use service_key::ServiceKey;
 pub use spawn_protocol::SpawnProtocol;
 pub use stash_buffer::StashBuffer;

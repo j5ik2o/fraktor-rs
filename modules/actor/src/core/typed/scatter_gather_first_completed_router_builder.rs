@@ -34,16 +34,14 @@ pub struct ScatterGatherFirstCompletedRouterBuilder<M, R>
 where
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
-  pool_size:                  usize,
-  behavior_factory:           ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
-  within:                     Duration,
-  create_request:             CreateRequestFn<M, R>,
-  extract_reply_to:           ExtractReplyToFn<M, R>,
-  timeout_reply:              ArcShared<R>,
-  #[cfg(test)]
-  force_routee_spawn_failure: bool,
-  #[cfg(test)]
-  force_coord_spawn_failure:  bool,
+  pool_size: usize,
+  behavior_factory: ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
+  within: Duration,
+  create_request: CreateRequestFn<M, R>,
+  extract_reply_to: ExtractReplyToFn<M, R>,
+  timeout_reply: ArcShared<R>,
+  pub(crate) force_routee_spawn_failure: bool,
+  pub(crate) force_coord_spawn_failure: bool,
 }
 
 impl<M, R> ScatterGatherFirstCompletedRouterBuilder<M, R>
@@ -87,25 +85,9 @@ where
       create_request: ArcShared::new(create_request),
       extract_reply_to: ArcShared::new(extract_reply_to),
       timeout_reply: ArcShared::new(timeout_reply),
-      #[cfg(test)]
       force_routee_spawn_failure: false,
-      #[cfg(test)]
       force_coord_spawn_failure: false,
     }
-  }
-
-  /// Forces all routee `spawn_child_watched` calls to fail (test seam).
-  #[cfg(test)]
-  pub(crate) fn force_routee_spawn_failure(mut self) -> Self {
-    self.force_routee_spawn_failure = true;
-    self
-  }
-
-  /// Forces coordinator `spawn_child` calls to fail (test seam).
-  #[cfg(test)]
-  pub(crate) fn force_coord_spawn_failure(mut self) -> Self {
-    self.force_coord_spawn_failure = true;
-    self
   }
 
   /// Builds the scatter-gather pool router as a [`Behavior`].
@@ -117,9 +99,7 @@ where
     let create_request = self.create_request;
     let extract_reply_to = self.extract_reply_to;
     let timeout_reply = self.timeout_reply;
-    #[cfg(test)]
     let force_routee_spawn_failure = self.force_routee_spawn_failure;
-    #[cfg(test)]
     let force_coord_spawn_failure = self.force_coord_spawn_failure;
 
     Behaviors::setup(move |ctx| {
@@ -128,7 +108,6 @@ where
         let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
         factory()
       });
-      #[cfg(test)]
       let props = if force_routee_spawn_failure {
         props.with_dispatcher_from_config("__test_force_spawn_failure__")
       } else {
@@ -160,7 +139,6 @@ where
       let extract_reply_to = extract_reply_to.clone();
       let timeout_reply = timeout_reply.clone();
 
-      #[cfg(test)]
       let force_coord = force_coord_spawn_failure;
 
       Behaviors::receive_message(move |ctx, message: &M| {
@@ -173,10 +151,6 @@ where
         };
 
         if let Some(original_reply_to) = (extract_reply_to)(message) {
-          #[cfg(test)]
-          let coord_force = force_coord;
-          #[cfg(not(test))]
-          let coord_force = false;
           spawn_gather_coordinator(
             ctx,
             &routee_snapshot,
@@ -185,7 +159,7 @@ where
             &create_request,
             within,
             &timeout_reply,
-            coord_force,
+            force_coord,
           );
         } else {
           for routee in &routee_snapshot {
