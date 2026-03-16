@@ -363,11 +363,12 @@ fn collect_send_to_worker<A>(
 fn collect_drain_buffered<A>(state: &mut WorkPullingState<A>, deferred: &mut Vec<WppcDeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
-  while !state.buffered.is_empty() {
+  while let Some(message) = state.buffered.pop_front() {
     if let Some(worker_key) = state.find_worker_with_demand() {
-      let message = state.buffered.pop_front().unwrap();
       collect_send_to_worker(state, worker_key, message, deferred);
     } else {
+      // デマンドのあるワーカーがいない場合、メッセージをバッファに戻して終了する
+      state.buffered.push_front(message);
       break;
     }
   }
