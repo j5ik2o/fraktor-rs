@@ -292,7 +292,7 @@ fn collect_try_deliver_stashed<A>(
   if state.deliver_to.is_none() || state.waiting_for_confirm {
     return;
   }
-  let expected = state.received_seq_nr;
+  let expected = state.delivered_seq_nr + 1;
   if let Some(pos) = state.stashed.iter().position(|m| m.seq_nr() == expected) {
     let next = state.stashed.remove(pos);
     collect_deliver_to_consumer(state, &next, confirm_adapter, deferred);
