@@ -84,8 +84,8 @@ where
     Self(ConsumerControllerCommandKind::ConsumerTerminated)
   }
 
-  /// Unpacks the command into its kind variant.
-  pub(crate) fn into_kind(self) -> ConsumerControllerCommandKind<A> {
-    self.0
+  /// Returns a reference to the command kind.
+  pub(crate) const fn kind(&self) -> &ConsumerControllerCommandKind<A> {
+    &self.0
   }
 }

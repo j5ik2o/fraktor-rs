@@ -65,8 +65,8 @@ where
     Self(WorkPullingProducerControllerCommandKind::InternalDemand { request })
   }
 
-  /// Unpacks the command into its kind variant.
-  pub(crate) fn into_kind(self) -> WorkPullingProducerControllerCommandKind<A> {
-    self.0
+  /// Returns a reference to the command kind.
+  pub(crate) const fn kind(&self) -> &WorkPullingProducerControllerCommandKind<A> {
+    &self.0
   }
 }

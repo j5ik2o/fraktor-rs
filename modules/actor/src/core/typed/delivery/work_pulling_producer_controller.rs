@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{
-  collections::{BTreeMap, VecDeque},
+  collections::{BTreeMap, BTreeSet, VecDeque},
   string::{String, ToString},
   vec::Vec,
 };
@@ -246,24 +246,24 @@ impl WorkPullingProducerController {
         let deferred = {
           let mut state = state.lock();
           let mut deferred: Vec<WppcDeferredAction<A>> = Vec::new();
-          match command.clone().into_kind() {
+          match command.kind() {
             | WorkPullingProducerControllerCommandKind::Start { producer } => {
-              state.producer = Some(producer);
+              state.producer = Some(producer.clone());
               collect_maybe_request_next(&mut state, &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::Msg { message } => {
               state.awaiting_msg = false;
-              collect_on_msg(&mut state, message, &mut deferred);
+              collect_on_msg(&mut state, message.clone(), &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::GetWorkerStats { reply_to } => {
               let stats = WorkerStats::new(state.worker_count());
-              deferred.push(WppcDeferredAction::TellWorkerStats(reply_to, stats));
+              deferred.push(WppcDeferredAction::TellWorkerStats(reply_to.clone(), stats));
             },
             | WorkPullingProducerControllerCommandKind::WorkerListing { listing } => {
-              collect_on_worker_listing(&mut state, &listing, &producer_id_inner, &mut deferred);
+              collect_on_worker_listing(&mut state, listing, &producer_id_inner, &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::InternalDemand { request } => {
-              collect_on_internal_demand(&mut state, &request, &mut deferred);
+              collect_on_internal_demand(&mut state, request, &mut deferred);
             },
           }
           deferred
@@ -298,7 +298,7 @@ fn collect_on_worker_listing<A>(
   deferred: &mut Vec<WppcDeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
-  let current_keys: Vec<u64> = listing.refs().iter().map(pid_key).collect();
+  let current_keys: BTreeSet<u64> = listing.refs().iter().map(pid_key).collect();
 
   // リスティングに存在しなくなったワーカーを削除する。
   let removed_keys: Vec<u64> = state.workers.keys().filter(|k| !current_keys.contains(k)).copied().collect();

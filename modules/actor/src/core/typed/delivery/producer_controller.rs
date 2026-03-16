@@ -150,35 +150,35 @@ impl ProducerController {
         let deferred = {
           let mut state = state.lock();
           let mut deferred = Vec::new();
-          match command.clone().into_kind() {
+          match command.kind() {
             | ProducerControllerCommandKind::Start { producer } => {
-              state.producer = Some(producer);
+              state.producer = Some(producer.clone());
               collect_request_next(&state, &mut deferred);
             },
             | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
-              state.consumer_controller = Some(consumer_controller);
+              state.consumer_controller = Some(consumer_controller.clone());
               collect_request_next(&state, &mut deferred);
             },
             | ProducerControllerCommandKind::Msg { message } => {
-              collect_on_msg(&mut state, message, &self_ref, &mut deferred);
+              collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::MsgWithConfirmation { message, .. } => {
-              collect_on_msg(&mut state, message, &self_ref, &mut deferred);
+              collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::Request {
               confirmed_seq_nr, request_up_to_seq_nr, support_resend, ..
             } => {
-              state.support_resend = support_resend;
-              state.on_confirmed(confirmed_seq_nr);
-              state.requested_seq_nr = request_up_to_seq_nr;
+              state.support_resend = *support_resend;
+              state.on_confirmed(*confirmed_seq_nr);
+              state.requested_seq_nr = *request_up_to_seq_nr;
               state.requested = true;
               collect_request_next(&state, &mut deferred);
             },
             | ProducerControllerCommandKind::Resend { from_seq_nr } => {
-              collect_resend(&state, from_seq_nr, &mut deferred);
+              collect_resend(&state, *from_seq_nr, &mut deferred);
             },
             | ProducerControllerCommandKind::Ack { confirmed_seq_nr } => {
-              state.on_confirmed(confirmed_seq_nr);
+              state.on_confirmed(*confirmed_seq_nr);
             },
             | ProducerControllerCommandKind::ResendFirstUnconfirmed => {
               if let Some(first) = state.unconfirmed.first().cloned()
@@ -250,8 +250,7 @@ fn collect_resend<A>(state: &ProducerControllerState<A>, from_seq_nr: SeqNr, def
 where
   A: Clone + Send + Sync + 'static, {
   if let Some(cc) = state.consumer_controller.clone() {
-    let to_resend: Vec<_> = state.unconfirmed.iter().filter(|msg| msg.seq_nr() >= from_seq_nr).cloned().collect();
-    for (i, msg) in to_resend.into_iter().enumerate() {
+    for (i, msg) in state.unconfirmed.iter().filter(|msg| msg.seq_nr() >= from_seq_nr).cloned().enumerate() {
       let msg = if i == 0 { msg.as_first() } else { msg };
       deferred.push(DeferredAction::SendSequenced(cc.clone(), ConsumerControllerCommand::sequenced_msg(msg)));
     }

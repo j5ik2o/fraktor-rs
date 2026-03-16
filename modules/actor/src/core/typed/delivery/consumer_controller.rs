@@ -151,18 +151,18 @@ impl ConsumerController {
           let mut deferred = Vec::new();
           let mut should_stop = false;
 
-          match command.clone().into_kind() {
+          match command.kind() {
             | ConsumerControllerCommandKind::Start { deliver_to } => {
-              state.deliver_to = Some(deliver_to);
+              state.deliver_to = Some(deliver_to.clone());
               collect_try_deliver_stashed(&mut state, &confirm_adapter, &mut deferred);
             },
             | ConsumerControllerCommandKind::RegisterToProducerController { producer_controller } => {
               let register_cmd = ProducerControllerCommand::register_consumer(self_ref.clone());
               deferred.push(DeferredAction::SendToProducer(producer_controller.clone(), register_cmd));
-              state.producer_controller = Some(producer_controller);
+              state.producer_controller = Some(producer_controller.clone());
             },
             | ConsumerControllerCommandKind::SequencedMsg(seq_msg) => {
-              collect_on_sequenced_message(&mut state, seq_msg, &self_ref, &confirm_adapter, &mut deferred);
+              collect_on_sequenced_message(&mut state, seq_msg.clone(), &self_ref, &confirm_adapter, &mut deferred);
             },
             | ConsumerControllerCommandKind::Confirmed => {
               collect_on_confirmed(&mut state, &self_ref, &confirm_adapter, &mut deferred);
