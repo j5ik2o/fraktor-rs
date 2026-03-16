@@ -404,7 +404,8 @@ where
     return;
   }
 
-  let has_demand = state.any_worker_has_demand() || !state.buffered.is_empty();
+  let buffer_has_room = (state.buffered.len() as u32) < state.buffer_size;
+  let has_demand = state.any_worker_has_demand() || (buffer_has_room && !state.buffered.is_empty());
   if !has_demand {
     return;
   }

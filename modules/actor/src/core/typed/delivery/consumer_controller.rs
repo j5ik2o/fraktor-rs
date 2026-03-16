@@ -210,6 +210,7 @@ fn collect_on_sequenced_message<A>(
     ));
     state.received_seq_nr = seq_msg.seq_nr() - 1;
     state.delivered_seq_nr = seq_msg.seq_nr() - 1;
+    state.confirmed_seq_nr = seq_msg.seq_nr() - 1;
     state.stashed.clear();
     state.waiting_for_confirm = false;
     state.requested_seq_nr = 0;
