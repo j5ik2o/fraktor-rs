@@ -99,7 +99,10 @@ impl ByteString {
     self.slice(n, self.len())
   }
 
-  /// Concatenates two `ByteString` values into a new allocation.
+  /// Concatenates two `ByteString` values.
+  ///
+  /// Returns a clone of the non-empty operand when the other is empty.
+  /// Otherwise allocates a new buffer containing both.
   #[must_use]
   pub fn concat(&self, other: &ByteString) -> Self {
     if self.is_empty() {
