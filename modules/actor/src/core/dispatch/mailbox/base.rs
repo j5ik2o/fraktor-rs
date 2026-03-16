@@ -18,6 +18,7 @@ use crate::core::{
   error::SendError,
   event::logging::LogLevel,
   messaging::{AnyMessage, system_message::SystemMessage},
+  props::MailboxConfig,
   system::state::SystemStateShared,
 };
 
@@ -40,6 +41,22 @@ impl Mailbox {
   pub fn new(policy: MailboxPolicy) -> Self {
     let queue = super::mailboxes::create_message_queue_from_policy(policy);
     Self::new_with_queue(policy, queue)
+  }
+
+  /// Creates a new mailbox from the provided configuration.
+  ///
+  /// When the config declares deque semantics and the policy is unbounded, this produces a
+  /// deque-capable queue that supports O(1) front insertion in
+  /// [`prepend_user_messages`](Self::prepend_user_messages).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxConfigError`](crate::core::props::MailboxConfigError) when the
+  /// configuration contract is violated.
+  pub fn new_from_config(config: &MailboxConfig) -> Result<Self, crate::core::props::MailboxConfigError> {
+    let policy = config.policy();
+    let queue = super::mailboxes::create_message_queue_from_config(config)?;
+    Ok(Self::new_with_queue(policy, queue))
   }
 
   /// Creates a new mailbox using the provided policy and pre-built queue.
@@ -137,6 +154,10 @@ impl Mailbox {
 
   /// Prepends user messages so they are processed before already queued user messages.
   ///
+  /// When the underlying queue implements
+  /// [`DequeMessageQueue`](super::deque_message_queue::DequeMessageQueue), each message is
+  /// inserted at the front in O(1). Otherwise, the drain-and-requeue fallback is used.
+  ///
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, capacity checks fail, or queue restoration
@@ -157,6 +178,36 @@ impl Mailbox {
       return Err(SendError::full(first_message));
     }
 
+    if let Some(deque) = self.user.as_deque() {
+      return self.prepend_via_deque(deque, messages);
+    }
+
+    self.prepend_via_drain_and_requeue(messages, &first_message)
+  }
+
+  /// Efficient O(k) prepend path for deque-capable queues.
+  fn prepend_via_deque(
+    &self,
+    deque: &dyn super::deque_message_queue::DequeMessageQueue,
+    messages: &VecDeque<AnyMessage>,
+  ) -> Result<(), SendError> {
+    // Insert in reverse order so the first message in `messages` ends up at the front.
+    for message in messages.iter().rev().cloned() {
+      if let Err(error) = deque.enqueue_first(message) {
+        self.publish_metrics_with_user_len(self.user.number_of_messages());
+        return Err(error);
+      }
+    }
+    self.publish_metrics_with_user_len(self.user.number_of_messages());
+    Ok(())
+  }
+
+  /// Drain-and-requeue fallback for non-deque queues.
+  fn prepend_via_drain_and_requeue(
+    &self,
+    messages: &VecDeque<AnyMessage>,
+    first_message: &AnyMessage,
+  ) -> Result<(), SendError> {
     let mut existing = VecDeque::new();
     while let Some(message) = self.user.dequeue() {
       existing.push_back(message);
@@ -164,20 +215,20 @@ impl Mailbox {
 
     let mut enqueue_result = Ok(());
     for message in messages.iter().cloned().chain(existing.iter().cloned()) {
-      if let Err(error) = self.enqueue_for_prepend(message, &first_message) {
+      if let Err(error) = self.enqueue_for_prepend(message, first_message) {
         enqueue_result = Err(error);
         break;
       }
     }
 
-    if let Err(error) = enqueue_result {
+    if let Err(_error) = enqueue_result {
       self.user.clean_up();
-      if let Err(restore_error) = self.restore_prepend_messages(&existing, &first_message) {
-        self.publish_metrics_with_user_len(self.user.number_of_messages());
-        return Err(restore_error);
+      // 既存メッセージのみ復元する（新メッセージは挿入失敗として呼び出し側に返す）
+      for message in existing {
+        let _ = self.enqueue_for_prepend(message, first_message);
       }
       self.publish_metrics_with_user_len(self.user.number_of_messages());
-      return Err(error);
+      return Err(SendError::full(first_message.clone()));
     }
 
     self.publish_metrics_with_user_len(self.user.number_of_messages());
@@ -293,17 +344,6 @@ impl Mailbox {
       | Ok(EnqueueOutcome::Pending(_)) => Err(SendError::full(first_message.clone())),
       | Err(error) => Err(error),
     }
-  }
-
-  fn restore_prepend_messages(
-    &self,
-    existing: &VecDeque<AnyMessage>,
-    first_message: &AnyMessage,
-  ) -> Result<(), SendError> {
-    for message in existing.iter().cloned() {
-      self.enqueue_for_prepend(message, first_message)?;
-    }
-    Ok(())
   }
 
   fn publish_metrics(&self) {

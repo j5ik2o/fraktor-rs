@@ -210,7 +210,7 @@ impl Props {
 
   /// Overrides the mailbox requirements while preserving existing policy/configuration.
   #[must_use]
-  pub const fn with_mailbox_requirement(mut self, mailbox_requirement: MailboxRequirement) -> Self {
+  pub fn with_mailbox_requirement(mut self, mailbox_requirement: MailboxRequirement) -> Self {
     self.mailbox_config = self.mailbox_config.with_requirement(mailbox_requirement);
     self
   }
@@ -238,7 +238,7 @@ impl Props {
     self
   }
 
-  pub(crate) const fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
+  pub(crate) fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
     self.mailbox_config = mailbox_config;
     self
   }
@@ -250,7 +250,7 @@ impl Clone for Props {
       factory: self.factory.clone(),
       name: self.name.clone(),
       tags: self.tags.clone(),
-      mailbox_config: self.mailbox_config,
+      mailbox_config: self.mailbox_config.clone(),
       mailbox_id: self.mailbox_id.clone(),
       middleware: self.middleware.clone(),
       dispatcher_config: self.dispatcher_config.clone(),

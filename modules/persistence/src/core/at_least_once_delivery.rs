@@ -217,7 +217,7 @@ impl AtLeastOnceDelivery {
 
     let delivery_id = self.next_delivery_id();
     let payload = ArcShared::new(build(delivery_id));
-    let message = AnyMessage::from_erased(payload.clone(), sender.clone());
+    let message = AnyMessage::from_erased(payload.clone(), sender.clone(), false);
     destination.tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
 
     let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp, 1);
@@ -226,7 +226,7 @@ impl AtLeastOnceDelivery {
   }
 
   fn send_delivery(delivery: &UnconfirmedDelivery) -> Result<(), PersistenceError> {
-    let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned());
+    let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned(), false);
     delivery.destination().tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
     Ok(())
   }

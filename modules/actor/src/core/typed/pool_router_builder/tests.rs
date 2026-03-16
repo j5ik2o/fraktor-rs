@@ -11,7 +11,8 @@ use crate::core::{
   props::Props,
   system::ActorSystem,
   typed::{
-    Behaviors, actor::TypedActorRef, behavior::Behavior, props::TypedProps, routers::Routers, system::TypedActorSystem,
+    Behaviors, DefaultResizer, actor::TypedActorRef, behavior::Behavior, props::TypedProps, routers::Routers,
+    system::TypedActorSystem,
   },
 };
 
@@ -284,4 +285,124 @@ fn pool_router_builder_rejects_zero_pool_size() {
 #[should_panic(expected = "pool size must be positive")]
 fn pool_router_builder_with_pool_size_rejects_zero() {
   let _ = Routers::pool::<u32, _>(3, Behaviors::ignore).with_pool_size(0);
+}
+
+#[test]
+fn pool_router_builder_with_resizer_builds_behavior() {
+  let resizer = DefaultResizer::new(2, 5, 1);
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_resizer(resizer);
+  let _behavior: Behavior<u32> = builder.build();
+}
+
+#[test]
+fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
+  let initial_pool_size = 2_usize;
+  let lower_bound = 4_usize;
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+
+  let props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    let next_routee_index = next_routee_index.clone();
+    move || {
+      let routee_factory = {
+        let records = records.clone();
+        let next_routee_index = next_routee_index.clone();
+        move || {
+          let routee_index = {
+            let mut guard = next_routee_index.lock();
+            let current = *guard;
+            *guard += 1;
+            current
+          };
+          recording_routee_behavior(routee_index, records.clone())
+        }
+      };
+      // 初期2台、resizer下限4 ⇒ 最初のメッセージでさらに2台追加される
+      let resizer = DefaultResizer::new(lower_bound, 10, 1);
+      Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
+    }
+  });
+
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
+  let mut router = system.user_guardian_ref();
+
+  // ラウンドロビンで全routeeを使い切るのに十分なメッセージを送信
+  for msg in 0..lower_bound as u32 {
+    router.tell(msg).expect("tell");
+  }
+  wait_until(|| records.lock().len() == lower_bound);
+
+  // スケールアップ後に生成された routee 数が lower_bound と一致することを検証
+  assert_eq!(*next_routee_index.lock(), lower_bound, "スケールアップ後の生成 routee 数が lower_bound と一致するべき",);
+
+  // メッセージを受信したrouteeのユニークなインデックスを収集
+  let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
+  seen_routees.sort_unstable();
+  seen_routees.dedup();
+  assert_eq!(seen_routees.len(), lower_bound);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
+  let initial_pool_size = 5_usize;
+  let upper_bound = 3_usize;
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+
+  let props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    let next_routee_index = next_routee_index.clone();
+    move || {
+      let routee_factory = {
+        let records = records.clone();
+        let next_routee_index = next_routee_index.clone();
+        move || {
+          let routee_index = {
+            let mut guard = next_routee_index.lock();
+            let current = *guard;
+            *guard += 1;
+            current
+          };
+          recording_routee_behavior(routee_index, records.clone())
+        }
+      };
+      // 初期5台、resizer上限3 ⇒ 最初のメッセージで2台削除される
+      let resizer = DefaultResizer::new(1, upper_bound, 1);
+      Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
+    }
+  });
+
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
+  let mut router = system.user_guardian_ref();
+
+  // 残存する全routeeを巡回するのに十分なメッセージを送信
+  let message_count = upper_bound * 2;
+  for msg in 0..message_count as u32 {
+    router.tell(msg).expect("tell");
+  }
+  wait_until(|| records.lock().len() == message_count);
+
+  // リサイズ縮小後、routee 0..upper_bound のみがメッセージを受信するべき
+  // routee 3, 4（初期spawn分）は停止されているはず
+  let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
+  seen_routees.sort_unstable();
+  seen_routees.dedup();
+  assert_eq!(
+    seen_routees.len(),
+    upper_bound,
+    "expected exactly {} unique routees after resize-down, got {}",
+    upper_bound,
+    seen_routees.len()
+  );
+
+  system.terminate().expect("terminate");
 }

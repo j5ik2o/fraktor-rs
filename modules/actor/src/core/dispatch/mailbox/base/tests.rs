@@ -123,6 +123,16 @@ fn mailbox_new() {
 }
 
 #[test]
+fn mailbox_enqueue_user_returns_closed_when_queue_is_closed() {
+  let outcomes = VecDeque::from([ScriptedEnqueue::Closed]);
+  let queue = Box::new(ScriptedMessageQueue::new(outcomes));
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+
+  let result = mailbox.enqueue_user(AnyMessage::new("msg"));
+  assert!(matches!(result, Err(SendError::Closed(_))));
+}
+
+#[test]
 fn mailbox_set_instrumentation() {
   let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
   let system_state = ActorSystem::new_empty().state();
@@ -183,13 +193,15 @@ fn mailbox_enqueue_user_bounded() {
 }
 
 #[test]
-fn mailbox_prepend_user_messages_returns_restore_error_when_rollback_fails() {
+fn mailbox_prepend_user_messages_returns_error_and_restores_existing_only() {
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Closed,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Enqueued, // prepend（drain 後の再エンキュー）
+    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗
+    // clean_up 後、既存メッセージのみ復元
+    ScriptedEnqueue::Enqueued, // 復元: existing-1
+    ScriptedEnqueue::Enqueued, // 復元: existing-2
   ]);
   let queue = Box::new(ScriptedMessageQueue::new(outcomes));
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
@@ -200,7 +212,8 @@ fn mailbox_prepend_user_messages_returns_restore_error_when_rollback_fails() {
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
   let result = mailbox.prepend_user_messages(&prepended);
 
-  assert!(matches!(result, Err(SendError::Closed(_))));
+  // 新メッセージの挿入は失敗として報告される
+  assert!(result.is_err(), "prepend should fail: {result:?}");
 }
 
 #[test]
@@ -212,13 +225,14 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
   };
 
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Enqueued, // prepend（drain-and-requeue 1回目）
+    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗 → ロールバック発動
+    // 既存メッセージのみ復元（新メッセージは含めない）
+    ScriptedEnqueue::Enqueued, // 復元: existing-1
+    ScriptedEnqueue::Enqueued, // 復元: existing-2
+    ScriptedEnqueue::Enqueued, // 並行エンキュー
   ]);
   let (before_error_tx, before_error_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
@@ -235,28 +249,29 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
   let prepend_handle = thread::spawn(move || mailbox_for_prepend.prepend_user_messages(&prepended));
 
-  before_error_rx.recv().expect("prepend must reach the scripted full point");
+  before_error_rx.recv().expect("prepend がスクリプト上の full 地点に到達するべき");
 
   let mailbox_for_enqueue = Arc::clone(&mailbox);
   let (enqueue_done_tx, enqueue_done_rx) = mpsc::channel();
   let enqueue_handle = thread::spawn(move || {
     let result = mailbox_for_enqueue.enqueue_user(AnyMessage::new("concurrent"));
-    enqueue_done_tx.send(()).expect("enqueue completion signal must be delivered");
+    enqueue_done_tx.send(()).expect("エンキュー完了シグナルが送信されるべき");
     result
   });
 
   assert!(
     enqueue_done_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "concurrent enqueue must remain blocked while prepend is in progress",
+    "prepend 中は並行エンキューがブロックされるべき",
   );
 
-  resume_tx.send(()).expect("prepend resume signal must be delivered");
+  resume_tx.send(()).expect("prepend 再開シグナルが送信されるべき");
 
-  let prepend_result = prepend_handle.join().expect("prepend thread must complete");
+  let prepend_result = prepend_handle.join().expect("prepend スレッドが完了するべき");
   assert!(matches!(prepend_result, Err(SendError::Full(_))));
 
-  let enqueue_result = enqueue_handle.join().expect("enqueue thread must complete");
+  let enqueue_result = enqueue_handle.join().expect("エンキュースレッドが完了するべき");
   assert!(matches!(enqueue_result, Ok(EnqueueOutcome::Enqueued)));
+  // existing-1(復元) + existing-2(復元) + concurrent = 3
   assert_eq!(mailbox.user_len(), 3);
 }
 
@@ -269,13 +284,14 @@ fn mailbox_prepend_user_messages_blocks_pending_offer_poll_until_prepend_finishe
   };
 
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Pending,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Pending,  // pending エンキュー
+    ScriptedEnqueue::Enqueued, // prepend（drain-and-requeue 1回目）
+    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗 → ロールバック発動
+    ScriptedEnqueue::Enqueued, // 復元: prepend（新メッセージ）
+    ScriptedEnqueue::Enqueued, // 復元: existing-1
+    ScriptedEnqueue::Enqueued, // 復元: existing-2
   ]);
   let (before_error_tx, before_error_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
@@ -289,31 +305,31 @@ fn mailbox_prepend_user_messages_blocks_pending_offer_poll_until_prepend_finishe
   mailbox.enqueue_user(AnyMessage::new("existing-2")).expect("existing-2");
   let mut pending_future = match mailbox.enqueue_user(AnyMessage::new("pending")) {
     | Ok(EnqueueOutcome::Pending(future)) => future,
-    | Ok(EnqueueOutcome::Enqueued) => panic!("pending outcome must be returned"),
-    | Err(error) => panic!("pending enqueue must succeed: {error:?}"),
+    | Ok(EnqueueOutcome::Enqueued) => panic!("pending の結果が返されるべき"),
+    | Err(error) => panic!("pending エンキューは成功するべき: {error:?}"),
   };
 
   let mailbox_for_prepend = Arc::clone(&mailbox);
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
   let prepend_handle = thread::spawn(move || mailbox_for_prepend.prepend_user_messages(&prepended));
 
-  before_error_rx.recv().expect("prepend must hold the queue lock at full hook");
+  before_error_rx.recv().expect("prepend が full フック地点でキューロックを保持するべき");
 
   let (poll_done_tx, poll_done_rx) = mpsc::channel();
   let poll_handle = thread::spawn(move || {
     let waker = noop_waker();
     let mut context = Context::from_waker(&waker);
     let poll_result = Pin::new(&mut pending_future).poll(&mut context);
-    poll_done_tx.send(()).expect("pending poll completion signal must be delivered");
+    poll_done_tx.send(()).expect("pending poll 完了シグナルが送信されるべき");
     poll_result
   });
 
   assert!(
     poll_done_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "pending offer poll must remain blocked while prepend holds the queue lock",
+    "prepend がキューロックを保持中は pending offer poll がブロックされるべき",
   );
 
-  resume_tx.send(()).expect("prepend resume signal must be delivered");
+  resume_tx.send(()).expect("prepend 再開シグナルが送信されるべき");
 
   let prepend_result = prepend_handle.join().expect("prepend thread must complete");
   assert!(matches!(prepend_result, Err(SendError::Full(_))));

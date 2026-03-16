@@ -10,13 +10,14 @@ mod tests;
 pub struct MailboxRequirement {
   requires_deque:           bool,
   requires_blocking_future: bool,
+  requires_control_aware:   bool,
 }
 
 impl MailboxRequirement {
   /// Creates a requirement set with no capabilities.
   #[must_use]
   pub const fn none() -> Self {
-    Self { requires_deque: false, requires_blocking_future: false }
+    Self { requires_deque: false, requires_blocking_future: false, requires_control_aware: false }
   }
 
   /// Convenience alias for a stash-compatible requirement (deque only for now).
@@ -28,7 +29,13 @@ impl MailboxRequirement {
   /// Creates a requirement that needs deque semantics.
   #[must_use]
   pub const fn requires_deque() -> Self {
-    Self { requires_deque: true, requires_blocking_future: false }
+    Self { requires_deque: true, requires_blocking_future: false, requires_control_aware: false }
+  }
+
+  /// Creates a requirement that needs control-aware semantics.
+  #[must_use]
+  pub const fn requires_control_aware() -> Self {
+    Self { requires_deque: false, requires_blocking_future: false, requires_control_aware: true }
   }
 
   /// Marks the requirement as needing deque semantics.
@@ -45,6 +52,13 @@ impl MailboxRequirement {
     self
   }
 
+  /// Marks the requirement as needing control-aware semantics.
+  #[must_use]
+  pub const fn with_control_aware(mut self) -> Self {
+    self.requires_control_aware = true;
+    self
+  }
+
   /// Returns true when deque operations are required.
   #[must_use]
   pub const fn needs_deque(&self) -> bool {
@@ -55,6 +69,12 @@ impl MailboxRequirement {
   #[must_use]
   pub const fn needs_blocking_future(&self) -> bool {
     self.requires_blocking_future
+  }
+
+  /// Returns true when control-aware mailbox semantics are required.
+  #[must_use]
+  pub const fn needs_control_aware(&self) -> bool {
+    self.requires_control_aware
   }
 
   /// Ensures all declared requirements are supported by the registry.
@@ -69,6 +89,9 @@ impl MailboxRequirement {
     }
     if self.requires_blocking_future {
       registry.ensure(QueueCapability::BlockingFuture)?;
+    }
+    if self.requires_control_aware {
+      registry.ensure(QueueCapability::ControlAware)?;
     }
     Ok(())
   }

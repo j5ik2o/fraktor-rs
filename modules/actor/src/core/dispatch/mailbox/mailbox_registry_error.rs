@@ -1,6 +1,8 @@
 use alloc::string::String;
 use core::fmt;
 
+use crate::core::props::MailboxConfigError;
+
 /// Error raised when registering or resolving mailbox identifiers fails.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MailboxRegistryError {
@@ -8,6 +10,8 @@ pub enum MailboxRegistryError {
   Duplicate(String),
   /// Mailbox identifier was not found.
   Unknown(String),
+  /// Mailbox configuration contract violated.
+  InvalidConfig(MailboxConfigError),
 }
 
 impl MailboxRegistryError {
@@ -24,11 +28,18 @@ impl MailboxRegistryError {
   }
 }
 
+impl From<MailboxConfigError> for MailboxRegistryError {
+  fn from(error: MailboxConfigError) -> Self {
+    Self::InvalidConfig(error)
+  }
+}
+
 impl fmt::Display for MailboxRegistryError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       | Self::Duplicate(id) => write!(f, "mailbox id '{}' already exists", id),
       | Self::Unknown(id) => write!(f, "mailbox id '{}' not found", id),
+      | Self::InvalidConfig(error) => write!(f, "invalid mailbox config: {}", error),
     }
   }
 }

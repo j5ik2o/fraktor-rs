@@ -7,7 +7,7 @@ use crate::core::{
   event::stream::EventStreamEvent,
   supervision::SupervisorStrategyConfig,
   typed::{
-    UnhandledMessageEvent,
+    DeathPactException, UnhandledMessageEvent,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
@@ -83,7 +83,15 @@ where
     .map(|_| self.update_supervisor_override(override_strategy))
   }
 
-  fn dispatch_signal(&mut self, ctx: &mut TypedActorContext<'_, M>, signal: &BehaviorSignal) -> Result<(), ActorError> {
+  /// Dispatches a signal and applies the resulting transition.
+  ///
+  /// Returns the directive of the behavior returned by the signal handler,
+  /// allowing callers to determine whether the signal was actually handled.
+  fn dispatch_signal(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    signal: &BehaviorSignal,
+  ) -> Result<BehaviorDirective, ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
       ctx
         .system()
@@ -91,7 +99,9 @@ where
         .publish(&EventStreamEvent::AdapterFailure { pid: ctx.pid(), error: failure.clone() });
     }
     let next = self.current.handle_signal(ctx, signal)?;
-    self.apply_transition(ctx, next)
+    let directive = next.directive();
+    self.apply_transition(ctx, next)?;
+    Ok(directive)
   }
 }
 
@@ -100,7 +110,8 @@ where
   M: Send + Sync + 'static,
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Started)
+    self.dispatch_signal(ctx, &BehaviorSignal::Started)?;
+    Ok(())
   }
 
   fn receive(&mut self, ctx: &mut TypedActorContext<'_, M>, message: &M) -> Result<(), ActorError> {
@@ -109,7 +120,8 @@ where
   }
 
   fn post_stop(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)
+    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)?;
+    Ok(())
   }
 
   fn on_terminated(
@@ -117,17 +129,21 @@ where
     ctx: &mut TypedActorContext<'_, M>,
     terminated: crate::core::actor::Pid,
   ) -> Result<(), ActorError> {
-    let has_signal_handler = self.current.has_signal_handler();
-    self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))?;
-    if has_signal_handler {
-      Ok(())
+    // シグナルハンドラが Terminated を実際に処理したかを判定する。
+    // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
+    // DeathPactException を発行する必要がある (Pekko 互換)。
+    let directive = self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))?;
+    if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
+      let ex = DeathPactException::new(terminated);
+      Err(ActorError::recoverable_typed::<DeathPactException>(ex.to_string()))
     } else {
-      Err(ActorError::recoverable(ActorErrorReason::new("death pact: unhandled Terminated signal")))
+      Ok(())
     }
   }
 
   fn pre_restart(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::PreRestart)
+    self.dispatch_signal(ctx, &BehaviorSignal::PreRestart)?;
+    Ok(())
   }
 
   fn on_child_failed(
@@ -136,7 +152,8 @@ where
     child: crate::core::actor::Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
-    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })
+    self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })?;
+    Ok(())
   }
 
   fn supervisor_strategy(&self, _ctx: &TypedActorContext<'_, M>) -> SupervisorStrategyConfig {
@@ -148,12 +165,11 @@ where
     ctx: &mut TypedActorContext<'_, M>,
     failure: AdapterError,
   ) -> Result<(), ActorError> {
-    let has_signal_handler = self.current.has_signal_handler();
-    self.dispatch_signal(ctx, &BehaviorSignal::MessageAdaptionFailure(failure))?;
-    if has_signal_handler {
-      Ok(())
-    } else {
+    let directive = self.dispatch_signal(ctx, &BehaviorSignal::MessageAdaptionFailure(failure))?;
+    if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
       Err(ActorError::recoverable(ActorErrorReason::new("message adapter failure")))
+    } else {
+      Ok(())
     }
   }
 }

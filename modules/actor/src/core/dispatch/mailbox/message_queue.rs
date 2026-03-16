@@ -1,6 +1,6 @@
 //! Abstraction over user message queue implementations.
 
-use super::mailbox_enqueue_outcome::EnqueueOutcome;
+use super::{deque_message_queue::DequeMessageQueue, mailbox_enqueue_outcome::EnqueueOutcome};
 use crate::core::{error::SendError, messaging::AnyMessage};
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
@@ -28,4 +28,13 @@ pub trait MessageQueue: Send + Sync {
 
   /// Clears remaining messages from the queue during shutdown.
   fn clean_up(&self);
+
+  /// Returns the deque capability when this queue supports front-of-queue insertion.
+  ///
+  /// The default returns `None`. Override this in deque-capable queue implementations
+  /// to enable O(1) prepend in
+  /// [`Mailbox::prepend_user_messages`](super::Mailbox::prepend_user_messages).
+  fn as_deque(&self) -> Option<&dyn DequeMessageQueue> {
+    None
+  }
 }

@@ -147,5 +147,7 @@ fn format_actor_path_error(err: &ActorPathError) -> String {
     | ActorPathError::ReservedSegment => "reserved segment".to_string(),
     | ActorPathError::InvalidSegmentChar { .. } => "invalid segment".to_string(),
     | ActorPathError::RelativeEscape => "relative escape".to_string(),
+    | ActorPathError::NotRootPath => err.to_string(),
+    | ActorPathError::NotChildPath => err.to_string(),
   }
 }

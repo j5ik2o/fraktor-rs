@@ -10,7 +10,7 @@ use crate::core::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
   typed::{
-    Behaviors,
+    Behaviors, DeathPactException,
     actor::{TypedActor, TypedActorContext},
     behavior::Behavior,
     behavior_signal::BehaviorSignal,
@@ -121,7 +121,9 @@ fn behavior_runner_death_pact_errors_without_signal_handler() {
   let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
-  assert!(result.is_err());
+  let error = result.unwrap_err();
+  assert!(error.is_source_type::<DeathPactException>(), "error should be typed as DeathPactException");
+  assert!(error.reason().as_str().contains("death pact"), "message should describe death pact");
 }
 
 #[test]
@@ -136,6 +138,25 @@ fn behavior_runner_death_pact_succeeds_with_signal_handler() {
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
   assert!(result.is_ok());
   assert!(received.load(Ordering::SeqCst));
+}
+
+/// Regression test: when a signal handler returns `Behaviors::unhandled()`,
+/// `DeathPactException` must be emitted.
+#[test]
+fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
+  let behavior = Behaviors::receive_signal(|_, _signal| Ok(Behaviors::unhandled()));
+  let mut runner = BehaviorRunner::new(behavior);
+  let (system, pids) = build_context_with_pids(2);
+  let mut ctx = ActorContext::new(&system, pids[0]);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let result = runner.on_terminated(&mut typed_ctx, pids[1]);
+  let error = result.unwrap_err();
+  assert!(
+    error.is_source_type::<DeathPactException>(),
+    "handler が Unhandled を返した場合も DeathPactException になるべき"
+  );
+  assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
 }
 
 #[test]

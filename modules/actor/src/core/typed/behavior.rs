@@ -1,6 +1,11 @@
 //! Core typed behavior abstraction.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
+
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   error::ActorError,
@@ -210,5 +215,108 @@ where
 
   pub(crate) const fn has_signal_handler(&self) -> bool {
     self.signal_handler.is_some()
+  }
+
+  /// Wraps this behavior to accept a different outer message type.
+  ///
+  /// The `mapper` converts each incoming `Outer` message to `Option<M>`.
+  /// When the mapper returns `Some(inner)`, the inner message is forwarded
+  /// to the wrapped behavior. When it returns `None`, the message is treated
+  /// as unhandled — equivalent to Pekko's `PartialFunction` not being defined
+  /// at a given input.
+  ///
+  /// Signals are forwarded directly to the inner behavior without
+  /// transformation, matching Pekko's `transformMessages` semantics.
+  pub fn transform_messages<Outer, F>(self, mapper: F) -> Behavior<Outer>
+  where
+    Outer: Send + Sync + 'static,
+    F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
+    let supervisor_override = self.supervisor_override.clone();
+    let inner_slot = ArcShared::new(RuntimeMutex::new(Some(self)));
+    let mapper = ArcShared::new(mapper);
+
+    Behavior::<Outer>::from_signal_handler({
+      move |ctx, signal| match signal {
+        | BehaviorSignal::Started => {
+          let mut inner = inner_slot
+            .lock()
+            .take()
+            .ok_or_else(|| ActorError::fatal("transform_messages: inner behavior already consumed"))?;
+
+          {
+            let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+            let started_result = inner.handle_signal(&mut inner_ctx, &BehaviorSignal::Started)?;
+            match started_result.directive() {
+              | BehaviorDirective::Active => inner = started_result,
+              | BehaviorDirective::Stopped => return Ok(Behavior::stopped()),
+              | BehaviorDirective::Empty => inner = Behavior::empty(),
+              | _ => {},
+            }
+          }
+
+          let state = ArcShared::new(RuntimeMutex::new(inner));
+          let state_msg = state.clone();
+          let state_sig = state;
+          let mapper_msg = mapper.clone();
+
+          let mut outer = Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
+            | Some(inner_msg) => {
+              let mut guard = state_msg.lock();
+              let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+              let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
+              Ok(resolve_transform_directive(&mut guard, next))
+            },
+            | None => Ok(Behavior::unhandled()),
+          })
+          .receive_signal(move |ctx, signal| {
+            let mut guard = state_sig.lock();
+            let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+            let next = guard.handle_signal(&mut inner_ctx, signal)?;
+            Ok(resolve_transform_directive(&mut guard, next))
+          });
+          // 内部 Behavior の supervisor_override を外部 Behavior に引き継ぐ
+          if let Some(strategy) = &supervisor_override {
+            outer = outer.with_supervisor_strategy(strategy.clone());
+          }
+          Ok(outer)
+        },
+        | _ => Ok(Behavior::same()),
+      }
+    })
+  }
+
+  /// Narrows the message type of this behavior via `Into` conversion.
+  ///
+  /// This is the Rust equivalent of Pekko's `Behavior.narrow`. Since Rust
+  /// lacks subtype polymorphism, the caller must provide an explicit `Into`
+  /// conversion from the outer type `U` to the inner type `M`.
+  #[must_use]
+  pub fn narrow<U>(self) -> Behavior<U>
+  where
+    U: Clone + Into<M> + Send + Sync + 'static, {
+    self.transform_messages(|outer: &U| Some(outer.clone().into()))
+  }
+}
+
+/// Maps an inner behavior directive into an outer behavior sentinel.
+///
+/// When the inner behavior evolves (`Active`), the shared state is updated
+/// and the outer behavior returns `Same` to keep the wrapper alive.
+fn resolve_transform_directive<Inner, Outer>(inner: &mut Behavior<Inner>, next: Behavior<Inner>) -> Behavior<Outer>
+where
+  Inner: Send + Sync + 'static,
+  Outer: Send + Sync + 'static, {
+  match next.directive() {
+    | BehaviorDirective::Same | BehaviorDirective::Ignore => Behavior::same(),
+    | BehaviorDirective::Stopped => Behavior::stopped(),
+    | BehaviorDirective::Unhandled => Behavior::unhandled(),
+    | BehaviorDirective::Empty => {
+      *inner = Behavior::empty();
+      Behavior::same()
+    },
+    | BehaviorDirective::Active => {
+      *inner = next;
+      Behavior::same()
+    },
   }
 }

@@ -7,4 +7,6 @@ pub enum QueueCapability {
   Deque,
   /// Futures that wait for capacity (blocking offer/poll).
   BlockingFuture,
+  /// Separate queues for control and user messages.
+  ControlAware,
 }

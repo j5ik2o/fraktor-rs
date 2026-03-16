@@ -1,0 +1,41 @@
+use core::num::NonZeroUsize;
+
+use fraktor_utils_rs::core::sync::ArcShared;
+
+use super::*;
+use crate::core::{
+  dispatch::mailbox::{MailboxOverflowStrategy, MessagePriorityGenerator, mailbox_type::MailboxType},
+  messaging::AnyMessage,
+};
+
+#[test]
+fn creates_bounded_stable_priority_queue() {
+  let pgen: ArcShared<dyn MessagePriorityGenerator> =
+    ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
+  let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
+  let factory = BoundedStablePriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
+  let queue = factory.create();
+
+  queue.enqueue(AnyMessage::new(30_i32)).expect("enqueue 30");
+  queue.enqueue(AnyMessage::new(10_i32)).expect("enqueue 10");
+
+  let first = queue.dequeue().expect("dequeue 1st");
+  assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 10);
+}
+
+#[test]
+fn preserves_insertion_order_for_equal_priority() {
+  let pgen: ArcShared<dyn MessagePriorityGenerator> = ArcShared::new(|_msg: &AnyMessage| -> i32 { 0 });
+  let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
+  let factory = BoundedStablePriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
+  let queue = factory.create();
+
+  queue.enqueue(AnyMessage::new("first")).expect("enqueue first");
+  queue.enqueue(AnyMessage::new("second")).expect("enqueue second");
+
+  let first = queue.dequeue().expect("dequeue 1st");
+  assert_eq!(*first.payload().downcast_ref::<&str>().expect("downcast"), "first");
+
+  let second = queue.dequeue().expect("dequeue 2nd");
+  assert_eq!(*second.payload().downcast_ref::<&str>().expect("downcast"), "second");
+}

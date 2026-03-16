@@ -6,6 +6,8 @@ pub mod actor;
 mod actor_ref_resolver;
 /// Identifier used to register the actor-ref resolver extension.
 mod actor_ref_resolver_id;
+/// Builder for configuring and constructing balancing pool routers.
+mod balancing_pool_router_builder;
 /// Typed behavior representation.
 mod behavior;
 /// Cross-cutting concern interceptor for typed behaviors.
@@ -18,6 +20,10 @@ mod behavior_signal;
 mod behavior_signal_interceptor;
 /// Functional behavior builders inspired by Fraktor.
 mod behaviors;
+/// Pekko-compatible death pact exception for typed actors.
+mod death_pact_exception;
+/// Default threshold-based pool router resizer.
+mod default_resizer;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
@@ -46,8 +52,12 @@ mod receptionist;
 mod receptionist_command;
 /// Common recipient abstraction for typed and untyped actor references.
 mod recipient_ref;
+/// Pool router resizer for dynamic routee scaling.
+mod resizer;
 /// Pekko-inspired router factories.
 mod routers;
+/// Builder for scatter-gather-first-completed pool routers.
+mod scatter_gather_first_completed_router_builder;
 /// Typed scheduler facade mirroring the untyped API.
 pub mod scheduler;
 /// Type-safe service key for actor discovery.
@@ -64,6 +74,8 @@ mod status_reply_error;
 mod supervise;
 /// Typed actor system interface.
 mod system;
+/// Builder for tail-chopping pool routers.
+mod tail_chopping_router_builder;
 /// Key type for identifying timers.
 mod timer_key;
 /// Actor-scoped timer management.
@@ -87,11 +99,14 @@ mod unhandled_message_event;
 
 pub use actor_ref_resolver::ActorRefResolver;
 pub use actor_ref_resolver_id::ActorRefResolverId;
+pub use balancing_pool_router_builder::BalancingPoolRouterBuilder;
 pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use behavior_signal::BehaviorSignal;
 pub use behavior_signal_interceptor::BehaviorSignalInterceptor;
 pub use behaviors::Behaviors;
+pub use death_pact_exception::DeathPactException;
+pub use default_resizer::DefaultResizer;
 pub use dispatcher_selector::DispatcherSelector;
 pub use extension_setup::ExtensionSetup;
 pub use failure_handler::FailureHandler;
@@ -104,6 +119,7 @@ pub use props::TypedProps;
 pub use receptionist::{Receptionist, SYSTEM_RECEPTIONIST_TOP_LEVEL};
 pub use receptionist_command::ReceptionistCommand;
 pub use recipient_ref::RecipientRef;
+pub use resizer::Resizer;
 pub use routers::Routers;
 pub use service_key::ServiceKey;
 pub use spawn_protocol::SpawnProtocol;
@@ -112,6 +128,7 @@ pub use status_reply::StatusReply;
 pub use status_reply_error::StatusReplyError;
 pub use supervise::Supervise;
 pub use system::TypedActorSystem;
+pub use tail_chopping_router_builder::TailChoppingRouterBuilder;
 pub use timer_key::TimerKey;
 pub use timer_scheduler::{TimerScheduler, TimerSchedulerShared};
 pub use topic::Topic;

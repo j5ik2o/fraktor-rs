@@ -83,6 +83,12 @@ impl ActorPath {
     &self.parts
   }
 
+  /// Returns the guardian kind of this path.
+  #[must_use]
+  pub const fn guardian(&self) -> GuardianKind {
+    self.parts.guardian()
+  }
+
   /// Returns UID if present.
   #[must_use]
   pub const fn uid(&self) -> Option<ActorUid> {

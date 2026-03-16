@@ -52,10 +52,11 @@ impl ActorRefSender for AdapterRefSender {
       return Err(error);
     }
 
-    let (erased, sender) = message.into_payload_and_sender();
+    let (erased, sender, is_control) = message.into_parts();
     let payload = AdapterPayload::from_erased(erased);
     let envelope = AdapterEnvelope::new(payload, sender);
-    let adapted = AnyMessage::new(envelope);
+    // アダプタ境界を越えても control フラグを保持する
+    let adapted = if is_control { AnyMessage::control(envelope) } else { AnyMessage::new(envelope) };
 
     match self.target.send(adapted) {
       | Ok(()) => Ok(SendOutcome::Delivered),

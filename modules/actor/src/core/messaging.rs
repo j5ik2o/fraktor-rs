@@ -8,6 +8,8 @@ mod any_message_view;
 mod ask_error;
 mod ask_response;
 mod identify;
+mod message_buffer;
+mod message_buffer_map;
 pub mod message_invoker;
 mod status;
 /// Internal system messages exchanged within the actor runtime.
@@ -19,4 +21,6 @@ pub use any_message_view::AnyMessageView;
 pub use ask_error::AskError;
 pub use ask_response::{AskResponse, AskResult};
 pub use identify::Identify;
+pub use message_buffer::MessageBuffer;
+pub use message_buffer_map::MessageBufferMap;
 pub use status::Status;
