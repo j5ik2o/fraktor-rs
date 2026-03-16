@@ -358,7 +358,8 @@ impl CoordinatedShutdown {
 
     let mut result = Vec::new();
 
-    while let Some(node) = queue.pop() {
+    while !queue.is_empty() {
+      let node = queue.remove(0);
       result.push(node.clone());
       if let Some(neighbors) = adjacency.get(&node) {
         for neighbor in neighbors {

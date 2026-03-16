@@ -405,7 +405,7 @@ where
   }
 
   let buffer_has_room = (state.buffered.len() as u32) < state.buffer_size;
-  let has_demand = state.any_worker_has_demand() || (buffer_has_room && !state.buffered.is_empty());
+  let has_demand = state.any_worker_has_demand() || buffer_has_room;
   if !has_demand {
     return;
   }
