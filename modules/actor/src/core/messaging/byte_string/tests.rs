@@ -51,6 +51,8 @@ fn slice_creates_zero_copy_view() {
   let sub = bs.slice(1, 4);
   assert_eq!(sub.len(), 3);
   assert_eq!(sub.as_slice(), &[2, 3, 4]);
+  // ポインタがオリジナルのオフセット位置を指していることを検証（zero-copy）
+  assert_eq!(sub.as_ptr(), unsafe { bs.as_ptr().add(1) });
 }
 
 #[test]
@@ -115,7 +117,7 @@ fn to_vec_copies_contents() {
 #[test]
 fn decode_string_valid_utf8() {
   let bs = ByteString::from_string("日本語");
-  let s = bs.decode_string().unwrap();
+  let s = bs.decode_string().expect("valid UTF-8");
   assert_eq!(s, "日本語");
 }
 

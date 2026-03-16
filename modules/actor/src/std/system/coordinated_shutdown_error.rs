@@ -14,6 +14,8 @@ pub enum CoordinatedShutdownError {
   CyclicDependency(String),
   /// The task name was empty.
   EmptyTaskName,
+  /// The shutdown sequence has already been started.
+  RunAlreadyStarted,
 }
 
 impl fmt::Display for CoordinatedShutdownError {
@@ -24,6 +26,7 @@ impl fmt::Display for CoordinatedShutdownError {
         write!(f, "cycle detected in phase graph: phase [{phase}] depends transitively on itself")
       },
       | Self::EmptyTaskName => write!(f, "task name must not be empty"),
+      | Self::RunAlreadyStarted => write!(f, "shutdown has already been started"),
     }
   }
 }

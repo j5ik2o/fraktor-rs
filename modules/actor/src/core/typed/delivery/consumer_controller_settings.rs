@@ -32,7 +32,8 @@ impl ConsumerControllerSettings {
   /// Returns a new settings with the given flow-control window.
   #[must_use]
   pub const fn with_flow_control_window(self, window: u32) -> Self {
-    Self { flow_control_window: window, ..self }
+    let clamped = if window == 0 { 1 } else { window };
+    Self { flow_control_window: clamped, ..self }
   }
 
   /// Returns whether only flow-control is used (no resend of lost messages).

@@ -64,6 +64,12 @@ impl ByteString {
     &self.data[self.start..self.end]
   }
 
+  /// Returns a raw pointer to the first byte of the viewed region.
+  #[must_use]
+  pub fn as_ptr(&self) -> *const u8 {
+    self.as_slice().as_ptr()
+  }
+
   /// Returns the byte at the given index, or `None` if out of bounds.
   #[must_use]
   pub fn get(&self, index: usize) -> Option<u8> {

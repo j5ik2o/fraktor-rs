@@ -137,7 +137,7 @@ impl CoordinatedShutdown {
   /// Returns [`CoordinatedShutdownError::CyclicDependency`] if the phase
   /// dependency graph contains a cycle.
   pub fn new(phases: BTreeMap<String, CoordinatedShutdownPhase>) -> Result<Self, CoordinatedShutdownError> {
-    // Validate that all depends_on references point to defined phases.
+    // 全ての depends_on 参照先が定義済みフェーズであることを検証する
     for (name, phase) in &phases {
       for dep in phase.depends_on() {
         if !phases.contains_key(dep) {
@@ -174,6 +174,10 @@ impl CoordinatedShutdown {
   where
     F: FnOnce() -> Fut + Send + Sync + 'static,
     Fut: core::future::Future<Output = ()> + Send + 'static, {
+    // シャットダウン開始後のタスク追加を拒否する（run() がフェーズを消費済みのため消失する）
+    if self.run_started.load(Ordering::Acquire) {
+      return Err(CoordinatedShutdownError::RunAlreadyStarted);
+    }
     if !self.known_phases.contains(phase) {
       return Err(CoordinatedShutdownError::UnknownPhase(phase.to_string()));
     }
@@ -229,12 +233,21 @@ impl CoordinatedShutdown {
   /// completion future and does not re-run the sequence.
   pub async fn run(&self, reason: CoordinatedShutdownReason) {
     if self.run_started.swap(true, Ordering::AcqRel) {
-      // shutdown already started — wait for completion
+      // シャットダウンは既に開始済み — 完了を待機する
       while !self.run_done.load(Ordering::Acquire) {
         tokio::task::yield_now().await;
       }
       return;
     }
+
+    // Future がドロップされても run_done を必ず true にするガード
+    struct DoneGuard<'a>(&'a AtomicBool);
+    impl Drop for DoneGuard<'_> {
+      fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+      }
+    }
+    let _done_guard = DoneGuard(&self.run_done);
 
     {
       let mut guard = self.reason.lock();
@@ -267,8 +280,7 @@ impl CoordinatedShutdown {
         break;
       }
     }
-
-    self.run_done.store(true, Ordering::Release);
+    // run_done は DoneGuard の drop で設定される
   }
 
   /// Spawns phase tasks and awaits them with timeout.
@@ -285,8 +297,8 @@ impl CoordinatedShutdown {
       })
       .collect();
 
-    // Collect abort handles before consuming join handles, so we can
-    // abort remaining tasks on timeout or non-recoverable failure.
+    // JoinHandle を消費する前に abort ハンドルを収集する（タイムアウトや
+    // 回復不可能な失敗時に残タスクを中断するため）
     let abort_handles: Vec<_> = handles.iter().map(|h| h.abort_handle()).collect();
 
     let timed_out = tokio::time::timeout(timeout, async {
@@ -297,7 +309,7 @@ impl CoordinatedShutdown {
           | Err(_join_error) => {
             failed = true;
             if !recover {
-              // Abort remaining tasks on non-recoverable failure.
+              // 回復不可能な失敗のため残タスクを中断する
               for ah in &abort_handles {
                 ah.abort();
               }
@@ -313,7 +325,7 @@ impl CoordinatedShutdown {
     match timed_out {
       | Ok(failed) => failed,
       | Err(_elapsed) => {
-        // Timeout: abort all remaining tasks.
+        // タイムアウト: 残タスクをすべて中断する
         for ah in &abort_handles {
           ah.abort();
         }
