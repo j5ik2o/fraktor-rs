@@ -80,8 +80,5 @@ fn create_message_queue_rejects_bounded_with_deque() {
   registry.register("bounded-deque", config).expect("register mailbox");
 
   let result = registry.create_message_queue("bounded-deque");
-  assert!(matches!(
-    result,
-    Err(MailboxRegistryError::InvalidConfig(MailboxConfigError::BoundedWithDeque))
-  ));
+  assert!(matches!(result, Err(MailboxRegistryError::InvalidConfig(MailboxConfigError::BoundedWithDeque))));
 }

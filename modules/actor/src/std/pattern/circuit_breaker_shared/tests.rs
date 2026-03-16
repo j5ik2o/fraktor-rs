@@ -117,11 +117,14 @@ async fn cancel_during_half_open_records_failure() {
   tokio::time::sleep(Duration::from_millis(20)).await;
 
   // Cancel the operation mid-flight via timeout
-  let result = tokio::time::timeout(Duration::from_millis(1), cb.call(|| async {
-    // Simulate a long-running operation that will be cancelled
-    tokio::time::sleep(Duration::from_secs(60)).await;
-    Ok::<_, &str>(42)
-  }))
+  let result = tokio::time::timeout(
+    Duration::from_millis(1),
+    cb.call(|| async {
+      // Simulate a long-running operation that will be cancelled
+      tokio::time::sleep(Duration::from_secs(60)).await;
+      Ok::<_, &str>(42)
+    }),
+  )
   .await;
 
   // The outer timeout should have fired

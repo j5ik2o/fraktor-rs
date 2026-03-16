@@ -350,8 +350,6 @@ impl Mailbox {
     }
   }
 
-
-
   fn publish_metrics(&self) {
     let user_len = {
       let _guard = self.user_queue_lock.lock();

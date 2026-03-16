@@ -34,16 +34,16 @@ pub struct ScatterGatherFirstCompletedRouterBuilder<M, R>
 where
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
-  pool_size:        usize,
-  behavior_factory: ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
-  within:           Duration,
-  create_request:   CreateRequestFn<M, R>,
-  extract_reply_to: ExtractReplyToFn<M, R>,
-  timeout_reply:    ArcShared<R>,
+  pool_size:                  usize,
+  behavior_factory:           ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
+  within:                     Duration,
+  create_request:             CreateRequestFn<M, R>,
+  extract_reply_to:           ExtractReplyToFn<M, R>,
+  timeout_reply:              ArcShared<R>,
   #[cfg(test)]
   force_routee_spawn_failure: bool,
   #[cfg(test)]
-  force_coord_spawn_failure: bool,
+  force_coord_spawn_failure:  bool,
 }
 
 impl<M, R> ScatterGatherFirstCompletedRouterBuilder<M, R>
@@ -177,7 +177,16 @@ where
           let coord_force = force_coord;
           #[cfg(not(test))]
           let coord_force = false;
-          spawn_gather_coordinator(ctx, &routee_snapshot, message, original_reply_to, &create_request, within, &timeout_reply, coord_force);
+          spawn_gather_coordinator(
+            ctx,
+            &routee_snapshot,
+            message,
+            original_reply_to,
+            &create_request,
+            within,
+            &timeout_reply,
+            coord_force,
+          );
         } else {
           for routee in &routee_snapshot {
             let mut r = routee.clone();
