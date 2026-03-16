@@ -208,9 +208,9 @@ fn collect_on_sequenced_message<A>(
     state.producer_controller = Some(TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(
       seq_msg.producer_controller().as_untyped().clone(),
     ));
-    state.received_seq_nr = seq_msg.seq_nr() - 1;
-    state.delivered_seq_nr = seq_msg.seq_nr() - 1;
-    state.confirmed_seq_nr = seq_msg.seq_nr() - 1;
+    state.received_seq_nr = seq_msg.seq_nr().saturating_sub(1);
+    state.delivered_seq_nr = seq_msg.seq_nr().saturating_sub(1);
+    state.confirmed_seq_nr = seq_msg.seq_nr().saturating_sub(1);
     state.stashed.clear();
     state.waiting_for_confirm = false;
     state.requested_seq_nr = 0;

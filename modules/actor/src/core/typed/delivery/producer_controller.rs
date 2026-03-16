@@ -21,10 +21,9 @@ use crate::core::{
   },
 };
 
-/// Deferred side-effects that must be executed **after** the state lock is
-/// released.  Collecting them avoids holding the lock while calling `tell()`,
-/// which would deadlock when a message adapter routes a response back to the
-/// same actor.
+/// ステートロック解放後に実行する遅延副作用。
+/// ロック保持中に tell() を呼ぶと、メッセージアダプタ経由で同じアクターに
+/// メッセージが戻り再入デッドロックする問題を回避する。
 enum DeferredAction<A>
 where
   A: Clone + Send + Sync + 'static, {
@@ -41,6 +40,9 @@ where
   requested_seq_nr:    SeqNr,
   requested:           bool,
   support_resend:      bool,
+  /// プロデューサーに RequestNext を送信済みで応答待ちかどうか。
+  /// インラインディスパッチでの無限ループ (PC→producer→PC→CC→PC) を防止する。
+  awaiting_msg:        bool,
   unconfirmed:         Vec<SequencedMessage<A>>,
   producer:            Option<TypedActorRef<ProducerControllerRequestNext<A>>>,
   consumer_controller: Option<TypedActorRef<ConsumerControllerCommand<A>>>,
@@ -59,6 +61,7 @@ where
       requested_seq_nr: 0,
       requested: false,
       support_resend: true,
+      awaiting_msg: false,
       unconfirmed: Vec::new(),
       producer: None,
       consumer_controller: None,
@@ -153,16 +156,18 @@ impl ProducerController {
           match command.kind() {
             | ProducerControllerCommandKind::Start { producer } => {
               state.producer = Some(producer.clone());
-              collect_request_next(&state, &mut deferred);
+              collect_request_next(&mut state, &mut deferred);
             },
             | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
               state.consumer_controller = Some(consumer_controller.clone());
-              collect_request_next(&state, &mut deferred);
+              collect_request_next(&mut state, &mut deferred);
             },
             | ProducerControllerCommandKind::Msg { message } => {
+              state.awaiting_msg = false;
               collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::MsgWithConfirmation { message, .. } => {
+              state.awaiting_msg = false;
               collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::Request {
@@ -172,7 +177,7 @@ impl ProducerController {
               state.on_confirmed(*confirmed_seq_nr);
               state.requested_seq_nr = *request_up_to_seq_nr;
               state.requested = true;
-              collect_request_next(&state, &mut deferred);
+              collect_request_next(&mut state, &mut deferred);
             },
             | ProducerControllerCommandKind::Resend { from_seq_nr } => {
               collect_resend(&state, *from_seq_nr, &mut deferred);
@@ -199,9 +204,12 @@ impl ProducerController {
   }
 }
 
-fn collect_request_next<A>(state: &ProducerControllerState<A>, deferred: &mut Vec<DeferredAction<A>>)
+fn collect_request_next<A>(state: &mut ProducerControllerState<A>, deferred: &mut Vec<DeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
+  if state.awaiting_msg {
+    return;
+  }
   if state.producer.is_none() || state.consumer_controller.is_none() {
     return;
   }
@@ -216,6 +224,7 @@ where
       send_adapter.clone(),
     );
     deferred.push(DeferredAction::RequestNext(producer.clone(), request_next));
+    state.awaiting_msg = true;
   }
 }
 
@@ -240,18 +249,19 @@ fn collect_on_msg<A>(
   }
 
   state.current_seq_nr += 1;
-  // 注意: ここで collect_request_next を呼ばないこと。インラインディスパッチでは
-  // CC の Request が同じ処理チェーン内に到着し、無限フィードバックループ
-  // (PC→producer→PC→CC→PC) が発生する。デマンドの更新は ConsumerController
-  // からの明示的な Request コマンド到着時のみ行う。
+  // ここで collect_request_next を呼ばない。インラインディスパッチでは CC の
+  // Request が同じコールスタック内で処理され、awaiting_msg の設定→解除→再設定が
+  // 1回のバッチ内で繰り返されて無限ループになる。デマンド補充は Request コマンド
+  // 到着時にのみ行う。
 }
 
 fn collect_resend<A>(state: &ProducerControllerState<A>, from_seq_nr: SeqNr, deferred: &mut Vec<DeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
   if let Some(cc) = state.consumer_controller.clone() {
-    for (i, msg) in state.unconfirmed.iter().filter(|msg| msg.seq_nr() >= from_seq_nr).cloned().enumerate() {
-      let msg = if i == 0 { msg.as_first() } else { msg };
+    // リセンドでは first フラグを設定しない。first=true は新セッション開始を
+    // 意味し、CC がステートをリセットして既受信メッセージを消失させるため。
+    for msg in state.unconfirmed.iter().filter(|msg| msg.seq_nr() >= from_seq_nr).cloned() {
       deferred.push(DeferredAction::SendSequenced(cc.clone(), ConsumerControllerCommand::sequenced_msg(msg)));
     }
   }

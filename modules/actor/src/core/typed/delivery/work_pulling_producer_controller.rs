@@ -43,6 +43,8 @@ where
   Tell(TypedActorRef<ProducerControllerCommand<A>>, ProducerControllerCommand<A>),
   TellWorkerStats(TypedActorRef<WorkerStats>, WorkerStats),
   RequestNext(TypedActorRef<WorkPullingProducerControllerRequestNext<A>>, WorkPullingProducerControllerRequestNext<A>),
+  /// ワーカー単位の ProducerController を停止する。
+  StopWorkerPc(TypedActorRef<ProducerControllerCommand<A>>),
   /// Spawn a per-worker ProducerController and wire it up.
   SpawnWorker {
     worker_ref:     ActorRef,
@@ -304,7 +306,10 @@ fn collect_on_worker_listing<A>(
   let removed_keys: Vec<u64> = state.workers.keys().filter(|k| !current_keys.contains(k)).copied().collect();
 
   for key in &removed_keys {
-    state.workers.remove(key);
+    if let Some(entry) = state.workers.remove(key) {
+      // 削除されたワーカーの per-worker PC を停止する（アクターリーク防止）
+      deferred.push(WppcDeferredAction::StopWorkerPc(entry.producer_controller));
+    }
   }
 
   // 新規ワーカーの生成をスケジュールする（ロック外で実行）。
@@ -442,6 +447,9 @@ where
       },
       | WppcDeferredAction::RequestNext(mut target, msg) => {
         target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      },
+      | WppcDeferredAction::StopWorkerPc(pc_ref) => {
+        pc_ref.as_untyped().poison_pill().map_err(|e| ActorError::from_send_error(&e))?;
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         if let Some(entry) = spawn_and_wire_worker::<A>(ctx, &worker_ref, &pc_producer_id, &demand_adapter)? {
