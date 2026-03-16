@@ -337,11 +337,7 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
   wait_until(|| records.lock().len() == lower_bound);
 
   // スケールアップ後に生成された routee 数が lower_bound と一致することを検証
-  assert_eq!(
-    *next_routee_index.lock(),
-    lower_bound,
-    "スケールアップ後の生成 routee 数が lower_bound と一致するべき",
-  );
+  assert_eq!(*next_routee_index.lock(), lower_bound, "スケールアップ後の生成 routee 数が lower_bound と一致するべき",);
 
   // メッセージを受信したrouteeのユニークなインデックスを収集
   let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
