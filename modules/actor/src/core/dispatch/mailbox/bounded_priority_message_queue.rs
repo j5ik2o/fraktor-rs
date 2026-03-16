@@ -17,8 +17,7 @@ use crate::core::{
 
 /// Internal mutable state guarded by a lock.
 struct Inner {
-  heap:     BinaryHeap<PriorityEntry>,
-  sequence: u64,
+  heap: BinaryHeap<PriorityEntry>,
 }
 
 /// Bounded message queue that dequeues messages in priority order.
@@ -53,7 +52,7 @@ impl BoundedPriorityMessageQueue {
     overflow: MailboxOverflowStrategy,
   ) -> Self {
     Self {
-      inner: RuntimeMutex::new(Inner { heap: BinaryHeap::with_capacity(capacity.get()), sequence: 0 }),
+      inner: RuntimeMutex::new(Inner { heap: BinaryHeap::with_capacity(capacity.get()) }),
       generator,
       capacity: capacity.get(),
       overflow,
@@ -65,9 +64,7 @@ impl MessageQueue for BoundedPriorityMessageQueue {
   fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
     let priority = self.generator.priority(&message);
     let mut guard = self.inner.lock();
-    let sequence = guard.sequence;
-    guard.sequence += 1;
-    let entry = PriorityEntry { priority, sequence, message };
+    let entry = PriorityEntry { priority, message };
 
     if guard.heap.len() < self.capacity {
       guard.heap.push(entry);
@@ -80,18 +77,9 @@ impl MessageQueue for BoundedPriorityMessageQueue {
         Err(SendError::full(entry.message))
       },
       | MailboxOverflowStrategy::DropOldest => {
-        // Drop the oldest message (lowest sequence number) to make room.
+        // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
+        let _ = guard.heap.pop();
         guard.heap.push(entry);
-        let mut vec: alloc::vec::Vec<PriorityEntry> = core::mem::take(&mut guard.heap).into_vec();
-        // Find the entry with the lowest sequence (oldest inserted).
-        let mut oldest_idx = 0;
-        for (i, e) in vec.iter().enumerate().skip(1) {
-          if e.sequence < vec[oldest_idx].sequence {
-            oldest_idx = i;
-          }
-        }
-        vec.swap_remove(oldest_idx);
-        guard.heap = BinaryHeap::from(vec);
         Ok(EnqueueOutcome::Enqueued)
       },
       | MailboxOverflowStrategy::Grow => {
@@ -129,13 +117,11 @@ impl MessageQueue for BoundedPriorityMessageQueue {
 /// max-heap.
 struct PriorityEntry {
   priority: i32,
-  sequence: u64,
   message:  AnyMessage,
 }
 
 // BinaryHeap での使用を前提としているため、priority のみで比較する。
 // message の比較は不要（AnyMessage は PartialEq を実装しない）。
-// 将来この型を公開する場合は比較セマンティクスの再検討が必要。
 impl PartialEq for PriorityEntry {
   fn eq(&self, other: &Self) -> bool {
     self.priority == other.priority

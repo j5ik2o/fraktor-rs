@@ -85,18 +85,9 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         Err(SendError::full(entry.message))
       },
       | MailboxOverflowStrategy::DropOldest => {
-        // Drop the oldest message (lowest sequence number) to make room.
+        // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
+        let _ = guard.heap.pop();
         guard.heap.push(entry);
-        let mut vec: alloc::vec::Vec<StablePriorityEntry> = core::mem::take(&mut guard.heap).into_vec();
-        // Find the entry with the lowest sequence (oldest inserted).
-        let mut oldest_idx = 0;
-        for (i, e) in vec.iter().enumerate().skip(1) {
-          if e.sequence < vec[oldest_idx].sequence {
-            oldest_idx = i;
-          }
-        }
-        vec.swap_remove(oldest_idx);
-        guard.heap = BinaryHeap::from(vec);
         Ok(EnqueueOutcome::Enqueued)
       },
       | MailboxOverflowStrategy::Grow => {

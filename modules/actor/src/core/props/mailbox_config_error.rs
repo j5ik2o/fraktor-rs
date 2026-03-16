@@ -12,6 +12,10 @@ pub enum MailboxConfigError {
   PriorityWithControlAware,
   /// Bounded policy with deque requirement is not supported.
   BoundedWithDeque,
+  /// Priority generator and deque requirement are both set, which is not supported.
+  PriorityWithDeque,
+  /// Control-aware and deque requirements are both set, which is not supported.
+  DequeWithControlAware,
 }
 
 impl fmt::Display for MailboxConfigError {
@@ -28,6 +32,12 @@ impl fmt::Display for MailboxConfigError {
       },
       | Self::BoundedWithDeque => {
         write!(f, "bounded policy with deque requirement is not supported")
+      },
+      | Self::PriorityWithDeque => {
+        write!(f, "priority generator and deque requirement cannot be used together")
+      },
+      | Self::DequeWithControlAware => {
+        write!(f, "control-aware and deque requirements cannot be used together")
       },
     }
   }

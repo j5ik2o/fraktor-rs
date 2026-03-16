@@ -144,6 +144,12 @@ impl MailboxConfig {
     {
       return Err(MailboxConfigError::BoundedWithDeque);
     }
+    if self.priority_generator.is_some() && self.requirement.needs_deque() {
+      return Err(MailboxConfigError::PriorityWithDeque);
+    }
+    if self.requirement.needs_control_aware() && self.requirement.needs_deque() {
+      return Err(MailboxConfigError::DequeWithControlAware);
+    }
     Ok(())
   }
 }
