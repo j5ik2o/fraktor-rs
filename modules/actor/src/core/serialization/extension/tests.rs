@@ -794,6 +794,15 @@ fn builtin_serializers_support_primitives() {
   let bytes_msg = extension.serialize(&bytes, SerializationCallScope::Local).expect("bytes encode");
   let bytes_value = extension.deserialize(&bytes_msg, Some(TypeId::of::<Vec<u8>>())).expect("bytes decode");
   assert_eq!(*bytes_value.downcast::<Vec<u8>>().unwrap(), bytes);
+
+  // ByteString round-trip (F-011 regression)
+  let byte_string = crate::core::messaging::ByteString::from_slice(&[10, 20, 30]);
+  let bs_msg = extension.serialize(&byte_string, SerializationCallScope::Local).expect("ByteString encode");
+  let bs_value = extension
+    .deserialize(&bs_msg, Some(TypeId::of::<crate::core::messaging::ByteString>()))
+    .expect("ByteString decode");
+  let decoded = bs_value.downcast::<crate::core::messaging::ByteString>().expect("ByteString downcast");
+  assert_eq!(decoded.as_slice(), &[10, 20, 30]);
 }
 
 #[test]

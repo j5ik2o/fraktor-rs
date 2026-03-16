@@ -1,6 +1,7 @@
 //! Built-in serializer implementations registered by the extension.
 
 mod bool_serializer;
+mod byte_string_serializer;
 mod bytes_serializer;
 mod i32_serializer;
 mod null_serializer;
@@ -9,6 +10,7 @@ mod string_serializer;
 use alloc::string::String;
 
 pub use bool_serializer::BoolSerializer;
+pub use byte_string_serializer::ByteStringSerializer;
 pub use bytes_serializer::BytesSerializer;
 use fraktor_utils_rs::core::sync::ArcShared;
 pub use i32_serializer::I32Serializer;
@@ -34,6 +36,9 @@ pub const STRING_ID: SerializerId = SerializerId::from_raw(4);
 
 /// Serializer ID for byte array type.
 pub const BYTES_ID: SerializerId = SerializerId::from_raw(5);
+
+/// Serializer ID for [`ByteString`](crate::core::messaging::ByteString) type.
+pub const BYTE_STRING_ID: SerializerId = SerializerId::from_raw(6);
 
 /// Registers built-in serializers required by the runtime.
 ///
@@ -81,6 +86,14 @@ where
     BytesSerializer::new(BYTES_ID),
     "bytes",
     Some((core::any::TypeId::of::<alloc::vec::Vec<u8>>(), "Vec<u8>".into())),
+    &mut on_collision,
+  )?;
+  register::<_, _>(
+    registry,
+    BYTE_STRING_ID,
+    ByteStringSerializer::new(BYTE_STRING_ID),
+    "byte_string",
+    Some((core::any::TypeId::of::<crate::core::messaging::ByteString>(), "ByteString".into())),
     &mut on_collision,
   )?;
   Ok(())
