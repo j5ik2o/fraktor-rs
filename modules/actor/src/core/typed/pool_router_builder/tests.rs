@@ -393,9 +393,10 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
   let mut seen_routees: Vec<usize> = records.lock().iter().map(|(idx, _)| *idx).collect();
   seen_routees.sort_unstable();
   seen_routees.dedup();
-  assert!(
-    seen_routees.len() <= upper_bound,
-    "expected at most {} unique routees after resize-down, got {}",
+  assert_eq!(
+    seen_routees.len(),
+    upper_bound,
+    "expected exactly {} unique routees after resize-down, got {}",
     upper_bound,
     seen_routees.len()
   );

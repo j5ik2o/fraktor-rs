@@ -43,3 +43,19 @@ fn control_message_supports_sender() {
   assert!(message.is_control());
   assert_eq!(message.sender(), Some(&sender));
 }
+
+#[test]
+fn from_erased_preserves_control_flag_true() {
+  let payload = fraktor_utils_rs::core::sync::ArcShared::new(42_u32)
+    as fraktor_utils_rs::core::sync::ArcShared<dyn core::any::Any + Send + Sync>;
+  let message = AnyMessage::from_erased(payload, None, true);
+  assert!(message.is_control());
+}
+
+#[test]
+fn from_erased_preserves_control_flag_false() {
+  let payload = fraktor_utils_rs::core::sync::ArcShared::new(42_u32)
+    as fraktor_utils_rs::core::sync::ArcShared<dyn core::any::Any + Send + Sync>;
+  let message = AnyMessage::from_erased(payload, None, false);
+  assert!(!message.is_control());
+}

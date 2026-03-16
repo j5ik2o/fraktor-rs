@@ -223,9 +223,13 @@ impl Mailbox {
 
     if let Err(error) = enqueue_result {
       self.user.clean_up();
-      if let Err(restore_error) = self.restore_prepend_messages(&existing, first_message) {
-        self.publish_metrics_with_user_len(self.user.number_of_messages());
-        return Err(restore_error);
+      // 新メッセージ (messages) も既存メッセージ (existing) も両方復元する
+      let all_messages = messages.iter().cloned().chain(existing.iter().cloned());
+      for message in all_messages {
+        if let Err(restore_error) = self.enqueue_for_prepend(message, first_message) {
+          self.publish_metrics_with_user_len(self.user.number_of_messages());
+          return Err(restore_error);
+        }
       }
       self.publish_metrics_with_user_len(self.user.number_of_messages());
       return Err(error);
@@ -346,16 +350,7 @@ impl Mailbox {
     }
   }
 
-  fn restore_prepend_messages(
-    &self,
-    existing: &VecDeque<AnyMessage>,
-    first_message: &AnyMessage,
-  ) -> Result<(), SendError> {
-    for message in existing.iter().cloned() {
-      self.enqueue_for_prepend(message, first_message)?;
-    }
-    Ok(())
-  }
+
 
   fn publish_metrics(&self) {
     let user_len = {

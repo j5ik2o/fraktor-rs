@@ -55,7 +55,7 @@ pub(crate) fn create_message_queue_from_config(
     return Ok(mailbox_type.create());
   }
   if config.requirement().needs_deque() {
-    return Ok(deque_mailbox_type_from_policy(config.policy()).create());
+    return Ok(deque_mailbox_type_from_policy(config.policy())?.create());
   }
   Ok(create_message_queue_from_policy(config.policy()))
 }
@@ -84,10 +84,10 @@ fn stable_priority_mailbox_type_from_config(
   }
 }
 
-fn deque_mailbox_type_from_policy(policy: MailboxPolicy) -> Box<dyn MailboxType> {
+fn deque_mailbox_type_from_policy(policy: MailboxPolicy) -> Result<Box<dyn MailboxType>, MailboxConfigError> {
   match policy.capacity() {
-    | MailboxCapacity::Bounded { capacity } => bounded_mailbox_type(capacity, policy.overflow()),
-    | MailboxCapacity::Unbounded => Box::new(UnboundedDequeMailboxType::new()),
+    | MailboxCapacity::Bounded { .. } => Err(MailboxConfigError::BoundedWithDeque),
+    | MailboxCapacity::Unbounded => Ok(Box::new(UnboundedDequeMailboxType::new())),
   }
 }
 

@@ -212,13 +212,14 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
   };
 
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Enqueued, // prepend (drain-and-requeue 1st pass)
+    ScriptedEnqueue::Full,     // existing-1 requeue fails → triggers rollback
+    ScriptedEnqueue::Enqueued, // restore: prepend (new message)
+    ScriptedEnqueue::Enqueued, // restore: existing-1
+    ScriptedEnqueue::Enqueued, // restore: existing-2
+    ScriptedEnqueue::Enqueued, // concurrent enqueue
   ]);
   let (before_error_tx, before_error_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
@@ -257,7 +258,8 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
 
   let enqueue_result = enqueue_handle.join().expect("enqueue thread must complete");
   assert!(matches!(enqueue_result, Ok(EnqueueOutcome::Enqueued)));
-  assert_eq!(mailbox.user_len(), 3);
+  // prepend(restored) + existing-1(restored) + existing-2(restored) + concurrent = 4
+  assert_eq!(mailbox.user_len(), 4);
 }
 
 #[test]
@@ -269,13 +271,14 @@ fn mailbox_prepend_user_messages_blocks_pending_offer_poll_until_prepend_finishe
   };
 
   let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Pending,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Full,
-    ScriptedEnqueue::Enqueued,
-    ScriptedEnqueue::Enqueued,
+    ScriptedEnqueue::Enqueued, // existing-1
+    ScriptedEnqueue::Enqueued, // existing-2
+    ScriptedEnqueue::Pending,  // pending enqueue
+    ScriptedEnqueue::Enqueued, // prepend (drain-and-requeue 1st pass)
+    ScriptedEnqueue::Full,     // existing-1 requeue fails → triggers rollback
+    ScriptedEnqueue::Enqueued, // restore: prepend (new message)
+    ScriptedEnqueue::Enqueued, // restore: existing-1
+    ScriptedEnqueue::Enqueued, // restore: existing-2
   ]);
   let (before_error_tx, before_error_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();

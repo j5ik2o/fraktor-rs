@@ -40,6 +40,10 @@ where
   create_request:   CreateRequestFn<M, R>,
   extract_reply_to: ExtractReplyToFn<M, R>,
   timeout_reply:    ArcShared<R>,
+  #[cfg(test)]
+  force_routee_spawn_failure: bool,
+  #[cfg(test)]
+  force_coord_spawn_failure: bool,
 }
 
 impl<M, R> ScatterGatherFirstCompletedRouterBuilder<M, R>
@@ -83,7 +87,25 @@ where
       create_request: ArcShared::new(create_request),
       extract_reply_to: ArcShared::new(extract_reply_to),
       timeout_reply: ArcShared::new(timeout_reply),
+      #[cfg(test)]
+      force_routee_spawn_failure: false,
+      #[cfg(test)]
+      force_coord_spawn_failure: false,
     }
+  }
+
+  /// Forces all routee `spawn_child_watched` calls to fail (test seam).
+  #[cfg(test)]
+  pub(crate) fn force_routee_spawn_failure(mut self) -> Self {
+    self.force_routee_spawn_failure = true;
+    self
+  }
+
+  /// Forces coordinator `spawn_child` calls to fail (test seam).
+  #[cfg(test)]
+  pub(crate) fn force_coord_spawn_failure(mut self) -> Self {
+    self.force_coord_spawn_failure = true;
+    self
   }
 
   /// Builds the scatter-gather pool router as a [`Behavior`].
@@ -95,6 +117,10 @@ where
     let create_request = self.create_request;
     let extract_reply_to = self.extract_reply_to;
     let timeout_reply = self.timeout_reply;
+    #[cfg(test)]
+    let force_routee_spawn_failure = self.force_routee_spawn_failure;
+    #[cfg(test)]
+    let force_coord_spawn_failure = self.force_coord_spawn_failure;
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
@@ -102,6 +128,12 @@ where
         let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
         factory()
       });
+      #[cfg(test)]
+      let props = if force_routee_spawn_failure {
+        props.with_dispatcher_from_config("__test_force_spawn_failure__")
+      } else {
+        props
+      };
 
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
@@ -115,6 +147,12 @@ where
         }
       }
 
+      // routee が1体も起動できなかった場合はルーターを停止する
+      if routee_vec.is_empty() {
+        ctx.system().emit_log(LogLevel::Error, "scatter-gather router has no routees, stopping", Some(ctx.pid()));
+        return Behaviors::stopped();
+      }
+
       let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
@@ -122,16 +160,26 @@ where
       let extract_reply_to = extract_reply_to.clone();
       let timeout_reply = timeout_reply.clone();
 
+      #[cfg(test)]
+      let force_coord = force_coord_spawn_failure;
+
       Behaviors::receive_message(move |ctx, message: &M| {
-        let guard = routees_for_msg.lock();
-        if guard.is_empty() {
-          return Ok(Behaviors::same());
-        }
+        let routee_snapshot: Vec<TypedActorRef<M>> = {
+          let guard = routees_for_msg.lock();
+          if guard.is_empty() {
+            return Ok(Behaviors::same());
+          }
+          guard.to_vec()
+        };
 
         if let Some(original_reply_to) = (extract_reply_to)(message) {
-          spawn_gather_coordinator(ctx, &guard, message, original_reply_to, &create_request, within, &timeout_reply);
+          #[cfg(test)]
+          let coord_force = force_coord;
+          #[cfg(not(test))]
+          let coord_force = false;
+          spawn_gather_coordinator(ctx, &routee_snapshot, message, original_reply_to, &create_request, within, &timeout_reply, coord_force);
         } else {
-          for routee in guard.iter() {
+          for routee in &routee_snapshot {
             let mut r = routee.clone();
             let _ = r.tell(message.clone());
           }
@@ -157,6 +205,7 @@ where
 }
 
 /// Spawns a one-shot coordinator that forwards the first reply from any routee.
+#[allow(clippy::too_many_arguments)]
 fn spawn_gather_coordinator<'a, M, R>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'a, M>,
   routees: &[TypedActorRef<M>],
@@ -165,9 +214,14 @@ fn spawn_gather_coordinator<'a, M, R>(
   create_request: &CreateRequestFn<M, R>,
   within: Duration,
   timeout_reply: &R,
+  force_spawn_failure: bool,
 ) where
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
+  // spawn 失敗時に timeout_reply を返すため、事前に控えておく
+  let mut fallback_reply_to = reply_to.clone();
+  let fallback_timeout_reply = timeout_reply.clone();
+
   let coord_props = TypedProps::<R>::from_behavior_factory(move || -> Behavior<R> {
     let rt = reply_to.clone();
     Behaviors::receive_message(move |_ctx, msg: &R| {
@@ -175,6 +229,11 @@ fn spawn_gather_coordinator<'a, M, R>(
       Ok(Behaviors::stopped())
     })
   });
+  let coord_props = if force_spawn_failure {
+    coord_props.with_dispatcher_from_config("__test_force_spawn_failure__")
+  } else {
+    coord_props
+  };
 
   match ctx.spawn_child(&coord_props) {
     | Ok(coord_child) => {
@@ -188,6 +247,11 @@ fn spawn_gather_coordinator<'a, M, R>(
     | Err(e) => {
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      // caller が無応答にならないよう timeout_reply を即時返却する
+      if let Err(tell_err) = fallback_reply_to.tell(fallback_timeout_reply) {
+        let msg = alloc::format!("failed to send timeout_reply after coordinator spawn failure: {:?}", tell_err);
+        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      }
     },
   }
 }

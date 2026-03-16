@@ -54,7 +54,15 @@ impl CircuitBreakerShared {
     Fut: Future<Output = Result<T, E>>, {
     self.with_write(|cb| cb.is_call_permitted()).map_err(CircuitBreakerCallError::Open)?;
 
-    match operation().await {
+    // RAII ガード: Future がキャンセル（drop）された場合に自動で record_failure() を呼ぶ
+    let mut guard = CallGuard { cb: self.clone(), disarmed: false };
+
+    let result = operation().await;
+
+    // 正常完了: ガードを disarm して自然な drop では何もしないようにする
+    guard.disarmed = true;
+
+    match result {
       | Ok(value) => {
         self.with_write(|cb| cb.record_success());
         Ok(value)
@@ -76,6 +84,24 @@ impl CircuitBreakerShared {
   #[must_use]
   pub fn failure_count(&self) -> u32 {
     self.with_read(|cb| cb.failure_count())
+  }
+}
+
+/// RAII guard that records a failure when dropped without being disarmed.
+///
+/// Used to ensure cancel safety: if the operation future is dropped mid-flight
+/// (e.g. via `tokio::time::timeout`), the circuit breaker transitions out of
+/// HalfOpen instead of getting stuck.
+struct CallGuard {
+  cb:       CircuitBreakerShared,
+  disarmed: bool,
+}
+
+impl Drop for CallGuard {
+  fn drop(&mut self) {
+    if !self.disarmed {
+      self.cb.with_write(|cb| cb.record_failure());
+    }
   }
 }
 

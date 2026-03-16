@@ -56,6 +56,11 @@ fn silent_routee_behavior() -> Behavior<TestReq> {
   Behaviors::receive_message(|_ctx, _msg: &TestReq| Ok(Behaviors::same()))
 }
 
+/// Routee that immediately stops on creation (to simulate all-routee termination).
+fn immediately_stopping_routee_behavior() -> Behavior<TestReq> {
+  Behaviors::stopped()
+}
+
 #[test]
 fn scatter_gather_builder_builds_behavior() {
   let _behavior: Behavior<TestReq> = Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
@@ -276,6 +281,213 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
   let got = replies_for_check.lock();
   assert_eq!(got.len(), 1);
   assert_eq!(got[0], timeout_reply);
+
+  system.terminate().expect("terminate");
+}
+
+/// Regression: When all routees terminate via Terminated signal, the router
+/// should transition to `stopped()` (empty routee list triggers stop).
+#[test]
+fn scatter_gather_stops_when_all_routees_terminate() {
+  let pool_size = 2_usize;
+  let router_stopped = ArcShared::new(NoStdMutex::new(false));
+  let router_stopped_check = router_stopped.clone();
+
+  let rs = router_stopped.clone();
+  let outer_behavior = ArcShared::new(move || -> Behavior<TestReq> {
+    let rs = rs.clone();
+    Behaviors::setup(move |ctx| {
+      let router_behavior_factory = ArcShared::new(move || {
+        Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
+          pool_size,
+          immediately_stopping_routee_behavior,
+          Duration::from_secs(5),
+          |msg, reply_to| match msg {
+            | TestReq::Query { id, .. } => TestReq::Query { id: *id, reply_to },
+          },
+          |msg| match msg {
+            | TestReq::Query { reply_to, .. } => Some(reply_to.clone()),
+          },
+          TestReply { id: 0, source: usize::MAX },
+        )
+        .build()
+      });
+
+      let rbf = router_behavior_factory.clone();
+      let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
+      let _router_child = ctx.spawn_child_watched(&router_props).expect("router");
+
+      let rs2 = rs.clone();
+      Behaviors::receive_message(move |_ctx, _msg: &TestReq| Ok(Behaviors::same())).receive_signal(
+        move |_ctx, signal| {
+          use crate::core::typed::behavior_signal::BehaviorSignal;
+          match signal {
+            | BehaviorSignal::Terminated(_) => {
+              *rs2.lock() = true;
+              Ok(Behaviors::same())
+            },
+            | _ => Ok(Behaviors::same()),
+          }
+        },
+      )
+    })
+  });
+
+  let ob = outer_behavior.clone();
+  let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+
+  // routee が即座に停止するため、Terminated シグナルでルーターも停止する
+  wait_until(|| *router_stopped_check.lock());
+
+  system.terminate().expect("terminate");
+}
+
+/// Regression: When all routee spawns fail during build, the router should
+/// immediately transition to `Behaviors::stopped()` via the empty-routee guard.
+#[test]
+fn scatter_gather_stops_when_all_routee_spawns_fail() {
+  let pool_size = 3_usize;
+  let router_stopped = ArcShared::new(NoStdMutex::new(false));
+  let router_stopped_check = router_stopped.clone();
+
+  let rs = router_stopped.clone();
+  let outer_behavior = ArcShared::new(move || -> Behavior<TestReq> {
+    let rs = rs.clone();
+    Behaviors::setup(move |ctx| {
+      let router_behavior_factory = ArcShared::new(move || {
+        Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
+          pool_size,
+          || responding_routee_behavior(0),
+          Duration::from_secs(5),
+          |msg, reply_to| match msg {
+            | TestReq::Query { id, .. } => TestReq::Query { id: *id, reply_to },
+          },
+          |msg| match msg {
+            | TestReq::Query { reply_to, .. } => Some(reply_to.clone()),
+          },
+          TestReply { id: 0, source: usize::MAX },
+        )
+        .force_routee_spawn_failure()
+        .build()
+      });
+
+      let rbf = router_behavior_factory.clone();
+      let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
+      let _router_child = ctx.spawn_child_watched(&router_props).expect("router");
+
+      let rs2 = rs.clone();
+      Behaviors::receive_message(move |_ctx, _msg: &TestReq| Ok(Behaviors::same())).receive_signal(
+        move |_ctx, signal| {
+          use crate::core::typed::behavior_signal::BehaviorSignal;
+          match signal {
+            | BehaviorSignal::Terminated(_) => {
+              *rs2.lock() = true;
+              Ok(Behaviors::same())
+            },
+            | _ => Ok(Behaviors::same()),
+          }
+        },
+      )
+    })
+  });
+
+  let ob = outer_behavior.clone();
+  let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+
+  // spawn 失敗により routee_vec が空 → build 直後に Behaviors::stopped() → ルーター終了
+  wait_until(|| *router_stopped_check.lock());
+
+  system.terminate().expect("terminate");
+}
+
+/// Regression: When coordinator spawn fails, the caller should immediately
+/// receive `timeout_reply` instead of hanging forever.
+#[test]
+fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
+  let pool_size = 2_usize;
+  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let replies_for_check = replies.clone();
+  let timeout_reply = TestReply { id: 0, source: usize::MAX };
+
+  let replies_for_collector = replies.clone();
+  let collector_factory = ArcShared::new(move || -> Behavior<TestReply> {
+    let rr = replies_for_collector.clone();
+    Behaviors::receive_message(move |_ctx, msg: &TestReply| {
+      rr.lock().push(msg.clone());
+      Ok(Behaviors::same())
+    })
+  });
+
+  let cf = collector_factory.clone();
+  let tr = timeout_reply.clone();
+  let outer_behavior = ArcShared::new(move || -> Behavior<TestReq> {
+    let cf = cf.clone();
+    let tr = tr.clone();
+    Behaviors::setup(move |ctx| {
+      let cf2 = cf.clone();
+      let collector_props = TypedProps::<TestReply>::from_behavior_factory(move || cf2());
+      let collector_child = ctx.spawn_child(&collector_props).expect("collector");
+      let collector_ref = collector_child.actor_ref().clone();
+
+      let tr2 = tr.clone();
+      let router_behavior_factory = ArcShared::new(move || {
+        Routers::scatter_gather_first_completed_pool::<TestReq, TestReply, _, _, _>(
+          pool_size,
+          || responding_routee_behavior(0),
+          Duration::from_millis(500),
+          |msg, reply_to| match msg {
+            | TestReq::Query { id, .. } => TestReq::Query { id: *id, reply_to },
+          },
+          |msg| match msg {
+            | TestReq::Query { reply_to, .. } => Some(reply_to.clone()),
+          },
+          tr2.clone(),
+        )
+        .force_coord_spawn_failure()
+        .build()
+      });
+
+      let rbf = router_behavior_factory.clone();
+      let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
+      let router_child = ctx.spawn_child(&router_props).expect("router");
+      let router_ref = router_child.actor_ref().clone();
+
+      Behaviors::receive_message(move |_ctx, msg: &TestReq| {
+        match msg {
+          | TestReq::Query { id, .. } => {
+            let _ = router_ref.clone().tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
+          },
+        }
+        Ok(Behaviors::same())
+      })
+    })
+  });
+
+  let ob = outer_behavior.clone();
+  let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
+  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
+  let mut guardian = system.user_guardian_ref();
+
+  let dummy_reply_to = TypedActorRef::from_untyped(crate::core::actor::actor_ref::ActorRef::no_sender());
+  guardian.tell(TestReq::Query { id: 77, reply_to: dummy_reply_to }).expect("tell");
+
+  // coordinator spawn 失敗 → 即時 timeout_reply が返るはず
+  wait_until(|| !replies_for_check.lock().is_empty());
+
+  let got = replies_for_check.lock();
+  assert_eq!(got.len(), 1);
+  assert_eq!(got[0], timeout_reply, "coordinator spawn 失敗時は timeout_reply が即時返却されるべき");
 
   system.terminate().expect("terminate");
 }

@@ -13,14 +13,14 @@ use crate::core::serialization::error::SerializationError;
 struct StubAsyncSerializer;
 
 impl AsyncSerializer for StubAsyncSerializer {
-  fn to_binary_async(&self, message: Box<dyn Any + Send + Sync>) -> SerializationFuture<Vec<u8>> {
+  fn to_binary_async(&self, message: Box<dyn Any + Send + Sync>) -> SerializationFuture<'_, Vec<u8>> {
     Box::pin(async move {
       let s = message.downcast::<String>().map_err(|_| SerializationError::InvalidFormat)?;
       Ok(s.as_bytes().to_vec())
     })
   }
 
-  fn from_binary_async(&self, bytes: Vec<u8>, _manifest: &str) -> SerializationFuture<Box<dyn Any + Send + Sync>> {
+  fn from_binary_async(&self, bytes: Vec<u8>, _manifest: &str) -> SerializationFuture<'_, Box<dyn Any + Send + Sync>> {
     Box::pin(async move {
       let s = String::from_utf8(bytes).map_err(|_| SerializationError::InvalidFormat)?;
       Ok(Box::new(s) as Box<dyn Any + Send + Sync>)
@@ -55,8 +55,9 @@ fn block_on<F: Future>(mut f: F) -> F::Output {
 
 #[test]
 fn trait_object_is_send_sync() {
-  fn assert_send_sync<T: Send + Sync>() {}
+  fn assert_send_sync<T: Send + Sync + ?Sized>() {}
   assert_send_sync::<StubAsyncSerializer>();
+  assert_send_sync::<dyn AsyncSerializer>();
 }
 
 #[test]
@@ -94,5 +95,5 @@ fn empty_bytes_produces_empty_string() {
 
 #[test]
 fn serialization_future_type_alias_is_usable() {
-  fn _accepts_future(_f: SerializationFuture<Vec<u8>>) {}
+  fn _accepts_future(_f: SerializationFuture<'_, Vec<u8>>) {}
 }

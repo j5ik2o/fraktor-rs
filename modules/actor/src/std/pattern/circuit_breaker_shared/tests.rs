@@ -1,7 +1,6 @@
 extern crate std;
 
 use core::time::Duration;
-use std::thread;
 
 use super::CircuitBreakerShared;
 use crate::std::pattern::{
@@ -67,7 +66,7 @@ async fn call_recovers_after_reset_timeout() {
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  thread::sleep(Duration::from_millis(20));
+  tokio::time::sleep(Duration::from_millis(20)).await;
 
   let result = cb.call(|| async { Ok::<_, &str>(99) }).await;
   match result {
@@ -83,7 +82,7 @@ async fn half_open_failure_reopens() {
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
-  thread::sleep(Duration::from_millis(20));
+  tokio::time::sleep(Duration::from_millis(20)).await;
 
   let result = cb.call(|| async { Err::<(), _>("still broken") }).await;
   assert!(matches!(result, Err(CircuitBreakerCallError::Failed("still broken"))));
@@ -104,4 +103,60 @@ async fn open_error_contains_remaining_duration() {
     },
     | other => panic!("expected Open error, got {:?}", other),
   }
+}
+
+#[tokio::test]
+async fn cancel_during_half_open_records_failure() {
+  let cb = CircuitBreakerShared::new(1, Duration::from_millis(10));
+
+  // Trip to Open
+  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert_eq!(cb.state(), CircuitBreakerState::Open);
+
+  // Wait for reset timeout to transition to HalfOpen
+  tokio::time::sleep(Duration::from_millis(20)).await;
+
+  // Cancel the operation mid-flight via timeout
+  let result = tokio::time::timeout(Duration::from_millis(1), cb.call(|| async {
+    // Simulate a long-running operation that will be cancelled
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    Ok::<_, &str>(42)
+  }))
+  .await;
+
+  // The outer timeout should have fired
+  assert!(result.is_err(), "expected timeout");
+
+  // The RAII guard should have recorded a failure, transitioning back to Open
+  assert_eq!(cb.state(), CircuitBreakerState::Open);
+}
+
+/// Regression: Successful calls must not leak internal state.
+///
+/// Previously `core::mem::forget(guard)` was used to disarm the RAII guard,
+/// which leaked the `ArcShared` clone inside `CallGuard`. This test verifies
+/// that the circuit breaker can be dropped cleanly after many successful calls
+/// (no leaked references prevent deallocation).
+#[tokio::test]
+async fn successful_calls_do_not_leak_guard_resources() {
+  let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
+
+  // Perform many successful calls — guard must be properly dropped each time
+  for _ in 0..100 {
+    let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
+    assert!(result.is_ok());
+  }
+  assert_eq!(cb.state(), CircuitBreakerState::Closed);
+  assert_eq!(cb.failure_count(), 0);
+
+  // Perform additional calls mixing success and failure
+  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert_eq!(cb.failure_count(), 1);
+
+  let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
+  match result {
+    | Ok(value) => assert_eq!(value, 42),
+    | Err(err) => panic!("expected Ok(42), got Err({err:?})"),
+  }
+  assert_eq!(cb.failure_count(), 0);
 }

@@ -70,3 +70,18 @@ fn create_message_queue_from_control_aware_requirement() {
   assert!(queue.enqueue(AnyMessage::new(42_u32)).is_ok());
   assert!(queue.has_messages());
 }
+
+#[test]
+fn create_message_queue_rejects_bounded_with_deque() {
+  let mut registry = Mailboxes::new();
+  let capacity = NonZeroUsize::new(10).expect("capacity");
+  let config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
+    .with_requirement(MailboxRequirement::requires_deque());
+  registry.register("bounded-deque", config).expect("register mailbox");
+
+  let result = registry.create_message_queue("bounded-deque");
+  assert!(matches!(
+    result,
+    Err(MailboxRegistryError::InvalidConfig(MailboxConfigError::BoundedWithDeque))
+  ));
+}

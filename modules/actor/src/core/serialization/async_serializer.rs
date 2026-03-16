@@ -9,7 +9,7 @@ use core::{any::Any, future::Future, pin::Pin};
 use super::error::SerializationError;
 
 /// Future type returned by [`AsyncSerializer`] methods.
-pub type SerializationFuture<T> = Pin<Box<dyn Future<Output = Result<T, SerializationError>> + Send>>;
+pub type SerializationFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SerializationError>> + Send + 'a>>;
 
 /// Opt-in capability for serializers that perform asynchronous serialization.
 ///
@@ -26,7 +26,7 @@ pub trait AsyncSerializer: Send + Sync {
   /// # Errors
   ///
   /// The returned future resolves to [`SerializationError`] if encoding fails.
-  fn to_binary_async(&self, message: Box<dyn Any + Send + Sync>) -> SerializationFuture<Vec<u8>>;
+  fn to_binary_async(&self, message: Box<dyn Any + Send + Sync>) -> SerializationFuture<'_, Vec<u8>>;
 
   /// Asynchronously restores a message from bytes with a string manifest.
   ///
@@ -34,5 +34,5 @@ pub trait AsyncSerializer: Send + Sync {
   ///
   /// The returned future resolves to [`SerializationError`] if decoding fails.
   #[allow(clippy::wrong_self_convention)]
-  fn from_binary_async(&self, bytes: Vec<u8>, manifest: &str) -> SerializationFuture<Box<dyn Any + Send + Sync>>;
+  fn from_binary_async(&self, bytes: Vec<u8>, manifest: &str) -> SerializationFuture<'_, Box<dyn Any + Send + Sync>>;
 }

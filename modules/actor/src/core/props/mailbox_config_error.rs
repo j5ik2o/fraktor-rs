@@ -8,6 +8,10 @@ pub enum MailboxConfigError {
   StablePriorityWithoutGenerator,
   /// Control-aware mailbox requires an unbounded policy (bounded is not supported).
   ControlAwareRequiresUnboundedPolicy,
+  /// Priority generator and control-aware are both set, which is not supported.
+  PriorityWithControlAware,
+  /// Bounded policy with deque requirement is not supported.
+  BoundedWithDeque,
 }
 
 impl fmt::Display for MailboxConfigError {
@@ -18,6 +22,12 @@ impl fmt::Display for MailboxConfigError {
       },
       | Self::ControlAwareRequiresUnboundedPolicy => {
         write!(f, "control-aware mailbox requires an unbounded policy")
+      },
+      | Self::PriorityWithControlAware => {
+        write!(f, "priority generator and control-aware cannot be used together")
+      },
+      | Self::BoundedWithDeque => {
+        write!(f, "bounded policy with deque requirement is not supported")
       },
     }
   }

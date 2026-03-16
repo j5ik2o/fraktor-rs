@@ -71,7 +71,7 @@ impl EndpointReader {
     let shared = ArcShared::___from_arc(arc.into());
     #[cfg(not(feature = "force-portable-arc"))]
     let shared = ArcShared::___from_arc(arc);
-    Ok(AnyMessage::from_erased(shared, None))
+    Ok(AnyMessage::from_erased(shared, None, false))
   }
 
   fn record_deserialization_failure(&self, recipient: &ActorPath) {

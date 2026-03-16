@@ -61,3 +61,34 @@ fn validate_accepts_control_aware_with_unbounded_policy() {
   let config = MailboxConfig::default().with_requirement(MailboxRequirement::requires_control_aware());
   assert!(config.validate().is_ok());
 }
+
+#[test]
+fn validate_rejects_priority_with_control_aware() {
+  use fraktor_utils_rs::core::sync::ArcShared;
+
+  use crate::core::{dispatch::mailbox::MessagePriorityGenerator, messaging::AnyMessage};
+
+  struct ConstPriority;
+  impl MessagePriorityGenerator for ConstPriority {
+    fn priority(&self, _msg: &AnyMessage) -> i32 {
+      0
+    }
+  }
+
+  let config = MailboxConfig::default()
+    .with_priority_generator(ArcShared::new(ConstPriority))
+    .with_requirement(MailboxRequirement::requires_control_aware());
+  assert_eq!(config.validate(), Err(MailboxConfigError::PriorityWithControlAware));
+}
+
+#[test]
+fn validate_rejects_bounded_with_deque() {
+  use core::num::NonZeroUsize;
+
+  use crate::core::dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy};
+
+  let capacity = NonZeroUsize::new(10).unwrap();
+  let bounded_policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
+  let config = MailboxConfig::new(bounded_policy).with_requirement(MailboxRequirement::requires_deque());
+  assert_eq!(config.validate(), Err(MailboxConfigError::BoundedWithDeque));
+}

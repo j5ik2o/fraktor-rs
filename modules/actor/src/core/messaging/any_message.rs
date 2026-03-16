@@ -63,8 +63,12 @@ impl AnyMessage {
 
   /// Reconstructs a message from an erased payload pointer.
   #[must_use]
-  pub fn from_erased(payload: ArcShared<dyn Any + Send + Sync + 'static>, sender: Option<ActorRef>) -> Self {
-    Self::from_parts(payload, sender, false)
+  pub fn from_erased(
+    payload: ArcShared<dyn Any + Send + Sync + 'static>,
+    sender: Option<ActorRef>,
+    is_control: bool,
+  ) -> Self {
+    Self::from_parts(payload, sender, is_control)
   }
 
   /// Returns the payload as a trait object reference.
