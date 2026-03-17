@@ -455,9 +455,7 @@ where
         // ワーカー PC を生成し、先に state に登録してから tell() する。
         // インラインディスパッチで InternalDemand が即座に返るため、
         // 登録前に tell() すると demand シグナルが消失する。
-        if let Some((entry, pc_ref)) =
-          spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id)?
-        {
+        if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id)? {
           // 先にワーカーを登録する
           state.lock().workers.insert(pid_key(&worker_ref), entry);
 
@@ -469,12 +467,9 @@ where
             .tell(ProducerController::start(demand_adapter.clone()))
             .map_err(|e| ActorError::from_send_error(&e))?;
 
-          let cc_ref =
-            TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
+          let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
           let mut pc_reg = pc_ref;
-          pc_reg
-            .tell(ProducerController::register_consumer(cc_ref))
-            .map_err(|e| ActorError::from_send_error(&e))?;
+          pc_reg.tell(ProducerController::register_consumer(cc_ref)).map_err(|e| ActorError::from_send_error(&e))?;
 
           // バッファ済みメッセージを排出する
           let mut s = state.lock();
