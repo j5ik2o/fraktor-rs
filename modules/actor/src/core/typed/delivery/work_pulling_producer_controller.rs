@@ -452,17 +452,36 @@ where
         pc_ref.as_untyped().poison_pill().map_err(|e| ActorError::from_send_error(&e))?;
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
-        if let Some(entry) = spawn_and_wire_worker::<A>(ctx, &worker_ref, &pc_producer_id, &demand_adapter)? {
-          // 新しいワーカーエントリを登録し、バッファ済みメッセージを排出する。
-          // collect_drain_buffered はロック内の状態操作のみで tell() しないため、
-          // ロック保持中に呼んでも安全。
+        // ワーカー PC を生成し、先に state に登録してから tell() する。
+        // インラインディスパッチで InternalDemand が即座に返るため、
+        // 登録前に tell() すると demand シグナルが消失する。
+        if let Some((entry, pc_ref)) =
+          spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id)?
+        {
+          // 先にワーカーを登録する
+          state.lock().workers.insert(pid_key(&worker_ref), entry);
+
+          // ワーカー PC に Start と RegisterConsumer を送信する。
+          // InternalDemand がインラインで処理され、state.workers に
+          // 登録済みなので demand シグナルが正しく反映される。
+          let mut pc_start = pc_ref.clone();
+          pc_start
+            .tell(ProducerController::start(demand_adapter.clone()))
+            .map_err(|e| ActorError::from_send_error(&e))?;
+
+          let cc_ref =
+            TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
+          let mut pc_reg = pc_ref;
+          pc_reg
+            .tell(ProducerController::register_consumer(cc_ref))
+            .map_err(|e| ActorError::from_send_error(&e))?;
+
+          // バッファ済みメッセージを排出する
           let mut s = state.lock();
-          s.workers.insert(pid_key(&worker_ref), entry);
           let mut drain_deferred = Vec::new();
           collect_drain_buffered(&mut s, &mut drain_deferred);
           collect_maybe_request_next(&mut s, &mut drain_deferred);
           drop(s);
-          // 排出で生じた deferred action を実行する
           for da in drain_deferred {
             match da {
               | WppcDeferredAction::Tell(mut t, m) => {
@@ -481,14 +500,15 @@ where
   Ok(())
 }
 
-/// Spawns a per-worker ProducerController, wires it up, and returns the
-/// worker entry to be inserted into state.
-fn spawn_and_wire_worker<A>(
+/// Spawns a per-worker ProducerController actor and returns the worker entry
+/// and PC ref. Does NOT send Start/RegisterConsumer — the caller must do that
+/// after inserting the entry into `state.workers` so that inline-dispatched
+/// `InternalDemand` signals find the registered worker.
+fn spawn_worker_actor<A>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
-  demand_adapter: &TypedActorRef<ProducerControllerRequestNext<A>>,
-) -> Result<Option<WorkerEntry<A>>, ActorError>
+) -> Result<Option<(WorkerEntry<A>, TypedActorRef<ProducerControllerCommand<A>>)>, ActorError>
 where
   A: Clone + Send + Sync + 'static, {
   let system = ctx.system();
@@ -509,18 +529,11 @@ where
 
   let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.actor_ref().clone());
 
-  // ワーカー単位の ProducerController を開始する。
-  let mut pc_ref_start = pc_ref.clone();
-  pc_ref_start.tell(ProducerController::start(demand_adapter.clone())).map_err(|e| ActorError::from_send_error(&e))?;
-
-  // ワーカーの ConsumerController を登録する。
-  let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
-  let mut pc_ref_clone = pc_ref.clone();
-  pc_ref_clone.tell(ProducerController::register_consumer(cc_ref)).map_err(|e| ActorError::from_send_error(&e))?;
-
-  Ok(Some(WorkerEntry {
+  let entry = WorkerEntry {
     worker_ref:          worker_ref.clone(),
-    producer_controller: pc_ref,
+    producer_controller: pc_ref.clone(),
     has_demand:          false,
-  }))
+  };
+
+  Ok(Some((entry, pc_ref)))
 }
