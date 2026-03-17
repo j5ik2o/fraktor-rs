@@ -99,7 +99,7 @@ fn remote_path(port: u16) -> fraktor_actor_rs::core::actor::actor_path::ActorPat
   path
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn quickstart_loopback_provider_flow() -> Result<()> {
   type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let config_hits: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -125,7 +125,6 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
     .bind_transport_listener_for_test(&TransportBind::new("127.0.0.1", Some(bind_port)))
     .map_err(|error| anyhow!("{error}"))?;
 
-  // Wait for async startup to complete
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
   provider
@@ -141,7 +140,6 @@ async fn quickstart_loopback_provider_flow() -> Result<()> {
   let authority = format!("127.0.0.1:{bind_port}");
   handle.lock().emit_backpressure_signal(&authority, BackpressureSignal::Apply);
 
-  // Wait for events to propagate
   tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
   let lifecycle_events = recorder

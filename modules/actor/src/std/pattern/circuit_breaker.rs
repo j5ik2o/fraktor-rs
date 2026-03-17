@@ -7,7 +7,8 @@
 
 extern crate std;
 
-use core::time::Duration;
+use alloc::boxed::Box;
+use core::{fmt, time::Duration};
 use std::time::Instant;
 
 use super::{circuit_breaker_open_error::CircuitBreakerOpenError, circuit_breaker_state::CircuitBreakerState};
@@ -23,7 +24,6 @@ mod tests;
 /// * **Open → HalfOpen** — when `reset_timeout` has elapsed since the circuit opened.
 /// * **HalfOpen → Closed** — when a probe call succeeds.
 /// * **HalfOpen → Open** — when a probe call fails.
-#[derive(Debug)]
 pub struct CircuitBreaker {
   max_failures:        u32,
   reset_timeout:       Duration,
@@ -31,10 +31,25 @@ pub struct CircuitBreaker {
   failure_count:       u32,
   opened_at:           Option<Instant>,
   half_open_attempted: bool,
+  clock:               Box<dyn Fn() -> Instant + Send + Sync>,
+}
+
+impl fmt::Debug for CircuitBreaker {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("CircuitBreaker")
+      .field("max_failures", &self.max_failures)
+      .field("reset_timeout", &self.reset_timeout)
+      .field("state", &self.state)
+      .field("failure_count", &self.failure_count)
+      .field("opened_at", &self.opened_at)
+      .field("half_open_attempted", &self.half_open_attempted)
+      .finish_non_exhaustive()
+  }
 }
 
 impl CircuitBreaker {
-  /// Creates a new circuit breaker in the **Closed** state.
+  /// Creates a new circuit breaker in the **Closed** state using the real
+  /// system clock ([`Instant::now`]).
   ///
   /// * `max_failures` — number of consecutive failures before the circuit trips. Must be greater
   ///   than zero.
@@ -45,10 +60,30 @@ impl CircuitBreaker {
   /// Panics if `max_failures` is zero.
   #[must_use]
   pub fn new(max_failures: u32, reset_timeout: Duration) -> Self {
+    Self::new_with_clock(max_failures, reset_timeout, Instant::now)
+  }
+
+  /// Creates a new circuit breaker in the **Closed** state with a custom
+  /// clock function.
+  ///
+  /// The `clock` closure is called whenever the current time is needed
+  /// (e.g. to check whether the reset timeout has elapsed).  Injecting a
+  /// fake clock enables deterministic, sleep-free testing.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `max_failures` is zero.
+  #[must_use]
+  pub(crate) fn new_with_clock(
+    max_failures: u32,
+    reset_timeout: Duration,
+    clock: impl Fn() -> Instant + Send + Sync + 'static,
+  ) -> Self {
     assert!(max_failures > 0, "max_failures must be greater than zero");
     Self {
       max_failures,
       reset_timeout,
+      clock: Box::new(clock),
       state: CircuitBreakerState::Closed,
       failure_count: 0,
       opened_at: None,
@@ -96,7 +131,7 @@ impl CircuitBreaker {
       | CircuitBreakerState::Closed => Ok(()),
       | CircuitBreakerState::Open => {
         let opened_at = self.opened_at_or_now();
-        let elapsed = opened_at.elapsed();
+        let elapsed = self.now() - opened_at;
         if elapsed >= self.reset_timeout {
           // HalfOpen に遷移してプローブ呼び出しを許可する
           self.state = CircuitBreakerState::HalfOpen;
@@ -149,10 +184,9 @@ impl CircuitBreaker {
     }
   }
 
-  // TODO: Instant::now() を直接呼び出している。テスト容易性のため Clock トレイトの導入を検討する。
   fn transition_to_open(&mut self) {
     self.state = CircuitBreakerState::Open;
-    self.opened_at = Some(Instant::now());
+    self.opened_at = Some(self.now());
     self.half_open_attempted = false;
   }
 
@@ -163,11 +197,15 @@ impl CircuitBreaker {
     self.half_open_attempted = false;
   }
 
+  fn now(&self) -> Instant {
+    (self.clock)()
+  }
+
   fn opened_at_or_now(&self) -> Instant {
-    self.opened_at.unwrap_or_else(Instant::now)
+    self.opened_at.unwrap_or_else(|| self.now())
   }
 
   fn remaining_in_open(&self) -> Duration {
-    self.opened_at.map_or(Duration::ZERO, |at| self.reset_timeout.saturating_sub(at.elapsed()))
+    self.opened_at.map_or(Duration::ZERO, |at| self.reset_timeout.saturating_sub(self.now() - at))
   }
 }

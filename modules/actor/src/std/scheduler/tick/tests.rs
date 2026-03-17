@@ -20,7 +20,7 @@ use crate::{
   std::scheduler::tick::TickDriverConfig,
 };
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::tokio_quickstart_with_resolution(Duration::from_millis(5));
@@ -28,7 +28,9 @@ async fn tokio_interval_driver_produces_ticks() {
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
-  tokio::time::sleep(Duration::from_millis(20)).await;
+  tokio::time::advance(Duration::from_millis(20)).await;
+  tokio::task::yield_now().await;
+
   let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);
   let metrics = runtime.feed().expect("feed").snapshot(now, TickDriverKind::Auto);
@@ -54,7 +56,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
   }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 #[allow(clippy::expect_used)]
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = EventStreamShared::default();
@@ -71,7 +73,8 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
 
-  tokio::time::sleep(Duration::from_millis(120)).await;
+  tokio::time::advance(Duration::from_millis(120)).await;
+  tokio::task::yield_now().await;
 
   runtime.shutdown();
 
@@ -83,7 +86,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
   );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 #[allow(clippy::expect_used)]
 async fn tokio_quickstart_helper_provisions_driver() {
   let config = TickDriverConfig::tokio_quickstart();
@@ -95,7 +98,8 @@ async fn tokio_quickstart_helper_provisions_driver() {
     "auto metadata must be recorded for tokio quickstart",
   );
 
-  tokio::time::sleep(Duration::from_millis(40)).await;
+  tokio::time::advance(Duration::from_millis(40)).await;
+  tokio::task::yield_now().await;
 
   let resolution = ctx.scheduler().with_read(|s| s.config().resolution());
   let now = TimerInstant::from_ticks(1, resolution);

@@ -59,7 +59,10 @@ usage() {
   doc                    : ドキュメントテストを test-support フィーチャー付きで実行します
   examples               : ワークスペース配下の examples をビルドします
   embedded / embassy     : embedded 系 (utils / actor) のチェックとテストを実行します
-  test                   : ワークスペース全体のテストを実行します
+  unit-test              : ワークスペースの単体テスト (--lib --bins) を実行します
+  integration-test       : ワークスペースの統合テスト (--tests --examples) を実行します
+  test                   : unit-test + integration-test を順に実行します
+  check-unit-sleep       : unit テストパスに実時間 sleep が残っていないことを検査します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
   actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
   all                    : AI 向けの標準フルチェックを順番に実行します (引数なし時と同じ)
@@ -977,9 +980,78 @@ run_doc_tests() {
 #  done
 # }
 
+run_unit_tests() {
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --features test-support"
+  run_cargo test --workspace --verbose --lib --bins --features test-support || return 1
+}
+
+run_integration_tests() {
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --tests --examples --features test-support"
+  run_cargo test --workspace --verbose --tests --examples --features test-support || return 1
+}
+
 run_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --tests --examples --features test-support"
-  run_cargo test --workspace --verbose --lib --bins --tests --examples --features test-support || return 1
+  run_unit_tests || return 1
+  run_integration_tests || return 1
+}
+
+check_unit_sleep() {
+  log_step "unit テスト内の実時間 sleep/timeout 使用を検査"
+  if ! command -v rg >/dev/null 2>&1; then
+    echo "error: rg (ripgrep) が必要ですが見つかりませんでした。" >&2
+    return 1
+  fi
+  local -a scan_dirs=(
+    modules/actor/src/
+    modules/streams/src/
+    modules/remote/src/
+    modules/cluster/src/
+  )
+  local -a rg_globs=(
+    --glob '**/tests.rs'
+    --glob '**/tests/*.rs'
+  )
+  local -a rg_excludes=(
+    --glob '!modules/remote/src/std/transport/**'
+    --glob '!modules/remote/tests/**'
+    --glob '!modules/cluster/src/std/tokio_gossip_transport/**'
+    --glob '!modules/actor/src/std/system/coordinated_shutdown/tests.rs'
+    --glob '!modules/actor/src/core/dispatch/dispatcher/tests.rs'
+  )
+
+  local violations=""
+
+  # Phase 1: thread::sleep は常に禁止（tokio 仮想時間の影響を受けない）
+  local thread_violations=""
+  thread_violations=$(rg -n 'thread::sleep' \
+    "${rg_globs[@]}" "${rg_excludes[@]}" \
+    "${scan_dirs[@]}" 2>/dev/null || true)
+  if [[ -n "${thread_violations}" ]]; then
+    violations+="${thread_violations}"$'\n'
+  fi
+
+  # Phase 2: tokio::time::{sleep,timeout} は start_paused のないファイルでのみ禁止
+  local tokio_time_files=""
+  tokio_time_files=$(rg -l 'tokio::time::sleep|tokio::time::timeout' \
+    "${rg_globs[@]}" "${rg_excludes[@]}" \
+    "${scan_dirs[@]}" 2>/dev/null || true)
+  for file in ${tokio_time_files}; do
+    if ! rg -q 'start_paused' "${file}" 2>/dev/null; then
+      local file_violations=""
+      file_violations=$(rg -n 'tokio::time::sleep|tokio::time::timeout' "${file}" 2>/dev/null || true)
+      if [[ -n "${file_violations}" ]]; then
+        violations+="${file_violations}"$'\n'
+      fi
+    fi
+  done
+
+  violations=$(echo -n "${violations}" | sed '/^$/d')
+  if [[ -n "${violations}" ]]; then
+    echo "error: unit テストパスに実時間 sleep/timeout が検出されました:" >&2
+    echo "${violations}" >&2
+    echo "allowlist に追加するか、fake clock / manual tick / start_paused に置き換えてください。" >&2
+    return 1
+  fi
 }
 
 run_actor_path_e2e() {
@@ -1082,8 +1154,10 @@ run_all() {
   run_dylint || return 1
   run_clippy || return 1
   run_no_std || return 1
+  check_unit_sleep || return 1
   run_doc_tests || return 1
-  run_tests || return 1
+  run_unit_tests || return 1
+  run_integration_tests || return 1
 }
 
 main() {
@@ -1143,7 +1217,7 @@ main() {
         local -a lint_args=()
         while [[ $# -gt 0 ]]; do
           case "$1" in
-            lint|fmt|dylint|dylint:*|clippy|no-std|nostd|std|embedded|embassy|test|tests|workspace|all)
+            lint|fmt|dylint|dylint:*|clippy|no-std|nostd|std|embedded|embassy|test|tests|workspace|unit-test|unit-tests|integration-test|integration-tests|check-unit-sleep|all)
               break
               ;;
             --)
@@ -1203,6 +1277,18 @@ main() {
         ;;
       embedded|embassy)
         run_embedded || return 1
+        shift
+        ;;
+      unit-test|unit-tests)
+        run_unit_tests || return 1
+        shift
+        ;;
+      integration-test|integration-tests)
+        run_integration_tests || return 1
+        shift
+        ;;
+      check-unit-sleep)
+        check_unit_sleep || return 1
         shift
         ;;
       test|tests|workspace)
