@@ -43,7 +43,7 @@ where
   Tell(TypedActorRef<ProducerControllerCommand<A>>, ProducerControllerCommand<A>),
   TellWorkerStats(TypedActorRef<WorkerStats>, WorkerStats),
   RequestNext(TypedActorRef<WorkPullingProducerControllerRequestNext<A>>, WorkPullingProducerControllerRequestNext<A>),
-  /// ワーカー単位の ProducerController を停止する。
+  /// Stop a per-worker `ProducerController` that is no longer needed.
   StopWorkerPc(TypedActorRef<ProducerControllerCommand<A>>),
   /// Spawn a per-worker ProducerController and wire it up.
   SpawnWorker {

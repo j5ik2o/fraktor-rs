@@ -21,9 +21,10 @@ use crate::core::{
   },
 };
 
-/// ステートロック解放後に実行する遅延副作用。
-/// ロック保持中に tell() を呼ぶと、メッセージアダプタ経由で同じアクターに
-/// メッセージが戻り再入デッドロックする問題を回避する。
+/// Deferred side-effects executed after releasing the state lock.
+///
+/// Prevents re-entrant deadlock when `tell()` routes a message back
+/// to the same actor via a message adapter.
 enum DeferredAction<A>
 where
   A: Clone + Send + Sync + 'static, {
@@ -40,8 +41,8 @@ where
   requested_seq_nr:    SeqNr,
   requested:           bool,
   support_resend:      bool,
-  /// プロデューサーに RequestNext を送信済みで応答待ちかどうか。
-  /// インラインディスパッチでの無限ループ (PC→producer→PC→CC→PC) を防止する。
+  /// Whether a `RequestNext` has been sent and we are awaiting a `Msg` response.
+  /// Guards against infinite inline-dispatch loops (PC -> producer -> PC -> CC -> PC).
   awaiting_msg:        bool,
   unconfirmed:         Vec<SequencedMessage<A>>,
   producer:            Option<TypedActorRef<ProducerControllerRequestNext<A>>>,
