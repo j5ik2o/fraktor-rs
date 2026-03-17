@@ -453,8 +453,27 @@ where
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         if let Some(entry) = spawn_and_wire_worker::<A>(ctx, &worker_ref, &pc_producer_id, &demand_adapter)? {
-          // 新しいワーカーエントリを登録するためロックを短時間再取得する。
-          state.lock().workers.insert(pid_key(&worker_ref), entry);
+          // 新しいワーカーエントリを登録し、バッファ済みメッセージを排出する。
+          // collect_drain_buffered はロック内の状態操作のみで tell() しないため、
+          // ロック保持中に呼んでも安全。
+          let mut s = state.lock();
+          s.workers.insert(pid_key(&worker_ref), entry);
+          let mut drain_deferred = Vec::new();
+          collect_drain_buffered(&mut s, &mut drain_deferred);
+          collect_maybe_request_next(&mut s, &mut drain_deferred);
+          drop(s);
+          // 排出で生じた deferred action を実行する
+          for da in drain_deferred {
+            match da {
+              | WppcDeferredAction::Tell(mut t, m) => {
+                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
+              },
+              | WppcDeferredAction::RequestNext(mut t, m) => {
+                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
+              },
+              | _ => {},
+            }
+          }
         }
       },
     }
