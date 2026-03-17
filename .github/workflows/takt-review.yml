@@ -1,0 +1,39 @@
+name: TAKT Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: PR Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Run TAKT review
+        uses: nrslib/takt-action@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.GLM_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.GLM_API_KEY }}
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          ANTHROPIC_DEFAULT_OPUS_MODEL: GLM-5
+          ANTHROPIC_DEFAULT_SONNET_MODEL: GLM-5
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.7
+        with:
+          anthropic_api_key: ${{ secrets.GLM_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: claude
+          model: GLM-5
