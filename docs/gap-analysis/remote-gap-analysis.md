@@ -2,6 +2,7 @@
 
 参照実装: `references/pekko/remote/`
 対象実装: `modules/remote/src/`
+更新日: 2026-03-17
 
 ## サマリー
 
@@ -30,13 +31,18 @@
 - Pekko `UniqueAddress` = `(Address, uid: Long)` — Address はアクターシステムアドレス（protocol/host/port/system）
 - fraktor-rs `RemoteNodeId` = `(system, host, port, uid)` — より原始的な表現で実質同等
 
-### Quarantine イベント　✅ 実装済み 0/3 (0%)
+### Quarantine イベント　✅ 実装済み 1/3（別名） (33%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 難易度 | 備考 |
 |-----------|-----------|-------------|--------|------|
-| `QuarantinedEvent` | `artery/QuarantinedEvent.scala:18` | 未対応 | easy | artery（modern）の公開イベント型。fraktor-rs は `QuarantineReason`（記述子）のみ |
 | `GracefulShutdownQuarantinedEvent` | `artery/QuarantinedEvent.scala:26` | 未対応 | easy | 正常シャットダウン時の quarantine イベント |
 | `ThisActorSystemQuarantinedEvent` | `artery/QuarantinedEvent.scala:32` | 未対応 | easy | リモートが自ノードを quarantine したことを通知するイベント |
+
+別名で実装済み:
+
+- `QuarantinedEvent` 相当 → `fraktor_actor_rs::core::event::stream::RemotingLifecycleEvent::Quarantined`
+  - authority / reason / correlation_id を保持する汎用 lifecycle event として公開済み
+  - Pekko の `UniqueAddress` 専用イベントクラスとは形が異なるが、quarantine 発生通知というセマンティクスは満たしている
 
 ### Remote Instrument（監視 SPI）　✅ 実装済み 1/1（別名）
 
@@ -53,6 +59,17 @@
 - Pekko: JFR（Java Flight Recorder）ベース、transport lifecycle イベント（aeronSink*, aeronSource*, tcpInbound*, tcpOutbound*, transportXxx*）約 30 種のメソッド — JVM 固有技術
 - fraktor-rs: リングバッファ型メトリクス（`record_backpressure`, `record_suspect`, `record_reachable`）— 3 種、Rust/no_std に適切な設計
 - JFR 固有イベント（Aeron, JFR Events）は n/a
+
+### RemoteTransport / 設定　✅ 実装済み 2/2（別名）
+
+実装済みだが設計差異あり:
+
+- Pekko `RemoteTransport` → fraktor-rs `core/transport/RemoteTransport`
+  - Pekko は classic remoting 全体を背負う抽象だが、fraktor-rs は `spawn_listener` / `open_channel` / `send` / `close` / `install_*` に分割した Rust 向け trait
+  - 実装は `LoopbackTransport`, `TokioTcpTransport`
+- Pekko `RemoteSettings` → fraktor-rs `core/remoting_extension/RemotingExtensionConfig`
+  - canonical host/port, handshake timeout, shutdown flush timeout, ack send/receive window, transport scheme, backpressure listener, remote instrument を保持
+  - classic remoting の deprecated 設定群は持たず、fraktor-rs 実装に必要な構成へ整理している
 
 ### SSL/TLS セキュリティ　✅ 実装済み 0/5 (0%)
 
@@ -116,7 +133,7 @@
 
 ## まとめ
 
-**全体カバレッジ評価**: フェイラーディテクター・トランスポート抽象化・エンドポイント管理などコアの通信基盤は十分にカバー済み。Pekko の非 deprecated 公開 API に対して 70% をカバーし、Rust 固有の代替実装で補っている。
+**全体カバレッジ評価**: フェイラーディテクター・トランスポート抽象化・エンドポイント管理・設定まわりのコア通信基盤は十分にカバー済み。Pekko の公開 API には JVM/classic remoting 由来のものが多いが、fraktor-rs は Rust 向けの trait / config / lifecycle event に置き換えている。
 
 **即座に価値を提供できる未実装機能（Phase 1〜2）**:
 
