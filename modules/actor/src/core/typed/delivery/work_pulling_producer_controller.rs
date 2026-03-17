@@ -521,6 +521,6 @@ where
   Ok(Some(WorkerEntry {
     worker_ref:          worker_ref.clone(),
     producer_controller: pc_ref,
-    has_demand:          true,
+    has_demand:          false,
   }))
 }

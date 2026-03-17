@@ -229,6 +229,9 @@ fn collect_on_sequenced_message<A>(
     } else {
       state.stashed.push(seq_msg);
     }
+  } else if seq_nr <= state.received_seq_nr {
+    // 受信済みだが未確認の重複メッセージ — 無視する
+    return;
   } else if seq_nr > state.received_seq_nr + 1 {
     if !state.settings.only_flow_control()
       && let Some(pc) = state.producer_controller.clone()

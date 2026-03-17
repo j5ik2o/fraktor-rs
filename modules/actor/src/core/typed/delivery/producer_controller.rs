@@ -224,7 +224,7 @@ where
   if state.producer.is_none() || state.consumer_controller.is_none() {
     return;
   }
-  let allow_first = !state.requested && state.current_seq_nr == 1;
+  let allow_first = !state.requested && state.send_first;
   if (allow_first || state.has_demand())
     && let (Some(producer), Some(send_adapter)) = (&state.producer, &state.send_adapter)
   {
