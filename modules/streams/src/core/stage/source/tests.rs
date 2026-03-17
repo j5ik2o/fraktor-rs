@@ -922,20 +922,15 @@ fn source_create_propagates_queue_failure_from_producer() {
   })
   .expect("create");
 
-  // `collect_values` は固定の idle budget (1024) を持つ。遅い CI マシンでは
-  // producer スレッドがその budget 内に `fail` を呼び出せない場合があり、
-  // 期待する `Failed` ではなく `WouldBlock` が返される。どちらも正しい伝播を
-  // 示しており、`WouldBlock` は drive ループがバックグラウンドスレッド実行前に
-  // タイムアウトしたことを意味する。
-  // producer スレッドの実行タイミングにより、以下のいずれかが返る:
-  // - Err(Failed): fail() が drive 中に反映された
-  // - Err(WouldBlock): drive の idle budget 内に fail() が到達しなかった
-  // - Ok([]): producer スレッド実行前にストリームが空として完了した
-  // いずれも producer からの fail 伝播テストとして有効
+  // producer スレッドの起動と fail() 反映にはタイミング依存がある。
+  // collect_values が WouldBlock を返した場合、producer スレッドの fail が
+  // まだ反映されていないことを意味する。Failed と WouldBlock の両方を
+  // 正しい伝播として受け入れる。
   let result = source.collect_values();
-  let acceptable = matches!(&result, Err(StreamError::Failed) | Err(StreamError::WouldBlock))
-    || matches!(&result, Ok(v) if v.is_empty());
-  assert!(acceptable, "expected Failed, WouldBlock, or empty Ok, got {result:?}");
+  assert!(
+    matches!(result, Err(StreamError::Failed) | Err(StreamError::WouldBlock)),
+    "expected Failed or WouldBlock, got {result:?}"
+  );
 }
 
 #[test]
