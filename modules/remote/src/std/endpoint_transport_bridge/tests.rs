@@ -147,12 +147,12 @@ struct SentFrame {
 
 #[derive(Clone)]
 struct TestTransportProbe {
-  sent_frames:          Arc<Mutex<Vec<SentFrame>>>,
-  open_calls:           Arc<AtomicUsize>,
-  send_failures_left:   Arc<AtomicUsize>,
-  max_successful_sends: Arc<AtomicU32>,
+  sent_frames:           Arc<Mutex<Vec<SentFrame>>>,
+  open_calls:            Arc<AtomicUsize>,
+  send_failures_left:    Arc<AtomicUsize>,
+  max_successful_sends:  Arc<AtomicU32>,
   successful_send_count: Arc<AtomicU32>,
-  inbound_handler:      Arc<Mutex<Option<TransportInboundShared>>>,
+  inbound_handler:       Arc<Mutex<Option<TransportInboundShared>>>,
 }
 
 impl TestTransportProbe {
@@ -216,12 +216,12 @@ impl TestTransportProbe {
 impl Default for TestTransportProbe {
   fn default() -> Self {
     Self {
-      sent_frames:          Arc::new(Mutex::new(Vec::new())),
-      open_calls:           Arc::new(AtomicUsize::new(0)),
-      send_failures_left:   Arc::new(AtomicUsize::new(0)),
-      max_successful_sends: Arc::new(AtomicU32::new(0)),
+      sent_frames:           Arc::new(Mutex::new(Vec::new())),
+      open_calls:            Arc::new(AtomicUsize::new(0)),
+      send_failures_left:    Arc::new(AtomicUsize::new(0)),
+      max_successful_sends:  Arc::new(AtomicU32::new(0)),
       successful_send_count: Arc::new(AtomicU32::new(0)),
-      inbound_handler:      Arc::new(Mutex::new(None)),
+      inbound_handler:       Arc::new(Mutex::new(None)),
     }
   }
 }
