@@ -1,15 +1,15 @@
 # actor モジュール ギャップ分析
 
-更新日: 2026-03-16
+更新日: 2026-03-17
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
 | Pekko 公開型数（意味のある型単位） | 約 120（classic: ~70, typed: ~50） |
-| fraktor-rs 公開型数 | 約 357（core: ~323, std: ~34） |
-| カバレッジ（型単位） | 約 108/120 (90%) |
-| ギャップ数 | 12（core: 1, std: 1, n/a: 10） |
+| fraktor-rs 公開型数 | 約 404（core: ~364, std: ~40） |
+| カバレッジ（型単位） | 約 119/120 (99%) |
+| ギャップ数 | 1（core/typed + persistence: 1） |
 
 ※ Java API 重複（AbstractBehavior, ReceiveBuilder, javadsl.* 等）、private[pekko] 内部型、JVM 固有機能（Deploy, IO, DynamicAccess 等）は Pekko 側計数から除外。
 ※ fraktor-rs 側は参照実装以上に細粒度で型分割（type-per-file ルール）しているため型数が多いが、概念単位でのカバレッジを評価する。
@@ -18,9 +18,9 @@
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
 |----|-------------|------------------|-----------|
-| core / untyped kernel | ~55 | ~267 | 95% |
-| core / typed ラッパー | ~50 | ~56 | 92% |
-| std / アダプタ | （実装固有） | ~34 | — |
+| core / untyped kernel | ~55 | ~267 | 100% |
+| core / typed ラッパー | ~50 | ~97 | 98% |
+| std / アダプタ | 1 | ~40 | 100% |
 
 ## カテゴリ別ギャップ
 
@@ -166,30 +166,38 @@ FsmBuilder が typed 層に存在。Pekko の classic FSM は複雑な Scala DSL
 
 前回分析で未対応だった `CircuitBreaker` が実装された。
 
-### Util（ユーティリティ型） ✅ 実装済み 2/3 (67%)
+### Util（ユーティリティ型） ✅ 実装済み 3/3 (100%)
+
+全主要型が実装済み。
+- ByteString（`core/messaging/byte_string.rs`）
+- MessageBuffer（`core/messaging/message_buffer.rs`）
+- MessageBufferMap（`core/messaging/message_buffer_map.rs`）
+
+前回分析で未対応だった `ByteString` が実装された。
+
+### CoordinatedShutdown ✅ 実装済み 1/1 (100%)
+
+`CoordinatedShutdown` が std 層に実装済み。
+- CoordinatedShutdown（`std/system/coordinated_shutdown.rs`）
+- CoordinatedShutdownPhase（`std/system/coordinated_shutdown_phase.rs`）
+- CoordinatedShutdownReason（`std/system/coordinated_shutdown_reason.rs`）
+- CoordinatedShutdownId（`std/system/coordinated_shutdown_id.rs`）
+- CoordinatedShutdownInstaller（`std/system/coordinated_shutdown_installer.rs`）
+- CoordinatedShutdownError（`std/system/coordinated_shutdown_error.rs`）
+
+Pekko のフェーズ付きシャットダウン API に対して、fraktor-rs では std アダプタとして一式が揃った。
+
+### Reliable Delivery（信頼性メッセージング） ✅ 実装済み 3/4 (75%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `ByteString` | `ByteString.scala` | 未対応 | core/kernel | medium | イミュータブルバイト列。zero-copy スライス・結合。IO/serialization の基盤型。`bytes` クレートの `Bytes` 型で代替可能 |
+| `DurableProducerQueue` | `actor-typed/.../delivery/DurableProducerQueue.scala:33` | 未対応 | core/typed + persistence | hard | 永続化キュー。persistence モジュールと typed delivery の接続が未整備 |
 
-実装済み: MessageBuffer（`core/messaging/message_buffer.rs`）, MessageBufferMap（`core/messaging/message_buffer_map.rs`）
-
-前回分析で未対応だった `MessageBuffer`, `MessageBufferMap` が実装された。
-
-### CoordinatedShutdown ❌ 未対応 0/1
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `CoordinatedShutdown` | `CoordinatedShutdown.scala:41` | 未対応 | std | hard | フェーズ付きシャットダウンオーケストレーション。ActorSystem 終了時のリソース解放順序制御。各フェーズにタスクを登録し、依存関係を保証しながら順次実行する |
-
-### Reliable Delivery（信頼性メッセージング） ❌ 未対応 0/4
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `ProducerController` | `ProducerController.scala:97` | 未対応 | core/typed | hard | プロデューサー側のフロー制御。SeqNr ベースの確認応答 |
-| `ConsumerController` | `ConsumerController.scala:60` | 未対応 | core/typed | hard | コンシューマー側のフロー制御。ウィンドウベースの再送 |
-| `WorkPullingProducerController` | `WorkPullingProducerController.scala:110` | 未対応 | core/typed | hard | ワークプル型の信頼性メッセージング。複数ワーカーへの分散 |
-| `DurableProducerQueue` | `DurableProducerQueue.scala:33` | 未対応 | core/typed + std | hard | 永続化キュー。persistence モジュールとの統合が必要 |
+実装済み:
+- `ProducerController`（`core/typed/delivery/producer_controller.rs`）
+- `ConsumerController`（`core/typed/delivery/consumer_controller.rs`）
+- `WorkPullingProducerController`（`core/typed/delivery/work_pulling_producer_controller.rs`）
+- `SequencedMessage`, `SeqNr`, `ConsumerControllerDelivery`, `ProducerControllerRequestNext` など周辺プロトコル一式
 
 ### その他の typed API ✅ 実装済み 2/2 (100%)
 
@@ -227,15 +235,11 @@ Behavior.transformMessages は `core/typed/behaviors.rs` に実装済み。
 
 ### Phase 3: medium（中程度の実装工数）
 
-- `ByteString` (core/kernel) — イミュータブルバイト列。`bytes` クレートの `Bytes` 型で代替可能だが、Pekko 互換 API が必要な場合は薄いラッパーを追加
+該当なし。Phase 3 相当の項目はすべて実装済み。
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
 
-- `CoordinatedShutdown` (std) — フェーズ付きシャットダウン。ActorSystem のライフサイクルに深く関わる。フェーズ依存関係グラフの管理、タイムアウト、理由追跡が必要
-- `ProducerController` (core/typed) — SeqNr ベースの確認応答プロトコル。フロー制御の状態機械
-- `ConsumerController` (core/typed) — ウィンドウベースの再送プロトコル。フロー制御 + SequencedMessage
-- `WorkPullingProducerController` (core/typed) — ワークプル型分散。Receptionist 連携 + 動的ワーカー管理
-- `DurableProducerQueue` (core/typed + std) — persistence モジュール統合。永続化 + リプレイ
+- `DurableProducerQueue` (core/typed + persistence) — persistence モジュール統合。永続化 + リプレイ + 再送の整合性設計が必要
 
 ### 対象外（n/a）
 
@@ -243,8 +247,8 @@ Behavior.transformMessages は `core/typed/behaviors.rs` に実装済み。
 
 ## まとめ
 
-- **全体カバレッジ 90%**: 前回分析（77%）から大幅に向上。主要な typed API（Behavior, ActorContext, Supervision, Receptionist, Router, Ask, Timer, Stash, Topic, SpawnProtocol, Extension, EventStream, ActorRefResolver, LogOptions, FSM, CircuitBreaker）が完全にカバー済み。前回 Phase 1〜3 に分類されていた項目がすべて実装された
-- **前回からの実装完了項目**: RootActorPath/ChildActorPath, PoisonPill/Kill, DeathPactException, Behavior.narrow, transformMessages, ActorContext.scheduleOnce, ScatterGatherFirstCompleted, TailChopping, BalancingPool, Resizer, PriorityMailbox群, DequeMailbox, ControlAwareMailbox, PinnedDispatcher, ByteBufferSerializer, AsyncSerializer, CircuitBreaker, MessageBuffer/MessageBufferMap, ActorTags
-- **即座に価値を提供できる未実装機能**: `ByteString`（Phase 3）は `bytes::Bytes` で代替可能なため、優先度は低い
-- **実用上の主要ギャップ**: `CoordinatedShutdown`（Phase 4）は本番運用でのグレースフルシャットダウンに重要。Reliable Delivery（Phase 4, 4項目）は高信頼メッセージングに必要だが persistence モジュールの成熟が前提
-- **残りのギャップは全て Phase 4（hard）**: アーキテクチャ変更を伴う大規模機能のみが残っている。日常的なアクターシステム利用に必要な API はほぼ完備
+- **全体カバレッジ 99%**: actor / actor-typed の主要 API はほぼ揃っており、classic kernel・typed wrapper・std adapter の主要機能は実装済み
+- **前回からの実装完了項目**: `ByteString`, `CoordinatedShutdown`, `ProducerController`, `ConsumerController`, `WorkPullingProducerController` が追加され、前回 hard 判定だった大半の欠落が解消された
+- **即座に価値を提供できる未実装機能**: なし。trivial / easy / medium は現時点で残っていない
+- **実用上の主要ギャップ**: `DurableProducerQueue` のみ。typed reliable delivery と persistence を接続する最後の大型欠落で、永続化と再送の境界設計が必要
+- **残りのギャップは Phase 4（hard）1件のみ**: 日常的な actor 利用、typed API、router、supervision、delivery、graceful shutdown まではほぼ完備している
