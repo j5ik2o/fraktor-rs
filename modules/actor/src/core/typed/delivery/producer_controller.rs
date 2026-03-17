@@ -44,6 +44,9 @@ where
   /// Whether a `RequestNext` has been sent and we are awaiting a `Msg` response.
   /// Guards against infinite inline-dispatch loops (PC -> producer -> PC -> CC -> PC).
   awaiting_msg:        bool,
+  /// Marks that the next outgoing message should carry `first=true`.
+  /// Set when a new consumer registers so the CC can reset its state.
+  send_first:          bool,
   unconfirmed:         Vec<SequencedMessage<A>>,
   producer:            Option<TypedActorRef<ProducerControllerRequestNext<A>>>,
   consumer_controller: Option<TypedActorRef<ConsumerControllerCommand<A>>>,
@@ -63,6 +66,7 @@ where
       requested: false,
       support_resend: true,
       awaiting_msg: false,
+      send_first: true,
       unconfirmed: Vec::new(),
       producer: None,
       consumer_controller: None,
@@ -161,6 +165,12 @@ impl ProducerController {
             },
             | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
               state.consumer_controller = Some(consumer_controller.clone());
+              // 新しい CC を登録する際にセッション状態をリセットする。
+              // 次のメッセージに first=true を付けて CC に状態リセットを促す。
+              state.send_first = true;
+              state.requested = false;
+              state.requested_seq_nr = 0;
+              state.awaiting_msg = false;
               collect_request_next(&mut state, &mut deferred);
             },
             | ProducerControllerCommandKind::Msg { message } => {
@@ -237,7 +247,10 @@ fn collect_on_msg<A>(
 ) where
   A: Clone + Send + Sync + 'static, {
   let seq_nr = state.current_seq_nr;
-  let first = seq_nr == 1;
+  let first = state.send_first;
+  if first {
+    state.send_first = false;
+  }
 
   let sequenced = SequencedMessage::new(state.producer_id.clone(), seq_nr, message, first, false, self_ref.clone());
 
