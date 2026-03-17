@@ -312,15 +312,15 @@ fn collect_send_request<A>(
   A: Clone + Send + Sync + 'static, {
   let window = u64::from(state.settings.flow_control_window());
   let new_requested = state.received_seq_nr + window;
-  if new_requested > state.requested_seq_nr || via_timeout {
+  if (new_requested > state.requested_seq_nr || via_timeout)
+    && let Some(pc) = state.producer_controller.clone()
+  {
     state.requested_seq_nr = new_requested;
     let support_resend = !state.settings.only_flow_control();
-    if let Some(pc) = state.producer_controller.clone() {
-      deferred.push(DeferredAction::SendToProducer(
-        pc,
-        ProducerControllerCommand::request(state.confirmed_seq_nr, state.requested_seq_nr, support_resend, via_timeout),
-      ));
-    }
+    deferred.push(DeferredAction::SendToProducer(
+      pc,
+      ProducerControllerCommand::request(state.confirmed_seq_nr, state.requested_seq_nr, support_resend, via_timeout),
+    ));
   }
 }
 
