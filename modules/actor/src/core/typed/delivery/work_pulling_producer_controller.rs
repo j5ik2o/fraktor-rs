@@ -455,7 +455,7 @@ where
         // ワーカー PC を生成し、先に state に登録してから tell() する。
         // インラインディスパッチで InternalDemand が即座に返るため、
         // 登録前に tell() すると demand シグナルが消失する。
-        if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id)? {
+        if let Some((entry, pc_ref)) = spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id) {
           // 先にワーカーを登録する
           state.lock().workers.insert(pid_key(&worker_ref), entry);
 
@@ -495,6 +495,9 @@ where
   Ok(())
 }
 
+/// Result of spawning a per-worker ProducerController.
+type SpawnedWorker<A> = (WorkerEntry<A>, TypedActorRef<ProducerControllerCommand<A>>);
+
 /// Spawns a per-worker ProducerController actor and returns the worker entry
 /// and PC ref. Does NOT send Start/RegisterConsumer — the caller must do that
 /// after inserting the entry into `state.workers` so that inline-dispatched
@@ -503,7 +506,7 @@ fn spawn_worker_actor<A>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
-) -> Result<Option<(WorkerEntry<A>, TypedActorRef<ProducerControllerCommand<A>>)>, ActorError>
+) -> Option<SpawnedWorker<A>>
 where
   A: Clone + Send + Sync + 'static, {
   let system = ctx.system();
@@ -518,7 +521,7 @@ where
     | Err(error) => {
       let message = alloc::format!("Failed to spawn ProducerController for worker {}: {:?}", worker_ref.pid(), error);
       system.emit_log(LogLevel::Error, message, None);
-      return Ok(None);
+      return None;
     },
   };
 
@@ -530,5 +533,5 @@ where
     has_demand:          false,
   };
 
-  Ok(Some((entry, pc_ref)))
+  Some((entry, pc_ref))
 }
