@@ -8,8 +8,10 @@ use std::{sync::Arc, time::Instant};
 
 use super::CircuitBreakerShared;
 use crate::std::pattern::{
-  circuit_breaker_call_error::CircuitBreakerCallError, circuit_breaker_state::CircuitBreakerState,
+  circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
+  circuit_breaker_state::CircuitBreakerState,
 };
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 #[derive(Clone)]
 struct FakeClock {
@@ -28,6 +30,18 @@ impl FakeClock {
 
   fn advance(&self, duration: Duration) {
     self.offset_millis.fetch_add(duration.as_millis() as u64, Ordering::SeqCst);
+  }
+}
+
+impl CircuitBreakerShared {
+  fn new_with_clock(
+    max_failures: u32,
+    reset_timeout: Duration,
+    clock: impl Fn() -> Instant + Send + Sync + 'static,
+  ) -> Self {
+    Self {
+      inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))),
+    }
   }
 }
 

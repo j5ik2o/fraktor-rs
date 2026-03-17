@@ -3,7 +3,6 @@
 extern crate std;
 
 use core::{future::Future, time::Duration};
-use std::time::Instant;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
@@ -33,20 +32,6 @@ impl CircuitBreakerShared {
   #[must_use]
   pub fn new(max_failures: u32, reset_timeout: Duration) -> Self {
     Self { inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new(max_failures, reset_timeout))) }
-  }
-
-  /// Creates a new shared circuit breaker with a custom clock function.
-  ///
-  /// See [`CircuitBreaker::new_with_clock`] for details on the `clock` parameter.
-  #[must_use]
-  pub(crate) fn new_with_clock(
-    max_failures: u32,
-    reset_timeout: Duration,
-    clock: impl Fn() -> Instant + Send + Sync + 'static,
-  ) -> Self {
-    Self {
-      inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))),
-    }
   }
 
   /// Executes `operation` through the circuit breaker.
