@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run TAKT review
-        uses: nrslib/takt-action@v1
+        uses: nrslib/takt-action@main
         env:
           ANTHROPIC_API_KEY: ${{ secrets.GLM_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.GLM_API_KEY }}
