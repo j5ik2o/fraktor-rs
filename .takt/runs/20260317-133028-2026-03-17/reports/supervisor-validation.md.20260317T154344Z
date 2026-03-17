@@ -1,0 +1,65 @@
+# 最終検証結果
+
+## 結果: APPROVE
+
+## 要件充足チェック
+
+タスク指示書（order.md）の成功条件4項目および実装要件を、architect-reviewの指摘修正を含めて再検証した。
+
+| # | 要件（タスク指示書から抽出） | 充足 | 根拠（ファイル:行） |
+|---|---------------------------|------|-------------------|
+| 1 | 単体テスト層に `thread::sleep` / `tokio::time::sleep` / 壁時計待ちを残さない | ✅ | `./scripts/ci-check.sh ai check-unit-sleep` 実行→違反なし。`endpoint_transport_bridge/tests.rs` の `thread::sleep` もゼロ（grep確認） |
+| 2 | 時間依存ロジックは fake/manual time で検証できる | ✅ | `modules/actor/src/std/pattern/circuit_breaker.rs:77` `new_with_clock`、`tick/tests.rs:23,59,89` `start_paused=true` + `tokio::time::advance` |
+| 3 | 実時間依存テストは統合テスト層へ分離、CI で実行経路を分ける | ✅ | `scripts/ci-check.sh:983-996` `run_unit_tests`(--lib --bins) / `run_integration_tests`(--tests --examples) 分離。サブコマンド `unit-test` / `integration-test` 登録済み |
+| 4 | `ci-check` default 実行で長時間テストがボトルネックにならない | ✅ | `scripts/ci-check.sh:1128-1131` `all` 経路で `check_unit_sleep` → `run_unit_tests` → `run_integration_tests` の順に実行 |
+| 5 | `check_unit_sleep` が `remote` / `cluster` を含む全対象モジュールを走査 | ✅ | `scripts/ci-check.sh:1004-1009` scan_dirs に `modules/remote/src/` と `modules/cluster/src/` 追加済み |
+| 6 | `endpoint_transport_bridge` blanket allowlist 撤去 | ✅ | `scripts/ci-check.sh:1014-1020` allowlistから `endpoint_transport_bridge` 除去済み |
+| 7 | `tokio::time::sleep` + `start_paused` の組合せは仮想時間として許可 | ✅ | `scripts/ci-check.sh:1033-1046` Phase 2 ロジック：`start_paused` を含むファイルのみ `tokio::time::sleep` を許可 |
+| 8 | `new_with_clock` は `pub(crate)` | ✅ | `circuit_breaker.rs:77`、`circuit_breaker_shared.rs:42` |
+| 9 | `tokio/test-util` が dev-dependencies に追加 | ✅ | `modules/actor/Cargo.toml`、`modules/remote/Cargo.toml` |
+
+## 検証サマリー
+
+| 項目 | 状態 | 確認方法 |
+|------|------|---------|
+| テスト（actor lib） | ✅ | `cargo test -p fraktor-actor-rs --lib` → 1114 passed |
+| テスト（remote lib） | ✅ | `cargo test -p fraktor-remote-rs --lib` → 77 passed |
+| テスト（remote integration） | ✅ | `cargo test -p fraktor-remote-rs --tests` → 3 passed |
+| CI sleep検査 | ✅ | `./scripts/ci-check.sh ai check-unit-sleep` → 違反なし |
+| architect-review指摘対応 | ✅ | ARCH-NEW-ci-check-unit-sleep-scope 修正完了 |
+
+## 今回の指摘（new）
+
+なし
+
+## 継続指摘（persists）
+
+なし
+
+## 解消済み（resolved）
+
+| finding_id | 解消根拠 |
+|------------|----------|
+| ARCH-NEW-ci-check-unit-sleep-scope | `ci-check.sh:1004-1009` に `remote/src/` と `cluster/src/` 追加。`endpoint_transport_bridge` blanket allowlist 撤去。Phase 2 ロジックで `start_paused` + `tokio::time::sleep` の仮想時間使用を正しく許可。`thread::sleep` はゼロ。`check-unit-sleep` パス |
+| ai-review-f001 | `scripts/ci-check.sh:1004-1005` glob を `**/tests.rs` / `**/tests/*.rs` に修正済み。`circuit_breaker_shared/tests.rs:163` の `tokio::time::sleep` は `std::future::pending` に置換済み |
+| ai-review-f002 | `circuit_breaker.rs:77` と `circuit_breaker_shared.rs:42` の `new_with_clock` が `pub(crate)` を維持 |
+| ai-review-f003 | `circuit_breaker_shared.rs:72,77` の What/How コメント削除済み。`tick/tests.rs` の Given/When/Then コメント削除済み。`quickstart.rs` の説明コメント削除済み |
+
+## 成果物
+
+- 変更: `modules/actor/src/std/pattern/circuit_breaker.rs` — clock 注入点（`pub(crate) new_with_clock`）追加
+- 変更: `modules/actor/src/std/pattern/circuit_breaker_shared.rs` — clock 注入の委譲
+- 変更: `modules/actor/src/std/pattern/circuit_breaker/tests.rs` — FakeClock ベーステスト、境界値テスト追加
+- 変更: `modules/actor/src/std/pattern/circuit_breaker_shared/tests.rs` — FakeClock ベース、cancel テスト pending 化
+- 変更: `modules/actor/src/std/scheduler/tick/tests.rs` — `start_paused` + `advance` + `yield_now`
+- 変更: `modules/actor/src/std/system/base/tests.rs` — 不要 sleep 削除
+- 変更: `modules/actor/Cargo.toml` — tokio `test-util` feature 追加
+- 変更: `modules/remote/Cargo.toml` — tokio `test-util` feature 追加
+- 変更: `modules/remote/src/std/endpoint_transport_bridge/tests.rs` — `start_paused` 追加、`thread::sleep` 除去
+- 変更: `modules/remote/tests/quickstart.rs` — `start_paused` 追加
+- 変更: `modules/remote/tests/multi_node_scenario_integration.rs` — `start_paused` 追加
+- 変更: `scripts/ci-check.sh` — unit/integration 分離、`check-unit-sleep` 全モジュール対応、Phase 2 仮想時間判定、blanket allowlist 撤去
+
+## REJECT判定条件
+
+`new` および `persists` が0件のため、APPROVE。

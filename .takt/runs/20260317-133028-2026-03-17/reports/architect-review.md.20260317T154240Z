@@ -1,0 +1,34 @@
+# アーキテクチャレビュー
+
+## 結果: REJECT
+
+## サマリー
+`scripts/ci-check.sh` の自動検査は `sleep` にしか対応しておらず、spec が要求する `実時間 timeout` の検出を満たしていません。加えて、unit テストに実時間 `tokio::time::timeout` が残っており、仕様準拠が未完です。
+
+## 確認した観点
+- [x] 構造・設計
+- [x] コード品質
+- [x] 変更スコープ
+- [x] テストカバレッジ
+- [x] デッドコード
+- [x] 呼び出しチェーン検証
+
+## 今回の指摘（new）
+| # | finding_id | family_tag | スコープ | 場所 | 問題 | 修正案 |
+|---|------------|------------|---------|------|------|--------|
+| 1 | ARCH-NEW-unit-timeout-check-missing | spec-violation | スコープ内 | `scripts/ci-check.sh:998-1048`, `.takt/runs/20260317-133028-2026-03-17/context/task/order.md:67-69`, `modules/actor/src/std/pattern/circuit_breaker_shared/tests.rs:147-170` | `check_unit_sleep` は `thread::sleep` / `tokio::time::sleep` しか検査しておらず、spec の `sleep / 実時間 timeout` 禁止を満たしていません。実際に `cancel_during_half_open_records_failure` は plain `#[tokio::test]` のまま `tokio::time::timeout(Duration::from_millis(1), ...)` を使っており、unit テストに実時間 timeout が残っています。 | `check_unit_sleep` を `tokio::time::timeout` まで検査対象に拡張し、このテストは `start_paused` / manual time / 明示的 cancel で wall-clock timeout 依存を除去してください。 |
+
+スコープ: 「スコープ内」（今回修正可能）/ 「スコープ外」（既存問題・非ブロッキング）
+
+## 継続指摘（persists）
+なし
+
+## 解消済み（resolved）
+なし
+
+## 再開指摘（reopened）
+なし
+
+## REJECT判定条件
+- `new`、`persists`、または `reopened` が1件以上ある場合のみ REJECT 可
+- `finding_id` なしの指摘は無効

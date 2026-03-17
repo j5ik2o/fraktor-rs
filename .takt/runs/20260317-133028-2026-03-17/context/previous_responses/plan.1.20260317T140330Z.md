@@ -1,0 +1,30 @@
+タスク指示書と参照資料を先に確認し、要件と制約をコード上で特定します。まず `.takt/.../context/task/order.md` の「参照資料」を読み、その後に必要な実装箇所と既存パターンを同ディレクトリ内中心に調査します。
+参照資料の明示箇所と、既存の計画履歴があるかを確認します。あわせて、今回対象として挙がっている実装ファイル群の現状を横断検索して、sleep 依存と manual driver 利用パターンを特定します。
+既存の実装履歴を確認したうえで、今回まだ残っている差分を切り分けます。次に、指示書で名指しされている `actor` / `remote` / `cluster` / `scripts/ci-check.sh` を個別に読みます。
+一部はすでに先行変更されている可能性があります。差し戻し前提で、現状の行番号ベースの根拠を取り直し、今回まだ必要な変更だけに絞ります。
+`endpoint_transport_bridge` は一部だけ仮想時間化されていて、まだ実時間待ちが残っています。該当ケースを関数単位で見て、どこまでが unit 寄せ可能で、どこを実時間統合として残すかを確定します。
+差分の途中状態も確認します。テストだけ先行して実装され、本体や `Cargo.toml` が未追随だと計画が変わるため、ワークツリーの現況を見ます。
+統合テスト側の改善余地を確定するため、`tokio_tcp` と `tokio_gossip_transport` の実装も最低限読みます。ここは「仮想時間へ寄せる」のではなく、「固定 sleep を状態待ちへ替えられるか」が判断ポイントです。
+**分析結果**
+- 先行変更はテスト側にだけ入っており、実装とCIが未追随です。`new_with_clock` を呼ぶテストが既に追加されていますが、本体には注入点がありません。[circuit_breaker tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker/tests.rs#L95) [circuit_breaker.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker.rs#L94)
+- `CircuitBreaker` はまだ `Instant::now()` / `elapsed()` 直結です。ここが今回の根本差分です。[circuit_breaker.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker.rs#L97)
+- `CircuitBreakerShared` 側の cancel テストには、まだ実時間依存の `tokio::time::timeout(1ms)` + `sleep(60s)` が残っています。unit から壁時計待ちを外す方針に未達です。[circuit_breaker_shared tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker_shared/tests.rs#L156)
+- `scheduler/tick`、`quickstart`、`multi_node`、`endpoint_transport_bridge` の一部は `start_paused = true` へ寄っていますが、`tokio` の `test-util` が dev-dependencies に未追加です。[tick tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/scheduler/tick/tests.rs#L23) [actor Cargo.toml](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/Cargo.toml#L42) [remote Cargo.toml](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/Cargo.toml#L31)
+- `system/base` の短い待機は現状不要です。関連テストは即時 assert 構成で、このファイル内に `sleep` はありません。[base tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/core/system/base/tests.rs#L201)
+- `endpoint_transport_bridge` にはまだ test double 内の `thread::sleep` と、統合寄りケースの固定待機が残っています。特に `open_channel` / `send` の遅延シミュレーションは deterministic 化が必要です。[endpoint_transport_bridge tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/src/std/endpoint_transport_bridge/tests.rs#L268) [endpoint_transport_bridge tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/src/std/endpoint_transport_bridge/tests.rs#L1468)
+- 実 transport の統合テストはまだ固定 sleep です。ここは fake time ではなく poll-until へ置換するのが最小です。[tokio_tcp tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/src/std/transport/tokio_tcp/tests.rs#L30) [tokio_gossip_transport tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/cluster/src/std/tokio_gossip_transport/tests.rs#L46)
+- `ci-check` はまだ `test` / `all` しかなく、unit-fast / integration / long-running 分離も sleep 禁止チェックも未実装です。[ci-check.sh](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/scripts/ci-check.sh#L980) [ci-check.sh](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/scripts/ci-check.sh#L1080)
+
+**実装方針**
+- `CircuitBreaker` は公開APIを増やさず、非公開の now provider を内部に持たせる。`new()` は現状維持、テスト専用に `pub(crate)` / `#[cfg(test)]` の `new_with_clock` を追加し、`transition_to_open`・`is_call_permitted`・`remaining_in_open` をそこへ寄せる。[circuit_breaker.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker.rs#L36)
+- `CircuitBreakerShared` はその注入点を委譲するだけに留める。cancel safety テストは `sleep` ではなく「未完了 future を spawn して abort/drop」へ変える。[circuit_breaker_shared.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/std/pattern/circuit_breaker_shared.rs#L27)
+- `start_paused` を使う既存テストはそのまま活かし、必要箇所だけ `yield_now()` を追加する。特に bridge の timeout/periodic 系と quickstart/multi-node の非同期起動後です。[endpoint_transport_bridge tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/src/std/endpoint_transport_bridge/tests.rs#L546) [quickstart.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/tests/quickstart.rs#L102) [multi_node_scenario_integration.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/tests/multi_node_scenario_integration.rs#L69)
+- `endpoint_transport_bridge` の `open_delay` は `Notify` / barrier 系に置き換え、TOCTOU 検証を実時間待ちから切り離す。`queue_is_full` は統合扱いのままでも、固定 200ms 待ちではなく状態到達待ちにする。
+- `tokio_tcp` と `tokio_gossip_transport` は実時間統合のまま残し、固定 sleep を「成功するまで短く poll」へ変える。listener 起動待ちと UDP 受信待ちだけを bounded retry にする。
+- `ci-check` は `unit-fast`、`integration`、`long-running` を追加し、`all` は `unit-fast` 先行の full 経路にする。sleep 禁止チェックは unit-fast 対象にだけ掛け、統合対象は allowlist で外す。
+
+**Coder向けガイドライン**
+- 既存パターンは manual tick 側を優先します。[loopback_quickstart main](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/remote/examples/loopback_quickstart/main.rs#L103) [std_materializer_support.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/streams/examples/std_materializer_support.rs#L31)
+- 状態到達待ちは既存の `wait_until` 形に合わせます。[event_stream.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/tests/event_stream.rs#L108) [actor_context tests](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/actor/src/core/actor/actor_context/tests.rs#L153)
+- 配線漏れに注意する箇所は 4 つです。`CircuitBreaker` 本体、`CircuitBreakerShared` の委譲、`modules/actor/Cargo.toml` と `modules/remote/Cargo.toml` の `tokio/test-util`、`scripts/ci-check.sh` の `usage`・実行関数・`all`・case dispatch。
+- 特に避けるべきアンチパターンは 3 つです。`sleep` を短い `sleep`/`timeout` に置き換えるだけ、公開 `Clock` trait を増やすこと、unit と integration の混在を grep allowlist で雑に隠すこと。

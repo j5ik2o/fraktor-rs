@@ -1,0 +1,25 @@
+# 変更スコープ宣言
+
+## タスク
+時間依存テストを再設計し、単体テストから壁時計待ち（sleep）を排除して論理時間/fake clock で検証する構成に寄せる
+
+## 変更予定
+| 種別 | ファイル |
+|------|---------|
+| 変更 | `modules/actor/src/std/pattern/circuit_breaker/tests.rs` |
+| 変更 | `modules/actor/src/std/pattern/circuit_breaker_shared/tests.rs` |
+| 変更 | `modules/actor/src/std/scheduler/tick/tests.rs` |
+| 変更 | `modules/actor/src/std/system/base/tests.rs` |
+| 変更 | `modules/remote/src/std/endpoint_transport_bridge/tests.rs` |
+| 変更 | `modules/remote/tests/quickstart.rs` |
+| 変更 | `modules/remote/tests/multi_node_scenario_integration.rs` |
+
+## 推定規模
+Medium
+
+## 影響範囲
+- `modules/actor` の circuit breaker パターン（fake clock 注入テスト）
+- `modules/actor` の scheduler/tick テスト（paused Tokio clock）
+- `modules/actor` の system base テスト（不要 sleep 削除）
+- `modules/remote` の endpoint_transport_bridge テスト（paused Tokio clock）
+- `modules/remote` の統合テスト（状態ベース待機への移行）
