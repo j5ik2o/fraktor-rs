@@ -24,6 +24,8 @@ mod behaviors;
 mod death_pact_exception;
 /// Default threshold-based pool router resizer.
 mod default_resizer;
+/// Point-to-point reliable delivery between a producer and consumer actor.
+pub mod delivery;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
