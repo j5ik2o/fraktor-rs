@@ -233,6 +233,10 @@ fn collect_on_sequenced_message<A>(
     // 受信済みだが未確認の重複メッセージ — 無視する
     return;
   } else if seq_nr > state.received_seq_nr + 1 {
+    // ギャップ検出: 到着メッセージをスタッシュしてリセンドを要求する。
+    // Pekko と同様に、既に受信したメッセージを破棄せず保持し、
+    // ギャップが埋まった後に順序通り配信する。
+    state.stashed.push(seq_msg);
     if !state.settings.only_flow_control()
       && let Some(pc) = state.producer_controller.clone()
     {
