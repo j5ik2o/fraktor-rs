@@ -1,8 +1,11 @@
-## ADDED Requirements
+# workflow-integrity Specification
 
+## Purpose
+TBD - created by archiving change resolve-bugbot-and-coderabbit-major-issues. Update Purpose after archive.
+## Requirements
 ### Requirement: TAKT artifact は構造妥当性を保つ
 
-リポジトリで管理する TAKT の piece、instruction、output contract は TAKT parser にとって構造妥当であり、schema の意味を変えるような壊れた indentation や code fence の入れ子を含んではならない。
+リポジトリで管理する TAKT の piece、instruction、output contract は TAKT parser にとって構造妥当であり、schema の意味を変えるような壊れた indentation や code fence の入れ子を含んではならない。これらの artifact は構造妥当性を MUST 保つ。
 
 #### Scenario: movement routing rule は sibling field として並ぶ
 
@@ -16,7 +19,7 @@
 
 ### Requirement: TAKT instruction inventory は一貫して wiring される
 
-リポジトリで管理する TAKT instruction file は、active な piece から参照されるか、tree から削除されるかのどちらかでなければならない。
+リポジトリで管理する TAKT instruction file は、active な piece から参照されるか、tree から削除されるかのどちらかでなければならない。instruction inventory は一貫して MUST wiring される。
 
 #### Scenario: orphan instruction file を残さない
 
@@ -25,9 +28,10 @@
 
 ### Requirement: AI mode の cargo 実行は guard wrapper を経由する
 
-CI helper script は AI mode のすべての `cargo` 実行経路を共有 guard wrapper 経由にし、timeout と hang-suspect protection を一貫して適用しなければならない。
+CI helper script は AI mode のすべての `cargo` 実行経路を共有 guard wrapper 経由にし、timeout と hang-suspect protection を一貫して適用しなければならない。AI mode の cargo 実行は MUST guard wrapper を経由する。
 
 #### Scenario: example 実行も AI mode では guard される
 
 - **WHEN** `./scripts/ci-check.sh ai all` または同等の AI mode の example path が `cargo` を実行する
 - **THEN** その実行は `cargo` を直接呼ばず、共有 guard wrapper を通る
+
