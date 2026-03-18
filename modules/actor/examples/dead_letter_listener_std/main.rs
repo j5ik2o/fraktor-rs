@@ -11,13 +11,13 @@ mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
   },
   std::{
-    actor::{Actor, ActorContext},
     event::stream::{DeadLetterLogSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    props::Props,
     system::ActorSystem,
   },
 };
@@ -28,7 +28,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       // Spawn a child and immediately stop it.
       let child_props = Props::from_fn(|| ChildActor);
@@ -49,7 +49,7 @@ impl Actor for GuardianActor {
 struct ChildActor;
 
 impl Actor for ChildActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }

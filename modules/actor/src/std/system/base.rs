@@ -14,18 +14,15 @@ use crate::{
     },
     futures::ActorFutureShared,
     messaging::AskResult,
+    props::Props,
     scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
     spawn::SpawnError,
     system::{
-      ActorSystem as CoreActorSystem, ExtendedActorSystem, provider::ActorRefResolveError,
+      ActorSystem as CoreActorSystem, ActorSystemConfig, ExtendedActorSystem, provider::ActorRefResolveError,
       state::SystemStateShared as CoreSystemStateShared,
     },
   },
-  std::{
-    event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared},
-    props::Props,
-    system::ActorSystemConfig,
-  },
+  std::event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared},
 };
 
 #[cfg(all(test, feature = "tokio-executor"))]
@@ -57,8 +54,8 @@ impl ActorSystem {
   pub fn quickstart(props: &Props) -> Result<Self, SpawnError> {
     let tick_driver = crate::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
     let config = ActorSystemConfig::default()
-      .with_tick_driver_config(tick_driver)
-      .with_default_dispatcher_config(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto());
+      .with_tick_driver(tick_driver)
+      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto().into_core());
     Self::new_with_config(props, &config)
   }
 
@@ -78,8 +75,8 @@ impl ActorSystem {
     F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
     let tick_driver = crate::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
     let base_config = ActorSystemConfig::default()
-      .with_tick_driver_config(tick_driver)
-      .with_default_dispatcher_config(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto());
+      .with_tick_driver(tick_driver)
+      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto().into_core());
     let config = configure(base_config);
     Self::new_with_config(props, &config)
   }
@@ -98,7 +95,7 @@ impl ActorSystem {
   /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
   /// fails.
   pub fn new(props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
-    CoreActorSystem::new(props.as_core(), tick_driver_config).map(Self::from_core)
+    CoreActorSystem::new(props, tick_driver_config).map(Self::from_core)
   }
 
   /// Creates a new actor system with an explicit configuration.
@@ -108,7 +105,7 @@ impl ActorSystem {
   /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be
   /// initialised with the supplied configuration.
   pub fn new_with_config(props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    CoreActorSystem::new_with_config(props.as_core(), config.as_core()).map(Self::from_core)
+    CoreActorSystem::new_with_config(props, config).map(Self::from_core)
   }
 
   /// Creates an empty actor system without any guardian (testing helper).

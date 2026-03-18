@@ -1,13 +1,3 @@
-/// Actor primitives specialised for the standard toolbox.
-pub mod actor {
-  mod actor_adapter;
-  mod actor_context;
-  mod actor_lifecycle;
-
-  pub use actor_adapter::ActorAdapter;
-  pub use actor_context::ActorContext;
-  pub use actor_lifecycle::Actor;
-}
 /// Dispatch bindings for the standard toolbox.
 pub mod dispatch {
   //! Dispatch bindings specialised for the standard toolbox.
@@ -58,12 +48,6 @@ pub mod event {
 }
 /// Pekko-inspired helper patterns for the standard toolbox.
 pub mod pattern;
-/// Props and dispatcher configuration bindings for the standard toolbox.
-pub mod props {
-  mod base;
-
-  pub use base::*;
-}
 /// Scheduler bindings for the standard toolbox.
 pub mod scheduler {
   //! Scheduler utilities specialised for the standard toolbox runtime.
@@ -74,7 +58,6 @@ pub mod scheduler {
 }
 /// Actor system bindings for the standard toolbox.
 pub mod system {
-  mod actor_system_config;
   mod base;
   #[cfg(feature = "tokio-executor")]
   mod coordinated_shutdown;
@@ -89,7 +72,6 @@ pub mod system {
   #[cfg(feature = "tokio-executor")]
   mod coordinated_shutdown_reason;
 
-  pub use actor_system_config::*;
   pub use base::*;
   #[cfg(feature = "tokio-executor")]
   pub use coordinated_shutdown::*;
@@ -108,31 +90,11 @@ pub mod system {
 pub mod typed {
   //! High-level typed actor bindings for the standard fraktor runtime.
 
-  /// Core typed actor primitives including actors, contexts, and references.
-  pub mod actor {
-    mod actor_adaptor;
-    mod actor_context;
-    mod actor_context_ref;
-    mod actor_ref;
-    mod child_ref;
-    mod typed_actor;
-
-    pub use actor_adaptor::*;
-    pub use actor_context::*;
-    pub use actor_context_ref::*;
-    pub use actor_ref::*;
-    pub use child_ref::*;
-    pub use typed_actor::*;
-  }
   mod behaviors;
   mod log_options;
-  mod props;
-  mod system;
 
   pub use behaviors::Behaviors;
   pub use log_options::LogOptions;
-  pub use props::TypedProps;
-  pub use system::TypedActorSystem;
 }
 
 #[cfg(test)]

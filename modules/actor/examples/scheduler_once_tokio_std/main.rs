@@ -7,14 +7,14 @@ use std::time::Duration;
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
     scheduler::SchedulerCommand,
   },
   std::{
-    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    props::Props,
     scheduler::tick::TickDriverConfig,
     system::ActorSystem,
   },
@@ -35,7 +35,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       println!("[{:?}] Guardian starting scheduler example...", std::thread::current().id());
 
@@ -70,7 +70,7 @@ async fn main() {
   let dispatcher: DispatcherConfig =
     DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle.clone())))));
 
-  let props = Props::from_fn(|| GuardianActor).with_dispatcher(dispatcher);
+  let props = Props::from_fn(|| GuardianActor).with_dispatcher_config(dispatcher.into_core());
   let system = ActorSystem::new(&props, TickDriverConfig::tokio_quickstart()).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");

@@ -14,20 +14,19 @@ use std::{
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::AnyMessageView,
+    props::Props,
     serialization::{
       NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
       SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
       SerializerId, SerializerWithStringManifest, TransportInformation,
     },
+    system::ActorSystemConfig,
   },
-  std::{
-    actor::{Actor, ActorContext},
-    props::Props,
-    system::{ActorSystem, ActorSystemConfig},
-  },
+  std::system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
@@ -116,7 +115,7 @@ impl NullActor {
 }
 
 impl Actor for NullActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -156,7 +155,7 @@ fn main() {
 
   let props = Props::from_fn(NullActor::new).with_name("serialization-json-demo");
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
-  let config = ActorSystemConfig::default().with_tick_driver_config(tick_driver).with_extension_installers(installers);
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver).with_extension_installers(installers);
 
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
   let serialization: SerializationExtensionShared =

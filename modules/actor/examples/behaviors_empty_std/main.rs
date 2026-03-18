@@ -11,13 +11,10 @@ use std::time::Duration;
 
 use fraktor_actor_rs::{
   core::{
-    event::stream::{EventStreamEvent, EventStreamSubscription},
-    typed::Behavior,
+    event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
+    typed::{Behavior, TypedActorSystem, TypedProps, actor::TypedActorContext},
   },
-  std::{
-    event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    typed::{Behaviors, TypedActorSystem, TypedProps},
-  },
+  std::typed::Behaviors,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -36,9 +33,7 @@ fn worker_behavior() -> Behavior<WorkerCommand> {
   })
 }
 
-fn working_behavior(
-  _ctx: &mut fraktor_actor_rs::std::typed::actor::TypedActorContext<'_, '_, WorkerCommand>,
-) -> Behavior<WorkerCommand> {
+fn working_behavior(_ctx: &mut TypedActorContext<'_, WorkerCommand>) -> Behavior<WorkerCommand> {
   Behaviors::receive_message(|_ctx, message: &WorkerCommand| match message {
     | WorkerCommand::DoWork => {
       println!("[Worker] Doing work...");
@@ -83,7 +78,7 @@ fn main() {
   let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events
-  let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledLogger);
+  let subscriber = subscriber_handle(UnhandledLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
   let mut worker = system.user_guardian_ref();

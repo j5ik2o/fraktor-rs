@@ -14,10 +14,9 @@ mod std_tick_driver_support;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
-  core::messaging::AnyMessage,
+  core::{messaging::AnyMessage, props::Props},
   std::{
     event::stream::{EventStreamSubscriberShared, subscriber_handle},
-    props::Props,
     system::ActorSystem,
   },
 };

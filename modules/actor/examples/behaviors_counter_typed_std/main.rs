@@ -7,8 +7,11 @@
 mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
-  core::{error::ActorError, typed::Behavior},
-  std::typed::{Behaviors, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  core::{
+    error::ActorError,
+    typed::{Behavior, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  },
+  std::typed::Behaviors,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -43,9 +46,7 @@ fn main() {
   counter.tell(CounterCommand::Add(4)).expect("add first");
   counter.tell(CounterCommand::Add(6)).expect("add second");
 
-  let response = counter
-    .ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to: TypedActorRef::from_core(reply_to) })
-    .expect("ask read");
+  let response = counter.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to }).expect("ask read");
   let mut future = response.future().clone();
   while !future.is_ready() {
     thread::yield_now();

@@ -13,18 +13,18 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
     serialization::SerializationExtensionInstaller,
-    system::remote::RemotingConfig,
+    system::{ActorSystemConfig, remote::RemotingConfig},
   },
   std::{
-    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    props::Props,
     scheduler::tick::TickDriverConfig,
-    system::{ActorSystem, ActorSystemConfig},
+    system::ActorSystem,
   },
 };
 use fraktor_remote_rs::core::{
@@ -90,8 +90,8 @@ fn build_tokio_tcp_system(
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
-    .with_default_dispatcher_config(default_dispatcher)
+    .with_tick_driver(TickDriverConfig::tokio_quickstart())
+    .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(
@@ -114,7 +114,7 @@ impl SenderGuardian {
 }
 
 impl Actor for SenderGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(cmd) = message.downcast_ref::<StartPing>() {
       let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
       println!("sender -> remote: {}", cmd.text);
@@ -135,7 +135,7 @@ impl ReceiverGuardian {
 }
 
 impl Actor for ReceiverGuardian {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(ping) = message.downcast_ref::<Ping>() {
       ping
         .reply_to

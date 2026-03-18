@@ -14,19 +14,18 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use fraktor_actor_rs::{
   core::{
-    actor::actor_ref::ActorRef,
+    actor::{Actor, ActorContext, actor_ref::ActorRef},
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
     serialization::SerializationExtensionInstaller,
-    system::remote::RemotingConfig,
+    system::{ActorSystemConfig, remote::RemotingConfig},
   },
   std::{
-    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    props::Props,
     scheduler::tick::TickDriverConfig,
-    system::{ActorSystem, ActorSystemConfig},
+    system::ActorSystem,
   },
 };
 use fraktor_cluster_rs::core::{
@@ -168,8 +167,8 @@ fn build_system(
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
-    .with_default_dispatcher_config(default_dispatcher)
+    .with_tick_driver(TickDriverConfig::tokio_quickstart())
+    .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
@@ -220,12 +219,12 @@ impl GrainHub {
 }
 
 impl Actor for GrainHub {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     println!("[info] grain hub started for {HUB_NAME}");
     Ok(())
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(register) = message.downcast_ref::<RegisterReplyChannel>() {
       self.reply_tx = Some(register.tx.clone());
       return Ok(());
@@ -288,12 +287,12 @@ impl GrainActor {
 }
 
 impl Actor for GrainActor {
-  fn pre_start(&mut self, _ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, _ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     println!("[info] grain spawned for reply");
     self.send_reply()
   }
 
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.send_reply()
   }
 }

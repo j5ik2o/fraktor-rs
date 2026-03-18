@@ -47,8 +47,7 @@ fn removed_std_alias_files_stay_deleted() {
 #[test]
 fn std_public_modules_expose_only_live_entry_points() {
   let _behaviors = core::marker::PhantomData::<crate::std::typed::Behaviors>;
-  let _props = core::marker::PhantomData::<crate::std::typed::TypedProps<String>>;
-  let _system = core::marker::PhantomData::<crate::std::typed::TypedActorSystem<String>>;
+  let _log_options = core::marker::PhantomData::<crate::std::typed::LogOptions>;
   let _shared = core::marker::PhantomData::<crate::std::event::stream::EventStreamSubscriberShared>;
 
   let _subscriber = crate::std::event::stream::subscriber_handle(NoopSubscriber);
