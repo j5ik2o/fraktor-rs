@@ -62,7 +62,7 @@ fn main() {
 
   let props = Props::from_fn(|| GuardianActor);
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system = ActorSystem::new_with_tick_driver(&props, tick_driver).expect("system");
 
   // Subscribe the DeadLetterLogSubscriber to the event stream.
   let listener: EventStreamSubscriberShared = subscriber_handle(DeadLetterLogSubscriber::new());

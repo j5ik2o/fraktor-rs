@@ -128,7 +128,7 @@ struct TokioBenchSystem {
 impl TokioBenchSystem {
   fn new(props: &Props) -> Self {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
-    let system = runtime.block_on(async { ActorSystem::quickstart(props).expect("actor system") });
+    let system = runtime.block_on(async { ActorSystem::new(props).expect("actor system") });
     Self { runtime, system }
   }
 

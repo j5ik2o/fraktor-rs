@@ -87,7 +87,7 @@ impl Actor for PongActor {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let props: Props = Props::from_fn(|| GuardianActor);
-  let system = ActorSystem::quickstart(&props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 

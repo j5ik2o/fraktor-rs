@@ -39,7 +39,6 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 use tokio::sync::oneshot;
 
 const HOST: &str = "127.0.0.1";
@@ -159,7 +158,7 @@ fn build_system(
 ) -> Result<(ActorSystem, NoopClusterProvider)> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
+  let default_dispatcher = DispatcherConfig::from_executor(Box::new(tokio_executor));
 
   // Provider (noop in this quickstart) should still follow the lifecycle contract.
   let mut provider = NoopClusterProvider::new();
@@ -167,7 +166,7 @@ fn build_system(
 
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver(TickDriverConfig::tokio_quickstart())
+    .with_tick_driver(TickDriverConfig::default_config())
     .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))

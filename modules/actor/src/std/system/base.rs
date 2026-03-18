@@ -36,65 +36,35 @@ pub struct ActorSystem {
 }
 
 impl ActorSystem {
-  /// Creates a new actor system using Tokio quickstart defaults.
+  /// Creates a new actor system with default configuration.
   ///
-  /// This convenience constructor applies:
-  /// - [`crate::std::scheduler::tick::TickDriverConfig::tokio_quickstart()`]
-  /// - [`crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto()`]
+  /// When the `tokio-executor` feature is enabled, this automatically applies:
+  /// - Default tick driver with 10ms resolution
+  /// - Default dispatcher using the current Tokio runtime handle
   ///
   /// # Panics
   ///
-  /// Panics when called outside a Tokio runtime context.
+  /// Panics when `tokio-executor` is enabled and called outside a Tokio runtime context.
   ///
   /// # Errors
   ///
-  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised
-  /// with quickstart defaults.
+  /// Returns [`SpawnError`] when the user guardian props cannot be initialised.
   #[cfg(feature = "tokio-executor")]
-  pub fn quickstart(props: &Props) -> Result<Self, SpawnError> {
-    let tick_driver = crate::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
+  pub fn new(props: &Props) -> Result<Self, SpawnError> {
+    let tick_driver = crate::std::scheduler::tick::TickDriverConfig::default_config();
     let config = ActorSystemConfig::default()
       .with_tick_driver(tick_driver)
-      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto().into_core());
+      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::default_config().into_core());
     Self::new_with_config(props, &config)
   }
 
-  /// Creates a Tokio-quickstart system and allows overriding the base config.
-  ///
-  /// # Panics
-  ///
-  /// Panics when called outside a Tokio runtime context.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError::InvalidProps`] when the user guardian props cannot be initialised
-  /// with the resulting quickstart configuration.
-  #[cfg(feature = "tokio-executor")]
-  pub fn quickstart_with<F>(props: &Props, configure: F) -> Result<Self, SpawnError>
-  where
-    F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-    let tick_driver = crate::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
-    let base_config = ActorSystemConfig::default()
-      .with_tick_driver(tick_driver)
-      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::tokio_auto().into_core());
-    let config = configure(base_config);
-    Self::new_with_config(props, &config)
-  }
-
-  /// Creates a new actor system with the required tick driver configuration.
-  ///
-  /// This is the recommended way to create an actor system with minimal configuration.
-  ///
-  /// # Arguments
-  ///
-  /// * `props` - Properties for the user guardian actor
-  /// * `tick_driver_config` - Tick driver configuration (required)
+  /// Creates a new actor system with an explicit tick driver configuration.
   ///
   /// # Errors
   ///
   /// Returns [`SpawnError`] when the user guardian props cannot be initialised or tick driver setup
   /// fails.
-  pub fn new(props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
+  pub fn new_with_tick_driver(props: &Props, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
     CoreActorSystem::new(props, tick_driver_config).map(Self::from_core)
   }
 

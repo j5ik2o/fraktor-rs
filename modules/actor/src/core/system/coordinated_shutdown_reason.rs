@@ -1,6 +1,6 @@
 //! Reason for a coordinated shutdown.
 
-extern crate std;
+extern crate alloc;
 
 use alloc::string::String;
 use core::fmt;

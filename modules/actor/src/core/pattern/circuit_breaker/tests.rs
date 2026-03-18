@@ -1,25 +1,20 @@
-extern crate std;
-
 use core::{
   sync::atomic::{AtomicU64, Ordering},
   time::Duration,
 };
-use std::{sync::Arc, time::Instant};
 
-use crate::{
-  core::pattern::{CircuitBreakerState, Clock},
-  std::pattern::{CircuitBreaker, circuit_breaker},
-};
+use super::CircuitBreaker;
+use crate::core::pattern::{CircuitBreakerState, Clock};
 
+/// A deterministic clock for unit tests that does not depend on `std::time`.
 #[derive(Clone)]
 struct FakeClock {
-  base:          Instant,
-  offset_millis: Arc<AtomicU64>,
+  offset_millis: alloc::sync::Arc<AtomicU64>,
 }
 
 impl FakeClock {
   fn new() -> Self {
-    Self { base: Instant::now(), offset_millis: Arc::new(AtomicU64::new(0)) }
+    Self { offset_millis: alloc::sync::Arc::new(AtomicU64::new(0)) }
   }
 
   fn advance(&self, duration: Duration) {
@@ -27,27 +22,32 @@ impl FakeClock {
   }
 }
 
+/// A simple `Copy + Ord` instant represented as milliseconds since epoch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct FakeInstant(u64);
+
 impl Clock for FakeClock {
-  type Instant = Instant;
+  type Instant = FakeInstant;
 
   fn now(&self) -> Self::Instant {
-    self.base + Duration::from_millis(self.offset_millis.load(Ordering::SeqCst))
+    FakeInstant(self.offset_millis.load(Ordering::SeqCst))
   }
 
   fn elapsed_since(&self, earlier: Self::Instant) -> Duration {
-    self.now().duration_since(earlier)
+    let now = self.offset_millis.load(Ordering::SeqCst);
+    Duration::from_millis(now.saturating_sub(earlier.0))
   }
 }
 
 #[test]
 #[should_panic(expected = "max_failures must be greater than zero")]
 fn rejects_zero_max_failures() {
-  let _ = circuit_breaker(0, Duration::from_millis(100));
+  let _ = CircuitBreaker::new_with_clock(0, Duration::from_millis(100), FakeClock::new());
 }
 
 #[test]
 fn new_starts_in_closed_state() {
-  let cb = circuit_breaker(3, Duration::from_millis(100));
+  let cb = CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
   assert_eq!(cb.max_failures(), 3);
@@ -56,7 +56,7 @@ fn new_starts_in_closed_state() {
 
 #[test]
 fn stays_closed_on_success() {
-  let mut cb = circuit_breaker(3, Duration::from_millis(100));
+  let mut cb = CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
   cb.record_success();
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
@@ -64,7 +64,7 @@ fn stays_closed_on_success() {
 
 #[test]
 fn stays_closed_when_failures_below_threshold() {
-  let mut cb = circuit_breaker(3, Duration::from_millis(100));
+  let mut cb = CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
   cb.record_failure();
   assert_eq!(cb.failure_count(), 1);
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
@@ -76,7 +76,7 @@ fn stays_closed_when_failures_below_threshold() {
 
 #[test]
 fn transitions_to_open_at_max_failures() {
-  let mut cb = circuit_breaker(3, Duration::from_millis(100));
+  let mut cb = CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
   cb.record_failure();
   cb.record_failure();
   cb.record_failure();
@@ -85,7 +85,7 @@ fn transitions_to_open_at_max_failures() {
 
 #[test]
 fn resets_failure_count_on_success_in_closed() {
-  let mut cb = circuit_breaker(3, Duration::from_millis(100));
+  let mut cb = CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
   cb.record_failure();
   cb.record_failure();
   assert_eq!(cb.failure_count(), 2);
@@ -98,7 +98,7 @@ fn resets_failure_count_on_success_in_closed() {
 #[test]
 fn open_rejects_calls() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_secs(10), clock);
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_secs(10), clock);
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -112,7 +112,7 @@ fn open_rejects_calls() {
 #[test]
 fn open_transitions_to_half_open_after_reset_timeout() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -125,7 +125,7 @@ fn open_transitions_to_half_open_after_reset_timeout() {
 #[test]
 fn open_remains_open_before_reset_timeout() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -138,7 +138,7 @@ fn open_remains_open_before_reset_timeout() {
 #[test]
 fn half_open_rejects_second_call() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
 
@@ -151,7 +151,7 @@ fn half_open_rejects_second_call() {
 #[test]
 fn half_open_success_transitions_to_closed() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
   assert!(cb.is_call_permitted().is_ok());
@@ -165,7 +165,7 @@ fn half_open_success_transitions_to_closed() {
 #[test]
 fn half_open_failure_transitions_to_open() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
   assert!(cb.is_call_permitted().is_ok());
@@ -177,7 +177,7 @@ fn half_open_failure_transitions_to_open() {
 
 #[test]
 fn closed_always_permits() {
-  let mut cb = circuit_breaker(5, Duration::from_secs(1));
+  let mut cb = CircuitBreaker::new_with_clock(5, Duration::from_secs(1), FakeClock::new());
   for _ in 0..10 {
     assert!(cb.is_call_permitted().is_ok());
     cb.record_success();
@@ -187,7 +187,7 @@ fn closed_always_permits() {
 
 #[test]
 fn max_failures_one_trips_on_first_failure() {
-  let mut cb = circuit_breaker(1, Duration::from_millis(100));
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(100), FakeClock::new());
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 }
@@ -195,7 +195,7 @@ fn max_failures_one_trips_on_first_failure() {
 #[test]
 fn recovery_cycle_closed_open_half_open_closed() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(2, Duration::from_millis(10), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(2, Duration::from_millis(10), clock.clone());
 
   // Closed → Open
   cb.record_failure();
@@ -221,12 +221,11 @@ fn recovery_cycle_closed_open_half_open_closed() {
 #[test]
 fn open_error_reports_correct_remaining_duration() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
+  let mut cb = CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
   cb.record_failure();
 
   clock.advance(Duration::from_millis(30));
   let err = cb.is_call_permitted().unwrap_err();
 
-  assert!(err.remaining() <= Duration::from_millis(70));
-  assert!(err.remaining() >= Duration::from_millis(69));
+  assert_eq!(err.remaining(), Duration::from_millis(70));
 }

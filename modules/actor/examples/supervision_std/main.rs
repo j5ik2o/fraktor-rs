@@ -174,7 +174,7 @@ impl Actor for FussyWorker {
 fn main() {
   let props: Props = Props::from_fn(GuardianActor::new);
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
-  let system = ActorSystem::new(&props, tick_driver).expect("ガーディアンの起動に成功すること");
+  let system = ActorSystem::new_with_tick_driver(&props, tick_driver).expect("ガーディアンの起動に成功すること");
 
   let logger: EventStreamSubscriberShared =
     subscriber_handle(StdLoggerAdapter::new(LogLevel::Info, Box::new(StdoutLogger)));

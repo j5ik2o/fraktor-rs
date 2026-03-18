@@ -100,7 +100,7 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 const HOST: &str = "127.0.0.1";
 const NODE_A_PORT: u16 = 26050;
@@ -196,7 +196,7 @@ fn build_cluster_node(
 ) -> Result<ClusterNode> {
   let tokio_handle = tokio::runtime::Handle::current();
   let tokio_executor = TokioExecutor::new(tokio_handle);
-  let default_dispatcher = DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(tokio_executor))));
+  let default_dispatcher = DispatcherConfig::from_executor(Box::new(tokio_executor));
 
   // ClusterExtensionInstaller を作成（static_topology を設定）
   // new_with_local() を使用して LocalClusterProvider を自動的に作成
@@ -218,7 +218,7 @@ fn build_cluster_node(
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
-    .with_tick_driver(TickDriverConfig::tokio_quickstart())
+    .with_tick_driver(TickDriverConfig::default_config())
     .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))

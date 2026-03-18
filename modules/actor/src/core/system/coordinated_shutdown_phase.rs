@@ -1,6 +1,6 @@
 //! Phase configuration for coordinated shutdown.
 
-extern crate std;
+extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;

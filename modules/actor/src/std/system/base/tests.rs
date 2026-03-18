@@ -5,6 +5,7 @@ use crate::{
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    system::ActorSystemConfig,
   },
   std::system::ActorSystem,
 };
@@ -21,9 +22,9 @@ impl Actor for GuardianActor {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
-async fn quickstart_bootstraps_system_with_tokio_defaults() {
+async fn new_bootstraps_system_with_tokio_defaults() {
   let props = Props::from_fn(|| GuardianActor);
-  let system = ActorSystem::quickstart(&props).expect("system");
+  let system = ActorSystem::new(&props).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 
@@ -35,12 +36,16 @@ async fn quickstart_bootstraps_system_with_tokio_defaults() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::expect_used)]
-async fn quickstart_with_applies_config_override() {
+async fn new_with_config_applies_config_override() {
   let props = Props::from_fn(|| GuardianActor);
-  let system =
-    ActorSystem::quickstart_with(&props, |config| config.with_system_name("quickstart-system")).expect("system");
+  let tick_driver = crate::std::scheduler::tick::TickDriverConfig::default_config();
+  let config = ActorSystemConfig::default()
+    .with_tick_driver(tick_driver)
+    .with_system_name("custom-system")
+    .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::default_config().into_core());
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
 
-  assert_eq!(system.state().system_name(), "quickstart-system");
+  assert_eq!(system.state().system_name(), "custom-system");
 
   system.terminate().expect("terminate");
   ActorFutureListener::new(system.when_terminated()).await;
