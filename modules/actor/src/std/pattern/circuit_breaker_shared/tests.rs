@@ -6,12 +6,13 @@ use core::{
 };
 use std::{sync::Arc, time::Instant};
 
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+
 use super::CircuitBreakerShared;
 use crate::std::pattern::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
   circuit_breaker_state::CircuitBreakerState,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 #[derive(Clone)]
 struct FakeClock {
