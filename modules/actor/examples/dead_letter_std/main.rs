@@ -9,6 +9,7 @@ use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
     event::{
@@ -17,13 +18,11 @@ use fraktor_actor_rs::{
     },
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
-    props::MailboxConfig,
+    props::{MailboxConfig, Props},
   },
   std::{
-    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    props::Props,
     system::ActorSystem,
   },
 };
@@ -80,15 +79,16 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "キャパシティ1のboundedキューでoverflowを発生させます");
 
       let mailbox_policy =
         MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None);
       let mailbox_config = MailboxConfig::new(mailbox_policy);
-      let overflow_props =
-        Props::from_fn(|| OverflowActor).with_mailbox(mailbox_config).with_dispatcher(self.dispatcher.clone());
+      let overflow_props = Props::from_fn(|| OverflowActor)
+        .with_mailbox_config(mailbox_config)
+        .with_dispatcher_config(self.dispatcher.clone().into_core());
 
       let child = ctx
         .spawn_child(&overflow_props)
@@ -121,13 +121,13 @@ impl Actor for GuardianActor {
 struct OverflowActor;
 
 impl Actor for OverflowActor {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     let thread_id = format!("{:?}", thread::current().id());
     ctx.log(LogLevel::Info, format!("OverflowActorが起動しました [thread={}]", thread_id));
     Ok(())
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     let thread_id = format!("{:?}", thread::current().id());
     if let Some(msg) = message.downcast_ref::<&str>() {
       ctx.log(LogLevel::Info, format!("[OverflowActor] received: {} [thread={}]", msg, thread_id));
@@ -137,7 +137,7 @@ impl Actor for OverflowActor {
     Ok(())
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     ctx.log(LogLevel::Info, "OverflowActorを停止します");
     Ok(())
   }
@@ -153,7 +153,7 @@ async fn main() {
     let dispatcher = dispatcher.clone();
     move || GuardianActor::new(dispatcher.clone())
   })
-  .with_dispatcher(dispatcher.clone());
+  .with_dispatcher_config(dispatcher.clone().into_core());
 
   let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
   let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");

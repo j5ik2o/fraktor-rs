@@ -11,13 +11,10 @@ use std::time::Duration;
 
 use fraktor_actor_rs::{
   core::{
-    event::stream::{EventStreamEvent, EventStreamSubscription},
-    typed::{Behavior, BehaviorSignal},
+    event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
+    typed::{Behavior, BehaviorSignal, TypedActorSystem, TypedProps},
   },
-  std::{
-    event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    typed::{Behaviors, TypedActorSystem, TypedProps},
-  },
+  std::typed::Behaviors,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -73,7 +70,7 @@ fn main() {
   let system = TypedActorSystem::new(&props, tick_driver).expect("Failed to create system");
 
   // Subscribe to unhandled message events
-  let subscriber: EventStreamSubscriberShared = subscriber_handle(UnhandledMessageLogger);
+  let subscriber = subscriber_handle(UnhandledMessageLogger);
   let _subscription: EventStreamSubscription = system.subscribe_event_stream(&subscriber);
 
   let mut actor_ref = system.user_guardian_ref();

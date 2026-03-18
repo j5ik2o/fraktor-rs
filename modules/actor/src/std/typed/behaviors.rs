@@ -15,7 +15,7 @@ use crate::{
       actor::TypedActorContext as CoreTypedActorContext,
     },
   },
-  std::typed::{LogOptions, actor::TypedActorContext},
+  std::typed::LogOptions,
 };
 
 /// Interceptor that logs every received message through `tracing`.
@@ -133,8 +133,8 @@ impl Behaviors {
   pub fn setup<M, F>(factory: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>) -> Behavior<M> + Send + Sync + 'static, {
-    CoreBehaviors::setup(move |ctx| with_std_ctx(ctx, |std_ctx| factory(std_ctx)))
+    F: for<'a> Fn(&mut CoreTypedActorContext<'a, M>) -> Behavior<M> + Send + Sync + 'static, {
+    CoreBehaviors::setup(factory)
   }
 
   /// Creates a behavior using a bounded stash helper.
@@ -153,8 +153,8 @@ impl Behaviors {
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
-    CoreBehaviors::receive_message(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
+    F: for<'a> Fn(&mut CoreTypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    CoreBehaviors::receive_message(handler)
   }
 
   /// Creates a behavior that replies to the current sender and keeps the same behavior.
@@ -163,8 +163,8 @@ impl Behaviors {
   where
     M: Send + Sync + 'static,
     R: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
-    CoreBehaviors::receive_and_reply(move |ctx, message| with_std_ctx(ctx, |std_ctx| handler(std_ctx, message)))
+    F: for<'a> Fn(&mut CoreTypedActorContext<'a, M>, &M) -> Result<R, ActorError> + Send + Sync + 'static, {
+    CoreBehaviors::receive_and_reply(handler)
   }
 
   /// Creates a behavior that only reacts to signals with the std context.
@@ -172,11 +172,11 @@ impl Behaviors {
   pub fn receive_signal<M, F>(handler: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
-    F: for<'a> Fn(&mut TypedActorContext<'_, 'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
+    F: for<'a> Fn(&mut CoreTypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>
       + Send
       + Sync
       + 'static, {
-    CoreBehaviors::receive_signal(move |ctx, signal| with_std_ctx(ctx, |std_ctx| handler(std_ctx, signal)))
+    CoreBehaviors::receive_signal(handler)
   }
 
   /// Wraps a behavior so that a `SupervisorStrategy` can be assigned declaratively.
@@ -253,14 +253,6 @@ impl Behaviors {
       behavior,
     )
   }
-}
-
-fn with_std_ctx<'a, M, R, F>(ctx: &mut CoreTypedActorContext<'a, M>, f: F) -> R
-where
-  M: Send + Sync + 'static,
-  F: FnOnce(&mut TypedActorContext<'_, 'a, M>) -> R, {
-  let mut wrapped = TypedActorContext::from_core_mut(ctx);
-  f(&mut wrapped)
 }
 
 fn log_received_message<M>(options: &LogOptions, pid: crate::core::actor::Pid, message: &M)

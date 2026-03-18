@@ -7,8 +7,8 @@
 mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
-  core::typed::{Behavior, BehaviorSignal},
-  std::typed::{Behaviors, TypedActorSystem, TypedProps},
+  core::typed::{Behavior, BehaviorSignal, TypedActorSystem, TypedProps},
+  std::typed::Behaviors,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 

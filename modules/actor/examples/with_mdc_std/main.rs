@@ -14,8 +14,8 @@ extern crate alloc;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
-  core::typed::{Behavior, Behaviors as CoreBehaviors},
-  std::typed::{Behaviors, TypedActorSystem, TypedProps},
+  core::typed::{Behavior, Behaviors as CoreBehaviors, TypedActorSystem, TypedProps},
+  std::typed::Behaviors,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 

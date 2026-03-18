@@ -1,14 +1,12 @@
 use crate::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
-  },
-  std::{
-    actor::{Actor, ActorContext},
     props::Props,
-    system::ActorSystem,
   },
+  std::system::ActorSystem,
 };
 
 struct Start;
@@ -16,7 +14,7 @@ struct Start;
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }

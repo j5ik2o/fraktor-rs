@@ -12,18 +12,18 @@ mod std_tick_driver_support;
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     event::{
       logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
       stream::EventStreamEvent,
     },
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
   std::{
-    actor::{Actor, ActorContext},
     event::stream::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle},
-    props::Props,
     system::ActorSystem,
   },
 };
@@ -106,7 +106,7 @@ impl GuardianActor {
 }
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       ctx.log(LogLevel::Info, "子アクターを起動します");
       let worker_props = Props::from_fn(FussyWorker::new);
@@ -128,7 +128,7 @@ impl Actor for GuardianActor {
     Ok(())
   }
 
-  fn supervisor_strategy(&self, _ctx: &ActorContext<'_, '_>) -> SupervisorStrategyConfig {
+  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 3, CoreDuration::from_secs(1), |error| match error {
       | ActorError::Recoverable(_) => SupervisorDirective::Restart,
       | ActorError::Fatal(_) => SupervisorDirective::Stop,
@@ -148,12 +148,12 @@ impl FussyWorker {
 }
 
 impl Actor for FussyWorker {
-  fn pre_start(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     ctx.log(LogLevel::Info, "ワーカーが起動しました");
     Ok(())
   }
 
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if self.crashes_remaining >= 0 {
       ctx.log(LogLevel::Warn, format!("シミュレートされた障害を発生させます (残り {} 回)", self.crashes_remaining));
       self.crashes_remaining -= 1;
@@ -165,7 +165,7 @@ impl Actor for FussyWorker {
     }
   }
 
-  fn post_stop(&mut self, ctx: &mut ActorContext<'_, '_>) -> Result<(), ActorError> {
+  fn post_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     ctx.log(LogLevel::Info, "ワーカーを停止します");
     Ok(())
   }

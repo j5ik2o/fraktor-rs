@@ -70,20 +70,20 @@ use std::{thread, time::Duration};
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     event::stream::{EventStreamEvent, EventStreamSubscription},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
+    props::Props,
     serialization::SerializationExtensionInstaller,
-    system::remote::RemotingConfig,
+    system::{ActorSystemConfig, remote::RemotingConfig},
   },
   std::{
-    actor::{Actor, ActorContext},
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamSubscriber, subscriber_handle},
-    props::Props,
     scheduler::tick::TickDriverConfig,
-    system::{ActorSystem, ActorSystemConfig},
+    system::ActorSystem,
   },
 };
 use fraktor_cluster_rs::{
@@ -218,8 +218,8 @@ fn build_cluster_node(
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(CLUSTER_SYSTEM_NAME.to_string())
-    .with_tick_driver_config(TickDriverConfig::tokio_quickstart())
-    .with_default_dispatcher_config(default_dispatcher)
+    .with_tick_driver(TickDriverConfig::tokio_quickstart())
+    .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(
@@ -293,10 +293,11 @@ impl GrainHub {
 }
 
 impl Actor for GrainHub {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<StartGrainCall>().is_some() {
       if matches!(self.role, HubRole::Sender) {
-        let api = ClusterApi::try_from_system(&ctx.system())
+        let system = ActorSystem::from_core(ctx.system().clone());
+        let api = ClusterApi::try_from_system(&system)
           .map_err(|e| ActorError::recoverable(format!("cluster api failed: {e:?}")))?;
         let identity = ClusterIdentity::new(GRAIN_KIND, SAMPLE_KEY)
           .map_err(|e| ActorError::recoverable(format!("identity error: {e:?}")))?;

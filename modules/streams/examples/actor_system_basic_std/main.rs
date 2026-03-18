@@ -4,18 +4,17 @@ use std::time::Duration;
 
 use fraktor_actor_rs::{
   core::{
+    actor::{Actor, ActorContext},
     error::ActorError,
     messaging::AnyMessageView,
+    props::Props,
     scheduler::{
       SchedulerConfig,
       tick_driver::{ManualTestDriver, TickDriverConfig},
     },
+    system::ActorSystemConfig,
   },
-  std::{
-    actor::{Actor, ActorContext},
-    props::Props,
-    system::{ActorSystem, ActorSystemConfig},
-  },
+  std::system::ActorSystem,
 };
 use fraktor_streams_rs::core::{
   Completion, KeepRight,
@@ -26,7 +25,7 @@ use fraktor_streams_rs::core::{
 struct GuardianActor;
 
 impl Actor for GuardianActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -36,7 +35,7 @@ fn main() {
   let driver = ManualTestDriver::new();
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(driver.clone());
-  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver_config(tick_driver);
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
 
   let mut materializer = ActorMaterializer::new(

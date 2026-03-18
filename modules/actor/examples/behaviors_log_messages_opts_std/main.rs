@@ -7,8 +7,11 @@ use core::fmt;
 use std::{thread, time::Duration};
 
 use fraktor_actor_rs::{
-  core::{error::ActorError, typed::Behavior},
-  std::typed::{Behaviors, LogOptions, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  core::{
+    error::ActorError,
+    typed::{Behavior, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  },
+  std::typed::{Behaviors, LogOptions},
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -58,8 +61,7 @@ fn main() {
   actor.tell(Command::Ping).expect("first ping");
   actor.tell(Command::Ping).expect("second ping");
 
-  let response =
-    actor.ask::<usize, _>(|reply_to| Command::Read { reply_to: TypedActorRef::from_core(reply_to) }).expect("ask");
+  let response = actor.ask::<usize, _>(|reply_to| Command::Read { reply_to }).expect("ask");
   let mut future = response.future().clone();
   while !future.is_ready() {
     thread::sleep(Duration::from_millis(10));
