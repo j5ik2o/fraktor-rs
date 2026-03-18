@@ -7,17 +7,14 @@ use std::{
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use fraktor_actor_rs::{
   core::{
-    actor::actor_ref::ActorRef,
+    actor::{Actor, ActorContext, actor_ref::ActorRef},
     dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
     error::ActorError,
     futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
-  },
-  std::{
-    actor::{Actor, ActorContext},
     props::Props,
-    system::ActorSystem,
   },
+  std::system::ActorSystem,
 };
 use tokio::runtime::{Builder, Runtime};
 
@@ -44,7 +41,7 @@ struct PingPong {
 struct SilentActor;
 
 impl Actor for SilentActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -52,7 +49,7 @@ impl Actor for SilentActor {
 struct SpawnGuardian;
 
 impl Actor for SpawnGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<SpawnOnce>() {
       let child =
         ctx.spawn_child(&Props::from_fn(|| SilentActor)).map_err(|_| ActorError::recoverable("spawn failed"))?;
@@ -66,7 +63,7 @@ impl Actor for SpawnGuardian {
 struct NotifyActor;
 
 impl Actor for NotifyActor {
-  fn receive(&mut self, _ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<Notify>() {
       command.done.send(()).expect("notify bench ack");
     }
@@ -77,7 +74,7 @@ impl Actor for NotifyActor {
 struct RegistryGuardian;
 
 impl Actor for RegistryGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<RegisterChild>() {
       let child = ctx
         .spawn_child(&Props::from_fn(|| NotifyActor))
@@ -91,7 +88,7 @@ impl Actor for RegistryGuardian {
 struct PingPongRegistryGuardian;
 
 impl Actor for PingPongRegistryGuardian {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<RegisterChild>() {
       let child = ctx
         .spawn_child(&Props::from_fn(|| PingPongActor))
@@ -105,7 +102,7 @@ impl Actor for PingPongRegistryGuardian {
 struct PingPongActor;
 
 impl Actor for PingPongActor {
-  fn receive(&mut self, ctx: &mut ActorContext<'_, '_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(command) = message.downcast_ref::<PingPong>() {
       if command.remaining == 0 {
         command.done.send(()).expect("ping-pong bench ack");
