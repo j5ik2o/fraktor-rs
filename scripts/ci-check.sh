@@ -35,11 +35,15 @@ FMT_TOOLCHAIN="${FMT_TOOLCHAIN:-${PINNED_TOOLCHAIN}}"
 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export CARGO_BUILD_JOBS
 CI_CHECK_GUARD_TIMEOUT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC:-0}"
+CI_CHECK_GUARD_TIMEOUT_UNIT_SEC="${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC:-}"
+CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-}"
 CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
 CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 CI_CHECK_HANG_RECORD_FILE="${CI_CHECK_HANG_RECORD_FILE:-${REPO_ROOT}/.takt/.ci-check.last-hang}"
 CI_CHECK_ALLOW_RERUN_AFTER_HANG="${CI_CHECK_ALLOW_RERUN_AFTER_HANG:-0}"
 export CI_CHECK_GUARD_TIMEOUT_SEC
+export CI_CHECK_GUARD_TIMEOUT_UNIT_SEC
+export CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC
 export CI_CHECK_GUARD_KILL_AFTER_SEC
 export CI_CHECK_HANG_COOLDOWN_SEC
 export CI_CHECK_HANG_RECORD_FILE
@@ -71,6 +75,8 @@ usage() {
 環境変数:
   CARGO_BUILD_JOBS            : cargo の並列ジョブ数（未設定時は 4）
   CI_CHECK_GUARD_TIMEOUT_SEC  : cargo test/run/bench/nextest の実行上限秒数（0 で無効、既定 0）
+  CI_CHECK_GUARD_TIMEOUT_UNIT_SEC : unit-test 用の実行上限秒数（未設定時は CI_CHECK_GUARD_TIMEOUT_SEC を使用）
+  CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC : integration-test 用の実行上限秒数（未設定時は CI_CHECK_GUARD_TIMEOUT_SEC を使用）
   CI_CHECK_GUARD_KILL_AFTER_SEC : タイムアウト後に強制終了へ移るまでの猶予秒数（既定 15）
   CI_CHECK_HANG_COOLDOWN_SEC  : HANG_SUSPECT 後に同一コマンドの再実行を拒否する秒数（既定 1800）
   CI_CHECK_ALLOW_RERUN_AFTER_HANG : 1 のとき HANG_SUSPECT 後の同一コマンド再実行を許可
@@ -172,11 +178,19 @@ enable_ai_mode() {
   if [[ "${CI_CHECK_GUARD_TIMEOUT_SEC}" == "0" ]]; then
     CI_CHECK_GUARD_TIMEOUT_SEC=1800
   fi
+  if [[ -z "${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC}" ]]; then
+    CI_CHECK_GUARD_TIMEOUT_UNIT_SEC="${CI_CHECK_GUARD_TIMEOUT_SEC}"
+  fi
+  if [[ -z "${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC}" ]]; then
+    CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC=5400
+  fi
   export CI_CHECK_GUARD_TIMEOUT_SEC
+  export CI_CHECK_GUARD_TIMEOUT_UNIT_SEC
+  export CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC
   export CI_CHECK_GUARD_KILL_AFTER_SEC="${CI_CHECK_GUARD_KILL_AFTER_SEC:-15}"
   export CI_CHECK_HANG_COOLDOWN_SEC="${CI_CHECK_HANG_COOLDOWN_SEC:-1800}"
 
-  echo "info: AI モードを有効化しました (timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s)" >&2
+  echo "info: AI モードを有効化しました (default-timeout=${CI_CHECK_GUARD_TIMEOUT_SEC}s, unit-timeout=${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC}s, integration-timeout=${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC}s, cooldown=${CI_CHECK_HANG_COOLDOWN_SEC}s, heartbeat=${CI_CHECK_HEARTBEAT_INTERVAL_SEC}s)" >&2
 }
 
 run_with_heartbeat() {
@@ -302,6 +316,22 @@ run_cargo() {
   if [[ "${guarded}" == "1" ]]; then
     clear_hang_suspect
   fi
+}
+
+run_cargo_with_timeout_override() {
+  local timeout_override="$1"
+  shift
+
+  local previous_timeout="${CI_CHECK_GUARD_TIMEOUT_SEC}"
+  CI_CHECK_GUARD_TIMEOUT_SEC="${timeout_override}"
+
+  set +e
+  run_cargo "$@"
+  local status=$?
+  set -e
+
+  CI_CHECK_GUARD_TIMEOUT_SEC="${previous_timeout}"
+  return "${status}"
 }
 
 start_parallel_cargo() {
@@ -982,12 +1012,16 @@ run_doc_tests() {
 
 run_unit_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --features test-support"
-  run_cargo test --workspace --verbose --lib --bins --features test-support || return 1
+  local timeout_override="${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
+  run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --lib --bins --features test-support \
+    || return 1
 }
 
 run_integration_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --tests --examples --features test-support"
-  run_cargo test --workspace --verbose --tests --examples --features test-support || return 1
+  local timeout_override="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
+  run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --tests --examples --features test-support \
+    || return 1
 }
 
 run_tests() {
