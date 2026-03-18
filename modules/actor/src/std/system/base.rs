@@ -48,7 +48,8 @@ impl ActorSystem {
   ///
   /// # Errors
   ///
-  /// Returns [`SpawnError`] when the user guardian props cannot be initialised.
+  /// Returns [`SpawnError`] when the user guardian props cannot be initialised
+  /// or tick driver setup fails.
   #[cfg(feature = "tokio-executor")]
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
     let tick_driver = crate::std::scheduler::tick::TickDriverConfig::default_config();

@@ -39,16 +39,24 @@ impl DispatcherConfig {
 
   /// Creates a default configuration from the current Tokio runtime handle.
   ///
+  /// # Errors
+  ///
+  /// Returns `None` when called outside a Tokio runtime context.
+  #[cfg(feature = "tokio-executor")]
+  #[must_use]
+  pub fn try_default_config() -> Option<Self> {
+    Handle::try_current().ok().map(|handle| Self::from_executor(Box::new(TokioExecutor::new(handle))))
+  }
+
+  /// Creates a default configuration from the current Tokio runtime handle.
+  ///
   /// # Panics
   ///
   /// Panics when called outside a Tokio runtime context.
   #[cfg(feature = "tokio-executor")]
   #[must_use]
   pub fn default_config() -> Self {
-    let Ok(handle) = Handle::try_current() else {
-      panic!("Tokio runtime handle unavailable");
-    };
-    Self::from_executor(Box::new(TokioExecutor::new(handle)))
+    Self::try_default_config().expect("Tokio runtime handle unavailable")
   }
 
   /// Creates a configuration from the current Tokio runtime handle.

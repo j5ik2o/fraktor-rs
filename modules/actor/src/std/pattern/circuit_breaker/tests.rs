@@ -95,6 +95,11 @@ fn resets_failure_count_on_success_in_closed() {
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
 }
 
+// ---- FakeClock を使うテスト ----
+// FakeClock<Instant> は StdClock とは異なる Clock 実装のため、std の型エイリアス
+// `CircuitBreaker`（= CircuitBreaker<StdClock>）は使用できない。
+// core パスを直接参照するのは意図的であり、std 公開面の回帰は上記テストでカバーする。
+
 #[test]
 fn open_rejects_calls() {
   let clock = FakeClock::new();

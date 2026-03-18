@@ -93,6 +93,11 @@ async fn call_trips_after_max_failures() {
   assert!(matches!(result, Err(CircuitBreakerCallError::Open(_))));
 }
 
+// ---- FakeClock を使うテスト ----
+// FakeClock<Instant> は StdClock とは異なる Clock 実装のため、std の型エイリアス
+// `CircuitBreakerShared`（= CircuitBreakerShared<StdClock>）は使用できない。
+// core パスを直接参照するのは意図的であり、std 公開面の回帰は上記テストでカバーする。
+
 #[tokio::test]
 async fn call_recovers_after_reset_timeout() {
   let clock = FakeClock::new();

@@ -1,8 +1,8 @@
 //! Pekko-inspired helper patterns for the standard toolbox.
 
-/// Standard-library circuit breaker tests.
+/// Standard-library circuit breaker implementation.
 mod circuit_breaker;
-/// Standard-library circuit breaker shared wrapper tests.
+/// Standard-library circuit breaker shared wrapper implementation.
 mod circuit_breaker_shared;
 /// Standard-library clock backed by `std::time::Instant`.
 mod std_clock;
@@ -20,6 +20,7 @@ pub type CircuitBreaker = crate::core::pattern::CircuitBreaker<StdClock>;
 
 /// Thread-safe shared circuit breaker using the standard clock.
 pub type CircuitBreakerShared = crate::core::pattern::CircuitBreakerShared<StdClock>;
+
 
 /// Creates a new [`CircuitBreaker`] in the **Closed** state using the real
 /// system clock.
@@ -39,8 +40,13 @@ pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBre
 /// Creates a new [`CircuitBreakerShared`] in the **Closed** state using the
 /// real system clock.
 ///
-/// * `max_failures` — consecutive failure threshold before the circuit trips.
+/// * `max_failures` — consecutive failure threshold before the circuit trips. Must be greater than
+///   zero.
 /// * `reset_timeout` — delay in the **Open** state before a probe call is allowed.
+///
+/// # Panics
+///
+/// Panics if `max_failures` is zero.
 #[must_use]
 pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> CircuitBreakerShared {
   crate::core::pattern::CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)

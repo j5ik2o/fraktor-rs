@@ -138,7 +138,7 @@ impl<C: Clock> CircuitBreaker<C> {
   }
 
   /// Records a successful call, transitioning to **Closed** if in **HalfOpen**.
-  pub const fn record_success(&mut self) {
+  pub fn record_success(&mut self) {
     match self.state {
       | CircuitBreakerState::HalfOpen => {
         self.transition_to_closed();
@@ -167,13 +167,53 @@ impl<C: Clock> CircuitBreaker<C> {
     }
   }
 
+  /// Records a successful call, aware of whether this call was a HalfOpen probe.
+  ///
+  /// When `was_half_open` is true, the call was the probe — only then does success
+  /// transition HalfOpen → Closed. Non-probe calls that complete after a state
+  /// change are handled safely without corrupting the state machine.
+  pub(crate) fn record_success_for(&mut self, was_half_open: bool) {
+    if was_half_open {
+      // probe 成功 — 現在の状態が HalfOpen なら Closed に遷移
+      if self.state == CircuitBreakerState::HalfOpen {
+        self.transition_to_closed();
+      }
+    } else {
+      // 通常の呼び出し — Closed の場合のみ失敗カウントをリセット
+      if self.state == CircuitBreakerState::Closed {
+        self.failure_count = 0;
+      }
+    }
+  }
+
+  /// Records a failed call, aware of whether this call was a HalfOpen probe.
+  ///
+  /// When `was_half_open` is true, failure re-opens the circuit. Non-probe calls
+  /// that complete after a state change only affect Closed state.
+  pub(crate) fn record_failure_for(&mut self, was_half_open: bool) {
+    if was_half_open {
+      // probe 失敗 — HalfOpen なら Open に戻す
+      if self.state == CircuitBreakerState::HalfOpen {
+        self.transition_to_open();
+      }
+    } else {
+      // 通常の呼び出し — Closed の場合のみ失敗カウントを増やす
+      if self.state == CircuitBreakerState::Closed {
+        self.failure_count += 1;
+        if self.failure_count >= self.max_failures {
+          self.transition_to_open();
+        }
+      }
+    }
+  }
+
   fn transition_to_open(&mut self) {
     self.state = CircuitBreakerState::Open;
     self.opened_at = Some(self.clock.now());
     self.half_open_attempted = false;
   }
 
-  const fn transition_to_closed(&mut self) {
+  fn transition_to_closed(&mut self) {
     self.state = CircuitBreakerState::Closed;
     self.failure_count = 0;
     self.opened_at = None;

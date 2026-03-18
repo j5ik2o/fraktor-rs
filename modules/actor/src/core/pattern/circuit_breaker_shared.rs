@@ -58,9 +58,15 @@ impl<C: Clock> CircuitBreakerShared<C> {
   where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<T, E>>, {
-    self.with_write(|cb| cb.is_call_permitted()).map_err(CircuitBreakerCallError::Open)?;
+    // 許可判定時の状態を記録する。await 後に状態が変わっている可能性があるため、
+    // 結果反映時にこの情報を使って HalfOpen probe の判定を正しく行う。
+    let state_at_permit = self.with_write(|cb| {
+      cb.is_call_permitted()?;
+      Ok::<_, super::circuit_breaker_open_error::CircuitBreakerOpenError>(cb.state())
+    }).map_err(CircuitBreakerCallError::Open)?;
 
-    let mut guard = CallGuard { cb: self.clone(), disarmed: false };
+    let was_half_open = state_at_permit == CircuitBreakerState::HalfOpen;
+    let mut guard = CallGuard { cb: self.clone(), was_half_open, disarmed: false };
 
     let result = operation().await;
 
@@ -68,11 +74,11 @@ impl<C: Clock> CircuitBreakerShared<C> {
 
     match result {
       | Ok(value) => {
-        self.with_write(|cb| cb.record_success());
+        self.with_write(|cb| cb.record_success_for(was_half_open));
         Ok(value)
       },
       | Err(e) => {
-        self.with_write(|cb| cb.record_failure());
+        self.with_write(|cb| cb.record_failure_for(was_half_open));
         Err(CircuitBreakerCallError::Failed(e))
       },
     }
@@ -97,14 +103,15 @@ impl<C: Clock> CircuitBreakerShared<C> {
 /// (e.g. via `tokio::time::timeout`), the circuit breaker transitions out of
 /// HalfOpen instead of getting stuck.
 struct CallGuard<C: Clock> {
-  cb:       CircuitBreakerShared<C>,
-  disarmed: bool,
+  cb:            CircuitBreakerShared<C>,
+  was_half_open: bool,
+  disarmed:      bool,
 }
 
 impl<C: Clock> Drop for CallGuard<C> {
   fn drop(&mut self) {
     if !self.disarmed {
-      self.cb.with_write(|cb| cb.record_failure());
+      self.cb.with_write(|cb| cb.record_failure_for(self.was_half_open));
     }
   }
 }
