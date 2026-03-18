@@ -30,6 +30,7 @@ reviews:
     - "!.cursor/**"
     - "!.opencode/**"
     - "!.takt/**"
+    - "!openspec/**"
 
   auto_review:
     enabled: true
