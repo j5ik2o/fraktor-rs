@@ -323,6 +323,12 @@ run_cargo_with_timeout_override() {
   shift
 
   local previous_timeout="${CI_CHECK_GUARD_TIMEOUT_SEC}"
+  if [[ -z "${timeout_override}" ]] || ! [[ "${timeout_override}" =~ ^[0-9]+$ ]] || [[ "${timeout_override}" -le 0 ]]; then
+    CI_CHECK_GUARD_TIMEOUT_SEC="${previous_timeout}"
+    echo "error: run_cargo_with_timeout_override に渡す CI_CHECK_GUARD_TIMEOUT_SEC は 1 以上の整数秒で指定してください: ${timeout_override:-<empty>}" >&2
+    return 1
+  fi
+
   CI_CHECK_GUARD_TIMEOUT_SEC="${timeout_override}"
 
   set +e
@@ -1013,15 +1019,23 @@ run_doc_tests() {
 run_unit_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --lib --bins --features test-support"
   local timeout_override="${CI_CHECK_GUARD_TIMEOUT_UNIT_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
-  run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --lib --bins --features test-support \
-    || return 1
+  if [[ "${timeout_override}" == "0" ]]; then
+    run_cargo test --workspace --verbose --lib --bins --features test-support || return 1
+  else
+    run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --lib --bins --features test-support \
+      || return 1
+  fi
 }
 
 run_integration_tests() {
   log_step "cargo +${DEFAULT_TOOLCHAIN} test --workspace --verbose --tests --examples --features test-support"
   local timeout_override="${CI_CHECK_GUARD_TIMEOUT_INTEGRATION_SEC:-${CI_CHECK_GUARD_TIMEOUT_SEC}}"
-  run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --tests --examples --features test-support \
-    || return 1
+  if [[ "${timeout_override}" == "0" ]]; then
+    run_cargo test --workspace --verbose --tests --examples --features test-support || return 1
+  else
+    run_cargo_with_timeout_override "${timeout_override}" test --workspace --verbose --tests --examples --features test-support \
+      || return 1
+  fi
 }
 
 run_tests() {
