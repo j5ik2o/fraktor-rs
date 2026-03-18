@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::{
   convert::TryFrom,
-  sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+  sync::atomic::{AtomicU32, AtomicUsize, Ordering},
   time::Duration,
 };
 use std::sync::Mutex;
@@ -147,12 +147,12 @@ struct SentFrame {
 
 #[derive(Clone)]
 struct TestTransportProbe {
-  sent_frames:        Arc<Mutex<Vec<SentFrame>>>,
-  open_calls:         Arc<AtomicUsize>,
-  open_channel_delay: Arc<AtomicU64>,
-  send_failures_left: Arc<AtomicUsize>,
-  send_delay:         Arc<AtomicU64>,
-  inbound_handler:    Arc<Mutex<Option<TransportInboundShared>>>,
+  sent_frames:           Arc<Mutex<Vec<SentFrame>>>,
+  open_calls:            Arc<AtomicUsize>,
+  send_failures_left:    Arc<AtomicUsize>,
+  max_successful_sends:  Arc<AtomicU32>,
+  successful_send_count: Arc<AtomicU32>,
+  inbound_handler:       Arc<Mutex<Option<TransportInboundShared>>>,
 }
 
 impl TestTransportProbe {
@@ -160,16 +160,12 @@ impl TestTransportProbe {
     self.open_calls.load(Ordering::Acquire)
   }
 
-  fn set_open_delay(&self, delay: Duration) {
-    self.open_channel_delay.store(delay.as_millis() as u64, Ordering::SeqCst);
-  }
-
   fn set_send_failures_left(&self, failures_left: usize) {
     self.send_failures_left.store(failures_left, Ordering::SeqCst);
   }
 
-  fn set_send_delay(&self, delay: Duration) {
-    self.send_delay.store(delay.as_millis() as u64, Ordering::SeqCst);
+  fn set_max_successful_sends(&self, max: u32) {
+    self.max_successful_sends.store(max, Ordering::SeqCst);
   }
 
   fn set_inbound_handler(&self, handler: TransportInboundShared) {
@@ -220,12 +216,12 @@ impl TestTransportProbe {
 impl Default for TestTransportProbe {
   fn default() -> Self {
     Self {
-      sent_frames:        Arc::new(Mutex::new(Vec::new())),
-      open_calls:         Arc::new(AtomicUsize::new(0)),
-      open_channel_delay: Arc::new(AtomicU64::new(0)),
-      send_failures_left: Arc::new(AtomicUsize::new(0)),
-      send_delay:         Arc::new(AtomicU64::new(0)),
-      inbound_handler:    Arc::new(Mutex::new(None)),
+      sent_frames:           Arc::new(Mutex::new(Vec::new())),
+      open_calls:            Arc::new(AtomicUsize::new(0)),
+      send_failures_left:    Arc::new(AtomicUsize::new(0)),
+      max_successful_sends:  Arc::new(AtomicU32::new(0)),
+      successful_send_count: Arc::new(AtomicU32::new(0)),
+      inbound_handler:       Arc::new(Mutex::new(None)),
     }
   }
 }
@@ -267,10 +263,6 @@ impl RemoteTransport for TestTransport {
 
   fn open_channel(&mut self, endpoint: &TransportEndpoint) -> Result<TransportChannel, TransportError> {
     self.probe.open_calls.fetch_add(1, Ordering::SeqCst);
-    let delay_millis = self.probe.open_channel_delay.load(Ordering::Acquire);
-    if delay_millis > 0 {
-      std::thread::sleep(std::time::Duration::from_millis(delay_millis));
-    }
     let id = self.next_channel;
     self.next_channel += 1;
     self.channels.insert(id, endpoint.authority().to_string());
@@ -289,9 +281,12 @@ impl RemoteTransport for TestTransport {
       return Err(TransportError::AuthorityNotBound("injected transport send failure".into()));
     }
 
-    let delay_millis = self.probe.send_delay.load(Ordering::Acquire);
-    if delay_millis > 0 {
-      std::thread::sleep(std::time::Duration::from_millis(delay_millis));
+    let max = self.probe.max_successful_sends.load(Ordering::Acquire);
+    if max > 0 {
+      let count = self.probe.successful_send_count.fetch_add(1, Ordering::SeqCst);
+      if count >= max {
+        return Err(TransportError::AuthorityNotBound("send capacity reached".into()));
+      }
     }
 
     let authority =
@@ -543,7 +538,7 @@ async fn associate(bridge: &EndpointTransportBridge, authority: &str, endpoint: 
   bridge.process_effects(result.effects).await.expect("associate effects");
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn start_handshake_keeps_associating_until_ack_arrives() {
   let (bridge, probe, _system) = build_bridge(Duration::from_millis(200));
   let authority = "127.0.0.1:4101";
@@ -627,7 +622,7 @@ async fn receiving_offer_does_not_reply_ack_while_quarantined() {
   assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Quarantined { .. })));
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_timeout_moves_to_gated_and_recover_plus_ack_connects_again() {
   let (bridge, probe, _system) = build_bridge(Duration::from_millis(20));
   let authority = "127.0.0.1:4301";
@@ -657,7 +652,7 @@ async fn handshake_timeout_moves_to_gated_and_recover_plus_ack_connects_again() 
   assert!(matches!(association_state(&bridge, authority), Some(AssociationState::Connected { .. })));
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_timeout_gate_has_no_resume_deadline() {
   let (bridge, _probe, _system) = build_bridge(Duration::from_millis(20));
   let authority = "127.0.0.1:4302";
@@ -672,7 +667,7 @@ async fn handshake_timeout_gate_has_no_resume_deadline() {
   }
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn handshake_timeout_emits_error_log_when_discarding_deferred_envelopes() {
   let (bridge, _probe, system) = build_bridge(Duration::from_millis(20));
   let (recorder, _subscription) = subscribe_events(&system);
@@ -697,7 +692,7 @@ async fn handshake_timeout_emits_error_log_when_discarding_deferred_envelopes() 
   ));
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn stale_handshake_timeout_does_not_gate_new_attempt() {
   let (bridge, probe, _system) = build_bridge(Duration::from_millis(100));
   let authority = "127.0.0.1:4401";
@@ -745,7 +740,6 @@ async fn ensure_channel_open_is_atomic_under_concurrent_flushes() {
   });
   bridge.process_effects(accept.effects).await.expect("accept effects");
 
-  probe.set_open_delay(Duration::from_millis(20));
   let effect1 = bridge
     .coordinator
     .with_write(|m| {
@@ -1092,7 +1086,7 @@ async fn flush_ack_respects_ack_send_window_limit() {
   assert_eq!(flush_ack.expected_acks(), 1);
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn shutdown_flush_waits_for_flush_ack_observation() {
   let (bridge, probe, _system) = build_bridge(Duration::from_millis(400));
   let authority = "127.0.0.1:25520";
@@ -1465,10 +1459,10 @@ async fn inbound_heartbeat_rsp_frame_emits_watcher_command() {
   }));
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn inbound_handler_rejects_frames_when_queue_is_full() {
   let (handle, probe, _system) = spawn_bridge(Duration::from_millis(500));
-  probe.set_send_delay(Duration::from_millis(20));
+  probe.set_max_successful_sends(10);
 
   let total_frames = 96usize;
   for index in 0..total_frames {
@@ -1490,7 +1484,7 @@ async fn inbound_handler_rejects_frames_when_queue_is_full() {
   let _ = handle.shutdown().await;
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_emits_periodic_reap_unreachable() {
   let (handle, _probe, system, control) = spawn_bridge_with_control(Duration::from_millis(500));
   let recorder = register_remote_watcher_daemon(&system, &control);
@@ -1503,7 +1497,7 @@ async fn outbound_loop_emits_periodic_reap_unreachable() {
   let _ = handle.shutdown().await;
 }
 
-#[tokio::test(flavor = "current_thread")]
+#[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn outbound_loop_emits_periodic_heartbeat_tick() {
   let (handle, _probe, system, control) = spawn_bridge_with_control(Duration::from_millis(500));
   let recorder = register_remote_watcher_daemon(&system, &control);
@@ -1514,4 +1508,24 @@ async fn outbound_loop_emits_periodic_heartbeat_tick() {
   assert!(commands.iter().any(|command| matches!(command, RemoteWatcherCommand::HeartbeatTick)));
 
   let _ = handle.shutdown().await;
+}
+
+#[test]
+fn send_cap_rejects_after_limit_without_thread_sleep() {
+  let probe = TestTransportProbe::default();
+  let mut transport = TestTransport {
+    probe:         probe.clone(),
+    channels:      BTreeMap::new(),
+    next_channel:  0,
+    inbound:       None,
+    next_listener: 0,
+  };
+  let endpoint = TransportEndpoint::new("127.0.0.1:9999".to_string());
+  let channel = transport.open_channel(&endpoint).expect("open");
+
+  probe.set_max_successful_sends(2);
+
+  assert!(transport.send(&channel, b"first", CorrelationId::nil()).is_ok());
+  assert!(transport.send(&channel, b"second", CorrelationId::nil()).is_ok());
+  assert!(transport.send(&channel, b"third", CorrelationId::nil()).is_err());
 }

@@ -54,12 +54,10 @@ impl CircuitBreakerShared {
     Fut: Future<Output = Result<T, E>>, {
     self.with_write(|cb| cb.is_call_permitted()).map_err(CircuitBreakerCallError::Open)?;
 
-    // RAII ガード: Future がキャンセル（drop）された場合に自動で record_failure() を呼ぶ
     let mut guard = CallGuard { cb: self.clone(), disarmed: false };
 
     let result = operation().await;
 
-    // 正常完了: ガードを disarm して自然な drop では何もしないようにする
     guard.disarmed = true;
 
     match result {

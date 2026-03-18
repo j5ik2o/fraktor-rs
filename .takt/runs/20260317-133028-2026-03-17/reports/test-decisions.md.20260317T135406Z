@@ -1,0 +1,42 @@
+# 決定ログ
+
+## 1. CircuitBreaker の時間制御に FakeClock パターンを採用
+- **背景**: `CircuitBreaker` は `Instant::now()` に直接依存しており、Open → HalfOpen 遷移のテストに `thread::sleep` が必要だった
+- **検討した選択肢**:
+  - (A) `Clock` trait を公開 API として追加
+  - (B) 非公開の `now_fn: impl Fn() -> Instant` 注入点を追加
+  - (C) paused Tokio clock を使用（`start_paused = true`）
+- **理由**: (B) を採用。`CircuitBreaker` は同期型（`&mut self`）であり、`Instant::now()` を使うため tokio の時間制御の影響を受けない。`FakeClock` で base `Instant` からのオフセットを制御することで、`duration_since` が正しく動作する決定的テストが可能。公開 API を増やさない点も YAGNI に合致する
+
+## 2. CircuitBreakerShared にも FakeClock を適用
+- **背景**: `CircuitBreakerShared` は `CircuitBreaker` をラップしており、内部の `Instant::now()` 依存を継承する
+- **検討した選択肢**:
+  - (A) `start_paused = true` で tokio 側のみ制御
+  - (B) FakeClock を CircuitBreaker に注入し、Shared 経由でも同じ clock を使う
+- **理由**: (B) を採用。内部の `CircuitBreaker` が `Instant::now()` を使うため、tokio の `start_paused` では制御できない。`CircuitBreakerShared::new_with_clock` が内部 `CircuitBreaker::new_with_clock` に委譲する設計
+
+## 3. Scheduler tick テストを paused Tokio clock に移行
+- **背景**: `std/scheduler/tick/tests.rs` は Tokio interval を実時間 sleep で観測していた
+- **検討した選択肢**:
+  - (A) `ManualTestDriver` に切り替え
+  - (B) `start_paused = true` で仮想時間に切り替え
+- **理由**: (B) を採用。これらのテストは Tokio interval driver そのものの動作を検証しているため、`ManualTestDriver` に切り替えると検証対象が変わってしまう。`start_paused = true` は tokio 内部タイマーを制御できるため、Tokio interval driver を決定的に検証できる
+
+## 4. system/base テストの sleep を単純削除
+- **背景**: `quickstart_bootstraps_system_with_tokio_defaults` の 20ms sleep は tell 後の待機に使われていたが、assert 対象はシステム名の検証であり時間経過と無関係
+- **理由**: `assert_eq!(system.state().system_name(), "default-system")` はシステム構築時に決定される値であり、メッセージ処理完了を待つ必要がない。sleep を削除しても論理的に同値
+
+## 5. endpoint_transport_bridge テストに `start_paused = true` を適用
+- **背景**: handshake timeout、periodic heartbeat/reap 等のテストが固定 `tokio::time::sleep` に依存していた
+- **検討した選択肢**:
+  - (A) condition wait / channel ベースに全面切替
+  - (B) `start_paused = true` で仮想時間に切替
+- **理由**: (B) を採用。bridge の内部タイマーは tokio ベースであるため、`start_paused` で仮想時間を制御すれば決定的にテストできる。`inbound_handler_rejects_frames_when_queue_is_full` は `thread::sleep` を使うテストダブルに依存するため、`start_paused` を適用せず実時間統合テストとして残す
+
+## 6. remote quickstart/multi_node テストに `start_paused = true` を適用
+- **背景**: 固定 100ms sleep が `start()` 後の非同期スタートアップ完了待ちに使われていた
+- **理由**: `start_paused = true` により `tokio::time::sleep` が仮想時間で即座に完了する。`ManualTestDriver` 構成のため actor system 側の時間依存はない
+
+## 7. Cargo.toml 変更は implement ムーブメントに委譲
+- **背景**: `start_paused = true` には tokio の `test-util` feature が必要だが、Cargo.toml はプロダクションコードに含まれる
+- **理由**: 現在のムーブメント（write_tests）ではテストファイルのみ変更可能。Cargo.toml の `dev-dependencies` への `test-util` feature 追加は implement ムーブメントで行う。対象: `modules/actor/Cargo.toml`、`modules/remote/Cargo.toml`

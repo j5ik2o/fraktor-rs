@@ -1,5 +1,3 @@
-use core::time::Duration;
-
 use crate::{
   core::{
     error::ActorError,
@@ -30,7 +28,6 @@ async fn quickstart_bootstraps_system_with_tokio_defaults() {
   let system = ActorSystem::quickstart(&props).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
-  tokio::time::sleep(Duration::from_millis(20)).await;
 
   assert_eq!(system.state().system_name(), "default-system");
 

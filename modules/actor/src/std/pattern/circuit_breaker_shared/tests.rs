@@ -1,11 +1,50 @@
 extern crate std;
 
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicU64, Ordering},
+  time::Duration,
+};
+use std::{sync::Arc, time::Instant};
+
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::CircuitBreakerShared;
 use crate::std::pattern::{
-  circuit_breaker_call_error::CircuitBreakerCallError, circuit_breaker_state::CircuitBreakerState,
+  circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
+  circuit_breaker_state::CircuitBreakerState,
 };
+
+#[derive(Clone)]
+struct FakeClock {
+  base:          Instant,
+  offset_millis: Arc<AtomicU64>,
+}
+
+impl FakeClock {
+  fn new() -> Self {
+    Self { base: Instant::now(), offset_millis: Arc::new(AtomicU64::new(0)) }
+  }
+
+  fn now(&self) -> Instant {
+    self.base + Duration::from_millis(self.offset_millis.load(Ordering::SeqCst))
+  }
+
+  fn advance(&self, duration: Duration) {
+    self.offset_millis.fetch_add(duration.as_millis() as u64, Ordering::SeqCst);
+  }
+}
+
+impl CircuitBreakerShared {
+  fn new_with_clock(
+    max_failures: u32,
+    reset_timeout: Duration,
+    clock: impl Fn() -> Instant + Send + Sync + 'static,
+  ) -> Self {
+    Self {
+      inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))),
+    }
+  }
+}
 
 #[test]
 fn new_starts_closed() {
@@ -61,12 +100,17 @@ async fn call_trips_after_max_failures() {
 
 #[tokio::test]
 async fn call_recovers_after_reset_timeout() {
-  let cb = CircuitBreakerShared::new(1, Duration::from_millis(10));
+  let clock = FakeClock::new();
+  let clock_fn = {
+    let clock = clock.clone();
+    move || clock.now()
+  };
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  tokio::time::sleep(Duration::from_millis(20)).await;
+  clock.advance(Duration::from_millis(20));
 
   let result = cb.call(|| async { Ok::<_, &str>(99) }).await;
   match result {
@@ -78,11 +122,16 @@ async fn call_recovers_after_reset_timeout() {
 
 #[tokio::test]
 async fn half_open_failure_reopens() {
-  let cb = CircuitBreakerShared::new(1, Duration::from_millis(10));
+  let clock = FakeClock::new();
+  let clock_fn = {
+    let clock = clock.clone();
+    move || clock.now()
+  };
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
-  tokio::time::sleep(Duration::from_millis(20)).await;
+  clock.advance(Duration::from_millis(20));
 
   let result = cb.call(|| async { Err::<(), _>("still broken") }).await;
   assert!(matches!(result, Err(CircuitBreakerCallError::Failed("still broken"))));
@@ -91,7 +140,12 @@ async fn half_open_failure_reopens() {
 
 #[tokio::test]
 async fn open_error_contains_remaining_duration() {
-  let cb = CircuitBreakerShared::new(1, Duration::from_secs(10));
+  let clock = FakeClock::new();
+  let clock_fn = {
+    let clock = clock.clone();
+    move || clock.now()
+  };
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock_fn);
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -105,46 +159,37 @@ async fn open_error_contains_remaining_duration() {
   }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn cancel_during_half_open_records_failure() {
-  let cb = CircuitBreakerShared::new(1, Duration::from_millis(10));
+  let clock = FakeClock::new();
+  let clock_fn = {
+    let clock = clock.clone();
+    move || clock.now()
+  };
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
 
-  // Open に遷移させる
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
-  // リセットタイムアウトを待って HalfOpen に遷移させる
-  tokio::time::sleep(Duration::from_millis(20)).await;
+  clock.advance(Duration::from_millis(20));
 
-  // タイムアウトで操作を途中キャンセルする
-  let result = tokio::time::timeout(
-    Duration::from_millis(1),
-    cb.call(|| async {
-      // キャンセルされる長時間実行操作をシミュレートする
-      tokio::time::sleep(Duration::from_secs(60)).await;
+  tokio::select! {
+    biased;
+    _ = tokio::task::yield_now() => {},
+    _ = cb.call(|| async {
+      std::future::pending::<()>().await;
       Ok::<_, &str>(42)
-    }),
-  )
-  .await;
+    }) => unreachable!(),
+  }
 
-  // 外部タイムアウトが発火するべき
-  assert!(result.is_err(), "expected timeout");
-
-  // RAII ガードが失敗を記録し、Open に戻るべき
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 }
 
 /// Regression: Successful calls must not leak internal state.
-///
-/// Previously `core::mem::forget(guard)` was used to disarm the RAII guard,
-/// which leaked the `ArcShared` clone inside `CallGuard`. This test verifies
-/// that the circuit breaker can be dropped cleanly after many successful calls
-/// (no leaked references prevent deallocation).
 #[tokio::test]
 async fn successful_calls_do_not_leak_guard_resources() {
   let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
 
-  // 多数の成功呼び出しを実行 — ガードが毎回適切にドロップされるべき
   for _ in 0..100 {
     let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
     assert!(result.is_ok());
@@ -152,7 +197,6 @@ async fn successful_calls_do_not_leak_guard_resources() {
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 
-  // 成功と失敗を混ぜた追加呼び出しを実行
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.failure_count(), 1);
 

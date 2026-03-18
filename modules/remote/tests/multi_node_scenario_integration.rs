@@ -66,7 +66,7 @@ fn remote_path(system_name: &str, host: &str, port: u16, service_name: &str) -> 
   path
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> Result<()> {
   type SharedProvider = RemoteWatchHookShared<LoopbackActorRefProvider>;
   let config = RemotingExtensionConfig::default().with_auto_start(false);

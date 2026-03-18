@@ -41,7 +41,7 @@ tracing-subscriber = { version = "0.3.20", optional = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }

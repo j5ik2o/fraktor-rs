@@ -30,7 +30,7 @@ tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "net
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 anyhow = { workspace = true }
 
 [[test]]
