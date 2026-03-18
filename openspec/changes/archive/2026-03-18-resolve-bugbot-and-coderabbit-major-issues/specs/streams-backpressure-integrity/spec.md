@@ -2,7 +2,7 @@
 
 ### Requirement: `Source::create` は非同期 producer の速度差を許容する
 
-std streams API は `Source::create` の producer が非同期に値を流しても、producer が同期 polling より遅いという理由だけで失敗しないようにしなければならない。
+std streams API は `Source::create` の producer が非同期に値を流しても、producer が同期 polling より遅いという理由だけで失敗しないようにしなければならない。この API は非同期 producer の速度差を MUST 許容する。
 
 #### Scenario: 遅い producer でも idle budget 超過で失敗しない
 
@@ -11,7 +11,7 @@ std streams API は `Source::create` の producer が非同期に値を流して
 
 ### Requirement: source queue の backpressure は pending work と wake discipline を保持する
 
-source queue の実装は pending offer を accept または terminal reject されるまで保持し、wake notification は state transition によって進捗可能になった場合にだけ送らなければならない。
+source queue の実装は pending offer を accept または terminal reject されるまで保持し、wake notification は state transition によって進捗可能になった場合にだけ送らなければならない。この backpressure は pending work と wake discipline を MUST 保持する。
 
 #### Scenario: backpressure で pending offer を黙って捨てない
 
@@ -30,7 +30,7 @@ source queue の実装は pending offer を accept または terminal reject さ
 
 ### Requirement: async callback と timer の出力は途中の apply failure で失われない
 
-graph interpreter は async callback や timer から取り出した出力を、その後の stage apply が continue または complete で失敗した場合でも失ってはならない。
+graph interpreter は async callback や timer から取り出した出力を、その後の stage apply が continue または complete で失敗した場合でも失ってはならない。この出力は途中の apply failure でも MUST 保持される。
 
 #### Scenario: apply failure が continue でも取り出した出力を保持する
 
@@ -44,7 +44,7 @@ graph interpreter は async callback や timer から取り出した出力を、
 
 ### Requirement: actor-backed stage は公開 API の契約どおりに振る舞う
 
-actor-backed stream stage は、公開 API 名が示す delivery、acknowledgement、cancellation、terminal-state の契約をそのまま実装しなければならない。
+actor-backed stream stage は、公開 API 名が示す delivery、acknowledgement、cancellation、terminal-state の契約をそのまま実装しなければならない。公開 API の契約どおりに MUST 振る舞わなければならない。
 
 #### Scenario: `actor_ref` は要素を target actor へ転送する
 

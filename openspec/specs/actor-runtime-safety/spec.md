@@ -1,8 +1,11 @@
-## ADDED Requirements
+# actor-runtime-safety Specification
 
+## Purpose
+TBD - created by archiving change resolve-bugbot-and-coderabbit-major-issues. Update Purpose after archive.
+## Requirements
 ### Requirement: Mailbox 構築は policy と queue の不変条件を保持する
 
-actor runtime は `MailboxPolicy` と実際の `MessageQueue` の挙動が一致する経路だけで mailbox を構築し、bounded queue の操作は非同期化されていない time-of-check/time-of-use の隙間に依存してはならない。
+actor runtime は `MailboxPolicy` と実際の `MessageQueue` の挙動が一致する経路だけで mailbox を構築し、bounded queue の操作は非同期化されていない time-of-check/time-of-use の隙間に依存してはならない。この mailbox 構築は不変条件を MUST 保持する。
 
 #### Scenario: registry 経由 mailbox は解決済み policy を使う
 
@@ -21,7 +24,7 @@ actor runtime は `MailboxPolicy` と実際の `MessageQueue` の挙動が一致
 
 ### Requirement: typed actor の再起動は interceptor の正しさを保つ
 
-typed actor runtime は supervision 下で restart-safe を保ち、interceptor や deferred initialization から作られた behavior でも正しく再起動できなければならない。
+typed actor runtime は supervision 下で restart-safe を保ち、interceptor や deferred initialization から作られた behavior でも正しく再起動できなければならない。この再起動は interceptor の正しさを MUST 保持する。
 
 #### Scenario: restart 後に intercepted behavior が再生成される
 
@@ -35,7 +38,7 @@ typed actor runtime は supervision 下で restart-safe を保ち、interceptor 
 
 ### Requirement: stash の観測は runtime lock 下で user callback を実行しない
 
-typed stash buffer は caller が渡した predicate、equality check、iteration callback を実行する前に actor cell の内部 lock を解放しなければならない。
+typed stash buffer は caller が渡した predicate、equality check、iteration callback を実行する前に actor cell の内部 lock を解放しなければならない。runtime lock 下で user callback を実行してはならず、この観測は MUST lock-free callback evaluation を守る。
 
 #### Scenario: `contains` は snapshot 後に評価される
 
@@ -49,7 +52,7 @@ typed stash buffer は caller が渡した predicate、equality check、iteratio
 
 ### Requirement: router と registration の挙動は実際の runtime 契約と一致する
 
-actor runtime は、名前と効果が実際に提供する保証と一致する routing / registration behavior だけを公開しなければならない。
+actor runtime は、名前と効果が実際に提供する保証と一致する routing / registration behavior だけを公開しなければならない。公開挙動は実際の runtime 契約と MUST 一致しなければならない。
 
 #### Scenario: consistent hashing は stable affinity を提供する
 
@@ -65,3 +68,4 @@ actor runtime は、名前と効果が実際に提供する保証と一致する
 
 - **WHEN** props が registry-backed configuration を通じて blocking dispatcher を選択する
 - **THEN** selector と registry lookup は同じ dispatcher id と executor semantics を解決する
+

@@ -1,10 +1,15 @@
 {
   "version": 1,
   "skills": {
+    "readme-blueprint-generator": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "e2c7dabf2e455794260f1516e2ceda6a82dc92a409578cc184fcb0f45bddca54"
+    },
     "skill-forge": {
       "source": "j5ik2o/ai-tools",
       "sourceType": "github",
-      "computedHash": "e8a183c8bdb3b2d6dfb90fd4c696518dfdfd781424f31955ff16de1d1d447d24"
+      "computedHash": "6952ae52a11e093a7b447ebe4ab32551aacb4f7fd0597de0fd1d947df0a574f2"
     },
     "takt": {
       "source": "nrslib/takt",
