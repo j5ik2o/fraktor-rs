@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::{
   core::pattern::{CircuitBreakerCallError, CircuitBreakerState, Clock},
-  std::pattern::{CircuitBreakerShared, circuit_breaker_shared},
+  std::pattern::circuit_breaker_shared,
 };
 
 #[derive(Clone)]

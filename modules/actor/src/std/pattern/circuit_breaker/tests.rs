@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Instant};
 
 use crate::{
   core::pattern::{CircuitBreakerState, Clock},
-  std::pattern::{CircuitBreaker, circuit_breaker},
+  std::pattern::circuit_breaker,
 };
 
 #[derive(Clone)]
