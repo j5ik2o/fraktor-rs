@@ -138,7 +138,7 @@ impl<C: Clock> CircuitBreaker<C> {
   }
 
   /// Records a successful call, transitioning to **Closed** if in **HalfOpen**.
-  pub fn record_success(&mut self) {
+  pub const fn record_success(&mut self) {
     match self.state {
       | CircuitBreakerState::HalfOpen => {
         self.transition_to_closed();
