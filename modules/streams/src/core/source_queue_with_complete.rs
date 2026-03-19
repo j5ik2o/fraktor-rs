@@ -335,15 +335,15 @@ impl<T> SourceQueueWithComplete<T> {
         }
         value
       };
-      let drained = value.is_none() && guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
+      let drained = guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
       (value, drained)
     };
     if drained {
       self.completion.complete(Ok(StreamDone::new()));
-      return Ok(None);
     }
     match value {
       | Some(v) => Ok(Some(v)),
+      | None if drained => Ok(None),
       | None => Err(StreamError::WouldBlock),
     }
   }
