@@ -13,8 +13,8 @@ initial_movement: plan
 instructions:
   plan: ../facets/instructions/cc-sdd-impl-plan.md
   implement: ../facets/instructions/cc-sdd-impl-execute.md
-  loop-monitor-plan-implement-batch: ../facets/instructions/loop-monitor-plan-implement-batch.md
-  loop-monitor-ai-review-fix: ../facets/instructions/loop-monitor-ai-review-fix.md
+  batch-plan-implement-loop-judge: ../facets/instructions/batch-plan-implement-loop-judge.md
+  ai-review-fix-loop-judge: ../facets/instructions/ai-review-fix-loop-judge.md
 
 # --- ループ監視 ---
 loop_monitors:
@@ -24,7 +24,7 @@ loop_monitors:
     threshold: 5
     judge:
       persona: supervisor
-      instruction: loop-monitor-plan-implement-batch
+      instruction: batch-plan-implement-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: plan
@@ -37,7 +37,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-ai-review-fix
+      instruction: ai-review-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: ai_review

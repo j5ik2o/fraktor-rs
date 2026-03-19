@@ -30,9 +30,9 @@ instructions:
   fix-impl: ../facets/instructions/cc-sdd-fix-impl.md
   plan: ../facets/instructions/cc-sdd-impl-plan.md
   implement: ../facets/instructions/cc-sdd-impl-execute.md
-  loop-monitor-plan-implement-batch: ../facets/instructions/loop-monitor-plan-implement-batch.md
-  loop-monitor-ai-review-fix: ../facets/instructions/loop-monitor-ai-review-fix.md
-  loop-monitor-validate-fix-impl-short: ../facets/instructions/loop-monitor-validate-fix-impl-short.md
+  batch-plan-implement-loop-judge: ../facets/instructions/batch-plan-implement-loop-judge.md
+  ai-review-fix-loop-judge: ../facets/instructions/ai-review-fix-loop-judge.md
+  cc-sdd-full-validate-impl-fix-loop-judge: ../facets/instructions/cc-sdd-full-validate-impl-fix-loop-judge.md
 
 knowledge:
   cc-sdd-design-discovery: ../facets/knowledge/cc-sdd-design-discovery.md
@@ -54,7 +54,7 @@ loop_monitors:
     threshold: 5
     judge:
       persona: supervisor
-      instruction: loop-monitor-plan-implement-batch
+      instruction: batch-plan-implement-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: plan
@@ -67,7 +67,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-ai-review-fix
+      instruction: ai-review-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: ai_review
@@ -80,7 +80,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-validate-fix-impl-short
+      instruction: cc-sdd-full-validate-impl-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: validate-impl

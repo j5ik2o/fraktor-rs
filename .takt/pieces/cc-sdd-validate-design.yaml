@@ -16,7 +16,7 @@ policies:
 instructions:
   validate-design: ../facets/instructions/cc-sdd-validate-design.md
   fix-design: ../facets/instructions/cc-sdd-fix-design.md
-  loop-monitor-design-review-fix: ../facets/instructions/loop-monitor-design-review-fix.md
+  cc-sdd-design-review-fix-loop-judge: ../facets/instructions/cc-sdd-design-review-fix-loop-judge.md
 
 knowledge:
   cc-sdd-design-discovery: ../facets/knowledge/cc-sdd-design-discovery.md
@@ -32,7 +32,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-design-review-fix
+      instruction: cc-sdd-design-review-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: validate-design
