@@ -341,6 +341,9 @@ impl<T> SourceQueueWithComplete<T> {
     if drained {
       self.completion.complete(Ok(StreamDone::new()));
     }
+    // NOTE: capacity > 0 で values が空のとき、pending offers を values に移動した後でも
+    // value は None のまま WouldBlock を返す。これは元の poll() と同じ挙動であり、
+    // 呼び出し側は次の pull で移動済みの値を取得する。即時返却への変更は今回のスコープ外。
     match value {
       | Some(v) => Ok(Some(v)),
       | None if drained => Ok(None),

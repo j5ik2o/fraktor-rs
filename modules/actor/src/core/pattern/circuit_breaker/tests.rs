@@ -1,3 +1,7 @@
+// NOTE: FakeClock / FakeInstant は circuit_breaker/tests.rs, circuit_breaker_shared/tests.rs,
+// および std 側の同名テストファイルに重複して定義されている。
+// テスト専用ユーティリティへの共通化は別タスクとして実施する（今回のスコープ外）。
+
 use core::{
   sync::atomic::{AtomicU64, Ordering},
   time::Duration,
