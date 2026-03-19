@@ -923,9 +923,8 @@ fn source_create_propagates_queue_failure_from_producer() {
   .expect("create");
 
   // producer スレッドの起動と fail() 反映にはタイミング依存がある。
-  // collect_values が WouldBlock を返した場合、producer スレッドの fail が
-  // まだ反映されていないことを意味する。Failed と WouldBlock の両方を
-  // 正しい伝播として受け入れる。
+  // poll_or_drain により TOCTOU レースは排除されているが、producer スレッドの
+  // fail がまだ反映されていない場合は WouldBlock になる。
   let result = source.collect_values();
   assert!(
     matches!(result, Err(StreamError::Failed) | Err(StreamError::WouldBlock)),

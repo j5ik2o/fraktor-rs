@@ -120,9 +120,23 @@ impl<T> SourceQueue<T> {
     Ok(guard.values.pop_front())
   }
 
+  /// Polls the next value, returning `Ok(None)` only when the queue is drained
+  /// within a single lock acquisition. Avoids TOCTOU races.
+  pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
+    let mut guard = self.inner.lock();
+    if let Some(error) = &guard.failure {
+      return Err(error.clone());
+    }
+    match guard.values.pop_front() {
+      | Some(value) => Ok(Some(value)),
+      | None if guard.closed => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
   /// Returns `true` when the queue is closed and all queued elements were consumed.
   #[must_use]
-  pub(crate) fn is_drained(&self) -> bool {
+  pub fn is_drained(&self) -> bool {
     let guard = self.inner.lock();
     guard.closed && guard.values.is_empty()
   }

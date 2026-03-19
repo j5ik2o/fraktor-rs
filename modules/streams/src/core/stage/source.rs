@@ -2082,10 +2082,9 @@ where
   Out: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    match self.queue.poll()? {
+    match self.queue.poll_or_drain()? {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None if self.queue.is_drained() => Ok(None),
-      | None => Err(StreamError::WouldBlock),
+      | None => Ok(None),
     }
   }
 
@@ -2100,10 +2099,9 @@ where
   Out: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    match self.queue.poll()? {
+    match self.queue.poll_or_drain()? {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None if self.queue.is_drained() => Ok(None),
-      | None => Err(StreamError::WouldBlock),
+      | None => Ok(None),
     }
   }
 
@@ -2118,10 +2116,9 @@ where
   Out: Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    match self.queue.poll()? {
+    match self.queue.poll_or_drain()? {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None if self.queue.is_drained() => Ok(None),
-      | None => Err(StreamError::WouldBlock),
+      | None => Ok(None),
     }
   }
 

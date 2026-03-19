@@ -269,7 +269,8 @@ impl<T> SourceQueueWithComplete<T> {
     self.len() == 0
   }
 
-  pub(crate) fn poll(&self) -> Result<Option<T>, StreamError> {
+  /// Polls the next queued element.
+  pub fn poll(&self) -> Result<Option<T>, StreamError> {
     let (value, drained) = {
       let mut guard = self.inner.lock();
       if let Some(error) = &guard.failure {
@@ -303,8 +304,23 @@ impl<T> SourceQueueWithComplete<T> {
     Ok(value)
   }
 
+  /// Polls the next value, returning `Ok(None)` only when the queue is drained
+  /// within a single lock acquisition. Avoids TOCTOU races between `poll()`
+  /// and `is_drained()`.
+  pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
+    match self.poll()? {
+      | Some(value) => Ok(Some(value)),
+      | None if self.is_drained() => {
+        self.completion.complete(Ok(StreamDone::new()));
+        Ok(None)
+      },
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  /// Returns `true` when the queue is closed and all queued elements were consumed.
   #[must_use]
-  pub(crate) fn is_drained(&self) -> bool {
+  pub fn is_drained(&self) -> bool {
     let guard = self.inner.lock();
     guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty()
   }
