@@ -658,7 +658,7 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_streams_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
   ///   .group_by(2, |value: &u32| value % 2)
@@ -667,7 +667,7 @@ where
   /// ```
   ///
   /// ```compile_fail
-  /// use fraktor_streams_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
   ///   .group_by(2, |value: &u32| value % 2)

@@ -46,7 +46,7 @@ Source, Flow, Sink, BidiFlow, FlowWithContext, SourceWithContext, SubFlow, Runna
 
 実装済み: `empty`, `fromOption`, `fromIterator`, `from`, `fromArray`, `single`, `failed`, `never`, `repeat`, `cycle`, `iterate`, `range`, `tick`, `unfold`, `unfoldAsync`, `unfoldResource`, `unfoldResourceAsync`, `future`, `futureSource`, `completionStage`, `completionStageSource`, `lazyFuture`, `lazyFutureSource`, `lazyCompletionStage`, `lazyCompletionStageSource`, `lazySingle`, `lazySource`, `maybe`, `queue`, `queueWithOverflow`, `queueUnbounded`, `fromMaterializer`, `fromPublisher`, `combine`, `combineMat`, `zipN`, `zipWithN`, `create`
 
-`Source.create` は [source.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/streams/src/std/source.rs) に std 層実装として存在する。
+`Source.create` は [source.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/stream/src/std/source.rs) に std 層実装として存在する。
 
 ---
 
@@ -74,8 +74,8 @@ Source, Flow, Sink, BidiFlow, FlowWithContext, SourceWithContext, SubFlow, Runna
 実装済み: `ignore`, `foreach`, `foreachAsync`, `cancelled`, `none`, `onComplete`, `fromSubscriber`, `futureSink`, `lazySink`, `lazyFutureSink`, `lazyCompletionStageSink`, `collect`, `collection`, `seq`, `javaCollector`, `takeLast`, `toPath`, `count`, `exists`, `forall`, `headOption`, `lastOption`, `queue`, `fold`, `foldWhile`, `head`, `last`, `reduce`, `fromGraph`, `fromMaterializer`, `source`, `asPublisher`, `preMaterialize`
 
 別名で実装済み:
-- `Sink.actorRef` → [actor_sink.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/streams/src/core/stage/actor_sink.rs) の `ActorSink::actor_ref`
-- `Sink.actorRefWithBackpressure` → [actor_sink.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/streams/src/core/stage/actor_sink.rs) の `ActorSink::actor_ref_with_backpressure`
+- `Sink.actorRef` → [actor_sink.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/stream/src/core/stage/actor_sink.rs) の `ActorSink::actor_ref`
+- `Sink.actorRefWithBackpressure` → [actor_sink.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/stream/src/core/stage/actor_sink.rs) の `ActorSink::actor_ref_with_backpressure`
 
 ---
 

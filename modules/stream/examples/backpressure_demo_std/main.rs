@@ -1,6 +1,6 @@
 //! Backpressure-oriented buffer demo with bounded capacity and overflow handling.
 
-use fraktor_streams_rs::core::{StreamBuffer, StreamBufferConfig, StreamError};
+use fraktor_stream_rs::core::{StreamBuffer, StreamBufferConfig, StreamError};
 use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
 
 fn main() {

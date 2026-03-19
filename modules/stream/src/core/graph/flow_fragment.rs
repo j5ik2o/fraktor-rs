@@ -11,7 +11,7 @@ mod tests;
 /// Arbitrary `GraphDSL.Builder`-style port wiring is intentionally not exposed.
 ///
 /// ```compile_fail
-/// use fraktor_streams_rs::core::{
+/// use fraktor_stream_rs::core::{
 ///   StreamNotUsed,
 ///   graph::FlowFragment,
 ///   stage::flow::Flow,

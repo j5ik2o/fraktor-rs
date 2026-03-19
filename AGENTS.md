@@ -909,7 +909,7 @@ use crate::std::dispatch::TokioMailbox;  // 禁止
 | cluster | `modules/cluster/` |
 | persistence | `modules/persistence/` |
 | remote | `modules/remote/` |
-| streams | `modules/streams/` |
+| stream | `modules/stream/` |
 | utils | `modules/utils/` |
 
 

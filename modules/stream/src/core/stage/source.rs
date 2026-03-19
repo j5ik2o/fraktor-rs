@@ -1283,7 +1283,7 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_streams_rs::core::stage::Source;
+  /// use fraktor_stream_rs::core::stage::Source;
   ///
   /// let _ = Source::single(1_u32)
   ///   .group_by(2, |value: &u32| value % 2)
@@ -1292,7 +1292,7 @@ where
   /// ```
   ///
   /// ```compile_fail
-  /// use fraktor_streams_rs::core::stage::Source;
+  /// use fraktor_stream_rs::core::stage::Source;
   ///
   /// let _ = Source::single(1_u32)
   ///   .group_by(2, |value: &u32| value % 2)

@@ -937,9 +937,9 @@ run_no_std() {
     "no-std-host-utils" \
     check -p fraktor-utils-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features" \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --no-default-features" \
     "no-std-host-core" \
-    check -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --no-default-features
+    check -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
@@ -951,9 +951,9 @@ run_no_std() {
       "no-std-thumb-utils" \
       check -p fraktor-utils-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc
     start_parallel_cargo \
-      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target ${thumb_target}" \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-stream-rs --no-default-features --target ${thumb_target}" \
       "no-std-thumb-core" \
-      check -p fraktor-actor-rs -p fraktor-streams-rs --no-default-features --target "${thumb_target}"
+      check -p fraktor-actor-rs -p fraktor-stream-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
   fi
 }
@@ -966,9 +966,9 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --lib -F fraktor-stream-rs/std" \
     "std-core" \
-    test -p fraktor-actor-rs -p fraktor-streams-rs -p fraktor-rs --lib -F fraktor-streams-rs/std
+    test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --lib -F fraktor-stream-rs/std
   wait_parallel_cargo || return 1
 }
 
@@ -1051,7 +1051,7 @@ check_unit_sleep() {
   fi
   local -a scan_dirs=(
     modules/actor/src/
-    modules/streams/src/
+    modules/stream/src/
     modules/remote/src/
     modules/cluster/src/
   )

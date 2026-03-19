@@ -3,7 +3,7 @@
 //! Reusable flow fragments intentionally exclude `GraphDSL.Builder`-style arbitrary port wiring.
 //!
 //! ```compile_fail
-//! use fraktor_streams_rs::core::graph::{FlowFragment, GraphDslBuilder};
+//! use fraktor_stream_rs::core::graph::{FlowFragment, GraphDslBuilder};
 //!
 //! let _builder: GraphDslBuilder<u32, u32, ()>;
 //! let _ = FlowFragment::from_flow;
