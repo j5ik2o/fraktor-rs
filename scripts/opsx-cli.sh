@@ -82,8 +82,15 @@ die() {
   exit 1
 }
 
+validate_change_name() {
+  local name="$1"
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
+    die "Invalid change name: '${name}' (must be kebab-case: lowercase letters, digits, hyphens)"
+}
+
 change_dir() {
   local name="$1"
+  validate_change_name "$name"
   echo "${OPENSPEC_DIR}/changes/${name}"
 }
 
@@ -195,7 +202,7 @@ cmd_status() {
   local cdir
   cdir=$(change_dir "$name")
 
-  if [[ ! -d "$cdir" ]]; then
+  if [[ ! -d "$cdir" ]] || [[ ! -f "${cdir}/.openspec.yaml" ]]; then
     die "Change '${name}' not found at ${cdir}"
   fi
 
@@ -267,7 +274,7 @@ cmd_instructions() {
   local cdir
   cdir=$(change_dir "$name")
 
-  if [[ ! -d "$cdir" ]]; then
+  if [[ ! -d "$cdir" ]] || [[ ! -f "${cdir}/.openspec.yaml" ]]; then
     die "Change '${name}' not found at ${cdir}"
   fi
 
@@ -399,7 +406,7 @@ cmd_instructions_apply() {
       local first=true
       while IFS= read -r line; do
         local task_status="pending"
-        if [[ "$line" == *"[x]"* ]]; then
+        if [[ "$line" == "- [x]"* ]]; then
           task_status="done"
         fi
         local task_text
