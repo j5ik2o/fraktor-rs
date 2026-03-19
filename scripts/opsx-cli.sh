@@ -14,7 +14,7 @@ SCHEMA_NAME="spec-driven"
 ARTIFACT_IDS=("proposal" "design" "tasks")
 ARTIFACT_FILES=("proposal.md" "design.md" "tasks.md")
 ARTIFACT_DEPS=("" "proposal" "design")
-APPLY_REQUIRES=("tasks")
+APPLY_REQUIRES=("proposal" "design" "tasks")
 
 # ──────────────────────────────────────────────
 # Built-in templates
@@ -86,6 +86,8 @@ validate_change_name() {
   local name="$1"
   [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || \
     die "Invalid change name: '${name}' (must be kebab-case: lowercase letters, digits, hyphens)"
+  [[ "$name" != "archive" ]] || \
+    die "Invalid change name: '${name}' ('archive' is reserved)"
 }
 
 change_dir() {
@@ -188,9 +190,9 @@ cmd_new_change() {
 
   # Write .openspec.yaml
   cat > "${cdir}/.openspec.yaml" <<YAML
-schema: ${SCHEMA_NAME}
-name: ${name}
-createdAt: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+schema: "${SCHEMA_NAME}"
+name: "${name}"
+createdAt: "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 YAML
 
   echo "Created change '${name}' at ${cdir}/"
