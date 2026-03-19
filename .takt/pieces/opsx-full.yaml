@@ -19,9 +19,9 @@ instructions:
   plan: ../facets/instructions/opsx-apply-plan.md
   implement: ../facets/instructions/opsx-apply-execute.md
   archive: ../facets/instructions/opsx-archive.md
-  loop-monitor-plan-implement-batch: ../facets/instructions/loop-monitor-plan-implement-batch.md
-  loop-monitor-ai-review-fix: ../facets/instructions/loop-monitor-ai-review-fix.md
-  loop-monitor-reviewers-fix: ../facets/instructions/loop-monitor-reviewers-fix.md
+  batch-plan-implement-loop-judge: ../facets/instructions/batch-plan-implement-loop-judge.md
+  ai-review-fix-loop-judge: ../facets/instructions/ai-review-fix-loop-judge.md
+  opsx-review-fix-loop-judge: ../facets/instructions/opsx-review-fix-loop-judge.md
 
 report_formats:
   opsx-propose-summary: ../facets/output-contracts/opsx-propose-summary.md
@@ -37,7 +37,7 @@ loop_monitors:
     threshold: 5
     judge:
       persona: supervisor
-      instruction: loop-monitor-plan-implement-batch
+      instruction: batch-plan-implement-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: plan
@@ -50,7 +50,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-ai-review-fix
+      instruction: ai-review-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: ai_review
@@ -63,7 +63,7 @@ loop_monitors:
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-reviewers-fix
+      instruction: opsx-review-fix-loop-judge
       rules:
         - condition: 健全（進捗あり）
           next: reviewers
