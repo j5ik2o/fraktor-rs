@@ -27,12 +27,12 @@ mod tests;
 /// * **HalfOpen → Closed** — when a probe call succeeds.
 /// * **HalfOpen → Open** — when a probe call fails.
 pub struct CircuitBreaker<C: Clock> {
-  max_failures:        u32,
-  reset_timeout:       Duration,
-  state:               CircuitBreakerState,
-  failure_count:       u32,
-  opened_at: Option<C::Instant>,
-  clock:     C,
+  max_failures:  u32,
+  reset_timeout: Duration,
+  state:         CircuitBreakerState,
+  failure_count: u32,
+  opened_at:     Option<C::Instant>,
+  clock:         C,
 }
 
 impl<C: Clock> fmt::Debug for CircuitBreaker<C> {
@@ -61,14 +61,7 @@ impl<C: Clock> CircuitBreaker<C> {
   #[must_use]
   pub fn new_with_clock(max_failures: u32, reset_timeout: Duration, clock: C) -> Self {
     assert!(max_failures > 0, "max_failures must be greater than zero");
-    Self {
-      max_failures,
-      reset_timeout,
-      clock,
-      state: CircuitBreakerState::Closed,
-      failure_count: 0,
-      opened_at: None,
-    }
+    Self { max_failures, reset_timeout, clock, state: CircuitBreakerState::Closed, failure_count: 0, opened_at: None }
   }
 
   /// Returns the current state of the circuit breaker.
