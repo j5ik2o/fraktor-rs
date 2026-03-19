@@ -1,4 +1,4 @@
-use fraktor_streams_rs::core::{
+use fraktor_stream_rs::core::{
   StreamError,
   hub::{BroadcastHub, MergeHub, PartitionHub},
   lifecycle::{SharedKillSwitch, UniqueKillSwitch},

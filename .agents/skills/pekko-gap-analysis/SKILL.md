@@ -36,7 +36,7 @@ core 内部の untyped kernel / typed ラッパーの区別を正確に反映す
 |-------|------------|
 | `pekko-actor/classic` (untyped) | `modules/actor/src/core/actor/` (untyped kernel) |
 | `pekko-actor-typed` | `modules/actor/src/core/typed/` (typed ラッパー) |
-| `pekko-stream` | `modules/streams/src/core/` |
+| `pekko-stream` | `modules/stream/src/core/` |
 | ランタイム固有実装 | `modules/{name}/src/std/` |
 
 **注意**: すべてのモジュールが `typed/` サブ層を持つわけではない。

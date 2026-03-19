@@ -306,7 +306,7 @@ cargo run -p fraktor-actor-rs --example supervision_std --features std
 | **Remoting** | `modules/remote/examples/loopback_quickstart` - プロセス間通信 |
 | **Cluster** | `modules/cluster/examples/quickstart` - 複数ノードのクラスタリング |
 | **Persistence** | `modules/persistence/examples/persistent_counter_no_std` - イベントソーシング |
-| **Streams** | `modules/streams/examples/actor_system_basic_std` - ストリーム処理 |
+| **Streams** | `modules/stream/examples/actor_system_basic_std` - ストリーム処理 |
 
 ### 関連ガイド
 

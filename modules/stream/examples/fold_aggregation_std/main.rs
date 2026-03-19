@@ -3,7 +3,7 @@
 #[path = "../std_materializer_support.rs"]
 mod std_materializer_support;
 
-use fraktor_streams_rs::core::{
+use fraktor_stream_rs::core::{
   KeepRight,
   stage::{Sink, Source},
 };

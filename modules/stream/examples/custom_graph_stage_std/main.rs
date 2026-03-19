@@ -1,6 +1,6 @@
 //! Custom `GraphStage` example that runs stage logic against a lightweight local context.
 
-use fraktor_streams_rs::core::{
+use fraktor_stream_rs::core::{
   StreamError, StreamNotUsed,
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},

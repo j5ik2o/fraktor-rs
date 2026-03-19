@@ -12,7 +12,7 @@
 
 > See [README.ja.md](README.ja.md) for the Japanese edition.
 
-fraktor-rs is an actor runtime that mirrors [Pekko](https://github.com/apache/pekko) and [protoactor-go](https://github.com/asynkron/protoactor-go) semantics across `no_std` boards and host environments such as Tokio. The workspace ships five crates—`fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, and `fraktor-streams-rs`—each exposing `core` (#![no_std]) and `std` modules behind features instead of maintaining legacy `*-core` / `*-std` sibling crates.
+fraktor-rs is an actor runtime that mirrors [Pekko](https://github.com/apache/pekko) and [protoactor-go](https://github.com/asynkron/protoactor-go) semantics across `no_std` boards and host environments such as Tokio. The workspace ships five crates—`fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, and `fraktor-stream-rs`—each exposing `core` (#![no_std]) and `std` modules behind features instead of maintaining legacy `*-core` / `*-std` sibling crates.
 
 ## Key Capabilities
 - **Lifecycle-first ActorSystem** – `modules/actor/src/core/lifecycle/*` and `system/*` prioritize `SystemMessage::{Create,Recreate,Failure}` in the system mailbox, combine deterministic SupervisorStrategy flows, and surface DeathWatch decisions immediately through the guardian hierarchy.
@@ -21,7 +21,7 @@ fraktor-rs is an actor runtime that mirrors [Pekko](https://github.com/apache/pe
 - **Remoting stack** – `fraktor-remote-rs::core` adds `RemoteActorRefProvider`, `RemoteWatcherDaemon`, `EndpointManager`, deferred envelopes, flight recorder buffers, and quarantine tracking so actor trees can extend across nodes without leaking Pekko compatibility rules.
 - **Transport adapters & failure detection** – Loopback routing ships in `core::loopback_router` while `std::transport::tokio_tcp` provides handshake, backpressure, and `failure_detector` hooks for TCP environments; adapters are pluggable through `transport::factory`.
 - **Cluster extension** – `fraktor-cluster-rs` provides protoactor-go compatible cluster primitives including identity lookup, placement strategies, membership gossip, and topology management for distributed actor systems with optional AWS ECS integration.
-- **Streams processing** – `fraktor-streams-rs` offers stream processing primitives built on top of the actor system, enabling reactive data flow patterns in both `no_std` and `std` environments.
+- **Streams processing** – `fraktor-stream-rs` offers stream processing primitives built on top of the actor system, enabling reactive data flow patterns in both `no_std` and `std` environments.
 - **Toolbox & allocator-agnostic primitives** – `fraktor-utils-rs` delivers `RuntimeToolbox`, portable atomics, spin-based mutexes, timers, and Arc replacements so the upper layers stay interrupt-safe on `thumbv6/v8` MCUs yet reuse the same API on hosts.
 
 ## Architecture
@@ -43,7 +43,7 @@ flowchart LR
         CC[core]
         CS[std + aws-ecs]
     end
-    subgraph Streams [fraktor-streams-rs]
+    subgraph Streams [fraktor-stream-rs]
         SC[core]
         SS[std]
     end
@@ -58,7 +58,7 @@ flowchart LR
     AS --> SS
 ```
 
-Each crate exports the same API surface across `core` and `std`: `core` stays allocator-agnostic for embedded builds, `std` layers Tokio/logging adapters. `fraktor-remote-rs` composes actor/utils to provide remoting extensions, `fraktor-cluster-rs` builds on remote for distributed clustering, and `fraktor-streams-rs` provides reactive stream processing on top of the actor system.
+Each crate exports the same API surface across `core` and `std`: `core` stays allocator-agnostic for embedded builds, `std` layers Tokio/logging adapters. `fraktor-remote-rs` composes actor/utils to provide remoting extensions, `fraktor-cluster-rs` builds on remote for distributed clustering, and `fraktor-stream-rs` provides reactive stream processing on top of the actor system.
 
 ## Getting Started
 1. **Install prerequisites**
@@ -86,7 +86,7 @@ Each crate exports the same API surface across `core` and `std`: `core` stays al
 | `modules/actor/` | `fraktor-actor-rs`: ActorSystem, mailboxes, supervision, typed APIs, scheduler/tick driver, EventStream, and Pekko-compatible ActorPath handling. |
 | `modules/remote/` | `fraktor-remote-rs`: remoting extension, remote actor ref provider, endpoint managers/readers/writers, remote watcher daemon, loopback + Tokio TCP transport. |
 | `modules/cluster/` | `fraktor-cluster-rs`: protoactor-go compatible cluster primitives including identity lookup, placement strategies, membership gossip, topology management, and AWS ECS integration. |
-| `modules/streams/` | `fraktor-streams-rs`: stream processing primitives built on the actor system for reactive data flow patterns. |
+| `modules/streams/` | `fraktor-stream-rs`: stream processing primitives built on the actor system for reactive data flow patterns. |
 | `modules/*/examples/` | Feature-complete samples (no_std ping-pong, Tokio supervisors, remoting loopback/tcp quickstarts, cluster membership gossip). |
 | `docs/guides/` | Operational guides such as actor-system bootstrapping, DeathWatch migration, and tick-driver quickstarts. |
 | `.kiro/steering/` | Project-wide steering policies (architecture, tech, structure) enforced by custom dylint rules. |
