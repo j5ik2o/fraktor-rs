@@ -812,7 +812,7 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
@@ -923,9 +923,8 @@ fn source_create_propagates_queue_failure_from_producer() {
   .expect("create");
 
   // producer スレッドの起動と fail() 反映にはタイミング依存がある。
-  // collect_values が WouldBlock を返した場合、producer スレッドの fail が
-  // まだ反映されていないことを意味する。Failed と WouldBlock の両方を
-  // 正しい伝播として受け入れる。
+  // poll_or_drain により TOCTOU レースは排除されているが、producer スレッドの
+  // fail がまだ反映されていない場合は WouldBlock になる。
   let result = source.collect_values();
   assert!(
     matches!(result, Err(StreamError::Failed) | Err(StreamError::WouldBlock)),

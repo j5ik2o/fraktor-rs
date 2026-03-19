@@ -19,10 +19,7 @@ use fraktor_actor_rs::{
     system::ActorSystem,
   },
 };
-use fraktor_utils_rs::{
-  core::sync::{ArcShared, SharedAccess},
-  std::StdSyncMutex,
-};
+use fraktor_utils_rs::core::sync::SharedAccess;
 use tokio::runtime::Handle;
 
 // アクターに送信されるスケジュール済みメッセージ
@@ -67,11 +64,10 @@ impl Actor for GuardianActor {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let handle = Handle::current();
-  let dispatcher: DispatcherConfig =
-    DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle.clone())))));
+  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(Box::new(TokioExecutor::new(handle.clone())));
 
   let props = Props::from_fn(|| GuardianActor).with_dispatcher_config(dispatcher.into_core());
-  let system = ActorSystem::new(&props, TickDriverConfig::tokio_quickstart()).expect("system");
+  let system = ActorSystem::new_with_tick_driver(&props, TickDriverConfig::default_config()).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
 

@@ -26,7 +26,6 @@ use fraktor_actor_rs::{
     system::ActorSystem,
   },
 };
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
 use tokio::runtime::Handle;
 
 struct Start;
@@ -146,8 +145,7 @@ impl Actor for OverflowActor {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
   let handle = Handle::current();
-  let dispatcher: DispatcherConfig =
-    DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle)))));
+  let dispatcher: DispatcherConfig = DispatcherConfig::from_executor(Box::new(TokioExecutor::new(handle)));
 
   let props: Props = Props::from_fn({
     let dispatcher = dispatcher.clone();
@@ -155,8 +153,8 @@ async fn main() {
   })
   .with_dispatcher_config(dispatcher.clone().into_core());
 
-  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::tokio_quickstart();
-  let system = ActorSystem::new(&props, tick_driver).expect("actor system を初期化できること");
+  let tick_driver = fraktor_actor_rs::std::scheduler::tick::TickDriverConfig::default_config();
+  let system = ActorSystem::new_with_tick_driver(&props, tick_driver).expect("actor system を初期化できること");
 
   let logger: EventStreamSubscriberShared =
     subscriber_handle(StdLoggerAdapter::new(LogLevel::Info, Box::new(StdoutLogger)));

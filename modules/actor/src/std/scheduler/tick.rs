@@ -39,13 +39,28 @@ impl TickDriverConfig {
     Self::tokio_with_handle(handle, resolution)
   }
 
-  /// Creates a ready-to-use tick driver configuration for Tokio quickstart flows.
+  /// Creates a ready-to-use tick driver configuration with the default 10ms resolution.
+  ///
+  /// # Panics
+  ///
+  /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
+  #[deprecated(since = "0.3.0", note = "use TickDriverConfig::default_config() instead; will be removed in v0.4.0")]
   pub fn tokio_quickstart() -> CoreTickDriverConfig {
-    Self::tokio_quickstart_with_resolution(Duration::from_millis(10))
+    Self::default_config()
   }
 
-  /// Creates a Tokio quickstart configuration with custom resolution.
+  /// Creates a ready-to-use tick driver configuration with the default 10ms resolution.
+  ///
+  /// # Panics
+  ///
+  /// Panics if no Tokio runtime handle is available in the current context.
+  #[must_use]
+  pub fn default_config() -> CoreTickDriverConfig {
+    Self::with_resolution(Duration::from_millis(10))
+  }
+
+  /// Creates a Tokio tick driver configuration with custom resolution.
   ///
   /// This creates a complete tick driver setup including both the tick generator
   /// and the scheduler executor, similar to no_std hardware tick driver patterns.
@@ -54,7 +69,7 @@ impl TickDriverConfig {
   ///
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
-  pub fn tokio_quickstart_with_resolution(resolution: Duration) -> CoreTickDriverConfig {
+  pub fn with_resolution(resolution: Duration) -> CoreTickDriverConfig {
     use alloc::boxed::Box;
 
     use tokio::time::{MissedTickBehavior, interval};

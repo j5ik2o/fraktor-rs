@@ -1,17 +1,18 @@
 extern crate alloc;
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
+use fraktor_utils_rs::core::sync::ArcShared;
 #[cfg(feature = "tokio-executor")]
 use tokio::runtime::Handle;
 
+use super::StdScheduleAdapter;
 #[cfg(feature = "tokio-executor")]
 use super::dispatch_executor::TokioExecutor;
-use super::{DispatchExecutor, DispatchExecutorAdapter, StdScheduleAdapter};
 use crate::core::{
   dispatch::{
     dispatcher::{
-      DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, DispatcherShared, ScheduleAdapterShared,
+      DispatchExecutor, DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, DispatcherShared,
+      ScheduleAdapterShared,
     },
     mailbox::Mailbox,
   },
@@ -29,14 +30,31 @@ pub struct DispatcherConfig {
 
 impl DispatcherConfig {
   /// Creates a configuration from a scheduler implementation.
-  ///
-  /// The executor is wrapped in a `StdSyncMutex` for external synchronization.
   #[must_use]
-  pub fn from_executor(executor: ArcShared<StdSyncMutex<Box<dyn DispatchExecutor>>>) -> Self {
-    let executor_adapter = Box::new(DispatchExecutorAdapter::new(executor));
+  pub fn from_executor(executor: Box<dyn DispatchExecutor>) -> Self {
     let schedule_adapter = ScheduleAdapterShared::new(Box::new(StdScheduleAdapter::default()));
-    let inner = CoreDispatcherConfig::from_executor(executor_adapter).with_schedule_adapter(schedule_adapter);
+    let inner = CoreDispatcherConfig::from_executor(executor).with_schedule_adapter(schedule_adapter);
     Self { inner }
+  }
+
+  /// Creates a default configuration from the current Tokio runtime handle.
+  ///
+  /// Returns `None` when called outside a Tokio runtime context.
+  #[cfg(feature = "tokio-executor")]
+  #[must_use]
+  pub fn try_default_config() -> Option<Self> {
+    Handle::try_current().ok().map(|handle| Self::from_executor(Box::new(TokioExecutor::new(handle))))
+  }
+
+  /// Creates a default configuration from the current Tokio runtime handle.
+  ///
+  /// # Panics
+  ///
+  /// Panics when called outside a Tokio runtime context.
+  #[cfg(feature = "tokio-executor")]
+  #[must_use]
+  pub fn default_config() -> Self {
+    Self::try_default_config().expect("Tokio runtime handle unavailable")
   }
 
   /// Creates a configuration from the current Tokio runtime handle.
@@ -46,11 +64,9 @@ impl DispatcherConfig {
   /// Panics when called outside a Tokio runtime context.
   #[cfg(feature = "tokio-executor")]
   #[must_use]
+  #[deprecated(since = "0.3.0", note = "use DispatcherConfig::default_config() instead; will be removed in v0.4.0")]
   pub fn tokio_auto() -> Self {
-    let Ok(handle) = Handle::try_current() else {
-      panic!("Tokio runtime handle unavailable");
-    };
-    Self::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(TokioExecutor::new(handle)))))
+    Self::default_config()
   }
 
   /// Returns the configured scheduler runner.

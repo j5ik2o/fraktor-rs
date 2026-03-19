@@ -6,12 +6,11 @@ use core::{
 };
 use std::{sync::Arc, time::Instant};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_rs::core::sync::SharedAccess;
 
-use super::CircuitBreakerShared;
-use crate::std::pattern::{
-  circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
-  circuit_breaker_state::CircuitBreakerState,
+use crate::{
+  core::pattern::{CircuitBreakerCallError, CircuitBreakerState, Clock},
+  std::pattern::circuit_breaker_shared,
 };
 
 #[derive(Clone)]
@@ -25,41 +24,37 @@ impl FakeClock {
     Self { base: Instant::now(), offset_millis: Arc::new(AtomicU64::new(0)) }
   }
 
-  fn now(&self) -> Instant {
-    self.base + Duration::from_millis(self.offset_millis.load(Ordering::SeqCst))
-  }
-
   fn advance(&self, duration: Duration) {
     self.offset_millis.fetch_add(duration.as_millis() as u64, Ordering::SeqCst);
   }
 }
 
-impl CircuitBreakerShared {
-  fn new_with_clock(
-    max_failures: u32,
-    reset_timeout: Duration,
-    clock: impl Fn() -> Instant + Send + Sync + 'static,
-  ) -> Self {
-    Self {
-      inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))),
-    }
+impl Clock for FakeClock {
+  type Instant = Instant;
+
+  fn now(&self) -> Self::Instant {
+    self.base + Duration::from_millis(self.offset_millis.load(Ordering::SeqCst))
+  }
+
+  fn elapsed_since(&self, earlier: Self::Instant) -> Duration {
+    self.now().duration_since(earlier)
   }
 }
 
 #[test]
 fn new_starts_closed() {
-  let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
+  let cb = circuit_breaker_shared(3, Duration::from_millis(100));
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 }
 
 #[test]
 fn clone_shares_state() {
-  let cb1 = CircuitBreakerShared::new(3, Duration::from_millis(100));
+  let cb1 = circuit_breaker_shared(3, Duration::from_millis(100));
   let cb2 = cb1.clone();
 
   // cb1 を介した変更は cb2 から見える
-  fraktor_utils_rs::core::sync::SharedAccess::with_write(&cb1, |inner| {
+  SharedAccess::with_write(&cb1, |inner| {
     inner.record_failure();
   });
   assert_eq!(cb2.failure_count(), 1);
@@ -67,7 +62,7 @@ fn clone_shares_state() {
 
 #[tokio::test]
 async fn call_succeeds_in_closed() {
-  let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
+  let cb = circuit_breaker_shared(3, Duration::from_millis(100));
 
   let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
   match result {
@@ -79,7 +74,7 @@ async fn call_succeeds_in_closed() {
 
 #[tokio::test]
 async fn call_records_failure() {
-  let cb = CircuitBreakerShared::new(2, Duration::from_millis(100));
+  let cb = circuit_breaker_shared(2, Duration::from_millis(100));
 
   let result = cb.call(|| async { Err::<(), _>("oops") }).await;
   assert!(matches!(result, Err(CircuitBreakerCallError::Failed("oops"))));
@@ -88,7 +83,7 @@ async fn call_records_failure() {
 
 #[tokio::test]
 async fn call_trips_after_max_failures() {
-  let cb = CircuitBreakerShared::new(2, Duration::from_millis(100));
+  let cb = circuit_breaker_shared(2, Duration::from_millis(100));
 
   let _ = cb.call(|| async { Err::<(), _>("a") }).await;
   let _ = cb.call(|| async { Err::<(), _>("b") }).await;
@@ -98,14 +93,15 @@ async fn call_trips_after_max_failures() {
   assert!(matches!(result, Err(CircuitBreakerCallError::Open(_))));
 }
 
+// ---- FakeClock を使うテスト ----
+// FakeClock<Instant> は StdClock とは異なる Clock 実装のため、std の型エイリアス
+// `CircuitBreakerShared`（= CircuitBreakerShared<StdClock>）は使用できない。
+// core パスを直接参照するのは意図的であり、std 公開面の回帰は上記テストでカバーする。
+
 #[tokio::test]
 async fn call_recovers_after_reset_timeout() {
   let clock = FakeClock::new();
-  let clock_fn = {
-    let clock = clock.clone();
-    move || clock.now()
-  };
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
+  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
@@ -123,11 +119,7 @@ async fn call_recovers_after_reset_timeout() {
 #[tokio::test]
 async fn half_open_failure_reopens() {
   let clock = FakeClock::new();
-  let clock_fn = {
-    let clock = clock.clone();
-    move || clock.now()
-  };
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
+  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -141,11 +133,7 @@ async fn half_open_failure_reopens() {
 #[tokio::test]
 async fn open_error_contains_remaining_duration() {
   let clock = FakeClock::new();
-  let clock_fn = {
-    let clock = clock.clone();
-    move || clock.now()
-  };
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock_fn);
+  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -162,11 +150,7 @@ async fn open_error_contains_remaining_duration() {
 #[tokio::test(start_paused = true)]
 async fn cancel_during_half_open_records_failure() {
   let clock = FakeClock::new();
-  let clock_fn = {
-    let clock = clock.clone();
-    move || clock.now()
-  };
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock_fn);
+  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
@@ -188,7 +172,7 @@ async fn cancel_during_half_open_records_failure() {
 /// Regression: Successful calls must not leak internal state.
 #[tokio::test]
 async fn successful_calls_do_not_leak_guard_resources() {
-  let cb = CircuitBreakerShared::new(3, Duration::from_millis(100));
+  let cb = circuit_breaker_shared(3, Duration::from_millis(100));
 
   for _ in 0..100 {
     let result = cb.call(|| async { Ok::<_, &str>(1) }).await;

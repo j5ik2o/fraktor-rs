@@ -7,7 +7,10 @@ use core::{
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
-use crate::std::system::{CoordinatedShutdownError, CoordinatedShutdownPhase, CoordinatedShutdownReason};
+use crate::{
+  core::system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
+  std::system::CoordinatedShutdownError,
+};
 
 fn default_shutdown() -> CoordinatedShutdown {
   CoordinatedShutdown::with_default_phases().expect("default phases should be valid")

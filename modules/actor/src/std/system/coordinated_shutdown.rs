@@ -18,11 +18,11 @@ use std::collections::{HashMap, HashSet};
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
-use super::{
-  coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_phase::CoordinatedShutdownPhase,
-  coordinated_shutdown_reason::CoordinatedShutdownReason,
+use super::coordinated_shutdown_error::CoordinatedShutdownError;
+use crate::core::{
+  extension::Extension,
+  system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };
-use crate::core::extension::Extension;
 
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;

@@ -3,8 +3,6 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::String};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::{core::sync::ArcShared, std::StdSyncMutex};
-
 use super::{DispatcherConfig, dispatch_executor::ThreadedExecutor};
 
 #[cfg(test)]
@@ -58,7 +56,7 @@ impl PinnedDispatcher {
     let seq = PINNED_THREAD_COUNTER.fetch_add(1, Ordering::Relaxed);
     let name = format!("{}-{}", self.thread_name_prefix, seq);
     let executor = ThreadedExecutor::with_name(name);
-    DispatcherConfig::from_executor(ArcShared::new(StdSyncMutex::new(Box::new(executor))))
+    DispatcherConfig::from_executor(Box::new(executor))
   }
 }
 

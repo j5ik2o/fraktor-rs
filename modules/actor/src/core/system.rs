@@ -28,12 +28,17 @@ mod reservation_policy;
 pub mod state;
 mod temp_actors;
 
+mod coordinated_shutdown_phase;
+mod coordinated_shutdown_reason;
+
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use actor_system_config::ActorSystemConfig;
 pub use actor_system_weak::ActorSystemWeak;
 pub use base::ActorSystem;
+pub use coordinated_shutdown_phase::CoordinatedShutdownPhase;
+pub use coordinated_shutdown_reason::CoordinatedShutdownReason;
 pub use extended_actor_system::ExtendedActorSystem;
 pub use register_extension_error::RegisterExtensionError;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;

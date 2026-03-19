@@ -162,7 +162,15 @@ impl<T> BoundedSourceQueue<T> {
     guard.closed
   }
 
-  pub(crate) fn poll(&self) -> Result<Option<T>, StreamError> {
+  /// Polls the next queued element without checking drained status.
+  ///
+  /// Prefer [`poll_or_drain`](Self::poll_or_drain) when the caller needs
+  /// atomic poll + drained detection to avoid TOCTOU races.
+  ///
+  /// # Errors
+  ///
+  /// Returns the stored [`StreamError`] if the queue has been failed.
+  pub fn poll(&self) -> Result<Option<T>, StreamError> {
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
       return Err(error.clone());
@@ -170,7 +178,32 @@ impl<T> BoundedSourceQueue<T> {
     Ok(guard.values.pop_front())
   }
 
-  pub(crate) fn is_drained(&self) -> bool {
+  /// Polls the next value and checks drained status atomically.
+  ///
+  /// Returns:
+  /// - `Ok(Some(value))` — a value was available
+  /// - `Ok(None)` — the queue is drained (closed + empty); the stream is complete
+  /// - `Err(WouldBlock)` — the queue is empty but not yet closed; retry later
+  /// - `Err(error)` — the producer failed the queue
+  ///
+  /// Unlike calling `poll()` followed by `is_drained()`, this method performs
+  /// both checks under a single lock acquisition, avoiding TOCTOU races where
+  /// a concurrent producer thread sets `closed = true` between the two calls.
+  pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
+    let mut guard = self.inner.lock();
+    if let Some(error) = &guard.failure {
+      return Err(error.clone());
+    }
+    match guard.values.pop_front() {
+      | Some(value) => Ok(Some(value)),
+      | None if guard.closed => Ok(None),
+      | None => Err(StreamError::WouldBlock),
+    }
+  }
+
+  /// Returns `true` when the queue is closed and all queued elements were consumed.
+  #[must_use]
+  pub fn is_drained(&self) -> bool {
     let guard = self.inner.lock();
     guard.closed && guard.values.is_empty()
   }

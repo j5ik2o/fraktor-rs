@@ -57,10 +57,11 @@ where
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.start_producer_if_needed()?;
-    match self.queue.poll()? {
+    // poll_or_drain は 1 回のロック内で poll + drained チェックを行い、
+    // TOCTOU レースを防ぐ。
+    match self.queue.poll_or_drain()? {
       | Some(value) => Ok(Some(Box::new(value) as DynValue)),
-      | None if self.queue.is_drained() => Ok(None),
-      | None => Err(StreamError::WouldBlock),
+      | None => Ok(None),
     }
   }
 

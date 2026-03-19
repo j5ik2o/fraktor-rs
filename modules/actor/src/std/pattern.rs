@@ -1,27 +1,55 @@
 //! Pekko-inspired helper patterns for the standard toolbox.
 
-use core::{future::Future, time::Duration};
-
-use fraktor_utils_rs::core::timing::delay::DelayProvider;
-
-/// Inner circuit breaker state machine.
+/// Standard-library circuit breaker implementation.
 mod circuit_breaker;
-/// Error produced by a circuit-breaker-protected call.
-mod circuit_breaker_call_error;
-/// Error returned when a circuit breaker rejects a call.
-mod circuit_breaker_open_error;
-/// Thread-safe shared wrapper for the circuit breaker.
+/// Standard-library circuit breaker shared wrapper implementation.
 mod circuit_breaker_shared;
-/// Circuit breaker state representation.
-mod circuit_breaker_state;
-pub use circuit_breaker::CircuitBreaker;
-pub use circuit_breaker_call_error::CircuitBreakerCallError;
-pub use circuit_breaker_open_error::CircuitBreakerOpenError;
-pub use circuit_breaker_shared::CircuitBreakerShared;
-pub use circuit_breaker_state::CircuitBreakerState;
+/// Standard-library clock backed by `std::time::Instant`.
+mod std_clock;
 
 #[cfg(test)]
 mod tests;
+
+use core::{future::Future, time::Duration};
+
+use fraktor_utils_rs::core::timing::delay::DelayProvider;
+pub use std_clock::StdClock;
+
+/// Inner circuit breaker state machine using the standard clock.
+pub type CircuitBreaker = crate::core::pattern::CircuitBreaker<StdClock>;
+
+/// Thread-safe shared circuit breaker using the standard clock.
+pub type CircuitBreakerShared = crate::core::pattern::CircuitBreakerShared<StdClock>;
+
+/// Creates a new [`CircuitBreaker`] in the **Closed** state using the real
+/// system clock.
+///
+/// * `max_failures` — number of consecutive failures before the circuit trips. Must be greater than
+///   zero.
+/// * `reset_timeout` — how long to wait in the **Open** state before allowing a probe call.
+///
+/// # Panics
+///
+/// Panics if `max_failures` is zero.
+#[must_use]
+pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBreaker {
+  crate::core::pattern::CircuitBreaker::new_with_clock(max_failures, reset_timeout, StdClock)
+}
+
+/// Creates a new [`CircuitBreakerShared`] in the **Closed** state using the
+/// real system clock.
+///
+/// * `max_failures` — consecutive failure threshold before the circuit trips. Must be greater than
+///   zero.
+/// * `reset_timeout` — delay in the **Open** state before a probe call is allowed.
+///
+/// # Panics
+///
+/// Panics if `max_failures` is zero.
+#[must_use]
+pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> CircuitBreakerShared {
+  crate::core::pattern::CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)
+}
 
 /// Sends a request and arranges timeout completion on the returned ask future.
 ///

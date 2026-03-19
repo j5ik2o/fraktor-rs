@@ -28,7 +28,8 @@ use start_message::Start;
 fn main() {
   let props = Props::from_fn(|| GuardianActor).with_name("named-guardian");
   let (tick_driver, _pulse_handle) = std_tick_driver_support::hardware_tick_driver_config();
-  let system = ActorSystem::new(&props, tick_driver).expect("ユーザーガーディアンの起動に失敗しました");
+  let system =
+    ActorSystem::new_with_tick_driver(&props, tick_driver).expect("ユーザーガーディアンの起動に失敗しました");
 
   let lifecycle_subscriber: EventStreamSubscriberShared = subscriber_handle(LifecyclePrinter);
   let _subscription = system.subscribe_event_stream(&lifecycle_subscriber);
