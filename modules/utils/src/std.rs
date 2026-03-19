@@ -1,5 +1,3 @@
-/// Collection utilities for std environments.
-pub mod collections;
 /// Synchronization primitives built on top of `std::sync::Mutex`.
 mod sync_mutex;
 /// Guard returned by [`StdSyncMutex`](crate::StdSyncMutex).
