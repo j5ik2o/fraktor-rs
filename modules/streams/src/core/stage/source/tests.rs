@@ -812,7 +812,7 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   let sink_queue = &materialized.materialized().1;
   let mut values = Vec::new();
 
-  for _ in 0..scaled_attempts(64) {
+  for _ in 0..scaled_attempts(THREAD_SYNC_ATTEMPTS) {
     let _ = materialized.handle().drive();
     while let Some(value) = sink_queue.pull() {
       values.push(value);
