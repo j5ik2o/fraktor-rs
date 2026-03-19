@@ -71,6 +71,7 @@ json_escape() {
   s="${s//\\/\\\\}"
   s="${s//\"/\\\"}"
   s="${s//$'\t'/\\t}"
+  s="${s//$'\r'/\\r}"
   # Replace newlines with \n
   s="${s//$'\n'/\\n}"
   printf '%s' "$s"
@@ -238,8 +239,11 @@ cmd_status() {
     done
     apply_req_json="${apply_req_json}]"
 
+    local name_esc cdir_esc
+    name_esc=$(json_escape "$name")
+    cdir_esc=$(json_escape "$cdir")
     printf '{"schemaName":"%s","changeName":"%s","changePath":"%s","applyRequires":%s,"artifacts":[%s]}\n' \
-      "$SCHEMA_NAME" "$name" "$cdir" "$apply_req_json" "$artifacts_json"
+      "$SCHEMA_NAME" "$name_esc" "$cdir_esc" "$apply_req_json" "$artifacts_json"
   else
     # Human-readable
     echo "Change: ${name}"
@@ -399,7 +403,8 @@ cmd_instructions_apply() {
           task_status="done"
         fi
         local task_text
-        task_text=$(echo "$line" | sed 's/^- \[[ x]\] //')
+        task_text="${line#- \[ \] }"
+        task_text="${task_text#- \[x\] }"
         local t_esc
         t_esc=$(json_escape "$task_text")
         if [[ "$first" != "true" ]]; then task_list_json="${task_list_json},"; fi
@@ -529,7 +534,9 @@ main() {
       local name="" json_mode="false"
       while [[ $# -gt 0 ]]; do
         case "$1" in
-          --change) name="$2"; shift 2 ;;
+          --change)
+            [[ $# -ge 2 ]] || die "--change requires a value"
+            name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
         esac
@@ -548,7 +555,9 @@ main() {
       fi
       while [[ $# -gt 0 ]]; do
         case "$1" in
-          --change) name="$2"; shift 2 ;;
+          --change)
+            [[ $# -ge 2 ]] || die "--change requires a value"
+            name="$2"; shift 2 ;;
           --json) json_mode="true"; shift ;;
           *) die "Unknown option: $1" ;;
         esac
