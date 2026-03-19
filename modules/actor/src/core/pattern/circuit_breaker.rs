@@ -213,7 +213,7 @@ impl<C: Clock> CircuitBreaker<C> {
     self.half_open_attempted = false;
   }
 
-  fn transition_to_closed(&mut self) {
+  const fn transition_to_closed(&mut self) {
     self.state = CircuitBreakerState::Closed;
     self.failure_count = 0;
     self.opened_at = None;
