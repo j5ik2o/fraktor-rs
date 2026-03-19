@@ -31,9 +31,8 @@ pub struct CircuitBreaker<C: Clock> {
   reset_timeout:       Duration,
   state:               CircuitBreakerState,
   failure_count:       u32,
-  opened_at:           Option<C::Instant>,
-  half_open_attempted: bool,
-  clock:               C,
+  opened_at: Option<C::Instant>,
+  clock:     C,
 }
 
 impl<C: Clock> fmt::Debug for CircuitBreaker<C> {
@@ -43,7 +42,6 @@ impl<C: Clock> fmt::Debug for CircuitBreaker<C> {
       .field("reset_timeout", &self.reset_timeout)
       .field("state", &self.state)
       .field("failure_count", &self.failure_count)
-      .field("half_open_attempted", &self.half_open_attempted)
       .finish_non_exhaustive()
   }
 }
@@ -70,7 +68,6 @@ impl<C: Clock> CircuitBreaker<C> {
       state: CircuitBreakerState::Closed,
       failure_count: 0,
       opened_at: None,
-      half_open_attempted: false,
     }
   }
 
@@ -118,21 +115,17 @@ impl<C: Clock> CircuitBreaker<C> {
         if elapsed >= self.reset_timeout {
           // HalfOpen に遷移してプローブ呼び出しを許可する
           self.state = CircuitBreakerState::HalfOpen;
-          self.half_open_attempted = true;
           Ok(())
         } else {
           Err(CircuitBreakerOpenError::new(self.reset_timeout - elapsed))
         }
       },
       | CircuitBreakerState::HalfOpen => {
-        if self.half_open_attempted {
-          // プローブ呼び出しが既に進行中 — 拒否する
-          let remaining = self.remaining_in_open();
-          Err(CircuitBreakerOpenError::new(remaining))
-        } else {
-          self.half_open_attempted = true;
-          Ok(())
-        }
+        // HalfOpen には Open → HalfOpen 遷移でのみ到達し、その時点で
+        // half_open_attempted = true が設定済み。プローブは1回限りなので
+        // 後続の呼び出しはすべて拒否する。
+        let remaining = self.remaining_in_open();
+        Err(CircuitBreakerOpenError::new(remaining))
       },
     }
   }
@@ -210,14 +203,12 @@ impl<C: Clock> CircuitBreaker<C> {
   fn transition_to_open(&mut self) {
     self.state = CircuitBreakerState::Open;
     self.opened_at = Some(self.clock.now());
-    self.half_open_attempted = false;
   }
 
   const fn transition_to_closed(&mut self) {
     self.state = CircuitBreakerState::Closed;
     self.failure_count = 0;
     self.opened_at = None;
-    self.half_open_attempted = false;
   }
 
   fn opened_at_or_now(&self) -> C::Instant {
