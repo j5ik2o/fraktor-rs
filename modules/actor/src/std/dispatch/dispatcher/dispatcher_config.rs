@@ -39,8 +39,6 @@ impl DispatcherConfig {
 
   /// Creates a default configuration from the current Tokio runtime handle.
   ///
-  /// # Errors
-  ///
   /// Returns `None` when called outside a Tokio runtime context.
   #[cfg(feature = "tokio-executor")]
   #[must_use]
@@ -66,7 +64,7 @@ impl DispatcherConfig {
   /// Panics when called outside a Tokio runtime context.
   #[cfg(feature = "tokio-executor")]
   #[must_use]
-  #[deprecated(note = "use DispatcherConfig::default_config() instead")]
+  #[deprecated(since = "0.3.0", note = "use DispatcherConfig::default_config() instead; will be removed in v0.4.0")]
   pub fn tokio_auto() -> Self {
     Self::default_config()
   }

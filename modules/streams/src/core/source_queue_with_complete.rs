@@ -308,16 +308,42 @@ impl<T> SourceQueueWithComplete<T> {
     Ok(value)
   }
 
-  /// Polls the next value, returning `Ok(None)` only when the queue is drained
-  /// within a single lock acquisition. Avoids TOCTOU races between `poll()`
-  /// and `is_drained()`.
+  /// Polls the next value and checks drained status atomically under a single
+  /// lock acquisition. Avoids TOCTOU races between `poll()` and `is_drained()`.
   pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
-    match self.poll()? {
-      | Some(value) => Ok(Some(value)),
-      | None if self.is_drained() => {
-        self.completion.complete(Ok(StreamDone::new()));
-        Ok(None)
-      },
+    let (value, drained) = {
+      let mut guard = self.inner.lock();
+      if let Some(error) = &guard.failure {
+        return Err(error.clone());
+      }
+      let value = if self.capacity == 0 {
+        match guard.pending_offers.pop_front() {
+          | Some(pending_offer) => {
+            pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
+            Some(pending_offer.value)
+          },
+          | None => None,
+        }
+      } else {
+        let value = guard.values.pop_front();
+        while guard.values.len() < self.capacity {
+          let Some(pending_offer) = guard.pending_offers.pop_front() else {
+            break;
+          };
+          guard.values.push_back(pending_offer.value);
+          pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
+        }
+        value
+      };
+      let drained = value.is_none() && guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
+      (value, drained)
+    };
+    if drained {
+      self.completion.complete(Ok(StreamDone::new()));
+      return Ok(None);
+    }
+    match value {
+      | Some(v) => Ok(Some(v)),
       | None => Err(StreamError::WouldBlock),
     }
   }

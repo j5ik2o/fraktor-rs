@@ -45,7 +45,7 @@ impl TickDriverConfig {
   ///
   /// Panics if no Tokio runtime handle is available in the current context.
   #[must_use]
-  #[deprecated(note = "use TickDriverConfig::default_config() instead")]
+  #[deprecated(since = "0.3.0", note = "use TickDriverConfig::default_config() instead; will be removed in v0.4.0")]
   pub fn tokio_quickstart() -> CoreTickDriverConfig {
     Self::default_config()
   }
