@@ -60,10 +60,12 @@ impl<C: Clock> CircuitBreakerShared<C> {
     Fut: Future<Output = Result<T, E>>, {
     // 許可判定時の状態を記録する。await 後に状態が変わっている可能性があるため、
     // 結果反映時にこの情報を使って HalfOpen probe の判定を正しく行う。
-    let state_at_permit = self.with_write(|cb| {
-      cb.is_call_permitted()?;
-      Ok::<_, super::circuit_breaker_open_error::CircuitBreakerOpenError>(cb.state())
-    }).map_err(CircuitBreakerCallError::Open)?;
+    let state_at_permit = self
+      .with_write(|cb| {
+        cb.is_call_permitted()?;
+        Ok::<_, super::circuit_breaker_open_error::CircuitBreakerOpenError>(cb.state())
+      })
+      .map_err(CircuitBreakerCallError::Open)?;
 
     let was_half_open = state_at_permit == CircuitBreakerState::HalfOpen;
     let mut guard = CallGuard { cb: self.clone(), was_half_open, disarmed: false };

@@ -21,7 +21,6 @@ pub type CircuitBreaker = crate::core::pattern::CircuitBreaker<StdClock>;
 /// Thread-safe shared circuit breaker using the standard clock.
 pub type CircuitBreakerShared = crate::core::pattern::CircuitBreakerShared<StdClock>;
 
-
 /// Creates a new [`CircuitBreaker`] in the **Closed** state using the real
 /// system clock.
 ///
