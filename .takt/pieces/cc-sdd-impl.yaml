@@ -1,5 +1,5 @@
 name: cc-sdd-impl
-description: SDD Phase 4 - タスクに基づく適応型バッチ実装を実行する
+description: SDD Phase 4 - タスクに基づくテスト先行の適応型バッチ実装を実行する
 piece_config:
   provider_options:
     codex:
@@ -20,6 +20,7 @@ instructions:
 loop_monitors:
   - cycle:
       - plan
+      - write_tests
       - implement
     threshold: 5
     judge:
@@ -67,7 +68,7 @@ movements:
           format: plan
     rules:
       - condition: 未着手の逐次タスクあり
-        next: implement
+        next: write_tests
       - condition: 全タスク完了
         next: ai_review
       - condition: tasks.mdが存在しない、または空
@@ -82,6 +83,48 @@ movements:
           - {質問1}
           - {質問2}
 
+  # ===== テスト先行: バッチ内タスクのテストを先に作成 =====
+  - name: write_tests
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+    knowledge:
+      - architecture
+      - unit-testing
+      - e2e-testing
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: edit
+    instruction: write-tests-first
+    output_contracts:
+      report:
+        - name: test-scope.md
+          format: coder-scope
+        - name: test-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: テスト作成が完了した
+        next: implement
+      - condition: テスト対象が未実装のためテスト作成をスキップする
+        next: implement
+      - condition: テスト作成を進行できない
+        next: plan
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: write_tests
+        requires_user_input: true
+        interactive_only: true
+
   # ===== 逐次実装: バッチ内タスクのみ実装 =====
   - name: implement
     edit: true
@@ -91,7 +134,6 @@ movements:
       - testing
     session: refresh
     knowledge:
-      - backend
       - architecture
     provider_options:
       claude:
@@ -155,7 +197,6 @@ movements:
       - testing
     session: refresh
     knowledge:
-      - backend
       - architecture
     provider_options:
       claude:

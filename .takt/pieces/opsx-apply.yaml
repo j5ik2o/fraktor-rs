@@ -1,5 +1,5 @@
 name: opsx-apply
-description: OpenSpec Apply - バッチ実装とレビューによる変更タスクの実装
+description: OpenSpec Apply - テスト先行のバッチ実装とレビューによる変更タスクの実装
 piece_config:
   provider_options:
     codex:
@@ -25,6 +25,7 @@ report_formats:
 loop_monitors:
   - cycle:
       - plan
+      - write_tests
       - implement
     threshold: 5
     judge:
@@ -85,7 +86,7 @@ movements:
           format: plan
     rules:
       - condition: 未着手タスクあり
-        next: implement
+        next: write_tests
       - condition: 全タスク完了
         next: ai_review
       - condition: tasks.mdが存在しない、またはブロック状態
@@ -100,6 +101,48 @@ movements:
           - {質問1}
           - {質問2}
 
+  # ===== テスト先行: バッチ内タスクのテストを先に作成 =====
+  - name: write_tests
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+    knowledge:
+      - architecture
+      - unit-testing
+      - e2e-testing
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: edit
+    instruction: write-tests-first
+    output_contracts:
+      report:
+        - name: test-scope.md
+          format: coder-scope
+        - name: test-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: テスト作成が完了した
+        next: implement
+      - condition: テスト対象が未実装のためテスト作成をスキップする
+        next: implement
+      - condition: テスト作成を進行できない
+        next: plan
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: write_tests
+        requires_user_input: true
+        interactive_only: true
+
   # ===== 逐次実装: バッチ内タスクのみ実装 =====
   - name: implement
     edit: true
@@ -109,7 +152,6 @@ movements:
       - testing
     session: refresh
     knowledge:
-      - backend
       - architecture
     provider_options:
       claude:
@@ -173,7 +215,6 @@ movements:
       - testing
     session: refresh
     knowledge:
-      - backend
       - architecture
     provider_options:
       claude:
@@ -223,7 +264,6 @@ movements:
         policy: review
         knowledge:
           - architecture
-          - backend
         provider_options:
           claude:
             allowed_tools:
@@ -298,7 +338,6 @@ movements:
       - testing
     session: refresh
     knowledge:
-      - backend
       - architecture
     provider_options:
       claude:

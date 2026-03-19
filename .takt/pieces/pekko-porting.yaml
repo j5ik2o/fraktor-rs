@@ -1,5 +1,5 @@
 name: pekko-porting
-description: Pekko互換仕様をRustで実装するための開発ピース（ギャップ分析→実装→QAレビュー→Pekko互換レビュー→監督）
+description: Pekko互換仕様をRustでテスト先行実装するための開発ピース（ギャップ分析→テスト作成→実装→QAレビュー→Pekko互換レビュー→監督）
 piece_config:
   provider_options:
     codex:
@@ -47,6 +47,7 @@ report_formats:
 loop_monitors:
   - cycle:
       - plan
+      - write_tests
       - implement
     threshold: 5
     judge:
@@ -146,7 +147,7 @@ movements:
           format: plan
     rules:
       - condition: 未実装タスクあり（バッチ選定完了）
-        next: implement
+        next: write_tests
       - condition: 全タスク完了（ギャップ分析の対象範囲をすべて実装済み）
         next: ai_review
       - condition: ユーザーが質問をしている（実装タスクではない）
@@ -157,6 +158,49 @@ movements:
           確認事項:
           - {質問1}
           - {質問2}
+
+  - name: write_tests
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    knowledge:
+      - pekko-porting
+      - architecture
+      - unit-testing
+      - e2e-testing
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: edit
+    instruction: write-tests-first
+    output_contracts:
+      report:
+        - name: test-scope.md
+          format: coder-scope
+        - name: test-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: テスト作成が完了した
+        next: implement
+      - condition: テスト対象が未実装のためテスト作成をスキップする
+        next: implement
+      - condition: テスト作成を進行できない
+        next: plan
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: write_tests
+        requires_user_input: true
+        interactive_only: true
 
   - name: implement
     edit: true

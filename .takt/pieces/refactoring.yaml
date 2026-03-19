@@ -1,5 +1,5 @@
 name: refactoring
-description: 大規模リファクタリング用ピース（Phase管理対応、計画→実装→AIレビュー→arch+QAレビュー→監督）
+description: 大規模リファクタリング用ピース（Phase管理対応、計画→テスト作成→実装→AIレビュー→arch+QAレビュー→監督）
 piece_config:
   provider_options:
     codex:
@@ -78,13 +78,55 @@ movements:
           format: plan
     rules:
       - condition: 要件が明確で実装可能
-        next: implement
+        next: write_tests
       - condition: 要件が不明確、情報不足
         next: ABORT
         appendix: |
           確認事項:
           - {質問1}
           - {質問2}
+
+  - name: write_tests
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    knowledge:
+      - architecture
+      - unit-testing
+      - e2e-testing
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: full
+    instruction: write-tests-first
+    output_contracts:
+      report:
+        - name: test-scope.md
+          format: coder-scope
+        - name: test-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: テスト作成が完了した
+        next: implement
+      - condition: テスト対象が未実装のためテスト作成をスキップする
+        next: implement
+      - condition: テスト作成を進行できない
+        next: plan
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: write_tests
+        requires_user_input: true
+        interactive_only: true
 
   - name: implement
     edit: true
