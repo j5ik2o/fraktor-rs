@@ -166,6 +166,10 @@ impl<T> BoundedSourceQueue<T> {
   ///
   /// Prefer [`poll_or_drain`](Self::poll_or_drain) when the caller needs
   /// atomic poll + drained detection to avoid TOCTOU races.
+  ///
+  /// # Errors
+  ///
+  /// Returns the stored [`StreamError`] if the queue has been failed.
   pub fn poll(&self) -> Result<Option<T>, StreamError> {
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {

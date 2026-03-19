@@ -270,6 +270,10 @@ impl<T> SourceQueueWithComplete<T> {
   }
 
   /// Polls the next queued element.
+  ///
+  /// # Errors
+  ///
+  /// Returns the stored [`StreamError`] if the queue has been failed.
   pub fn poll(&self) -> Result<Option<T>, StreamError> {
     let (value, drained) = {
       let mut guard = self.inner.lock();
