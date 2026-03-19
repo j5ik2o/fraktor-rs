@@ -269,81 +269,64 @@ impl<T> SourceQueueWithComplete<T> {
     self.len() == 0
   }
 
+  /// Shared inner logic for poll and poll_or_drain.
+  ///
+  /// Acquires the lock once, pops the next value (handling pending offers for
+  /// both zero-capacity and bounded modes), and determines drained status.
+  /// Fires the completion signal when the queue is drained.
+  ///
+  /// Returns `(Option<T>, bool)` — the polled value and whether the queue is drained.
+  fn poll_inner(&self) -> Result<(Option<T>, bool), StreamError> {
+    let (value, drained) = {
+      let mut guard = self.inner.lock();
+      if let Some(error) = &guard.failure {
+        return Err(error.clone());
+      }
+      let value = if self.capacity == 0 {
+        match guard.pending_offers.pop_front() {
+          | Some(pending_offer) => {
+            pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
+            Some(pending_offer.value)
+          },
+          | None => None,
+        }
+      } else {
+        let value = guard.values.pop_front();
+        // NOTE: capacity > 0 で values が空のとき、pending offers を values に移動した後でも
+        // value は None のまま返る。これは意図的な挙動であり、呼び出し側は次の pull で
+        // 移動済みの値を取得する。即時返却への変更は今回のスコープ外。
+        while guard.values.len() < self.capacity {
+          let Some(pending_offer) = guard.pending_offers.pop_front() else {
+            break;
+          };
+          guard.values.push_back(pending_offer.value);
+          pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
+        }
+        value
+      };
+      let drained = guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
+      (value, drained)
+    };
+    if drained {
+      self.completion.complete(Ok(StreamDone::new()));
+    }
+    Ok((value, drained))
+  }
+
   /// Polls the next queued element.
   ///
   /// # Errors
   ///
   /// Returns the stored [`StreamError`] if the queue has been failed.
   pub fn poll(&self) -> Result<Option<T>, StreamError> {
-    let (value, drained) = {
-      let mut guard = self.inner.lock();
-      if let Some(error) = &guard.failure {
-        return Err(error.clone());
-      }
-      let value = if self.capacity == 0 {
-        match guard.pending_offers.pop_front() {
-          | Some(pending_offer) => {
-            pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
-            Some(pending_offer.value)
-          },
-          | None => None,
-        }
-      } else {
-        let value = guard.values.pop_front();
-        while guard.values.len() < self.capacity {
-          let Some(pending_offer) = guard.pending_offers.pop_front() else {
-            break;
-          };
-          guard.values.push_back(pending_offer.value);
-          pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
-        }
-        value
-      };
-      let drained = guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
-      (value, drained)
-    };
-    if drained {
-      self.completion.complete(Ok(StreamDone::new()));
-    }
+    let (value, _drained) = self.poll_inner()?;
     Ok(value)
   }
 
   /// Polls the next value and checks drained status atomically under a single
   /// lock acquisition. Avoids TOCTOU races between `poll()` and `is_drained()`.
   pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
-    let (value, drained) = {
-      let mut guard = self.inner.lock();
-      if let Some(error) = &guard.failure {
-        return Err(error.clone());
-      }
-      let value = if self.capacity == 0 {
-        match guard.pending_offers.pop_front() {
-          | Some(pending_offer) => {
-            pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
-            Some(pending_offer.value)
-          },
-          | None => None,
-        }
-      } else {
-        let value = guard.values.pop_front();
-        while guard.values.len() < self.capacity {
-          let Some(pending_offer) = guard.pending_offers.pop_front() else {
-            break;
-          };
-          guard.values.push_back(pending_offer.value);
-          pending_offer.completion.complete(Ok(QueueOfferResult::Enqueued));
-        }
-        value
-      };
-      let drained = guard.closed && guard.values.is_empty() && guard.pending_offers.is_empty();
-      (value, drained)
-    };
-    if drained {
-      self.completion.complete(Ok(StreamDone::new()));
-    }
-    // NOTE: capacity > 0 で values が空のとき、pending offers を values に移動した後でも
-    // value は None のまま WouldBlock を返す。これは元の poll() と同じ挙動であり、
-    // 呼び出し側は次の pull で移動済みの値を取得する。即時返却への変更は今回のスコープ外。
+    let (value, drained) = self.poll_inner()?;
     match value {
       | Some(v) => Ok(Some(v)),
       | None if drained => Ok(None),
