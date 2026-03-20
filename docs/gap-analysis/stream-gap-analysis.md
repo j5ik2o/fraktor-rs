@@ -1,6 +1,6 @@
 # stream モジュール ギャップ分析
 
-生成日: 2026-03-17（前回: 2026-03-16）
+生成日: 2026-03-20（前回: 2026-03-17）
 
 ## サマリー
 
@@ -10,10 +10,10 @@
 | fraktor-rs 公開型数 | 101（core: 100, std: 1） |
 | カバレッジ（型単位） | 74/79 (94%) |
 | ギャップ数（型単位・実装対象） | 5 |
-| ギャップ数（メソッド単位・実装対象） | 31 |
+| ギャップ数（メソッド単位・実装対象） | 22（前回31 → PR #1124で9項目解消） |
 | 対象外（n/a） | 7 |
 
-**結論：** 型単位カバレッジは 94% で高水準。主要な不足は依然として (1) *Mat バリアント（合成オペレーターのマテリアライゼーション制御）18個、(2) Source 側のアクター連携（`actorRef` / `actorRefWithBackpressure`）2個、(3) Sink ファクトリメソッド（`never`, `foldAsync`, `combine`, `combineMat`）4個、(4) GraphDSL / StreamRefs の大型機能である。`Source.create` と `Sink.actorRef*` は実装済みとして整理し直した。
+**結論：** 型単位カバレッジは 94% で高水準。PR #1124 で `flatten`, `collect`, `fold_async`, `merge_prioritized_n`, `simple_framing_protocol`, `Source.run_fold/runReduce/runForeach` 等の9項目を実装し、メソッド単位ギャップが31→22に縮小。残る主要不足は (1) *Mat バリアント（合成オペレーターのマテリアライゼーション制御）18個、(2) Source 側のアクター連携（`actorRef` / `actorRefWithBackpressure`）2個、(3) `Sink.never` / `Sink.combine` / `Sink.combineMat` 3個、(4) GraphDSL / StreamRefs の大型機能である。
 
 ## 層別カバレッジ
 
@@ -36,42 +36,38 @@ Source, Flow, Sink, BidiFlow, FlowWithContext, SourceWithContext, SubFlow, Runna
 
 ---
 
-### Source ファクトリメソッド　✅ 実装済み 37/40 (92%)
+### Source ファクトリメソッド　✅ 実装済み 38/40 (95%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `Source.actorRef` | `Source.scala:L678` | 未対応 | core | medium | アクターへの直接参照でメッセージをストリーム化。actor モジュールとの連携が必要 |
 | `Source.actorRefWithBackpressure` | `Source.scala:L715` | 未対応 | core | medium | バックプレッシャー付きアクターソース。actor モジュールとの連携が必要 |
-| `Source.mergePrioritizedN` | `Source.scala:L1015` | 未対応 | core | trivial | Flow には `merge_prioritized_n` があるが Source コンパニオンにはない |
 
-実装済み: `empty`, `fromOption`, `fromIterator`, `from`, `fromArray`, `single`, `failed`, `never`, `repeat`, `cycle`, `iterate`, `range`, `tick`, `unfold`, `unfoldAsync`, `unfoldResource`, `unfoldResourceAsync`, `future`, `futureSource`, `completionStage`, `completionStageSource`, `lazyFuture`, `lazyFutureSource`, `lazyCompletionStage`, `lazyCompletionStageSource`, `lazySingle`, `lazySource`, `maybe`, `queue`, `queueWithOverflow`, `queueUnbounded`, `fromMaterializer`, `fromPublisher`, `combine`, `combineMat`, `zipN`, `zipWithN`, `create`
+実装済み: `empty`, `fromOption`, `fromIterator`, `from`, `fromArray`, `single`, `failed`, `never`, `repeat`, `cycle`, `iterate`, `range`, `tick`, `unfold`, `unfoldAsync`, `unfoldResource`, `unfoldResourceAsync`, `future`, `futureSource`, `completionStage`, `completionStageSource`, `lazyFuture`, `lazyFutureSource`, `lazyCompletionStage`, `lazyCompletionStageSource`, `lazySingle`, `lazySource`, `maybe`, `queue`, `queueWithOverflow`, `queueUnbounded`, `fromMaterializer`, `fromPublisher`, `combine`, `combineMat`, `zipN`, `zipWithN`, `create`, `mergePrioritizedN`
 
 `Source.create` は [source.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/stream/src/std/source.rs) に std 層実装として存在する。
+`Source.mergePrioritizedN` は PR #1124 で `source.rs:L239` に実装済み。
 
 ---
 
-### Source 便利メソッド　✅ 実装済み 1/4 (25%)
+### Source 便利メソッド　✅ 実装済み 5/5 (100%)
 
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `Source.runFold` | `Source.scala:L157` | 未対応 | core | trivial | `source.fold(zero)(f).to(Sink.head).run()` のショートカット |
-| `Source.runFoldAsync` | `Source.scala:L171` | 未対応 | core | trivial | `source.foldAsync(zero)(f).to(Sink.head).run()` のショートカット |
-| `Source.runReduce` | `Source.scala:L190` | 未対応 | core | trivial | `source.reduce(f).to(Sink.head).run()` のショートカット |
-| `Source.runForeach` | `Source.scala:L204` | 未対応 | core | trivial | `source.to(Sink.foreach(f)).run()` のショートカット |
+PR #1124 で `run_fold`, `run_fold_async`, `run_reduce`, `run_foreach` を実装。ギャップなし。
 
-実装済み: `runWith`
+実装済み: `runWith`, `runFold`（`source.rs:L794`）, `runFoldAsync`（`source.rs:L812`）, `runReduce`（`source.rs:L831`）, `runForeach`（`source.rs:L847`）
 
 ---
 
-### Sink ファクトリメソッド　✅ 実装済み 30/34 (88%)
+### Sink ファクトリメソッド　✅ 実装済み 31/34 (91%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `Sink.never` | `Sink.scala:L338` | 未対応 | core | trivial | 永遠に完了しない Sink。テスト等で使用 |
-| `Sink.foldAsync` | `Sink.scala:L449` | 未対応 | core | easy | 非同期 fold を行う Sink。`fold` は実装済みだが async 版がない |
 | `Sink.combine` | `Sink.scala:L362` | 未対応 | core | medium | 複数 Sink をファンアウトで合成。Broadcast 等と組み合わせ |
 | `Sink.combineMat` | `Sink.scala:L383` | 未対応 | core | medium | `combine` のマテリアライズドバリュー制御版 |
-実装済み: `ignore`, `foreach`, `foreachAsync`, `cancelled`, `none`, `onComplete`, `fromSubscriber`, `futureSink`, `lazySink`, `lazyFutureSink`, `lazyCompletionStageSink`, `collect`, `collection`, `seq`, `javaCollector`, `takeLast`, `toPath`, `count`, `exists`, `forall`, `headOption`, `lastOption`, `queue`, `fold`, `foldWhile`, `head`, `last`, `reduce`, `fromGraph`, `fromMaterializer`, `source`, `asPublisher`, `preMaterialize`
+実装済み: `ignore`, `foreach`, `foreachAsync`, `cancelled`, `none`, `onComplete`, `fromSubscriber`, `futureSink`, `lazySink`, `lazyFutureSink`, `lazyCompletionStageSink`, `collect`, `collection`, `seq`, `javaCollector`, `takeLast`, `toPath`, `count`, `exists`, `forall`, `headOption`, `lastOption`, `queue`, `fold`, `foldWhile`, `foldAsync`, `head`, `last`, `reduce`, `fromGraph`, `fromMaterializer`, `source`, `asPublisher`, `preMaterialize`
+
+`Sink.foldAsync` は PR #1124 で `sink.rs:L356` に実装済み。
 
 別名で実装済み:
 - `Sink.actorRef` → [actor_sink.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/stream/src/core/stage/actor_sink.rs) の `ActorSink::actor_ref`
@@ -91,12 +87,9 @@ Source, Flow, Sink, BidiFlow, FlowWithContext, SourceWithContext, SubFlow, Runna
 
 ---
 
-### オペレーター（変換・フィルタ）　✅ 実装済み 約89/91 (98%)
+### オペレーター（変換・フィルタ）　✅ 実装済み 91/91 (100%)
 
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `collect(pf)` | `FlowOps:L1753` | 未対応 | core | trivial | Rust に PartialFunction はないが `filter_map` 相当として実装可。`collectFirst`/`collectWhile`/`collectType` は実装済み |
-| `flatten` | `FlowOps:L2950` | 未対応 | core | trivial | ネストされた Source をフラットにする。`flatMapConcat(identity)` で代替可能 |
+PR #1124 で `collect`（`map_option` への委譲、`flow.rs:L1211`）と `flatten`（Source/Flow 両方、`flow.rs:L1047`, `source.rs:L1894`）を実装。ギャップなし。
 
 **主要オペレーター実装済みリスト**（67個のロジックファイル + インライン実装）:
 
@@ -186,14 +179,15 @@ MergeHub, BroadcastHub, PartitionHub すべて実装済み。（Pekko にも Bal
 
 ---
 
-### フレーミング（Framing）　✅ 実装済み 4/6 (67%)
+### フレーミング（Framing）　✅ 実装済み 5/6 (83%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `Framing.simpleFramingProtocol` | `Framing.scala:L87` | 未対応 | core | easy | BidiFlow ベースの対称フレーミングプロトコル。`BidiFlow` + 既存 `Framing` の合成で実装可能 |
 | `JsonFraming.arrayScanner` | `JsonFraming.scala:L40` | 未対応 | core | easy | JSON 配列要素のストリーミングパーサー。`objectScanner` の姉妹メソッド |
 
-実装済み: `Framing.delimiter`, `Framing.lengthField`, `JsonFraming.objectScanner`, `Compression`（gzip/deflate/inflate）
+実装済み: `Framing.delimiter`, `Framing.lengthField`, `Framing.simpleFramingProtocol`, `JsonFraming.objectScanner`, `Compression`（gzip/deflate/inflate）
+
+`Framing.simpleFramingProtocol` は PR #1124 で `framing.rs:L79` に BidiFlow ベースで実装済み。
 
 ---
 
@@ -243,27 +237,19 @@ MergeHub, BroadcastHub, PartitionHub すべて実装済み。（Pekko にも Bal
 
 ## 実装優先度の提案
 
-### Phase 1: trivial（既存組み合わせで即実装可能）— 7項目
+### Phase 1: trivial（既存組み合わせで即実装可能）— 1項目
 
-- **`collect`（filter_map 相当）** [core]: `filter` + `map` の合成。`map_option` で代替可能なケースも多い
-- **`flatten`** [core]: `flatMapConcat(identity)` への委譲のみ
 - **`Sink.never`** [core]: 永遠に完了しない Sink。`futures::future::pending()` 相当
-- **`Source.runFold`** [core]: `source.fold(zero)(f).to(Sink.head).run()` のショートカット
-- **`Source.runFoldAsync`** [core]: 同上の async 版
-- **`Source.runReduce`** [core]: `source.reduce(f).to(Sink.head).run()` のショートカット
-- **`Source.runForeach`** [core]: `source.to(Sink.foreach(f)).run()` のショートカット
 
-### Phase 2: easy（単純な新規実装）— 22項目
+PR #1124 で解消済み: ~~`collect`~~, ~~`flatten`~~, ~~`Source.runFold`~~, ~~`Source.runFoldAsync`~~, ~~`Source.runReduce`~~, ~~`Source.runForeach`~~
+
+### Phase 2: easy（単純な新規実装）— 24項目
 
 - **`SubstreamCancelStrategy`** [core]: `group_by` のキャンセル動作を制御する enum（Drain/Propagate）
 - **`UniformFanOutShape`** [core]: `UniformFanInShape` と対になる型
 - **`FanInShape3`〜`FanInShapeN`** [core]: Rust マクロで生成可能
-- **`Sink.foldAsync`** [core]: 非同期 fold Sink。`fold` + `mapAsync` の合成で実装可能
-- **`Source.create`** [core]: プロデューサーコールバック版 Source 生成
-- **`Source.mergePrioritizedN`** [core]: Source コンパニオンでの N入力優先度付きマージ
 - **`Flow.fromSinkAndSourceMat`** [core]: 既存 `fromSinkAndSource` に Mat 制御を追加
 - **`Flow.fromSinkAndSourceCoupledMat`** [core]: 同上の Coupled 版
-- **`Framing.simpleFramingProtocol`** [core]: `BidiFlow` + 既存 `Framing` の合成
 - **`JsonFraming.arrayScanner`** [core]: `objectScanner` と同パターンの配列版
 - **`*Mat` バリアント 18個** [core]: 合成オペレーター（`zip`, `merge`, `concat`, `interleave`, `prepend`, `orElse`, `divertTo` 等）のマテリアライズドバリュー制御版。既存の `via_mat` / `also_to_mat` / `wire_tap_mat` と同パターン
   - `zipMat`, `zipAllMat`, `zipWithMat`, `zipLatestMat`, `zipLatestWithMat`
@@ -274,6 +260,8 @@ MergeHub, BroadcastHub, PartitionHub すべて実装済み。（Pekko にも Bal
   - `orElseMat`
   - `divertToMat`
   - `flatMapPrefixMat`
+
+PR #1124 で解消済み: ~~`Sink.foldAsync`~~, ~~`Source.mergePrioritizedN`~~, ~~`Framing.simpleFramingProtocol`~~
 
 ### Phase 3: medium（中程度の実装工数）— 4項目
 
@@ -301,13 +289,18 @@ MergeHub, BroadcastHub, PartitionHub すべて実装済み。（Pekko にも Bal
 
 ## まとめ
 
-**全体カバレッジの評価**: 型単位で 94%（前回同様）。メソッドレベルで精査した結果、実装対象ギャップは 34 個あることが判明。ただし、大半は Phase 1〜2（trivial/easy）に分類され、既存パターンの踏襲で実装可能。
+**全体カバレッジの評価**: 型単位で 94%。メソッドレベルの実装対象ギャップは 22 個（前回34 → PR #1124で9項目解消）。大半は Phase 2（easy）の `*Mat` バリアント 18個で、既存パターンの踏襲で実装可能。
+
+**PR #1124 で解消された項目（9個）**:
+- `collect`（filter_map 相当）、`flatten`（Source/Flow 両方）
+- `Sink.foldAsync`（非同期 fold Sink）
+- `Source.mergePrioritizedN`（N入力優先度付きマージ）
+- `Framing.simpleFramingProtocol`（BidiFlow ベースのフレーミングプロトコル）
+- `Source.runFold` / `runFoldAsync` / `runReduce` / `runForeach`（便利メソッド）
 
 **即座に価値を提供できる未実装機能（Phase 1〜2）**:
 - `*Mat` バリアント 18個: Pekko ユーザーがマテリアライゼーション制御で日常的に使用する API。既存の `also_to_mat` / `wire_tap_mat` と同パターンでの実装が可能
-- `Sink.never` / `Sink.foldAsync`: 基本的な Sink ファクトリ。1〜2行の委譲で実装可能
-- `Source.runFold` / `runReduce` / `runForeach`: 便利メソッド。既存オペレーターの合成のみ
-- `collect`（filter_map 相当）: `map_option` でほぼ代替可能だが、名前の親和性のため追加推奨
+- `Sink.never`: 永遠に完了しない Sink。1行の委譲で実装可能
 
 **実用上の主要ギャップ（Phase 3〜4）**:
 - アクター連携（`actorRef` ソース/シンク）: actor モジュールが安定した段階で実装すべき
