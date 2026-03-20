@@ -225,6 +225,20 @@ movements:
           - WebSearch
           - WebFetch
     required_permission_mode: edit
+    team_leader:
+      max_parts: 3
+      part_persona: coder
+      part_edit: true
+      part_permission_mode: edit
+      part_allowed_tools:
+        - Read
+        - Glob
+        - Grep
+        - Edit
+        - Write
+        - Bash
+        - WebSearch
+        - WebFetch
     instruction: pekko-porting-implement
     output_contracts:
       report:
