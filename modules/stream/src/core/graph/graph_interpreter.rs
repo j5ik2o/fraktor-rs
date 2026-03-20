@@ -847,11 +847,11 @@ impl GraphInterpreter {
       if preferred_slot == Some(slot) {
         continue;
       }
-      if let Some(edge_index) = nth_incoming(&self.edges, slot) {
-        if !self.edges[edge_index].buffer.is_empty() {
-          let value = self.edges[edge_index].buffer.poll()?;
-          return Ok(Some((slot, value)));
-        }
+      if let Some(edge_index) = nth_incoming(&self.edges, slot)
+        && !self.edges[edge_index].buffer.is_empty()
+      {
+        let value = self.edges[edge_index].buffer.poll()?;
+        return Ok(Some((slot, value)));
       }
     }
     Ok(None)
