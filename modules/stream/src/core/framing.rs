@@ -172,11 +172,7 @@ impl SimpleFramingDecoderLogic {
         return Ok(frames);
       }
 
-      let payload_len = read_big_endian_i32([self.buffer[0], self.buffer[1], self.buffer[2], self.buffer[3]]);
-      if payload_len < 0 {
-        return Err(StreamError::Failed);
-      }
-      let payload_len = payload_len as usize;
+      let payload_len = read_big_endian_u32([self.buffer[0], self.buffer[1], self.buffer[2], self.buffer[3]]) as usize;
       if payload_len > self.maximum_message_length {
         return Err(StreamError::BufferOverflow);
       }
@@ -302,6 +298,6 @@ fn read_big_endian_uint(bytes: &[u8]) -> usize {
   value
 }
 
-const fn read_big_endian_i32(bytes: [u8; SIMPLE_FRAMING_LENGTH_FIELD_SIZE]) -> i32 {
-  i32::from_be_bytes(bytes)
+const fn read_big_endian_u32(bytes: [u8; SIMPLE_FRAMING_LENGTH_FIELD_SIZE]) -> u32 {
+  u32::from_be_bytes(bytes)
 }

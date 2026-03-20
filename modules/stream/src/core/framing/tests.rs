@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use super::{
-  SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_i32, read_big_endian_uint,
+  SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_u32, read_big_endian_uint,
 };
 
 #[test]
@@ -40,8 +40,8 @@ fn should_read_single_byte() {
 }
 
 #[test]
-fn should_read_big_endian_i32() {
-  assert_eq!(read_big_endian_i32([0x00, 0x00, 0x01, 0x00]), 256);
+fn should_read_big_endian_u32_framing() {
+  assert_eq!(read_big_endian_u32([0x00, 0x00, 0x01, 0x00]), 256);
 }
 
 #[test]
@@ -216,11 +216,12 @@ fn should_error_when_source_ends_with_truncated_decoded_frame() {
 }
 
 #[test]
-fn should_fail_decoder_immediately_when_length_header_is_negative() {
+fn should_fail_decoder_when_length_exceeds_maximum() {
   use crate::core::{FlowLogic, StreamError};
 
-  let mut logic = SimpleFramingDecoderLogic { maximum_message_length: usize::MAX, buffer: Vec::new() };
+  // 0x80000000 = 2147483648 which exceeds a reasonable maximum_message_length
+  let mut logic = SimpleFramingDecoderLogic { maximum_message_length: 1024, buffer: Vec::new() };
   let result = logic.apply(Box::new(vec![0x80, 0x00, 0x00, 0x00, b'a']));
 
-  assert!(matches!(result, Err(StreamError::Failed)));
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }

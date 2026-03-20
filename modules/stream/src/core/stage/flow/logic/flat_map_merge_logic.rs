@@ -50,6 +50,7 @@ where
         return Ok(None);
       }
 
+      let mut slot_freed = false;
       for _ in 0..active_len {
         let Some(mut stream) = self.active_streams.pop_front() else {
           break;
@@ -59,6 +60,9 @@ where
           if stream.has_pending_output() {
             self.active_streams.push_back(stream);
           } else {
+            slot_freed = true;
+          }
+          if slot_freed {
             self.promote_pending()?;
           }
           return Ok(Some(value));
@@ -67,8 +71,11 @@ where
         if stream.has_pending_output() {
           self.active_streams.push_back(stream);
         } else {
-          self.promote_pending()?;
+          slot_freed = true;
         }
+      }
+      if slot_freed {
+        self.promote_pending()?;
       }
 
       if self.active_streams.is_empty() {

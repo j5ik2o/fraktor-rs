@@ -12,6 +12,9 @@ use crate::core::{
   lifecycle::{DriveOutcome, Stream},
 };
 
+const IDLE_BUDGET: usize = 32;
+const DRIVE_BUDGET: usize = 256;
+
 pub(in crate::core::stage::flow) struct SecondarySourceBridge<Out> {
   stream:     Stream,
   completion: StreamCompletion<StreamDone>,
@@ -58,8 +61,8 @@ where
       return Ok(());
     }
 
-    let mut idle_budget = 32_usize;
-    let mut drive_budget = 256_usize;
+    let mut idle_budget = IDLE_BUDGET;
+    let mut drive_budget = DRIVE_BUDGET;
     loop {
       if drive_budget == 0 {
         return Ok(());
@@ -67,7 +70,7 @@ where
       drive_budget = drive_budget.saturating_sub(1);
 
       match self.stream.drive() {
-        | DriveOutcome::Progressed => idle_budget = 32,
+        | DriveOutcome::Progressed => idle_budget = IDLE_BUDGET,
         | DriveOutcome::Idle => {
           if idle_budget == 0 {
             return Ok(());
@@ -100,7 +103,8 @@ where
     let sink = Sink::foreach(move |value: Out| match sink_queue.offer(value) {
       | QueueOfferResult::Enqueued => {},
       | QueueOfferResult::Failure(error) => sink_queue.fail(error),
-      | QueueOfferResult::Dropped | QueueOfferResult::QueueClosed => sink_queue.fail(StreamError::Failed),
+      | QueueOfferResult::Dropped => sink_queue.fail(StreamError::BufferOverflow),
+      | QueueOfferResult::QueueClosed => sink_queue.fail(StreamError::Failed),
     });
     let (sink_graph, completion) = sink.into_parts();
     let Some(sink_inlet_id) = sink_graph.head_inlet() else {
@@ -111,6 +115,7 @@ where
 
     if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
       for _ in 1..expected_fan_out {
+        // Dummy pass-through stage required for broadcast fan-out wiring
         let branch = map_definition::<Out, Out, _>(|value| value);
         let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
         let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
@@ -139,8 +144,8 @@ where
       return Ok(None);
     }
 
-    let mut idle_budget = 32_usize;
-    let mut drive_budget = 256_usize;
+    let mut idle_budget = IDLE_BUDGET;
+    let mut drive_budget = DRIVE_BUDGET;
     loop {
       match self.finalize_if_terminal()? {
         | Some(value) => return Ok(Some(value)),
@@ -153,7 +158,7 @@ where
       drive_budget = drive_budget.saturating_sub(1);
 
       match self.stream.drive() {
-        | DriveOutcome::Progressed => idle_budget = 32,
+        | DriveOutcome::Progressed => idle_budget = IDLE_BUDGET,
         | DriveOutcome::Idle => {
           if idle_budget == 0 {
             return Ok(None);

@@ -136,6 +136,9 @@ where
 
   /// Adds a map stage to this flow.
   #[must_use]
+  /// Note: `T` requires only `Send` (not `Sync`) to support `flatten()` and
+  /// `flat_map_concat()` where `T = Source<_, _>` which is `!Sync`.
+  /// Downstream operators that require `Sync` enforce it at their own boundary.
   pub fn map<T, F>(mut self, func: F) -> Flow<In, T, Mat>
   where
     T: Send + 'static,
