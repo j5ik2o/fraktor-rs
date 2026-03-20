@@ -131,6 +131,12 @@ impl FlowLogic for DelimiterFramingLogic {
   fn has_pending_output(&self) -> bool {
     self.allow_truncation && self.source_done && !self.buffer.is_empty()
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.buffer.clear();
+    self.source_done = false;
+    Ok(())
+  }
 }
 
 struct SimpleFramingEncoderLogic {
@@ -207,6 +213,11 @@ impl FlowLogic for SimpleFramingDecoderLogic {
 
   fn has_pending_output(&self) -> bool {
     false
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.buffer.clear();
+    Ok(())
   }
 }
 

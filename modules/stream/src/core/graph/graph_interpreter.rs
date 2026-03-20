@@ -24,9 +24,10 @@ pub struct GraphInterpreter {
   source_canceled:  Vec<bool>,
   sink_done:        Vec<bool>,
   flow_source_done: Vec<bool>,
-  flow_done:        Vec<bool>,
-  on_start_done:    bool,
-  tick_count:       u64,
+  flow_done:              Vec<bool>,
+  sink_upstream_notified: Vec<bool>,
+  on_start_done:          bool,
+  tick_count:             u64,
 }
 
 impl GraphInterpreter {
@@ -61,6 +62,7 @@ impl GraphInterpreter {
       sink_done: vec![false; sink_indices_len],
       flow_source_done: vec![false; flow_count],
       flow_done: vec![false; flow_count],
+      sink_upstream_notified: vec![false; sink_indices_len],
       on_start_done: false,
       tick_count: 0,
     }
@@ -723,12 +725,7 @@ impl GraphInterpreter {
     };
     if !sink_can_accept {
       if self.stage_input_exhausted(sink_index) {
-        let upstream_progressed = {
-          let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          sink.logic.on_upstream_finish()?
-        };
+        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
         if self.sink_has_pending_work(sink_index)? {
           return Ok(progressed || upstream_progressed);
         }
@@ -740,12 +737,7 @@ impl GraphInterpreter {
 
     let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet, None)? else {
       if self.stage_input_exhausted(sink_index) {
-        let upstream_progressed = {
-          let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-            return Err(StreamError::InvalidConnection);
-          };
-          sink.logic.on_upstream_finish()?
-        };
+        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
         if self.sink_has_pending_work(sink_index)? {
           return Ok(progressed || upstream_progressed);
         }
@@ -808,12 +800,7 @@ impl GraphInterpreter {
         continue;
       }
       let sink_index = self.sink_indices[sink_position];
-      {
-        let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
-          return Err(StreamError::InvalidConnection);
-        };
-        let _ = sink.logic.on_upstream_finish()?;
-      }
+      let _ = self.notify_sink_upstream_finish(sink_position)?;
       if self.sink_has_pending_work(sink_index)? {
         continue;
       }
@@ -928,6 +915,18 @@ impl GraphInterpreter {
     let source_index = self.source_indices[source_position];
     self.close_outgoing_edges_for_stage(source_index);
     self.notify_source_done_to_flows()
+  }
+
+  fn notify_sink_upstream_finish(&mut self, sink_position: usize) -> Result<bool, StreamError> {
+    if self.sink_upstream_notified[sink_position] {
+      return Ok(false);
+    }
+    self.sink_upstream_notified[sink_position] = true;
+    let sink_index = self.sink_indices[sink_position];
+    let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    sink.logic.on_upstream_finish()
   }
 
   fn complete_sink_position(&mut self, sink_position: usize) -> Result<(), StreamError> {

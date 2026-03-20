@@ -133,11 +133,11 @@ impl<T> YieldThenOutputFuture<T> {
   }
 }
 
-impl<T> Future for YieldThenOutputFuture<T> {
+impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
   fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
-    let this = unsafe { self.get_unchecked_mut() };
+    let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
       Poll::Pending
