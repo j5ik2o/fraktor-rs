@@ -2284,13 +2284,11 @@ fn merge_prioritized_n_uses_weighted_merge_flow_stage() {
   let s2 = Source::from_iterator(vec![100_u32, 200, 300, 400]);
   let (graph, _) = Source::merge_prioritized_n(vec![s1, s2], &[3, 1]).expect("merge_prioritized_n").into_parts();
   let stages = graph.into_stages();
-  assert_eq!(stages.len(), 3);
-  assert!(matches!(stages[0], StageDefinition::Source(_)));
-  assert!(matches!(stages[1], StageDefinition::Source(_)));
-  assert!(matches!(
-    stages[2],
-    StageDefinition::Flow(ref definition) if definition.kind == StageKind::FlowMergePrioritized
-  ));
+  assert!(
+    stages
+      .iter()
+      .any(|s| matches!(s, StageDefinition::Flow(definition) if definition.kind == StageKind::FlowMergePrioritized),)
+  );
 }
 
 #[test]

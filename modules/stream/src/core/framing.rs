@@ -166,26 +166,34 @@ struct SimpleFramingDecoderLogic {
 impl SimpleFramingDecoderLogic {
   fn decode_frames(&mut self) -> Result<Vec<DynValue>, StreamError> {
     let mut frames: Vec<DynValue> = Vec::new();
+    let mut consumed = 0_usize;
 
     loop {
-      if self.buffer.len() < SIMPLE_FRAMING_LENGTH_FIELD_SIZE {
-        return Ok(frames);
+      let remaining = &self.buffer[consumed..];
+      if remaining.len() < SIMPLE_FRAMING_LENGTH_FIELD_SIZE {
+        break;
       }
 
-      let payload_len = read_big_endian_u32([self.buffer[0], self.buffer[1], self.buffer[2], self.buffer[3]]) as usize;
+      let payload_len = read_big_endian_u32([remaining[0], remaining[1], remaining[2], remaining[3]]) as usize;
       if payload_len > self.maximum_message_length {
+        self.buffer.drain(..consumed);
         return Err(StreamError::BufferOverflow);
       }
 
       let frame_len = checked_frame_length(SIMPLE_FRAMING_LENGTH_FIELD_SIZE, payload_len)?;
-      if self.buffer.len() < frame_len {
-        return Ok(frames);
+      if remaining.len() < frame_len {
+        break;
       }
 
-      let payload = self.buffer[SIMPLE_FRAMING_LENGTH_FIELD_SIZE..frame_len].to_vec();
-      self.buffer = self.buffer[frame_len..].to_vec();
+      let payload = remaining[SIMPLE_FRAMING_LENGTH_FIELD_SIZE..frame_len].to_vec();
+      consumed += frame_len;
       frames.push(Box::new(payload) as DynValue);
     }
+
+    if consumed > 0 {
+      self.buffer.drain(..consumed);
+    }
+    Ok(frames)
   }
 }
 

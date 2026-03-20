@@ -825,14 +825,23 @@ impl GraphInterpreter {
         incoming_edges.push(index);
       }
     }
-    if let Some(slot) = preferred_slot
-      && let Some(edge_index) = incoming_edges.get(slot).copied()
+    if let Some(pref) = preferred_slot
+      && let Some(edge_index) = incoming_edges.get(pref).copied()
       && !self.edges[edge_index].buffer.is_empty()
     {
       let value = self.edges[edge_index].buffer.poll()?;
-      return Ok(Some((slot, value)));
+      return Ok(Some((pref, value)));
     }
-    for (slot, edge_index) in incoming_edges.into_iter().enumerate() {
+    // Fallback: scan from preferred_slot onwards (wrap-around), skipping the
+    // already-checked preferred slot.
+    let len = incoming_edges.len();
+    let start = preferred_slot.unwrap_or(0);
+    for i in 0..len {
+      let slot = (start + i) % len;
+      if preferred_slot == Some(slot) {
+        continue;
+      }
+      let edge_index = incoming_edges[slot];
       if self.edges[edge_index].buffer.is_empty() {
         continue;
       }
@@ -963,7 +972,7 @@ impl GraphInterpreter {
   }
 
   fn tick_restart_windows(&mut self) -> Result<(), StreamError> {
-    for stage in &mut self.stages {
+    for (stage_index, stage) in self.stages.iter_mut().enumerate() {
       match stage {
         | StageDefinition::Source(source) => {
           if let Some(restart) = &mut source.restart
@@ -985,6 +994,9 @@ impl GraphInterpreter {
           {
             sink.logic.on_restart()?;
             sink.logic.on_start(&mut self.demand)?;
+            if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == stage_index) {
+              self.sink_upstream_notified[pos] = false;
+            }
           }
         },
       }
@@ -1398,6 +1410,9 @@ impl GraphInterpreter {
       | SupervisionStrategy::Restart => {
         sink.logic.on_restart()?;
         sink.logic.on_start(&mut self.demand)?;
+        if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == sink_index) {
+          self.sink_upstream_notified[pos] = false;
+        }
         Ok(FailureDisposition::Continue)
       },
     }
