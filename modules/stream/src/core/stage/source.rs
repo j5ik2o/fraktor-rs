@@ -18,11 +18,12 @@ use super::{
     drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
     group_by_definition, grouped_definition, initial_delay_definition, interleave_definition, intersperse_definition,
     map_async_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
-    merge_substreams_definition, merge_substreams_with_parallelism_definition, partition_definition,
-    prepend_definition, sample_definition, scan_definition, sliding_definition, split_after_definition,
-    split_when_definition, stateful_map_concat_definition, stateful_map_definition, take_definition,
-    take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
-    unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    merge_prioritized_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
+    partition_definition, prepend_definition, sample_definition, scan_definition, sliding_definition,
+    split_after_definition, split_when_definition, stateful_map_concat_definition, stateful_map_definition,
+    take_definition, take_until_definition, take_while_definition, take_within_definition, throttle_definition,
+    unzip_definition, unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition,
+    zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -44,7 +45,7 @@ pub struct Source<Out, Mat> {
 
 impl<Out> Source<Out, StreamNotUsed>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
 {
   /// Creates a source that emits no elements and completes immediately.
   #[must_use]
@@ -154,26 +155,33 @@ where
   #[must_use]
   pub fn from_materializer<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self + Send + 'static, {
+    F: FnOnce() -> Self + Send + 'static,
+    Out: Sync, {
     Self::lazy_source(factory)
   }
 
   /// Converts this source into a context-carrying source by attaching unit context.
   #[must_use]
-  pub fn as_source_with_context(self) -> super::source_with_context::SourceWithContext<(), Out, StreamNotUsed> {
+  pub fn as_source_with_context(self) -> super::source_with_context::SourceWithContext<(), Out, StreamNotUsed>
+  where
+    Out: Sync, {
     let inner = self.map(|value| ((), value));
     super::source_with_context::SourceWithContext::from_source(inner)
   }
 
   /// Creates a sink endpoint that can be paired with a source subscriber bridge.
   #[must_use]
-  pub fn as_subscriber() -> Sink<Out, StreamCompletion<StreamDone>> {
+  pub fn as_subscriber() -> Sink<Out, StreamCompletion<StreamDone>>
+  where
+    Out: Sync, {
     Sink::ignore()
   }
 
   /// Creates a sink endpoint for actor interop entry points.
   #[must_use]
-  pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>> {
+  pub fn sink() -> Sink<Out, StreamCompletion<StreamDone>>
+  where
+    Out: Sync, {
     Self::as_subscriber()
   }
 
@@ -186,7 +194,8 @@ where
   #[must_use]
   pub fn combine<I>(sources: I) -> Self
   where
-    I: IntoIterator<Item = Self>, {
+    I: IntoIterator<Item = Self>,
+    Out: Sync, {
     let mut iter = sources.into_iter();
     let Some(first) = iter.next() else {
       return Self::empty();
@@ -217,6 +226,75 @@ where
       let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
     }
     Source { graph, mat, _pd: PhantomData }
+  }
+
+  /// Combines multiple sources using merge-prioritized fan-in.
+  ///
+  /// Returns an empty source when `sources` is empty.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `priorities.len()` does not match the
+  /// number of sources or when any priority is zero.
+  pub fn merge_prioritized_n<I>(sources: I, priorities: &[usize]) -> Result<Self, StreamDslError>
+  where
+    I: IntoIterator<Item = Self>,
+    Out: Sync, {
+    let mut iter = sources.into_iter();
+    let Some(first) = iter.next() else {
+      if priorities.is_empty() {
+        return Ok(Self::empty());
+      }
+      return Err(StreamDslError::InvalidArgument {
+        name:   "priorities",
+        value:  priorities.len(),
+        reason: "length must match fan_in",
+      });
+    };
+
+    let rest: Vec<Self> = iter.collect();
+    let fan_in = rest.len().saturating_add(1);
+    if priorities.len() != fan_in {
+      return Err(StreamDslError::InvalidArgument {
+        name:   "priorities",
+        value:  priorities.len(),
+        reason: "length must match fan_in",
+      });
+    }
+    for (i, &priority) in priorities.iter().enumerate() {
+      if priority == 0 {
+        return Err(StreamDslError::InvalidArgument {
+          name:   "priorities",
+          value:  i,
+          reason: "all priorities must be positive",
+        });
+      }
+    }
+    if rest.is_empty() {
+      return Ok(first);
+    }
+
+    let (mut graph, mat) = first.into_parts();
+    let first_outlet = graph.tail_outlet();
+    let mut other_outlets = Vec::with_capacity(rest.len());
+    for source in rest {
+      let (other_graph, _other_mat) = source.into_parts();
+      let other_outlet = other_graph.tail_outlet();
+      graph.append_unwired(other_graph);
+      if let Some(port) = other_outlet {
+        other_outlets.push(port);
+      }
+    }
+    let definition = merge_prioritized_definition::<Out>(fan_in, priorities);
+    let merge_inlet = definition.inlet;
+    graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = first_outlet {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    for from in other_outlets {
+      let _ = graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(merge_inlet), MatCombine::KeepLeft);
+    }
+    Ok(Source { graph, mat, _pd: PhantomData })
   }
 
   /// Creates a source from a Java-stream compatible iterator.
@@ -333,7 +411,8 @@ where
   #[must_use]
   pub fn lazy_single<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Out + Send + 'static, {
+    F: FnOnce() -> Out + Send + 'static,
+    Out: Sync, {
     Self::lazy_source(move || Self::single(factory()))
   }
 
@@ -344,7 +423,8 @@ where
   #[must_use]
   pub fn lazy_source<F>(factory: F) -> Self
   where
-    F: FnOnce() -> Self + Send + 'static, {
+    F: FnOnce() -> Self + Send + 'static,
+    Out: Sync, {
     Self::from_logic(StageKind::Custom, LazySourceLogic::<Out, F> {
       factory: Some(factory),
       buffer:  VecDeque::new(),
@@ -454,7 +534,7 @@ where
   /// Returns [`StreamDslError`] when `interval_ticks` is zero.
   pub fn tick(initial_delay_ticks: usize, interval_ticks: usize, value: Out) -> Result<Self, StreamDslError>
   where
-    Out: Clone, {
+    Out: Clone + Sync, {
     let _ = validate_positive_argument("interval_ticks", interval_ticks)?;
     let mut source = Self::repeat(value);
     if initial_delay_ticks > 0 {
@@ -522,7 +602,9 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `n` is zero.
-  pub fn zip_n(self, n: usize) -> Result<Source<Vec<Out>, StreamNotUsed>, StreamDslError> {
+  pub fn zip_n(self, n: usize) -> Result<Source<Vec<Out>, StreamNotUsed>, StreamDslError>
+  where
+    Out: Sync, {
     self.zip(n)
   }
 
@@ -533,6 +615,7 @@ where
   /// Returns [`StreamDslError`] when `n` is zero.
   pub fn zip_with_n<T, F>(self, n: usize, func: F) -> Result<Source<T, StreamNotUsed>, StreamDslError>
   where
+    Out: Sync,
     T: Send + Sync + 'static,
     F: FnMut(Vec<Out>) -> T + Send + Sync + 'static, {
     Ok(self.zip_n(n)?.map(func))
@@ -703,11 +786,80 @@ where
     self.to_mat(sink, super::keep_right::KeepRight).run(materializer)
   }
 
+  /// Runs this source with a folding sink shortcut.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run_fold<Acc, F, M>(
+    self,
+    initial: Acc,
+    func: F,
+    materializer: &mut M,
+  ) -> Result<Materialized<StreamCompletion<Acc>>, StreamError>
+  where
+    Acc: Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static,
+    M: Materializer, {
+    self.run_with(Sink::fold(initial, func), materializer)
+  }
+
+  /// Runs this source with an async-fold sink shortcut.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run_fold_async<Acc, F, Fut, M>(
+    self,
+    initial: Acc,
+    func: F,
+    materializer: &mut M,
+  ) -> Result<Materialized<StreamCompletion<Acc>>, StreamError>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Acc> + Send + 'static,
+    M: Materializer, {
+    self.run_with(Sink::fold_async(initial, func), materializer)
+  }
+
+  /// Runs this source with a reducing sink shortcut.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run_reduce<F, M>(
+    self,
+    func: F,
+    materializer: &mut M,
+  ) -> Result<Materialized<StreamCompletion<Out>>, StreamError>
+  where
+    F: FnMut(Out, Out) -> Out + Send + Sync + 'static,
+    M: Materializer, {
+    self.run_with(Sink::reduce(func), materializer)
+  }
+
+  /// Runs this source with a foreach sink shortcut.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError`] when materialization fails.
+  pub fn run_foreach<F, M>(
+    self,
+    func: F,
+    materializer: &mut M,
+  ) -> Result<Materialized<StreamCompletion<StreamDone>>, StreamError>
+  where
+    F: FnMut(Out) + Send + Sync + 'static,
+    M: Materializer, {
+    self.run_with(Sink::foreach(func), materializer)
+  }
+
   /// Adds a map stage to this source.
   #[must_use]
   pub fn map<T, F>(mut self, func: F) -> Source<T, Mat>
   where
-    T: Send + Sync + 'static,
+    T: Send + 'static,
     F: FnMut(Out) -> T + Send + Sync + 'static, {
     let definition = map_definition::<Out, T, F>(func);
     let inlet_id = definition.inlet;
@@ -810,6 +962,15 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Collects only values mapped to `Some`.
+  #[must_use]
+  pub fn collect<T, F>(self, func: F) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Option<T> + Send + Sync + 'static, {
+    self.map_option(func)
   }
 
   /// Adds a filter stage to this source.
@@ -1723,6 +1884,29 @@ where
   }
 }
 
+impl<Out, Mat, Mat2> Source<Source<Out, Mat2>, Mat>
+where
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+{
+  /// Flattens nested sources.
+  #[must_use]
+  pub fn flatten(mut self) -> Source<Out, Mat> {
+    let definition = flat_map_concat_definition::<Source<Out, Mat2>, Out, Mat2, _>(|source| source);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Source<Out, Mat2>>::from_id(from),
+        &Inlet::<Source<Out, Mat2>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
 impl<Out, Mat> Source<Out, Mat>
 where
   Out: Send + Sync + 'static,
@@ -1947,7 +2131,7 @@ struct UnboundedQueueSourceLogic<Out> {
 
 impl<Out, I> SourceLogic for IteratorSourceLogic<I>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
   I: Iterator<Item = Out> + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
@@ -1969,7 +2153,7 @@ impl SourceLogic for NeverSourceLogic {
 
 impl<Out> SourceLogic for RepeatSourceLogic<Out>
 where
-  Out: Clone + Send + Sync + 'static,
+  Out: Clone + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(Some(Box::new(self.value.clone()) as DynValue))
@@ -1978,7 +2162,7 @@ where
 
 impl<Out> SourceLogic for CycleSourceLogic<Out>
 where
-  Out: Clone + Send + Sync + 'static,
+  Out: Clone + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     if self.values.is_empty() {
@@ -1992,7 +2176,7 @@ where
 
 impl<Out, F> SourceLogic for IterateSourceLogic<Out, F>
 where
-  Out: Clone + Send + Sync + 'static,
+  Out: Clone + Send + 'static,
   F: FnMut(Out) -> Out + Send + Sync + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
@@ -2004,7 +2188,7 @@ where
 
 impl<Out> SourceLogic for SingleSourceLogic<Out>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.value.take().map(|value| Box::new(value) as DynValue))
@@ -2013,7 +2197,7 @@ where
 
 impl<Out, Fut> SourceLogic for FutureSourceLogic<Out, Fut>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
   Fut: Future<Output = Out> + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
@@ -2040,7 +2224,7 @@ where
 impl<State, Out, F, Fut> SourceLogic for UnfoldAsyncSourceLogic<State, Out, F, Fut>
 where
   State: Send + 'static,
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
   F: FnMut(State) -> Fut + Send + Sync + 'static,
   Fut: Future<Output = Option<(State, Out)>> + Send + 'static,
 {
@@ -2079,7 +2263,7 @@ where
 
 impl<Out> SourceLogic for QueueSourceLogic<Out>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     match self.queue.poll_or_drain()? {
@@ -2096,7 +2280,7 @@ where
 
 impl<Out> SourceLogic for QueueWithOverflowSourceLogic<Out>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     match self.queue.poll_or_drain()? {
@@ -2113,7 +2297,7 @@ where
 
 impl<Out> SourceLogic for UnboundedQueueSourceLogic<Out>
 where
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     match self.queue.poll_or_drain()? {

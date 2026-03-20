@@ -1,5 +1,11 @@
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
-use core::{any::TypeId, future::Future, marker::PhantomData};
+use core::{
+  any::TypeId,
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll, Waker},
+};
 
 use super::{
   DynValue, MatCombine, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, StageDefinition,
@@ -156,6 +162,7 @@ where
       factory:    Some(factory),
       inner:      None,
       completion: completion.clone(),
+      completed:  false,
       _pd:        PhantomData,
     };
     Self::from_definition(StageKind::Custom, logic, completion)
@@ -340,6 +347,30 @@ where
       FoldSinkLogic::<In, Acc, F> { acc: Some(initial), func, completion: completion.clone(), _pd: PhantomData };
     Self::from_definition(StageKind::SinkFold, logic, completion)
   }
+
+  /// Creates a sink that folds elements via an async compatibility flow.
+  ///
+  /// This compatibility implementation keeps polling the returned future across
+  /// interpreter ticks while allowing at most one in-flight fold future.
+  #[must_use]
+  pub fn fold_async<F, Fut>(initial: Acc, func: F) -> Self
+  where
+    Acc: Clone,
+    F: FnMut(Acc, In) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Acc> + Send + 'static, {
+    let completion = StreamCompletion::new();
+    let logic = FoldAsyncSinkLogic::<In, Acc, F, Fut> {
+      initial: initial.clone(),
+      acc: Some(initial),
+      func,
+      pending: None,
+      completion: completion.clone(),
+      upstream_finished: false,
+      completed: false,
+      _pd: PhantomData,
+    };
+    Self::from_definition(StageKind::SinkFold, logic, completion)
+  }
 }
 
 impl<In> Sink<In, StreamCompletion<In>>
@@ -494,6 +525,7 @@ struct LazySinkLogic<In, F> {
   factory:    Option<F>,
   inner:      Option<Box<dyn SinkLogic>>,
   completion: StreamCompletion<StreamDone>,
+  completed:  bool,
   _pd:        PhantomData<fn(In)>,
 }
 
@@ -502,6 +534,13 @@ where
   In: Send + Sync + 'static,
   F: FnOnce() -> Sink<In, StreamCompletion<StreamDone>> + Send + 'static,
 {
+  fn can_accept_input(&self) -> bool {
+    match &self.inner {
+      | Some(inner) => inner.can_accept_input(),
+      | None => true,
+    }
+  }
+
   fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
@@ -533,13 +572,22 @@ where
   }
 
   fn on_complete(&mut self) -> Result<(), StreamError> {
+    if self.completed {
+      return Ok(());
+    }
     let result = match &mut self.inner {
       | Some(inner) => inner.on_complete(),
       | None => Ok(()),
     };
     match &result {
-      | Ok(()) => self.completion.complete(Ok(StreamDone::new())),
-      | Err(e) => self.completion.complete(Err(e.clone())),
+      | Ok(()) => {
+        self.completion.complete(Ok(StreamDone::new()));
+        self.completed = true;
+      },
+      | Err(e) => {
+        self.completion.complete(Err(e.clone()));
+        self.completed = true;
+      },
     }
     result
   }
@@ -548,13 +596,38 @@ where
     if let Some(inner) = &mut self.inner {
       inner.on_error(error.clone());
     }
-    self.completion.complete(Err(error));
+    if !self.completed {
+      self.completion.complete(Err(error));
+      self.completed = true;
+    }
+  }
+
+  fn on_tick(&mut self, demand: &mut super::DemandTracker) -> Result<bool, StreamError> {
+    match &mut self.inner {
+      | Some(inner) => inner.on_tick(demand),
+      | None => Ok(false),
+    }
+  }
+
+  fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
+    match &mut self.inner {
+      | Some(inner) => inner.on_upstream_finish(),
+      | None => Ok(false),
+    }
+  }
+
+  fn has_pending_work(&self) -> bool {
+    match &self.inner {
+      | Some(inner) => inner.has_pending_work(),
+      | None => false,
+    }
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
     if let Some(inner) = &mut self.inner {
       inner.on_restart()?;
     }
+    self.completed = false;
     Ok(())
   }
 }
@@ -711,6 +784,45 @@ struct FoldSinkLogic<In, Acc, F> {
   _pd:        PhantomData<fn(In)>,
 }
 
+struct FoldAsyncSinkLogic<In, Acc, F, Fut>
+where
+  Fut: Future<Output = Acc> + Send + 'static, {
+  initial:           Acc,
+  acc:               Option<Acc>,
+  func:              F,
+  pending:           Option<Pin<Box<Fut>>>,
+  completion:        StreamCompletion<Acc>,
+  upstream_finished: bool,
+  completed:         bool,
+  _pd:               PhantomData<fn(In)>,
+}
+
+impl<In, Acc, F, Fut> FoldAsyncSinkLogic<In, Acc, F, Fut>
+where
+  In: Send + Sync + 'static,
+  Acc: Clone + Send + Sync + 'static,
+  F: FnMut(Acc, In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Acc> + Send + 'static,
+{
+  fn poll_future(future: Pin<&mut Fut>) -> Poll<Acc> {
+    let waker = Waker::noop().clone();
+    let mut context = Context::from_waker(&waker);
+    future.poll(&mut context)
+  }
+
+  fn finish_if_ready(&mut self) -> Result<bool, StreamError> {
+    if self.completed {
+      return Ok(false);
+    }
+    let Some(value) = self.acc.take() else {
+      return Err(StreamError::Failed);
+    };
+    self.completion.complete(Ok(value));
+    self.completed = true;
+    Ok(true)
+  }
+}
+
 impl<In, Acc, F> SinkLogic for FoldSinkLogic<In, Acc, F>
 where
   In: Send + Sync + 'static,
@@ -742,6 +854,96 @@ where
 
   fn on_error(&mut self, error: StreamError) {
     self.completion.complete(Err(error));
+  }
+}
+
+impl<In, Acc, F, Fut> SinkLogic for FoldAsyncSinkLogic<In, Acc, F, Fut>
+where
+  In: Send + Sync + 'static,
+  Acc: Clone + Send + Sync + 'static,
+  F: FnMut(Acc, In) -> Fut + Send + Sync + 'static,
+  Fut: Future<Output = Acc> + Send + 'static,
+{
+  fn can_accept_input(&self) -> bool {
+    self.pending.is_none()
+  }
+
+  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+    let value = downcast_value::<In>(input)?;
+    let Some(current) = self.acc.take() else {
+      return Err(StreamError::Failed);
+    };
+    let mut future = Box::pin((self.func)(current, value));
+    match Self::poll_future(future.as_mut()) {
+      | Poll::Ready(next) => {
+        self.acc = Some(next);
+        demand.request(1)?;
+      },
+      | Poll::Pending => {
+        self.pending = Some(future);
+      },
+    }
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    self.upstream_finished = true;
+    if self.pending.is_none() {
+      let _ = self.finish_if_ready()?;
+    }
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.pending = None;
+    self.acc = None;
+    self.completed = true;
+    self.completion.complete(Err(error));
+  }
+
+  fn on_tick(&mut self, demand: &mut super::DemandTracker) -> Result<bool, StreamError> {
+    let Some(mut future) = self.pending.take() else {
+      return Ok(false);
+    };
+    match Self::poll_future(future.as_mut()) {
+      | Poll::Ready(next) => {
+        self.acc = Some(next);
+        if self.upstream_finished {
+          self.finish_if_ready()
+        } else {
+          demand.request(1)?;
+          Ok(true)
+        }
+      },
+      | Poll::Pending => {
+        self.pending = Some(future);
+        Ok(false)
+      },
+    }
+  }
+
+  fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
+    self.upstream_finished = true;
+    if self.pending.is_none() {
+      return self.finish_if_ready();
+    }
+    Ok(false)
+  }
+
+  fn has_pending_work(&self) -> bool {
+    self.pending.is_some()
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.acc = Some(self.initial.clone());
+    self.pending = None;
+    self.upstream_finished = false;
+    self.completed = false;
+    Ok(())
   }
 }
 

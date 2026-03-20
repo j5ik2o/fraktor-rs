@@ -16,7 +16,7 @@ pub(in crate::core::stage::flow) struct MapLogic<In, Out, F> {
 impl<In, Out, F> FlowLogic for MapLogic<In, Out, F>
 where
   In: Send + Sync + 'static,
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
   F: FnMut(In) -> Out + Send + Sync + 'static,
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {

@@ -224,9 +224,14 @@ impl GraphInterpreter {
 
       if self.all_edge_buffers_empty() {
         match self.finish_sinks() {
-          | Ok(()) => {
-            self.state = StreamState::Completed;
-            progressed = true;
+          | Ok(did_finish) => {
+            if did_finish {
+              progressed = true;
+            }
+            if self.all_sinks_done() {
+              self.state = StreamState::Completed;
+              progressed = true;
+            }
           },
           | Err(error) => {
             self.fail(&error);
@@ -537,7 +542,13 @@ impl GraphInterpreter {
         }
       };
 
-      if can_accept_input && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet)? {
+      let preferred_input_slot = match &self.stages[stage_index] {
+        | StageDefinition::Flow(flow) => flow.logic.preferred_input_edge_slot(),
+        | _ => None,
+      };
+      if can_accept_input
+        && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet, preferred_input_slot)?
+      {
         consumed_input = true;
         if input.as_ref().type_id() != flow_input_type {
           return Err(StreamError::TypeMismatch);
@@ -711,11 +722,33 @@ impl GraphInterpreter {
       sink.logic.can_accept_input()
     };
     if !sink_can_accept {
+      if self.stage_input_exhausted(sink_index) {
+        let upstream_progressed = {
+          let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+            return Err(StreamError::InvalidConnection);
+          };
+          sink.logic.on_upstream_finish()?
+        };
+        if self.sink_has_pending_work(sink_index)? {
+          return Ok(progressed || upstream_progressed);
+        }
+        self.complete_sink_position(sink_position)?;
+        return Ok(true);
+      }
       return Ok(progressed);
     }
 
-    let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet)? else {
+    let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet, None)? else {
       if self.stage_input_exhausted(sink_index) {
+        let upstream_progressed = {
+          let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+            return Err(StreamError::InvalidConnection);
+          };
+          sink.logic.on_upstream_finish()?
+        };
+        if self.sink_has_pending_work(sink_index)? {
+          return Ok(progressed || upstream_progressed);
+        }
         self.complete_sink_position(sink_position)?;
         return Ok(true);
       }
@@ -768,27 +801,56 @@ impl GraphInterpreter {
     }
   }
 
-  fn finish_sinks(&mut self) -> Result<(), StreamError> {
+  fn finish_sinks(&mut self) -> Result<bool, StreamError> {
+    let mut progressed = false;
     for sink_position in 0..self.sink_indices.len() {
       if self.sink_done[sink_position] {
         continue;
       }
+      let sink_index = self.sink_indices[sink_position];
+      {
+        let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+          return Err(StreamError::InvalidConnection);
+        };
+        let _ = sink.logic.on_upstream_finish()?;
+      }
+      if self.sink_has_pending_work(sink_index)? {
+        continue;
+      }
       self.complete_sink_position(sink_position)?;
+      progressed = true;
     }
-    Ok(())
+    Ok(progressed)
   }
 
   fn has_buffered_outgoing(&self, from: PortId) -> bool {
     self.edges.iter().any(|edge| edge.from == from && !edge.buffer.is_empty())
   }
 
-  fn poll_from_incoming_edges(&mut self, to: PortId) -> Result<Option<(usize, DynValue)>, StreamError> {
-    for (index, edge) in self.edges.iter_mut().enumerate() {
-      if edge.to != to || edge.buffer.is_empty() {
+  fn poll_from_incoming_edges(
+    &mut self,
+    to: PortId,
+    preferred_slot: Option<usize>,
+  ) -> Result<Option<(usize, DynValue)>, StreamError> {
+    let mut incoming_edges = Vec::new();
+    for (index, edge) in self.edges.iter().enumerate() {
+      if edge.to == to {
+        incoming_edges.push(index);
+      }
+    }
+    if let Some(slot) = preferred_slot
+      && let Some(edge_index) = incoming_edges.get(slot).copied()
+      && !self.edges[edge_index].buffer.is_empty()
+    {
+      let value = self.edges[edge_index].buffer.poll()?;
+      return Ok(Some((slot, value)));
+    }
+    for (slot, edge_index) in incoming_edges.into_iter().enumerate() {
+      if self.edges[edge_index].buffer.is_empty() {
         continue;
       }
-      let value = edge.buffer.poll()?;
-      return Ok(Some((index, value)));
+      let value = self.edges[edge_index].buffer.poll()?;
+      return Ok(Some((slot, value)));
     }
     Ok(None)
   }
@@ -833,6 +895,13 @@ impl GraphInterpreter {
 
   fn all_edge_buffers_empty(&self) -> bool {
     self.edges.iter().all(|edge| edge.buffer.is_empty())
+  }
+
+  fn sink_has_pending_work(&self, sink_index: usize) -> Result<bool, StreamError> {
+    let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(sink.logic.has_pending_work())
   }
 
   fn all_sources_done(&self) -> bool {

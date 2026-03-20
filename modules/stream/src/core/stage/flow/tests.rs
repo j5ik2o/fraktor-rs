@@ -465,6 +465,55 @@ fn flat_map_merge_keeps_single_path_behavior() {
 }
 
 #[test]
+fn flat_map_concat_emits_head_without_waiting_for_inner_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let graph = Source::single(0_u32)
+    .via(Flow::new().flat_map_concat({
+      let pulls = pulls.clone();
+      move |_| {
+        Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[42, 43, 44], pulls.clone()))
+      }
+    }))
+    .to_mat(Sink::head(), KeepRight);
+
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  drive_until_completion(&mut interpreter, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
+}
+
+#[test]
+fn flat_map_merge_emits_head_without_waiting_for_inner_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let graph = Source::single(0_u32)
+    .via(
+      Flow::new()
+        .flat_map_merge(1, {
+          let pulls = pulls.clone();
+          move |_| {
+            Source::<u32, _>::from_logic(
+              StageKind::Custom,
+              CountingSequenceSourceLogic::new(&[42, 43, 44], pulls.clone()),
+            )
+          }
+        })
+        .expect("flat_map_merge"),
+    )
+    .to_mat(Sink::head(), KeepRight);
+
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  drive_until_completion(&mut interpreter, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
+}
+
+#[test]
 fn flat_map_merge_rejects_zero_breadth() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let result = flow.flat_map_merge(0, Source::single);
@@ -878,6 +927,63 @@ fn flatten_optional_skips_none() {
   let values =
     Source::single(None::<u32>).via(Flow::new().flatten_optional()).collect_values().expect("collect_values");
   assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn collect_maps_present_values_and_skips_absent_values() {
+  let values = Source::from_array([1_i32, -1_i32, 2_i32])
+    .via(Flow::new().collect(|value| u32::try_from(value).ok()))
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn flatten_flattens_nested_sources_in_order_and_skips_empty_inner_sources() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(
+      Flow::new()
+        .map(|value: u32| {
+          if value == 1 {
+            Source::empty()
+          } else {
+            Source::from_array([value.saturating_add(20), value.saturating_add(30)])
+          }
+        })
+        .flatten(),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![22_u32, 32_u32, 23_u32, 33_u32]);
+}
+
+#[test]
+fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let graph = Source::single(0_u32)
+    .via(
+      Flow::new()
+        .map({
+          let pulls = pulls.clone();
+          move |_| {
+            Source::<u32, _>::from_logic(
+              StageKind::Custom,
+              CountingSequenceSourceLogic::new(&[42, 43, 44], pulls.clone()),
+            )
+          }
+        })
+        .flatten(),
+    )
+    .to_mat(Sink::head(), KeepRight);
+
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  drive_until_completion(&mut interpreter, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(42_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
 }
 
 #[test]
@@ -1381,6 +1487,22 @@ fn concat_source_logic_on_restart_keeps_secondary_stream() {
     values.extend(outputs.into_iter().map(|output| *output.downcast::<u32>().expect("u32")));
   }
   assert_eq!(values, vec![7_u32, 8_u32]);
+}
+
+#[test]
+fn secondary_source_bridge_emits_single_value() {
+  let mut bridge = super::SecondarySourceBridge::new(Source::single(7_u32)).expect("bridge");
+
+  assert_eq!(bridge.poll_next().expect("poll_next"), Some(7_u32));
+}
+
+#[test]
+fn secondary_source_bridge_supports_multi_outlet_inner_source() {
+  let mut bridge =
+    super::SecondarySourceBridge::new(Source::single(7_u32).broadcast(2).expect("broadcast")).expect("bridge");
+
+  assert_eq!(bridge.poll_next().expect("poll_next first"), Some(7_u32));
+  assert_eq!(bridge.poll_next().expect("poll_next second"), Some(7_u32));
 }
 
 #[test]

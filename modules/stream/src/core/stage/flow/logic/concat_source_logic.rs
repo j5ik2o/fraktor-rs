@@ -1,8 +1,14 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
-use super::super::super::{DynValue, FlowLogic, Sink, Source, StreamError, downcast_value};
+use super::super::{
+  super::{
+    DynValue, FlowLogic, Sink, Source, StreamError, downcast_value,
+    shape::{Inlet, Outlet},
+  },
+  StageDefinition, map_definition,
+};
 use crate::core::{
-  KeepRight, QueueOfferResult, SourceQueue, StreamBufferConfig, StreamCompletion, StreamDone,
+  Completion, MatCombine, QueueOfferResult, SourceQueue, StreamBufferConfig, StreamCompletion, StreamDone,
   lifecycle::{DriveOutcome, Stream},
 };
 
@@ -17,9 +23,78 @@ impl<Out> SecondarySourceBridge<Out>
 where
   Out: Send + Sync + 'static,
 {
+  fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
+    match self.completion.try_take() {
+      | Some(Ok(_)) | None => {
+        if self.stream.state().is_terminal() || matches!(self.completion.poll(), Completion::Ready(Ok(_))) {
+          self.finished = true;
+          let _ = self.queue.complete_if_open();
+        }
+        Ok(())
+      },
+      | Some(Err(error)) => {
+        self.finished = true;
+        self.queue.fail(error.clone());
+        Err(error)
+      },
+    }
+  }
+
+  fn finalize_if_terminal(&mut self) -> Result<Option<Out>, StreamError> {
+    if !self.stream.state().is_terminal() {
+      return Ok(None);
+    }
+    self.sync_terminal_state()?;
+    self.queue.poll()
+  }
+
+  fn refresh_after_emit(&mut self) -> Result<(), StreamError> {
+    if self.finished || !self.queue.is_empty() {
+      return Ok(());
+    }
+
+    self.sync_terminal_state()?;
+    if self.finished || !self.queue.is_empty() {
+      return Ok(());
+    }
+
+    let mut idle_budget = 32_usize;
+    let mut drive_budget = 256_usize;
+    loop {
+      if drive_budget == 0 {
+        return Ok(());
+      }
+      drive_budget = drive_budget.saturating_sub(1);
+
+      match self.stream.drive() {
+        | DriveOutcome::Progressed => idle_budget = 32,
+        | DriveOutcome::Idle => {
+          if idle_budget == 0 {
+            return Ok(());
+          }
+          idle_budget = idle_budget.saturating_sub(1);
+        },
+      }
+
+      if !self.queue.is_empty() {
+        return Ok(());
+      }
+
+      self.sync_terminal_state()?;
+      if self.finished {
+        return Ok(());
+      }
+    }
+  }
+
   pub(in crate::core::stage::flow) fn new<Mat>(source: Source<Out, Mat>) -> Result<Self, StreamError>
   where
     Mat: Send + Sync + 'static, {
+    let (mut graph, _mat) = source.into_parts();
+    let Some(tail_outlet_id) = graph.tail_outlet() else {
+      return Err(StreamError::InvalidConnection);
+    };
+    let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
     let queue = SourceQueue::new();
     let sink_queue = queue.clone();
     let sink = Sink::foreach(move |value: Out| match sink_queue.offer(value) {
@@ -27,8 +102,25 @@ where
       | QueueOfferResult::Failure(error) => sink_queue.fail(error),
       | QueueOfferResult::Dropped | QueueOfferResult::QueueClosed => sink_queue.fail(StreamError::Failed),
     });
-    let graph = source.to_mat(sink, KeepRight);
-    let (plan, completion) = graph.into_parts();
+    let (sink_graph, completion) = sink.into_parts();
+    let Some(sink_inlet_id) = sink_graph.head_inlet() else {
+      return Err(StreamError::InvalidConnection);
+    };
+    graph.append(sink_graph);
+    let sink_inlet = Inlet::<Out>::from_id(sink_inlet_id);
+
+    if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
+      for _ in 1..expected_fan_out {
+        let branch = map_definition::<Out, Out, _>(|value| value);
+        let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
+        let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
+        graph.push_stage(StageDefinition::Flow(branch));
+        graph.connect(&tail_outlet, &branch_inlet, MatCombine::KeepLeft)?;
+        graph.connect(&branch_outlet, &sink_inlet, MatCombine::KeepRight)?;
+      }
+    }
+
+    let plan = graph.into_plan()?;
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
     Ok(Self { stream, completion, queue, finished: false })
@@ -36,34 +128,42 @@ where
 
   pub(in crate::core::stage::flow) fn poll_next(&mut self) -> Result<Option<Out>, StreamError> {
     if let Some(value) = self.queue.poll()? {
+      if self.queue.is_empty() {
+        self.refresh_after_emit()?;
+      }
       return Ok(Some(value));
     }
     if self.finished {
       return Ok(None);
     }
 
-    match self.stream.drive() {
-      | DriveOutcome::Progressed | DriveOutcome::Idle => {},
-    }
+    let mut idle_budget = 32_usize;
+    let mut drive_budget = 256_usize;
+    loop {
+      match self.finalize_if_terminal()? {
+        | Some(value) => return Ok(Some(value)),
+        | None if self.finished => return Ok(None),
+        | None => {},
+      }
+      if drive_budget == 0 {
+        return Ok(None);
+      }
+      drive_budget = drive_budget.saturating_sub(1);
 
-    if let Some(value) = self.queue.poll()? {
-      return Ok(Some(value));
-    }
-    if self.stream.state().is_terminal() {
-      self.finished = true;
-      match self.completion.try_take() {
-        | Some(Ok(_)) | None => {
-          let _ = self.queue.complete_if_open();
-          return self.queue.poll();
-        },
-        | Some(Err(error)) => {
-          self.queue.fail(error.clone());
-          return Err(error);
+      match self.stream.drive() {
+        | DriveOutcome::Progressed => idle_budget = 32,
+        | DriveOutcome::Idle => {
+          if idle_budget == 0 {
+            return Ok(None);
+          }
+          idle_budget = idle_budget.saturating_sub(1);
         },
       }
-    }
 
-    Ok(None)
+      if let Some(value) = self.queue.poll()? {
+        return Ok(Some(value));
+      }
+    }
   }
 
   pub(in crate::core::stage::flow) fn has_pending_output(&self) -> bool {

@@ -1,17 +1,20 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::marker::PhantomData;
 
-use super::super::super::{
-  DynValue, FlowLogic, Source, StreamError, StreamNotUsed, downcast_value,
-  graph::{GraphStage, GraphStageLogic},
-  shape::{Inlet, Outlet, StreamShape},
-  stage_context::StageContext,
+use super::{
+  super::super::{
+    DynValue, FlowLogic, Source, StreamError, StreamNotUsed, downcast_value,
+    graph::{GraphStage, GraphStageLogic},
+    shape::{Inlet, Outlet, StreamShape},
+    stage_context::StageContext,
+  },
+  SecondarySourceBridge,
 };
 
 pub(in crate::core::stage::flow) struct FlatMapMergeLogic<In, Out, Mat2, F> {
   pub(in crate::core::stage::flow) breadth:        usize,
   pub(in crate::core::stage::flow) func:           F,
-  pub(in crate::core::stage::flow) active_streams: VecDeque<VecDeque<Out>>,
+  pub(in crate::core::stage::flow) active_streams: VecDeque<SecondarySourceBridge<Out>>,
   pub(in crate::core::stage::flow) pending_outer:  VecDeque<In>,
   pub(in crate::core::stage::flow) _pd:            PhantomData<fn(In) -> (Out, Mat2)>,
 }
@@ -24,13 +27,7 @@ where
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
 {
   fn enqueue_active_inner(&mut self, value: In) -> Result<(), StreamError> {
-    let source = (self.func)(value);
-    let outputs = source.collect_values()?;
-    if outputs.is_empty() {
-      return Ok(());
-    }
-    let mut stream = VecDeque::with_capacity(outputs.len());
-    stream.extend(outputs);
+    let stream = SecondarySourceBridge::new((self.func)(value))?;
     self.active_streams.push_back(stream);
     Ok(())
   }
@@ -48,19 +45,41 @@ where
   fn pop_next_value(&mut self) -> Result<Option<Out>, StreamError> {
     self.promote_pending()?;
     loop {
-      let Some(mut stream) = self.active_streams.pop_front() else {
+      let active_len = self.active_streams.len();
+      if active_len == 0 {
         return Ok(None);
-      };
-      let Some(value) = stream.pop_front() else {
-        self.promote_pending()?;
-        continue;
-      };
-      if stream.is_empty() {
-        self.promote_pending()?;
-      } else {
-        self.active_streams.push_back(stream);
       }
-      return Ok(Some(value));
+
+      for _ in 0..active_len {
+        let Some(mut stream) = self.active_streams.pop_front() else {
+          break;
+        };
+
+        if let Some(value) = stream.poll_next()? {
+          if stream.has_pending_output() {
+            self.active_streams.push_back(stream);
+          } else {
+            self.promote_pending()?;
+          }
+          return Ok(Some(value));
+        }
+
+        if stream.has_pending_output() {
+          self.active_streams.push_back(stream);
+        } else {
+          self.promote_pending()?;
+        }
+      }
+
+      if self.active_streams.is_empty() {
+        self.promote_pending()?;
+        if self.active_streams.is_empty() {
+          return Ok(None);
+        }
+        continue;
+      }
+
+      return Ok(None);
     }
   }
 }

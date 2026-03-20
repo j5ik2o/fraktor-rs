@@ -1,6 +1,8 @@
-use alloc::{vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 
-use super::{find_delimiter, read_big_endian_uint};
+use super::{
+  SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_i32, read_big_endian_uint,
+};
 
 #[test]
 fn should_find_delimiter_at_start() {
@@ -35,6 +37,19 @@ fn should_read_big_endian_u32() {
 #[test]
 fn should_read_single_byte() {
   assert_eq!(read_big_endian_uint(&[0x05]), 5);
+}
+
+#[test]
+fn should_read_big_endian_i32() {
+  assert_eq!(read_big_endian_i32([0x00, 0x00, 0x01, 0x00]), 256);
+}
+
+#[test]
+fn should_error_when_frame_length_addition_overflows() {
+  use crate::core::StreamError;
+
+  let result = checked_frame_length(usize::MAX, 1);
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
 
 #[test]
@@ -109,4 +124,103 @@ fn should_create_length_field_flow() {
   assert_eq!(frames.len(), 2);
   assert_eq!(&frames[0][2..], b"abc");
   assert_eq!(&frames[1][2..], b"de");
+}
+
+#[test]
+fn should_encode_payload_with_four_byte_big_endian_length_header() {
+  use crate::core::stage::Source;
+
+  let protocol = super::Framing::simple_framing_protocol(16);
+  let (encoder, _decoder, _mat) = protocol.split();
+
+  let frames = Source::single(b"abc".to_vec()).via(encoder).collect_values().unwrap();
+  assert_eq!(frames, vec![vec![0x00, 0x00, 0x00, 0x03, b'a', b'b', b'c']]);
+}
+
+#[test]
+fn should_decode_chunked_frames_and_strip_length_header() {
+  use crate::core::stage::Source;
+
+  let protocol = super::Framing::simple_framing_protocol(16);
+  let (_encoder, decoder, _mat) = protocol.split();
+
+  let frames = Source::from(vec![vec![0x00, 0x00, 0x00], vec![0x03, b'a'], vec![b'b', b'c', 0x00, 0x00], vec![
+    0x00, 0x02, b'd', b'e',
+  ]])
+  .via(decoder)
+  .collect_values()
+  .unwrap();
+
+  assert_eq!(frames, vec![b"abc".to_vec(), b"de".to_vec()]);
+}
+
+#[test]
+fn should_support_empty_payload_frame() {
+  use crate::core::stage::Source;
+
+  let protocol = super::Framing::simple_framing_protocol(16);
+  let (encoder, decoder, _mat) = protocol.split();
+
+  let encoded = Source::single(Vec::new()).via(encoder).collect_values().unwrap();
+  assert_eq!(encoded, vec![vec![0x00, 0x00, 0x00, 0x00]]);
+
+  let decoded = Source::from(encoded).via(decoder).collect_values().unwrap();
+  assert_eq!(decoded, vec![Vec::new()]);
+}
+
+#[test]
+fn should_round_trip_payloads_through_simple_framing_protocol() {
+  use crate::core::stage::{Source, flow::Flow};
+
+  let protocol = super::Framing::simple_framing_protocol(16);
+  let loopback = protocol.join(Flow::new());
+
+  let decoded = Source::from(vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]).via(loopback).collect_values().unwrap();
+
+  assert_eq!(decoded, vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]);
+}
+
+#[test]
+fn should_error_when_payload_exceeds_maximum_message_length() {
+  use crate::core::{StreamError, stage::Source};
+
+  let protocol = super::Framing::simple_framing_protocol(3);
+  let (encoder, _decoder, _mat) = protocol.split();
+
+  let result = Source::single(b"toolong".to_vec()).via(encoder).collect_values();
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
+
+#[test]
+fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
+  use crate::core::{StreamError, stage::Source};
+
+  let protocol = super::Framing::simple_framing_protocol(3);
+  let (_encoder, decoder, _mat) = protocol.split();
+
+  let result = Source::single(vec![0x00, 0x00, 0x00, 0x04, b'a', b'b', b'c', b'd']).via(decoder).collect_values();
+
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
+
+#[test]
+fn should_error_when_source_ends_with_truncated_decoded_frame() {
+  use crate::core::{StreamError, stage::Source};
+
+  let protocol = super::Framing::simple_framing_protocol(16);
+  let (_encoder, decoder, _mat) = protocol.split();
+
+  let result = Source::single(vec![0x00, 0x00, 0x00, 0x03, b'a', b'b']).via(decoder).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn should_fail_decoder_immediately_when_length_header_is_negative() {
+  use crate::core::{FlowLogic, StreamError};
+
+  let mut logic = SimpleFramingDecoderLogic { maximum_message_length: usize::MAX, buffer: Vec::new() };
+  let result = logic.apply(Box::new(vec![0x80, 0x00, 0x00, 0x00, b'a']));
+
+  assert!(matches!(result, Err(StreamError::Failed)));
 }

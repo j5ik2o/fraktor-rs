@@ -2,7 +2,7 @@ use alloc::{boxed::Box, collections::VecDeque};
 use core::{
   future::{Future, ready},
   marker::PhantomData,
-  pin::pin,
+  pin::{Pin, pin},
   task::{Context, Poll, Waker},
 };
 use std::{
@@ -19,7 +19,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
   Completion, DynValue, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
-  SourceLogic, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
+  StreamNotUsed,
   lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   mat::{Materialized, Materializer},
   stage::{Sink, Source, StageKind},
@@ -93,6 +94,56 @@ impl SequenceSourceLogic {
 impl SourceLogic for SequenceSourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     Ok(self.values.pop_front().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+struct CountingSequenceSourceLogic {
+  values: VecDeque<u32>,
+  pulls:  ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl CountingSequenceSourceLogic {
+  fn new(values: &[u32], pulls: ArcShared<SpinSyncMutex<usize>>) -> Self {
+    let mut queue = VecDeque::with_capacity(values.len());
+    queue.extend(values.iter().copied());
+    Self { values: queue, pulls }
+  }
+}
+
+impl SourceLogic for CountingSequenceSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    {
+      let mut guard = self.pulls.lock();
+      *guard = guard.saturating_add(1);
+    }
+    Ok(self.values.pop_front().map(|value| Box::new(value) as DynValue))
+  }
+}
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:       Option<T>,
+  poll_count:  u8,
+  ready_after: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after: 1 }
+  }
+}
+
+impl<T> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = unsafe { self.get_unchecked_mut() };
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
   }
 }
 
@@ -186,6 +237,18 @@ fn scaled_duration(base: Duration) -> Duration {
   base.mul_f64(test_time_factor())
 }
 
+fn drive_materialized_completion<T>(materialized: &Materialized<StreamCompletion<T>>) -> Completion<T>
+where
+  T: Clone, {
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+  materialized.materialized().poll()
+}
+
 #[test]
 fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let (graph, _completion) = Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_parts();
@@ -196,6 +259,79 @@ fn run_with_delegates_to_materializer_and_uses_sink_materialized_value() {
   let materialized = source.run_with(sink, &mut materializer).expect("run_with");
   assert_eq!(materializer.calls, 1);
   assert_eq!(*materialized.materialized(), marker);
+}
+
+#[test]
+fn source_run_fold_accumulates_values_via_sink_shortcut() {
+  let mut materializer = RecordingMaterializer::default();
+  let materialized =
+    Source::from_array([1_u32, 2, 3]).run_fold(0_u32, |acc, value| acc + value, &mut materializer).expect("run_fold");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(6_u32)));
+}
+
+#[test]
+fn source_run_fold_async_accumulates_values_when_future_is_ready() {
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = Source::from_array([1_u32, 2, 3])
+    .run_fold_async(0_u32, |acc, value| ready(acc + value), &mut materializer)
+    .expect("run_fold_async");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(6_u32)));
+}
+
+#[test]
+fn source_run_fold_async_waits_for_pending_future_before_completion() {
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = Source::single(7_u32)
+    .run_fold_async(0_u32, |acc, value| YieldThenOutputFuture::new(acc + value), &mut materializer)
+    .expect("run_fold_async");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(materialized.handle().drive(), DriveOutcome::Progressed);
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(7_u32)));
+}
+
+#[test]
+fn source_run_reduce_reduces_values_via_sink_shortcut() {
+  let mut materializer = RecordingMaterializer::default();
+  let materialized =
+    Source::from_array([1_u32, 2, 3, 4]).run_reduce(|acc, value| acc + value, &mut materializer).expect("run_reduce");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(10_u32)));
+}
+
+#[test]
+fn source_run_reduce_propagates_empty_stream_failure() {
+  let mut materializer = RecordingMaterializer::default();
+  let materialized =
+    Source::<u32, _>::empty().run_reduce(|acc, value| acc + value, &mut materializer).expect("run_reduce");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn source_run_foreach_invokes_callback_for_each_element() {
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let observed_ref = observed.clone();
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = Source::from_array([1_u32, 2, 3])
+    .run_foreach(
+      move |value| {
+        observed_ref.lock().push(value);
+      },
+      &mut materializer,
+    )
+    .expect("run_foreach");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*observed.lock(), vec![1_u32, 2, 3]);
 }
 
 #[test]
@@ -1177,12 +1313,53 @@ fn source_flat_map_merge_skips_empty_inner_and_completes() {
 }
 
 #[test]
+fn source_flat_map_merge_emits_head_without_waiting_for_inner_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let inner_pulls = pulls.clone();
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = Source::single(0_u32)
+    .flat_map_merge(1, move |_| {
+      Source::<u32, _>::from_logic(
+        StageKind::Custom,
+        CountingSequenceSourceLogic::new(&[42, 43, 44], inner_pulls.clone()),
+      )
+    })
+    .expect("flat_map_merge")
+    .run_with(Sink::head(), &mut materializer)
+    .expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(42_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
+}
+
+#[test]
 fn source_flat_map_concat_keeps_order_with_empty_inner_stream() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32]).flat_map_concat(|value| {
     if value == 1 { Source::empty() } else { Source::from_array([value.saturating_add(20), value.saturating_add(30)]) }
   });
   let values = values.collect_values().expect("collect_values");
   assert_eq!(values, vec![22_u32, 32_u32, 23_u32, 33_u32]);
+}
+
+#[test]
+fn source_flat_map_concat_emits_head_without_waiting_for_inner_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let inner_pulls = pulls.clone();
+  let mut materializer = RecordingMaterializer::default();
+  let materialized = Source::single(0_u32)
+    .flat_map_concat(move |_| {
+      Source::<u32, _>::from_logic(
+        StageKind::Custom,
+        CountingSequenceSourceLogic::new(&[42, 43, 44], inner_pulls.clone()),
+      )
+    })
+    .run_with(Sink::head(), &mut materializer)
+    .expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(42_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
 }
 
 #[test]
@@ -1325,6 +1502,39 @@ fn source_flatten_optional_emits_present_value() {
 fn source_flatten_optional_skips_none() {
   let values = Source::single(None::<u32>).flatten_optional().collect_values().expect("collect_values");
   assert_eq!(values, Vec::<u32>::new());
+}
+
+#[test]
+fn source_collect_maps_present_values_and_skips_absent_values() {
+  let values = Source::from_array([1_i32, -1_i32, 2_i32])
+    .collect(|value| u32::try_from(value).ok())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2_u32]);
+}
+
+#[test]
+fn source_flatten_flattens_nested_sources_in_order_and_skips_empty_inner_sources() {
+  let values =
+    Source::from_array([Source::empty(), Source::from_array([22_u32, 32_u32]), Source::from_array([23_u32, 33_u32])])
+      .flatten()
+      .collect_values()
+      .expect("collect_values");
+
+  assert_eq!(values, vec![22_u32, 32_u32, 23_u32, 33_u32]);
+}
+
+#[test]
+fn source_flatten_emits_inner_head_without_waiting_for_inner_completion() {
+  let (inner_graph, inner_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let inner = Source::from_graph(inner_graph, StreamNotUsed::new());
+  assert_eq!(inner_queue.offer(42_u32), QueueOfferResult::Enqueued);
+  let mut materializer = RecordingMaterializer::default();
+
+  let materialized = Source::single(inner).flatten().run_with(Sink::head(), &mut materializer).expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(42_u32)));
 }
 
 #[test]
@@ -2050,4 +2260,103 @@ fn combine_mat_merges_two_sources_with_keep_left() {
   let mut values = combined.collect_values().expect("collect_values");
   values.sort();
   assert_eq!(values, vec![1_u32, 2]);
+}
+
+#[test]
+fn merge_prioritized_n_empty_returns_empty_source() {
+  let sources: Vec<Source<u32, StreamNotUsed>> = Vec::new();
+  let values =
+    Source::merge_prioritized_n(sources, &[]).expect("merge_prioritized_n").collect_values().expect("collect_values");
+  assert!(values.is_empty());
+}
+
+#[test]
+fn merge_prioritized_n_single_source_returns_identity() {
+  let sources = vec![Source::from_iterator(vec![1_u32, 2, 3])];
+  let values =
+    Source::merge_prioritized_n(sources, &[1]).expect("merge_prioritized_n").collect_values().expect("collect_values");
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn merge_prioritized_n_uses_weighted_merge_flow_stage() {
+  let s1 = Source::from_iterator(vec![1_u32, 2, 3, 4, 5, 6]);
+  let s2 = Source::from_iterator(vec![100_u32, 200, 300, 400]);
+  let (graph, _) = Source::merge_prioritized_n(vec![s1, s2], &[3, 1]).expect("merge_prioritized_n").into_parts();
+  let stages = graph.into_stages();
+  assert_eq!(stages.len(), 3);
+  assert!(matches!(stages[0], StageDefinition::Source(_)));
+  assert!(matches!(stages[1], StageDefinition::Source(_)));
+  assert!(matches!(
+    stages[2],
+    StageDefinition::Flow(ref definition) if definition.kind == StageKind::FlowMergePrioritized
+  ));
+}
+
+#[test]
+fn merge_prioritized_n_respects_weighted_round_robin_order() {
+  let s1 = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5, 6]));
+  let s2 = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[100, 200, 300, 400]));
+
+  let values = Source::merge_prioritized_n(vec![s1, s2], &[3, 1])
+    .expect("merge_prioritized_n")
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2, 3, 100, 4, 5, 6, 200, 300, 400]);
+}
+
+#[test]
+fn merge_prioritized_n_emits_head_without_draining_never_source() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let primary =
+    Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[1, 2, 3], pulls.clone()));
+  let secondary = Source::<u32, StreamNotUsed>::never();
+  let merged = Source::merge_prioritized_n(vec![primary, secondary], &[3, 1]).expect("merge_prioritized_n");
+  let mut materializer = RecordingMaterializer::default();
+
+  let materialized = merged.run_with(Sink::head(), &mut materializer).expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
+}
+
+#[test]
+fn merge_prioritized_n_head_does_not_drain_lower_priority_source() {
+  let primary_pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let secondary_pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let primary = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    CountingSequenceSourceLogic::new(&[1, 2, 3], primary_pulls.clone()),
+  );
+  let secondary = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    CountingSequenceSourceLogic::new(&[100, 200, 300], secondary_pulls.clone()),
+  );
+  let merged = Source::merge_prioritized_n(vec![primary, secondary], &[3, 1]).expect("merge_prioritized_n");
+  let mut materializer = RecordingMaterializer::default();
+
+  let materialized = merged.run_with(Sink::head(), &mut materializer).expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*primary_pulls.lock(), 1_usize);
+  assert_eq!(*secondary_pulls.lock(), 1_usize);
+}
+
+#[test]
+fn merge_prioritized_n_rejects_zero_priority() {
+  let s1 = Source::single(1_u32);
+  let s2 = Source::single(2_u32);
+  let result = Source::merge_prioritized_n(vec![s1, s2], &[3, 0]);
+  assert!(result.is_err());
+}
+
+#[test]
+fn merge_prioritized_n_rejects_length_mismatch() {
+  let s1 = Source::single(1_u32);
+  let s2 = Source::single(2_u32);
+  let result = Source::merge_prioritized_n(vec![s1, s2], &[3]);
+  assert!(result.is_err());
 }
