@@ -389,6 +389,10 @@ movements:
     rules:
       - condition: 修正完了
         next: reviewers
+      - condition: 修正不要（指摘対象の確認済み、仕様通り）
+        next: reviewers
+      - condition: 部分的に修正した（残りは仕様通りで修正不要）
+        next: reviewers
       - condition: 判断できない、情報不足
         next: reviewers
 
@@ -447,6 +451,10 @@ movements:
     instruction: pekko-porting-compat-fix
     rules:
       - condition: 修正完了
+        next: pekko-compat-review
+      - condition: 修正不要（指摘対象の確認済み、仕様通り）
+        next: pekko-compat-review
+      - condition: 部分的に修正した（残りは仕様通りで修正不要）
         next: pekko-compat-review
       - condition: 判断できない、情報不足
         next: pekko-compat-review
