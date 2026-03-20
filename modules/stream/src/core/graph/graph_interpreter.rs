@@ -830,18 +830,22 @@ impl GraphInterpreter {
       edges.iter().enumerate().filter(|(_, e)| e.to == to).nth(slot).map(|(i, _)| i)
     };
 
-    // Try preferred slot first.
+    // 優先スロットを先にチェックし、実際にチェックできたか記録する。
+    let mut preferred_checked = false;
     if let Some(pref) = preferred_slot
       && let Some(edge_index) = nth_incoming(&self.edges, pref)
-      && !self.edges[edge_index].buffer.is_empty()
     {
-      let value = self.edges[edge_index].buffer.poll()?;
-      return Ok(Some((pref, value)));
+      preferred_checked = true;
+      if !self.edges[edge_index].buffer.is_empty() {
+        let value = self.edges[edge_index].buffer.poll()?;
+        return Ok(Some((pref, value)));
+      }
     }
 
-    // フォールバック: preferred_slot の次からラップアラウンドで走査する。
+    // フォールバック: 優先スロットの次からラップアラウンドで走査する。
+    let skip = if preferred_checked { 1 } else { 0 };
     let start = preferred_slot.map(|p| p + 1).unwrap_or(0);
-    for i in 0..incoming_count.saturating_sub(if preferred_slot.is_some() { 1 } else { 0 }) {
+    for i in 0..incoming_count.saturating_sub(skip) {
       let slot = (start + i) % incoming_count;
       if let Some(edge_index) = nth_incoming(&self.edges, slot)
         && !self.edges[edge_index].buffer.is_empty()

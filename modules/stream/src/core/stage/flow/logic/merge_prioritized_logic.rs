@@ -43,6 +43,9 @@ where
     if self.fan_in == 0 || self.pending.is_empty() {
       return None;
     }
+    if self.credits.len() < self.fan_in {
+      self.refill_credits();
+    }
     // 加重ラウンドロビン: 現在のスロットからクレジットに基づいて要素を取得
     for _ in 0..self.fan_in {
       let slot = self.current % self.fan_in;
