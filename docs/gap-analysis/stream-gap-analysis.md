@@ -1,4 +1,4 @@
-# streams モジュール ギャップ分析
+# stream モジュール ギャップ分析
 
 生成日: 2026-03-17（前回: 2026-03-16）
 
@@ -22,7 +22,7 @@
 | core（コアロジック・ポート定義） | 75 | 74 | 99% |
 | std（tokio アダプタ） | 4 | 1 | 25% |
 
-**注記**: fraktor-rs の streams モジュールには `typed/` サブ層は存在しない。
+**注記**: fraktor-rs の stream モジュールには `typed/` サブ層は存在しない。
 std 層には `FileIO` が実装済み（`from_path` / `to_path` に `IOResult` マテリアライズドバリュー付き）。
 IO 関連のうち StreamConverters / Tcp / TLS は Pekko では std 相当だが、Rust では外部クレートで代替するため n/a。
 
