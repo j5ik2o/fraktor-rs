@@ -819,34 +819,40 @@ impl GraphInterpreter {
     to: PortId,
     preferred_slot: Option<usize>,
   ) -> Result<Option<(usize, DynValue)>, StreamError> {
-    let mut incoming_edges = Vec::new();
-    for (index, edge) in self.edges.iter().enumerate() {
-      if edge.to == to {
-        incoming_edges.push(index);
-      }
+    // Count incoming edges and find the preferred slot's edge index without allocation.
+    let incoming_count = self.edges.iter().filter(|e| e.to == to).count();
+    if incoming_count == 0 {
+      return Ok(None);
     }
+
+    // Helper: get the edge index for the nth incoming edge (slot).
+    let nth_incoming = |edges: &[EdgeRuntime], slot: usize| -> Option<usize> {
+      edges.iter().enumerate().filter(|(_, e)| e.to == to).nth(slot).map(|(i, _)| i)
+    };
+
+    // Try preferred slot first.
     if let Some(pref) = preferred_slot
-      && let Some(edge_index) = incoming_edges.get(pref).copied()
+      && let Some(edge_index) = nth_incoming(&self.edges, pref)
       && !self.edges[edge_index].buffer.is_empty()
     {
       let value = self.edges[edge_index].buffer.poll()?;
       return Ok(Some((pref, value)));
     }
+
     // Fallback: scan from preferred_slot onwards (wrap-around), skipping the
     // already-checked preferred slot.
-    let len = incoming_edges.len();
     let start = preferred_slot.unwrap_or(0);
-    for i in 0..len {
-      let slot = (start + i) % len;
+    for i in 0..incoming_count {
+      let slot = (start + i) % incoming_count;
       if preferred_slot == Some(slot) {
         continue;
       }
-      let edge_index = incoming_edges[slot];
-      if self.edges[edge_index].buffer.is_empty() {
-        continue;
+      if let Some(edge_index) = nth_incoming(&self.edges, slot) {
+        if !self.edges[edge_index].buffer.is_empty() {
+          let value = self.edges[edge_index].buffer.poll()?;
+          return Ok(Some((slot, value)));
+        }
       }
-      let value = self.edges[edge_index].buffer.poll()?;
-      return Ok(Some((slot, value)));
     }
     Ok(None)
   }
