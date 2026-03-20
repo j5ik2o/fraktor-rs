@@ -307,6 +307,114 @@ PR #1124 で解消済み: ~~`Sink.foldAsync`~~, ~~`Source.mergePrioritizedN`~~, 
 - `GraphDSL.Builder`: 複雑なグラフ組み立てに必要だが、fraktor-rs は Flow/Source のメソッドチェーンで多くのケースをカバー
 - `StreamRefs`: remote モジュールの成熟が前提。分散ストリーミングには必須
 
+## 並行実行可能タスク一覧
+
+以下のタスクは互いに依存関係がなく、完全に並行して実行できる。
+各タスクは変更対象ファイルが競合しないよう分割されている。
+
+### 並行グループ A: 独立した型・enum 追加（ファイル競合なし）
+
+| # | タスク | 変更ファイル | 難易度 | 備考 |
+|---|--------|-------------|--------|------|
+| A1 | `Sink.never` 追加 | `sink.rs` | trivial | 永遠に完了しない Sink。1メソッド追加 |
+| A2 | `UniformFanOutShape` 追加 | `core/shape/uniform_fan_out_shape.rs`（新規）+ `core/shape.rs` | easy | `UniformFanInShape` と対になる型 |
+| A3 | `FanInShape3`〜`FanInShapeN` マクロ生成 | `core/shape/fan_in_shape*.rs`（新規）+ `core/shape.rs` | easy | `FanInShape2` をテンプレートにマクロ化 |
+| A4 | `SubstreamCancelStrategy` enum 追加 | `core/substream_cancel_strategy.rs`（新規）+ `core/stage/flow.rs`（`group_by` 引数追加） | easy | `Drain`/`Propagate` の2バリアント |
+| A5 | `JsonFraming.arrayScanner` 追加 | `core/json_framing.rs` | easy | `objectScanner` と同パターンの配列版 |
+
+### 並行グループ B: Flow メソッド追加（`flow.rs` を分割して並行化）
+
+`*Mat` バリアント 18個は全て `flow.rs` への追加だが、以下のサブグループに分けることで
+ファイル末尾への追加位置を調整し並行化できる。ただし **`flow.rs` が 4,400行超のため、
+先にファイル分割（`flow_mat_ops.rs` 等）を行うことを強く推奨**する。
+
+ファイル分割を行った場合、以下は完全に並行実行可能:
+
+| # | タスク | 対象オペレーター | 難易度 | 備考 |
+|---|--------|----------------|--------|------|
+| B1 | Zip 系 Mat バリアント | `zipMat`, `zipAllMat`, `zipWithMat`, `zipLatestMat`, `zipLatestWithMat` | easy | 5メソッド |
+| B2 | Merge 系 Mat バリアント | `mergeMat`, `mergeLatestMat`, `mergePreferredMat`, `mergePrioritizedMat`, `mergeSortedMat` | easy | 5メソッド |
+| B3 | Concat/Prepend 系 Mat バリアント | `concatMat`, `concatLazyMat`, `prependMat`, `prependLazyMat` | easy | 4メソッド |
+| B4 | その他 Mat バリアント | `interleaveMat`, `orElseMat`, `divertToMat`, `flatMapPrefixMat` | easy | 4メソッド |
+| B5 | `Flow.fromSinkAndSourceMat` | 既存 `fromSinkAndSource` に Mat 制御を追加 | easy | 1メソッド |
+| B6 | `Flow.fromSinkAndSourceCoupledMat` | Coupled 版 | easy | 1メソッド |
+
+### 並行グループ C: medium 以上（外部依存あり）
+
+| # | タスク | 変更ファイル | 難易度 | 依存 | 備考 |
+|---|--------|-------------|--------|------|------|
+| C1 | `Sink.combine` / `Sink.combineMat` | `sink.rs` | medium | なし | Broadcast と組み合わせた Sink 合成 |
+| C2 | `Source.actorRef` + `Source.actorRefWithBackpressure` | `source.rs` + actor モジュール | medium | actor モジュール安定後 | アクターソース |
+| C3 | `Sink.actorRef` + `Sink.actorRefWithBackpressure` | `sink.rs` + actor モジュール | medium | C2 と同時着手可 | アクターシンク |
+| C4 | `GraphDSL.Builder` | `core/graph/graph_dsl_builder/`（新規） | hard | なし | 宣言的グラフ構築 DSL |
+| C5 | `StreamRefs` (SinkRef/SourceRef/Settings) | `core/` + `std/` + remote モジュール | hard | remote モジュール成熟後 | 分散ストリーミング |
+
+### 依存関係と実行順序
+
+```
+依存関係グラフ:
+
+  グループA (A1〜A5)  ─── 依存なし ─── 即時着手可能
+  B5, B6             ─── 依存なし ─── 即時着手可能
+  C1                 ─── 依存なし ─── 即時着手可能
+  C4                 ─── 依存なし ─── 即時着手可能
+
+  B1〜B4             ─── flow.rs 分割に依存 ─── 分割後に着手
+                         （分割しない場合は B1→B2→B3→B4 逐次実行）
+
+  C2, C3             ─── actor モジュール安定に依存 ─── actor 安定後に着手
+  C5                 ─── remote モジュール成熟に依存 ─── remote 成熟後に着手
+```
+
+#### グループ間の依存関係
+
+| 実行順 | 条件 | 並行実行可能なタスク |
+|--------|------|---------------------|
+| **即時** | なし | A1, A2, A3, A4, A5, B5, B6, C1, C4（9タスク同時可能） |
+| **flow.rs 分割後** | `flow.rs` → `flow_mat_ops.rs` 分離完了 | B1, B2, B3, B4（4タスク同時可能、上記と並行も可） |
+| **actor 安定後** | actor モジュールの `ActorRef` 安定 | C2, C3（2タスク同時可能、上記と並行も可） |
+| **remote 成熟後** | remote モジュールのシリアライゼーション基盤 | C5（上記と並行も可） |
+
+#### グループ内の依存関係
+
+- **グループA 内**: A1〜A5 は**完全独立**。変更ファイルが全て異なるため同時実行可能
+- **グループB 内**: B1〜B4 は `flow.rs` 分割後なら**完全独立**。分割前は同一ファイル競合のため**逐次実行**
+- **B5, B6**: `flow.rs` の既存メソッド近傍への追加だが、追加位置が異なるため**互いに独立**
+- **C1**: Sink への追加であり、A1（同じく `sink.rs`）との競合に注意。**A1 と逐次推奨**
+- **C2 と C3**: actor モジュール依存だが、Source と Sink で変更ファイルが異なるため**互いに並行可能**
+- **C4, C5**: 完全に独立した大型タスク。**互いに並行可能**
+
+#### まとめ: 最大並行度
+
+```
+時間軸 →
+
+[即時]  A1─┐
+        A2─┤
+        A3─┤  すべて同時実行可能
+        A4─┤  （最大9並行）
+        A5─┤
+        B5─┤
+        B6─┤
+        C1─┤  ※A1完了後に着手（sink.rs 競合回避）
+        C4─┘  （大型だが独立して着手可能）
+
+[flow.rs分割後]
+        B1─┐
+        B2─┤  すべて同時実行可能
+        B3─┤  （最大4並行）
+        B4─┘
+
+[actor安定後]
+        C2─┐  同時実行可能
+        C3─┘  （最大2並行）
+
+[remote成熟後]
+        C5     （単独）
+```
+
+---
+
 ## 注記
 
 - fraktor-rs は Pekko に存在しない機能（`mapAsyncPartitioned`, `mapAsyncPartitionedUnordered`, `flatMapPrefix`, `switchMap`, `aggregateWithBoundary`, `groupedAdjacentBy`, `groupedAdjacentByWeighted`, `dropRepeated`, `mergeSequence`, `onErrorResume`, `flattenOptional`, `batchWeighted`, `concatLazy`, `prependLazy`, `distinct`, `distinctBy`, `debounce`, `sample` 等）を実装しており、一部で Pekko を超えている
