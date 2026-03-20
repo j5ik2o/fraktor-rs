@@ -6,11 +6,13 @@ use super::{
   downcast_value,
   graph::StreamGraph,
   shape::{Inlet, Outlet},
-  stage::{StageKind, flow::Flow},
+  stage::{BidiFlow, StageKind, flow::Flow},
 };
 
 #[cfg(test)]
 mod tests;
+
+const SIMPLE_FRAMING_LENGTH_FIELD_SIZE: usize = 4;
 
 /// Byte stream framing utilities.
 ///
@@ -68,6 +70,21 @@ impl Framing {
       }
     })
   }
+
+  /// Creates a bidirectional framing protocol with a 4-byte big-endian length prefix.
+  ///
+  /// Top flow (outbound): encoder — prepends length header to payload.
+  /// Bottom flow (inbound): decoder — extracts payload from length-prefixed frames.
+  #[must_use]
+  pub fn simple_framing_protocol(
+    maximum_message_length: usize,
+  ) -> BidiFlow<Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, StreamNotUsed> {
+    BidiFlow::from_flows_mat(
+      simple_framing_encoder(maximum_message_length),
+      simple_framing_decoder(maximum_message_length),
+      StreamNotUsed::new(),
+    )
+  }
 }
 
 struct DelimiterFramingLogic {
@@ -117,6 +134,98 @@ impl FlowLogic for DelimiterFramingLogic {
   fn has_pending_output(&self) -> bool {
     self.allow_truncation && self.source_done && !self.buffer.is_empty()
   }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.buffer.clear();
+    self.source_done = false;
+    Ok(())
+  }
+}
+
+struct SimpleFramingEncoderLogic {
+  maximum_message_length: usize,
+}
+
+impl FlowLogic for SimpleFramingEncoderLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let payload = downcast_value::<Vec<u8>>(input)?;
+    if payload.len() > self.maximum_message_length || payload.len() > u32::MAX as usize {
+      return Err(StreamError::BufferOverflow);
+    }
+
+    let frame_len = checked_frame_length(SIMPLE_FRAMING_LENGTH_FIELD_SIZE, payload.len())?;
+    let mut frame = Vec::with_capacity(frame_len);
+    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&payload);
+    Ok(alloc::vec![Box::new(frame) as DynValue])
+  }
+}
+
+struct SimpleFramingDecoderLogic {
+  maximum_message_length: usize,
+  buffer:                 Vec<u8>,
+}
+
+impl SimpleFramingDecoderLogic {
+  fn decode_frames(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    let mut frames: Vec<DynValue> = Vec::new();
+    let mut consumed = 0_usize;
+
+    loop {
+      let remaining = &self.buffer[consumed..];
+      if remaining.len() < SIMPLE_FRAMING_LENGTH_FIELD_SIZE {
+        break;
+      }
+
+      let payload_len = read_big_endian_u32([remaining[0], remaining[1], remaining[2], remaining[3]]) as usize;
+      if payload_len > self.maximum_message_length {
+        self.buffer.drain(..consumed);
+        return Err(StreamError::BufferOverflow);
+      }
+
+      let frame_len = checked_frame_length(SIMPLE_FRAMING_LENGTH_FIELD_SIZE, payload_len)?;
+      if remaining.len() < frame_len {
+        break;
+      }
+
+      let payload = remaining[SIMPLE_FRAMING_LENGTH_FIELD_SIZE..frame_len].to_vec();
+      consumed += frame_len;
+      frames.push(Box::new(payload) as DynValue);
+    }
+
+    if consumed > 0 {
+      self.buffer.drain(..consumed);
+    }
+    Ok(frames)
+  }
+}
+
+impl FlowLogic for SimpleFramingDecoderLogic {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    let chunk = downcast_value::<Vec<u8>>(input)?;
+    self.buffer.extend_from_slice(&chunk);
+    self.decode_frames()
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    if self.buffer.is_empty() {
+      return Ok(());
+    }
+    Err(StreamError::Failed)
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    Ok(Vec::new())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    false
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.buffer.clear();
+    Ok(())
+  }
 }
 
 fn delimiter_framing_definition(delimiter: Vec<u8>, max_frame_length: usize, allow_truncation: bool) -> FlowDefinition {
@@ -137,11 +246,59 @@ fn delimiter_framing_definition(delimiter: Vec<u8>, max_frame_length: usize, all
   }
 }
 
+fn simple_framing_encoder(maximum_message_length: usize) -> Flow<Vec<u8>, Vec<u8>, StreamNotUsed> {
+  let mut graph = StreamGraph::new();
+  graph.push_stage(StageDefinition::Flow(simple_framing_encoder_definition(maximum_message_length)));
+  Flow::from_graph(graph, StreamNotUsed::new())
+}
+
+fn simple_framing_encoder_definition(maximum_message_length: usize) -> FlowDefinition {
+  let inlet: Inlet<Vec<u8>> = Inlet::new();
+  let outlet: Outlet<Vec<u8>> = Outlet::new();
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Vec<u8>>(),
+    output_type: TypeId::of::<Vec<u8>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(SimpleFramingEncoderLogic { maximum_message_length }),
+  }
+}
+
+fn simple_framing_decoder(maximum_message_length: usize) -> Flow<Vec<u8>, Vec<u8>, StreamNotUsed> {
+  let mut graph = StreamGraph::new();
+  graph.push_stage(StageDefinition::Flow(simple_framing_decoder_definition(maximum_message_length)));
+  Flow::from_graph(graph, StreamNotUsed::new())
+}
+
+fn simple_framing_decoder_definition(maximum_message_length: usize) -> FlowDefinition {
+  let inlet: Inlet<Vec<u8>> = Inlet::new();
+  let outlet: Outlet<Vec<u8>> = Outlet::new();
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Vec<u8>>(),
+    output_type: TypeId::of::<Vec<u8>>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(SimpleFramingDecoderLogic { maximum_message_length, buffer: Vec::new() }),
+  }
+}
+
 fn find_delimiter(haystack: &[u8], needle: &[u8]) -> Option<usize> {
   if needle.is_empty() || haystack.len() < needle.len() {
     return None;
   }
   haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+fn checked_frame_length(header_len: usize, payload_len: usize) -> Result<usize, StreamError> {
+  header_len.checked_add(payload_len).ok_or(StreamError::BufferOverflow)
 }
 
 fn read_big_endian_uint(bytes: &[u8]) -> usize {
@@ -150,4 +307,8 @@ fn read_big_endian_uint(bytes: &[u8]) -> usize {
     value = (value << 8) | usize::from(byte);
   }
   value
+}
+
+const fn read_big_endian_u32(bytes: [u8; SIMPLE_FRAMING_LENGTH_FIELD_SIZE]) -> u32 {
+  u32::from_be_bytes(bytes)
 }

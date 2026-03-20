@@ -136,9 +136,12 @@ where
 
   /// Adds a map stage to this flow.
   #[must_use]
+  /// Note: `T` requires only `Send` (not `Sync`) to support `flatten()` and
+  /// `flat_map_concat()` where `T = Source<_, _>` which is `!Sync`.
+  /// Downstream operators that require `Sync` enforce it at their own boundary.
   pub fn map<T, F>(mut self, func: F) -> Flow<In, T, Mat>
   where
-    T: Send + Sync + 'static,
+    T: Send + 'static,
     F: FnMut(Out) -> T + Send + Sync + 'static, {
     let definition = map_definition::<Out, T, F>(func);
     let inlet_id = definition.inlet;
@@ -1033,6 +1036,30 @@ where
   }
 }
 
+impl<In, Out, Mat, Mat2> Flow<In, Source<Out, Mat2>, Mat>
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Mat2: Send + Sync + 'static,
+{
+  /// Flattens nested sources.
+  #[must_use]
+  pub fn flatten(mut self) -> Flow<In, Out, Mat> {
+    let definition = flat_map_concat_definition::<Source<Out, Mat2>, Out, Mat2, _>(|source| source);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(
+        &Outlet::<Source<Out, Mat2>>::from_id(from),
+        &Inlet::<Source<Out, Mat2>>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+}
+
 impl<In, Out, Mat> Flow<In, Out, Mat>
 where
   In: Send + Sync + 'static,
@@ -1177,6 +1204,15 @@ where
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     self.filter(predicate).take(1)
+  }
+
+  /// Collects only values mapped to `Some`.
+  #[must_use]
+  pub fn collect<T, F>(self, func: F) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> Option<T> + Send + Sync + 'static, {
+    self.map_option(func)
   }
 
   /// Collects values that can be converted into `T`.
@@ -2548,7 +2584,7 @@ impl<In, Out, Mat> StreamStage for Flow<In, Out, Mat> {
 pub(in crate::core) fn map_definition<In, Out, F>(func: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  Out: Send + Sync + 'static,
+  Out: Send + 'static,
   F: FnMut(In) -> Out + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Out> = Outlet::new();
@@ -3131,7 +3167,7 @@ where
 
 pub(in crate::core) fn flat_map_concat_definition<In, Out, Mat2, F>(func: F) -> FlowDefinition
 where
-  In: Send + Sync + 'static,
+  In: Send + 'static,
   Out: Send + Sync + 'static,
   Mat2: Send + Sync + 'static,
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static, {

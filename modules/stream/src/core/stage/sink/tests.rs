@@ -1,3 +1,9 @@
+use core::{
+  future::{Future, ready},
+  pin::Pin,
+  task::Poll,
+};
+
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
@@ -41,6 +47,33 @@ impl Materializer for TestMaterializer {
 
   fn shutdown(&mut self) -> Result<(), StreamError> {
     Ok(())
+  }
+}
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:       Option<T>,
+  poll_count:  u8,
+  ready_after: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after: 1 }
+  }
+}
+
+impl<T: Unpin> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    let this = self.get_mut();
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
   }
 }
 
@@ -223,6 +256,46 @@ fn sink_fold_while_stops_updating_after_predicate_is_false() {
 }
 
 #[test]
+fn sink_fold_async_accumulates_values_when_future_is_ready() {
+  let completion = run_source_with_sink(
+    Source::from_array([1_u32, 2, 3, 4]),
+    Sink::fold_async(0_u32, |acc, value| ready(acc + value)),
+  );
+  assert_eq!(completion, Completion::Ready(Ok(10_u32)));
+}
+
+#[test]
+fn sink_fold_async_propagates_upstream_failure() {
+  let completion = run_source_with_sink(
+    Source::<u32, _>::failed(StreamError::Failed),
+    Sink::fold_async(0_u32, |acc, value| ready(acc + value)),
+  );
+  assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
+fn sink_fold_async_waits_for_pending_future_before_completion() {
+  let graph = Source::single(7_u32)
+    .to_mat(Sink::fold_async(0_u32, |acc, value| YieldThenOutputFuture::new(acc + value)), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(materialized.handle().drive(), crate::core::lifecycle::DriveOutcome::Progressed);
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  assert!(materialized.handle().state().is_terminal());
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(7_u32)));
+}
+
+#[test]
 fn sink_foreach_async_rejects_zero_parallelism() {
   let result = Sink::<u32, StreamCompletion<StreamDone>>::foreach_async(0, |_value| async move {});
   assert!(matches!(
@@ -387,6 +460,115 @@ fn sink_lazy_sink_propagates_inner_on_complete_error() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), lazy);
   assert_eq!(completion, Completion::Ready(Err(StreamError::Failed)));
 }
+
+struct PendingInnerSinkLogic {
+  completion:        StreamCompletion<StreamDone>,
+  observed:          ArcShared<SpinSyncMutex<Vec<u32>>>,
+  pending:           bool,
+  upstream_finished: bool,
+  completed:         bool,
+}
+
+impl SinkLogic for PendingInnerSinkLogic {
+  fn can_accept_input(&self) -> bool {
+    !self.pending
+  }
+
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    if self.pending {
+      return Err(StreamError::Failed);
+    }
+    let value = crate::core::downcast_value::<u32>(input)?;
+    self.observed.lock().push(value);
+    self.pending = true;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_tick(&mut self, demand: &mut DemandTracker) -> Result<bool, StreamError> {
+    if !self.pending {
+      return Ok(false);
+    }
+    self.pending = false;
+    if self.upstream_finished {
+      self.completion.complete(Ok(StreamDone::new()));
+      self.completed = true;
+    } else {
+      demand.request(1)?;
+    }
+    Ok(true)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    if !self.completed {
+      self.completion.complete(Ok(StreamDone::new()));
+      self.completed = true;
+    }
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+    self.completed = true;
+  }
+
+  fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
+    self.upstream_finished = true;
+    if self.pending {
+      return Ok(false);
+    }
+    if !self.completed {
+      self.completion.complete(Ok(StreamDone::new()));
+      self.completed = true;
+      return Ok(true);
+    }
+    Ok(false)
+  }
+
+  fn has_pending_work(&self) -> bool {
+    self.pending
+  }
+}
+
+#[test]
+fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let inner_completion = StreamCompletion::new();
+  let inner_sink = Sink::<u32, StreamCompletion<StreamDone>>::from_definition(
+    StageKind::Custom,
+    PendingInnerSinkLogic {
+      completion:        inner_completion.clone(),
+      observed:          observed.clone(),
+      pending:           false,
+      upstream_finished: false,
+      completed:         false,
+    },
+    inner_completion,
+  );
+
+  let graph = Source::from_array([1_u32, 2_u32]).to_mat(Sink::lazy_sink(move || inner_sink), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(materialized.handle().drive(), crate::core::lifecycle::DriveOutcome::Progressed);
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  assert!(materialized.handle().state().is_terminal());
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*observed.lock(), vec![1_u32, 2_u32]);
+}
+
 #[test]
 fn sink_contramap_transforms_input_type() {
   let sink = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);

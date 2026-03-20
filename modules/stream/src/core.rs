@@ -129,7 +129,7 @@ pub use stream_not_used::StreamNotUsed;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
-pub(crate) type DynValue = Box<dyn Any + Send + Sync + 'static>;
+pub(crate) type DynValue = Box<dyn Any + Send + 'static>;
 
 enum StageDefinition {
   Source(SourceDefinition),
@@ -512,6 +512,10 @@ trait FlowLogic: Send {
     self.apply(input)
   }
 
+  fn preferred_input_edge_slot(&self) -> Option<usize> {
+    None
+  }
+
   fn take_next_output_edge_slot(&mut self) -> Option<usize> {
     None
   }
@@ -573,6 +577,14 @@ pub(crate) trait SinkLogic: Send {
     Ok(false)
   }
 
+  fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
+    Ok(false)
+  }
+
+  fn has_pending_work(&self) -> bool {
+    false
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
@@ -580,7 +592,7 @@ pub(crate) trait SinkLogic: Send {
 
 fn downcast_value<In>(value: DynValue) -> Result<In, StreamError>
 where
-  In: Any + Send + Sync + 'static, {
+  In: Any + Send + 'static, {
   match value.downcast::<In>() {
     | Ok(value) => Ok(*value),
     | Err(_) => Err(StreamError::TypeMismatch),

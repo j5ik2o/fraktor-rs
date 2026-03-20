@@ -11,22 +11,23 @@ use crate::core::FailureAction;
 
 /// Executes a stream graph using a port-driven runtime.
 pub struct GraphInterpreter {
-  stages:           Vec<StageDefinition>,
-  edges:            Vec<EdgeRuntime>,
-  dispatch:         Vec<OutletDispatchState>,
-  flow_order:       Vec<usize>,
-  flow_slots:       Vec<Option<usize>>,
-  source_indices:   Vec<usize>,
-  sink_indices:     Vec<usize>,
-  demand:           DemandTracker,
-  state:            StreamState,
-  source_done:      Vec<bool>,
-  source_canceled:  Vec<bool>,
-  sink_done:        Vec<bool>,
-  flow_source_done: Vec<bool>,
-  flow_done:        Vec<bool>,
-  on_start_done:    bool,
-  tick_count:       u64,
+  stages:                 Vec<StageDefinition>,
+  edges:                  Vec<EdgeRuntime>,
+  dispatch:               Vec<OutletDispatchState>,
+  flow_order:             Vec<usize>,
+  flow_slots:             Vec<Option<usize>>,
+  source_indices:         Vec<usize>,
+  sink_indices:           Vec<usize>,
+  demand:                 DemandTracker,
+  state:                  StreamState,
+  source_done:            Vec<bool>,
+  source_canceled:        Vec<bool>,
+  sink_done:              Vec<bool>,
+  flow_source_done:       Vec<bool>,
+  flow_done:              Vec<bool>,
+  sink_upstream_notified: Vec<bool>,
+  on_start_done:          bool,
+  tick_count:             u64,
 }
 
 impl GraphInterpreter {
@@ -61,6 +62,7 @@ impl GraphInterpreter {
       sink_done: vec![false; sink_indices_len],
       flow_source_done: vec![false; flow_count],
       flow_done: vec![false; flow_count],
+      sink_upstream_notified: vec![false; sink_indices_len],
       on_start_done: false,
       tick_count: 0,
     }
@@ -224,9 +226,14 @@ impl GraphInterpreter {
 
       if self.all_edge_buffers_empty() {
         match self.finish_sinks() {
-          | Ok(()) => {
-            self.state = StreamState::Completed;
-            progressed = true;
+          | Ok(did_finish) => {
+            if did_finish {
+              progressed = true;
+            }
+            if self.all_sinks_done() {
+              self.state = StreamState::Completed;
+              progressed = true;
+            }
           },
           | Err(error) => {
             self.fail(&error);
@@ -537,7 +544,13 @@ impl GraphInterpreter {
         }
       };
 
-      if can_accept_input && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet)? {
+      let preferred_input_slot = match &self.stages[stage_index] {
+        | StageDefinition::Flow(flow) => flow.logic.preferred_input_edge_slot(),
+        | _ => None,
+      };
+      if can_accept_input
+        && let Some((edge_index, input)) = self.poll_from_incoming_edges(flow_inlet, preferred_input_slot)?
+      {
         consumed_input = true;
         if input.as_ref().type_id() != flow_input_type {
           return Err(StreamError::TypeMismatch);
@@ -711,11 +724,23 @@ impl GraphInterpreter {
       sink.logic.can_accept_input()
     };
     if !sink_can_accept {
+      if self.stage_input_exhausted(sink_index) {
+        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
+        if self.sink_has_pending_work(sink_index)? {
+          return Ok(progressed || upstream_progressed);
+        }
+        self.complete_sink_position(sink_position)?;
+        return Ok(true);
+      }
       return Ok(progressed);
     }
 
-    let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet)? else {
+    let Some((_, value)) = self.poll_from_incoming_edges(sink_inlet, None)? else {
       if self.stage_input_exhausted(sink_index) {
+        let upstream_progressed = self.notify_sink_upstream_finish(sink_position)?;
+        if self.sink_has_pending_work(sink_index)? {
+          return Ok(progressed || upstream_progressed);
+        }
         self.complete_sink_position(sink_position)?;
         return Ok(true);
       }
@@ -768,27 +793,66 @@ impl GraphInterpreter {
     }
   }
 
-  fn finish_sinks(&mut self) -> Result<(), StreamError> {
+  fn finish_sinks(&mut self) -> Result<bool, StreamError> {
+    let mut progressed = false;
     for sink_position in 0..self.sink_indices.len() {
       if self.sink_done[sink_position] {
         continue;
       }
+      let sink_index = self.sink_indices[sink_position];
+      let _ = self.notify_sink_upstream_finish(sink_position)?;
+      if self.sink_has_pending_work(sink_index)? {
+        continue;
+      }
       self.complete_sink_position(sink_position)?;
+      progressed = true;
     }
-    Ok(())
+    Ok(progressed)
   }
 
   fn has_buffered_outgoing(&self, from: PortId) -> bool {
     self.edges.iter().any(|edge| edge.from == from && !edge.buffer.is_empty())
   }
 
-  fn poll_from_incoming_edges(&mut self, to: PortId) -> Result<Option<(usize, DynValue)>, StreamError> {
-    for (index, edge) in self.edges.iter_mut().enumerate() {
-      if edge.to != to || edge.buffer.is_empty() {
-        continue;
+  fn poll_from_incoming_edges(
+    &mut self,
+    to: PortId,
+    preferred_slot: Option<usize>,
+  ) -> Result<Option<(usize, DynValue)>, StreamError> {
+    // ヒープ確保なしで入力エッジ数を数え、優先スロットのエッジインデックスを取得する。
+    let incoming_count = self.edges.iter().filter(|e| e.to == to).count();
+    if incoming_count == 0 {
+      return Ok(None);
+    }
+
+    // ヘルパー: n番目の入力エッジ（スロット）のエッジインデックスを取得する。
+    let nth_incoming = |edges: &[EdgeRuntime], slot: usize| -> Option<usize> {
+      edges.iter().enumerate().filter(|(_, e)| e.to == to).nth(slot).map(|(i, _)| i)
+    };
+
+    // 優先スロットを先にチェックし、実際にチェックできたか記録する。
+    let mut preferred_checked = false;
+    if let Some(pref) = preferred_slot
+      && let Some(edge_index) = nth_incoming(&self.edges, pref)
+    {
+      preferred_checked = true;
+      if !self.edges[edge_index].buffer.is_empty() {
+        let value = self.edges[edge_index].buffer.poll()?;
+        return Ok(Some((pref, value)));
       }
-      let value = edge.buffer.poll()?;
-      return Ok(Some((index, value)));
+    }
+
+    // フォールバック: 優先スロットの次からラップアラウンドで走査する。
+    let skip = if preferred_checked { 1 } else { 0 };
+    let start = preferred_slot.map(|p| p + 1).unwrap_or(0);
+    for i in 0..incoming_count.saturating_sub(skip) {
+      let slot = (start + i) % incoming_count;
+      if let Some(edge_index) = nth_incoming(&self.edges, slot)
+        && !self.edges[edge_index].buffer.is_empty()
+      {
+        let value = self.edges[edge_index].buffer.poll()?;
+        return Ok(Some((slot, value)));
+      }
     }
     Ok(None)
   }
@@ -835,6 +899,13 @@ impl GraphInterpreter {
     self.edges.iter().all(|edge| edge.buffer.is_empty())
   }
 
+  fn sink_has_pending_work(&self, sink_index: usize) -> Result<bool, StreamError> {
+    let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    Ok(sink.logic.has_pending_work())
+  }
+
   fn all_sources_done(&self) -> bool {
     self.source_done.iter().all(|done| *done)
   }
@@ -859,6 +930,18 @@ impl GraphInterpreter {
     let source_index = self.source_indices[source_position];
     self.close_outgoing_edges_for_stage(source_index);
     self.notify_source_done_to_flows()
+  }
+
+  fn notify_sink_upstream_finish(&mut self, sink_position: usize) -> Result<bool, StreamError> {
+    if self.sink_upstream_notified[sink_position] {
+      return Ok(false);
+    }
+    self.sink_upstream_notified[sink_position] = true;
+    let sink_index = self.sink_indices[sink_position];
+    let StageDefinition::Sink(sink) = &mut self.stages[sink_index] else {
+      return Err(StreamError::InvalidConnection);
+    };
+    sink.logic.on_upstream_finish()
   }
 
   fn complete_sink_position(&mut self, sink_position: usize) -> Result<(), StreamError> {
@@ -895,7 +978,7 @@ impl GraphInterpreter {
   }
 
   fn tick_restart_windows(&mut self) -> Result<(), StreamError> {
-    for stage in &mut self.stages {
+    for (stage_index, stage) in self.stages.iter_mut().enumerate() {
       match stage {
         | StageDefinition::Source(source) => {
           if let Some(restart) = &mut source.restart
@@ -917,6 +1000,9 @@ impl GraphInterpreter {
           {
             sink.logic.on_restart()?;
             sink.logic.on_start(&mut self.demand)?;
+            if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == stage_index) {
+              self.sink_upstream_notified[pos] = false;
+            }
           }
         },
       }
@@ -1330,6 +1416,9 @@ impl GraphInterpreter {
       | SupervisionStrategy::Restart => {
         sink.logic.on_restart()?;
         sink.logic.on_start(&mut self.demand)?;
+        if let Some(pos) = self.sink_indices.iter().position(|&idx| idx == sink_index) {
+          self.sink_upstream_notified[pos] = false;
+        }
         Ok(FailureDisposition::Continue)
       },
     }

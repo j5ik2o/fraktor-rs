@@ -268,6 +268,33 @@ fn flat_map_concat_respects_backpressure_when_inner_emits_multiple_elements() {
 }
 
 #[test]
+fn merge_prioritized_n_preserves_weighted_order_through_interpreter() {
+  let graph = Source::merge_prioritized_n(
+    [
+      Source::from_array([1_u32, 2_u32, 3_u32, 4_u32, 5_u32, 6_u32]),
+      Source::from_array([100_u32, 200_u32, 300_u32, 400_u32]),
+    ],
+    &[3, 1],
+  )
+  .expect("merge_prioritized_n")
+  .to_mat(
+    Sink::fold(Vec::<u32>::new(), |mut acc, value| {
+      acc.push(value);
+      acc
+    }),
+    KeepRight,
+  );
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+  drive_to_completion(&mut interpreter);
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(
+    completion.poll(),
+    Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32, 100_u32, 4_u32, 5_u32, 6_u32, 200_u32, 300_u32, 400_u32]))
+  );
+}
+
+#[test]
 fn flat_map_merge_uses_configured_breadth() {
   let source_outlet: Outlet<u32> = Outlet::new();
   let sink_inlet: Inlet<u32> = Inlet::new();
@@ -292,7 +319,7 @@ fn flat_map_merge_uses_configured_breadth() {
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 3, 2, 3])));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
 }
 
 #[test]

@@ -17,23 +17,20 @@ where
   In: Send + Sync + 'static,
 {
   fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
-    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
-      return Ok(position);
-    }
-    if self.edge_slots.len() >= self.fan_in {
+    if edge_index >= self.fan_in {
       return Err(StreamError::InvalidConnection);
     }
-    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
-    self.edge_slots.insert(insert_at, edge_index);
-    self.pending.insert(insert_at, VecDeque::new());
-    // 仮クレジットを挿入後、全スロットのクレジットを再計算する。
-    // 挿入によりスロットがシフトするため、個別設定だとpriorities[slot]との不整合が発生する。
-    self.credits.insert(insert_at, 0);
-    self.refill_credits();
-    if insert_at <= self.current && self.edge_slots.len() > 1 {
-      self.current = self.current.saturating_add(1) % self.edge_slots.len();
+    if !self.edge_slots.contains(&edge_index) {
+      self.edge_slots.push(edge_index);
+      self.edge_slots.sort_unstable();
     }
-    Ok(insert_at)
+    if self.pending.len() < self.fan_in {
+      self.pending.resize_with(self.fan_in, VecDeque::new);
+    }
+    if self.credits.len() < self.fan_in {
+      self.credits = self.priorities.clone();
+    }
+    Ok(edge_index)
   }
 
   fn refill_credits(&mut self) {
@@ -43,36 +40,38 @@ where
   }
 
   pub(in crate::core::stage::flow) fn pop_prioritized(&mut self) -> Option<In> {
-    if self.pending.is_empty() {
+    if self.fan_in == 0 || self.pending.is_empty() {
       return None;
     }
-    let len = self.pending.len();
+    if self.credits.len() < self.fan_in {
+      self.refill_credits();
+    }
     // 加重ラウンドロビン: 現在のスロットからクレジットに基づいて要素を取得
-    for _ in 0..len {
-      let slot = self.current % len;
+    for _ in 0..self.fan_in {
+      let slot = self.current % self.fan_in;
       if self.credits[slot] > 0
         && let Some(value) = self.pending[slot].pop_front()
       {
         self.credits[slot] = self.credits[slot].saturating_sub(1);
         if self.credits[slot] == 0 {
-          self.current = (slot + 1) % len;
+          self.current = (slot + 1) % self.fan_in;
         }
         return Some(value);
       }
-      self.current = (slot + 1) % len;
+      self.current = (slot + 1) % self.fan_in;
     }
     // 全クレジット消費済み → 再充填して再試行
     self.refill_credits();
-    for _ in 0..len {
-      let slot = self.current % len;
+    for _ in 0..self.fan_in {
+      let slot = self.current % self.fan_in;
       if let Some(value) = self.pending[slot].pop_front() {
         self.credits[slot] = self.credits[slot].saturating_sub(1);
         if self.credits[slot] == 0 {
-          self.current = (slot + 1) % len;
+          self.current = (slot + 1) % self.fan_in;
         }
         return Some(value);
       }
-      self.current = (slot + 1) % len;
+      self.current = (slot + 1) % self.fan_in;
     }
     None
   }
@@ -97,6 +96,22 @@ where
       return Ok(vec![Box::new(next) as DynValue]);
     }
     Ok(Vec::new())
+  }
+
+  fn preferred_input_edge_slot(&self) -> Option<usize> {
+    if self.fan_in == 0 {
+      return None;
+    }
+    if self.credits.is_empty() {
+      return Some(self.current % self.fan_in);
+    }
+    for offset in 0..self.fan_in {
+      let slot = (self.current + offset) % self.fan_in;
+      if self.credits[slot] > 0 {
+        return Some(slot);
+      }
+    }
+    Some(self.current % self.fan_in)
   }
 
   fn expected_fan_in(&self) -> Option<usize> {

@@ -1,23 +1,26 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 use core::marker::PhantomData;
 
-use super::super::super::{
-  DynValue, FlowLogic, Source, StreamError, StreamNotUsed, downcast_value,
-  graph::{GraphStage, GraphStageLogic},
-  shape::{Inlet, Outlet, StreamShape},
-  stage_context::StageContext,
+use super::{
+  super::super::{
+    DynValue, FlowLogic, Source, StreamError, StreamNotUsed, downcast_value,
+    graph::{GraphStage, GraphStageLogic},
+    shape::{Inlet, Outlet, StreamShape},
+    stage_context::StageContext,
+  },
+  SecondarySourceBridge,
 };
 
 pub(in crate::core::stage::flow) struct FlatMapConcatLogic<In, Out, Mat2, F> {
   pub(in crate::core::stage::flow) func:          F,
-  pub(in crate::core::stage::flow) active_inner:  Option<VecDeque<Out>>,
+  pub(in crate::core::stage::flow) active_inner:  Option<SecondarySourceBridge<Out>>,
   pub(in crate::core::stage::flow) pending_outer: VecDeque<In>,
   pub(in crate::core::stage::flow) _pd:           PhantomData<fn(In) -> (Out, Mat2)>,
 }
 
 impl<In, Out, Mat2, F> FlatMapConcatLogic<In, Out, Mat2, F>
 where
-  In: Send + Sync + 'static,
+  In: Send + 'static,
   Out: Send + Sync + 'static,
   Mat2: Send + Sync + 'static,
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
@@ -27,34 +30,35 @@ where
       let Some(outer) = self.pending_outer.pop_front() else {
         return Ok(());
       };
-      let source = (self.func)(outer);
-      let outputs = source.collect_values()?;
-      if outputs.is_empty() {
-        continue;
-      }
-      let mut stream = VecDeque::with_capacity(outputs.len());
-      stream.extend(outputs);
-      self.active_inner = Some(stream);
+      let inner = SecondarySourceBridge::new((self.func)(outer))?;
+      self.active_inner = Some(inner);
     }
     Ok(())
   }
 
   fn pop_next_value(&mut self) -> Result<Option<Out>, StreamError> {
-    self.promote_outer_if_needed()?;
-    let Some(stream) = &mut self.active_inner else {
-      return Ok(None);
-    };
-    let value = stream.pop_front();
-    if stream.is_empty() {
+    loop {
+      self.promote_outer_if_needed()?;
+      let Some(stream) = self.active_inner.as_mut() else {
+        return Ok(None);
+      };
+      if let Some(value) = stream.poll_next()? {
+        if !stream.has_pending_output() {
+          self.active_inner = None;
+        }
+        return Ok(Some(value));
+      }
+      if stream.has_pending_output() {
+        return Ok(None);
+      }
       self.active_inner = None;
     }
-    Ok(value)
   }
 }
 
 impl<In, Out, Mat2, F> FlowLogic for FlatMapConcatLogic<In, Out, Mat2, F>
 where
-  In: Send + Sync + 'static,
+  In: Send + 'static,
   Out: Send + Sync + 'static,
   Mat2: Send + Sync + 'static,
   F: FnMut(In) -> Source<Out, Mat2> + Send + Sync + 'static,
@@ -74,6 +78,16 @@ where
       return Ok(vec![Box::new(output) as DynValue]);
     }
     Ok(Vec::new())
+  }
+
+  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+    self.active_inner = None;
+    self.pending_outer.clear();
+    Ok(())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    !self.pending_outer.is_empty() || self.active_inner.as_ref().is_some_and(SecondarySourceBridge::has_pending_output)
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
