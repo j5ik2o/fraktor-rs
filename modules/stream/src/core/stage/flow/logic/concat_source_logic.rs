@@ -28,7 +28,14 @@ where
 {
   fn sync_terminal_state(&mut self) -> Result<(), StreamError> {
     match self.completion.try_take() {
-      | Some(Ok(_)) | None => {
+      | Some(Ok(_)) => {
+        // completion が正常に取得できた → 終了
+        self.finished = true;
+        let _ = self.queue.complete_if_open();
+        Ok(())
+      },
+      | None => {
+        // まだ completion が来ていない → stream の状態を確認
         if self.stream.state().is_terminal() || matches!(self.completion.poll(), Completion::Ready(Ok(_))) {
           self.finished = true;
           let _ = self.queue.complete_if_open();
