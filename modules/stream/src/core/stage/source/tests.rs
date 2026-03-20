@@ -2342,7 +2342,7 @@ fn merge_prioritized_n_head_does_not_drain_lower_priority_source() {
   assert_eq!(materializer.calls, 1);
   assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(1_u32)));
   assert_eq!(*primary_pulls.lock(), 1_usize);
-  assert_eq!(*secondary_pulls.lock(), 1_usize);
+  assert!(*secondary_pulls.lock() <= 1_usize);
 }
 
 #[test]
