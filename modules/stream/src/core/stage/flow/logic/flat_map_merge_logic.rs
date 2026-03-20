@@ -121,6 +121,10 @@ where
     Ok(Vec::new())
   }
 
+  fn has_pending_output(&self) -> bool {
+    !self.active_streams.is_empty() || !self.pending_outer.is_empty()
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     self.active_streams.clear();
     self.pending_outer.clear();

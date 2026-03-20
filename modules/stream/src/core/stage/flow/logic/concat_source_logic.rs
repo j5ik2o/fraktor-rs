@@ -92,7 +92,7 @@ where
 
   pub(in crate::core::stage::flow) fn new<Mat>(source: Source<Out, Mat>) -> Result<Self, StreamError>
   where
-    Mat: Send + Sync + 'static, {
+    Mat: Send + 'static, {
     let (mut graph, _mat) = source.into_parts();
     let Some(tail_outlet_id) = graph.tail_outlet() else {
       return Err(StreamError::InvalidConnection);
@@ -115,7 +115,7 @@ where
 
     if let Some(expected_fan_out) = graph.expected_fan_out_for_outlet(tail_outlet_id) {
       for _ in 1..expected_fan_out {
-        // Dummy pass-through stage required for broadcast fan-out wiring
+        // ブロードキャストのファンアウト配線に必要なダミーパススルーステージ
         let branch = map_definition::<Out, Out, _>(|value| value);
         let branch_inlet = Inlet::<Out>::from_id(branch.inlet);
         let branch_outlet = Outlet::<Out>::from_id(branch.outlet);
@@ -134,8 +134,8 @@ where
   pub(in crate::core::stage::flow) fn poll_next(&mut self) -> Result<Option<Out>, StreamError> {
     if let Some(value) = self.queue.poll()? {
       if self.queue.is_empty() {
-        // Best-effort refresh: deliver the value even if refresh fails.
-        // The error will surface on the next poll_next call.
+        // ベストエフォートでリフレッシュ: リフレッシュが失敗しても値を返す。
+        // エラーは次の poll_next 呼び出しで表面化する。
         let _ = self.refresh_after_emit();
       }
       return Ok(Some(value));

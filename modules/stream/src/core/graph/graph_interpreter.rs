@@ -819,13 +819,13 @@ impl GraphInterpreter {
     to: PortId,
     preferred_slot: Option<usize>,
   ) -> Result<Option<(usize, DynValue)>, StreamError> {
-    // Count incoming edges and find the preferred slot's edge index without allocation.
+    // ヒープ確保なしで入力エッジ数を数え、優先スロットのエッジインデックスを取得する。
     let incoming_count = self.edges.iter().filter(|e| e.to == to).count();
     if incoming_count == 0 {
       return Ok(None);
     }
 
-    // Helper: get the edge index for the nth incoming edge (slot).
+    // ヘルパー: n番目の入力エッジ（スロット）のエッジインデックスを取得する。
     let nth_incoming = |edges: &[EdgeRuntime], slot: usize| -> Option<usize> {
       edges.iter().enumerate().filter(|(_, e)| e.to == to).nth(slot).map(|(i, _)| i)
     };
@@ -839,14 +839,10 @@ impl GraphInterpreter {
       return Ok(Some((pref, value)));
     }
 
-    // Fallback: scan from preferred_slot onwards (wrap-around), skipping the
-    // already-checked preferred slot.
-    let start = preferred_slot.unwrap_or(0);
-    for i in 0..incoming_count {
+    // フォールバック: preferred_slot の次からラップアラウンドで走査する。
+    let start = preferred_slot.map(|p| p + 1).unwrap_or(0);
+    for i in 0..incoming_count.saturating_sub(if preferred_slot.is_some() { 1 } else { 0 }) {
       let slot = (start + i) % incoming_count;
-      if preferred_slot == Some(slot) {
-        continue;
-      }
       if let Some(edge_index) = nth_incoming(&self.edges, slot)
         && !self.edges[edge_index].buffer.is_empty()
       {

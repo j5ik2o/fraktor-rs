@@ -72,6 +72,9 @@ impl Framing {
   }
 
   /// Creates a bidirectional framing protocol with a 4-byte big-endian length prefix.
+  ///
+  /// Top flow (outbound): encoder — prepends length header to payload.
+  /// Bottom flow (inbound): decoder — extracts payload from length-prefixed frames.
   #[must_use]
   pub fn simple_framing_protocol(
     maximum_message_length: usize,

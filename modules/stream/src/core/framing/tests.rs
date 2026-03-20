@@ -219,9 +219,27 @@ fn should_error_when_source_ends_with_truncated_decoded_frame() {
 fn should_fail_decoder_when_length_exceeds_maximum() {
   use crate::core::{FlowLogic, StreamError};
 
-  // 0x80000000 = 2147483648 which exceeds a reasonable maximum_message_length
+  // 0x80000000 = 2147483648 は適切な maximum_message_length を超える
   let mut logic = SimpleFramingDecoderLogic { maximum_message_length: 1024, buffer: Vec::new() };
   let result = logic.apply(Box::new(vec![0x80, 0x00, 0x00, 0x00, b'a']));
 
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
+
+#[test]
+fn should_clear_buffer_on_restart_for_simple_framing_decoder() {
+  use crate::core::FlowLogic;
+
+  let mut logic = SimpleFramingDecoderLogic { maximum_message_length: 1024, buffer: Vec::new() };
+  // 不完全なフレームを投入
+  let _ = logic.apply(Box::new(vec![0x00, 0x00, 0x00, 0x05, b'a', b'b']));
+  assert!(!logic.buffer.is_empty());
+
+  // restart でバッファがクリアされること
+  logic.on_restart().expect("on_restart");
+  assert!(logic.buffer.is_empty());
+
+  // restart 後に正常なフレームが処理できること
+  let result = logic.apply(Box::new(vec![0x00, 0x00, 0x00, 0x03, b'x', b'y', b'z'])).expect("apply after restart");
+  assert_eq!(result.len(), 1);
 }
