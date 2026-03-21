@@ -10,6 +10,7 @@ use super::{
   },
   SecondarySourceBridge,
 };
+use crate::core::DownstreamCancelAction;
 
 pub(in crate::core::stage::flow) struct FlatMapConcatLogic<In, Out, Mat2, F> {
   pub(in crate::core::stage::flow) func:          F,
@@ -80,10 +81,10 @@ where
     Ok(Vec::new())
   }
 
-  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
     self.active_inner = None;
     self.pending_outer.clear();
-    Ok(())
+    Ok(DownstreamCancelAction::Propagate)
   }
 
   fn has_pending_output(&self) -> bool {

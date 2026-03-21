@@ -20,7 +20,8 @@ use super::{
     map_async_definition, map_concat_definition, map_definition, map_option_definition, merge_definition,
     merge_prioritized_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
     partition_definition, prepend_definition, sample_definition, scan_definition, sliding_definition,
-    split_after_definition, split_when_definition, stateful_map_concat_definition, stateful_map_definition,
+    split_after_definition, split_after_definition_with_cancel_strategy, split_when_definition,
+    split_when_definition_with_cancel_strategy, stateful_map_concat_definition, stateful_map_definition,
     take_definition, take_until_definition, take_while_definition, take_within_definition, throttle_definition,
     unzip_definition, unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition,
     zip_with_index_definition,
@@ -31,7 +32,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
-use crate::core::Attributes;
+use crate::core::{Attributes, SubstreamCancelStrategy};
 
 #[cfg(test)]
 mod tests;
@@ -1499,12 +1500,52 @@ where
     SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Splits the stream before elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_when_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> SourceSubFlow<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_when_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Splits the stream after elements matching `predicate`.
   #[must_use]
   pub fn split_after<F>(mut self, predicate: F) -> SourceSubFlow<Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_after_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    SourceSubFlow::from_source(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Splits the stream after elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_after_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> SourceSubFlow<Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_after_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

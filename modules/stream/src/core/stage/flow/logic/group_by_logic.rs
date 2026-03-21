@@ -3,6 +3,9 @@ use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 
+#[cfg(test)]
+mod tests;
+
 pub(in crate::core::stage::flow) struct GroupByLogic<In, Key, F> {
   pub(in crate::core::stage::flow) max_substreams: usize,
   pub(in crate::core::stage::flow) seen_keys:      Vec<Key>,

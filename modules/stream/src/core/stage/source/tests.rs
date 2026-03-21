@@ -20,7 +20,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 use crate::core::{
   Completion, DynValue, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
   SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
-  StreamNotUsed,
+  StreamNotUsed, SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   mat::{Materialized, Materializer},
   stage::{Sink, Source, StageKind},
@@ -1751,8 +1751,28 @@ fn source_split_when_emits_single_segment_for_single_element() {
 }
 
 #[test]
+fn source_split_when_with_cancel_strategy_emits_single_segment_for_single_element() {
+  let values = Source::single(5_u32)
+    .split_when_with_cancel_strategy(SubstreamCancelStrategy::Drain, |_| false)
+    .into_source()
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
 fn source_split_after_emits_single_segment_for_single_element() {
   let values = Source::single(5_u32).split_after(|_| false).into_source().collect_values().expect("collect_values");
+  assert_eq!(values, vec![vec![5_u32]]);
+}
+
+#[test]
+fn source_split_after_with_cancel_strategy_emits_single_segment_for_single_element() {
+  let values = Source::single(5_u32)
+    .split_after_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| false)
+    .into_source()
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![vec![5_u32]]);
 }
 
@@ -1817,6 +1837,23 @@ fn source_group_by_fails_when_unique_key_count_exceeds_limit() {
     .merge_substreams()
     .collect_values();
   assert_eq!(result, Err(StreamError::SubstreamLimitExceeded { max_substreams: 2 }));
+}
+
+#[test]
+fn source_group_by_cancels_upstream_after_head_completion_by_default() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let mut materializer = RecordingMaterializer::default();
+  let materialized =
+    Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[1, 2, 3], pulls.clone()))
+      .group_by(4, |value: &u32| value % 2)
+      .expect("group_by")
+      .merge_substreams()
+      .run_with(Sink::head(), &mut materializer)
+      .expect("run_with");
+
+  assert_eq!(materializer.calls, 1);
+  assert_eq!(drive_materialized_completion(&materialized), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
 }
 
 #[test]

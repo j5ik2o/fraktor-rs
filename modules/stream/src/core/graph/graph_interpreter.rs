@@ -7,7 +7,7 @@ use super::{
   DemandTracker, DriveOutcome, DynValue, MatCombine, SinkDecision, StageDefinition, StageKind, StreamBuffer,
   StreamBufferConfig, StreamError, StreamPlan, StreamState, SupervisionStrategy, shape::PortId,
 };
-use crate::core::FailureAction;
+use crate::core::{DownstreamCancelAction, FailureAction};
 
 /// Executes a stream graph using a port-driven runtime.
 pub struct GraphInterpreter {
@@ -172,7 +172,7 @@ impl GraphInterpreter {
       return DriveOutcome::Progressed;
     }
 
-    if self.demand.has_demand() {
+    if self.demand.has_demand() || self.has_flow_requesting_upstream_drain() {
       match self.pull_sources_if_needed() {
         | Ok(did_pull) => {
           if did_pull {
@@ -195,6 +195,17 @@ impl GraphInterpreter {
           },
         }
       }
+    }
+
+    if self.state == StreamState::Running
+      && self.all_sinks_done()
+      && self.all_sources_done()
+      && !self.has_flow_requesting_upstream_drain()
+      && self.all_edge_buffers_empty()
+      && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))
+    {
+      self.state = StreamState::Completed;
+      progressed = true;
     }
 
     match self.drive_sinks_once() {
@@ -958,7 +969,7 @@ impl GraphInterpreter {
     self.close_and_clear_incoming_edges_for_stage(sink_index)?;
     self.cancel_upstream_stage(sink_index)?;
     self.sink_done[sink_position] = true;
-    if self.all_sinks_done() {
+    if self.all_sinks_done() && !self.has_flow_requesting_upstream_drain() {
       self.state = StreamState::Completed;
     }
     Ok(())
@@ -1084,6 +1095,18 @@ impl GraphInterpreter {
     self.flow_done[self.flow_slot(stage_index)]
   }
 
+  fn has_flow_requesting_upstream_drain(&self) -> bool {
+    self.flow_order.iter().copied().any(|stage_index| {
+      if self.flow_done_at(stage_index) {
+        return false;
+      }
+      let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
+        return false;
+      };
+      flow.logic.wants_upstream_drain()
+    })
+  }
+
   fn set_flow_done_at(&mut self, stage_index: usize, done: bool) {
     let flow_slot = self.flow_slot(stage_index);
     self.flow_done[flow_slot] = done;
@@ -1140,10 +1163,16 @@ impl GraphInterpreter {
           if self.flow_done_at(upstream_stage_index) {
             continue;
           }
-          if !self.flow_source_done_at(upstream_stage_index)
-            && let StageDefinition::Flow(flow) = &mut self.stages[upstream_stage_index]
-          {
-            flow.logic.on_downstream_cancel()?;
+          let cancel_action = if !self.flow_source_done_at(upstream_stage_index) {
+            let StageDefinition::Flow(flow) = &mut self.stages[upstream_stage_index] else {
+              return Err(StreamError::InvalidConnection);
+            };
+            flow.logic.on_downstream_cancel()?
+          } else {
+            DownstreamCancelAction::Propagate
+          };
+          if matches!(cancel_action, DownstreamCancelAction::Drain) {
+            continue;
           }
           self.set_flow_source_done_at(upstream_stage_index, true);
           self.set_flow_done_at(upstream_stage_index, true);

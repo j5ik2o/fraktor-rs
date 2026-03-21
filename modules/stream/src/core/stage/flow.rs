@@ -15,7 +15,7 @@ use super::{
   validate_positive_argument,
 };
 use crate::core::{
-  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion,
+  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion, SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
 };
 
@@ -30,6 +30,18 @@ pub struct Flow<In, Out, Mat> {
   graph: StreamGraph,
   mat:   Mat,
   _pd:   PhantomData<fn(In) -> Out>,
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat> {
+  /// Creates a flow from a pre-built stream graph and materialized value.
+  #[must_use]
+  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+    Self { graph, mat, _pd: PhantomData }
+  }
+
+  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+    (self.graph, self.mat)
+  }
 }
 
 impl<T> Flow<T, T, StreamNotUsed> {
@@ -716,12 +728,52 @@ where
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Splits the stream before elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_when_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> FlowSubFlow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_when_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Splits the stream after elements matching `predicate`.
   #[must_use]
   pub fn split_after<F>(mut self, predicate: F) -> FlowSubFlow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_after_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Splits the stream after elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_after_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> FlowSubFlow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_after_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -914,16 +966,6 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
-  }
-
-  /// Creates a flow from a pre-built stream graph and materialized value.
-  #[must_use]
-  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
-    Self { graph, mat, _pd: PhantomData }
-  }
-
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
-    (self.graph, self.mat)
   }
 
   /// Extracts the flow logics from this flow's graph, consuming it.
@@ -2038,6 +2080,26 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Concatenates a secondary source after the primary flow completes and combines materialized
+  /// values.
+  #[must_use]
+  pub fn concat_lazy_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      concat_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
   /// Adds an interleave-all compatibility stage.
   ///
   /// # Errors
@@ -2167,6 +2229,26 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Falls back to a secondary source when the primary flow emits no elements and combines
+  /// materialized values.
+  #[must_use]
+  pub fn or_else_mat<Mat2, C>(mut self, secondary: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (secondary_graph, right_mat) = secondary.into_parts();
+    let definition =
+      or_else_definition::<Out, StreamNotUsed>(Source::from_graph(secondary_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
   /// Prepends a secondary source before the primary flow starts emitting.
   #[must_use]
   pub fn prepend_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
@@ -2180,6 +2262,26 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Prepends a secondary source before the primary flow starts emitting and combines materialized
+  /// values.
+  #[must_use]
+  pub fn prepend_lazy_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      prepend_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
   }
 
   /// Adds a zip-latest compatibility stage.
@@ -2275,6 +2377,18 @@ where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     core::mem::drop(sink);
     self.filter_not(predicate)
+  }
+
+  /// Adds a divert-to stage and combines materialized values.
+  #[must_use]
+  pub fn divert_to_mat<Mat2, F, C>(self, predicate: F, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (_sink_graph, right_mat) = sink.into_parts();
+    let (graph, left_mat) = self.filter_not(predicate).into_parts();
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(graph, mat)
   }
 
   /// Adds a wire-tap compatibility stage.
@@ -2563,10 +2677,39 @@ where
     Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 
+  /// Creates a flow from sink-and-source compatibility entry points and combines materialized
+  /// values.
+  #[must_use]
+  pub fn from_sink_and_source_mat<Mat1, Mat2, C>(
+    sink: Sink<In, Mat1>,
+    source: Source<Out, Mat2>,
+    _combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat1, Mat2>, {
+    let (_sink_graph, left_mat) = sink.into_parts();
+    let (_source_graph, right_mat) = source.into_parts();
+    let mat = combine_mat::<Mat1, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(StreamGraph::new(), mat)
+  }
+
   /// Creates a coupled flow from sink-and-source compatibility entry points.
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
     Self::from_sink_and_source(sink, source)
+  }
+
+  /// Creates a coupled flow from sink-and-source compatibility entry points and combines
+  /// materialized values.
+  #[must_use]
+  pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
+    sink: Sink<In, Mat1>,
+    source: Source<Out, Mat2>,
+    combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat1, Mat2>, {
+    Self::from_sink_and_source_mat(sink, source, combine)
   }
 }
 
@@ -3686,9 +3829,25 @@ pub(in crate::core) fn split_when_definition<In, F>(predicate: F) -> FlowDefinit
 where
   In: Send + Sync + 'static,
   F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  split_when_definition_with_cancel_strategy(predicate, SubstreamCancelStrategy::Propagate)
+}
+
+pub(in crate::core) fn split_when_definition_with_cancel_strategy<In, F>(
+  predicate: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Vec<In>> = Outlet::new();
-  let logic = SplitWhenLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  let logic = SplitWhenLogic::<In, F> {
+    predicate,
+    substream_cancel_strategy,
+    current: Vec::new(),
+    source_done: false,
+    draining: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowSplitWhen,
     inlet:       inlet.id(),
@@ -3706,9 +3865,25 @@ pub(in crate::core) fn split_after_definition<In, F>(predicate: F) -> FlowDefini
 where
   In: Send + Sync + 'static,
   F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  split_after_definition_with_cancel_strategy(predicate, SubstreamCancelStrategy::Propagate)
+}
+
+pub(in crate::core) fn split_after_definition_with_cancel_strategy<In, F>(
+  predicate: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Vec<In>> = Outlet::new();
-  let logic = SplitAfterLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  let logic = SplitAfterLogic::<In, F> {
+    predicate,
+    substream_cancel_strategy,
+    current: Vec::new(),
+    source_done: false,
+    draining: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowSplitAfter,
     inlet:       inlet.id(),

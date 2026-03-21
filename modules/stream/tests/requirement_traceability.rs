@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use fraktor_stream_rs::core::{
-  RestartSettings, StreamDslError, StreamError, StreamNotUsed,
+  RestartSettings, StreamDslError, StreamError, StreamNotUsed, SubstreamCancelStrategy,
   hub::{BroadcastHub, MergeHub, PartitionHub},
   lifecycle::{SharedKillSwitch, UniqueKillSwitch},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
@@ -62,12 +62,18 @@ const REQUIREMENT_EVIDENCE: &[RequirementEvidence] = &[
   ),
   RequirementEvidence::new(
     "2.3",
-    &["source::tests::source_split_when_starts_new_segment_with_matching_element"],
+    &[
+      "source::tests::source_split_when_starts_new_segment_with_matching_element",
+      "substream_cancel_strategy_regression::source_split_when_accepts_drain_cancel_strategy",
+    ],
     verify_substream_surface,
   ),
   RequirementEvidence::new(
     "2.4",
-    &["source::tests::source_split_after_keeps_matching_element_in_current_segment"],
+    &[
+      "source::tests::source_split_after_keeps_matching_element_in_current_segment",
+      "substream_cancel_strategy_regression::source_split_after_accepts_propagate_cancel_strategy",
+    ],
     verify_substream_surface,
   ),
   RequirementEvidence::new(
@@ -286,13 +292,11 @@ fn verify_invalid_argument_surface() {
 }
 
 fn verify_substream_surface() {
-  let grouped_values = Source::single(1_u32)
-    .group_by(1, |value: &u32| *value)
-    .expect("positive max_substreams must be accepted")
-    .merge_substreams()
-    .collect_values()
-    .expect("grouped values");
-  assert_eq!(grouped_values, vec![1_u32]);
+  assert_group_by_surface();
+  assert_split_when_surface(SubstreamCancelStrategy::Drain);
+  assert_split_when_surface(SubstreamCancelStrategy::Propagate);
+  assert_split_after_surface(SubstreamCancelStrategy::Drain);
+  assert_split_after_surface(SubstreamCancelStrategy::Propagate);
 
   let merged_values =
     Source::single(1_u32).split_after(|_| true).merge_substreams().collect_values().expect("merged values");
@@ -452,6 +456,34 @@ fn verify_policy_surface() {
   assert!(requirement_ids.contains("9.2"));
   assert!(requirement_ids.contains("9.3"));
   assert!(requirement_ids.contains("9.4"));
+}
+
+fn assert_group_by_surface() {
+  let grouped_values = Source::single(1_u32)
+    .group_by(1, |value: &u32| *value)
+    .expect("positive max_substreams must be accepted")
+    .merge_substreams()
+    .collect_values()
+    .expect("grouped values");
+  assert_eq!(grouped_values, vec![1_u32]);
+}
+
+fn assert_split_when_surface(cancel_strategy: SubstreamCancelStrategy) {
+  let split_values = Source::single(1_u32)
+    .split_when_with_cancel_strategy(cancel_strategy, |_| false)
+    .merge_substreams()
+    .collect_values()
+    .expect("split values");
+  assert_eq!(split_values, vec![1_u32]);
+}
+
+fn assert_split_after_surface(cancel_strategy: SubstreamCancelStrategy) {
+  let split_values = Source::single(1_u32)
+    .split_after_with_cancel_strategy(cancel_strategy, |_| false)
+    .merge_substreams()
+    .collect_values()
+    .expect("split values");
+  assert_eq!(split_values, vec![1_u32]);
 }
 
 fn requirement_id_set() -> BTreeSet<&'static str> {

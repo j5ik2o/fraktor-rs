@@ -7,8 +7,8 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig, StreamCompletion,
-  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DemandTracker, DynValue, KeepBoth, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   mat::{Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source, StageKind},
@@ -94,6 +94,16 @@ where
     }
   }
   materialized.materialized().poll()
+}
+
+fn drive_steps<Mat>(materialized: &Materialized<Mat>, steps: usize) -> bool {
+  for _ in 0..steps {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      return true;
+    }
+  }
+  false
 }
 
 #[test]
@@ -213,6 +223,17 @@ fn sink_none_alias_completes_with_done() {
 }
 
 #[test]
+fn sink_never_keeps_completion_pending_after_upstream_finishes() {
+  let graph = Source::from_array([1_u32, 2, 3]).to_mat(Sink::never(), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert!(!drive_steps(&materialized, 64));
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert!(!materialized.handle().state().is_terminal());
+}
+
+#[test]
 fn sink_on_complete_invokes_callback_on_success() {
   let observed = ArcShared::new(SpinSyncMutex::new(None::<Result<StreamDone, StreamError>>));
   let observed_ref = observed.clone();
@@ -244,6 +265,37 @@ fn sink_on_complete_invokes_callback_on_failure() {
 fn sink_completion_stage_sink_alias_completes_with_done() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::completion_stage_sink());
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_combine_routes_elements_to_all_combined_sinks() {
+  let left_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let right_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let left_values_ref = left_values.clone();
+  let right_values_ref = right_values.clone();
+
+  let sink = Sink::combine([
+    Sink::foreach(move |value| left_values_ref.lock().push(value)),
+    Sink::foreach(move |value| right_values_ref.lock().push(value)),
+  ]);
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
+
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*left_values.lock(), vec![1_u32, 2, 3]);
+  assert_eq!(*right_values.lock(), vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn sink_combine_mat_combines_materialized_values_with_keep_both() {
+  let sink = Sink::combine_mat(Sink::collect(), Sink::collect(), KeepBoth);
+  let graph = Source::from_array([1_u32, 2, 3]).to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert!(drive_steps(&materialized, 64));
+  let combined = materialized.materialized();
+  assert_eq!(combined.0.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
+  assert_eq!(combined.1.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
 }
 
 #[test]

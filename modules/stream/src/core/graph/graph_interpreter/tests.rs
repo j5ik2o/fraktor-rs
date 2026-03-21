@@ -10,7 +10,7 @@ use crate::core::{
   Completion, DemandTracker, DynValue, FailureAction, FlowDefinition, FlowLogic, KeepRight, MatCombine,
   OverflowStrategy, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
   SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed,
-  StreamPlan, SupervisionStrategy,
+  StreamPlan, SubstreamCancelStrategy, SupervisionStrategy,
   graph::GraphInterpreter,
   lifecycle::{DriveOutcome, KillSwitchState, KillSwitchStateHandle, StreamState},
   shape::{Inlet, Outlet, PortId},
@@ -1009,6 +1009,127 @@ fn group_by_uses_key_function() {
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(3_u32)));
+}
+
+#[test]
+fn group_by_default_cancels_upstream_after_head_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     3,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .group_by(4, |value: &u32| value % 2)
+  .expect("group_by")
+  .merge_substreams()
+  .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_u32);
+  assert_eq!(*cancels.lock(), 1_u32);
+}
+
+#[test]
+fn split_when_drain_consumes_remaining_upstream_after_head_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     3,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .split_when_with_cancel_strategy(SubstreamCancelStrategy::Drain, |_| false)
+  .merge_substreams()
+  .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 4_u32);
+  assert_eq!(*cancels.lock(), 0_u32);
+}
+
+#[test]
+fn split_when_propagate_cancels_upstream_after_head_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     3,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .split_when_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| false)
+  .merge_substreams()
+  .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_u32);
+  assert_eq!(*cancels.lock(), 1_u32);
+}
+
+#[test]
+fn split_after_drain_consumes_remaining_upstream_after_head_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     3,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .split_after_with_cancel_strategy(SubstreamCancelStrategy::Drain, |_| true)
+  .merge_substreams()
+  .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 4_u32);
+  assert_eq!(*cancels.lock(), 0_u32);
+}
+
+#[test]
+fn split_after_propagate_cancels_upstream_after_head_completion() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
+    next:    1,
+    end:     3,
+    pulls:   pulls.clone(),
+    cancels: cancels.clone(),
+  })
+  .split_after_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| true)
+  .merge_substreams()
+  .to_mat(Sink::head(), KeepRight);
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
+
+  drive_to_completion(&mut interpreter);
+
+  assert_eq!(interpreter.state(), StreamState::Completed);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_u32);
+  assert_eq!(*cancels.lock(), 1_u32);
 }
 
 #[test]
