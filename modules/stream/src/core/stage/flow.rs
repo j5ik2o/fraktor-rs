@@ -15,7 +15,7 @@ use super::{
   validate_positive_argument,
 };
 use crate::core::{
-  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion,
+  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion, SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
 };
 
@@ -30,6 +30,18 @@ pub struct Flow<In, Out, Mat> {
   graph: StreamGraph,
   mat:   Mat,
   _pd:   PhantomData<fn(In) -> Out>,
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat> {
+  /// Creates a flow from a pre-built stream graph and materialized value.
+  #[must_use]
+  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+    Self { graph, mat, _pd: PhantomData }
+  }
+
+  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+    (self.graph, self.mat)
+  }
 }
 
 impl<T> Flow<T, T, StreamNotUsed> {
@@ -661,19 +673,19 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
   /// ```
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .concat_substreams();
   /// ```
@@ -685,12 +697,13 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
+    cancel_strategy: SubstreamCancelStrategy,
   ) -> Result<FlowGroupBySubFlow<In, K, Out, Mat>, StreamDslError>
   where
     K: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> K + Send + Sync + 'static, {
     let max_substreams = validate_positive_argument("max_substreams", max_substreams)?;
-    let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn);
+    let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn, cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -716,12 +729,52 @@ where
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Splits the stream before elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_when_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> FlowSubFlow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_when_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
   /// Splits the stream after elements matching `predicate`.
   #[must_use]
   pub fn split_after<F>(mut self, predicate: F) -> FlowSubFlow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
     let definition = split_after_definition::<Out, F>(predicate);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+  }
+
+  /// Splits the stream after elements matching `predicate` with explicit substream cancellation
+  /// handling.
+  #[must_use]
+  pub fn split_after_with_cancel_strategy<F>(
+    mut self,
+    substream_cancel_strategy: SubstreamCancelStrategy,
+    predicate: F,
+  ) -> FlowSubFlow<In, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    let definition = split_after_definition_with_cancel_strategy::<Out, F>(predicate, substream_cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -914,16 +967,6 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
-  }
-
-  /// Creates a flow from a pre-built stream graph and materialized value.
-  #[must_use]
-  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
-    Self { graph, mat, _pd: PhantomData }
-  }
-
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
-    (self.graph, self.mat)
   }
 
   /// Extracts the flow logics from this flow's graph, consuming it.
@@ -2038,6 +2081,311 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Concatenates a secondary source after the primary flow completes and combines materialized
+  /// values.
+  #[must_use]
+  pub fn concat_lazy_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      concat_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Zip stage that combines materialized values.
+  #[must_use]
+  pub fn zip_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Vec<Out>, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = zip_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Zip-all stage that combines materialized values.
+  #[must_use]
+  pub fn zip_all_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    fill_value: Out,
+    _combine: C,
+  ) -> Flow<In, Vec<Out>, C::Out>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = zip_all_definition::<Out>(2, fill_value);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Zip-with stage that combines materialized values.
+  #[must_use]
+  pub fn zip_with_mat<T, Mat2, F, C>(self, source: Source<Out, Mat2>, func: F, combine: C) -> Flow<In, T, C::Out>
+  where
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    self.zip_mat(source, combine).map(func)
+  }
+
+  /// Zip-latest stage that combines materialized values.
+  #[must_use]
+  pub fn zip_latest_mat<Mat2, C>(self, source: Source<Out, Mat2>, combine: C) -> Flow<In, Vec<Out>, C::Out>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    self.merge_latest_mat(source, combine)
+  }
+
+  /// Zip-latest-with stage that combines materialized values.
+  #[must_use]
+  pub fn zip_latest_with_mat<T, Mat2, F, C>(
+    self,
+    source: Source<Out, Mat2>,
+    func: F,
+    combine: C,
+  ) -> Flow<In, T, C::Out>
+  where
+    Out: Clone,
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> T + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    self.zip_latest_mat(source, combine).map(func)
+  }
+
+  /// Merge stage that combines materialized values.
+  #[must_use]
+  pub fn merge_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = merge_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Merge-latest stage that combines materialized values.
+  #[must_use]
+  pub fn merge_latest_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Vec<Out>, C::Out>
+  where
+    Out: Clone,
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = merge_latest_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Merge-preferred stage that combines materialized values.
+  #[must_use]
+  pub fn merge_preferred_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = merge_preferred_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Merge-prioritized stage that combines materialized values.
+  #[must_use]
+  pub fn merge_prioritized_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let equal_priorities: Vec<usize> = vec![1; 2];
+    let definition = merge_prioritized_definition::<Out>(2, &equal_priorities);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Concat stage that combines materialized values.
+  #[must_use]
+  pub fn concat_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      concat_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Prepend stage that combines materialized values.
+  #[must_use]
+  pub fn prepend_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      prepend_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Interleave stage that combines materialized values.
+  #[must_use]
+  pub fn interleave_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    _segment_size: usize,
+    _combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = interleave_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
+  /// Flat-map-prefix stage that combines materialized values.
+  #[must_use]
+  pub fn flat_map_prefix_mat<T, Mat2, F, C>(
+    mut self,
+    prefix: usize,
+    mut factory: F,
+    _combine: C,
+  ) -> Flow<In, T, C::Out>
+  where
+    Out: Send + Sync + 'static,
+    T: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> Flow<Out, T, Mat2> + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    // Probe factory with empty prefix to extract the materialized value for combination.
+    let probe = factory(Vec::new());
+    let (_probe_graph, right_mat) = probe.into_parts();
+    let definition = flat_map_prefix_definition::<Out, T, Mat2, F>(prefix, factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
   /// Adds an interleave-all compatibility stage.
   ///
   /// # Errors
@@ -2167,6 +2515,26 @@ where
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Falls back to a secondary source when the primary flow emits no elements and combines
+  /// materialized values.
+  #[must_use]
+  pub fn or_else_mat<Mat2, C>(mut self, secondary: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (secondary_graph, right_mat) = secondary.into_parts();
+    let definition =
+      or_else_definition::<Out, StreamNotUsed>(Source::from_graph(secondary_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
+
   /// Prepends a secondary source before the primary flow starts emitting.
   #[must_use]
   pub fn prepend_lazy<Mat2>(mut self, source: Source<Out, Mat2>) -> Flow<In, Out, Mat>
@@ -2180,6 +2548,26 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Prepends a secondary source before the primary flow starts emitting and combines materialized
+  /// values.
+  #[must_use]
+  pub fn prepend_lazy_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let definition =
+      prepend_lazy_definition::<Out, StreamNotUsed>(Source::from_graph(source_graph, StreamNotUsed::new()));
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
   }
 
   /// Adds a zip-latest compatibility stage.
@@ -2268,13 +2656,51 @@ where
     self
   }
 
-  /// Adds a divert-to compatibility stage.
+  /// Adds a divert-to stage that routes elements matching the predicate to a sink.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
   #[must_use]
   pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    core::mem::drop(sink);
-    self.filter_not(predicate)
+    self.divert_to_mat(predicate, sink, super::keep_left::KeepLeft)
+  }
+
+  /// Adds a divert-to stage and combines materialized values.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
+  #[must_use]
+  pub fn divert_to_mat<Mat2, F, C>(self, predicate: F, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let partition = partition_definition::<Out, F>(predicate);
+    let partition_inlet = partition.inlet;
+    let partition_outlet = partition.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(partition));
+    if let Some(upstream_outlet) = upstream_outlet {
+      let _ = graph.connect(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(partition_inlet),
+        MatCombine::KeepLeft,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    let _ = graph.connect(
+      &Outlet::<Out>::from_id(partition_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::KeepLeft,
+    );
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(graph, mat)
   }
 
   /// Adds a wire-tap compatibility stage.
@@ -2548,6 +2974,30 @@ where
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
+
+  /// Merge-sorted stage that combines materialized values.
+  #[must_use]
+  pub fn merge_sorted_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
+  where
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (source_graph, right_mat) = source.into_parts();
+    let source_tail = source_graph.tail_outlet();
+    let from = self.graph.tail_outlet();
+    self.graph.append_unwired(source_graph);
+    let definition = merge_sorted_definition::<Out>(2);
+    let inlet_id = definition.inlet;
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
+    }
+    if let Some(src_out) = source_tail {
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+    }
+    let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
+    Flow { graph: self.graph, mat, _pd: PhantomData }
+  }
 }
 
 impl<In, Out> Flow<In, Out, StreamNotUsed>
@@ -2555,18 +3005,50 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
 {
-  /// Creates a flow from sink-and-source compatibility entry points.
+  /// Creates a flow from a sink (inlet side) and a source (outlet side).
+  ///
+  /// The resulting flow accepts elements into `sink` and emits elements from
+  /// `source`. The two are composed into a single graph.
   #[must_use]
   pub fn from_sink_and_source<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
-    core::mem::drop(sink);
-    core::mem::drop(source);
-    Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
+    let (mut sink_graph, _sink_mat) = sink.into_parts();
+    let (source_graph, _source_mat) = source.into_parts();
+    sink_graph.append_unwired(source_graph);
+    Self { graph: sink_graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 
-  /// Creates a coupled flow from sink-and-source compatibility entry points.
+  /// Creates a flow from a sink and a source, combining materialized values.
+  #[must_use]
+  pub fn from_sink_and_source_mat<Mat1, Mat2, C>(
+    sink: Sink<In, Mat1>,
+    source: Source<Out, Mat2>,
+    _combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat1, Mat2>, {
+    let (mut sink_graph, left_mat) = sink.into_parts();
+    let (source_graph, right_mat) = source.into_parts();
+    sink_graph.append_unwired(source_graph);
+    let mat = combine_mat::<Mat1, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(sink_graph, mat)
+  }
+
+  /// Creates a coupled flow from a sink and a source.
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
     Self::from_sink_and_source(sink, source)
+  }
+
+  /// Creates a coupled flow from a sink and a source with materialized value control.
+  #[must_use]
+  pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
+    sink: Sink<In, Mat1>,
+    source: Source<Out, Mat2>,
+    combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    C: MatCombineRule<Mat1, Mat2>, {
+    Self::from_sink_and_source_mat(sink, source, combine)
   }
 }
 
@@ -3558,14 +4040,26 @@ where
   }
 }
 
-pub(in crate::core) fn group_by_definition<In, Key, F>(max_substreams: usize, key_fn: F) -> FlowDefinition
+pub(in crate::core) fn group_by_definition<In, Key, F>(
+  max_substreams: usize,
+  key_fn: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
 where
   In: Send + Sync + 'static,
   Key: Clone + PartialEq + Send + Sync + 'static,
   F: FnMut(&In) -> Key + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<(Key, In)> = Outlet::new();
-  let logic = GroupByLogic::<In, Key, F> { max_substreams, seen_keys: Vec::new(), key_fn, _pd: PhantomData };
+  let logic = GroupByLogic::<In, Key, F> {
+    max_substreams,
+    seen_keys: Vec::new(),
+    key_fn,
+    substream_cancel_strategy,
+    source_done: false,
+    draining: false,
+    _pd: PhantomData,
+  };
   FlowDefinition {
     kind:        StageKind::FlowGroupBy,
     inlet:       inlet.id(),
@@ -3686,9 +4180,25 @@ pub(in crate::core) fn split_when_definition<In, F>(predicate: F) -> FlowDefinit
 where
   In: Send + Sync + 'static,
   F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  split_when_definition_with_cancel_strategy(predicate, SubstreamCancelStrategy::Propagate)
+}
+
+pub(in crate::core) fn split_when_definition_with_cancel_strategy<In, F>(
+  predicate: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Vec<In>> = Outlet::new();
-  let logic = SplitWhenLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  let logic = SplitWhenLogic::<In, F> {
+    predicate,
+    substream_cancel_strategy,
+    current: Vec::new(),
+    source_done: false,
+    draining: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowSplitWhen,
     inlet:       inlet.id(),
@@ -3706,9 +4216,25 @@ pub(in crate::core) fn split_after_definition<In, F>(predicate: F) -> FlowDefini
 where
   In: Send + Sync + 'static,
   F: FnMut(&In) -> bool + Send + Sync + 'static, {
+  split_after_definition_with_cancel_strategy(predicate, SubstreamCancelStrategy::Propagate)
+}
+
+pub(in crate::core) fn split_after_definition_with_cancel_strategy<In, F>(
+  predicate: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  F: FnMut(&In) -> bool + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Vec<In>> = Outlet::new();
-  let logic = SplitAfterLogic::<In, F> { predicate, current: Vec::new(), source_done: false };
+  let logic = SplitAfterLogic::<In, F> {
+    predicate,
+    substream_cancel_strategy,
+    current: Vec::new(),
+    source_done: false,
+    draining: false,
+  };
   FlowDefinition {
     kind:        StageKind::FlowSplitAfter,
     inlet:       inlet.id(),
@@ -4487,7 +5013,7 @@ const fn noop_drop(_: *const ()) {}
 
 const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
 
-fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
+pub(in crate::core) fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
 where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)

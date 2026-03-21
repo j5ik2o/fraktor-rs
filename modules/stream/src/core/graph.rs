@@ -1,11 +1,14 @@
 //! Graph-related abstractions.
 //!
-//! Reusable flow fragments intentionally exclude `GraphDSL.Builder`-style arbitrary port wiring.
+//! `GraphDslBuilder` provides a minimal builder surface over existing stream graphs.
 //!
-//! ```compile_fail
-//! use fraktor_stream_rs::core::graph::{FlowFragment, GraphDslBuilder};
+//! ```
+//! use fraktor_stream_rs::core::{
+//!   StreamNotUsed,
+//!   graph::{FlowFragment, GraphDslBuilder},
+//! };
 //!
-//! let _builder: GraphDslBuilder<u32, u32, ()>;
+//! let _builder: GraphDslBuilder<u32, u32, StreamNotUsed> = GraphDslBuilder::new();
 //! let _ = FlowFragment::from_flow;
 //! ```
 
@@ -19,12 +22,16 @@ use super::{
 };
 
 mod flow_fragment;
+mod graph_dsl;
+mod graph_dsl_builder;
 mod graph_interpreter;
 mod graph_stage;
 mod graph_stage_logic;
 mod stream_graph;
 
 pub use flow_fragment::FlowFragment;
+pub use graph_dsl::GraphDsl;
+pub use graph_dsl_builder::GraphDslBuilder;
 pub use graph_interpreter::GraphInterpreter;
 pub use graph_stage::GraphStage;
 pub use graph_stage_logic::GraphStageLogic;

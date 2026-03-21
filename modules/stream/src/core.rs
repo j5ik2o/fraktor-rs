@@ -78,6 +78,8 @@ mod stream_dsl_error;
 mod stream_error;
 /// Stream not-used marker.
 mod stream_not_used;
+/// `split_when` / `split_after` substream cancellation strategy.
+mod substream_cancel_strategy;
 /// Supervision strategy definitions.
 mod supervision_strategy;
 /// Test utilities for stream verification.
@@ -126,6 +128,7 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
+pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
@@ -532,8 +535,8 @@ trait FlowLogic: Send {
     Ok(())
   }
 
-  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
-    self.on_source_done()
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
+    self.on_source_done().map(|()| DownstreamCancelAction::Propagate)
   }
 
   fn take_shutdown_request(&mut self) -> bool {
@@ -548,9 +551,18 @@ trait FlowLogic: Send {
     false
   }
 
+  fn wants_upstream_drain(&self) -> bool {
+    false
+  }
+
   fn on_restart(&mut self) -> Result<(), StreamError> {
     Ok(())
   }
+}
+
+enum DownstreamCancelAction {
+  Drain,
+  Propagate,
 }
 
 pub(crate) enum SinkDecision {

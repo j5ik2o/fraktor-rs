@@ -7,8 +7,8 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig, StreamCompletion,
-  StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DemandTracker, DynValue, KeepBoth, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig,
+  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   mat::{Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source, StageKind},
@@ -94,6 +94,16 @@ where
     }
   }
   materialized.materialized().poll()
+}
+
+fn drive_steps<Mat>(materialized: &Materialized<Mat>, steps: usize) -> bool {
+  for _ in 0..steps {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      return true;
+    }
+  }
+  false
 }
 
 #[test]
@@ -213,6 +223,17 @@ fn sink_none_alias_completes_with_done() {
 }
 
 #[test]
+fn sink_never_keeps_completion_pending_after_upstream_finishes() {
+  let graph = Source::from_array([1_u32, 2, 3]).to_mat(Sink::never(), KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert!(drive_steps(&materialized, 64));
+  assert_eq!(materialized.materialized().poll(), Completion::Pending);
+  assert!(materialized.handle().state().is_terminal());
+}
+
+#[test]
 fn sink_on_complete_invokes_callback_on_success() {
   let observed = ArcShared::new(SpinSyncMutex::new(None::<Result<StreamDone, StreamError>>));
   let observed_ref = observed.clone();
@@ -244,6 +265,37 @@ fn sink_on_complete_invokes_callback_on_failure() {
 fn sink_completion_stage_sink_alias_completes_with_done() {
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), Sink::completion_stage_sink());
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn sink_combine_routes_elements_to_all_combined_sinks() {
+  let left_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let right_values = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
+  let left_values_ref = left_values.clone();
+  let right_values_ref = right_values.clone();
+
+  let sink = Sink::combine([
+    Sink::foreach(move |value| left_values_ref.lock().push(value)),
+    Sink::foreach(move |value| right_values_ref.lock().push(value)),
+  ]);
+  let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), sink);
+
+  assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
+  assert_eq!(*left_values.lock(), vec![1_u32, 2, 3]);
+  assert_eq!(*right_values.lock(), vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn sink_combine_mat_combines_materialized_values_with_keep_both() {
+  let sink = Sink::combine_mat(Sink::collect(), Sink::collect(), KeepBoth);
+  let graph = Source::from_array([1_u32, 2, 3]).to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+
+  assert!(drive_steps(&materialized, 64));
+  let combined = materialized.materialized();
+  assert_eq!(combined.0.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
+  assert_eq!(combined.1.poll(), Completion::Ready(Ok(vec![1_u32, 2, 3])));
 }
 
 #[test]
@@ -621,4 +673,117 @@ fn sink_queue_collects_elements() {
   assert_eq!(queue.pull(), Some(2_u32));
   assert_eq!(queue.pull(), Some(3_u32));
   assert!(queue.pull().is_none());
+}
+
+// --- A1: Sink.never ---
+
+#[test]
+fn sink_never_does_not_complete_without_elements() {
+  // 前提: 要素を流さない source と、成功完了しない sink を組み合わせる
+  let source = Source::<u32, StreamNotUsed>::empty();
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+
+  // 操作: ストリームを実行する
+  let graph = source.to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+  }
+
+  // 期待: materialized completion は成功完了しない
+  let completion = materialized.materialized().poll();
+  assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not complete successfully on its own");
+}
+
+#[test]
+fn sink_never_accepts_elements_without_completing() {
+  // 前提: 要素を流す source と、成功完了しない sink を組み合わせる
+  let source = Source::from_array([1_u32, 2, 3]);
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+
+  // 操作: ストリームを実行する
+  let graph = source.to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+  }
+
+  // 期待: sink 側の materialized completion は成功完了しない
+  let completion = materialized.materialized().poll();
+  assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not produce a successful completion");
+}
+
+// --- C1: Sink.combine / Sink.combineMat ---
+
+#[test]
+fn sink_combine_distributes_elements_to_all_sinks() {
+  // 前提: 2 つの collect sink を combine する
+  let sink1 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let sink2 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let combined = Sink::combine(vec![sink1, sink2]);
+
+  // 操作: combine した sink に要素を流す
+  let source = Source::from_array([1_u32, 2, 3]);
+  let completion = run_source_with_sink(source, combined);
+
+  // 期待: combine した sink は完了する
+  assert!(matches!(completion, Completion::Ready(_)));
+}
+
+#[test]
+fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
+  // 前提: combine 対象の sink が 0 件である
+  let combined =
+    Sink::<u32, StreamCompletion<StreamDone>>::combine(core::iter::empty::<Sink<u32, StreamCompletion<StreamDone>>>());
+
+  // 操作: source と接続して実行する
+  let source = Source::from_array([1_u32, 2, 3]);
+  let graph = source.to_mat(combined, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  // 期待: 空の combine は退化した sink として終端に到達する
+  assert!(materialized.handle().state().is_terminal());
+}
+
+#[test]
+fn sink_combine_mat_keeps_both_materialized_values() {
+  // 前提: 異なる materialized value を持つ 2 つの sink を KeepBoth で combine する
+  use crate::core::KeepBoth;
+
+  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let combined = Sink::combine_mat(sink1, sink2, KeepBoth);
+
+  // 操作: materialized value を取り出す
+  let (_graph, mat) = combined.into_parts();
+
+  // 期待: 両方の materialized value が pending のタプルとして返る
+  let (left, right) = mat;
+  assert_eq!(left.poll(), Completion::Pending);
+  assert_eq!(right.poll(), Completion::Pending);
+}
+
+#[test]
+fn sink_combine_mat_keeps_left_materialized_value() {
+  // 前提: 2 つの sink を KeepLeft で combine する
+  use crate::core::KeepLeft;
+
+  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let combined = Sink::combine_mat(sink1, sink2, KeepLeft);
+
+  // 操作: materialized value を取り出す
+  let (_graph, mat) = combined.into_parts();
+
+  // 期待: 左側の materialized value が pending のまま返る
+  assert_eq!(mat.poll(), Completion::Pending);
 }

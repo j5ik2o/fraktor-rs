@@ -8,9 +8,9 @@ use core::{
 };
 
 use super::{
-  DynValue, MatCombine, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, StageDefinition,
-  StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage,
-  SupervisionStrategy, downcast_value,
+  DynValue, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic,
+  StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed,
+  StreamStage, SupervisionStrategy, downcast_value,
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
@@ -94,6 +94,20 @@ where
       }
       acc
     })
+  }
+
+  /// Creates a sink that never completes.
+  ///
+  /// Corresponds to Pekko `Sink.never` which accepts elements but never
+  /// signals completion.
+  ///
+  /// The materialized [`StreamCompletion`](super::StreamCompletion) stays
+  /// pending even after upstream has finished.
+  #[must_use]
+  pub fn never() -> Self {
+    let completion = StreamCompletion::new();
+    let logic = NeverSinkLogic::<In> { completion: completion.clone(), _pd: PhantomData };
+    Self::from_definition(StageKind::Custom, logic, completion)
   }
 
   /// Creates a sink that is compatible with async-foreach entry points.
@@ -406,8 +420,80 @@ where
 
 impl<In, Mat> Sink<In, Mat>
 where
+  In: Clone + Send + Sync + 'static,
+  Mat: Default + Send + Sync + 'static,
+{
+  /// Combines multiple sinks.
+  ///
+  /// Corresponds to Pekko `Sink.combine`. This is a stub implementation
+  /// that uses only the first sink; full broadcast fan-out to all sinks
+  /// requires GraphDSL completion. When the iterator is empty, returns
+  /// a cancelled sink. When only one sink is provided, returns it as-is.
+  #[must_use]
+  pub fn combine<I>(sinks: I) -> Self
+  where
+    I: IntoIterator<Item = Self>, {
+    let mut sinks: Vec<_> = sinks.into_iter().collect();
+    if sinks.is_empty() {
+      let completion = StreamCompletion::new();
+      let logic = CancelledSinkLogic { completion };
+      let mut graph = StreamGraph::new();
+      let inlet: Inlet<In> = Inlet::new();
+      let definition = SinkDefinition {
+        kind:        StageKind::Custom,
+        inlet:       inlet.id(),
+        input_type:  TypeId::of::<In>(),
+        mat_combine: MatCombine::KeepRight,
+        supervision: SupervisionStrategy::Stop,
+        restart:     None,
+        logic:       Box::new(logic),
+      };
+      graph.push_stage(StageDefinition::Sink(definition));
+      return Self { graph, mat: Mat::default(), _pd: PhantomData };
+    }
+    if sinks.len() == 1 {
+      return sinks.remove(0);
+    }
+    let first = sinks.remove(0);
+    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, super::keep_left::KeepLeft))
+  }
+}
+
+impl<In, Mat> Sink<In, Mat>
+where
   In: Send + Sync + 'static,
 {
+  /// Combines two sinks by broadcasting each element to both inputs and combining materialized
+  /// values.
+  #[must_use]
+  pub fn combine_mat<Mat2, C>(first: Sink<In, Mat>, second: Sink<In, Mat2>, _combine: C) -> Sink<In, C::Out>
+  where
+    In: Clone,
+    C: MatCombineRule<Mat, Mat2>, {
+    let (first_graph, left_mat) = first.into_parts();
+    let first_inlet = first_graph.head_inlet();
+    let (second_graph, right_mat) = second.into_parts();
+    let second_inlet = second_graph.head_inlet();
+
+    let broadcast = super::flow::broadcast_definition::<In>(2);
+    let broadcast_outlet = broadcast.outlet;
+
+    let mut graph = StreamGraph::new();
+    graph.push_stage(StageDefinition::Flow(broadcast));
+    graph.append_unwired(first_graph);
+    graph.append_unwired(second_graph);
+
+    if let Some(to) = first_inlet {
+      let _ = graph.connect(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+    }
+    if let Some(to) = second_inlet {
+      let _ = graph.connect(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+    }
+
+    let mat = C::combine(left_mat, right_mat);
+    Sink::from_graph(graph, mat)
+  }
+
   /// Creates a sink from a pre-built stream graph and materialized value.
   #[must_use]
   pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
@@ -696,6 +782,39 @@ where
 
   fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>>> {
     Box::new(IgnoreSinkLogic { completion: self.completion.clone(), _pd: PhantomData })
+  }
+}
+
+struct NeverSinkLogic<In> {
+  completion: StreamCompletion<StreamDone>,
+  _pd:        PhantomData<fn(In)>,
+}
+
+impl<In> SinkLogic for NeverSinkLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+    demand.request(1)
+  }
+
+  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+    let _: In = downcast_value(input)?;
+    demand.request(1)?;
+    Ok(SinkDecision::Continue)
+  }
+
+  fn on_complete(&mut self) -> Result<(), StreamError> {
+    // Never signals completion - the completion handle stays pending
+    Ok(())
+  }
+
+  fn on_error(&mut self, error: StreamError) {
+    self.completion.complete(Err(error));
+  }
+
+  fn has_pending_work(&self) -> bool {
+    false
   }
 }
 

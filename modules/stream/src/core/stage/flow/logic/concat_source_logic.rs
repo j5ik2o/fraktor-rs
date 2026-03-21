@@ -8,7 +8,8 @@ use super::super::{
   StageDefinition, map_definition,
 };
 use crate::core::{
-  Completion, MatCombine, QueueOfferResult, SourceQueue, StreamBufferConfig, StreamCompletion, StreamDone,
+  Completion, DownstreamCancelAction, MatCombine, QueueOfferResult, SourceQueue, StreamBufferConfig, StreamCompletion,
+  StreamDone,
   lifecycle::{DriveOutcome, Stream},
 };
 
@@ -207,11 +208,11 @@ where
     Ok(())
   }
 
-  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
     self.on_source_done()?;
     self.pending.clear();
     self.secondary_runtime = None;
-    Ok(())
+    Ok(DownstreamCancelAction::Propagate)
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
@@ -279,12 +280,12 @@ where
     self.pending_primary.is_empty()
   }
 
-  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
     self.on_source_done()?;
     self.pending_primary.clear();
     self.pending_secondary.clear();
     self.secondary_runtime = None;
-    Ok(())
+    Ok(DownstreamCancelAction::Propagate)
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
@@ -354,11 +355,11 @@ where
     Ok(())
   }
 
-  fn on_downstream_cancel(&mut self) -> Result<(), StreamError> {
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
     self.on_source_done()?;
     self.pending_secondary.clear();
     self.secondary_runtime = None;
-    Ok(())
+    Ok(DownstreamCancelAction::Propagate)
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {

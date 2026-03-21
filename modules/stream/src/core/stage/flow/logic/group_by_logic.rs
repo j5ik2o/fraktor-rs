@@ -2,12 +2,19 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
+use crate::core::{DownstreamCancelAction, SubstreamCancelStrategy};
+
+#[cfg(test)]
+mod tests;
 
 pub(in crate::core::stage::flow) struct GroupByLogic<In, Key, F> {
   pub(in crate::core::stage::flow) max_substreams: usize,
-  pub(in crate::core::stage::flow) seen_keys:      Vec<Key>,
-  pub(in crate::core::stage::flow) key_fn:         F,
-  pub(in crate::core::stage::flow) _pd:            PhantomData<fn(In) -> Key>,
+  pub(in crate::core::stage::flow) seen_keys: Vec<Key>,
+  pub(in crate::core::stage::flow) key_fn: F,
+  pub(in crate::core::stage::flow) substream_cancel_strategy: SubstreamCancelStrategy,
+  pub(in crate::core::stage::flow) source_done: bool,
+  pub(in crate::core::stage::flow) draining: bool,
+  pub(in crate::core::stage::flow) _pd: PhantomData<fn(In) -> Key>,
 }
 
 impl<In, Key, F> FlowLogic for GroupByLogic<In, Key, F>
@@ -29,5 +36,31 @@ where
       self.seen_keys.push(key.clone());
     }
     Ok(vec![Box::new((key, value)) as DynValue])
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
+    match self.substream_cancel_strategy {
+      | SubstreamCancelStrategy::Drain => {
+        self.draining = true;
+        Ok(DownstreamCancelAction::Drain)
+      },
+      | SubstreamCancelStrategy::Propagate => self.on_source_done().map(|()| DownstreamCancelAction::Propagate),
+    }
+  }
+
+  fn wants_upstream_drain(&self) -> bool {
+    self.draining && !self.source_done
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.seen_keys.clear();
+    self.source_done = false;
+    self.draining = false;
+    Ok(())
   }
 }

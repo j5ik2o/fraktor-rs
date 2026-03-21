@@ -357,6 +357,24 @@ start_parallel_cargo() {
   PARALLEL_LABELS+=("${label}")
 }
 
+start_parallel_phase() {
+  local label="$1"
+  local shard="$2"
+  local func="$3"
+
+  local target_dir="${REPO_ROOT}/target/ci-check/${shard}"
+  mkdir -p "${target_dir}"
+
+  log_step "[parallel] ${label} (CARGO_TARGET_DIR=${target_dir#${REPO_ROOT}/})"
+  (
+    export CARGO_TARGET_DIR="${target_dir}"
+    "${func}"
+  ) &
+
+  PARALLEL_PIDS+=("$!")
+  PARALLEL_LABELS+=("${label}")
+}
+
 wait_parallel_cargo() {
   local failed=0
   local idx
@@ -711,10 +729,10 @@ run_dylint() {
     local lib_name="${crate//-/_}"
 
     log_step "cargo -v build --manifest-path ${lint_path}/Cargo.toml --release"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v build --manifest-path "${lint_path}/Cargo.toml" --release || return 1
 
     log_step "cargo -v test --manifest-path ${lint_path}/Cargo.toml -- test ui -- --quiet"
-    CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
+    env -u CARGO_TARGET_DIR CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" cargo -v test --manifest-path "${lint_path}/Cargo.toml" -- test ui -- --quiet || return 1
 
     local dylib_ext
     dylib_ext="$(get_dylib_extension)"
@@ -1198,14 +1216,28 @@ run_perf() {
 }
 
 run_all() {
+  # Phase 1: ゲート（直列・高速）
+  log_step "=== Phase 1: ゲート (fmt, check_unit_sleep) ==="
   run_fmt || return 1
-  run_dylint || return 1
-  run_clippy || return 1
-  run_no_std || return 1
   check_unit_sleep || return 1
-  run_doc_tests || return 1
-  run_unit_tests || return 1
-  run_integration_tests || return 1
+
+  # Phase 2: lint 群（並列）
+  log_step "=== Phase 2: lint 並列 (dylint | clippy | no-std | doc) ==="
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_phase "dylint" "dylint" run_dylint
+  start_parallel_phase "clippy" "clippy" run_clippy
+  start_parallel_phase "no-std" "no-std" run_no_std
+  start_parallel_phase "doc" "doc" run_doc_tests
+  wait_parallel_cargo || return 1
+
+  # Phase 3: テスト群（並列）
+  log_step "=== Phase 3: テスト並列 (unit-test | integration-test) ==="
+  PARALLEL_PIDS=()
+  PARALLEL_LABELS=()
+  start_parallel_phase "unit-test" "unit-test" run_unit_tests
+  start_parallel_phase "integration-test" "integration-test" run_integration_tests
+  wait_parallel_cargo || return 1
 }
 
 main() {

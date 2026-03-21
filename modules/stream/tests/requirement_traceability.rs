@@ -1,12 +1,25 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, time::Duration};
 
+use fraktor_actor_rs::core::{
+  actor::{Actor, ActorContext},
+  error::ActorError,
+  messaging::AnyMessageView,
+  props::Props,
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::{ActorSystem, ActorSystemConfig},
+};
 use fraktor_stream_rs::core::{
-  RestartSettings, StreamDslError, StreamError, StreamNotUsed,
+  Completion, RestartSettings, StreamDslError, StreamError, StreamNotUsed, SubstreamCancelStrategy,
   hub::{BroadcastHub, MergeHub, PartitionHub},
   lifecycle::{SharedKillSwitch, UniqueKillSwitch},
+  mat::{ActorMaterializer, ActorMaterializerConfig},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   stage::{Sink, Source, flow::Flow},
 };
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 type VerifyFn = fn();
 
@@ -21,6 +34,22 @@ impl RequirementEvidence {
   const fn new(requirement_id: &'static str, evidences: &'static [&'static str], verify: VerifyFn) -> Self {
     Self { requirement_id, evidences, verify }
   }
+}
+
+struct TraceabilityGuardianActor;
+
+impl Actor for TraceabilityGuardianActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| TraceabilityGuardianActor);
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
+  ActorSystem::new_with_config(&props, &config).expect("system should build")
 }
 
 const ALL_REQUIREMENT_IDS: &[&str] = &[
@@ -62,12 +91,18 @@ const REQUIREMENT_EVIDENCE: &[RequirementEvidence] = &[
   ),
   RequirementEvidence::new(
     "2.3",
-    &["source::tests::source_split_when_starts_new_segment_with_matching_element"],
+    &[
+      "source::tests::source_split_when_starts_new_segment_with_matching_element",
+      "substream_cancel_strategy_regression::source_split_when_accepts_drain_cancel_strategy",
+    ],
     verify_substream_surface,
   ),
   RequirementEvidence::new(
     "2.4",
-    &["source::tests::source_split_after_keeps_matching_element_in_current_segment"],
+    &[
+      "source::tests::source_split_after_keeps_matching_element_in_current_segment",
+      "substream_cancel_strategy_regression::source_split_after_accepts_propagate_cancel_strategy",
+    ],
     verify_substream_surface,
   ),
   RequirementEvidence::new(
@@ -286,13 +321,11 @@ fn verify_invalid_argument_surface() {
 }
 
 fn verify_substream_surface() {
-  let grouped_values = Source::single(1_u32)
-    .group_by(1, |value: &u32| *value)
-    .expect("positive max_substreams must be accepted")
-    .merge_substreams()
-    .collect_values()
-    .expect("grouped values");
-  assert_eq!(grouped_values, vec![1_u32]);
+  assert_group_by_surface();
+  assert_split_when_surface(SubstreamCancelStrategy::Drain);
+  assert_split_when_surface(SubstreamCancelStrategy::Propagate);
+  assert_split_after_surface(SubstreamCancelStrategy::Drain);
+  assert_split_after_surface(SubstreamCancelStrategy::Propagate);
 
   let merged_values =
     Source::single(1_u32).split_after(|_| true).merge_substreams().collect_values().expect("merged values");
@@ -310,7 +343,7 @@ fn verify_substream_surface() {
     .expect("limited values");
   assert_eq!(limited_values, vec![1_u32]);
 
-  let group_error = match Source::single(1_u32).group_by(0, |value: &u32| *value) {
+  let group_error = match Source::single(1_u32).group_by(0, |value: &u32| *value, SubstreamCancelStrategy::default()) {
     | Ok(_) => panic!("zero max_substreams must be rejected"),
     | Err(error) => error,
   };
@@ -452,6 +485,70 @@ fn verify_policy_surface() {
   assert!(requirement_ids.contains("9.2"));
   assert!(requirement_ids.contains("9.3"));
   assert!(requirement_ids.contains("9.4"));
+}
+
+fn assert_group_by_surface() {
+  let grouped_values = Source::single(1_u32)
+    .group_by(1, |value: &u32| *value, SubstreamCancelStrategy::default())
+    .expect("positive max_substreams must be accepted")
+    .merge_substreams()
+    .collect_values()
+    .expect("grouped values");
+  assert_eq!(grouped_values, vec![1_u32]);
+}
+
+fn assert_split_when_surface(cancel_strategy: SubstreamCancelStrategy) {
+  let system = build_system();
+  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  materializer.start().expect("start");
+  let upstream_pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let observed_pulls = upstream_pulls.clone();
+  let materialized = Source::from_array([1_u32, 2, 3])
+    .map(move |value| {
+      *observed_pulls.lock() += 1;
+      value
+    })
+    .split_when_with_cancel_strategy(cancel_strategy, |_| true)
+    .merge_substreams()
+    .run_with(Sink::head(), &mut materializer)
+    .expect("run_with");
+  for _ in 0..5 {
+    controller.inject_and_drive(1);
+  }
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  match cancel_strategy {
+    | SubstreamCancelStrategy::Drain => assert_eq!(*upstream_pulls.lock(), 3_u32),
+    | SubstreamCancelStrategy::Propagate => assert_eq!(*upstream_pulls.lock(), 2_u32),
+  }
+}
+
+fn assert_split_after_surface(cancel_strategy: SubstreamCancelStrategy) {
+  let system = build_system();
+  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
+  materializer.start().expect("start");
+  let upstream_pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let observed_pulls = upstream_pulls.clone();
+  let materialized = Source::from_array([1_u32, 2, 3])
+    .map(move |value| {
+      *observed_pulls.lock() += 1;
+      value
+    })
+    .split_after_with_cancel_strategy(cancel_strategy, |_| true)
+    .merge_substreams()
+    .run_with(Sink::head(), &mut materializer)
+    .expect("run_with");
+  for _ in 0..5 {
+    controller.inject_and_drive(1);
+  }
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(1_u32)));
+  match cancel_strategy {
+    | SubstreamCancelStrategy::Drain => assert_eq!(*upstream_pulls.lock(), 3_u32),
+    | SubstreamCancelStrategy::Propagate => assert_eq!(*upstream_pulls.lock(), 1_u32),
+  }
 }
 
 fn requirement_id_set() -> BTreeSet<&'static str> {

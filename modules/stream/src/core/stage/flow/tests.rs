@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 use crate::core::{
   Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
   SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
-  StreamNotUsed,
+  StreamNotUsed, SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
@@ -404,6 +404,728 @@ fn or_else_accepts_non_clone_elements() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn concat_lazy_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 11_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 7_u32)
+    .concat_lazy_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 7_u32);
+  assert_eq!(right_mat, 11_u32);
+}
+
+#[test]
+fn concat_lazy_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32])
+    .via(
+      Flow::<u32, u32, StreamNotUsed>::new()
+        .concat_lazy_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 99_u32), KeepLeft),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn prepend_lazy_mat_combines_materialized_values() {
+  let secondary = Source::single(1_u32).map_materialized_value(|_| 13_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 5_u32)
+    .prepend_lazy_mat(secondary, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 13_u32);
+}
+
+#[test]
+fn prepend_lazy_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([3_u32, 4_u32])
+    .via(
+      Flow::<u32, u32, StreamNotUsed>::new()
+        .prepend_lazy_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 42_u32), KeepLeft),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+#[test]
+fn or_else_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 17_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 3_u32)
+    .or_else_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(materialized, (3_u32, 17_u32));
+}
+
+#[test]
+fn or_else_mat_preserves_existing_data_path_behavior() {
+  let values = Source::<u32, _>::empty()
+    .via(
+      Flow::<u32, u32, StreamNotUsed>::new()
+        .or_else_mat(Source::from_array([5_u32, 6_u32]).map_materialized_value(|_| 77_u32), KeepLeft),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![5_u32, 6_u32]);
+}
+
+#[test]
+fn divert_to_mat_combines_materialized_values() {
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 23_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 19_u32)
+    .divert_to_mat(|value: &u32| (*value).is_multiple_of(2), sink, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 23_u32);
+}
+
+#[test]
+fn divert_to_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().divert_to_mat(
+      |value: &u32| (*value).is_multiple_of(2),
+      Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32),
+      KeepLeft,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+#[test]
+fn divert_to_mat_routes_matching_elements_to_sink() {
+  let diverted = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let diverted_ref = diverted.clone();
+
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().divert_to_mat(
+      |value: &u32| (*value).is_multiple_of(2),
+      Sink::<u32, StreamCompletion<StreamDone>>::foreach(move |value| {
+        diverted_ref.lock().push(value);
+      }),
+      KeepLeft,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 3_u32]);
+  assert_eq!(*diverted.lock(), vec![2_u32, 4_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// concat_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn concat_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 11_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 7_u32)
+    .concat_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 7_u32);
+  assert_eq!(right_mat, 11_u32);
+}
+
+#[test]
+fn concat_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 11_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 7_u32)
+    .concat_mat(secondary, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 7_u32);
+}
+
+#[test]
+fn concat_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 11_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 7_u32)
+    .concat_mat(secondary, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 11_u32);
+}
+
+#[test]
+fn concat_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32])
+    .via(
+      Flow::<u32, u32, StreamNotUsed>::new()
+        .concat_mat(Source::from_array([3_u32, 4_u32]).map_materialized_value(|_| 99_u32), KeepLeft),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// prepend_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn prepend_mat_combines_materialized_values() {
+  let secondary = Source::single(1_u32).map_materialized_value(|_| 13_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 5_u32)
+    .prepend_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 5_u32);
+  assert_eq!(right_mat, 13_u32);
+}
+
+#[test]
+fn prepend_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(1_u32).map_materialized_value(|_| 13_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 5_u32)
+    .prepend_mat(secondary, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 13_u32);
+}
+
+#[test]
+fn prepend_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([3_u32, 4_u32])
+    .via(
+      Flow::<u32, u32, StreamNotUsed>::new()
+        .prepend_mat(Source::from_array([1_u32, 2_u32]).map_materialized_value(|_| 42_u32), KeepLeft),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// merge_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 17_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 3_u32)
+    .merge_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 3_u32);
+  assert_eq!(right_mat, 17_u32);
+}
+
+#[test]
+fn merge_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 17_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 3_u32)
+    .merge_mat(secondary, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 3_u32);
+}
+
+#[test]
+fn merge_mat_preserves_existing_data_path_behavior() {
+  let mut values = Source::single(7_u32)
+    .map_materialized_value(|_| 0_u32)
+    .merge_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+  values.sort();
+
+  assert!(values.contains(&7_u32));
+  assert!(values.contains(&8_u32));
+  assert_eq!(values.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// merge_preferred_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_preferred_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 23_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 19_u32)
+    .merge_preferred_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 19_u32);
+  assert_eq!(right_mat, 23_u32);
+}
+
+#[test]
+fn merge_preferred_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 23_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 19_u32)
+    .merge_preferred_mat(secondary, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 23_u32);
+}
+
+#[test]
+fn merge_preferred_mat_preserves_existing_data_path_behavior() {
+  let mut values = Source::single(7_u32)
+    .map_materialized_value(|_| 0_u32)
+    .merge_preferred_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+  values.sort();
+
+  assert!(values.contains(&7_u32));
+  assert!(values.contains(&8_u32));
+  assert_eq!(values.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// merge_sorted_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_sorted_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 29_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 31_u32)
+    .merge_sorted_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 31_u32);
+  assert_eq!(right_mat, 29_u32);
+}
+
+#[test]
+fn merge_sorted_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 29_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 31_u32)
+    .merge_sorted_mat(secondary, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 31_u32);
+}
+
+#[test]
+fn merge_sorted_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 3_u32, 5_u32])
+    .map_materialized_value(|_| 0_u32)
+    .merge_sorted_mat(Source::from_array([2_u32, 4_u32, 6_u32]).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32, 5_u32, 6_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// zip_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn zip_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 41_u32);
+
+  let (_graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 37_u32).zip_mat(secondary, KeepBoth).into_parts();
+
+  assert_eq!(left_mat, 37_u32);
+  assert_eq!(right_mat, 41_u32);
+}
+
+#[test]
+fn zip_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 41_u32);
+
+  let (_graph, materialized) =
+    Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 37_u32).zip_mat(secondary, KeepLeft).into_parts();
+
+  assert_eq!(materialized, 37_u32);
+}
+
+#[test]
+fn zip_mat_preserves_existing_data_path_behavior() {
+  let values = Source::single(1_u32)
+    .map_materialized_value(|_| 0_u32)
+    .zip_mat(Source::single(2_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![vec![1_u32, 2_u32]]);
+}
+
+// ---------------------------------------------------------------------------
+// zip_all_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn zip_all_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 43_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 39_u32)
+    .zip_all_mat(secondary, 0_u32, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 39_u32);
+  assert_eq!(right_mat, 43_u32);
+}
+
+#[test]
+fn zip_all_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 43_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 39_u32)
+    .zip_all_mat(secondary, 0_u32, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 43_u32);
+}
+
+#[test]
+fn zip_all_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32])
+    .map_materialized_value(|_| 0_u32)
+    .zip_all_mat(Source::from_array([3_u32]).map_materialized_value(|_| 99_u32), 0_u32, KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  // zip_all pads shorter stream with fill_value (0)
+  assert_eq!(values, vec![vec![1_u32, 3_u32], vec![2_u32, 0_u32]]);
+}
+
+// ---------------------------------------------------------------------------
+// zip_with_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn zip_with_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 47_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 45_u32)
+    .zip_with_mat(secondary, |values: Vec<u32>| values.into_iter().sum::<u32>(), KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 45_u32);
+  assert_eq!(right_mat, 47_u32);
+}
+
+#[test]
+fn zip_with_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 47_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 45_u32)
+    .zip_with_mat(secondary, |values: Vec<u32>| values.into_iter().sum::<u32>(), KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 47_u32);
+}
+
+#[test]
+fn zip_with_mat_preserves_existing_data_path_behavior() {
+  let values = Source::single(10_u32)
+    .map_materialized_value(|_| 0_u32)
+    .zip_with_mat(
+      Source::single(20_u32).map_materialized_value(|_| 99_u32),
+      |values: Vec<u32>| values.into_iter().sum::<u32>(),
+      KeepLeft,
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![30_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// zip_latest_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn zip_latest_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 51_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 49_u32)
+    .zip_latest_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 49_u32);
+  assert_eq!(right_mat, 51_u32);
+}
+
+#[test]
+fn zip_latest_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 51_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 49_u32)
+    .zip_latest_mat(secondary, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 49_u32);
+}
+
+#[test]
+fn zip_latest_mat_preserves_existing_data_path_behavior() {
+  let values = Source::single(1_u32)
+    .map_materialized_value(|_| 0_u32)
+    .zip_latest_mat(Source::single(2_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![vec![1_u32, 2_u32]]);
+}
+
+// ---------------------------------------------------------------------------
+// zip_latest_with_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn zip_latest_with_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 55_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 53_u32)
+    .zip_latest_with_mat(secondary, |values: Vec<u32>| values.into_iter().sum::<u32>(), KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 53_u32);
+  assert_eq!(right_mat, 55_u32);
+}
+
+#[test]
+fn zip_latest_with_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 55_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 53_u32)
+    .zip_latest_with_mat(secondary, |values: Vec<u32>| values.into_iter().sum::<u32>(), KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 55_u32);
+}
+
+#[test]
+fn zip_latest_with_mat_preserves_existing_data_path_behavior() {
+  let values = Source::single(10_u32)
+    .map_materialized_value(|_| 0_u32)
+    .zip_latest_with_mat(
+      Source::single(20_u32).map_materialized_value(|_| 99_u32),
+      |values: Vec<u32>| values.into_iter().sum::<u32>(),
+      KeepLeft,
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![30_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// merge_latest_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_latest_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 59_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 57_u32)
+    .merge_latest_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 57_u32);
+  assert_eq!(right_mat, 59_u32);
+}
+
+#[test]
+fn merge_latest_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 59_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 57_u32)
+    .merge_latest_mat(secondary, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 57_u32);
+}
+
+#[test]
+fn merge_latest_mat_preserves_existing_data_path_behavior() {
+  let values = Source::single(7_u32)
+    .map_materialized_value(|_| 0_u32)
+    .merge_latest_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+
+  // merge_latest emits Vec of latest values from all inputs
+  assert!(!values.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// merge_prioritized_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn merge_prioritized_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 63_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 61_u32)
+    .merge_prioritized_mat(secondary, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 61_u32);
+  assert_eq!(right_mat, 63_u32);
+}
+
+#[test]
+fn merge_prioritized_mat_keeps_right_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 63_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 61_u32)
+    .merge_prioritized_mat(secondary, KeepRight)
+    .into_parts();
+
+  assert_eq!(materialized, 63_u32);
+}
+
+#[test]
+fn merge_prioritized_mat_preserves_existing_data_path_behavior() {
+  let mut values = Source::single(7_u32)
+    .map_materialized_value(|_| 0_u32)
+    .merge_prioritized_mat(Source::single(8_u32).map_materialized_value(|_| 99_u32), KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+  values.sort();
+
+  assert!(values.contains(&7_u32));
+  assert!(values.contains(&8_u32));
+  assert_eq!(values.len(), 2);
+}
+
+// ---------------------------------------------------------------------------
+// interleave_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn interleave_mat_combines_materialized_values() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 67_u32);
+
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 65_u32)
+    .interleave_mat(secondary, 1, KeepBoth)
+    .into_parts();
+
+  assert_eq!(left_mat, 65_u32);
+  assert_eq!(right_mat, 67_u32);
+}
+
+#[test]
+fn interleave_mat_keeps_left_materialized_value() {
+  let secondary = Source::single(9_u32).map_materialized_value(|_| 67_u32);
+
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 65_u32)
+    .interleave_mat(secondary, 1, KeepLeft)
+    .into_parts();
+
+  assert_eq!(materialized, 65_u32);
+}
+
+#[test]
+fn interleave_mat_preserves_existing_data_path_behavior() {
+  let mut values = Source::from_array([1_u32, 3_u32])
+    .map_materialized_value(|_| 0_u32)
+    .interleave_mat(Source::from_array([2_u32, 4_u32]).map_materialized_value(|_| 99_u32), 1, KeepLeft)
+    .collect_values()
+    .expect("collect_values");
+  values.sort();
+
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
+}
+
+// ---------------------------------------------------------------------------
+// flat_map_prefix_mat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn flat_map_prefix_mat_combines_materialized_values() {
+  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 69_u32)
+    .flat_map_prefix_mat(
+      1,
+      |_prefix: Vec<u32>| Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 71_u32),
+      KeepBoth,
+    )
+    .into_parts();
+
+  assert_eq!(left_mat, 69_u32);
+  assert_eq!(right_mat, 71_u32);
+}
+
+#[test]
+fn flat_map_prefix_mat_keeps_left_materialized_value() {
+  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
+    .map_materialized_value(|_| 69_u32)
+    .flat_map_prefix_mat(
+      1,
+      |_prefix: Vec<u32>| Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 71_u32),
+      KeepLeft,
+    )
+    .into_parts();
+
+  assert_eq!(materialized, 69_u32);
+}
+
+#[test]
+fn flat_map_prefix_mat_preserves_existing_data_path_behavior() {
+  let values = Source::from_array([1_u32, 2_u32, 3_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().flat_map_prefix_mat(
+      1,
+      |_prefix: Vec<u32>| Flow::<u32, u32, StreamNotUsed>::new(),
+      KeepLeft,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // flat_map_prefix consumes prefix (1 element), then passes rest through the inner flow
+  assert_eq!(values, vec![2_u32, 3_u32]);
 }
 
 #[test]
@@ -1156,20 +1878,65 @@ fn zip_with_index_pairs_each_element_with_index() {
 #[test]
 fn group_by_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
-    .via(Flow::new().group_by(4, |value: &u32| value % 2).expect("group_by").merge_substreams())
+    .via(
+      Flow::new()
+        .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
+        .expect("group_by")
+        .merge_substreams(),
+    )
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
 #[test]
+fn group_by_cancels_upstream_after_head_completion_by_default() {
+  let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let graph =
+    Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[1, 2, 3], pulls.clone()))
+      .via(
+        Flow::new()
+          .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
+          .expect("group_by")
+          .merge_substreams(),
+      )
+      .to_mat(Sink::head(), KeepRight);
+
+  let (plan, completion) = graph.into_parts();
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  interpreter.start().expect("start");
+  drive_until_completion(&mut interpreter, &completion);
+
+  assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
+  assert_eq!(*pulls.lock(), 1_usize);
+}
+
+#[test]
 fn group_by_rejects_zero_max_substreams() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let result = flow.group_by(0, |value: &u32| *value);
+  let result = flow.group_by(0, |value: &u32| *value, SubstreamCancelStrategy::default());
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "max_substreams", value: 0, reason: "must be greater than zero" })
   ));
+}
+
+#[test]
+fn split_when_with_cancel_strategy_emits_single_segment_for_single_element() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().split_when_with_cancel_strategy(SubstreamCancelStrategy::Drain, |_| false).into_flow())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
+}
+
+#[test]
+fn split_after_with_cancel_strategy_emits_single_segment_for_single_element() {
+  let values = Source::single(7_u32)
+    .via(Flow::new().split_after_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| false).into_flow())
+    .collect_values()
+    .expect("collect_values");
+  assert_eq!(values, vec![vec![7_u32]]);
 }
 
 #[test]
@@ -2481,6 +3248,71 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
 }
 
 #[test]
+fn from_sink_and_source_mat_combines_materialized_values() {
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32);
+  let source = Source::single(99_u32).map_materialized_value(|_| 11_u32);
+
+  let (_graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_mat(sink, source, KeepBoth).into_parts();
+
+  assert_eq!(left_mat, 7_u32);
+  assert_eq!(right_mat, 11_u32);
+}
+
+#[test]
+fn from_sink_and_source_mat_preserves_single_path_behavior() {
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 1_u32);
+  let source = Source::single(99_u32).map_materialized_value(|_| 2_u32);
+
+  let values = Source::single(5_u32)
+    .via(Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_mat(sink, source, KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+
+  // from_sink_and_source_mat emits elements from the embedded source, not from upstream
+  assert_eq!(values, vec![99_u32]);
+}
+
+#[test]
+fn from_sink_and_source_coupled_mat_keeps_requested_materialized_value() {
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 13_u32);
+  let source = Source::single(99_u32).map_materialized_value(|_| 17_u32);
+
+  let (_graph, materialized) =
+    Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_coupled_mat(sink, source, KeepRight).into_parts();
+
+  assert_eq!(materialized, 17_u32);
+}
+
+#[test]
+fn from_sink_and_source_coupled_mat_accepts_non_send_materialized_values() {
+  use alloc::rc::Rc;
+
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| Rc::new(13_u32));
+  let source = Source::single(99_u32).map_materialized_value(|_| Rc::new(17_u32));
+
+  let (_graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_coupled_mat(sink, source, KeepBoth).into_parts();
+
+  assert_eq!(*left_mat, 13_u32);
+  assert_eq!(*right_mat, 17_u32);
+}
+
+#[test]
+fn from_sink_and_source_coupled_mat_preserves_single_path_behavior() {
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 3_u32);
+  let source = Source::single(99_u32).map_materialized_value(|_| 4_u32);
+
+  let values = Source::single(6_u32)
+    .via(Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_coupled_mat(sink, source, KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+
+  // from_sink_and_source_coupled_mat emits elements from the embedded source, not from upstream
+  assert_eq!(values, vec![99_u32]);
+}
+
+#[test]
 fn flow_lazy_flow_passes_elements_through_factory_flow() {
   let values = Source::single(5_u32)
     .via(Flow::lazy_flow(|| Flow::new().map(|v: u32| v * 2)))
@@ -3417,4 +4249,122 @@ fn flow_as_flow_with_context_returns_wrapper() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let fwc = flow.as_flow_with_context();
   let _ = fwc.as_flow();
+}
+
+// --- B5: Flow.fromSinkAndSourceMat ---
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepBoth;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepBoth
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepBoth);
+
+  // Then: the materialized value is a tuple of both
+  let (_graph, mat) = flow.into_parts();
+  let (left, right) = mat;
+  assert_eq!(left, 42_u32);
+  assert_eq!(right, "hello");
+}
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepLeft;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepLeft
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepLeft);
+
+  // Then: only the left (sink) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, 42_u32);
+}
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepRight;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepRight
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepRight);
+
+  // Then: only the right (source) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, "hello");
+}
+
+// --- B6: Flow.fromSinkAndSourceCoupledMat ---
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepBoth;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let source = Source::single(1_u64).map_materialized_value(|_| true);
+
+  // When: creating a coupled flow with KeepBoth
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepBoth);
+
+  // Then: the materialized value is a tuple of both
+  let (_graph, mat) = flow.into_parts();
+  let (left, right) = mat;
+  assert_eq!(left, 99_i32);
+  assert_eq!(right, true);
+}
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_keeps_left_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepLeft;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let source = Source::single(1_u64).map_materialized_value(|_| true);
+
+  // When: creating a coupled flow with KeepLeft
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepLeft);
+
+  // Then: only the left (sink) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, 99_i32);
+}
+
+// --- A4: group_by with SubstreamCancelStrategy ---
+
+#[test]
+fn flow_group_by_with_propagate_strategy_creates_subflow() {
+  // Given: a flow with group_by using Propagate strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+
+  // When: calling group_by with SubstreamCancelStrategy
+  let result = flow.group_by(10, |x| x % 2, SubstreamCancelStrategy::Propagate);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
+}
+
+#[test]
+fn flow_group_by_with_drain_strategy_creates_subflow() {
+  // Given: a flow with group_by using Drain strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+
+  // When: calling group_by with Drain strategy
+  let result = flow.group_by(10, |x| x % 2, SubstreamCancelStrategy::Drain);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
 }

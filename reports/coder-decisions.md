@@ -1,43 +1,24 @@
-# 実装判断ログ
+# 決定ログ
 
-## T1: ActorRef::no_sender()
+## 1. `SubstreamCancelStrategy` は独立した core の設定型として追加した
 
-- **判断**: `ActorRef::null()` へのエイリアスとして実装。Pekko の `Actor.noSender` に対応。
-- **根拠**: 既存の `null()` が同じセマンティクスを持つため、委譲が最適。
+- **背景**: `Flow::group_by` / `Source::group_by` の新契約では、`Drain` / `Propagate` を公開 API から必須指定する必要がある。
+- **検討した選択肢**: `group_by` 実装ファイル内に閉じた型として置く / core 直下の公開設定型として追加して export する
+- **理由**: 既存テストは `crate::core::SubstreamCancelStrategy` を参照しており、利用側契約に合わせるには core の公開型として定義するのが最小差分だったため。
 
-## T2: DeadLetterListener
+## 2. `group_by` の内部設定保持は `GroupByLogic` に閉じた
 
-- **判断**: `std/event/stream/` に配置。`EventStreamSubscriber` trait として実装（独立アクターではない）。
-- **根拠**: fraktor-rs のイベントストリームアーキテクチャに合わせた設計。Pekko ではアクターだが、fraktor-rs では subscriber trait が適切。
-- **技術的制約**: `tracing::event!` マクロの target パラメータはコンパイル時定数が必要。フィールドではなくモジュールレベル `const` で対応。
+- **背景**: 今回の変更範囲は `group_by` の定義・引数受け渡し・ステージ構築に限定され、実行系の振る舞い変更は対象外。
+- **検討した選択肢**: 実行系まで踏み込んでキャンセル動作を変える / 現時点では `GroupByLogic` に設定を保持して公開 API とステージ構築だけを整合させる
+- **理由**: 指示どおり変更範囲を `group_by` の契約面と内部保持値に限定し、後続ムーブメントで扱うべき実行系変更へ踏み込まないため。
 
-## T3: ActorContext::forward() / TypedActorContext::forward()
+## 3. `max_substreams = 0` の異常系は既存バリデーションを維持した
 
-- **判断**: untyped 層で sender 保持ロジックを実装し、typed 層は委譲のみ。
-- **根拠**: ロジックを untyped kernel に集約する既存方針に従う。
+- **背景**: `Flow::group_by` / `Source::group_by` はすでに `validate_positive_argument("max_substreams", max_substreams)` でゼロを拒否している。
+- **検討した選択肢**: 新契約導入に合わせて異常系を作り直す / 既存バリデーションをそのまま維持する
+- **理由**: 既存契約の維持が明示要求であり、公開 API の異常系は既存実装で十分に満たせるため。
 
-## T4: Behaviors::receive_message_partial / receive_partial
+## 実行結果
 
-- **判断**: `Option<Behavior<M>>` を返すハンドラ。`None` → `Behavior::unhandled()` に変換。
-- **根拠**: Pekko の `Behaviors.receiveMessagePartial` / `Behaviors.receivePartial` の直接対応。
-
-## T5: Props タグサポート
-
-- **判断**: `BTreeSet<String>` で tags フィールドを追加。`with_tags()` / `with_tag()` ビルダーメソッド。
-- **根拠**: `BTreeSet` は no_std 互換（`alloc`）かつ順序保証あり。Props の不変性パターンに従い新インスタンスを返す。
-
-## T6: Address 型
-
-- **判断**: `ActorPathScheme` / `ActorPathParts` / `PathAuthority` を再利用する設計。
-- **根拠**: 既存の内部型を活用し、重複を避ける。URI フォーマットは `ActorPathScheme::as_str()` に従い `fraktor.tcp` (ドット区切り)。
-
-## T7: TypedActorContext::schedule_once()
-
-- **判断**: `SchedulerShared` の `with_write` API 経由で `TypedScheduler::schedule_once()` を呼び出す。
-- **根拠**: 既存の scheduler 共有パターン（`SharedAccess` trait）に従い、ロックスコープをメソッド内に閉じる。
-
-## CI 結果
-
-- **clippy**: `cargo clippy -p fraktor-actor-rs --features std -- -D warnings` → 警告なし ✅
-- **テスト**: `cargo test -p fraktor-actor-rs --features std` → 804 passed, 0 failed ✅
-- **全体CI**: `./scripts/ci-check.sh ai all` → 900秒タイムアウト（全テストパス確認済み、ハング検出は既存の統合テストの遅延が原因）
+- `cargo check -p fraktor-stream-rs --tests --features std` → 成功
+- `cargo test -p fraktor-stream-rs --lib --features std group_by_` → 成功（12 passed）
