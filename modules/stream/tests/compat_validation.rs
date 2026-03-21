@@ -1,4 +1,6 @@
-use fraktor_stream_rs::core::{StreamError, hub::BroadcastHub, operator::OperatorKey, stage::Source};
+use fraktor_stream_rs::core::{
+  StreamError, SubstreamCancelStrategy, hub::BroadcastHub, operator::OperatorKey, stage::Source,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CompatObservation {
@@ -176,7 +178,7 @@ fn migration_policy_guard_enforces_breaking_change_policy() {
 
 fn observe_group_by_merge_substreams() -> CompatObservation {
   match Source::single(7_u32)
-    .group_by(4, |value: &u32| value % 2)
+    .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
     .collect_values()

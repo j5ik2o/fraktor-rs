@@ -314,7 +314,7 @@ fn verify_substream_surface() {
     .expect("limited values");
   assert_eq!(limited_values, vec![1_u32]);
 
-  let group_error = match Source::single(1_u32).group_by(0, |value: &u32| *value) {
+  let group_error = match Source::single(1_u32).group_by(0, |value: &u32| *value, SubstreamCancelStrategy::default()) {
     | Ok(_) => panic!("zero max_substreams must be rejected"),
     | Err(error) => error,
   };

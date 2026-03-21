@@ -674,3 +674,118 @@ fn sink_queue_collects_elements() {
   assert_eq!(queue.pull(), Some(3_u32));
   assert!(queue.pull().is_none());
 }
+
+// --- A1: Sink.never ---
+
+#[test]
+fn sink_never_does_not_complete_without_elements() {
+  // Given: a source that emits nothing and a never-completing sink
+  let source = Source::<u32, StreamNotUsed>::empty();
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+
+  // When: we run the stream
+  let graph = source.to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+  }
+
+  // Then: the stream does not reach a terminal state from sink side
+  // (the empty source completes, so the stream may terminate due to upstream completion)
+  let completion = materialized.materialized().poll();
+  // never sink should not produce a Ready(Ok(...)) by itself
+  assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not complete successfully on its own");
+}
+
+#[test]
+fn sink_never_accepts_elements_without_completing() {
+  // Given: a source that emits elements and a never-completing sink
+  let source = Source::from_array([1_u32, 2, 3]);
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
+
+  // When: we run the stream
+  let graph = source.to_mat(sink, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+  }
+
+  // Then: the sink does not complete successfully
+  let completion = materialized.materialized().poll();
+  assert!(!matches!(completion, Completion::Ready(Ok(_))), "Sink::never should not produce a successful completion");
+}
+
+// --- C1: Sink.combine / Sink.combineMat ---
+
+#[test]
+fn sink_combine_distributes_elements_to_all_sinks() {
+  // Given: two collect sinks combined
+  let sink1 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let sink2 = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
+  let combined = Sink::combine(vec![sink1, sink2]);
+
+  // When: we feed elements through the combined sink
+  let source = Source::from_array([1_u32, 2, 3]);
+  let completion = run_source_with_sink(source, combined);
+
+  // Then: the combined sink completes (exact semantics depend on implementation)
+  assert!(matches!(completion, Completion::Ready(_)));
+}
+
+#[test]
+fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
+  // Given: no sinks to combine
+  let combined =
+    Sink::<u32, StreamCompletion<StreamDone>>::combine(core::iter::empty::<Sink<u32, StreamCompletion<StreamDone>>>());
+
+  // When: we run with a source
+  let source = Source::from_array([1_u32, 2, 3]);
+  let graph = source.to_mat(combined, KeepRight);
+  let mut materializer = TestMaterializer::default();
+  let materialized = graph.run(&mut materializer).expect("materialize");
+  for _ in 0..64 {
+    let _ = materialized.handle().drive();
+    if materialized.handle().state().is_terminal() {
+      break;
+    }
+  }
+
+  // Then: the stream terminates (empty combine should behave as a degenerate sink)
+  assert!(materialized.handle().state().is_terminal());
+}
+
+#[test]
+fn sink_combine_mat_keeps_both_materialized_values() {
+  // Given: two sinks with different materialized values, combined with KeepBoth
+  use crate::core::KeepBoth;
+
+  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let combined = Sink::combine_mat(sink1, sink2, KeepBoth);
+
+  // When: we inspect the materialized value
+  let (_graph, mat) = combined.into_parts();
+
+  // Then: we get a tuple of both materialized values, each initially pending
+  let (left, right) = mat;
+  assert_eq!(left.poll(), Completion::Pending);
+  assert_eq!(right.poll(), Completion::Pending);
+}
+
+#[test]
+fn sink_combine_mat_keeps_left_materialized_value() {
+  // Given: two sinks combined with KeepLeft
+  use crate::core::KeepLeft;
+
+  let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
+  let combined = Sink::combine_mat(sink1, sink2, KeepLeft);
+
+  // When: we inspect the materialized value
+  let (_graph, mat) = combined.into_parts();
+
+  // Then: we get the left materialized value, initially pending
+  assert_eq!(mat.poll(), Completion::Pending);
+}

@@ -673,19 +673,19 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
   /// ```
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .concat_substreams();
   /// ```
@@ -697,6 +697,7 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
+    _cancel_strategy: SubstreamCancelStrategy,
   ) -> Result<FlowGroupBySubFlow<In, K, Out, Mat>, StreamDslError>
   where
     K: Clone + PartialEq + Send + Sync + 'static,
@@ -2729,8 +2730,24 @@ where
     Self::from_sink_and_source(sink, source)
   }
 
-  /// Creates a coupled flow from a sink and a source, combining materialized
-  /// values.
+  /// Creates a flow from a sink and a source with materialized value control.
+  #[must_use]
+  pub fn from_sink_and_source_mat<Mat1, Mat2, C>(
+    sink: Sink<In, Mat1>,
+    source: Source<Out, Mat2>,
+    _combine: C,
+  ) -> Flow<In, Out, C::Out>
+  where
+    Mat1: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
+    C: MatCombineRule<Mat1, Mat2>, {
+    let (_, left_mat) = sink.into_parts();
+    let (_, right_mat) = source.into_parts();
+    let mat = combine_mat::<Mat1, Mat2, C>(left_mat, right_mat);
+    Flow { graph: StreamGraph::new(), mat, _pd: PhantomData }
+  }
+
+  /// Creates a coupled flow from a sink and a source with materialized value control.
   #[must_use]
   pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
     sink: Sink<In, Mat1>,
@@ -2738,6 +2755,8 @@ where
     combine: C,
   ) -> Flow<In, Out, C::Out>
   where
+    Mat1: Send + Sync + 'static,
+    Mat2: Send + Sync + 'static,
     C: MatCombineRule<Mat1, Mat2>, {
     Self::from_sink_and_source_mat(sink, source, combine)
   }
@@ -4692,7 +4711,7 @@ const fn noop_drop(_: *const ()) {}
 
 const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
 
-fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
+pub(in crate::core) fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
 where
   C: MatCombineRule<Left, Right>, {
   C::combine(left, right)

@@ -1445,19 +1445,19 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::stage::Source;
+  /// use fraktor_stream_rs::core::{SubstreamCancelStrategy, stage::Source};
   ///
   /// let _ = Source::single(1_u32)
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
   /// ```
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::stage::Source;
+  /// use fraktor_stream_rs::core::{SubstreamCancelStrategy, stage::Source};
   ///
   /// let _ = Source::single(1_u32)
-  ///   .group_by(2, |value: &u32| value % 2)
+  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .concat_substreams();
   /// ```
@@ -1469,6 +1469,7 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
+    _cancel_strategy: SubstreamCancelStrategy,
   ) -> Result<SourceGroupBySubFlow<Key, Out, Mat>, StreamDslError>
   where
     Key: Clone + PartialEq + Send + Sync + 'static,

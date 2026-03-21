@@ -1000,7 +1000,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
 #[test]
 fn group_by_uses_key_function() {
   let graph = Source::single(3_u32)
-    .group_by(4, |value: &u32| value % 2)
+    .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
     .to_mat(Sink::head(), KeepRight);

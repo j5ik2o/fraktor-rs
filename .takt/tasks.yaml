@@ -1,19 +1,14 @@
 tasks:
   - worktree: false
     piece: pekko-porting
-    auto_pr: false
-    draft_pr: false
-    name: stream-mojuuru-gyappu-2026-03
-    status: failed
+    auto_pr: true
+    draft_pr: true
+    name: stream-mojuuru-gyappu-2026-03-1
+    status: running
     slug: stream-mojuuru-gyappu-2026-03
     summary: "# stream モジュール ギャップ分析"
-    task_dir: .takt/tasks/20260319-151735-stream-2026-03-17-2026-03-16
-    created_at: 2026-03-19T15:17:35.009Z
-    started_at: 2026-03-20T06:22:05.030Z
-    completed_at: 2026-03-20T08:00:58.758Z
-    owner_pid: null
-    failure:
-      movement: final-ci
-      error: 'Movement "final-ci" failed: Codex stream timed out after 10 minutes of
-        inactivity'
-      last_message: Codex stream timed out after 10 minutes of inactivity
+    task_dir: .takt/tasks/20260320-130813-stream-2026-03-20-2026-03-17
+    created_at: 2026-03-20T13:08:13.581Z
+    started_at: 2026-03-21T03:00:18.047Z
+    completed_at: null
+    owner_pid: 23467

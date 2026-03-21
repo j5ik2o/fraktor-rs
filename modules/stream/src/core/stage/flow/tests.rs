@@ -1484,7 +1484,12 @@ fn zip_with_index_pairs_each_element_with_index() {
 #[test]
 fn group_by_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
-    .via(Flow::new().group_by(4, |value: &u32| value % 2).expect("group_by").merge_substreams())
+    .via(
+      Flow::new()
+        .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
+        .expect("group_by")
+        .merge_substreams(),
+    )
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -1512,7 +1517,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
 #[test]
 fn group_by_rejects_zero_max_substreams() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let result = flow.group_by(0, |value: &u32| *value);
+  let result = flow.group_by(0, |value: &u32| *value, SubstreamCancelStrategy::default());
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "max_substreams", value: 0, reason: "must be greater than zero" })
@@ -3831,4 +3836,122 @@ fn flow_as_flow_with_context_returns_wrapper() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
   let fwc = flow.as_flow_with_context();
   let _ = fwc.as_flow();
+}
+
+// --- B5: Flow.fromSinkAndSourceMat ---
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepBoth;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepBoth
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepBoth);
+
+  // Then: the materialized value is a tuple of both
+  let (_graph, mat) = flow.into_parts();
+  let (left, right) = mat;
+  assert_eq!(left, 42_u32);
+  assert_eq!(right, "hello");
+}
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepLeft;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepLeft
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepLeft);
+
+  // Then: only the left (sink) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, 42_u32);
+}
+
+#[test]
+fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepRight;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let source = Source::single(1_u64).map_materialized_value(|_| "hello");
+
+  // When: creating a flow with KeepRight
+  let flow = Flow::from_sink_and_source_mat(sink, source, KeepRight);
+
+  // Then: only the right (source) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, "hello");
+}
+
+// --- B6: Flow.fromSinkAndSourceCoupledMat ---
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepBoth;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let source = Source::single(1_u64).map_materialized_value(|_| true);
+
+  // When: creating a coupled flow with KeepBoth
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepBoth);
+
+  // Then: the materialized value is a tuple of both
+  let (_graph, mat) = flow.into_parts();
+  let (left, right) = mat;
+  assert_eq!(left, 99_i32);
+  assert_eq!(right, true);
+}
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_keeps_left_materialized_value() {
+  // Given: a sink and source with distinct materialized values
+  use crate::core::KeepLeft;
+
+  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let source = Source::single(1_u64).map_materialized_value(|_| true);
+
+  // When: creating a coupled flow with KeepLeft
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepLeft);
+
+  // Then: only the left (sink) materialized value is kept
+  let (_graph, mat) = flow.into_parts();
+  assert_eq!(mat, 99_i32);
+}
+
+// --- A4: group_by with SubstreamCancelStrategy ---
+
+#[test]
+fn flow_group_by_with_propagate_strategy_creates_subflow() {
+  // Given: a flow with group_by using Propagate strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+
+  // When: calling group_by with SubstreamCancelStrategy
+  let result = flow.group_by(10, |x| x % 2, SubstreamCancelStrategy::Propagate);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
+}
+
+#[test]
+fn flow_group_by_with_drain_strategy_creates_subflow() {
+  // Given: a flow with group_by using Drain strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let flow = Flow::<u32, u32, StreamNotUsed>::new();
+
+  // When: calling group_by with Drain strategy
+  let result = flow.group_by(10, |x| x % 2, SubstreamCancelStrategy::Drain);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
 }

@@ -1727,7 +1727,7 @@ fn source_zip_with_index_pairs_each_element_with_index() {
 #[test]
 fn source_group_by_keeps_single_path_behavior() {
   let values = Source::single(5_u32)
-    .group_by(4, |value: &u32| value % 2)
+    .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
     .collect_values()
@@ -1737,7 +1737,7 @@ fn source_group_by_keeps_single_path_behavior() {
 
 #[test]
 fn source_group_by_rejects_zero_max_substreams() {
-  let result = Source::single(1_u32).group_by(0, |value: &u32| *value);
+  let result = Source::single(1_u32).group_by(0, |value: &u32| *value, SubstreamCancelStrategy::default());
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "max_substreams", value: 0, reason: "must be greater than zero" })
@@ -1832,7 +1832,7 @@ fn source_merge_substreams_with_parallelism_rejects_zero_parallelism() {
 #[test]
 fn source_group_by_fails_when_unique_key_count_exceeds_limit() {
   let result = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .group_by(2, |value: &u32| *value)
+    .group_by(2, |value: &u32| *value, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
     .collect_values();
@@ -1859,7 +1859,7 @@ fn source_group_by_cancels_upstream_after_head_completion_by_default() {
 #[test]
 fn source_p2_regression_group_by_merge_substreams_with_delay_and_zip_all() {
   let values = Source::from_array([1_u32, 2_u32, 3_u32])
-    .group_by(4, |value: &u32| value % 2)
+    .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
     .expect("group_by")
     .merge_substreams()
     .delay(1)
@@ -2394,4 +2394,34 @@ fn merge_prioritized_n_rejects_length_mismatch() {
   let s2 = Source::single(2_u32);
   let result = Source::merge_prioritized_n(vec![s1, s2], &[3]);
   assert!(result.is_err());
+}
+
+// --- A4: Source.group_by with SubstreamCancelStrategy ---
+
+#[test]
+fn source_group_by_with_propagate_strategy_creates_subflow() {
+  // Given: a source with group_by using Propagate strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let source = Source::from_array([1_u32, 2, 3, 4, 5, 6]);
+
+  // When: calling group_by with SubstreamCancelStrategy
+  let result = source.group_by(10, |x| x % 2, SubstreamCancelStrategy::Propagate);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
+}
+
+#[test]
+fn source_group_by_with_drain_strategy_creates_subflow() {
+  // Given: a source with group_by using Drain strategy
+  use crate::core::SubstreamCancelStrategy;
+
+  let source = Source::from_array([1_u32, 2, 3, 4, 5, 6]);
+
+  // When: calling group_by with Drain strategy
+  let result = source.group_by(10, |x| x % 2, SubstreamCancelStrategy::Drain);
+
+  // Then: the subflow is created successfully
+  assert!(result.is_ok());
 }

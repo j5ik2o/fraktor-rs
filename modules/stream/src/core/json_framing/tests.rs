@@ -127,3 +127,113 @@ fn should_error_when_no_bracket_data_exceeds_max_length() {
   let result = source.via(framing).collect_values();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
+
+// --- A5: JsonFraming.arrayScanner ---
+
+#[test]
+fn array_scanner_should_extract_elements_from_json_array() {
+  // Given: a JSON array with multiple elements
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[{"a":1},{"b":2},{"c":3}]"#.to_vec());
+
+  // When: we process through array scanner
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+
+  // Then: each element is emitted individually
+  assert_eq!(frames.len(), 3);
+  assert_eq!(frames[0], br#"{"a":1}"#.to_vec());
+  assert_eq!(frames[1], br#"{"b":2}"#.to_vec());
+  assert_eq!(frames[2], br#"{"c":3}"#.to_vec());
+}
+
+#[test]
+fn array_scanner_should_handle_primitive_elements() {
+  // Given: a JSON array with primitive values
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[1, 2, 3]"#.to_vec());
+
+  // When/Then: primitive elements are extracted
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames.len(), 3);
+  assert_eq!(frames[0], b"1".to_vec());
+  assert_eq!(frames[1], b"2".to_vec());
+  assert_eq!(frames[2], b"3".to_vec());
+}
+
+#[test]
+fn array_scanner_should_handle_nested_arrays() {
+  // Given: a JSON array containing nested arrays
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[[1,2],[3,4]]"#.to_vec());
+
+  // When/Then: nested arrays are emitted as complete elements
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames.len(), 2);
+  assert_eq!(frames[0], br#"[1,2]"#.to_vec());
+  assert_eq!(frames[1], br#"[3,4]"#.to_vec());
+}
+
+#[test]
+fn array_scanner_should_handle_nested_objects() {
+  // Given: a JSON array with nested objects
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[{"nested":{"inner":true}}]"#.to_vec());
+
+  // When/Then: nested objects are emitted whole
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames.len(), 1);
+  assert_eq!(frames[0], br#"{"nested":{"inner":true}}"#.to_vec());
+}
+
+#[test]
+fn array_scanner_should_handle_string_values_with_brackets() {
+  // Given: a JSON array with strings containing bracket characters
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[{"text":"[hello]"}]"#.to_vec());
+
+  // When/Then: brackets inside strings do not affect parsing
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames.len(), 1);
+  assert_eq!(frames[0], br#"{"text":"[hello]"}"#.to_vec());
+}
+
+#[test]
+fn array_scanner_should_handle_empty_array() {
+  // Given: an empty JSON array
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(br#"[]"#.to_vec());
+
+  // When/Then: no elements are emitted
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert!(frames.is_empty());
+}
+
+#[test]
+fn array_scanner_should_handle_chunked_input() {
+  // Given: JSON array split across multiple chunks
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::from(vec![br#"[{"ke"#.to_vec(), br#"y":"va"#.to_vec(), br#"lue"}]"#.to_vec()]);
+
+  // When/Then: chunked input is reassembled correctly
+  let result = source.via(framing).collect_values();
+  let frames: Vec<Vec<u8>> = result.unwrap();
+  assert_eq!(frames.len(), 1);
+  assert_eq!(frames[0], br#"{"key":"value"}"#.to_vec());
+}
+
+#[test]
+fn array_scanner_should_error_when_element_exceeds_max_length() {
+  // Given: a JSON array with an element exceeding max length
+  let framing = JsonFraming::array_scanner(5);
+  let source = Source::single(br#"[{"key":"value"}]"#.to_vec());
+
+  // When/Then: buffer overflow error
+  let result = source.via(framing).collect_values();
+  assert!(matches!(result, Err(StreamError::BufferOverflow)));
+}
