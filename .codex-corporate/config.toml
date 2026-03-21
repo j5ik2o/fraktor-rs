@@ -4,21 +4,15 @@ hide_agent_reasoning = true
 network_access = true
 web_search = "live"
 personality = "pragmatic"
-developer_instructions = """
-実装を開始する場合、Planモードで提示した計画内容を、mdファイルへ書き出すこと。
-計画が存在しない場合はこの指示は無視して構わない。
-"""
-model_context_window= 1000000
-model_auto_compact_token_limit = 950000
 
 [features]
-multi_agent = true
 rmcp_client = true
+skills = true
 unified_exec = true
+apps = false
 shell_snapshot = true
 steer = true
-js_repl = false
-prevent_idle_sleep = true
+multi_agent = true
 
 [agents]
 max_threads = 4
@@ -36,11 +30,9 @@ config_file = "agents/reviewer.toml"
 description = "Implementation-focused agent for small targeted fixes."
 config_file = "agents/worker.toml"
 
+[mcp_servers.serena]
+command = "zsh"
+args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context codex --project . --enable-web-dashboard false"]
+
 [tui]
 status_line = ["current-dir", "git-branch"]
-
-[projects."/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs"]
-trust_level = "trusted"
-
-[notice]
-hide_rate_limit_model_nudge = true
