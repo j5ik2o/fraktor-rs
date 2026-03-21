@@ -2370,23 +2370,49 @@ where
     self
   }
 
-  /// Adds a divert-to compatibility stage.
+  /// Adds a divert-to stage that routes elements matching the predicate to a sink.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
   #[must_use]
   pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    core::mem::drop(sink);
-    self.filter_not(predicate)
+    self.divert_to_mat(predicate, sink, super::keep_left::KeepLeft)
   }
 
   /// Adds a divert-to stage and combines materialized values.
+  ///
+  /// Elements matching `predicate` are sent to `sink`; non-matching elements
+  /// continue downstream.
   #[must_use]
   pub fn divert_to_mat<Mat2, F, C>(self, predicate: F, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
-    let (_sink_graph, right_mat) = sink.into_parts();
-    let (graph, left_mat) = self.filter_not(predicate).into_parts();
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let partition = partition_definition::<Out, F>(predicate);
+    let partition_inlet = partition.inlet;
+    let partition_outlet = partition.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(partition));
+    if let Some(upstream_outlet) = upstream_outlet {
+      let _ = graph.connect(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(partition_inlet),
+        MatCombine::KeepLeft,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    let _ = graph.connect(
+      &Outlet::<Out>::from_id(partition_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::KeepLeft,
+    );
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow::from_graph(graph, mat)
   }
@@ -2669,16 +2695,19 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
 {
-  /// Creates a flow from sink-and-source compatibility entry points.
+  /// Creates a flow from a sink (inlet side) and a source (outlet side).
+  ///
+  /// The resulting flow accepts elements into `sink` and emits elements from
+  /// `source`. The two are composed into a single graph.
   #[must_use]
   pub fn from_sink_and_source<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
-    core::mem::drop(sink);
-    core::mem::drop(source);
-    Self { graph: StreamGraph::new(), mat: StreamNotUsed::new(), _pd: PhantomData }
+    let (mut sink_graph, _sink_mat) = sink.into_parts();
+    let (source_graph, _source_mat) = source.into_parts();
+    sink_graph.append_unwired(source_graph);
+    Self { graph: sink_graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 
-  /// Creates a flow from sink-and-source compatibility entry points and combines materialized
-  /// values.
+  /// Creates a flow from a sink and a source, combining materialized values.
   #[must_use]
   pub fn from_sink_and_source_mat<Mat1, Mat2, C>(
     sink: Sink<In, Mat1>,
@@ -2687,20 +2716,21 @@ where
   ) -> Flow<In, Out, C::Out>
   where
     C: MatCombineRule<Mat1, Mat2>, {
-    let (_sink_graph, left_mat) = sink.into_parts();
-    let (_source_graph, right_mat) = source.into_parts();
+    let (mut sink_graph, left_mat) = sink.into_parts();
+    let (source_graph, right_mat) = source.into_parts();
+    sink_graph.append_unwired(source_graph);
     let mat = combine_mat::<Mat1, Mat2, C>(left_mat, right_mat);
-    Flow::from_graph(StreamGraph::new(), mat)
+    Flow::from_graph(sink_graph, mat)
   }
 
-  /// Creates a coupled flow from sink-and-source compatibility entry points.
+  /// Creates a coupled flow from a sink and a source.
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
     Self::from_sink_and_source(sink, source)
   }
 
-  /// Creates a coupled flow from sink-and-source compatibility entry points and combines
-  /// materialized values.
+  /// Creates a coupled flow from a sink and a source, combining materialized
+  /// values.
   #[must_use]
   pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
     sink: Sink<In, Mat1>,
