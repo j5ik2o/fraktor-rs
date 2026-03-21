@@ -2,16 +2,33 @@
 
 参照実装: `references/pekko/remote/`
 対象実装: `modules/remote/src/`
-更新日: 2026-03-17
+更新日: 2026-03-22
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数（非deprecated） | 20 |
-| fraktor-rs 公開型数 | 62 |
+| Pekko 公開型数（機械抽出, Scala 宣言ベース） | 360 |
+| fraktor-rs 公開型数 | 91（core: 84, std: 7） |
+| Pekko 公開メソッド数（機械抽出） | 1594 |
+| fraktor-rs 公開メソッド数（機械抽出） | 274 |
 | カバレッジ（型単位） | 14/20 (70%) |
 | ギャップ数 | 9 |
+
+※ カバレッジの評価自体は non-deprecated / JVM 固有除外の概念単位で行っている。
+※ remote モジュールには `typed/` サブ層は存在しない。
+
+## 層別カバレッジ
+
+| 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
+|----|-------------|------------------|-----------|
+| core / 通信カーネル | 主要 API の大半 | 84 | 高い |
+| core / typed ラッパー | 該当なし | 0 | n/a |
+| std / アダプタ | ループバック / TCP / installer 周辺 | 7 | 中程度 |
+
+**補足**:
+- `remote` は `core` と `std` の 2 層で、`typed/` サブ層はない。
+- `std` 層は `TokioTcpTransport`, `StdTransportFactory`, `RemotingExtensionInstaller` など、ランタイム依存部を担う。
 
 ## カテゴリ別ギャップ
 
@@ -59,6 +76,10 @@
 - Pekko: JFR（Java Flight Recorder）ベース、transport lifecycle イベント（aeronSink*, aeronSource*, tcpInbound*, tcpOutbound*, transportXxx*）約 30 種のメソッド — JVM 固有技術
 - fraktor-rs: リングバッファ型メトリクス（`record_backpressure`, `record_suspect`, `record_reachable`）— 3 種、Rust/no_std に適切な設計
 - JFR 固有イベント（Aeron, JFR Events）は n/a
+
+### スタブ / 未完成実装　✅ 実装済み 0/0 (100%)
+
+`modules/remote/src` に対して `todo!()`, `unimplemented!()`, `panic!("not implemented")`, `TODO` を検索した範囲では、公開 API 直下のスタブ痕跡は見つからなかった。
 
 ### RemoteTransport / 設定　✅ 実装済み 2/2（別名）
 
@@ -144,9 +165,14 @@
 
 - **Phi 統計精度** — 現実装は線形比率で Pekko の正規分布 CDF 近似とは意味論が異なる。ネットワーク変動に対する感度が不正確で、誤検知率が上がる可能性がある
 - **TLS/SSL なし** — 本番環境での暗号化通信が不可。クラスター接続を外部 TLS ターミネーターに委ねる運用が必要
+- **圧縮テーブル群なし** — `CompressionTable` / `DecompressionTable` / `InboundCompressions` が未実装で、Artery の帯域最適化・圧縮ネゴシエーションまでは未到達
 
 **YAGNI 観点での省略推奨**:
 
 - `AckedDelivery` は Pekko で deprecated 済み。fraktor-rs に実装があるが artery では使われていない。将来削除を検討すべき
 - 圧縮機能（Phase 4）は大量メッセージングが必要な時点まで不要
 - Aeron UDP は IoT/組込み以外では必要性が低い
+
+**補足**:
+- `RemoteTransport` と `RemotingExtensionConfig` は fraktor-rs 側に明確に存在し、core / std 分離にも沿っている
+- 一方で Pekko の `FailureDetectorWithAddress`, `SSLEngineProvider`, `CompressionTable`, `InboundCompressions`, `TopHeavyHitters` に相当する公開型は fraktor-rs 側にまだない

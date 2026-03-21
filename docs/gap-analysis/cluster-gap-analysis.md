@@ -1,26 +1,33 @@
 # cluster モジュール ギャップ分析
 
+更新日: 2026-03-22
+
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数（機能グループ単位） | 78 |
-| fraktor-rs 公開型数（core: ~150, std: ~15） | ~165 |
+| Pekko 公開型数（機械抽出, Scala 宣言ベース） | 275 |
+| fraktor-rs 公開型数（core: 170, std: 13） | 183 |
+| Pekko 公開メソッド数（機械抽出） | 961 |
+| fraktor-rs 公開メソッド数（機械抽出） | 446 |
 | 機能カバレッジ（機能グループ単位） | 9/14 (64%) |
 | 未実装機能グループ数 | 5 |
 
 > **注記**: fraktor-rs は protoactor-go の影響を受けており、Pekko とは設計思想が異なる。
 > 特に Grain（仮想アクター）/ Placement / Identity は Pekko の Cluster Sharding に相当する独自実装であり、
 > 型数が多いのはこの部分の充実による。Pekko の全機能を移植することが目的ではない（YAGNI原則）。
+> なお cluster モジュールには `typed/` サブ層は存在せず、typed Cluster API は現状未導入である。
 
 ## 層別カバレッジ
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
 |----|-------------|------------------|-----------|
-| core（コアロジック） | 78 | ~150 | 充実（独自拡張含む） |
-| std（アダプタ） | N/A（Pekko は JVM 単一層） | ~15 | 該当機能は実装済み |
+| core（コアロジック） | 主要 API の大半 | 170 | 充実（独自拡張含む） |
+| core / typed ラッパー | 該当なし | 0 | n/a |
+| std（アダプタ） | JVM 単一層に相当する詳細実装 | 13 | 中程度 |
 
 > fraktor-rs は core/std 分離により Pekko より型数が増える傾向がある（Shared ラッパー、エラー型等）。
+> `cluster` には `core/typed` は存在しないため、typed API は将来追加対象として扱う。
 
 ## 機能グループ別マッピングと対応状況
 
@@ -177,6 +184,11 @@ fraktor-rs は Pekko の Cluster Sharding に相当する機能を、protoactor-
 | `ReadConsistency` / `WriteConsistency` | `ddata/Replicator.scala` | 未対応 | core | easy | 整合性レベル |
 | `DistributedData` (typed) | `ddata/typed/` | 未対応 | core/typed | medium | Typed API |
 
+### スタブ / 未完成実装　✅ 実装済み 0/1 (実 API 上のスタブなし)
+
+`modules/cluster/src` に対して `todo!()`, `unimplemented!()`, `panic!("not implemented")`, `TODO` を検索した範囲では、公開 API 直下のスタブ実装は見つからなかった。  
+唯一の TODO は [cluster_extension_config.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/cluster/src/core/cluster_extension_config.rs) の互換性チェック拡張メモで、未公開 API の改善メモに留まる。
+
 ### 14. Coordinated Shutdown ❌ 未実装 0/1 (0%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
@@ -246,6 +258,7 @@ fraktor-rs の cluster モジュールは **コアとなるメンバーシップ
 - **Split Brain Resolver**: プロダクション環境で最も重要な未実装機能。ネットワーク分断時のクラスタ安定性に直結する。現状 `NoopDowningProvider` のみ
 - **Cluster Singleton**: クラスタ全体で1つのアクターを保証する機能。リーダー選出やスケジューラ等のユースケースで必要
 - **Distributed Data (CRDT)**: 分散状態管理の基盤。Replicator + 主要 CRDT 型の実装は大きな工数だが、分散システムの根幹機能
+- **typed Cluster API**: actor モジュールに typed 層はあるが、cluster 側はまだ classic / 独自 API 中心。`SelfUp`, `SelfRemoved`, `ClusterCommand`, `ClusterSingleton` は未導入
 
 ### YAGNI 観点での省略推奨
 

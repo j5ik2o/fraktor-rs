@@ -1,12 +1,17 @@
 # persistence モジュール ギャップ分析
 
+更新日: 2026-03-22
+
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数（Scala API） | 119（classic: 47, typed: 44, query: 28） |
+| Pekko 公開型数（機械抽出, Scala 宣言ベース） | 410 |
+| Pekko 公開型数（概念単位） | 119（classic: 47, typed: 44, query: 28） |
 | Pekko 非推奨型数 | 4（PersistentFSM ファミリー） |
-| fraktor-rs 公開型数 | 51（すべて core 層） |
+| fraktor-rs 公開型数 | 55（すべて core 層） |
+| Pekko 公開メソッド数（機械抽出） | 1561 |
+| fraktor-rs 公開メソッド数（機械抽出） | 179 |
 | カバレッジ（型単位、classic のみ） | 33/47 (70%) |
 | カバレッジ（全体） | 33/119 (28%) |
 | ギャップ数（classic） | 14 |
@@ -17,12 +22,13 @@
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
 |----|-------------|------------------|-----------|
-| core（classic 永続化基盤） | 47 | 33 | 70% |
+| core（classic 永続化基盤） | 47 | 55 | 70% |
 | core/typed（型付き永続化） | 44 | 0 | 0% |
 | std（クエリ・ストリーム統合） | 28 | 0 | 0% |
 
 **注**: fraktor-rs の persistence モジュールは現在 `core/` 層のみ（no_std）。`std/` 層は未作成。
 `typed/` サブ層も存在しない。
+`rg` による機械抽出では `modules/persistence/src/core` の `pub` 型は 55、`pub fn` は 179 だった。
 
 ## Pekko モジュールと fraktor-rs の対応
 
@@ -256,6 +262,12 @@ persistence-query モジュールは CQRS の読み取り側を担当する。fr
 | `EventTimestampQuery` | `query/typed/scaladsl/EventTimestampQuery.scala` | 未対応 | std | easy | |
 | `LoadEventQuery` | `query/typed/scaladsl/LoadEventQuery.scala` | 未対応 | std | easy | |
 | `DurableStateStoreBySliceQuery` | `query/typed/scaladsl/DurableStateStoreBySliceQuery.scala` | 未対応 | std | hard | スライスベース |
+
+### 14. スタブ / 未完成実装　✅ 実装済み 0/0 (公開 API 上のスタブなし)
+
+`modules/persistence/src` に対して `todo!()`, `unimplemented!()`, `panic!("not implemented")`, `TODO` を検索した範囲では、公開 API 直下のスタブ実装は見つからなかった。
+
+ただし、[persistence_context_investigation] メモで確認したとおり、`PersistenceContext` は内部状態を多く抱える実装詳細であり、将来の API 再設計余地は残る。
 
 ---
 
