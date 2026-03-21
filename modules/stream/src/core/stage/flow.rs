@@ -3047,8 +3047,6 @@ where
     combine: C,
   ) -> Flow<In, Out, C::Out>
   where
-    Mat1: Send + Sync + 'static,
-    Mat2: Send + Sync + 'static,
     C: MatCombineRule<Mat1, Mat2>, {
     Self::from_sink_and_source_mat(sink, source, combine)
   }

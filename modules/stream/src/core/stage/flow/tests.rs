@@ -3285,6 +3285,20 @@ fn from_sink_and_source_coupled_mat_keeps_requested_materialized_value() {
 }
 
 #[test]
+fn from_sink_and_source_coupled_mat_accepts_non_send_materialized_values() {
+  use alloc::rc::Rc;
+
+  let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| Rc::new(13_u32));
+  let source = Source::single(99_u32).map_materialized_value(|_| Rc::new(17_u32));
+
+  let (_graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::from_sink_and_source_coupled_mat(sink, source, KeepBoth).into_parts();
+
+  assert_eq!(*left_mat, 13_u32);
+  assert_eq!(*right_mat, 17_u32);
+}
+
+#[test]
 fn from_sink_and_source_coupled_mat_preserves_single_path_behavior() {
   let sink = Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 3_u32);
   let source = Source::single(99_u32).map_materialized_value(|_| 4_u32);
