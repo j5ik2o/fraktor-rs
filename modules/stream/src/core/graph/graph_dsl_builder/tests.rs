@@ -90,7 +90,7 @@ fn from_flow_and_build_accept_non_sync_output_types() {
 #[test]
 fn add_source_returns_outlet() {
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
-  let outlet = builder.add_source(Source::single(42_u32));
+  let outlet = builder.add_source(Source::single(42_u32)).unwrap();
 
   // Outlet should have a valid port id (non-default).
   // We verify that we can use it without panic.
@@ -100,7 +100,7 @@ fn add_source_returns_outlet() {
 #[test]
 fn add_flow_returns_inlet_outlet_pair() {
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
-  let (inlet, outlet) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1));
+  let (inlet, outlet) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1)).unwrap();
 
   let _ = inlet.id();
   let _ = outlet.id();
@@ -109,7 +109,7 @@ fn add_flow_returns_inlet_outlet_pair() {
 #[test]
 fn add_sink_returns_inlet() {
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
-  let inlet = builder.add_sink(Sink::<u32, _>::ignore());
+  let inlet = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
 
   let _ = inlet.id();
 }
@@ -118,8 +118,8 @@ fn add_sink_returns_inlet() {
 fn connect_wires_outlet_to_inlet() {
   // Given: a builder with a source and a sink added
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
-  let source_outlet = builder.add_source(Source::single(7_u32));
-  let sink_inlet = builder.add_sink(Sink::<u32, _>::ignore());
+  let source_outlet = builder.add_source(Source::single(7_u32)).unwrap();
+  let sink_inlet = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
 
   // When: connecting the source outlet to the sink inlet
   let result = builder.connect(&source_outlet, &sink_inlet);
@@ -132,7 +132,7 @@ fn connect_wires_outlet_to_inlet() {
 fn create_flow_builds_flow_via_builder_block() {
   // Given: a create_flow call that adds a map flow and wires it
   let flow = GraphDsl::create_flow(|builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
-    let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v: u32| v * 3));
+    let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v: u32| v * 3)).unwrap();
     // The builder's main inlet connects to map_in, map_out connects to main outlet
     // (exact wiring depends on implementation; this tests the builder block pattern itself)
     let _ = (map_in, map_out);
@@ -162,9 +162,9 @@ fn create_flow_mat_preserves_materialized_value() {
 fn add_source_and_connect_to_sink_produces_data() {
   // Given: a builder with explicitly added source, map flow, and sink
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
-  let source_out = builder.add_source(Source::from_array([1_u32, 2, 3]));
-  let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10));
-  let sink_in = builder.add_sink(Sink::<u32, _>::ignore());
+  let source_out = builder.add_source(Source::from_array([1_u32, 2, 3])).unwrap();
+  let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10)).unwrap();
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
 
   // When: wiring source → map → sink
   builder.connect(&source_out, &map_in).expect("connect source to map");

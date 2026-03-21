@@ -723,10 +723,7 @@ fn merge_sorted_mat_keeps_left_materialized_value() {
 fn merge_sorted_mat_preserves_existing_data_path_behavior() {
   let values = Source::from_array([1_u32, 3_u32, 5_u32])
     .map_materialized_value(|_| 0_u32)
-    .merge_sorted_mat(
-      Source::from_array([2_u32, 4_u32, 6_u32]).map_materialized_value(|_| 99_u32),
-      KeepLeft,
-    )
+    .merge_sorted_mat(Source::from_array([2_u32, 4_u32, 6_u32]).map_materialized_value(|_| 99_u32), KeepLeft)
     .collect_values()
     .expect("collect_values");
 
@@ -741,10 +738,8 @@ fn merge_sorted_mat_preserves_existing_data_path_behavior() {
 fn zip_mat_combines_materialized_values() {
   let secondary = Source::single(9_u32).map_materialized_value(|_| 41_u32);
 
-  let (_graph, (left_mat, right_mat)) = Flow::<u32, u32, StreamNotUsed>::new()
-    .map_materialized_value(|_| 37_u32)
-    .zip_mat(secondary, KeepBoth)
-    .into_parts();
+  let (_graph, (left_mat, right_mat)) =
+    Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 37_u32).zip_mat(secondary, KeepBoth).into_parts();
 
   assert_eq!(left_mat, 37_u32);
   assert_eq!(right_mat, 41_u32);
@@ -754,10 +749,8 @@ fn zip_mat_combines_materialized_values() {
 fn zip_mat_keeps_left_materialized_value() {
   let secondary = Source::single(9_u32).map_materialized_value(|_| 41_u32);
 
-  let (_graph, materialized) = Flow::<u32, u32, StreamNotUsed>::new()
-    .map_materialized_value(|_| 37_u32)
-    .zip_mat(secondary, KeepLeft)
-    .into_parts();
+  let (_graph, materialized) =
+    Flow::<u32, u32, StreamNotUsed>::new().map_materialized_value(|_| 37_u32).zip_mat(secondary, KeepLeft).into_parts();
 
   assert_eq!(materialized, 37_u32);
 }
@@ -806,11 +799,7 @@ fn zip_all_mat_keeps_right_materialized_value() {
 fn zip_all_mat_preserves_existing_data_path_behavior() {
   let values = Source::from_array([1_u32, 2_u32])
     .map_materialized_value(|_| 0_u32)
-    .zip_all_mat(
-      Source::from_array([3_u32]).map_materialized_value(|_| 99_u32),
-      0_u32,
-      KeepLeft,
-    )
+    .zip_all_mat(Source::from_array([3_u32]).map_materialized_value(|_| 99_u32), 0_u32, KeepLeft)
     .collect_values()
     .expect("collect_values");
 
@@ -1063,11 +1052,7 @@ fn interleave_mat_keeps_left_materialized_value() {
 fn interleave_mat_preserves_existing_data_path_behavior() {
   let mut values = Source::from_array([1_u32, 3_u32])
     .map_materialized_value(|_| 0_u32)
-    .interleave_mat(
-      Source::from_array([2_u32, 4_u32]).map_materialized_value(|_| 99_u32),
-      1,
-      KeepLeft,
-    )
+    .interleave_mat(Source::from_array([2_u32, 4_u32]).map_materialized_value(|_| 99_u32), 1, KeepLeft)
     .collect_values()
     .expect("collect_values");
   values.sort();
@@ -1889,7 +1874,12 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_usize));
   let graph =
     Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[1, 2, 3], pulls.clone()))
-      .via(Flow::new().group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default()).expect("group_by").merge_substreams())
+      .via(
+        Flow::new()
+          .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
+          .expect("group_by")
+          .merge_substreams(),
+      )
       .to_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();

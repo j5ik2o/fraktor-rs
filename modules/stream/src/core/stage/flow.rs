@@ -2118,7 +2118,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2126,7 +2127,12 @@ where
 
   /// Zip-all stage that combines materialized values.
   #[must_use]
-  pub fn zip_all_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, fill_value: Out, _combine: C) -> Flow<In, Vec<Out>, C::Out>
+  pub fn zip_all_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    fill_value: Out,
+    _combine: C,
+  ) -> Flow<In, Vec<Out>, C::Out>
   where
     Out: Clone,
     Mat2: Send + Sync + 'static,
@@ -2142,7 +2148,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2171,7 +2178,12 @@ where
 
   /// Zip-latest-with stage that combines materialized values.
   #[must_use]
-  pub fn zip_latest_with_mat<T, Mat2, F, C>(self, source: Source<Out, Mat2>, func: F, combine: C) -> Flow<In, T, C::Out>
+  pub fn zip_latest_with_mat<T, Mat2, F, C>(
+    self,
+    source: Source<Out, Mat2>,
+    func: F,
+    combine: C,
+  ) -> Flow<In, T, C::Out>
   where
     Out: Clone,
     T: Send + Sync + 'static,
@@ -2198,7 +2210,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2222,7 +2235,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2245,7 +2259,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2269,7 +2284,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2315,7 +2331,12 @@ where
 
   /// Interleave stage that combines materialized values.
   #[must_use]
-  pub fn interleave_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _segment_size: usize, _combine: C) -> Flow<In, Out, C::Out>
+  pub fn interleave_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    _segment_size: usize,
+    _combine: C,
+  ) -> Flow<In, Out, C::Out>
   where
     Mat2: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
@@ -2330,7 +2351,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2338,7 +2360,12 @@ where
 
   /// Flat-map-prefix stage that combines materialized values.
   #[must_use]
-  pub fn flat_map_prefix_mat<T, Mat2, F, C>(mut self, prefix: usize, mut factory: F, _combine: C) -> Flow<In, T, C::Out>
+  pub fn flat_map_prefix_mat<T, Mat2, F, C>(
+    mut self,
+    prefix: usize,
+    mut factory: F,
+    _combine: C,
+  ) -> Flow<In, T, C::Out>
   where
     Out: Send + Sync + 'static,
     T: Send + Sync + 'static,
@@ -2965,7 +2992,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }

@@ -452,9 +452,7 @@ where
       return sinks.remove(0);
     }
     let first = sinks.remove(0);
-    sinks.into_iter().fold(first, |combined, sink| {
-      Sink::combine_mat(combined, sink, super::keep_left::KeepLeft)
-    })
+    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, super::keep_left::KeepLeft))
   }
 }
 

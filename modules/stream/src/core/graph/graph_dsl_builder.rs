@@ -1,6 +1,9 @@
 use core::marker::PhantomData;
 
-use super::{MatCombine, StreamError, StreamGraph, shape::{Inlet, Outlet}};
+use super::{
+  MatCombine, StreamError, StreamGraph,
+  shape::{Inlet, Outlet},
+};
 use crate::core::{
   MatCombineRule, StreamNotUsed,
   stage::{Sink, Source, flow::Flow},
@@ -114,44 +117,53 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Corresponds to Pekko's `GraphDSL.Builder.add(sourceGraph)`.
   /// The source's materialized value is discarded.
-  #[must_use]
-  pub fn add_source<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Outlet<T>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the source graph has no outlet.
+  pub fn add_source<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Result<Outlet<T>, StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, _mat) = source.into_parts();
-    let outlet_id = other_graph.tail_outlet().expect("source graph must have an outlet");
+    let outlet_id = other_graph.tail_outlet().ok_or(StreamError::InvalidConnection)?;
     self.graph.append_unwired(other_graph);
-    Outlet::from_id(outlet_id)
+    Ok(Outlet::from_id(outlet_id))
   }
 
   /// Imports a flow graph and returns its (inlet, outlet) port pair.
   ///
   /// Corresponds to Pekko's `GraphDSL.Builder.add(flowGraph)`.
   /// The flow's materialized value is discarded.
-  #[must_use]
-  pub fn add_flow<I, O, Mat2>(&mut self, flow: Flow<I, O, Mat2>) -> (Inlet<I>, Outlet<O>)
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the flow graph has no inlet or outlet.
+  pub fn add_flow<I, O, Mat2>(&mut self, flow: Flow<I, O, Mat2>) -> Result<(Inlet<I>, Outlet<O>), StreamError>
   where
     I: Send + Sync + 'static,
     O: Send + Sync + 'static, {
     let (other_graph, _mat) = flow.into_parts();
-    let inlet_id = other_graph.head_inlet().expect("flow graph must have an inlet");
-    let outlet_id = other_graph.tail_outlet().expect("flow graph must have an outlet");
+    let inlet_id = other_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
+    let outlet_id = other_graph.tail_outlet().ok_or(StreamError::InvalidConnection)?;
     self.graph.append_unwired(other_graph);
-    (Inlet::from_id(inlet_id), Outlet::from_id(outlet_id))
+    Ok((Inlet::from_id(inlet_id), Outlet::from_id(outlet_id)))
   }
 
   /// Imports a sink graph and returns its inlet port.
   ///
   /// Corresponds to Pekko's `GraphDSL.Builder.add(sinkGraph)`.
   /// The sink's materialized value is discarded.
-  #[must_use]
-  pub fn add_sink<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Inlet<T>
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the sink graph has no inlet.
+  pub fn add_sink<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Result<Inlet<T>, StreamError>
   where
     T: Send + Sync + 'static, {
     let (other_graph, _mat) = sink.into_parts();
-    let inlet_id = other_graph.head_inlet().expect("sink graph must have an inlet");
+    let inlet_id = other_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
     self.graph.append_unwired(other_graph);
-    Inlet::from_id(inlet_id)
+    Ok(Inlet::from_id(inlet_id))
   }
 
   /// Connects an outlet to an inlet within this builder's graph.

@@ -1064,13 +1064,18 @@ fn split_when_drain_consumes_remaining_upstream_after_head_completion() {
 fn split_when_propagate_cancels_upstream_after_head_completion() {
   let pulls = ArcShared::new(SpinSyncMutex::new(0_u32));
   let cancels = ArcShared::new(SpinSyncMutex::new(0_u32));
+  // Use `|_| true` so that split_when emits the first group after receiving
+  // the second element, allowing Sink::head() to cancel before the source is
+  // fully consumed.  With `|_| false` no split ever occurs and the source must
+  // be exhausted before any output is produced, making Propagate indistinguishable
+  // from Drain.
   let graph = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSequenceSourceLogic {
     next:    1,
     end:     3,
     pulls:   pulls.clone(),
     cancels: cancels.clone(),
   })
-  .split_when_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| false)
+  .split_when_with_cancel_strategy(SubstreamCancelStrategy::Propagate, |_| true)
   .merge_substreams()
   .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
@@ -1080,7 +1085,10 @@ fn split_when_propagate_cancels_upstream_after_head_completion() {
 
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
-  assert_eq!(*pulls.lock(), 1_u32);
+  // split_when(|_| true) needs 2 pulls: element 1 starts the first group,
+  // element 2 triggers the split and emits [1].  After head() receives 1 and
+  // cancels, Propagate stops the source immediately.
+  assert_eq!(*pulls.lock(), 2_u32);
   assert_eq!(*cancels.lock(), 1_u32);
 }
 

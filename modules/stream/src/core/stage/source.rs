@@ -15,19 +15,17 @@ use super::{
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_lazy_definition, concat_substreams_definition, debounce_definition, delay_definition,
-    drop_definition,
-    drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
-    group_by_definition, grouped_definition, initial_delay_definition, interleave_definition, intersperse_definition,
-    flat_map_prefix_definition, map_async_definition, map_concat_definition, map_definition, map_option_definition,
-    merge_definition, merge_latest_definition, merge_preferred_definition, merge_prioritized_definition,
-    merge_sorted_definition, merge_substreams_definition, merge_substreams_with_parallelism_definition,
-    partition_definition, prepend_definition, prepend_lazy_definition, sample_definition, scan_definition,
-    sliding_definition,
-    split_after_definition, split_after_definition_with_cancel_strategy, split_when_definition,
-    split_when_definition_with_cancel_strategy, stateful_map_concat_definition, stateful_map_definition,
-    take_definition, take_until_definition, take_while_definition, take_within_definition, throttle_definition,
-    unzip_definition, unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition,
-    zip_with_index_definition,
+    drop_definition, drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
+    flat_map_prefix_definition, group_by_definition, grouped_definition, initial_delay_definition,
+    interleave_definition, intersperse_definition, map_async_definition, map_concat_definition, map_definition,
+    map_option_definition, merge_definition, merge_latest_definition, merge_preferred_definition,
+    merge_prioritized_definition, merge_sorted_definition, merge_substreams_definition,
+    merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, prepend_lazy_definition,
+    sample_definition, scan_definition, sliding_definition, split_after_definition,
+    split_after_definition_with_cancel_strategy, split_when_definition, split_when_definition_with_cancel_strategy,
+    stateful_map_concat_definition, stateful_map_definition, take_definition, take_until_definition,
+    take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
+    watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -1761,7 +1759,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1769,7 +1768,12 @@ where
 
   /// Zip-all stage that combines materialized values.
   #[must_use]
-  pub fn zip_all_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, fill_value: Out, _combine: C) -> Source<Vec<Out>, C::Out>
+  pub fn zip_all_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    fill_value: Out,
+    _combine: C,
+  ) -> Source<Vec<Out>, C::Out>
   where
     Out: Clone,
     Mat2: Send + Sync + 'static,
@@ -1785,7 +1789,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1841,7 +1846,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1865,7 +1871,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1888,7 +1895,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1912,7 +1920,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -1958,7 +1967,12 @@ where
 
   /// Interleave stage that combines materialized values.
   #[must_use]
-  pub fn interleave_mat<Mat2, C>(mut self, source: Source<Out, Mat2>, _segment_size: usize, _combine: C) -> Source<Out, C::Out>
+  pub fn interleave_mat<Mat2, C>(
+    mut self,
+    source: Source<Out, Mat2>,
+    _segment_size: usize,
+    _combine: C,
+  ) -> Source<Out, C::Out>
   where
     Mat2: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
@@ -1973,7 +1987,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
@@ -2114,7 +2129,8 @@ where
       let _ = self.graph.connect(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepLeft);
     }
     if let Some(src_out) = source_tail {
-      let _ = self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
+      let _ =
+        self.graph.connect(&Outlet::<Out>::from_id(src_out), &Inlet::<Out>::from_id(inlet_id), MatCombine::KeepRight);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Source { graph: self.graph, mat, _pd: PhantomData }
