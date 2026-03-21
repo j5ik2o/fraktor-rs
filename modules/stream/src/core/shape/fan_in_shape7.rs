@@ -19,6 +19,7 @@ pub struct FanInShape7<In0, In1, In2, In3, In4, In5, In6, Out> {
 impl<In0, In1, In2, In3, In4, In5, In6, Out> FanInShape7<In0, In1, In2, In3, In4, In5, In6, Out> {
   /// Creates a new fan-in shape with seven inlets and one outlet.
   #[must_use]
+  // Fan-in shapes require one inlet per input port; argument count is inherent to the arity.
   #[allow(clippy::too_many_arguments)]
   pub const fn new(
     in0: Inlet<In0>,

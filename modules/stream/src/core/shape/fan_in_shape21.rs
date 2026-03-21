@@ -104,6 +104,7 @@ impl<
 {
   /// Creates a new fan-in shape with twenty-one inlets and one outlet.
   #[must_use]
+  // Fan-in shapes require one inlet per input port; argument count is inherent to the arity.
   #[allow(clippy::too_many_arguments)]
   pub const fn new(
     in0: Inlet<In0>,
