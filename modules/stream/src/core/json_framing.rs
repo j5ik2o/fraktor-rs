@@ -198,7 +198,12 @@ impl FlowLogic for JsonFramingLogic {
 fn json_array_framing_definition(maximum_element_length: usize) -> FlowDefinition {
   let inlet: Inlet<Vec<u8>> = Inlet::new();
   let outlet: Outlet<Vec<u8>> = Outlet::new();
-  let logic = JsonArrayFramingLogic { buffer: Vec::new(), maximum_element_length, found_open: false };
+  let logic = JsonArrayFramingLogic {
+    buffer: Vec::new(),
+    maximum_element_length,
+    scan_offset: 0,
+    state: JsonArrayState::AwaitingArrayStart,
+  };
   FlowDefinition {
     kind:        StageKind::FlowStatefulMapConcat,
     inlet:       inlet.id(),
@@ -212,57 +217,125 @@ fn json_array_framing_definition(maximum_element_length: usize) -> FlowDefinitio
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JsonArrayState {
+  AwaitingArrayStart,
+  AwaitingValueOrEnd,
+  AwaitingValue,
+  AwaitingSeparatorOrEnd,
+  Closed,
+}
+
 struct JsonArrayFramingLogic {
   buffer:                 Vec<u8>,
   maximum_element_length: usize,
-  found_open:             bool,
+  scan_offset:            usize,
+  state:                  JsonArrayState,
 }
 
 impl JsonArrayFramingLogic {
+  fn current_byte(&self) -> Option<u8> {
+    self.buffer.get(self.scan_offset).copied()
+  }
+
+  const fn remaining_len(&self) -> usize {
+    self.buffer.len().saturating_sub(self.scan_offset)
+  }
+
+  fn skip_whitespace(&mut self) {
+    while matches!(self.current_byte(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+      self.scan_offset += 1;
+    }
+  }
+
+  fn compact_if_needed(&mut self) {
+    if self.scan_offset == 0 {
+      return;
+    }
+    if self.scan_offset < 1024 && self.scan_offset * 2 < self.buffer.len() {
+      return;
+    }
+    self.buffer.drain(..self.scan_offset);
+    self.scan_offset = 0;
+  }
+
   fn scan_elements(&mut self) -> Result<Vec<DynValue>, StreamError> {
     let mut results: Vec<DynValue> = Vec::new();
 
-    // Skip to the opening '[' if not found yet
-    if !self.found_open {
-      if let Some(pos) = self.buffer.iter().position(|&b| b == b'[') {
-        self.buffer = self.buffer[pos + 1..].to_vec();
-        self.found_open = true;
-      } else {
-        if self.buffer.len() > self.maximum_element_length {
-          return Err(StreamError::BufferOverflow);
-        }
-        return Ok(results);
-      }
-    }
-
     loop {
-      // Skip leading whitespace and commas
-      while !self.buffer.is_empty() {
-        match self.buffer[0] {
-          | b' ' | b'\t' | b'\n' | b'\r' | b',' => {
-            self.buffer.remove(0);
-          },
-          | _ => break,
-        }
-      }
+      self.skip_whitespace();
 
-      if self.buffer.is_empty() {
-        break;
-      }
-
-      // Check for closing bracket
-      if self.buffer[0] == b']' {
-        self.buffer = self.buffer[1..].to_vec();
-        break;
-      }
-
-      // Try to extract one element
-      match self.try_extract_element() {
-        | Ok(Some(element)) => results.push(Box::new(element) as DynValue),
-        | Ok(None) => break,
-        | Err(e) => {
-          if results.is_empty() {
-            return Err(e);
+      match self.state {
+        | JsonArrayState::AwaitingArrayStart => {
+          let Some(relative_pos) = self.buffer[self.scan_offset..].iter().position(|&byte| byte == b'[') else {
+            if self.remaining_len() > self.maximum_element_length {
+              return Err(StreamError::BufferOverflow);
+            }
+            break;
+          };
+          self.scan_offset += relative_pos + 1;
+          self.state = JsonArrayState::AwaitingValueOrEnd;
+          self.compact_if_needed();
+        },
+        | JsonArrayState::AwaitingValueOrEnd => {
+          let Some(byte) = self.current_byte() else {
+            break;
+          };
+          if byte == b']' {
+            self.scan_offset += 1;
+            self.state = JsonArrayState::Closed;
+            self.compact_if_needed();
+            break;
+          }
+          match self.try_extract_element() {
+            | Ok(Some(element)) => {
+              results.push(Box::new(element) as DynValue);
+              self.state = JsonArrayState::AwaitingSeparatorOrEnd;
+              self.compact_if_needed();
+            },
+            | Ok(None) => break,
+            | Err(error) => return Err(error),
+          }
+        },
+        | JsonArrayState::AwaitingValue => {
+          let Some(byte) = self.current_byte() else {
+            break;
+          };
+          if byte == b']' {
+            return Err(StreamError::Failed);
+          }
+          match self.try_extract_element() {
+            | Ok(Some(element)) => {
+              results.push(Box::new(element) as DynValue);
+              self.state = JsonArrayState::AwaitingSeparatorOrEnd;
+              self.compact_if_needed();
+            },
+            | Ok(None) => break,
+            | Err(error) => return Err(error),
+          }
+        },
+        | JsonArrayState::AwaitingSeparatorOrEnd => {
+          let Some(byte) = self.current_byte() else {
+            break;
+          };
+          match byte {
+            | b',' => {
+              self.scan_offset += 1;
+              self.state = JsonArrayState::AwaitingValue;
+              self.compact_if_needed();
+            },
+            | b']' => {
+              self.scan_offset += 1;
+              self.state = JsonArrayState::Closed;
+              self.compact_if_needed();
+              break;
+            },
+            | _ => return Err(StreamError::Failed),
+          }
+        },
+        | JsonArrayState::Closed => {
+          if self.current_byte().is_some() {
+            return Err(StreamError::Failed);
           }
           break;
         },
@@ -273,23 +346,20 @@ impl JsonArrayFramingLogic {
   }
 
   fn try_extract_element(&mut self) -> Result<Option<Vec<u8>>, StreamError> {
-    if self.buffer.is_empty() {
+    if self.scan_offset >= self.buffer.len() {
       return Ok(None);
     }
 
-    let first = self.buffer[0];
+    let first = self.buffer[self.scan_offset];
 
-    // Structured value: object or array
     if first == b'{' || first == b'[' {
       return self.try_extract_structured(first);
     }
 
-    // String value
     if first == b'"' {
       return self.try_extract_string();
     }
 
-    // Primitive value (number, true, false, null)
     self.try_extract_primitive()
   }
 
@@ -298,7 +368,7 @@ impl JsonArrayFramingLogic {
     let mut depth: usize = 0;
     let mut in_string = false;
     let mut in_escape = false;
-    let mut pos = 0;
+    let mut pos = self.scan_offset;
 
     while pos < self.buffer.len() {
       let byte = self.buffer[pos];
@@ -326,11 +396,11 @@ impl JsonArrayFramingLogic {
           depth -= 1;
           if depth == 0 {
             let end = pos + 1;
-            if end > self.maximum_element_length {
+            if end - self.scan_offset > self.maximum_element_length {
               return Err(StreamError::BufferOverflow);
             }
-            let element = self.buffer[..end].to_vec();
-            self.buffer = self.buffer[end..].to_vec();
+            let element = self.buffer[self.scan_offset..end].to_vec();
+            self.scan_offset = end;
             return Ok(Some(element));
           }
         },
@@ -339,7 +409,7 @@ impl JsonArrayFramingLogic {
       pos += 1;
     }
 
-    if self.buffer.len() > self.maximum_element_length {
+    if self.remaining_len() > self.maximum_element_length {
       return Err(StreamError::BufferOverflow);
     }
 
@@ -348,7 +418,7 @@ impl JsonArrayFramingLogic {
 
   fn try_extract_string(&mut self) -> Result<Option<Vec<u8>>, StreamError> {
     let mut in_escape = false;
-    let mut pos = 1; // Skip opening quote
+    let mut pos = self.scan_offset + 1;
 
     while pos < self.buffer.len() {
       let byte = self.buffer[pos];
@@ -361,11 +431,11 @@ impl JsonArrayFramingLogic {
         | b'\\' => in_escape = true,
         | b'"' => {
           let end = pos + 1;
-          if end > self.maximum_element_length {
+          if end - self.scan_offset > self.maximum_element_length {
             return Err(StreamError::BufferOverflow);
           }
-          let element = self.buffer[..end].to_vec();
-          self.buffer = self.buffer[end..].to_vec();
+          let element = self.buffer[self.scan_offset..end].to_vec();
+          self.scan_offset = end;
           return Ok(Some(element));
         },
         | _ => {},
@@ -373,7 +443,7 @@ impl JsonArrayFramingLogic {
       pos += 1;
     }
 
-    if self.buffer.len() > self.maximum_element_length {
+    if self.remaining_len() > self.maximum_element_length {
       return Err(StreamError::BufferOverflow);
     }
 
@@ -381,22 +451,21 @@ impl JsonArrayFramingLogic {
   }
 
   fn try_extract_primitive(&mut self) -> Result<Option<Vec<u8>>, StreamError> {
-    // Primitives end at comma, closing bracket, or whitespace
-    for pos in 0..self.buffer.len() {
+    for pos in self.scan_offset..self.buffer.len() {
       match self.buffer[pos] {
         | b',' | b']' | b' ' | b'\t' | b'\n' | b'\r' => {
-          if pos == 0 {
+          if pos == self.scan_offset {
             return Ok(None);
           }
-          let element = self.buffer[..pos].to_vec();
-          self.buffer = self.buffer[pos..].to_vec();
+          let element = self.buffer[self.scan_offset..pos].to_vec();
+          self.scan_offset = pos;
           return Ok(Some(element));
         },
         | _ => {},
       }
     }
 
-    if self.buffer.len() > self.maximum_element_length {
+    if self.remaining_len() > self.maximum_element_length {
       return Err(StreamError::BufferOverflow);
     }
 
@@ -412,17 +481,19 @@ impl FlowLogic for JsonArrayFramingLogic {
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
-    // If there's remaining data with an incomplete element, emit what we can
-    if !self.buffer.is_empty() && self.found_open {
-      // Try to extract any remaining primitive at end of stream
-      // (primitives might not have a trailing delimiter)
-      // If there's actual structured data left, it's incomplete
-      let trimmed: Vec<u8> = self.buffer.iter().copied().filter(|b| !b.is_ascii_whitespace()).collect();
-      if !trimmed.is_empty() && trimmed != b"]" {
-        return Err(StreamError::Failed);
-      }
+    self.skip_whitespace();
+    match self.state {
+      | JsonArrayState::AwaitingArrayStart => Ok(()),
+      | JsonArrayState::Closed => {
+        if self.current_byte().is_some() {
+          return Err(StreamError::Failed);
+        }
+        Ok(())
+      },
+      | JsonArrayState::AwaitingValueOrEnd | JsonArrayState::AwaitingValue | JsonArrayState::AwaitingSeparatorOrEnd => {
+        Err(StreamError::Failed)
+      },
     }
-    Ok(())
   }
 
   fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {

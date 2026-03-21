@@ -237,3 +237,73 @@ fn array_scanner_should_error_when_element_exceeds_max_length() {
   let result = source.via(framing).collect_values();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
 }
+
+#[test]
+fn array_scanner_should_error_on_unclosed_array() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_on_data_after_array_is_closed() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::from(vec![b"[1]".to_vec(), b",[2]".to_vec()]);
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_on_extra_closing_bracket() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[1]]".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_when_separator_is_missing() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[1 2]".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_on_double_comma() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[1,,2]".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_on_trailing_comma() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[1,]".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
+fn array_scanner_should_error_on_leading_comma() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"[,1]".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
