@@ -249,6 +249,16 @@ fn array_scanner_should_error_on_unclosed_array() {
 }
 
 #[test]
+fn array_scanner_should_error_on_non_array_input_at_source_end() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::single(b"garbage".to_vec());
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
+
+#[test]
 fn array_scanner_should_error_on_data_after_array_is_closed() {
   let framing = JsonFraming::array_scanner(1024);
   let source = Source::from(vec![b"[1]".to_vec(), b",[2]".to_vec()]);

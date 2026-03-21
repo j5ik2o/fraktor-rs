@@ -483,7 +483,12 @@ impl FlowLogic for JsonArrayFramingLogic {
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     self.skip_whitespace();
     match self.state {
-      | JsonArrayState::AwaitingArrayStart => Ok(()),
+      | JsonArrayState::AwaitingArrayStart => {
+        if self.current_byte().is_some() {
+          return Err(StreamError::Failed);
+        }
+        Ok(())
+      },
       | JsonArrayState::Closed => {
         if self.current_byte().is_some() {
           return Err(StreamError::Failed);
