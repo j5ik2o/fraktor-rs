@@ -2,10 +2,10 @@ use crate::core::SubstreamCancelStrategy;
 
 #[test]
 fn default_returns_propagate() {
-  // Given/When: default SubstreamCancelStrategy
+  // 前提/操作: デフォルトの SubstreamCancelStrategy を取得する
   let strategy = SubstreamCancelStrategy::default();
 
-  // Then: default should be Propagate (matching Pekko's default)
+  // 期待: 既定値は Pekko と同じく Propagate である
   assert_eq!(strategy, SubstreamCancelStrategy::Propagate);
 }
 

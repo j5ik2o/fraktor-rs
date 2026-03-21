@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
@@ -506,6 +506,26 @@ fn divert_to_mat_preserves_existing_data_path_behavior() {
     .expect("collect_values");
 
   assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+#[test]
+fn divert_to_mat_routes_matching_elements_to_sink() {
+  let diverted = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let diverted_ref = diverted.clone();
+
+  let values = Source::from_array([1_u32, 2_u32, 3_u32, 4_u32])
+    .via(Flow::<u32, u32, StreamNotUsed>::new().divert_to_mat(
+      |value: &u32| (*value).is_multiple_of(2),
+      Sink::<u32, StreamCompletion<StreamDone>>::foreach(move |value| {
+        diverted_ref.lock().push(value);
+      }),
+      KeepLeft,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  assert_eq!(values, vec![1_u32, 3_u32]);
+  assert_eq!(*diverted.lock(), vec![2_u32, 4_u32]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1885,9 +1905,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
   let (plan, completion) = graph.into_parts();
   let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
-  while !interpreter.state().is_terminal() {
-    let _ = interpreter.drive();
-  }
+  drive_until_completion(&mut interpreter, &completion);
 
   assert_eq!(completion.poll(), Completion::Ready(Ok(1_u32)));
   assert_eq!(*pulls.lock(), 1_usize);

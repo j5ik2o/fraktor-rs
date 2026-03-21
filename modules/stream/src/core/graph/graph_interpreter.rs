@@ -207,6 +207,9 @@ impl GraphInterpreter {
     if self.state == StreamState::Running
       && self.all_sinks_done()
       && self.all_sources_done()
+      && !self.source_restart_waiting()
+      && !self.sink_restart_waiting()
+      && !self.flow_order.iter().any(|stage_index| self.flow_restart_waiting(*stage_index))
       && !self.has_flow_requesting_upstream_drain()
       && self.all_edge_buffers_empty()
       && !self.flow_order.iter().any(|stage_index| self.flow_has_pending_output(*stage_index))

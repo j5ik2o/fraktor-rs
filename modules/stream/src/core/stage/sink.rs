@@ -100,6 +100,9 @@ where
   ///
   /// Corresponds to Pekko `Sink.never` which accepts elements but never
   /// signals completion.
+  ///
+  /// The materialized [`StreamCompletion`](super::StreamCompletion) stays
+  /// pending even after upstream has finished.
   #[must_use]
   pub fn never() -> Self {
     let completion = StreamCompletion::new();
@@ -473,7 +476,6 @@ where
     let second_inlet = second_graph.head_inlet();
 
     let broadcast = super::flow::broadcast_definition::<In>(2);
-    let broadcast_inlet = broadcast.inlet;
     let broadcast_outlet = broadcast.outlet;
 
     let mut graph = StreamGraph::new();
@@ -489,7 +491,6 @@ where
     }
 
     let mat = C::combine(left_mat, right_mat);
-    let _ = broadcast_inlet;
     Sink::from_graph(graph, mat)
   }
 
@@ -813,7 +814,7 @@ where
   }
 
   fn has_pending_work(&self) -> bool {
-    true
+    false
   }
 }
 
