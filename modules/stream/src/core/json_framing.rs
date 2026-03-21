@@ -451,6 +451,12 @@ impl JsonArrayFramingLogic {
   }
 
   fn try_extract_primitive(&mut self) -> Result<Option<Vec<u8>>, StreamError> {
+    if let Some(byte) = self.current_byte()
+      && matches!(byte, b',' | b']')
+    {
+      return Err(StreamError::Failed);
+    }
+
     for pos in self.scan_offset..self.buffer.len() {
       match self.buffer[pos] {
         | b',' | b']' | b' ' | b'\t' | b'\n' | b'\r' => {

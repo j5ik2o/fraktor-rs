@@ -317,3 +317,13 @@ fn array_scanner_should_error_on_leading_comma() {
 
   assert!(matches!(result, Err(StreamError::Failed)));
 }
+
+#[test]
+fn array_scanner_should_error_on_chunked_leading_comma() {
+  let framing = JsonFraming::array_scanner(1024);
+  let source = Source::from(vec![b"[".to_vec(), b",".to_vec(), b"1]".to_vec()]);
+
+  let result = source.via(framing).collect_values();
+
+  assert!(matches!(result, Err(StreamError::Failed)));
+}
