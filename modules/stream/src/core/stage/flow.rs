@@ -35,7 +35,7 @@ pub struct Flow<In, Out, Mat> {
 impl<In, Out, Mat> Flow<In, Out, Mat> {
   /// Creates a flow from a pre-built stream graph and materialized value.
   #[must_use]
-  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
