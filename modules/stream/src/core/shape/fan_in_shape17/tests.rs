@@ -40,8 +40,14 @@ fn new_returns_ports_passed_at_construction() {
   let in16_id = in16.id();
   let out_id = out.id();
 
-  let shape =
-    FanInShape17::new(in0, in1, in2, in3, in4, in5, in6, in7, in8, in9, in10, in11, in12, in13, in14, in15, in16, out);
+  let shape = FanInShape17::new(
+    (in0, in1, in2, in3),
+    (in4, in5, in6, in7),
+    (in8, in9, in10, in11),
+    (in12, in13, in14),
+    (in15, in16),
+    out,
+  );
 
   assert_eq!(shape.in0().id(), in0_id);
   assert_eq!(shape.in1().id(), in1_id);

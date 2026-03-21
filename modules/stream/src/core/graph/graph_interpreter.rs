@@ -172,8 +172,15 @@ impl GraphInterpreter {
       return DriveOutcome::Progressed;
     }
 
+    let pull_result = if self.demand.has_demand() {
+      self.pull_sources_if_needed()
+    } else if self.has_flow_requesting_upstream_drain() {
+      self.pull_sources_for_flows_requesting_drain()
+    } else {
+      Ok(false)
+    };
     if self.demand.has_demand() || self.has_flow_requesting_upstream_drain() {
-      match self.pull_sources_if_needed() {
+      match pull_result {
         | Ok(did_pull) => {
           if did_pull {
             progressed = true;
@@ -381,9 +388,22 @@ impl GraphInterpreter {
   }
 
   fn pull_sources_if_needed(&mut self) -> Result<bool, StreamError> {
+    let source_positions: Vec<usize> = (0..self.source_indices.len()).collect();
+    self.pull_source_positions_if_needed(&source_positions)
+  }
+
+  fn pull_sources_for_flows_requesting_drain(&mut self) -> Result<bool, StreamError> {
+    let source_positions = self.source_positions_for_flows_requesting_drain();
+    if source_positions.is_empty() {
+      return Ok(false);
+    }
+    self.pull_source_positions_if_needed(&source_positions)
+  }
+
+  fn pull_source_positions_if_needed(&mut self, source_positions: &[usize]) -> Result<bool, StreamError> {
     let mut progressed = false;
 
-    for source_position in 0..self.source_indices.len() {
+    for &source_position in source_positions {
       if self.source_done[source_position] {
         continue;
       }
@@ -1096,15 +1116,64 @@ impl GraphInterpreter {
   }
 
   fn has_flow_requesting_upstream_drain(&self) -> bool {
-    self.flow_order.iter().copied().any(|stage_index| {
-      if self.flow_done_at(stage_index) {
-        return false;
+    self.flow_order.iter().copied().any(|stage_index| self.flow_requests_upstream_drain(stage_index))
+  }
+
+  fn flow_requests_upstream_drain(&self, stage_index: usize) -> bool {
+    if self.flow_done_at(stage_index) {
+      return false;
+    }
+    let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
+      return false;
+    };
+    flow.logic.wants_upstream_drain()
+  }
+
+  fn source_positions_for_flows_requesting_drain(&self) -> Vec<usize> {
+    let mut source_positions = Vec::new();
+    let mut visited_stages = Vec::new();
+    for stage_index in self.flow_order.iter().copied() {
+      if !self.flow_requests_upstream_drain(stage_index) {
+        continue;
       }
-      let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
-        return false;
+      self.collect_upstream_source_positions(stage_index, &mut visited_stages, &mut source_positions);
+    }
+    source_positions
+  }
+
+  fn collect_upstream_source_positions(
+    &self,
+    stage_index: usize,
+    visited_stages: &mut Vec<usize>,
+    source_positions: &mut Vec<usize>,
+  ) {
+    if visited_stages.contains(&stage_index) {
+      return;
+    }
+    visited_stages.push(stage_index);
+
+    for edge_index in self.incoming_edge_indices_for_stage(stage_index) {
+      let upstream_port = self.edges[edge_index].from;
+      let Some(upstream_stage_index) = self.stage_index_for_outlet(upstream_port) else {
+        continue;
       };
-      flow.logic.wants_upstream_drain()
-    })
+
+      match &self.stages[upstream_stage_index] {
+        | StageDefinition::Source(_) => {
+          let Some(source_position) = self.source_indices.iter().position(|index| *index == upstream_stage_index)
+          else {
+            continue;
+          };
+          if !source_positions.contains(&source_position) {
+            source_positions.push(source_position);
+          }
+        },
+        | StageDefinition::Flow(_) => {
+          self.collect_upstream_source_positions(upstream_stage_index, visited_stages, source_positions);
+        },
+        | StageDefinition::Sink(_) => {},
+      }
+    }
   }
 
   fn set_flow_done_at(&mut self, stage_index: usize, done: bool) {

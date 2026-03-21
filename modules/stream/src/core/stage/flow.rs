@@ -697,13 +697,13 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
-    _cancel_strategy: SubstreamCancelStrategy,
+    cancel_strategy: SubstreamCancelStrategy,
   ) -> Result<FlowGroupBySubFlow<In, K, Out, Mat>, StreamDslError>
   where
     K: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> K + Send + Sync + 'static, {
     let max_substreams = validate_positive_argument("max_substreams", max_substreams)?;
-    let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn);
+    let definition = group_by_definition::<Out, K, F>(max_substreams, key_fn, cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -4042,14 +4042,26 @@ where
   }
 }
 
-pub(in crate::core) fn group_by_definition<In, Key, F>(max_substreams: usize, key_fn: F) -> FlowDefinition
+pub(in crate::core) fn group_by_definition<In, Key, F>(
+  max_substreams: usize,
+  key_fn: F,
+  substream_cancel_strategy: SubstreamCancelStrategy,
+) -> FlowDefinition
 where
   In: Send + Sync + 'static,
   Key: Clone + PartialEq + Send + Sync + 'static,
   F: FnMut(&In) -> Key + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<(Key, In)> = Outlet::new();
-  let logic = GroupByLogic::<In, Key, F> { max_substreams, seen_keys: Vec::new(), key_fn, _pd: PhantomData };
+  let logic = GroupByLogic::<In, Key, F> {
+    max_substreams,
+    seen_keys: Vec::new(),
+    key_fn,
+    substream_cancel_strategy,
+    source_done: false,
+    draining: false,
+    _pd: PhantomData,
+  };
   FlowDefinition {
     kind:        StageKind::FlowGroupBy,
     inlet:       inlet.id(),

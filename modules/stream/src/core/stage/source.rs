@@ -1470,13 +1470,13 @@ where
     mut self,
     max_substreams: usize,
     key_fn: F,
-    _cancel_strategy: SubstreamCancelStrategy,
+    cancel_strategy: SubstreamCancelStrategy,
   ) -> Result<SourceGroupBySubFlow<Key, Out, Mat>, StreamDslError>
   where
     Key: Clone + PartialEq + Send + Sync + 'static,
     F: FnMut(&Out) -> Key + Send + Sync + 'static, {
     let max_substreams = validate_positive_argument("max_substreams", max_substreams)?;
-    let definition = group_by_definition::<Out, Key, F>(max_substreams, key_fn);
+    let definition = group_by_definition::<Out, Key, F>(max_substreams, key_fn, cancel_strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));

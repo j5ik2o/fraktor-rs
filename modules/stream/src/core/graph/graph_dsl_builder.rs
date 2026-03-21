@@ -6,7 +6,10 @@ use super::{
 };
 use crate::core::{
   MatCombineRule, StreamNotUsed,
-  stage::{Sink, Source, flow::Flow},
+  stage::{
+    Sink, Source,
+    flow::{Flow, combine_mat},
+  },
 };
 
 #[cfg(test)]
@@ -21,6 +24,10 @@ mod tests;
 pub struct GraphDslBuilder<In, Out, Mat> {
   graph: StreamGraph,
   mat:   Mat,
+  /// Tracks `In`/`Out` at the type level without storing values.
+  ///
+  /// `fn(In) -> Out` makes the marker contravariant in `In` and covariant in
+  /// `Out`, matching the builder's data-flow semantics.
   _pd:   PhantomData<fn(In) -> Out>,
 }
 
@@ -77,21 +84,21 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   #[must_use]
   pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> GraphDslBuilder<In, T, Mat>
   where
-    In: Send + Sync + 'static,
-    Out: Send + Sync + 'static,
     T: Send + Sync + 'static, {
     self.via_mat(flow, crate::core::KeepLeft)
   }
 
   /// Appends a flow with a custom materialized value rule.
   #[must_use]
-  pub fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, combine: C) -> GraphDslBuilder<In, T, C::Out>
+  pub fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, _combine: C) -> GraphDslBuilder<In, T, C::Out>
   where
-    In: Send + Sync + 'static,
-    Out: Send + Sync + 'static,
     T: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
-    GraphDslBuilder::from_flow(self.build().via_mat(flow, combine))
+    let (mut graph, left_mat) = self.into_parts();
+    let (flow_graph, right_mat) = flow.into_parts();
+    graph.append(flow_graph);
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    GraphDslBuilder::from_graph(graph, mat)
   }
 
   /// Connects the builder to a sink.

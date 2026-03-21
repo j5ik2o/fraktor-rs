@@ -21,20 +21,15 @@ pub struct FanInShape9<In0, In1, In2, In3, In4, In5, In6, In7, In8, Out> {
 impl<In0, In1, In2, In3, In4, In5, In6, In7, In8, Out> FanInShape9<In0, In1, In2, In3, In4, In5, In6, In7, In8, Out> {
   /// Creates a new fan-in shape with nine inlets and one outlet.
   #[must_use]
-  // Fan-in shapes require one inlet per input port; argument count is inherent to the arity.
-  #[allow(clippy::too_many_arguments)]
   pub const fn new(
-    in0: Inlet<In0>,
-    in1: Inlet<In1>,
-    in2: Inlet<In2>,
-    in3: Inlet<In3>,
-    in4: Inlet<In4>,
-    in5: Inlet<In5>,
-    in6: Inlet<In6>,
-    in7: Inlet<In7>,
-    in8: Inlet<In8>,
+    group0: (Inlet<In0>, Inlet<In1>, Inlet<In2>, Inlet<In3>),
+    group1: (Inlet<In4>, Inlet<In5>, Inlet<In6>),
+    group2: (Inlet<In7>, Inlet<In8>),
     out: Outlet<Out>,
   ) -> Self {
+    let (in0, in1, in2, in3) = group0;
+    let (in4, in5, in6) = group1;
+    let (in7, in8) = group2;
     Self { in0, in1, in2, in3, in4, in5, in6, in7, in8, out }
   }
 

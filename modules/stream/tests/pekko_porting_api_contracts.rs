@@ -105,7 +105,7 @@ fn fan_in_shape8_new_returns_ports_passed_at_construction() {
   let in7_id = in7.id();
   let out_id = out.id();
 
-  let shape = FanInShape8::new(in0, in1, in2, in3, in4, in5, in6, in7, out);
+  let shape = FanInShape8::new((in0, in1, in2, in3), (in4, in5, in6, in7), out);
 
   assert_eq!(shape.in0().id(), in0_id);
   assert_eq!(shape.in1().id(), in1_id);
@@ -269,7 +269,7 @@ fn flow_divert_to_mat_is_public_and_preserves_existing_data_path_contract() {
 }
 
 // ---------------------------------------------------------------------------
-// Flow::concat_mat — public API contract
+// Flow::concat_mat — 公開 API 契約
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -295,7 +295,7 @@ fn flow_concat_mat_is_public_and_preserves_existing_data_path_contract() {
 }
 
 // ---------------------------------------------------------------------------
-// Flow::prepend_mat — public API contract
+// Flow::prepend_mat — 公開 API 契約
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -321,12 +321,13 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
 }
 
 // ---------------------------------------------------------------------------
-// Flow::merge_mat — public API contract
+// Flow::merge_mat — 公開 API 契約
 // ---------------------------------------------------------------------------
 
-// Flow::new().merge_mat() creates a graph where the source node is the first
-// node (no head_inlet), so .via()/.to_mat() cannot wire upstream correctly.
-// Mat combine logic is verified by unit test merge_mat_combines_materialized_values.
+// Flow::new().merge_mat() はソースノードが最初のノード（head_inlet
+// なし）となるグラフを作成するため、 .via()/.to_mat() で上流を正しく接続できない。
+// マテリアライズ値の結合ロジックはユニットテスト merge_mat_combines_materialized_values
+// で検証済み。
 #[test]
 #[ignore = "Flow::new().merge_mat() graph wiring limitation — mat combine verified in unit tests"]
 fn flow_merge_mat_is_public_and_combines_materialized_values() {
@@ -337,9 +338,9 @@ fn flow_merge_mat_is_public_and_combines_materialized_values() {
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
 
-// Flow::new().merge_mat() via .via() leaves the merge stage's first input
-// unwired because the empty flow has no head_inlet for upstream connection.
-// Data path works correctly via Source::merge_mat (see unit tests).
+// Flow::new().merge_mat() を .via() 経由で使用すると、空のフローに上流接続用の head_inlet
+// がないため、 マージステージの最初の入力が未接続のままになる。
+// データパスは Source::merge_mat 経由で正しく動作する（ユニットテスト参照）。
 #[test]
 #[ignore = "Flow::new().merge_mat() via .via() graph wiring limitation — use Source::merge_mat for data path"]
 fn flow_merge_mat_is_public_and_preserves_existing_data_path_contract() {
@@ -357,11 +358,11 @@ fn flow_merge_mat_is_public_and_preserves_existing_data_path_contract() {
 }
 
 // ---------------------------------------------------------------------------
-// Flow::merge_preferred_mat — public API contract
+// Flow::merge_preferred_mat — 公開 API 契約
 // ---------------------------------------------------------------------------
 
-// Same graph wiring limitation as merge_mat. Mat combine logic is verified
-// by unit test merge_preferred_mat_combines_materialized_values.
+// merge_mat と同じグラフ配線の制限。マテリアライズ値の結合ロジックは
+// ユニットテスト merge_preferred_mat_combines_materialized_values で検証済み。
 #[test]
 #[ignore = "Flow::new().merge_preferred_mat() graph wiring limitation — mat combine verified in unit tests"]
 fn flow_merge_preferred_mat_is_public_and_combines_materialized_values() {
@@ -372,8 +373,8 @@ fn flow_merge_preferred_mat_is_public_and_combines_materialized_values() {
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
 
-// Flow::new().merge_preferred_mat() via .via() has the same graph wiring
-// limitation as merge_mat. Data path works via Source::merge_preferred_mat.
+// Flow::new().merge_preferred_mat() を .via() 経由で使用すると merge_mat
+// と同じグラフ配線の制限がある。 データパスは Source::merge_preferred_mat 経由で動作する。
 #[test]
 #[ignore = "Flow::new().merge_preferred_mat() via .via() graph wiring limitation — use Source::merge_preferred_mat for data path"]
 fn flow_merge_preferred_mat_is_public_and_preserves_existing_data_path_contract() {
@@ -391,11 +392,11 @@ fn flow_merge_preferred_mat_is_public_and_preserves_existing_data_path_contract(
 }
 
 // ---------------------------------------------------------------------------
-// Flow::merge_sorted_mat — public API contract
+// Flow::merge_sorted_mat — 公開 API 契約
 // ---------------------------------------------------------------------------
 
-// Same graph wiring limitation as merge_mat. Mat combine logic is verified
-// by unit test merge_sorted_mat_combines_materialized_values.
+// merge_mat と同じグラフ配線の制限。マテリアライズ値の結合ロジックは
+// ユニットテスト merge_sorted_mat_combines_materialized_values で検証済み。
 #[test]
 #[ignore = "Flow::new().merge_sorted_mat() graph wiring limitation — mat combine verified in unit tests"]
 fn flow_merge_sorted_mat_is_public_and_combines_materialized_values() {
@@ -406,8 +407,8 @@ fn flow_merge_sorted_mat_is_public_and_combines_materialized_values() {
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
 
-// Flow::new().merge_sorted_mat() via .via() has the same graph wiring
-// limitation as merge_mat. Data path works via Source::merge_sorted_mat.
+// Flow::new().merge_sorted_mat() を .via() 経由で使用すると merge_mat
+// と同じグラフ配線の制限がある。 データパスは Source::merge_sorted_mat 経由で動作する。
 #[test]
 #[ignore = "Flow::new().merge_sorted_mat() via .via() graph wiring limitation — use Source::merge_sorted_mat for data path"]
 fn flow_merge_sorted_mat_is_public_and_preserves_existing_data_path_contract() {

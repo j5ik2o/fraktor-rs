@@ -22,7 +22,7 @@ fn new_returns_ports_passed_at_construction() {
   let in7_id = in7.id();
   let out_id = out.id();
 
-  let shape = FanInShape8::new(in0, in1, in2, in3, in4, in5, in6, in7, out);
+  let shape = FanInShape8::new((in0, in1, in2, in3), (in4, in5, in6, in7), out);
 
   assert_eq!(shape.in0().id(), in0_id);
   assert_eq!(shape.in1().id(), in1_id);
