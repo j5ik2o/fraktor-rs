@@ -4,11 +4,11 @@ tasks:
     auto_pr: true
     draft_pr: true
     name: stream-mojuuru-gyappu-2026-03-1
-    status: running
+    status: completed
     slug: stream-mojuuru-gyappu-2026-03
     summary: "# stream モジュール ギャップ分析"
     task_dir: .takt/tasks/20260320-130813-stream-2026-03-20-2026-03-17
     created_at: 2026-03-20T13:08:13.581Z
-    started_at: 2026-03-21T06:15:26.840Z
-    completed_at: null
-    owner_pid: 94864
+    started_at: 2026-03-21T06:15:26.842Z
+    completed_at: 2026-03-21T11:42:58.907Z
+    owner_pid: null
