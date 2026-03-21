@@ -82,3 +82,105 @@ fn from_flow_and_build_accept_non_sync_output_types() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new().map(Source::single);
   let _rebuilt: Flow<u32, Source<u32, StreamNotUsed>, StreamNotUsed> = GraphDslBuilder::from_flow(flow).build();
 }
+
+// ---------------------------------------------------------------------------
+// C4: GraphDSL.Builder — add_source / add_flow / add_sink / connect
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_source_returns_outlet() {
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let outlet = builder.add_source(Source::single(42_u32));
+
+  // Outlet should have a valid port id (non-default).
+  // We verify that we can use it without panic.
+  let _ = outlet.id();
+}
+
+#[test]
+fn add_flow_returns_inlet_outlet_pair() {
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let (inlet, outlet) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1));
+
+  let _ = inlet.id();
+  let _ = outlet.id();
+}
+
+#[test]
+fn add_sink_returns_inlet() {
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let inlet = builder.add_sink(Sink::<u32, _>::ignore());
+
+  let _ = inlet.id();
+}
+
+#[test]
+fn connect_wires_outlet_to_inlet() {
+  // Given: a builder with a source and a sink added
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_outlet = builder.add_source(Source::single(7_u32));
+  let sink_inlet = builder.add_sink(Sink::<u32, _>::ignore());
+
+  // When: connecting the source outlet to the sink inlet
+  let result = builder.connect(&source_outlet, &sink_inlet);
+
+  // Then: the connection succeeds
+  assert!(result.is_ok());
+}
+
+#[test]
+fn create_flow_builds_flow_via_builder_block() {
+  // Given: a create_flow call that adds a map flow and wires it
+  let flow = GraphDsl::create_flow(|builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
+    let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v: u32| v * 3));
+    // The builder's main inlet connects to map_in, map_out connects to main outlet
+    // (exact wiring depends on implementation; this tests the builder block pattern itself)
+    let _ = (map_in, map_out);
+  });
+
+  // When: the flow is built successfully
+  let (_graph, _mat) = flow.into_parts();
+
+  // Then: the builder block executed without panic and produced a valid flow
+}
+
+#[test]
+fn create_flow_mat_preserves_materialized_value() {
+  // Given: a create_flow_mat call with an initial Mat value
+  let flow = GraphDsl::create_flow_mat(99_u32, |_builder: &mut GraphDslBuilder<u32, u32, u32>| {
+    // No additional wiring needed for Mat-only test
+  });
+
+  // When: extracting the materialized value
+  let (_graph, mat) = flow.into_parts();
+
+  // Then: the initial Mat value is preserved
+  assert_eq!(mat, 99_u32);
+}
+
+#[test]
+fn add_source_and_connect_to_sink_produces_data() {
+  // Given: a builder with explicitly added source, map flow, and sink
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::from_array([1_u32, 2, 3]));
+  let (map_in, map_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10));
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore());
+
+  // When: wiring source → map → sink
+  builder.connect(&source_out, &map_in).expect("connect source to map");
+  builder.connect(&map_out, &sink_in).expect("connect map to sink");
+
+  // Then: the graph can be built without error
+  let _flow = builder.build();
+}
+
+#[test]
+fn create_flow_empty_block_produces_valid_flow() {
+  // Given: create_flow with an empty build block
+  let flow = GraphDsl::create_flow(|_builder: &mut GraphDslBuilder<u32, u32, StreamNotUsed>| {
+    // empty — no additional wiring
+  });
+
+  // Then: the flow is successfully built without panic
+  let (_graph, _mat) = flow.into_parts();
+}

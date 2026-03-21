@@ -1,18 +1,20 @@
 use core::marker::PhantomData;
 
-use super::StreamGraph;
+use super::{MatCombine, StreamError, StreamGraph, shape::{Inlet, Outlet}};
 use crate::core::{
   MatCombineRule, StreamNotUsed,
-  stage::{Sink, flow::Flow},
+  stage::{Sink, Source, flow::Flow},
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Minimal builder facade for composing stream graphs.
+/// Builder facade for composing stream graphs.
 ///
-/// This builder intentionally reuses the existing linear `Flow` composition
-/// model instead of introducing arbitrary port wiring.
+/// Supports both linear composition (via [`via`](Self::via) / [`to`](Self::to))
+/// and non-linear topologies (via [`add_source`](Self::add_source) /
+/// [`add_flow`](Self::add_flow) / [`add_sink`](Self::add_sink) /
+/// [`connect`](Self::connect)).
 pub struct GraphDslBuilder<In, Out, Mat> {
   graph: StreamGraph,
   mat:   Mat,
@@ -106,5 +108,60 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
     Out: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
     self.build().to_mat(sink, combine)
+  }
+
+  /// Imports a source graph and returns its outlet port.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(sourceGraph)`.
+  /// The source's materialized value is discarded.
+  #[must_use]
+  pub fn add_source<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Outlet<T>
+  where
+    T: Send + Sync + 'static, {
+    let (other_graph, _mat) = source.into_parts();
+    let outlet_id = other_graph.tail_outlet().expect("source graph must have an outlet");
+    self.graph.append_unwired(other_graph);
+    Outlet::from_id(outlet_id)
+  }
+
+  /// Imports a flow graph and returns its (inlet, outlet) port pair.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(flowGraph)`.
+  /// The flow's materialized value is discarded.
+  #[must_use]
+  pub fn add_flow<I, O, Mat2>(&mut self, flow: Flow<I, O, Mat2>) -> (Inlet<I>, Outlet<O>)
+  where
+    I: Send + Sync + 'static,
+    O: Send + Sync + 'static, {
+    let (other_graph, _mat) = flow.into_parts();
+    let inlet_id = other_graph.head_inlet().expect("flow graph must have an inlet");
+    let outlet_id = other_graph.tail_outlet().expect("flow graph must have an outlet");
+    self.graph.append_unwired(other_graph);
+    (Inlet::from_id(inlet_id), Outlet::from_id(outlet_id))
+  }
+
+  /// Imports a sink graph and returns its inlet port.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(sinkGraph)`.
+  /// The sink's materialized value is discarded.
+  #[must_use]
+  pub fn add_sink<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Inlet<T>
+  where
+    T: Send + Sync + 'static, {
+    let (other_graph, _mat) = sink.into_parts();
+    let inlet_id = other_graph.head_inlet().expect("sink graph must have an inlet");
+    self.graph.append_unwired(other_graph);
+    Inlet::from_id(inlet_id)
+  }
+
+  /// Connects an outlet to an inlet within this builder's graph.
+  ///
+  /// Corresponds to Pekko's `~>` operator.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] when a port is unknown.
+  pub fn connect<T>(&mut self, from: &Outlet<T>, to: &Inlet<T>) -> Result<(), StreamError> {
+    self.graph.connect(from, to, MatCombine::KeepLeft)
   }
 }

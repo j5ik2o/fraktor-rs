@@ -1021,7 +1021,7 @@ fn group_by_default_cancels_upstream_after_head_completion() {
     pulls:   pulls.clone(),
     cancels: cancels.clone(),
   })
-  .group_by(4, |value: &u32| value % 2)
+  .group_by(4, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   .expect("group_by")
   .merge_substreams()
   .to_mat(Sink::head(), KeepRight);

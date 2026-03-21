@@ -460,7 +460,7 @@ fn verify_policy_surface() {
 
 fn assert_group_by_surface() {
   let grouped_values = Source::single(1_u32)
-    .group_by(1, |value: &u32| *value)
+    .group_by(1, |value: &u32| *value, SubstreamCancelStrategy::default())
     .expect("positive max_substreams must be accepted")
     .merge_substreams()
     .collect_values()
