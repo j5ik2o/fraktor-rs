@@ -324,8 +324,8 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
 
 #[test]
 fn flow_merge_mat_is_public_and_combines_materialized_values() {
-  let flow = Flow::<u32, u32, StreamNotUsed>::new()
-    .merge_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
+  let flow =
+    Flow::<u32, u32, StreamNotUsed>::new().merge_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
   let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
