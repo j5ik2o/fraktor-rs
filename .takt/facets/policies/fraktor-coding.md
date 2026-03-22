@@ -45,6 +45,12 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - `./scripts/ci-check.sh ai all` は `final-ci` ムーブメント専用。他のムーブメントでは実行禁止
 - 変更範囲に限定した単体版（例: `./scripts/ci-check.sh ai dylint -m モジュール名`）は許可
 
+## アーティファクト配置ルール
+
+- takt ピース実行中に生成するレポート・計画・分析・決定ログ等の中間アーティファクトは **`.takt/` 配下にのみ**配置すること
+- プロジェクトルート直下やソースツリー内（`reports/`, `docs/plans/` 等）に中間アーティファクトを書き出してはならない
+- ソースコードの編集（`modules/`, `showcases-std/` 等）はこの制約の対象外
+
 ## REJECT 基準
 
 - `#[allow]` による lint 回避（人間許可なし）
@@ -53,3 +59,4 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 - テストなしの実装
 - 後方互換のための不要なコード
 - `./scripts/ci-check.sh ai all` の `final-ci` 以外での実行
+- `.takt/` 外への中間アーティファクト配置
