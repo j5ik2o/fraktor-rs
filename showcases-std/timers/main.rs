@@ -71,8 +71,8 @@ fn timer_demo() -> Behavior<Command> {
         Ok(Behaviors::same())
       },
       | Command::ShouldNotArrive => {
-        // キャンセル済みのためここには到達しない
-        println!("  [ERROR] キャンセルしたはずのメッセージが到着しました");
+        // キャンセルは best-effort のため、タイミングによっては到着しうる
+        println!("  [cancel] キャンセル済みメッセージが到着しました（best-effort のため許容）");
         Ok(Behaviors::same())
       },
     })

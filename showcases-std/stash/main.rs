@@ -75,7 +75,10 @@ fn open(total: i32) -> Behavior<Command> {
 
 #[allow(clippy::print_stdout)]
 fn main() {
-  use std::{thread, time::Duration};
+  use std::{
+    thread,
+    time::{Duration, Instant},
+  };
 
   let props = TypedProps::from_behavior_factory(|| buffering(0));
   let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
@@ -94,7 +97,9 @@ fn main() {
   thread::sleep(Duration::from_millis(50));
   let response = actor.ask::<i32, _>(|reply_to| Command::Read { reply_to }).expect("ask");
   let mut future = response.future().clone();
+  let deadline = Instant::now() + Duration::from_secs(1);
   while !future.is_ready() {
+    assert!(Instant::now() < deadline, "ask timeout: Read did not return within 1s");
     thread::sleep(Duration::from_millis(10));
   }
   let value = future.try_take().expect("ready").expect("ok");

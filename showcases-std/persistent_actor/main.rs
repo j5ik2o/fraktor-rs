@@ -131,6 +131,10 @@ fn main() {
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+
+  // コマンド処理と flush_batch 完了を待機してからシャットダウン
+  thread::sleep(std::time::Duration::from_millis(500));
+
   system.terminate().expect("terminate");
   while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();
