@@ -1,5 +1,0 @@
-# サマリー
-
-- 結果: PASS
-- 主要理由: タスク指示書の成功条件4項目がすべて充足。architect-reviewの指摘（ARCH-NEW-ci-check-unit-sleep-scope）も修正完了。actor 1114テスト・remote 77+3テスト全通過、check-unit-sleep違反なし。全findingがresolved。
-- 次のアクション: architect-review.mdに新たなREJECT指摘（ARCH-NEW-unit-timeout-check-missing: `tokio::time::timeout`の検査対象拡張）が追加されているが、これはsupervise完了後の更新であり、次回イテレーションのreviewers→fixサイクルで対応が必要。
