@@ -32,7 +32,7 @@ config_file = "agents/worker.toml"
 
 [mcp_servers.serena]
 command = "zsh"
-args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context codex --project . --enable-web-dashboard false"]
+args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx --from git+https://github.com/oraios/serena@v0.1.4 serena start-mcp-server --context codex --project . --enable-web-dashboard false"]
 
 [tui]
 status_line = ["current-dir", "git-branch"]
