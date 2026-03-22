@@ -73,6 +73,9 @@ name = "persistent_actor"
 path = "persistent_actor/main.rs"
 required-features = ["advanced"]
 
+[lints]
+workspace = true
+
 [[example]]
 name = "cluster_membership"
 path = "cluster_membership/main.rs"

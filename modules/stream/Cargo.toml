@@ -23,6 +23,9 @@ fraktor-actor-rs = { workspace = true }
 portable-atomic = { workspace = true, default-features = false, features = ["critical-section"] }
 miniz_oxide = { version = "0.9", optional = true, default-features = false, features = ["with-alloc"] }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 tempfile = "3"

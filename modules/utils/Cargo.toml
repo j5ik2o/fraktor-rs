@@ -27,5 +27,8 @@ portable-atomic = { workspace = true, default-features = false, features = ["cri
 cortex-m = { workspace = true, optional = true }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 proptest = "1.5"

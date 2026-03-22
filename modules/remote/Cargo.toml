@@ -28,6 +28,9 @@ ahash = { workspace = true, default-features = false }
 spin = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["rt-multi-thread", "net", "sync", "time", "io-util"] }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
