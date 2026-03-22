@@ -285,11 +285,11 @@ run_cargo() {
         local status=$?
         set -e
         if [[ "${status}" -ne 0 ]]; then
-          if [[ "${status}" -eq 124 ]]; then
+          if [[ "${status}" -eq 124 ]] || [[ "${status}" -eq 137 ]]; then
             record_hang_suspect "${command_string}"
             echo "error: HANG_SUSPECT: ${command_string}" >&2
-            echo "error: ${CI_CHECK_GUARD_TIMEOUT_SEC}s を超過したため停止しました。盲目的な再実行は禁止です。対象を絞るか計測を追加してください。" >&2
-            return 124
+            echo "error: ${CI_CHECK_GUARD_TIMEOUT_SEC}s を超過したため停止しました（exit ${status}）。盲目的な再実行は禁止です。対象を絞るか計測を追加してください。" >&2
+            return "${status}"
           fi
           clear_hang_suspect
           echo "error: ${command_string}" >&2
