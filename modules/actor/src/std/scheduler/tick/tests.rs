@@ -139,7 +139,6 @@ impl RecordingSubscriber {
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
-  
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().expect("lock").push(event.clone());
   }

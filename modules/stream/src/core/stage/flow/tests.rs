@@ -4123,10 +4123,10 @@ fn throttle_shaping_logic_uses_backpressure_at_capacity() {
 #[test]
 fn buffer_logic_drop_buffer_clears_pending_and_keeps_newest() {
   let mut logic = super::BufferLogic::<u32> {
-    capacity:      2,
-    overflow_mode: super::BufferOverflowMode::Strategy(OverflowStrategy::DropBuffer),
-    pending:       VecDeque::new(),
-    source_done:   false,
+    capacity:          2,
+    overflow_strategy: OverflowStrategy::DropBuffer,
+    pending:           VecDeque::new(),
+    source_done:       false,
   };
 
   let _ = logic.apply(Box::new(1_u32)).expect("first apply");
@@ -4143,10 +4143,10 @@ fn buffer_logic_drop_buffer_clears_pending_and_keeps_newest() {
 #[test]
 fn buffer_logic_fail_returns_buffer_overflow_when_full() {
   let mut logic = super::BufferLogic::<u32> {
-    capacity:      1,
-    overflow_mode: super::BufferOverflowMode::Strategy(OverflowStrategy::Fail),
-    pending:       VecDeque::new(),
-    source_done:   false,
+    capacity:          1,
+    overflow_strategy: OverflowStrategy::Fail,
+    pending:           VecDeque::new(),
+    source_done:       false,
   };
 
   let _ = logic.apply(Box::new(1_u32)).expect("first apply");

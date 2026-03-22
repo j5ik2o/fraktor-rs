@@ -4,7 +4,7 @@ use crate::core::typed::{
   ServiceKey,
   delivery::{
     ConsumerControllerCommand, WorkPullingProducerController, WorkPullingProducerControllerCommand,
-    WorkPullingProducerControllerSettings, WorkerStats,
+    WorkPullingProducerControllerSettings,
   },
 };
 
@@ -22,10 +22,4 @@ fn work_pulling_producer_controller_with_settings_compiles() {
   let key = ServiceKey::<ConsumerControllerCommand<u32>>::new("test-workers");
   let settings = WorkPullingProducerControllerSettings::new();
   let _behavior = WorkPullingProducerController::behavior_with_settings::<u32>("test-producer", key, &settings);
-}
-
-#[test]
-fn worker_stats_new_returns_count() {
-  let stats = WorkerStats::new(3);
-  assert_eq!(stats.number_of_workers(), 3);
 }

@@ -321,6 +321,8 @@ impl Subscriber for RecordingSubscriber {
     true
   }
 
+  // NOTE: Returns a constant ID because these tests only verify event recording,
+  // not span tracking. Span IDs are not used by the test assertions.
   fn new_span(&self, _: &Attributes<'_>) -> Id {
     Id::from_u64(0)
   }

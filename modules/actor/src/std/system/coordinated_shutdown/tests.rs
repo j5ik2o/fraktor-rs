@@ -164,14 +164,18 @@ async fn run_skips_disabled_phases() {
   assert_eq!(executed.load(Ordering::SeqCst), 0);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn tasks_within_phase_run_concurrently() {
   let cs = default_shutdown();
   let counter = ArcShared::new(AtomicU32::new(0));
+  let barrier = ArcShared::new(tokio::sync::Barrier::new(3));
 
   for i in 0..3 {
     let c = counter.clone();
+    let b = barrier.clone();
     cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, &format!("task-{i}"), move || async move {
+      // 全タスクがランデブーポイントに到達するまで待機（並行実行の証明）
+      b.wait().await;
       c.fetch_add(1, Ordering::SeqCst);
     })
     .unwrap();
