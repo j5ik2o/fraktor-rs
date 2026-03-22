@@ -25,7 +25,7 @@
    ```
 4. 失敗した場合はエラー箇所を `grep` で特定:
    ```
-   grep -E "^error|FAILED|Exit code" /tmp/ci-check-result.txt | head -20
+   grep -E "^error|FAILED|EXIT_CODE" /tmp/ci-check-result.txt | head -20
    ```
 
 **必須出力（見出しを含める）**
