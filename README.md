@@ -87,7 +87,7 @@ Each crate exports the same API surface across `core` and `std`: `core` stays al
 | `modules/remote/` | `fraktor-remote-rs`: remoting extension, remote actor ref provider, endpoint managers/readers/writers, remote watcher daemon, loopback + Tokio TCP transport. |
 | `modules/cluster/` | `fraktor-cluster-rs`: protoactor-go compatible cluster primitives including identity lookup, placement strategies, membership gossip, topology management, and AWS ECS integration. |
 | `modules/streams/` | `fraktor-stream-rs`: stream processing primitives built on the actor system for reactive data flow patterns. |
-| `modules/*/examples/` | Feature-complete samples (no_std ping-pong, Tokio supervisors, remoting loopback/tcp quickstarts, cluster membership gossip). |
+| `showcases-std/` | Runnable examples organised by use-case: getting started, request/reply, state management, child lifecycle, timers, routing, stash, serialization, stream pipeline, persistent actor, cluster membership, and remote messaging. Run with `cargo run -p fraktor-showcases-std --example <name>` (add `--features advanced` for cross-module examples). |
 | `docs/guides/` | Operational guides such as actor-system bootstrapping, DeathWatch migration, and tick-driver quickstarts. |
 | `.kiro/steering/` | Project-wide steering policies (architecture, tech, structure) enforced by custom dylint rules. |
 | `.kiro/specs/` | Specification folders following the requirements → design → tasks → implementation workflow. |

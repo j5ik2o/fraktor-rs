@@ -223,14 +223,14 @@ impl Actor for PongActor {
 }
 
 // TickDriver の設定は省略（実際には TickDriverConfig の構成が必要）
-// 完全な例は modules/actor/examples/ping_pong_not_std/main.rs を参照してください
+// 完全な例は showcases-std/getting_started/main.rs を参照してください
 
 #[cfg(not(target_os = "none"))]
 fn main() {
   use std::thread;
 
   // no_std 向け TickDriver の構成（デモ用ハードウェアパルス）
-  // 詳細は modules/actor/examples/no_std_tick_driver_support.rs を参照
+  // 詳細は showcases-std/support/tick_driver.rs を参照
   let props = Props::from_fn(|| GuardianActor);
   // let (tick_driver, _pulse_handle) = hardware_tick_driver_config();
   // let system = ActorSystem::new(&props, tick_driver).expect("system");
@@ -243,51 +243,54 @@ fn main() {
 }
 ```
 
-> **注意**: no_std 環境では `TickDriverConfig` の構成が必要です。完全な動作例は `modules/actor/examples/ping_pong_not_std/` を参照してください。
+> **注意**: no_std 環境では `TickDriverConfig` の構成が必要です。完全な動作例は `showcases-std/getting_started/` を参照してください。
 
 ## 5. サンプルの実行方法
 
-### Tokio 版（std）
+すべてのサンプルは `showcases-std` クレートに統合されています。
+
+### Basic examples
 
 ```bash
-cargo run -p fraktor-actor-rs --example ping_pong_tokio_std --features tokio-executor
+# Getting Started（最小構成の Ping-Pong）
+cargo run -p fraktor-showcases-std --example getting_started
+
+# Request/Reply（ask パターン）
+cargo run -p fraktor-showcases-std --example request_reply
+
+# State Management（Behavior 切替によるカウンター）
+cargo run -p fraktor-showcases-std --example state_management
+
+# Child Lifecycle（子アクターの spawn・watch・supervision）
+cargo run -p fraktor-showcases-std --example child_lifecycle
+
+# Timers（遅延実行・定期実行・キャンセル）
+cargo run -p fraktor-showcases-std --example timers
+
+# Routing（Pool Router による負荷分散）
+cargo run -p fraktor-showcases-std --example routing
+
+# Stash（メッセージの一時退避と復帰）
+cargo run -p fraktor-showcases-std --example stash
+
+# Serialization（JSON / bincode）
+cargo run -p fraktor-showcases-std --example serialization
+
+# Stream Pipeline（Source → Map → Fold → Sink）
+cargo run -p fraktor-showcases-std --example stream_pipeline
 ```
 
-期待される出力:
-
-```
-[ThreadId(N)] received ping: ping-1
-[ThreadId(N)] pong replied: ping-1
-[ThreadId(N)] received ping: ping-2
-[ThreadId(N)] pong replied: ping-2
-[ThreadId(N)] received ping: ping-3
-[ThreadId(N)] pong replied: ping-3
-```
-
-### no_std 版（ホスト上で実行）
+### Advanced examples（`--features advanced` が必要）
 
 ```bash
-cargo run -p fraktor-actor-rs --example ping_pong_not_std
-```
+# Persistent Actor（イベントソーシング）
+cargo run -p fraktor-showcases-std --features advanced --example persistent_actor
 
-期待される出力の内容（ping/pong が3往復すること）は Tokio 版と同様ですが、実行環境の違いにより表示順は前後する場合があります。
+# Cluster Membership（クラスタ参加とメンバーシップ変更の観測）
+cargo run -p fraktor-showcases-std --features advanced --example cluster_membership
 
-### Typed Actor 版（no_std）
-
-```bash
-cargo run -p fraktor-actor-rs --example ping_pong_typed_not_std
-```
-
-### Behavior ベースのカウンター（std）
-
-```bash
-cargo run -p fraktor-actor-rs --example behaviors_counter_typed_std --features std
-```
-
-### Supervision（std）
-
-```bash
-cargo run -p fraktor-actor-rs --example supervision_std --features std
+# Remote Messaging（ネットワーク越しのアクター通信）
+cargo run -p fraktor-showcases-std --features advanced --example remote_messaging
 ```
 
 ## 6. 次のステップ
@@ -296,17 +299,18 @@ cargo run -p fraktor-actor-rs --example supervision_std --features std
 
 | トピック | 参照先 |
 |----------|--------|
-| **Typed Actor** | `examples/ping_pong_typed_not_std` - 型付きメッセージによる安全な通信 |
-| **Behavior パターン** | `examples/behaviors_counter_typed_std` - 関数型スタイルのアクター定義 |
-| **Supervision（監督）** | `examples/supervision_std` - 子アクターの障害復旧戦略 |
-| **DeathWatch** | `examples/death_watch_std` - アクター終了の監視 |
-| **Scheduler** | `examples/scheduler_once_no_std` - 遅延実行・周期実行 |
-| **EventStream** | `examples/logger_subscriber_std` - ライフサイクルイベントの購読 |
-| **Serialization** | `examples/serialization_json_std` - メッセージのシリアライズ |
-| **Remoting** | `modules/remote/examples/loopback_quickstart` - プロセス間通信 |
-| **Cluster** | `modules/cluster/examples/quickstart` - 複数ノードのクラスタリング |
-| **Persistence** | `modules/persistence/examples/persistent_counter_no_std` - イベントソーシング |
-| **Streams** | `modules/stream/examples/actor_system_basic_std` - ストリーム処理 |
+| **Getting Started** | `showcases-std/getting_started` - 最小構成の Ping-Pong |
+| **Request/Reply** | `showcases-std/request_reply` - ask パターンによる応答取得 |
+| **State Management** | `showcases-std/state_management` - Behavior 切替によるカウンター |
+| **Child Lifecycle** | `showcases-std/child_lifecycle` - 子アクターの spawn・watch・supervision |
+| **Timers** | `showcases-std/timers` - 遅延実行・定期実行・キャンセル |
+| **Routing** | `showcases-std/routing` - Pool Router による負荷分散 |
+| **Stash** | `showcases-std/stash` - メッセージの一時退避と復帰 |
+| **Serialization** | `showcases-std/serialization` - JSON / bincode シリアライゼーション |
+| **Stream Pipeline** | `showcases-std/stream_pipeline` - Source → Map → Fold → Sink |
+| **Persistent Actor** | `showcases-std/persistent_actor` - イベントソーシング（advanced） |
+| **Cluster Membership** | `showcases-std/cluster_membership` - クラスタ参加とメンバーシップ変更の観測（advanced） |
+| **Remote Messaging** | `showcases-std/remote_messaging` - ネットワーク越しのアクター通信（advanced） |
 
 ### 関連ガイド
 
