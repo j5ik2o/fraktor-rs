@@ -12,8 +12,6 @@
 
 #![allow(clippy::print_stdout)]
 
-use std::{thread, time::Duration};
-
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
@@ -21,6 +19,7 @@ use fraktor_actor_rs::{
     error::ActorError,
     event::stream::{EventStreamEvent, EventStreamSubscription},
     extension::ExtensionInstallers,
+    futures::ActorFutureListener,
     messaging::AnyMessageView,
     props::Props,
     serialization::SerializationExtensionInstaller,
@@ -161,9 +160,8 @@ async fn main() -> Result<()> {
   // ActorSystem の終了待機
   node_a.system.terminate().map_err(|e| anyhow!("terminate node-a: {e:?}"))?;
   node_b.system.terminate().map_err(|e| anyhow!("terminate node-b: {e:?}"))?;
-  drop(node_b.system);
-  drop(node_a.system);
-  thread::sleep(Duration::from_millis(200));
+  ActorFutureListener::new(node_a.system.when_terminated()).await;
+  ActorFutureListener::new(node_b.system.when_terminated()).await;
 
   println!("\n=== Demo complete ===");
   Ok(())

@@ -11,7 +11,7 @@
 
 #![allow(clippy::print_stdout)]
 
-use std::{thread, time::Duration};
+use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
@@ -19,6 +19,7 @@ use fraktor_actor_rs::{
     actor::{Actor, ActorContext, actor_ref::ActorRef},
     error::ActorError,
     extension::ExtensionInstallers,
+    futures::ActorFutureListener,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     serialization::SerializationExtensionInstaller,
@@ -148,12 +149,14 @@ async fn main() -> Result<()> {
     .map_err(|e| anyhow!("send StartPing failed: {e:?}"))?;
 
   // メッセージ処理を待機
-  thread::sleep(Duration::from_millis(1500));
+  tokio::time::sleep(Duration::from_millis(1500)).await;
 
   // シャットダウン
   println!("\n--- シャットダウン ---");
-  drop(sender);
-  drop(receiver);
+  sender.terminate().map_err(|e| anyhow!("terminate sender: {e:?}"))?;
+  receiver.terminate().map_err(|e| anyhow!("terminate receiver: {e:?}"))?;
+  ActorFutureListener::new(sender.when_terminated()).await;
+  ActorFutureListener::new(receiver.when_terminated()).await;
 
   println!("=== Demo complete ===");
   Ok(())
