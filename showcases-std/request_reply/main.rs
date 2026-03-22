@@ -56,27 +56,27 @@ fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
     let done = done.clone();
 
     Behaviors::receive_message(move |ctx, msg: &RequesterMsg| match msg {
-      RequesterMsg::Start => {
+      | RequesterMsg::Start => {
         let mut target = responder_ref.clone();
         ctx
           .ask(
             &mut target,
             |reply_to| ResponderMsg::GetValue { reply_to },
             |result| match result {
-              Ok(value) => RequesterMsg::GotResponse(value),
-              Err(_) => RequesterMsg::GotFailure,
+              | Ok(value) => RequesterMsg::GotResponse(value),
+              | Err(_) => RequesterMsg::GotFailure,
             },
             Duration::from_secs(5),
           )
           .map_err(|e| ActorError::recoverable(format!("ask failed: {e:?}")))?;
         Ok(Behaviors::same())
       },
-      RequesterMsg::GotResponse(value) => {
+      | RequesterMsg::GotResponse(value) => {
         println!("received response: {value}");
         done.store(true, Ordering::Release);
         Ok(Behaviors::same())
       },
-      RequesterMsg::GotFailure => {
+      | RequesterMsg::GotFailure => {
         println!("ask failed (timeout or error)");
         done.store(true, Ordering::Release);
         Ok(Behaviors::same())

@@ -32,7 +32,6 @@ fn tokio_quickstart_with_event_stream(
   };
 
   crate::core::scheduler::tick_driver::TickDriverConfig::new(move |ctx| {
-    #[allow(clippy::expect_used)]
     let handle = tokio::runtime::Handle::try_current().expect("Tokio runtime handle unavailable");
 
     let scheduler: SchedulerShared = ctx.scheduler();
@@ -111,7 +110,7 @@ fn tokio_quickstart_with_event_stream(
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-#[allow(clippy::expect_used)]
+
 async fn tokio_interval_driver_produces_ticks() {
   let config = TickDriverConfig::with_resolution(Duration::from_millis(5));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
@@ -140,14 +139,14 @@ impl RecordingSubscriber {
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
-  #[allow(clippy::expect_used)]
+  
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().expect("lock").push(event.clone());
   }
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-#[allow(clippy::expect_used)]
+
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = EventStreamShared::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
@@ -174,7 +173,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-#[allow(clippy::expect_used)]
+
 async fn default_config_provisions_driver() {
   let config = TickDriverConfig::default_config();
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());

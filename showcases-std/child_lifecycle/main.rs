@@ -41,11 +41,11 @@ enum ChildCommand {
 
 fn fussy_worker(crashes_remaining: Arc<AtomicU32>) -> Behavior<ChildCommand> {
   Behaviors::receive_message(move |_ctx, message: &ChildCommand| match message {
-    ChildCommand::Work => {
+    | ChildCommand::Work => {
       println!("  [child] 正常に処理しました");
       Ok(Behaviors::same())
     },
-    ChildCommand::Crash => {
+    | ChildCommand::Crash => {
       let remaining = crashes_remaining.load(Ordering::Acquire);
       if remaining > 0 {
         crashes_remaining.fetch_sub(1, Ordering::Release);

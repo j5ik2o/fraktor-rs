@@ -55,12 +55,12 @@ struct ClusterEventPrinter {
 impl EventStreamSubscriber for ClusterEventPrinter {
   fn on_event(&mut self, event: &EventStreamEvent) {
     match event {
-      EventStreamEvent::Extension { name, payload } if name == "cluster" => {
+      | EventStreamEvent::Extension { name, payload } if name == "cluster" => {
         if let Some(cluster_event) = payload.as_view().downcast_ref::<ClusterEvent>() {
           println!("[cluster][{}] {:?}", self.label, cluster_event);
         }
       },
-      _ => {},
+      | _ => {},
     }
   }
 }
