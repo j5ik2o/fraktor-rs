@@ -467,7 +467,7 @@ impl ActorSystem {
     }
 
     if self.state.begin_termination() {
-      let _ = self.state.shutdown_scheduler();
+      let _summary = self.state.shutdown_scheduler();
       if let Some(root_pid) = self.state.root_guardian_pid() {
         if let Some(user_pid) = self.state.user_guardian_pid() {
           return self.state.send_system_message(root_pid, SystemMessage::StopChild(user_pid));
@@ -657,8 +657,9 @@ impl ActorSystem {
   fn force_termination_hooks(&self) {
     if let Some(system_pid) = self.state.system_guardian_pid()
       && let Some(system_ref) = self.actor_ref(system_pid)
+      && let Err(error) = system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks))
     {
-      let _ = system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks));
+      self.state.record_send_error(Some(system_pid), &error);
     }
   }
 }

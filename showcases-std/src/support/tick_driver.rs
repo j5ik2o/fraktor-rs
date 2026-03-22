@@ -189,8 +189,10 @@ impl StdTickDriverPump {
 
   fn stop(&mut self) {
     self.running.store(false, Ordering::Release);
-    if let Some(handle) = self.handle.take() {
-      let _ = handle.join();
+    if let Some(handle) = self.handle.take()
+      && handle.join().is_err()
+    {
+      eprintln!("warn: tick driver thread panicked during join");
     }
   }
 }

@@ -33,6 +33,6 @@ fi
 [[ -f "$CLAUDE_WRAPPER" ]] && export TAKT_CLAUDE_CLI_PATH="$CLAUDE_WRAPPER"
 [[ -f "$CODEX_WRAPPER" ]] && export TAKT_CODEX_CLI_PATH="$CODEX_WRAPPER"
 
-echo "ACCOUNT=${ACCOUNT}"
+echo "ACCOUNT=${ACCOUNT}" >&2
 
 exec takt "$@"

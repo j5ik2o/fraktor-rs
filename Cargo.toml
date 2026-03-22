@@ -20,6 +20,9 @@ include = [
     "LICENSE-MIT",
 ]
 
+[lints]
+workspace = true
+
 [workspace]
 resolver = "2"
 members = [
@@ -45,6 +48,12 @@ libraries = [
     { path = "lints/rustdoc-lint" },
     { path = "lints/cfg-std-forbid-lint" },
 ]
+
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+let_underscore_must_use = "deny"
 
 [workspace.dependencies]
 fraktor-actor-rs = { path = "modules/actor", version = "0.2.11" }

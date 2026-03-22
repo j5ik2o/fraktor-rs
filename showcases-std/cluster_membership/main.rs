@@ -12,8 +12,6 @@
 
 #![allow(clippy::print_stdout)]
 
-use std::{thread, time::Duration};
-
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::{
@@ -21,6 +19,7 @@ use fraktor_actor_rs::{
     error::ActorError,
     event::stream::{EventStreamEvent, EventStreamSubscription},
     extension::ExtensionInstallers,
+    futures::ActorFutureListener,
     messaging::AnyMessageView,
     props::Props,
     serialization::SerializationExtensionInstaller,
@@ -55,13 +54,13 @@ struct ClusterEventPrinter {
 
 impl EventStreamSubscriber for ClusterEventPrinter {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    if let EventStreamEvent::Extension { name, payload } = event {
-      if name == "cluster" {
-        let view = payload.as_view();
-        if let Some(cluster_event) = view.downcast_ref::<ClusterEvent>() {
+    match event {
+      | EventStreamEvent::Extension { name, payload } if name == "cluster" => {
+        if let Some(cluster_event) = payload.as_view().downcast_ref::<ClusterEvent>() {
           println!("[cluster][{}] {:?}", self.label, cluster_event);
         }
-      }
+      },
+      | _ => {},
     }
   }
 }
@@ -146,6 +145,9 @@ async fn main() -> Result<()> {
   node_a.cluster.start_member().map_err(|e| anyhow!("start_member node-a: {e:?}"))?;
   node_b.cluster.start_member().map_err(|e| anyhow!("start_member node-b: {e:?}"))?;
 
+  // クラスタ収束を待機（EventStream 経由のトポロジ適用が完了するのを待つ）
+  tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
   // メトリクスを確認
   println!("\n--- メトリクス確認 ---");
   let metrics_a = node_a.cluster.metrics().map_err(|e| anyhow!("metrics node-a: {e:?}"))?;
@@ -161,9 +163,8 @@ async fn main() -> Result<()> {
   // ActorSystem の終了待機
   node_a.system.terminate().map_err(|e| anyhow!("terminate node-a: {e:?}"))?;
   node_b.system.terminate().map_err(|e| anyhow!("terminate node-b: {e:?}"))?;
-  drop(node_b.system);
-  drop(node_a.system);
-  thread::sleep(Duration::from_millis(200));
+  ActorFutureListener::new(node_a.system.when_terminated()).await;
+  ActorFutureListener::new(node_b.system.when_terminated()).await;
 
   println!("\n=== Demo complete ===");
   Ok(())

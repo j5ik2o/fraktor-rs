@@ -98,14 +98,15 @@ impl Topic {
             }
           },
           | super::topic_command::TopicCommandKind::Unsubscribe(subscriber) => {
-            let _ = ctx.unwatch(&subscriber);
-            remove_subscriber(&mut state.local_subscribers, subscriber.pid());
-            if state.local_subscribers.is_empty() {
-              let mut receptionist = receptionist.clone();
-              receptionist
-                .tell(Receptionist::deregister(&topic_key_for_messages, ctx.self_ref()))
-                .map_err(|error| ActorError::from_send_error(&error))?;
+            if let Err(e) = ctx.unwatch(&subscriber) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("topic failed to unwatch subscriber: {:?}", e),
+                Some(ctx.pid()),
+              );
             }
+            remove_subscriber(&mut state.local_subscribers, subscriber.pid());
+            deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx)?;
           },
           | super::topic_command::TopicCommandKind::GetTopicStats { reply_to } => {
             let mut reply_to = reply_to;
@@ -121,12 +122,7 @@ impl Topic {
           },
           | super::topic_command::TopicCommandKind::SubscriberTerminated(pid) => {
             remove_subscriber(&mut state.local_subscribers, pid);
-            if state.local_subscribers.is_empty() {
-              let mut receptionist = receptionist.clone();
-              receptionist
-                .tell(Receptionist::deregister(&topic_key_for_messages, ctx.self_ref()))
-                .map_err(|error| ActorError::from_send_error(&error))?;
-            }
+            deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx)?;
           },
         }
         Ok(Behaviors::same())
@@ -165,6 +161,22 @@ impl Topic {
     M: Clone + Send + Sync + 'static, {
     TopicCommand::get_topic_stats(reply_to)
   }
+}
+
+fn deregister_if_empty<M>(
+  state: &TopicState<M>,
+  receptionist: &mut TypedActorRef<crate::core::typed::ReceptionistCommand>,
+  topic_key: &ServiceKey<TopicCommand<M>>,
+  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, TopicCommand<M>>,
+) -> Result<(), ActorError>
+where
+  M: Clone + Send + Sync + 'static, {
+  if state.local_subscribers.is_empty() {
+    receptionist
+      .tell(Receptionist::deregister(topic_key, ctx.self_ref()))
+      .map_err(|error| ActorError::from_send_error(&error))?;
+  }
+  Ok(())
 }
 
 fn remove_subscriber<M>(subscribers: &mut Vec<TypedActorRef<M>>, pid: crate::core::actor::Pid)

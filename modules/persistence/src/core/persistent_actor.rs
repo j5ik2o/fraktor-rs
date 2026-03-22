@@ -132,38 +132,58 @@ where
   }
 
   /// Saves a snapshot.
-  fn save_snapshot(&mut self, ctx: &mut ActorContext<'_>, snapshot: ArcShared<dyn Any + Send + Sync>) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when the snapshot message send fails.
+  fn save_snapshot(
+    &mut self,
+    ctx: &mut ActorContext<'_>,
+    snapshot: ArcShared<dyn Any + Send + Sync>,
+  ) -> Result<(), ActorError> {
     let persistence_id = self.persistence_id().to_string();
     let sequence_nr = self.persistence_context().current_sequence_nr();
     let metadata = SnapshotMetadata::new(persistence_id, sequence_nr, 0);
     let message = SnapshotMessage::SaveSnapshot { metadata, snapshot, sender: ctx.self_ref() };
-    let _ = self.persistence_context().send_snapshot_message(message);
+    self.persistence_context().send_snapshot_message(message).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Deletes messages up to the given sequence number.
-  fn delete_messages(&mut self, ctx: &mut ActorContext<'_>, to_sequence_nr: u64) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when the delete-messages command send fails.
+  fn delete_messages(&mut self, ctx: &mut ActorContext<'_>, to_sequence_nr: u64) -> Result<(), ActorError> {
     let persistence_id = self.persistence_id().to_string();
     let message = JournalMessage::DeleteMessagesTo { persistence_id, to_sequence_nr, sender: ctx.self_ref() };
-    let _ = self.persistence_context().send_write_messages(message);
+    self.persistence_context().send_write_messages(message).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Deletes snapshots matching the criteria.
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when the delete-snapshots message send fails.
   fn delete_snapshots(
     &mut self,
     ctx: &mut ActorContext<'_>,
     criteria: crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria,
-  ) {
+  ) -> Result<(), ActorError> {
     let persistence_id = self.persistence_id().to_string();
     let message = SnapshotMessage::DeleteSnapshots { persistence_id, criteria, sender: ctx.self_ref() };
-    let _ = self.persistence_context().send_snapshot_message(message);
+    self.persistence_context().send_snapshot_message(message).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Deletes a single snapshot by sequence number.
-  fn delete_snapshot(&mut self, ctx: &mut ActorContext<'_>, sequence_nr: u64) {
+  ///
+  /// # Errors
+  ///
+  /// Returns `ActorError` when the delete-snapshot message send fails.
+  fn delete_snapshot(&mut self, ctx: &mut ActorContext<'_>, sequence_nr: u64) -> Result<(), ActorError> {
     let persistence_id = self.persistence_id().to_string();
     let metadata = SnapshotMetadata::new(persistence_id, sequence_nr, 0);
     let message = SnapshotMessage::DeleteSnapshot { metadata, sender: ctx.self_ref() };
-    let _ = self.persistence_context().send_snapshot_message(message);
+    self.persistence_context().send_snapshot_message(message).map_err(|error| ActorError::fatal(format!("{error:?}")))
   }
 
   /// Defers a side effect until current persistence completes (stashing mode).

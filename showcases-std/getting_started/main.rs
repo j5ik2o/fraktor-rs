@@ -46,6 +46,7 @@ fn main() {
   system.user_guardian_ref().tell(Command::Greet).expect("tell");
 
   // システムを終了
+  // NOTE: 本番コードでは条件変数やチャネルベースの待機を使用してください
   system.terminate().expect("terminate");
   while !termination.with_read(|af| af.is_ready()) {
     thread::yield_now();

@@ -46,6 +46,7 @@ Cargo.lock
 /.cargo-home*/
 
 /.takt/clone-meta/
+/.takt/runs/
 
 # AI agent intermediate artifacts (should be in .takt/ only)
 /reports/

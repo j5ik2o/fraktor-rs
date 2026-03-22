@@ -686,7 +686,9 @@ impl SystemState {
           if self.forward_remote_watch(pid, watcher) {
             return Ok(());
           }
-          let _ = self.send_system_message(watcher, SystemMessage::Terminated(pid));
+          if let Err(e) = self.send_system_message(watcher, SystemMessage::Terminated(pid)) {
+            self.record_send_error(Some(watcher), &e);
+          }
           Ok(())
         },
         | SystemMessage::Unwatch(watcher) => {
@@ -859,7 +861,9 @@ impl SystemState {
         for target in affected {
           if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
             self.record_send_error(Some(target), &send_error);
-            let _ = self.send_system_message(target, SystemMessage::Stop);
+            if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
+              self.record_send_error(Some(target), &e);
+            }
             escalate_due_to_recreate_failure = true;
           }
         }
@@ -880,14 +884,18 @@ impl SystemState {
       },
       | SupervisorDirective::Resume => {
         for target in affected {
-          let _ = self.send_system_message(target, SystemMessage::Resume);
+          if let Err(e) = self.send_system_message(target, SystemMessage::Resume) {
+            self.record_send_error(Some(target), &e);
+          }
         }
       },
     }
   }
 
   fn stop_actor(&self, pid: Pid) {
-    let _ = self.send_system_message(pid, SystemMessage::Stop);
+    if let Err(e) = self.send_system_message(pid, SystemMessage::Stop) {
+      self.record_send_error(Some(pid), &e);
+    }
   }
 
   /// Returns a reference to the ActorPathRegistry.

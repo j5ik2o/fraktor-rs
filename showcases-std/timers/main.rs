@@ -8,7 +8,11 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example timers`
 
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicU32, Ordering},
+  time::Duration,
+};
+use std::sync::Arc;
 
 use fraktor_actor_rs::core::typed::{Behavior, Behaviors, TimerKey, TypedActorSystem, TypedProps};
 use fraktor_showcases_std::support;
@@ -23,7 +27,7 @@ enum Command {
   /// 遅延実行メッセージ
   DelayedHello,
   /// 定期実行メッセージ
-  PeriodicTick(u32),
+  PeriodicTick,
   /// キャンセルされるべきメッセージ（到着しない）
   ShouldNotArrive,
 }
@@ -32,6 +36,7 @@ enum Command {
 
 fn timer_demo() -> Behavior<Command> {
   Behaviors::with_timers(|timers| {
+    let tick_count = Arc::new(AtomicU32::new(0));
     Behaviors::receive_message(move |_ctx, message: &Command| match message {
       | Command::Start => {
         // Part 1: 遅延実行（one-shot）
@@ -47,7 +52,7 @@ fn timer_demo() -> Behavior<Command> {
         let periodic_key = TimerKey::new("periodic-tick");
         timers
           .lock()
-          .start_timer_at_fixed_rate(periodic_key, Command::PeriodicTick(0), Duration::from_millis(40))
+          .start_timer_at_fixed_rate(periodic_key, Command::PeriodicTick, Duration::from_millis(40))
           .expect("schedule periodic");
 
         // Part 3: キャンセル
@@ -66,13 +71,14 @@ fn timer_demo() -> Behavior<Command> {
         println!("  [one-shot] DelayedHello を受信しました");
         Ok(Behaviors::same())
       },
-      | Command::PeriodicTick(seq) => {
+      | Command::PeriodicTick => {
+        let seq = tick_count.fetch_add(1, Ordering::Relaxed);
         println!("  [periodic] tick #{seq}");
         Ok(Behaviors::same())
       },
       | Command::ShouldNotArrive => {
-        // キャンセル済みのためここには到達しない
-        println!("  [ERROR] キャンセルしたはずのメッセージが到着しました");
+        // キャンセルは best-effort のため、タイミングによっては到着しうる
+        println!("  [cancel] キャンセル済みメッセージが到着しました（best-effort のため許容）");
         Ok(Behaviors::same())
       },
     })

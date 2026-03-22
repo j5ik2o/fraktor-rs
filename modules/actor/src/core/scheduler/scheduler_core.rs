@@ -510,7 +510,9 @@ impl Scheduler {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {
         let receiver = receiver.clone();
-        let _ = receiver.tell(message.clone());
+        // Best-effort delivery: scheduled messages may fail if the target
+        // actor has already stopped; this is normal and not actionable.
+        let _best_effort = receiver.tell(message.clone());
       },
       | SchedulerCommand::RunRunnable { runnable, .. } => {
         runnable.run(batch);

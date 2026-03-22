@@ -164,7 +164,13 @@ where
         } else {
           for routee in &routee_snapshot {
             let mut r = routee.clone();
-            let _ = r.tell(message.clone());
+            if let Err(e) = r.tell(message.clone()) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("scatter-gather router failed to send message to routee: {:?}", e),
+                Some(ctx.pid()),
+              );
+            }
           }
         }
 
@@ -207,8 +213,14 @@ fn spawn_gather_coordinator<'a, M, R>(
 
   let coord_props = TypedProps::<R>::from_behavior_factory(move || -> Behavior<R> {
     let rt = reply_to.clone();
-    Behaviors::receive_message(move |_ctx, msg: &R| {
-      let _ = rt.clone().tell(msg.clone());
+    Behaviors::receive_message(move |ctx, msg: &R| {
+      if let Err(e) = rt.clone().tell(msg.clone()) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("scatter-gather coordinator failed to forward reply: {:?}", e),
+          Some(ctx.pid()),
+        );
+      }
       Ok(Behaviors::stopped())
     })
   });
@@ -223,9 +235,21 @@ fn spawn_gather_coordinator<'a, M, R>(
       let coord_ref = coord_child.actor_ref();
       for routee in routees {
         let mut r = routee.clone();
-        let _ = r.tell((create_request)(message, coord_ref.clone()));
+        if let Err(e) = r.tell((create_request)(message, coord_ref.clone())) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("scatter-gather coordinator failed to send request to routee: {:?}", e),
+            Some(ctx.pid()),
+          );
+        }
       }
-      let _ = ctx.schedule_once(within, coord_ref, timeout_reply.clone());
+      if let Err(e) = ctx.schedule_once(within, coord_ref, timeout_reply.clone()) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("scatter-gather coordinator failed to schedule timeout: {:?}", e),
+          Some(ctx.pid()),
+        );
+      }
     },
     | Err(e) => {
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);

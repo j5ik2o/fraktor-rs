@@ -106,10 +106,7 @@ impl JsonFramingLogic {
       deferred_error = Some(StreamError::BufferOverflow);
     }
 
-    match deferred_error {
-      | Some(e) if results.is_empty() => Err(e),
-      | _ => Ok(results),
-    }
+    if let Some(e) = deferred_error { Err(e) } else { Ok(results) }
   }
 
   fn try_extract_object(&mut self, start: usize) -> Result<Option<Vec<u8>>, StreamError> {

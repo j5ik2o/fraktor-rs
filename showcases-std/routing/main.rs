@@ -8,7 +8,10 @@
 use std::time::{Duration, Instant};
 
 use fraktor_actor_rs::{
-  core::typed::{Routers, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  core::{
+    error::ActorError,
+    typed::{Routers, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  },
   std::typed::Behaviors,
 };
 use fraktor_showcases_std::support;
@@ -49,7 +52,7 @@ fn router_guardian(
           },
           | Command::Read { reply_to } => {
             let mut reply_to = reply_to.clone();
-            reply_to.tell(records.lock().clone()).expect("reply");
+            reply_to.tell(records.lock().clone()).map_err(|e| ActorError::from_send_error(&e))?;
             Ok(Behaviors::same())
           },
         })

@@ -62,6 +62,21 @@ impl StreamGraph {
     Ok(())
   }
 
+  /// Connects two ports that are guaranteed to be registered by this builder.
+  ///
+  /// # Panics
+  ///
+  /// Panics if either port is unknown — this indicates a programming bug.
+  #[allow(clippy::expect_used)]
+  pub(in crate::core) fn connect_or_panic<T>(
+    &mut self,
+    upstream: &Outlet<T>,
+    downstream: &Inlet<T>,
+    combine: MatCombine,
+  ) {
+    self.connect(upstream, downstream, combine).expect("internal: ports registered by this builder");
+  }
+
   pub(in crate::core) fn set_source_supervision(&mut self, supervision: SupervisionStrategy) {
     for node in &mut self.nodes {
       if let StageDefinition::Source(definition) = &mut node.stage {

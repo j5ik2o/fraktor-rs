@@ -7,14 +7,9 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 use super::manual_test_driver::ManualDriverState;
 
 /// Public controller exposed to tests for manual tick injection.
+#[derive(Clone)]
 pub struct ManualTickController {
   pub(super) state: ArcShared<ManualDriverState>,
-}
-
-impl Clone for ManualTickController {
-  fn clone(&self) -> Self {
-    Self { state: self.state.clone() }
-  }
 }
 
 impl ManualTickController {

@@ -33,7 +33,8 @@ impl StreamFuzzRunner {
         | 1 => sink.request(1),
         | _ => {
           if let Some(value) = source.pull() {
-            let _ = sink.push(value);
+            // fuzz: demand may be exceeded; failure is expected and harmless
+            if let Err(_error) = sink.push(value) {}
           }
         },
       }

@@ -187,7 +187,7 @@ fraktor-rs は Pekko の Cluster Sharding に相当する機能を、protoactor-
 ### スタブ / 未完成実装　✅ 実装済み 0/1 (実 API 上のスタブなし)
 
 `modules/cluster/src` に対して `todo!()`, `unimplemented!()`, `panic!("not implemented")`, `TODO` を検索した範囲では、公開 API 直下のスタブ実装は見つからなかった。  
-唯一の TODO は [cluster_extension_config.rs](/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs/modules/cluster/src/core/cluster_extension_config.rs) の互換性チェック拡張メモで、未公開 API の改善メモに留まる。
+唯一の TODO は [cluster_extension_config.rs](../../modules/cluster/src/core/cluster_extension_config.rs) の互換性チェック拡張メモで、未公開 API の改善メモに留まる。
 
 ### 14. Coordinated Shutdown ❌ 未実装 0/1 (0%)
 

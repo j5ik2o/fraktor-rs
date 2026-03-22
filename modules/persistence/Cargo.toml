@@ -22,6 +22,9 @@ fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
 ahash = { workspace = true }
 hashbrown = { workspace = true, default-features = false }
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 critical-section = { workspace = true, features = ["std"] }
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }

@@ -198,20 +198,29 @@ impl DispatcherCore {
       | SystemMessage::Suspend => self.mailbox.suspend(),
       | SystemMessage::Resume => self.mailbox.resume(),
       | other => {
-        let _ = self.invoke_system_message(other);
+        if let Err(error) = self.invoke_system_message(other) {
+          let message = format!("failed to invoke system message: {:?}", error);
+          self.mailbox.emit_log(LogLevel::Error, message);
+        }
       },
     }
   }
 
   fn handle_user_message(&self, message: AnyMessage) {
-    let _ = self.invoke_user_message(message);
+    if let Err(error) = self.invoke_user_message(message) {
+      let message = format!("failed to invoke user message: {:?}", error);
+      self.mailbox.emit_log(LogLevel::Error, message);
+    }
   }
 
   fn process_mailbox_pressure(&self) -> bool {
     let Some(event) = self.mailbox_pressure.lock().take() else {
       return false;
     };
-    let _ = self.invoke_mailbox_pressure(&event);
+    if let Err(error) = self.invoke_mailbox_pressure(&event) {
+      let message = format!("failed to invoke mailbox pressure handler: {:?}", error);
+      self.mailbox.emit_log(LogLevel::Error, message);
+    }
     true
   }
 
@@ -331,7 +340,7 @@ impl DispatcherCore {
 
   pub(crate) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
     DispatcherState::Idle.store(self.state());
-    let _ = self.mailbox.set_idle();
+    let _was_idle = self.mailbox.set_idle();
     self.schedule_adapter.with_write(|a| a.notify_rejected(attempts));
     let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
     self.mailbox.emit_log(LogLevel::Error, message);

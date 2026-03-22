@@ -1,3 +1,4 @@
+use alloc::format;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -145,16 +146,30 @@ impl Materializer for ActorMaterializer {
       | MaterializerState::Running => {},
     }
 
+    // Shutdown is a one-way transition: once initiated, the materializer is
+    // unconditionally Stopped regardless of whether individual teardown steps
+    // succeed. Rolling back to Running after partial teardown (e.g. tick
+    // cancelled but drive actor still alive) would leave a worse inconsistency.
     self.state = MaterializerState::Stopped;
-    let system = match self.system() {
-      | Ok(system) => system,
-      | Err(error) => return Err(error),
-    };
+
+    let system = self.system()?;
+    // cancel returns false when the job already fired or was not registered;
+    // either way the tick is no longer scheduled, so this is not an error.
     if let Some(handle) = self.tick_handle.take() {
-      let _ = system.scheduler().with_write(|scheduler| scheduler.cancel(&handle));
+      system.scheduler().with_write(|scheduler| scheduler.cancel(&handle));
     }
     if let Some(actor) = self.drive_actor.take() {
-      let _ = Self::send_command(&actor, StreamDriveCommand::Shutdown);
+      // State is already Stopped and drive_actor is consumed. If send fails,
+      // the drive actor will eventually be stopped by actor system shutdown.
+      // Returning Err here would be misleading: the materializer IS stopped
+      // and the caller has no recovery action.
+      if let Err(error) = Self::send_command(&actor, StreamDriveCommand::Shutdown) {
+        system.emit_log(
+          fraktor_actor_rs::core::event::logging::LogLevel::Warn,
+          format!("materializer shutdown: failed to send Shutdown to drive actor: {error:?}"),
+          None,
+        );
+      }
     }
     Ok(())
   }

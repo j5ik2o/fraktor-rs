@@ -100,10 +100,20 @@ where
     let mut pending = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
+    let mut total_send_failures: u32 = 0;
     for entry in in_flight {
-      if let Some(entry) = poll_entry(&mut self.journal, entry, &mut cx, retry_max) {
+      let (remaining, fails) = poll_entry(&mut self.journal, entry, &mut cx, retry_max);
+      total_send_failures = total_send_failures.saturating_add(fails);
+      if let Some(entry) = remaining {
         pending.push(entry);
       }
+    }
+    if total_send_failures > 0 {
+      ctx.system().emit_log(
+        fraktor_actor_rs::core::event::logging::LogLevel::Warn,
+        alloc::format!("journal actor: {total_send_failures} response(s) failed to deliver"),
+        Some(ctx.pid()),
+      );
     }
     self.in_flight = pending;
     self.schedule_poll(ctx);
@@ -173,26 +183,38 @@ where
   }
 }
 
+/// Sends a response, returning `true` if delivery failed.
+fn tell_or_fail(sender: &ActorRef, msg: AnyMessage) -> bool {
+  sender.tell(msg).is_err()
+}
+
+/// Returns `(remaining_entry, send_failure_count)`.
 fn poll_entry<J: Journal>(
   journal: &mut J,
   mut entry: JournalInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> Option<JournalInFlight>
+) -> (Option<JournalInFlight>, u32)
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static, {
-  match &mut entry {
+  let mut fails: u32 = 0;
+  let remaining = match &mut entry {
     | JournalInFlight::Write { future, messages, sender, instance_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
           for repr in messages.iter().cloned() {
-            let _ =
-              sender.tell(AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }),
+            ));
           }
-          let _ = sender.tell(AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -202,17 +224,23 @@ where
             Some(entry)
           } else {
             for repr in messages.iter().cloned() {
-              let _ = sender.tell(AnyMessage::new(JournalResponse::WriteMessageFailure {
-                repr,
-                cause: error.clone(),
-                instance_id: *instance_id,
-              }));
+              fails += u32::from(tell_or_fail(
+                sender,
+                AnyMessage::new(JournalResponse::WriteMessageFailure {
+                  repr,
+                  cause: error.clone(),
+                  instance_id: *instance_id,
+                }),
+              ));
             }
-            let _ = sender.tell(AnyMessage::new(JournalResponse::WriteMessagesFailed {
-              cause:       error,
-              write_count: messages.len() as u64,
-              instance_id: *instance_id,
-            }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(JournalResponse::WriteMessagesFailed {
+                cause:       error,
+                write_count: messages.len() as u64,
+                instance_id: *instance_id,
+              }),
+            ));
             None
           }
         },
@@ -235,9 +263,15 @@ where
           if repr.deleted() {
             continue;
           }
-          let _ = sender.tell(AnyMessage::new(JournalResponse::ReplayedMessage { persistent_repr: repr }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(JournalResponse::ReplayedMessage { persistent_repr: repr }),
+          ));
         }
-        let _ = sender.tell(AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }));
+        fails += u32::from(tell_or_fail(
+          sender,
+          AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }),
+        ));
         None
       },
       | Poll::Ready(Err(error)) => {
@@ -246,7 +280,8 @@ where
           *future = Box::pin(journal.replay_messages(persistence_id, *from_sequence_nr, *to_sequence_nr, *max));
           Some(entry)
         } else {
-          let _ = sender.tell(AnyMessage::new(JournalResponse::ReplayMessagesFailure { cause: error }));
+          fails +=
+            u32::from(tell_or_fail(sender, AnyMessage::new(JournalResponse::ReplayMessagesFailure { cause: error })));
           None
         }
       },
@@ -255,8 +290,10 @@ where
     | JournalInFlight::Delete { future, sender, persistence_id, to_sequence_nr, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          let _ =
-            sender.tell(AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -265,10 +302,13 @@ where
             *future = Box::pin(journal.delete_messages_to(persistence_id, *to_sequence_nr));
             Some(entry)
           } else {
-            let _ = sender.tell(AnyMessage::new(JournalResponse::DeleteMessagesFailure {
-              cause:          error,
-              to_sequence_nr: *to_sequence_nr,
-            }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(JournalResponse::DeleteMessagesFailure {
+                cause:          error,
+                to_sequence_nr: *to_sequence_nr,
+              }),
+            ));
             None
           }
         },
@@ -278,10 +318,10 @@ where
     | JournalInFlight::Highest { future, sender, persistence_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(sequence_nr)) => {
-          let _ = sender.tell(AnyMessage::new(JournalResponse::HighestSequenceNr {
-            persistence_id: persistence_id.clone(),
-            sequence_nr,
-          }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(JournalResponse::HighestSequenceNr { persistence_id: persistence_id.clone(), sequence_nr }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -290,15 +330,19 @@ where
             *future = Box::pin(journal.highest_sequence_nr(persistence_id));
             Some(entry)
           } else {
-            let _ = sender.tell(AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
-              persistence_id: persistence_id.clone(),
-              cause:          error,
-            }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
+                persistence_id: persistence_id.clone(),
+                cause:          error,
+              }),
+            ));
             None
           }
         },
         | Poll::Pending => Some(entry),
       }
     },
-  }
+  };
+  (remaining, fails)
 }

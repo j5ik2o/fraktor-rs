@@ -91,7 +91,9 @@ impl StdScheduleWaker {
   unsafe fn clone(ptr: *const ()) -> RawWaker {
     let shared = unsafe { ArcShared::from_raw(ptr as *const StdScheduleShared) };
     let cloned = shared.clone();
-    let _ = ArcShared::into_raw(shared);
+    // Intentionally leak the ArcShared to preserve the reference count; raw_waker took ownership of the
+    // clone.
+    let _raw = ArcShared::into_raw(shared);
     unsafe { Self::raw_waker(cloned) }
   }
 
@@ -103,7 +105,8 @@ impl StdScheduleWaker {
   unsafe fn wake_by_ref(ptr: *const ()) {
     let shared = unsafe { ArcShared::from_raw(ptr as *const StdScheduleShared) };
     shared.schedule();
-    let _ = ArcShared::into_raw(shared);
+    // Intentionally leak the ArcShared to prevent deallocation; ownership returns to the raw pointer.
+    let _raw = ArcShared::into_raw(shared);
   }
 
   unsafe fn drop(ptr: *const ()) {

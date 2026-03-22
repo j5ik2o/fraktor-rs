@@ -81,6 +81,9 @@ name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 required-features = ["test-support"]
 
+[lints]
+workspace = true
+
 [[bench]]
 name = "actor_baseline"
 path = "benches/actor_baseline.rs"
