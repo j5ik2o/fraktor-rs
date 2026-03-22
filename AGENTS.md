@@ -6,7 +6,7 @@
 - serena mcpを有効活用すること
 - 当該ディレクトリ以外を読まないこと
 - 一連のタスクが完了した最後でかつソースコードを編集した場合は `./scripts/ci-check.sh ai all` を実行し、エラーがないことを確認すること（途中工程では対象範囲のテストに留めてよい）。ただし **TAKT ピース実行中は、`final-ci` ムーブメント以外で `./scripts/ci-check.sh ai all` を実行してはならない**（各ムーブメントのインストラクションに従うこと）。
-- `./scripts/ci-check.sh ai all` は所要時間が長いが、完了待ってください。
+- `./scripts/ci-check.sh ai all` は所要時間が長いが、完了を待ってください。
 - `./scripts/ci-check.sh`は内部で`cargo`を呼び出すので並行実行できません。
 - CHANGELOG.mdはgithub actionが自動的に作るのでAIエージェントは編集してはならない
 - lintエラーを安易にallowなどで回避しないこと。allowを付ける場合は人間から許可を得ること
