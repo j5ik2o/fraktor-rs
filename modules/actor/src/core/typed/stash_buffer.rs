@@ -145,7 +145,7 @@ where
   /// Returns an error when the actor cell is unavailable.
   pub fn clear(&self, ctx: &TypedActorContext<'_, M>) -> Result<(), ActorError> {
     Self::with_cell(ctx, |cell| {
-      let _ = cell.clear_stashed_messages();
+      let _cleared_count = cell.clear_stashed_messages();
     })
   }
 

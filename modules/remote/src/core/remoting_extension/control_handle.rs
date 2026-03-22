@@ -20,7 +20,10 @@ use core::time::Duration;
 use fraktor_actor_rs::core::messaging::AnyMessage;
 use fraktor_actor_rs::core::{
   actor::{actor_path::ActorPathParts, actor_ref::ActorRef},
-  event::stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
+  event::{
+    logging::LogLevel,
+    stream::{BackpressureSignal, CorrelationId, RemotingLifecycleEvent},
+  },
   system::{ActorSystem, ActorSystemWeak},
 };
 #[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
@@ -141,14 +144,24 @@ impl RemotingControlHandle {
   /// Registers a pre-wrapped shared transport instance.
   pub(crate) fn register_remote_transport_shared(&self, transport: RemoteTransportShared) {
     *self.inner.transport_ref.lock() = Some(transport);
-    let _ = self.inner.try_bootstrap_runtime(self.clone());
+    if let Err(error) = self.inner.try_bootstrap_runtime(self.clone()) {
+      let msg = format!("failed to bootstrap runtime after transport registration: {error:?}");
+      if let Some(system) = self.inner.system.upgrade() {
+        system.emit_log(LogLevel::Warn, msg, None);
+      }
+    }
   }
 
   /// Registers endpoint IO components required for transport bridging.
   pub(crate) fn register_endpoint_io(&self, writer: EndpointWriterShared, reader: ArcShared<EndpointReader>) {
     *self.inner.writer.lock() = Some(writer);
     *self.inner.reader.lock() = Some(reader);
-    let _ = self.inner.try_bootstrap_runtime(self.clone());
+    if let Err(error) = self.inner.try_bootstrap_runtime(self.clone()) {
+      let msg = format!("failed to bootstrap runtime after endpoint IO registration: {error:?}");
+      if let Some(system) = self.inner.system.upgrade() {
+        system.emit_log(LogLevel::Warn, msg, None);
+      }
+    }
   }
 
   /// Registers the remote watcher daemon actor.

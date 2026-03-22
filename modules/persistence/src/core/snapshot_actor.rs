@@ -100,10 +100,20 @@ where
     let mut pending = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
+    let mut total_send_failures: u32 = 0;
     for entry in in_flight {
-      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max) {
+      let (remaining, fails) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max);
+      total_send_failures = total_send_failures.saturating_add(fails);
+      if let Some(entry) = remaining {
         pending.push(entry);
       }
+    }
+    if total_send_failures > 0 {
+      ctx.system().emit_log(
+        fraktor_actor_rs::core::event::logging::LogLevel::Warn,
+        alloc::format!("snapshot actor: {total_send_failures} response(s) failed to deliver"),
+        Some(ctx.pid()),
+      );
     }
     self.in_flight = pending;
     self.schedule_poll(ctx);
@@ -171,22 +181,31 @@ where
   }
 }
 
+/// Sends a response, returning `true` if delivery failed.
+fn tell_or_fail(sender: &ActorRef, msg: AnyMessage) -> bool {
+  sender.tell(msg).is_err()
+}
+
 fn poll_entry<S: SnapshotStore>(
   snapshot_store: &mut S,
   mut entry: SnapshotInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> Option<SnapshotInFlight>
+) -> (Option<SnapshotInFlight>, u32)
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-  match &mut entry {
+  let mut fails: u32 = 0;
+  let remaining = match &mut entry {
     | SnapshotInFlight::Save { future, metadata, snapshot, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          let _ = sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -195,8 +214,10 @@ where
             *future = Box::pin(snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
             Some(entry)
           } else {
-            let _ =
-              sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }),
+            ));
             None
           }
         },
@@ -206,10 +227,13 @@ where
     | SnapshotInFlight::Load { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(snapshot)) => {
-          let _ = sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
-            snapshot,
-            to_sequence_nr: criteria.max_sequence_nr(),
-          }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
+              snapshot,
+              to_sequence_nr: criteria.max_sequence_nr(),
+            }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -218,7 +242,7 @@ where
             *future = Box::pin(snapshot_store.load_snapshot(persistence_id, criteria.clone()));
             Some(entry)
           } else {
-            let _ = sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error }));
+            fails += u32::from(tell_or_fail(sender, AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error })));
             None
           }
         },
@@ -228,7 +252,10 @@ where
     | SnapshotInFlight::DeleteOne { future, metadata, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          let _ = sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -237,8 +264,10 @@ where
             *future = Box::pin(snapshot_store.delete_snapshot(metadata));
             Some(entry)
           } else {
-            let _ = sender
-              .tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }),
+            ));
             None
           }
         },
@@ -248,7 +277,10 @@ where
     | SnapshotInFlight::DeleteMany { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          let _ = sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }));
+          fails += u32::from(tell_or_fail(
+            sender,
+            AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }),
+          ));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -257,13 +289,16 @@ where
             *future = Box::pin(snapshot_store.delete_snapshots(persistence_id, criteria.clone()));
             Some(entry)
           } else {
-            let _ = sender
-              .tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }));
+            fails += u32::from(tell_or_fail(
+              sender,
+              AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }),
+            ));
             None
           }
         },
         | Poll::Pending => Some(entry),
       }
     },
-  }
+  };
+  (remaining, fails)
 }

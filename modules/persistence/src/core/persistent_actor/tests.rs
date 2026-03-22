@@ -237,7 +237,7 @@ fn persistent_actor_save_snapshot_sends_message() {
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
 
   let snapshot: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(123_u32);
-  actor.save_snapshot(&mut ctx, snapshot);
+  actor.save_snapshot(&mut ctx, snapshot).expect("save_snapshot failed");
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
@@ -258,7 +258,7 @@ fn persistent_actor_delete_messages_sends_message() {
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
 
-  actor.delete_messages(&mut ctx, 10);
+  actor.delete_messages(&mut ctx, 10).expect("delete_messages failed");
 
   let messages = journal_store.lock();
   assert_eq!(messages.len(), 1);
@@ -280,7 +280,7 @@ fn persistent_actor_delete_snapshots_sends_message() {
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
 
   let criteria = SnapshotSelectionCriteria::latest();
-  actor.delete_snapshots(&mut ctx, criteria.clone());
+  actor.delete_snapshots(&mut ctx, criteria.clone()).expect("delete_snapshots failed");
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
@@ -301,7 +301,7 @@ fn persistent_actor_delete_snapshot_sends_message() {
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
 
-  actor.delete_snapshot(&mut ctx, 7);
+  actor.delete_snapshot(&mut ctx, 7).expect("delete_snapshot failed");
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);

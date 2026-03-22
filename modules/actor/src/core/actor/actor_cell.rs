@@ -277,8 +277,8 @@ impl ActorCell {
 
   fn stop_child(&self, pid: Pid) {
     let should_stop = { self.state.lock().children.contains(&pid) };
-    if should_stop {
-      let _ = self.system().send_system_message(pid, SystemMessage::Stop);
+    if should_stop && let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Stop) {
+      self.system().record_send_error(Some(pid), &send_error);
     }
   }
 
@@ -305,7 +305,9 @@ impl ActorCell {
 
   pub(crate) fn handle_watch(&self, watcher: Pid) {
     if self.is_terminated() {
-      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
       return;
     }
 
@@ -313,7 +315,9 @@ impl ActorCell {
     // ロック内で再確認し、TOCTOU競合を防ぐ
     if self.is_terminated() {
       drop(state);
-      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
       return;
     }
     if !state.watchers.contains(&watcher) {
@@ -584,7 +588,9 @@ impl ActorCell {
     drop(state);
 
     for watcher in recipients {
-      let _ = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid));
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
     }
   }
 
@@ -678,7 +684,9 @@ impl ActorCell {
 
     let children_snapshot = self.children();
     for child in &children_snapshot {
-      let _ = self.system().send_system_message(*child, SystemMessage::Stop);
+      if let Err(send_error) = self.system().send_system_message(*child, SystemMessage::Stop) {
+        self.system().record_send_error(Some(*child), &send_error);
+      }
     }
 
     self.clear_child_stats(&children_snapshot);
@@ -761,13 +769,17 @@ impl ActorCell {
       },
       | SupervisorDirective::Stop => {
         for target in affected {
-          let _ = self.system().send_system_message(target, SystemMessage::Stop);
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Stop) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
         }
         self.system().record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
       },
       | SupervisorDirective::Escalate => {
         for target in affected {
-          let _ = self.system().send_system_message(target, SystemMessage::Stop);
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Stop) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
         }
         self.system().record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
         let snapshot = payload.message().cloned();
@@ -776,7 +788,9 @@ impl ActorCell {
       },
       | SupervisorDirective::Resume => {
         for target in affected {
-          let _ = self.system().send_system_message(target, SystemMessage::Resume);
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Resume) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
         }
         self.system().record_failure_outcome(payload.child(), FailureOutcome::Resume, payload_ref);
       },
@@ -839,8 +853,10 @@ impl MessageInvoker for ActorCellInvoker {
     if let Some(identify) = message.payload().downcast_ref::<Identify>() {
       if let Some(sender) = message.sender().cloned() {
         let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
-        // Silently ignore send errors: the requester may have stopped before the reply arrives.
-        let _ = sender.tell(AnyMessage::new(identity));
+        // Best-effort reply: the requester may have stopped before the reply arrives.
+        if let Err(send_error) = sender.tell(AnyMessage::new(identity)) {
+          cell.system().record_send_error(Some(cell.pid), &send_error);
+        }
       }
       // NOTE: No reply is sent if sender is None (no deadLetters in no_std).
       // Use with_sender() to receive ActorIdentity replies.

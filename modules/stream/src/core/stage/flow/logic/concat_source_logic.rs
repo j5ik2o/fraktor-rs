@@ -142,9 +142,7 @@ where
   pub(in crate::core::stage::flow) fn poll_next(&mut self) -> Result<Option<Out>, StreamError> {
     if let Some(value) = self.queue.poll()? {
       if self.queue.is_empty() {
-        // ベストエフォートでリフレッシュ: リフレッシュが失敗しても値を返す。
-        // エラーは次の poll_next 呼び出しで表面化する。
-        let _ = self.refresh_after_emit();
+        self.refresh_after_emit()?;
       }
       return Ok(Some(value));
     }

@@ -14,6 +14,7 @@ use super::{
 };
 use crate::core::{
   actor::Pid,
+  dead_letter::DeadLetterReason,
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   error::SendError,
   event::logging::LogLevel,
@@ -223,9 +224,26 @@ impl Mailbox {
 
     if let Err(_error) = enqueue_result {
       self.user.clean_up();
-      // 既存メッセージのみ復元する（新メッセージは挿入失敗として呼び出し側に返す）
+      let pid = self.pid();
+      let system_state = self.system_state();
+      let total_existing = existing.len();
+      let mut restored: usize = 0;
       for message in existing {
-        let _ = self.enqueue_for_prepend(message, first_message);
+        if self.enqueue_for_prepend(message.clone(), first_message).is_err() {
+          // Route unrecoverable messages to dead letter storage
+          if let Some(ref state) = system_state {
+            state.record_dead_letter(message, DeadLetterReason::Dropped, pid);
+          }
+        } else {
+          restored += 1;
+        }
+      }
+      let lost = total_existing - restored;
+      if lost > 0 {
+        self.emit_log(
+          LogLevel::Error,
+          alloc::format!("mailbox prepend recovery: {lost} of {total_existing} message(s) routed to dead letters"),
+        );
       }
       self.publish_metrics_with_user_len(self.user.number_of_messages());
       return Err(SendError::full(first_message.clone()));

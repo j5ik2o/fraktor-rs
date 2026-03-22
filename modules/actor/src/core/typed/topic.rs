@@ -98,7 +98,13 @@ impl Topic {
             }
           },
           | super::topic_command::TopicCommandKind::Unsubscribe(subscriber) => {
-            let _ = ctx.unwatch(&subscriber);
+            if let Err(e) = ctx.unwatch(&subscriber) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("topic failed to unwatch subscriber: {:?}", e),
+                Some(ctx.pid()),
+              );
+            }
             remove_subscriber(&mut state.local_subscribers, subscriber.pid());
             deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx)?;
           },

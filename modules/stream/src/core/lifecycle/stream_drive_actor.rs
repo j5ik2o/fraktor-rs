@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap, format, vec::Vec};
 
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContext},
@@ -19,18 +19,20 @@ impl StreamDriveActor {
     Self { handles: BTreeMap::new(), shutdown_requested: false }
   }
 
-  fn register(&mut self, handle: StreamHandleImpl) {
+  fn register(&mut self, handle: StreamHandleImpl) -> Result<(), ActorError> {
     if self.shutdown_requested {
-      let _ = handle.cancel();
-      return;
+      handle.cancel().map_err(|e| ActorError::fatal(format!("cancel during shutdown-register failed: {e:?}")))?;
+      return Ok(());
     }
     self.handles.insert(handle.id(), handle);
+    Ok(())
   }
 
   fn tick(&mut self) {
     let mut finished = Vec::new();
     for (id, handle) in self.handles.iter() {
-      let _ = handle.drive();
+      // outcome is observed indirectly via handle.state().is_terminal() below
+      let _outcome = handle.drive();
       if handle.state().is_terminal() {
         finished.push(*id);
       }
@@ -40,12 +42,25 @@ impl StreamDriveActor {
     }
   }
 
-  fn shutdown(&mut self) {
-    for handle in self.handles.values() {
-      let _ = handle.cancel();
+  fn shutdown(&mut self) -> Result<(), ActorError> {
+    let mut failed_ids = Vec::new();
+    for (id, handle) in self.handles.iter() {
+      if let Err(e) = handle.cancel() {
+        failed_ids.push((*id, e));
+      }
     }
-    self.handles.clear();
-    self.shutdown_requested = true;
+    if failed_ids.is_empty() {
+      self.handles.clear();
+      self.shutdown_requested = true;
+      Ok(())
+    } else {
+      // Remove only successfully cancelled handles; keep failed ones for retry
+      let failed_set: Vec<StreamHandleId> = failed_ids.iter().map(|(id, _)| *id).collect();
+      self.handles.retain(|id, _| failed_set.contains(id));
+      self.shutdown_requested = true;
+      let msg = failed_ids.iter().map(|(id, e)| format!("handle {id:?}: {e:?}")).collect::<Vec<_>>().join(", ");
+      Err(ActorError::fatal(format!("stream cancel failed: [{msg}]")))
+    }
   }
 
   fn try_stop(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
@@ -62,13 +77,13 @@ impl Actor for StreamDriveActor {
     if let Some(command) = message.downcast_ref::<StreamDriveCommand>() {
       match command {
         | StreamDriveCommand::Register { handle } => {
-          self.register(handle.clone());
+          self.register(handle.clone())?;
         },
         | StreamDriveCommand::Tick => {
           self.tick();
         },
         | StreamDriveCommand::Shutdown => {
-          self.shutdown();
+          self.shutdown()?;
         },
       }
     }

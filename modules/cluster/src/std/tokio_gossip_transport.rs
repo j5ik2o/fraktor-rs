@@ -68,7 +68,9 @@ impl TokioGossipTransport {
           | Err(_) => break,
         };
         if let Ok(delta) = decode_delta(bytes) {
-          let _ = inbound_tx.try_send((addr.to_string(), delta));
+          if let Err(err) = inbound_tx.try_send((addr.to_string(), delta)) {
+            tracing::warn!(from = %addr, "failed to enqueue inbound gossip delta: {err}");
+          }
         }
       }
     });
@@ -76,7 +78,9 @@ impl TokioGossipTransport {
     let send_socket = Arc::clone(&socket);
     let send_task = runtime.spawn(async move {
       while let Some(packet) = outbound_rx.recv().await {
-        let _ = send_socket.send_to(&packet.payload, packet.target).await;
+        if let Err(err) = send_socket.send_to(&packet.payload, packet.target).await {
+          tracing::warn!(target = %packet.target, "failed to send outbound gossip packet: {err}");
+        }
       }
     });
 

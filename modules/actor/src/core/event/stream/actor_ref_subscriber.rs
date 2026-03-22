@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use portable_atomic::{AtomicU64, Ordering};
+
 use crate::core::{
   actor::actor_ref::ActorRef,
   event::stream::{EventStreamEvent, EventStreamSubscriber},
@@ -19,15 +21,21 @@ use crate::core::{
 /// - `publish()` returns immediately (only mailbox enqueue time)
 /// - Event processing happens asynchronously in the actor
 /// - Scales well with many subscribers (O(n) mailbox sends vs O(n) synchronous callbacks)
+///
+/// # Error Observability
+///
+/// Delivery failures (actor stopped, mailbox full) are counted in
+/// [`failed_delivery_count`](Self::failed_delivery_count).
 pub struct ActorRefEventStreamSubscriber {
-  actor_ref: ActorRef,
+  actor_ref:      ActorRef,
+  failed_deliver: AtomicU64,
 }
 
 impl ActorRefEventStreamSubscriber {
   /// Creates a new subscriber that forwards events to the given ActorRef.
   #[must_use]
   pub const fn new(actor_ref: ActorRef) -> Self {
-    Self { actor_ref }
+    Self { actor_ref, failed_deliver: AtomicU64::new(0) }
   }
 
   /// Returns a reference to the underlying ActorRef.
@@ -35,14 +43,19 @@ impl ActorRefEventStreamSubscriber {
   pub const fn actor_ref(&self) -> &ActorRef {
     &self.actor_ref
   }
+
+  /// Returns the number of events that failed to deliver since creation.
+  #[must_use]
+  pub fn failed_delivery_count(&self) -> u64 {
+    self.failed_deliver.load(Ordering::Relaxed)
+  }
 }
 
 impl EventStreamSubscriber for ActorRefEventStreamSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    // Non-blocking message send to actor's mailbox
     let message = AnyMessage::new(event.clone());
-    let _ = self.actor_ref.tell(message);
-    // Errors are silently ignored (actor may be stopped, mailbox full, etc.)
-    // This matches Akka/Pekko behavior where dead letter handling is separate
+    if self.actor_ref.tell(message).is_err() {
+      self.failed_deliver.fetch_add(1, Ordering::Relaxed);
+    }
   }
 }

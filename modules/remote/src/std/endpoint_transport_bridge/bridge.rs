@@ -911,6 +911,8 @@ impl InboundHandler {
 
 impl TransportInbound for InboundHandler {
   fn on_frame(&mut self, frame: InboundFrame) {
-    let _ = self.frame_sender.try_send(frame);
+    if let Err(error) = self.frame_sender.try_send(frame) {
+      tracing::warn!("failed to enqueue inbound frame: {error}");
+    }
   }
 }

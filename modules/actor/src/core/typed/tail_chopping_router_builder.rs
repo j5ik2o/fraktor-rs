@@ -157,7 +157,13 @@ where
           // reply_to なし（fire-and-forget）— 最初の1台のみに送信する（broadcast しない）
           if let Some(first) = guard.first() {
             let mut r = first.clone();
-            let _ = r.tell(message.clone());
+            if let Err(e) = r.tell(message.clone()) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("tail-chopping router failed to send message to routee: {:?}", e),
+                Some(ctx.pid()),
+              );
+            }
           }
         }
 
@@ -272,15 +278,33 @@ where
       // 最初の routee へ即時送信する
       if let Some(first) = routees.first() {
         let mut r = first.clone();
-        let _ = r.tell((create_request)(&message, adapter_ref.clone()));
+        if let Err(e) = r.tell((create_request)(&message, adapter_ref.clone())) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("tail-chopping coordinator failed to send request to first routee: {:?}", e),
+            Some(ctx.pid()),
+          );
+        }
       }
 
       // 次送信のインターバルタイマーを設定する（routee が2体以上の場合のみ）
-      if routees.len() > 1 {
-        let _ = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext);
+      if routees.len() > 1
+        && let Err(e) = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext)
+      {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
+          Some(ctx.pid()),
+        );
       }
       // 全体タイムアウトを設定する
-      let _ = ctx.schedule_once(within, ctx.self_ref(), ChopCommand::<R>::FinalTimeout);
+      if let Err(e) = ctx.schedule_once(within, ctx.self_ref(), ChopCommand::<R>::FinalTimeout) {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!("tail-chopping coordinator failed to schedule final timeout: {:?}", e),
+          Some(ctx.pid()),
+        );
+      }
 
       let current_index = ArcShared::new(RuntimeMutex::new(1_usize));
       let routees = routees.clone();
@@ -291,23 +315,47 @@ where
 
       Behaviors::receive_message(move |ctx, cmd: &ChopCommand<R>| match cmd {
         | ChopCommand::Reply(r) => {
-          let _ = (*reply_to).clone().tell(r.clone());
+          if let Err(e) = (*reply_to).clone().tell(r.clone()) {
+            ctx.system().emit_log(
+              LogLevel::Warn,
+              alloc::format!("tail-chopping coordinator failed to forward reply: {:?}", e),
+              Some(ctx.pid()),
+            );
+          }
           Ok(Behaviors::stopped())
         },
         | ChopCommand::SendNext => {
           let mut idx = current_index.lock();
           if *idx < routees.len() {
             let mut r = routees[*idx].clone();
-            let _ = r.tell((create_request)(&message, adapter_ref.clone()));
+            if let Err(e) = r.tell((create_request)(&message, adapter_ref.clone())) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("tail-chopping coordinator failed to send request to routee: {:?}", e),
+                Some(ctx.pid()),
+              );
+            }
             *idx += 1;
-            if *idx < routees.len() {
-              let _ = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext);
+            if *idx < routees.len()
+              && let Err(e) = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext)
+            {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
+                Some(ctx.pid()),
+              );
             }
           }
           Ok(Behaviors::same())
         },
         | ChopCommand::FinalTimeout => {
-          let _ = (*reply_to).clone().tell((*timeout_reply).clone());
+          if let Err(e) = (*reply_to).clone().tell((*timeout_reply).clone()) {
+            ctx.system().emit_log(
+              LogLevel::Warn,
+              alloc::format!("tail-chopping coordinator failed to send timeout reply: {:?}", e),
+              Some(ctx.pid()),
+            );
+          }
           Ok(Behaviors::stopped())
         },
       })

@@ -236,7 +236,10 @@ impl ActorContext<'_> {
     match state.send_system_message(target.pid(), SystemMessage::Watch(self.pid)) {
       | Ok(()) => Ok(()),
       | Err(SendError::Closed(_)) => {
-        let _ = state.send_system_message(self.pid, SystemMessage::Terminated(target.pid()));
+        // Best-effort: target is already closed, so notify self about termination.
+        if let Err(error) = state.send_system_message(self.pid, SystemMessage::Terminated(target.pid())) {
+          state.record_send_error(Some(self.pid), &error);
+        }
         Ok(())
       },
       | Err(error) => Err(error),
@@ -273,7 +276,10 @@ impl ActorContext<'_> {
   pub fn spawn_child_watched(&self, props: &Props) -> Result<ChildRef, SpawnError> {
     let child = self.spawn_child(props)?;
     if self.watch(child.actor_ref()).is_err() {
-      let _ = child.stop();
+      // Best-effort stop: watch failed so the child must be cleaned up.
+      if let Err(error) = child.stop() {
+        self.system.state().record_send_error(Some(child.actor_ref().pid()), &error);
+      }
       return Err(SpawnError::invalid_props("failed to install death watch"));
     }
     Ok(child)

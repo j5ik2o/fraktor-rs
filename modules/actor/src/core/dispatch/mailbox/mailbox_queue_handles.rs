@@ -68,7 +68,8 @@ where
   pub(crate) fn drop_oldest_and_offer(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
     let mut state = self.state.lock();
     if state.len() >= capacity {
-      let _ = state.poll();
+      // Intentionally discard the oldest element to make room for the new message.
+      let _oldest = state.poll();
     }
     state.offer(message)
   }

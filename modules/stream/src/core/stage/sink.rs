@@ -484,10 +484,10 @@ where
     graph.append_unwired(second_graph);
 
     if let Some(to) = first_inlet {
-      let _ = graph.connect(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
     }
     if let Some(to) = second_inlet {
-      let _ = graph.connect(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
     }
 
     let mat = C::combine(left_mat, right_mat);

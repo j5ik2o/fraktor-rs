@@ -72,7 +72,9 @@ impl ContextPipeWaker {
   unsafe fn clone(ptr: *const ()) -> RawWaker {
     let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
     let cloned = handle.clone();
-    let _ = ArcShared::into_raw(handle);
+    // Intentionally leak the ArcShared to preserve the reference count; raw_waker took ownership of the
+    // clone.
+    let _raw = ArcShared::into_raw(handle);
     unsafe { Self::raw_waker(cloned) }
   }
 
@@ -84,7 +86,8 @@ impl ContextPipeWaker {
   unsafe fn wake_by_ref(ptr: *const ()) {
     let handle = unsafe { ArcShared::from_raw(ptr as *const ContextPipeWakerShared) };
     handle.wake();
-    let _ = ArcShared::into_raw(handle);
+    // Intentionally leak the ArcShared to prevent deallocation; ownership returns to the raw pointer.
+    let _raw = ArcShared::into_raw(handle);
   }
 
   unsafe fn drop(ptr: *const ()) {

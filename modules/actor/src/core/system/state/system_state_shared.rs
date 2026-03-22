@@ -199,15 +199,20 @@ impl SystemStateShared {
     {
       let now_secs = self.monotonic_now().as_secs();
       let mut guard = self.inner.write();
-      let _ = guard.actor_path_registry_mut().reserve_uid(&actor_path, uid, now_secs, None);
+      let reserve_result = guard.actor_path_registry_mut().reserve_uid(&actor_path, uid, now_secs, None);
       guard.actor_path_registry_mut().unregister(pid);
       drop(guard);
-      let _ = self.cells.with_write(|cells| cells.remove(pid));
+      if let Err(e) = reserve_result {
+        self.emit_log(LogLevel::Warn, format!("failed to reserve uid for {:?}: {:?}", pid, e), Some(*pid));
+      }
+      // Intentionally discarding the removed cell; this is a HashMap::remove equivalent.
+      drop(self.cells.with_write(|cells| cells.remove(pid)));
       return;
     }
 
     self.inner.write().actor_path_registry_mut().unregister(pid);
-    let _ = self.cells.with_write(|cells| cells.remove(pid));
+    // Intentionally discarding the removed cell; this is a HashMap::remove equivalent.
+    drop(self.cells.with_write(|cells| cells.remove(pid)));
   }
 
   /// Returns the canonical actor path for the given pid when available.
@@ -636,7 +641,9 @@ impl SystemStateShared {
           if self.remote_watch_hook.handle_watch(pid, watcher) {
             return Ok(());
           }
-          let _ = self.send_system_message(watcher, SystemMessage::Terminated(pid));
+          if let Err(e) = self.send_system_message(watcher, SystemMessage::Terminated(pid)) {
+            self.record_send_error(Some(watcher), &e);
+          }
           Ok(())
         },
         | SystemMessage::Unwatch(watcher) => {
@@ -662,12 +669,16 @@ impl SystemStateShared {
   #[allow(dead_code)]
   pub fn handle_failure(&self, pid: Pid, parent: Option<Pid>, error: &ActorError) {
     let Some(parent_pid) = parent else {
-      let _ = self.send_system_message(pid, SystemMessage::Stop);
+      if let Err(e) = self.send_system_message(pid, SystemMessage::Stop) {
+        self.record_send_error(Some(pid), &e);
+      }
       return;
     };
 
     let Some(parent_cell) = self.cell(&parent_pid) else {
-      let _ = self.send_system_message(pid, SystemMessage::Stop);
+      if let Err(e) = self.send_system_message(pid, SystemMessage::Stop) {
+        self.record_send_error(Some(pid), &e);
+      }
       return;
     };
 
@@ -681,7 +692,9 @@ impl SystemStateShared {
         for target in affected {
           if let Err(send_error) = self.send_system_message(target, SystemMessage::Recreate) {
             self.record_send_error(Some(target), &send_error);
-            let _ = self.send_system_message(target, SystemMessage::Stop);
+            if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
+              self.record_send_error(Some(target), &e);
+            }
             escalate_due_to_recreate_failure = true;
           }
         }
@@ -691,18 +704,24 @@ impl SystemStateShared {
       },
       | SupervisorDirective::Stop => {
         for target in affected {
-          let _ = self.send_system_message(target, SystemMessage::Stop);
+          if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
+            self.record_send_error(Some(target), &e);
+          }
         }
       },
       | SupervisorDirective::Escalate => {
         for target in affected {
-          let _ = self.send_system_message(target, SystemMessage::Stop);
+          if let Err(e) = self.send_system_message(target, SystemMessage::Stop) {
+            self.record_send_error(Some(target), &e);
+          }
         }
         self.handle_failure(parent_pid, parent_parent, error);
       },
       | SupervisorDirective::Resume => {
         for target in affected {
-          let _ = self.send_system_message(target, SystemMessage::Resume);
+          if let Err(e) = self.send_system_message(target, SystemMessage::Resume) {
+            self.record_send_error(Some(target), &e);
+          }
         }
       },
     }
@@ -838,14 +857,18 @@ impl SystemStateShared {
         return;
       }
       self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
-      let _ = self.send_system_message(child_pid, SystemMessage::Stop);
+      if let Err(e) = self.send_system_message(child_pid, SystemMessage::Stop) {
+        self.record_send_error(Some(child_pid), &e);
+      }
       return;
     }
 
     let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
     self.emit_log(LogLevel::Error, message, Some(child_pid));
     self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
-    let _ = self.send_system_message(child_pid, SystemMessage::Stop);
+    if let Err(e) = self.send_system_message(child_pid, SystemMessage::Stop) {
+      self.record_send_error(Some(child_pid), &e);
+    }
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).

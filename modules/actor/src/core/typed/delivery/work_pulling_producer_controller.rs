@@ -287,8 +287,14 @@ fn subscribe_to_receptionist<A>(
   A: Clone + Send + Sync + 'static, {
   let subscribe_cmd = Receptionist::subscribe(worker_service_key, listing_adapter.clone());
   let system = ctx.system();
-  if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    let _ = receptionist_ref.tell(subscribe_cmd);
+  if let Some(mut receptionist_ref) = system.receptionist_ref()
+    && let Err(e) = receptionist_ref.tell(subscribe_cmd)
+  {
+    ctx.system().emit_log(
+      LogLevel::Warn,
+      alloc::format!("failed to subscribe to receptionist: {:?}", e),
+      Some(ctx.pid()),
+    );
   }
 }
 

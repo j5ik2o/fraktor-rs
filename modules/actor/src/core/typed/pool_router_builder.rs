@@ -250,7 +250,13 @@ where
                 removed
               };
               for routee in &to_stop {
-                let _ = ctx.stop_actor_by_ref(routee);
+                if let Err(e) = ctx.stop_actor_by_ref(routee) {
+                  ctx.system().emit_log(
+                    LogLevel::Warn,
+                    alloc::format!("pool router failed to stop routee during resize: {:?}", e),
+                    Some(ctx.pid()),
+                  );
+                }
               }
             }
           }
@@ -269,7 +275,13 @@ where
           }
         };
         for mut target in targets {
-          let _ = target.tell(message.clone());
+          if let Err(e) = target.tell(message.clone()) {
+            ctx.system().emit_log(
+              LogLevel::Warn,
+              alloc::format!("pool router failed to send message to routee: {:?}", e),
+              Some(ctx.pid()),
+            );
+          }
         }
         Ok(Behaviors::same())
       })

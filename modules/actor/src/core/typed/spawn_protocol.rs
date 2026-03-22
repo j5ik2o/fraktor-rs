@@ -99,9 +99,15 @@ impl SpawnProtocol {
   #[must_use]
   pub fn behavior() -> Behavior<Self> {
     Behaviors::receive_message(move |ctx, command: &Self| {
-      // Ignore execution errors to keep this actor alive for subsequent requests.
+      // Execution errors are non-fatal to keep this actor alive for subsequent requests.
       // On failure the requester's ask future remains pending until its timeout.
-      let _ = command.command.execute(ctx);
+      if let Err(e) = command.command.execute(ctx) {
+        ctx.system().emit_log(
+          crate::core::event::logging::LogLevel::Warn,
+          alloc::format!("spawn protocol command execution failed: {:?}", e),
+          Some(ctx.pid()),
+        );
+      }
       Ok(Behaviors::same())
     })
   }
