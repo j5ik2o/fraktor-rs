@@ -65,7 +65,7 @@ use crate::core::{
 
 mod failure_outcome;
 
-pub use failure_outcome::FailureOutcome;
+pub(crate) use failure_outcome::FailureOutcome;
 
 use crate::core::system::actor_system_config::ActorSystemConfig;
 

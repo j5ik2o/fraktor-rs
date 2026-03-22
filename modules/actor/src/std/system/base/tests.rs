@@ -38,7 +38,7 @@ async fn new_bootstraps_system_with_tokio_defaults() {
 #[allow(clippy::expect_used)]
 async fn new_with_config_applies_config_override() {
   let props = Props::from_fn(|| GuardianActor);
-  let tick_driver = crate::std::scheduler::tick::TickDriverConfig::default_config();
+  let tick_driver = crate::std::scheduler::TickDriverConfig::default_config();
   let config = ActorSystemConfig::default()
     .with_tick_driver(tick_driver)
     .with_system_name("custom-system")

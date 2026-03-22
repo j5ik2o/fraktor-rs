@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 mod tests;
 
 #[cfg(any(test, feature = "test-support"))]
-use super::manual_test_driver::ManualTickController;
+use super::manual_tick_controller::ManualTickController;
 use super::{AutoDriverMetadata, TickDriverHandle, TickFeedHandle};
 
 /// Bundle of assets produced after provisioning a tick driver.

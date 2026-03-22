@@ -5,6 +5,8 @@ mod bootstrap;
 mod hardware_driver;
 #[cfg(any(test, feature = "test-support"))]
 mod manual_test_driver;
+#[cfg(any(test, feature = "test-support"))]
+mod manual_tick_controller;
 mod scheduler_tick_executor;
 mod scheduler_tick_handle_owned;
 mod tick_driver_bundle;
@@ -34,6 +36,8 @@ pub(crate) use bootstrap::TickDriverBootstrap;
 pub use hardware_driver::HardwareTickDriver;
 #[cfg(any(test, feature = "test-support"))]
 pub use manual_test_driver::ManualTestDriver;
+#[cfg(any(test, feature = "test-support"))]
+pub use manual_tick_controller::ManualTickController;
 pub use scheduler_tick_executor::SchedulerTickExecutor;
 pub(crate) use scheduler_tick_handle_owned::SchedulerTickHandleOwned;
 pub use tick_driver_bundle::TickDriverBundle;

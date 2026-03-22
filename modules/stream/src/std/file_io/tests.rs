@@ -9,7 +9,7 @@ use crate::{
     mat::{Materialized, Materializer, RunnableGraph},
     stage::{Sink, Source},
   },
-  std::file_io::FileIO,
+  std::FileIO,
 };
 
 struct TestMaterializer;

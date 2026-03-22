@@ -52,7 +52,7 @@ impl ActorSystem {
   /// or tick driver setup fails.
   #[cfg(feature = "tokio-executor")]
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    let tick_driver = crate::std::scheduler::tick::TickDriverConfig::default_config();
+    let tick_driver = crate::std::scheduler::TickDriverConfig::default_config();
     let config = ActorSystemConfig::default()
       .with_tick_driver(tick_driver)
       .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::default_config().into_core());

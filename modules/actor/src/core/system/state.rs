@@ -20,9 +20,9 @@ use super::{
 
 mod authority_state;
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) mod booting_state;
+mod booting_state;
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) mod running_state;
+mod running_state;
 /// Shared, mutable state owned by the actor system.
 pub mod system_state;
 mod system_state_shared;
