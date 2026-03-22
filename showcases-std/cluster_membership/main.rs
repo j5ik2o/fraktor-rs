@@ -145,6 +145,9 @@ async fn main() -> Result<()> {
   node_a.cluster.start_member().map_err(|e| anyhow!("start_member node-a: {e:?}"))?;
   node_b.cluster.start_member().map_err(|e| anyhow!("start_member node-b: {e:?}"))?;
 
+  // クラスタ収束を待機（EventStream 経由のトポロジ適用が完了するのを待つ）
+  tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
   // メトリクスを確認
   println!("\n--- メトリクス確認 ---");
   let metrics_a = node_a.cluster.metrics().map_err(|e| anyhow!("metrics node-a: {e:?}"))?;
