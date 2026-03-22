@@ -9,7 +9,7 @@
 //! };
 //!
 //! let _builder: GraphDslBuilder<u32, u32, StreamNotUsed> = GraphDslBuilder::new();
-//! let _ = FlowFragment::from_flow;
+//! let _ = FlowFragment::<u32, u32, StreamNotUsed>::from_flow;
 //! ```
 
 // Bridge imports from core level for children
