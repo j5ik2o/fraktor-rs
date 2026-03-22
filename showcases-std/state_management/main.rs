@@ -1,0 +1,175 @@
+//! State management with behavior transitions.
+//!
+//! Demonstrates two patterns for managing actor state:
+//!
+//! 1. **Functional counter** — each `Add` returns a new behavior capturing the updated total
+//!    (immutable state transitions).
+//! 2. **Turnstile state machine** — `locked` and `unlocked` behaviors replace each other on
+//!    `InsertCoin` / `PassThrough` events.
+//!
+//! Run with: `cargo run -p fraktor-showcases-std --example state_management`
+
+use fraktor_actor_rs::{
+  core::{
+    error::ActorError,
+    typed::{Behavior, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  },
+  std::typed::Behaviors,
+};
+use fraktor_showcases_std::support;
+use fraktor_utils_rs::core::sync::SharedAccess;
+
+// =============================================================================
+// パート 1: カウンターアクター（イミュータブルな状態遷移）
+// =============================================================================
+
+#[derive(Clone)]
+enum CounterCommand {
+  Add(i32),
+  Read { reply_to: TypedActorRef<i32> },
+}
+
+fn counter(total: i32) -> Behavior<CounterCommand> {
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | CounterCommand::Add(delta) => {
+      // 新しい Behavior を返すことで状態を遷移させる
+      Ok(counter(total + delta))
+    },
+    | CounterCommand::Read { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      Ok(Behaviors::same())
+    },
+  })
+}
+
+// =============================================================================
+// パート 2: 改札ゲート（ステートマシン）
+// =============================================================================
+
+#[derive(Clone)]
+enum GateCommand {
+  InsertCoin,
+  PassThrough,
+  ReadPassCount { reply_to: TypedActorRef<u32> },
+  Shutdown,
+}
+
+fn locked(pass_count: u32) -> Behavior<GateCommand> {
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | GateCommand::InsertCoin => {
+      println!("locked -> unlocked");
+      Ok(unlocked(pass_count))
+    },
+    | GateCommand::PassThrough => {
+      println!("locked: PassThrough ignored");
+      Ok(Behaviors::ignore())
+    },
+    | GateCommand::ReadPassCount { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(pass_count).map_err(|e| ActorError::from_send_error(&e))?;
+      Ok(Behaviors::same())
+    },
+    | GateCommand::Shutdown => Ok(Behaviors::stopped()),
+  })
+}
+
+fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
+  Behaviors::receive_message(move |_ctx, message| match message {
+    | GateCommand::PassThrough => {
+      let next_total = pass_count + 1;
+      println!("unlocked -> locked (total {next_total})");
+      Ok(locked(next_total))
+    },
+    | GateCommand::InsertCoin => {
+      println!("unlocked: extra InsertCoin ignored");
+      Ok(Behaviors::ignore())
+    },
+    | GateCommand::ReadPassCount { reply_to } => {
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(pass_count).map_err(|e| ActorError::from_send_error(&e))?;
+      Ok(Behaviors::same())
+    },
+    | GateCommand::Shutdown => Ok(Behaviors::stopped()),
+  })
+}
+
+// --- エントリーポイント ---
+
+#[allow(clippy::print_stdout)]
+fn main() {
+  println!("=== Part 1: Counter ===");
+  run_counter();
+
+  println!();
+  println!("=== Part 2: Turnstile Gate ===");
+  run_gate();
+}
+
+fn run_counter() {
+  use std::thread;
+
+  let props = TypedProps::from_behavior_factory(|| counter(0));
+  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let mut counter_ref = system.user_guardian_ref();
+  let termination = system.when_terminated();
+
+  counter_ref.tell(CounterCommand::Add(4)).expect("add first");
+  counter_ref.tell(CounterCommand::Add(6)).expect("add second");
+
+  let response = counter_ref.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to }).expect("ask read");
+  let mut future = response.future().clone();
+  while !future.is_ready() {
+    thread::yield_now();
+  }
+  if let Some(result) = future.try_take() {
+    match result {
+      | Ok(value) => println!("counter result: {value}"),
+      | Err(error) => println!("counter error: {error}"),
+    }
+  }
+
+  system.terminate().expect("terminate");
+  while !termination.with_read(|af| af.is_ready()) {
+    thread::yield_now();
+  }
+}
+
+fn run_gate() {
+  use std::thread;
+
+  let props = TypedProps::from_behavior_factory(|| locked(0));
+  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
+  let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
+  let mut gate = system.user_guardian_ref();
+  let termination = system.when_terminated();
+
+  // コインなしで通過を試みる（拒否される）
+  gate.tell(GateCommand::PassThrough).expect("fail first pass");
+  // コインを投入してゲートを開く
+  gate.tell(GateCommand::InsertCoin).expect("unlock once");
+  // 余分なコイン（無視される）
+  gate.tell(GateCommand::InsertCoin).expect("extra coin");
+  // 通過（ゲートが閉まる）
+  gate.tell(GateCommand::PassThrough).expect("pass after unlock");
+
+  let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to }).expect("ask count");
+  let mut future = response.future().clone();
+  while !future.is_ready() {
+    thread::yield_now();
+  }
+  if let Some(result) = future.try_take() {
+    match result {
+      | Ok(total) => println!("gate allowed {total} people"),
+      | Err(error) => println!("gate count error: {error}"),
+    }
+  }
+
+  gate.tell(GateCommand::Shutdown).expect("shutdown gate");
+
+  system.terminate().expect("terminate");
+  while !termination.with_read(|af| af.is_ready()) {
+    thread::yield_now();
+  }
+}

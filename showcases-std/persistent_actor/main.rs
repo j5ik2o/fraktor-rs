@@ -1,0 +1,138 @@
+//! Persistent actor with event sourcing.
+//!
+//! Demonstrates `PersistentActor` with event-based state recovery:
+//! events are persisted to an in-memory journal and replayed on actor restart
+//! to restore the counter's accumulated value.
+//!
+//! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
+
+use fraktor_actor_rs::core::{
+  actor::{Actor, ActorContext},
+  error::ActorError,
+  extension::ExtensionInstallers,
+  messaging::{AnyMessage, AnyMessageView},
+  props::Props,
+  system::ActorSystemConfig,
+};
+use fraktor_persistence_rs::core::{
+  Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
+  PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
+};
+use fraktor_showcases_std::support;
+use fraktor_utils_rs::core::sync::SharedAccess;
+
+// --- メッセージ定義 ---
+
+struct Start;
+
+#[derive(Clone)]
+enum Command {
+  Add(i32),
+}
+
+#[derive(Clone)]
+enum Event {
+  Incremented(i32),
+}
+
+// --- 永続カウンターアクター ---
+
+struct CounterActor {
+  context: PersistenceContext<CounterActor>,
+  value:   i32,
+}
+
+impl CounterActor {
+  fn new(persistence_id: &str) -> Self {
+    Self { context: PersistenceContext::new(persistence_id.into()), value: 0 }
+  }
+
+  fn apply_event(&mut self, event: &Event) {
+    let Event::Incremented(delta) = event;
+    self.value += delta;
+  }
+}
+
+impl Eventsourced for CounterActor {
+  fn persistence_id(&self) -> &str {
+    self.context.persistence_id()
+  }
+
+  fn receive_recover(&mut self, repr: &PersistentRepr) {
+    if let Some(event) = repr.downcast_ref::<Event>() {
+      self.apply_event(event);
+    }
+  }
+
+  fn receive_snapshot(&mut self, snapshot: &Snapshot) {
+    if let Some(value) = snapshot.data().downcast_ref::<i32>() {
+      self.value = *value;
+    }
+  }
+
+  fn receive_command(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(Command::Add(delta)) = message.downcast_ref::<Command>() {
+      println!("command: Add({delta}), current value: {}", self.value);
+      self.persist(ctx, Event::Incremented(*delta), |actor, event| actor.apply_event(event));
+      self.flush_batch(ctx)?;
+      println!("after persist: value = {}", self.value);
+    }
+    Ok(())
+  }
+
+  fn last_sequence_nr(&self) -> u64 {
+    self.context.last_sequence_nr()
+  }
+}
+
+impl PersistentActor for CounterActor {
+  fn persistence_context(&mut self) -> &mut PersistenceContext<Self> {
+    &mut self.context
+  }
+}
+
+// --- Guardian アクター ---
+
+struct GuardianActor;
+
+impl Actor for GuardianActor {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_none() {
+      return Ok(());
+    }
+
+    let props = persistent_props(|| CounterActor::new("counter-1"));
+    let child = spawn_persistent(ctx, &props)
+      .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
+
+    child.tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send Add(1) failed"))?;
+    child.tell(AnyMessage::new(Command::Add(5))).map_err(|_| ActorError::recoverable("send Add(5) failed"))?;
+    child.tell(AnyMessage::new(Command::Add(3))).map_err(|_| ActorError::recoverable("send Add(3) failed"))?;
+    Ok(())
+  }
+}
+
+// --- エントリーポイント ---
+
+#[allow(clippy::print_stdout)]
+fn main() {
+  use std::thread;
+
+  println!("=== Persistent actor with event sourcing ===");
+
+  let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
+
+  let props = Props::from_fn(|| GuardianActor);
+  let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
+  let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config).with_extension_installers(installers);
+
+  let system = fraktor_actor_rs::std::system::ActorSystem::new_with_config(&props, &config).expect("system");
+  let termination = system.when_terminated();
+
+  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+  system.terminate().expect("terminate");
+  while !termination.with_read(|af| af.is_ready()) {
+    thread::yield_now();
+  }
+}

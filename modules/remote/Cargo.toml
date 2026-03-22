@@ -37,13 +37,3 @@ anyhow = { workspace = true }
 name = "quickstart"
 path = "tests/quickstart.rs"
 required-features = ["test-support"]
-
-[[example]]
-name = "loopback_quickstart"
-path = "examples/loopback_quickstart/main.rs"
-required-features = ["std", "test-support"]
-
-[[example]]
-name = "tokio_tcp_quickstart"
-path = "examples/tokio_tcp_quickstart/main.rs"
-required-features = ["std", "test-support", "tokio-transport", "tokio-executor"]
