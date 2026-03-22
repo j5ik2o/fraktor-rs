@@ -271,7 +271,7 @@ fn main() {
   // Part 2: Bincode シリアライゼーション（バインドを切り替え）
   println!("\n=== Part 2: Bincode serialization ===");
   serialization
-    .with_read(|ext| ext.register_binding(TypeId::of::<TelemetryPayload>(), "TelemetryPayload", bincode_id))
+    .with_write(|ext| ext.register_binding(TypeId::of::<TelemetryPayload>(), "TelemetryPayload", bincode_id))
     .expect("rebind to bincode");
   serialize_and_restore(&serialization, &payload, "bincode");
 
