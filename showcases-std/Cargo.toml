@@ -6,19 +6,19 @@ publish = false
 
 [dependencies]
 # 基本依存（全 example 共通）
-fraktor-actor-rs = { path = "../modules/actor", features = ["std", "test-support"] }
-fraktor-utils-rs = { path = "../modules/utils", features = ["std"] }
-fraktor-stream-rs = { path = "../modules/stream", features = ["std"] }
-serde_json = "1.0"
-bincode = { version = "2.0.1", features = ["alloc", "serde"] }
-serde = { version = "1.0", features = ["derive"] }
+fraktor-actor-rs = { workspace = true, features = ["std", "test-support"] }
+fraktor-utils-rs = { workspace = true, features = ["std"] }
+fraktor-stream-rs = { workspace = true, features = ["std"] }
+serde_json = { workspace = true }
+bincode = { workspace = true, features = ["alloc", "serde"] }
+serde = { workspace = true, features = ["derive"] }
 
 # advanced 依存（cross-module examples 用）
-fraktor-persistence-rs = { path = "../modules/persistence", features = ["std"], optional = true }
-fraktor-remote-rs = { path = "../modules/remote", features = ["std", "tokio-transport", "tokio-executor", "test-support"], optional = true }
-fraktor-cluster-rs = { path = "../modules/cluster", features = ["std", "test-support"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
-anyhow = { version = "1", optional = true }
+fraktor-persistence-rs = { workspace = true, features = ["std"], optional = true }
+fraktor-remote-rs = { workspace = true, features = ["std", "tokio-transport", "tokio-executor", "test-support"], optional = true }
+fraktor-cluster-rs = { workspace = true, features = ["std", "test-support"], optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
+anyhow = { workspace = true, optional = true }
 
 [features]
 default = []
