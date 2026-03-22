@@ -18,6 +18,7 @@
     "opsx:full": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-full -t",
     "opsx:propose": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-propose -t",
     "opsx:apply": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-apply -t",
+    "opsx:apply:no-tests": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-apply-no-tests -t",
     "opsx:archive": "./scripts/run-takt.sh --pipeline --skip-git -w opsx-archive -t",
     "opsx:explore": "./scripts/run-takt.sh --skip-git -w opsx-explore"
   },
