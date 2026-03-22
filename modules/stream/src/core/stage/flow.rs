@@ -3751,12 +3751,7 @@ where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let logic = BufferLogic::<In> {
-    capacity,
-    overflow_mode: BufferOverflowMode::Strategy(overflow_strategy),
-    pending: VecDeque::new(),
-    source_done: false,
-  };
+  let logic = BufferLogic::<In> { capacity, overflow_strategy, pending: VecDeque::new(), source_done: false };
   FlowDefinition {
     kind:        StageKind::FlowBuffer,
     inlet:       inlet.id(),

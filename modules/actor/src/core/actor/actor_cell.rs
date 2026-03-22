@@ -130,16 +130,17 @@ impl ActorCell {
     name: String,
     props: &Props,
   ) -> Result<ArcShared<Self>, SpawnError> {
-    let mailbox_config = if let Some(mailbox_id) = props.mailbox_id() {
-      system.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
+    let mailbox_id = props.mailbox_id();
+
+    let mailbox_config = if let Some(id) = mailbox_id {
+      system.resolve_mailbox(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
     } else {
       props.mailbox_config().clone()
     };
 
-    let mailbox = if let Some(mailbox_id) = props.mailbox_id() {
-      let queue = system
-        .create_mailbox_queue(mailbox_id)
-        .map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
+    let mailbox = if let Some(id) = mailbox_id {
+      let queue =
+        system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
       ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
     } else {
       ArcShared::new(
