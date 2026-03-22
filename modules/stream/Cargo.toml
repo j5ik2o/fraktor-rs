@@ -26,33 +26,3 @@ miniz_oxide = { version = "0.9", optional = true, default-features = false, feat
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 tempfile = "3"
-
-[[example]]
-name = "actor_system_basic_std"
-path = "examples/actor_system_basic_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "source_sink_minimal_std"
-path = "examples/source_sink_minimal_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "map_filter_std"
-path = "examples/map_filter_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "fold_aggregation_std"
-path = "examples/fold_aggregation_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "custom_graph_stage_std"
-path = "examples/custom_graph_stage_std/main.rs"
-required-features = ["std"]
-
-[[example]]
-name = "backpressure_demo_std"
-path = "examples/backpressure_demo_std/main.rs"
-required-features = ["std"]

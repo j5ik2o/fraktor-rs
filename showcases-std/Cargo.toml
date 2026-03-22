@@ -1,0 +1,84 @@
+[package]
+name = "fraktor-showcases-std"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# 基本依存（全 example 共通）
+fraktor-actor-rs = { path = "../modules/actor", features = ["std", "test-support"] }
+fraktor-utils-rs = { path = "../modules/utils", features = ["std"] }
+fraktor-stream-rs = { path = "../modules/stream", features = ["std"] }
+serde_json = "1.0"
+bincode = { version = "2.0.1", features = ["alloc", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+
+# advanced 依存（cross-module examples 用）
+fraktor-persistence-rs = { path = "../modules/persistence", features = ["std"], optional = true }
+fraktor-remote-rs = { path = "../modules/remote", features = ["std", "tokio-transport", "tokio-executor", "test-support"], optional = true }
+fraktor-cluster-rs = { path = "../modules/cluster", features = ["std", "test-support"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
+anyhow = { version = "1", optional = true }
+
+[features]
+default = []
+advanced = ["dep:fraktor-persistence-rs", "dep:fraktor-remote-rs", "dep:fraktor-cluster-rs", "dep:tokio", "dep:anyhow"]
+
+[lib]
+name = "fraktor_showcases_std"
+path = "src/lib.rs"
+
+# --- Basic examples ---
+
+[[example]]
+name = "getting_started"
+path = "getting_started/main.rs"
+
+[[example]]
+name = "request_reply"
+path = "request_reply/main.rs"
+
+[[example]]
+name = "state_management"
+path = "state_management/main.rs"
+
+[[example]]
+name = "child_lifecycle"
+path = "child_lifecycle/main.rs"
+
+[[example]]
+name = "timers"
+path = "timers/main.rs"
+
+[[example]]
+name = "routing"
+path = "routing/main.rs"
+
+[[example]]
+name = "stash"
+path = "stash/main.rs"
+
+[[example]]
+name = "serialization"
+path = "serialization/main.rs"
+
+[[example]]
+name = "stream_pipeline"
+path = "stream_pipeline/main.rs"
+
+# --- Advanced examples ---
+
+[[example]]
+name = "persistent_actor"
+path = "persistent_actor/main.rs"
+required-features = ["advanced"]
+
+[[example]]
+name = "cluster_membership"
+path = "cluster_membership/main.rs"
+required-features = ["advanced"]
+
+[[example]]
+name = "remote_messaging"
+path = "remote_messaging/main.rs"
+required-features = ["advanced"]
