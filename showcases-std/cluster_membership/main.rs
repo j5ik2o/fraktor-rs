@@ -29,7 +29,6 @@ use fraktor_actor_rs::{
   std::{
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
     event::stream::{EventStreamSubscriber, subscriber_handle},
-    scheduler::tick::TickDriverConfig,
     system::ActorSystem,
   },
 };
@@ -41,6 +40,7 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
+use fraktor_showcases_std::support::tokio_tick_driver_config;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 const HOST: &str = "127.0.0.1";
@@ -102,7 +102,7 @@ fn build_cluster_node(system_name: &str, port: u16, static_topology: ClusterTopo
   let remoting_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver(TickDriverConfig::default_config())
+    .with_tick_driver(tokio_tick_driver_config())
     .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))

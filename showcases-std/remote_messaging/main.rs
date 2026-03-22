@@ -26,7 +26,6 @@ use fraktor_actor_rs::{
   },
   std::{
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    scheduler::tick::TickDriverConfig,
     system::ActorSystem,
   },
 };
@@ -35,6 +34,7 @@ use fraktor_remote_rs::core::{
   actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
   remoting_extension::RemotingExtensionConfig,
 };
+use fraktor_showcases_std::support::tokio_tick_driver_config;
 
 const HOST: &str = "127.0.0.1";
 const RECEIVER_PORT: u16 = 25530;
@@ -103,7 +103,7 @@ fn build_system(system_name: &str, canonical_port: u16, guardian: Props) -> Resu
   let transport_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
-    .with_tick_driver(TickDriverConfig::default_config())
+    .with_tick_driver(tokio_tick_driver_config())
     .with_default_dispatcher(default_dispatcher.into_core())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))

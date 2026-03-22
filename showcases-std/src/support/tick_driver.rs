@@ -17,6 +17,10 @@ use std::{
   time::Duration as StdDuration,
 };
 
+#[cfg(feature = "advanced")]
+use fraktor_actor_rs::core::scheduler::tick_driver::{
+  AutoDriverMetadata, AutoProfileKind, TickDriverControl, TickDriverHandle, TickDriverKind, next_tick_driver_id,
+};
 use fraktor_actor_rs::core::scheduler::{
   SchedulerShared,
   tick_driver::{
@@ -25,6 +29,8 @@ use fraktor_actor_rs::core::scheduler::{
   },
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
+#[cfg(feature = "advanced")]
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 
@@ -193,4 +199,79 @@ impl Drop for StdTickDriverPump {
   fn drop(&mut self) {
     self.stop();
   }
+}
+
+/// Creates a Tokio-based tick driver configuration with the default 10ms resolution.
+///
+/// # Panics
+///
+/// Panics if no Tokio runtime handle is available in the current context.
+#[cfg(feature = "advanced")]
+#[must_use]
+pub fn tokio_tick_driver_config() -> TickDriverConfig {
+  tokio_tick_driver_config_with_resolution(Duration::from_millis(10))
+}
+
+/// Creates a Tokio-based tick driver configuration with custom resolution.
+///
+/// # Panics
+///
+/// Panics if no Tokio runtime handle is available in the current context.
+#[cfg(feature = "advanced")]
+#[must_use]
+pub fn tokio_tick_driver_config_with_resolution(resolution: Duration) -> TickDriverConfig {
+  use tokio::{
+    runtime::Handle,
+    time::{MissedTickBehavior, interval},
+  };
+
+  TickDriverConfig::new(move |ctx| {
+    #[allow(clippy::expect_used)]
+    let handle = Handle::try_current().expect("Tokio runtime handle unavailable");
+
+    let scheduler: SchedulerShared = ctx.scheduler();
+    let capacity = scheduler.with_read(|s| s.config().profile().tick_buffer_quota());
+
+    let signal = TickExecutorSignal::new();
+    let feed = TickFeed::new(resolution, capacity, signal);
+    let feed_clone = feed.clone();
+
+    let tick_task = handle.spawn(async move {
+      let mut ticker = interval(resolution);
+      ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+      loop {
+        ticker.tick().await;
+        feed_clone.enqueue(1);
+      }
+    });
+
+    let executor_feed = feed.clone();
+    let executor_signal = executor_feed.signal();
+    let executor_task = handle.spawn(async move {
+      let mut executor = SchedulerTickExecutor::new(scheduler, executor_feed, executor_signal);
+      loop {
+        executor.drive_pending();
+        tokio::time::sleep(resolution / 10).await;
+      }
+    });
+
+    struct TokioQuickstartControl {
+      tick_task:     tokio::task::JoinHandle<()>,
+      executor_task: tokio::task::JoinHandle<()>,
+    }
+    impl TickDriverControl for TokioQuickstartControl {
+      fn shutdown(&self) {
+        self.tick_task.abort();
+        self.executor_task.abort();
+      }
+    }
+
+    let driver_id = next_tick_driver_id();
+    let control: Box<dyn TickDriverControl> = Box::new(TokioQuickstartControl { tick_task, executor_task });
+    let control = ArcShared::new(RuntimeMutex::new(control));
+    let driver_handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
+    let metadata = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
+
+    Ok(TickDriverBundle::new(driver_handle, feed).with_auto_metadata(metadata))
+  })
 }
