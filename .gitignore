@@ -47,6 +47,9 @@ Cargo.lock
 
 /.takt/clone-meta/
 
+# AI agent intermediate artifacts (should be in .takt/ only)
+/reports/
+
 /.claude/settings.local.json
 
 /.codex*/cache/
