@@ -13,7 +13,13 @@ impl<T> Outlet<T> {
   /// Creates a new outlet.
   #[must_use]
   pub fn new() -> Self {
-    Self { id: PortId::next(), _pd: PhantomData }
+    Self { id: Self::next_id(), _pd: PhantomData }
+  }
+
+  /// Generates the next outlet identifier.
+  #[must_use]
+  pub fn next_id() -> PortId {
+    PortId::next()
   }
 
   /// Returns the port identifier.

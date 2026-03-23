@@ -94,8 +94,8 @@ fn inflate_rejects_invalid_data() {
   // 実行: 無効データの解凍を試行
   let result = Compression::inflate_bytes(&invalid);
 
-  // 検証: エラーが返される
-  assert!(result.is_err());
+  // 検証: deflate 解析エラーが返される
+  assert!(matches!(result, Err(crate::core::StreamError::CompressionError { kind: "deflate" })));
 }
 
 #[test]

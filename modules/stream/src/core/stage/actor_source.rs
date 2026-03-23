@@ -17,6 +17,8 @@ mod tests;
 /// push elements into the stream.
 pub struct ActorSource;
 
+const ACK_BACKPRESSURE_BUFFER_SIZE: usize = 16;
+
 impl ActorSource {
   /// Creates an actor-ref style source with a bounded buffer.
   ///
@@ -42,10 +44,9 @@ impl ActorSource {
     let source_ref = ActorSourceRef::new(queue.clone());
     let logic = ActorRefSourceLogic::<T> { queue, _pd: PhantomData };
     let mut graph = StreamGraph::new();
-    let outlet: Outlet<T> = Outlet::new();
     let definition = SourceDefinition {
       kind:        StageKind::Custom,
-      outlet:      outlet.id(),
+      outlet:      Outlet::<T>::next_id(),
       output_type: TypeId::of::<T>(),
       mat_combine: MatCombine::KeepRight,
       supervision: SupervisionStrategy::Stop,
@@ -75,7 +76,7 @@ impl ActorSource {
     // ハンドシェイクで制御されるため、キューオーバーフローではなく ack 待ちで
     // 流量が調整される。バッファサイズ 16 は ack 応答前に複数の tell を
     // キューイングするための余裕であり、Pekko の実装に倣った値。
-    let queue = BoundedSourceQueue::new(16, OverflowStrategy::Fail);
+    let queue = BoundedSourceQueue::new(ACK_BACKPRESSURE_BUFFER_SIZE, OverflowStrategy::Fail);
     let source_ref = ActorSourceRef::new(queue.clone());
     let logic = ActorRefBackpressureSourceLogic::<T, Ack, ReceiveAck> {
       queue,
@@ -85,10 +86,9 @@ impl ActorSource {
       _pd: PhantomData,
     };
     let mut graph = StreamGraph::new();
-    let outlet: Outlet<T> = Outlet::new();
     let definition = SourceDefinition {
       kind:        StageKind::Custom,
-      outlet:      outlet.id(),
+      outlet:      Outlet::<T>::next_id(),
       output_type: TypeId::of::<T>(),
       mat_combine: MatCombine::KeepRight,
       supervision: SupervisionStrategy::Stop,
