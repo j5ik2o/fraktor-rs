@@ -55,12 +55,16 @@ impl FileIO {
     chunk_size: usize,
     start_position: u64,
   ) -> Source<u8, IOResult> {
+    if chunk_size == 0 {
+      let error = std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk_size must be greater than 0");
+      return Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&error)));
+    }
+
     let result = (|| -> Result<alloc::vec::Vec<u8>, std::io::Error> {
       let mut file = fs::File::open(path.as_ref())?;
       file.seek(SeekFrom::Start(start_position))?;
       let mut all_bytes = alloc::vec::Vec::new();
-      let effective_chunk_size = chunk_size.max(1);
-      let mut buf = alloc::vec![0u8; effective_chunk_size];
+      let mut buf = alloc::vec![0u8; chunk_size];
       loop {
         let n = file.read(&mut buf)?;
         if n == 0 {
@@ -163,17 +167,15 @@ struct WriteToPathSinkLogic {
 
 impl SinkLogic for WriteToPathSinkLogic {
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
-    let file_result =
-      if let Some(options) = self.options.take() { options.open(&self.path) } else { fs::File::create(&self.path) };
-    if let Ok(mut file) = file_result {
-      if let Some(pos) = self.start_position
-        && file.seek(SeekFrom::Start(pos)).is_err()
-      {
-        // シーク失敗。writer を None のままにして on_complete で失敗を報告。
-        return demand.request(1);
-      }
-      self.writer = Some(BufWriter::new(file));
+    let mut file = if let Some(options) = self.options.take() {
+      options.open(&self.path).map_err(|e| io_error_to_stream_error(&e))?
+    } else {
+      fs::File::create(&self.path).map_err(|e| io_error_to_stream_error(&e))?
+    };
+    if let Some(pos) = self.start_position {
+      file.seek(SeekFrom::Start(pos)).map_err(|e| io_error_to_stream_error(&e))?;
     }
+    self.writer = Some(BufWriter::new(file));
     demand.request(1)
   }
 
@@ -183,9 +185,9 @@ impl SinkLogic for WriteToPathSinkLogic {
       // writer が既に破棄されている場合は即完了。
       return Ok(SinkDecision::Complete);
     };
-    if writer.write_all(&[byte]).is_err() {
+    if let Err(e) = writer.write_all(&[byte]) {
       self.writer = None;
-      return Ok(SinkDecision::Complete);
+      return Err(io_error_to_stream_error(&e));
     }
     self.count += 1;
     demand.request(1)?;

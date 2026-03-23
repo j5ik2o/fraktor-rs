@@ -155,6 +155,25 @@ fn from_reader_io_error_returns_failed_io_result() {
   let (io_result, _completion) = materialized.materialized();
   assert!(!io_result.was_successful());
   assert_eq!(io_result.count(), 0);
+  assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
+}
+
+#[test]
+fn from_reader_rejects_zero_chunk_size() {
+  // 準備: 読み込み元は有効だが chunk_size=0
+  let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"hello".to_vec())), 0);
+  let graph = source
+    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).expect("run");
+  drive_to_completion(&materialized);
+
+  // 検証: InvalidInput として失敗する
+  let (io_result, completion) = materialized.materialized();
+  assert!(!io_result.was_successful());
+  assert_eq!(io_result.count(), 0);
+  assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
+  assert_eq!(completion.poll(), Completion::Ready(Ok(alloc::vec::Vec::<alloc::vec::Vec<u8>>::new())));
 }
 
 // --- to_writer テスト ---
@@ -275,6 +294,7 @@ fn to_writer_io_error_returns_failed_io_result() {
   match completion.poll() {
     | Completion::Ready(Ok(io_result)) => {
       assert!(!io_result.was_successful());
+      assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
     },
     | other => panic!("expected Ready(Ok(IOResult::failed)), got {other:?}"),
   }

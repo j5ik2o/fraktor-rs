@@ -142,9 +142,9 @@ fn gunzip_rejects_invalid_magic_bytes() {
 // --- max_bytes_per_chunk_default 定数 ---
 
 #[test]
-fn max_bytes_per_chunk_default_is_1m() {
-  // 検証: 元の MAX_DECOMPRESSED_BYTES (1 MiB) と一致
-  assert_eq!(Compression::MAX_BYTES_PER_CHUNK_DEFAULT, 1024 * 1024);
+fn max_bytes_per_chunk_default_is_64k() {
+  // 検証: Pekko の MaxBytesPerChunkDefault (64 KiB) と一致
+  assert_eq!(Compression::MAX_BYTES_PER_CHUNK_DEFAULT, 64 * 1024);
 }
 
 // --- nowrap オプション ---
@@ -158,6 +158,21 @@ fn deflate_with_nowrap_round_trips() {
   let compressed = Compression::deflate_bytes_with_options(&input, 6, true);
   let decompressed =
     Compression::inflate_bytes_with_options(&compressed, Compression::MAX_BYTES_PER_CHUNK_DEFAULT, true)
+      .expect("decompress");
+
+  // 検証: 元の入力と一致
+  assert_eq!(decompressed, input);
+}
+
+#[test]
+fn deflate_with_zlib_wrapper_round_trips() {
+  // 準備: 入力バイト列
+  let input: Vec<u8> = alloc::vec![1, 3, 5, 7, 9];
+
+  // 実行: nowrap=false で圧縮・解凍
+  let compressed = Compression::deflate_bytes_with_options(&input, 6, false);
+  let decompressed =
+    Compression::inflate_bytes_with_options(&compressed, Compression::MAX_BYTES_PER_CHUNK_DEFAULT, false)
       .expect("decompress");
 
   // 検証: 元の入力と一致

@@ -14,8 +14,8 @@ use super::StreamError;
 pub struct Compression;
 
 impl Compression {
-  /// Default maximum bytes per decompressed chunk (1 MiB).
-  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 1024 * 1024;
+  /// Default maximum bytes per decompressed chunk (64 KiB).
+  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 64 * 1024;
 
   /// Compresses bytes using gzip format with default compression level (6).
   #[must_use]
@@ -24,6 +24,10 @@ impl Compression {
   }
 
   /// Compresses bytes using gzip format with the specified compression level.
+  ///
+  /// `level` は 0..=10 を想定する。
+  /// 値が大きいほど圧縮率は高くなるが遅くなり、`0` は無圧縮、`6` は既定値、`10` は最高圧縮である。
+  /// 範囲外の値は `miniz_oxide` 側で処理されるが、この API の契約としては 0..=10 を使う。
   #[must_use]
   pub fn gzip_bytes_with_level(bytes: &[u8], level: u8) -> Vec<u8> {
     let payload = Self::deflate_raw(bytes, level);
@@ -118,12 +122,20 @@ impl Compression {
   }
 
   /// Compresses bytes using raw deflate with the specified level.
+  ///
+  /// `level` は 0..=10 を想定する。
+  /// 値が大きいほど圧縮率は高くなるが遅くなり、`0` は無圧縮、`6` は既定値、`10` は最高圧縮である。
+  /// 範囲外の値は `miniz_oxide` 側で処理されるが、この API の契約としては 0..=10 を使う。
   #[must_use]
   pub fn deflate_bytes_with_level(bytes: &[u8], level: u8) -> Vec<u8> {
     Self::deflate_raw(bytes, level)
   }
 
   /// Compresses bytes with explicit level and nowrap option.
+  ///
+  /// `level` は 0..=10 を想定する。
+  /// 値が大きいほど圧縮率は高くなるが遅くなり、`0` は無圧縮、`6` は既定値、`10` は最高圧縮である。
+  /// 範囲外の値は `miniz_oxide` 側で処理されるが、この API の契約としては 0..=10 を使う。
   ///
   /// When `nowrap` is `true`, raw deflate is used (no zlib header).
   /// When `nowrap` is `false`, zlib-wrapped format is used.

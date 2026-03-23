@@ -37,12 +37,16 @@ impl StreamConverters {
   pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<alloc::vec::Vec<u8>, IOResult>
   where
     F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static, {
+    if chunk_size == 0 {
+      let error = std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk_size must be greater than 0");
+      return Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&error)));
+    }
+
     let raw_reader = factory();
     let mut reader = BufReader::new(raw_reader);
     let mut chunks: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
     let mut total_bytes: u64 = 0;
-    let effective_chunk_size = chunk_size.max(1);
-    let mut buf = alloc::vec![0u8; effective_chunk_size];
+    let mut buf = alloc::vec![0u8; chunk_size];
 
     loop {
       match reader.read(&mut buf) {
@@ -109,14 +113,16 @@ where
       // writer が既に破棄されている場合は即完了。
       return Ok(SinkDecision::Complete);
     };
-    if writer.write_all(&[byte]).is_err() {
+    if let Err(e) = writer.write_all(&[byte]) {
       self.writer = None;
-      return Ok(SinkDecision::Complete);
+      return Err(io_error_to_stream_error(&e));
     }
     self.count += 1;
-    if self.auto_flush && writer.flush().is_err() {
+    if self.auto_flush
+      && let Err(e) = writer.flush()
+    {
       self.writer = None;
-      return Ok(SinkDecision::Complete);
+      return Err(io_error_to_stream_error(&e));
     }
     demand.request(1)?;
     Ok(SinkDecision::Continue)

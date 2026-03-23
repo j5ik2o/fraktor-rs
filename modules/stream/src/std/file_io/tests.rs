@@ -150,17 +150,8 @@ fn to_path_invalid_directory_returns_failed_io_result() {
   let sink = FileIO::to_path("/nonexistent/directory/file.txt");
   let graph = source.to_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
-  let materialized = graph.run(&mut materializer).unwrap();
-  drive_to_completion(&materialized);
-
-  let completion = materialized.materialized();
-  match completion.poll() {
-    | Completion::Ready(Ok(io_result)) => {
-      assert!(!io_result.was_successful());
-      assert_eq!(io_result.count(), 0);
-    },
-    | other => panic!("expected Ready(Ok(IOResult::failed)), got {other:?}"),
-  }
+  let result = graph.run(&mut materializer);
+  assert!(matches!(result, Err(StreamError::IoError { .. })));
 }
 
 // --- from_path_with_options tests ---
@@ -225,6 +216,28 @@ fn from_path_with_options_returns_empty_when_position_past_end() {
   let (io_result, completion) = materialized.materialized();
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 0);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(alloc::vec::Vec::<u8>::new())));
+}
+
+#[test]
+fn from_path_with_options_rejects_zero_chunk_size() {
+  // 準備: 入力ファイル
+  let mut tmp = NamedTempFile::new().unwrap();
+  tmp.write_all(b"abc").unwrap();
+  tmp.flush().unwrap();
+
+  // 実行: chunk_size=0 を指定
+  let source = FileIO::from_path_with_options(tmp.path(), 0, 0);
+  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).unwrap();
+  drive_to_completion(&materialized);
+
+  // 検証: InvalidInput として失敗する
+  let (io_result, completion) = materialized.materialized();
+  assert!(!io_result.was_successful());
+  assert_eq!(io_result.count(), 0);
+  assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
   assert_eq!(completion.poll(), Completion::Ready(Ok(alloc::vec::Vec::<u8>::new())));
 }
 
@@ -334,16 +347,8 @@ fn to_path_with_position_invalid_path_returns_failed_io_result() {
   let sink = FileIO::to_path_with_position("/nonexistent/dir/file.bin", options, 0);
   let graph = source.to_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
-  let materialized = graph.run(&mut materializer).unwrap();
-  drive_to_completion(&materialized);
+  let result = graph.run(&mut materializer);
 
-  // 検証: IOResult が失敗を報告
-  let completion = materialized.materialized();
-  match completion.poll() {
-    | Completion::Ready(Ok(io_result)) => {
-      assert!(!io_result.was_successful());
-      assert_eq!(io_result.count(), 0);
-    },
-    | other => panic!("expected Ready(Ok(IOResult::failed)), got {other:?}"),
-  }
+  // 検証: 起動時に IO エラーを返す
+  assert!(matches!(result, Err(StreamError::IoError { .. })));
 }
