@@ -27,10 +27,11 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
+      cx.waker().wake_by_ref();
       Poll::Pending
     } else {
       Poll::Ready(this.value.take().expect("future value"))

@@ -158,6 +158,7 @@
 ## 実装優先度の提案
 
 ### Phase 1: trivial（既存組み合わせで即実装可能）
+
 - `Attributes` の不足 helper と属性網羅の補強
   実装先層: core
 - `FlowWithContext` / `SourceWithContext` の軽量 helper 追加
@@ -166,6 +167,7 @@
   実装先層: core
 
 ### Phase 2: easy（単純な新規実装）
+
 - `Sink.actorRefWithAck` 相当の API 分離
   実装先層: core
 - `Compression` / `JsonFraming` の不足 overload 補完
@@ -174,6 +176,7 @@
   実装先層: std
 
 ### Phase 3: medium（中程度の実装工数）
+
 - `FlowWithContextOps` / `SourceWithContext` 演算の拡充
   実装先層: core
 - `GraphStage` authoring API の補完 (`SubSinkInlet`, `SubSourceOutlet`, logging 変種)
@@ -182,6 +185,7 @@
   実装先層: std
 
 ### Phase 4: hard（アーキテクチャ変更を伴う）
+
 - `GraphDSL` 記法互換 (`~>`, `<~`, port combinator)
   実装先層: core
 - `Tcp`
@@ -194,6 +198,7 @@
   実装先層: core
 
 ### 対象外（n/a）
+
 - `javadsl/*`
 - `JavaFlowSupport`
 - JVM 例外型そのものの互換

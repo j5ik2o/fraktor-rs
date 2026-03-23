@@ -27,10 +27,11 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
+      cx.waker().wake_by_ref();
       Poll::Pending
     } else {
       Poll::Ready(this.value.take().expect("future value"))
@@ -394,16 +395,18 @@ fn map_async_partitioned_unordered_can_emit_completion_order_while_preserving_co
 
 #[test]
 fn comments_use_japanese_in_context_wrapper_tests() {
+  let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/stage");
   let files = [
-    ("flow_with_context/tests.rs", include_str!("tests.rs")),
-    ("source_with_context/tests.rs", include_str!("../source_with_context/tests.rs")),
+    ("flow_with_context/tests.rs", base.join("flow_with_context/tests.rs")),
+    ("source_with_context/tests.rs", base.join("source_with_context/tests.rs")),
   ];
   let forbidden_markers =
     [concat!("// ", "Given", ":"), concat!("// ", "When", ":"), concat!("// ", "Then", ":"), concat!("tests", " ---")];
 
-  for (path, content) in files {
+  for (label, path) in files {
+    let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{label} の読み込みに失敗: {e}"));
     for marker in forbidden_markers {
-      assert!(!content.contains(marker), "{path} に英語コメントの残骸 `{marker}` が残っています");
+      assert!(!content.contains(marker), "{label} に英語コメントの残骸 `{marker}` が残っています");
     }
   }
 }
