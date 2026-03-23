@@ -6,6 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 use std::io::{BufReader, BufWriter, Read, Write};
 
+use super::io_error_to_stream_error;
 use crate::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamCompletion, StreamError,
   stage::{Sink, Source, StageKind},
@@ -137,5 +138,3 @@ where
     self.completion.complete(Ok(IOResult::failed(self.count, error)));
   }
 }
-
-use super::io_error_to_stream_error;

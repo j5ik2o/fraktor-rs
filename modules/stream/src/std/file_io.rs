@@ -9,6 +9,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use super::io_error_to_stream_error;
 use crate::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamCompletion, StreamError,
   stage::{Sink, Source, StageKind},
@@ -206,5 +207,3 @@ impl SinkLogic for WriteToPathSinkLogic {
     self.completion.complete(Ok(IOResult::failed(self.count, error)));
   }
 }
-
-use super::io_error_to_stream_error;
