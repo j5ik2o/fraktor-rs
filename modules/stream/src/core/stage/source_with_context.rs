@@ -115,6 +115,8 @@ where
   /// Groups elements into fixed-size batches.
   ///
   /// The context of each group is the context of the last element in the group.
+  /// Core logic is shared via [`extract_last_ctx_and_values`]; the wrapper type
+  /// differs between `FlowWithContext` and `SourceWithContext`.
   ///
   /// # Errors
   ///

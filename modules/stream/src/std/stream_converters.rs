@@ -104,18 +104,14 @@ where
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
     if let Some(writer) = &mut self.writer {
-      if let Err(e) = writer.write_all(&[byte]) {
+      if writer.write_all(&[byte]).is_err() {
         // 書き込み失敗時は writer を破棄。on_complete で IOResult::failed として報告。
         self.writer = None;
-        self.completion.complete(Ok(IOResult::failed(self.count, io_error_to_stream_error(&e))));
       } else {
         self.count += 1;
-        if self.auto_flush
-          && let Err(e) = writer.flush()
-        {
+        if self.auto_flush && writer.flush().is_err() {
           // フラッシュ失敗時も writer を破棄。on_complete で IOResult::failed として報告。
           self.writer = None;
-          self.completion.complete(Ok(IOResult::failed(self.count, io_error_to_stream_error(&e))));
         }
       }
     }
@@ -142,7 +138,4 @@ where
   }
 }
 
-// `std::io::Error` を `StreamError::IoError` に変換する。
-fn io_error_to_stream_error(e: &std::io::Error) -> StreamError {
-  StreamError::IoError { kind: alloc::format!("{:?}", e.kind()), message: alloc::format!("{e}") }
-}
+use super::io_error_to_stream_error;
