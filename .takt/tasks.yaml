@@ -1,14 +1,15 @@
 tasks:
   - worktree: false
+    base_branch: fix/gap-stream-0323-2
     piece: pekko-porting
     auto_pr: true
     draft_pr: true
-    name: stream-mojuuru-gyappu-2026-03
+    name: stream-mojuuru-gyappu-2026-03-1
     status: completed
     slug: stream-mojuuru-gyappu-2026-03
     summary: "# stream モジュール ギャップ分析"
-    task_dir: .takt/tasks/20260323-005139-stream-2026-03-23-fraktor-rs-m
-    created_at: 2026-03-23T00:51:39.871Z
-    started_at: 2026-03-23T00:55:51.340Z
-    completed_at: 2026-03-23T05:18:18.099Z
+    task_dir: .takt/tasks/20260323-142955-stream-2026-03-23-fraktor-rs-m
+    created_at: 2026-03-23T14:29:55.400Z
+    started_at: 2026-03-23T15:14:50.769Z
+    completed_at: 2026-03-23T17:19:39.555Z
     owner_pid: null

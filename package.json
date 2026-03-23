@@ -3,6 +3,7 @@
   "scripts": {
     "pekko-porting": "./scripts/run-takt.sh --pipeline --skip-git -w pekko-porting -t",
     "takt": "./scripts/run-takt.sh",
+    "takt:gap:stream":  "npm run pekko-porting -- \"$(cat docs/gap-analysis/stream-gap-analysis.md)\"",
     "takt:personal": "./scripts/run-takt.sh personal",
     "takt:corporate": "./scripts/run-takt.sh corporate",
     "cc-sdd:full": "./scripts/run-takt.sh --pipeline --skip-git -w cc-sdd-full -t",
