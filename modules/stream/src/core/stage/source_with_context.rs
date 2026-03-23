@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData};
 
-use super::{StreamDslError, flow_with_context::FlowWithContext, source::Source};
+use super::{StreamDslError, extract_last_ctx_and_values, flow_with_context::FlowWithContext, source::Source};
 
 #[cfg(test)]
 mod tests;
@@ -123,17 +123,7 @@ where
   where
     Ctx: Clone, {
     let grouped = self.inner.grouped(size)?;
-    let mapped = grouped.map_concat(|group: Vec<(Ctx, Out)>| {
-      let mut last_ctx = None;
-      let values: Vec<Out> = group
-        .into_iter()
-        .map(|(ctx, v)| {
-          last_ctx = Some(ctx);
-          v
-        })
-        .collect();
-      last_ctx.map(|ctx| (ctx, values))
-    });
+    let mapped = grouped.map_concat(extract_last_ctx_and_values);
     Ok(SourceWithContext { inner: mapped, _pd: PhantomData })
   }
 
@@ -149,17 +139,7 @@ where
     Ctx: Clone,
     Out: Clone, {
     let sliding = self.inner.sliding(size)?;
-    let mapped = sliding.map_concat(|window: Vec<(Ctx, Out)>| {
-      let mut last_ctx = None;
-      let values: Vec<Out> = window
-        .into_iter()
-        .map(|(ctx, v)| {
-          last_ctx = Some(ctx);
-          v
-        })
-        .collect();
-      last_ctx.map(|ctx| (ctx, values))
-    });
+    let mapped = sliding.map_concat(extract_last_ctx_and_values);
     Ok(SourceWithContext { inner: mapped, _pd: PhantomData })
   }
 

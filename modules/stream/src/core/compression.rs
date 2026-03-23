@@ -14,8 +14,8 @@ use super::StreamError;
 pub struct Compression;
 
 impl Compression {
-  /// Default maximum bytes per decompressed chunk (64 KiB), matching Pekko.
-  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 64 * 1024;
+  /// Default maximum bytes per decompressed chunk (1 MiB).
+  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 1024 * 1024;
 
   /// Compresses bytes using gzip format with default compression level (6).
   #[must_use]

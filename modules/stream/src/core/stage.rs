@@ -87,3 +87,18 @@ pub use stage_kind::StageKind;
 pub use stream_stage::StreamStage;
 pub use tail_source::TailSource;
 pub use timer_graph_stage_logic::TimerGraphStageLogic;
+
+/// Extracts the last context and collects values from a context-value pair sequence.
+///
+/// Used by `FlowWithContext` and `SourceWithContext` for `grouped` / `sliding`.
+pub(crate) fn extract_last_ctx_and_values<Ctx, V>(pairs: Vec<(Ctx, V)>) -> Option<(Ctx, Vec<V>)> {
+  let mut last_ctx = None;
+  let values: Vec<V> = pairs
+    .into_iter()
+    .map(|(ctx, v)| {
+      last_ctx = Some(ctx);
+      v
+    })
+    .collect();
+  last_ctx.map(|ctx| (ctx, values))
+}
