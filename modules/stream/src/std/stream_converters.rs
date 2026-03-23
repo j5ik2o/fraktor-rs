@@ -49,11 +49,9 @@ impl StreamConverters {
           total_bytes += n as u64;
           chunks.push(buf[..n].to_vec());
         },
-        | Err(_e) => {
-          // TODO: std::io::Error の詳細は StreamError::Failed に含められない。
-          // IoError バリアント追加時に改善予定。
-          return Source::from_iterator(chunks)
-            .map_materialized_value(move |_| IOResult::failed(total_bytes, StreamError::Failed));
+        | Err(e) => {
+          let error = io_error_to_stream_error(&e);
+          return Source::from_iterator(chunks).map_materialized_value(move |_| IOResult::failed(total_bytes, error));
         },
       }
     }
@@ -106,14 +104,18 @@ where
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
     if let Some(writer) = &mut self.writer {
-      if writer.write_all(&[byte]).is_err() {
+      if let Err(e) = writer.write_all(&[byte]) {
         // 書き込み失敗時は writer を破棄。on_complete で IOResult::failed として報告。
         self.writer = None;
+        self.completion.complete(Ok(IOResult::failed(self.count, io_error_to_stream_error(&e))));
       } else {
         self.count += 1;
-        if self.auto_flush && writer.flush().is_err() {
+        if self.auto_flush
+          && let Err(e) = writer.flush()
+        {
           // フラッシュ失敗時も writer を破棄。on_complete で IOResult::failed として報告。
           self.writer = None;
+          self.completion.complete(Ok(IOResult::failed(self.count, io_error_to_stream_error(&e))));
         }
       }
     }
@@ -125,7 +127,7 @@ where
     let io_result = if let Some(mut writer) = self.writer.take() {
       match writer.flush() {
         | Ok(()) => IOResult::successful(self.count),
-        | Err(_) => IOResult::failed(self.count, StreamError::Failed),
+        | Err(e) => IOResult::failed(self.count, io_error_to_stream_error(&e)),
       }
     } else {
       IOResult::failed(self.count, StreamError::Failed)
@@ -138,4 +140,9 @@ where
     self.writer = None;
     self.completion.complete(Ok(IOResult::failed(self.count, error)));
   }
+}
+
+// `std::io::Error` を `StreamError::IoError` に変換する。
+fn io_error_to_stream_error(e: &std::io::Error) -> StreamError {
+  StreamError::IoError { kind: alloc::format!("{:?}", e.kind()), message: alloc::format!("{e}") }
 }

@@ -45,7 +45,7 @@ impl<T> TestSinkProbe<T> {
   }
 
   /// Marks this probe as failed.
-  pub const fn fail(&mut self, error: StreamError) {
+  pub fn fail(&mut self, error: StreamError) {
     self.failed = Some(error);
   }
 

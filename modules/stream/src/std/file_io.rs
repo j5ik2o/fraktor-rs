@@ -37,7 +37,7 @@ impl FileIO {
         let count = bytes.len() as u64;
         Source::from_iterator(bytes).map_materialized_value(move |_| IOResult::successful(count))
       },
-      | Err(_) => Source::empty().map_materialized_value(|_| IOResult::failed(0, StreamError::Failed)),
+      | Err(e) => Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&e))),
     }
   }
 
@@ -74,7 +74,7 @@ impl FileIO {
         let count = bytes.len() as u64;
         Source::from_iterator(bytes).map_materialized_value(move |_| IOResult::successful(count))
       },
-      | Err(_) => Source::empty().map_materialized_value(|_| IOResult::failed(0, StreamError::Failed)),
+      | Err(e) => Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&e))),
     }
   }
 
@@ -192,7 +192,7 @@ impl SinkLogic for WriteToPathSinkLogic {
     let io_result = if let Some(mut writer) = self.writer.take() {
       match writer.flush() {
         | Ok(()) => IOResult::successful(self.count),
-        | Err(_) => IOResult::failed(self.count, StreamError::Failed),
+        | Err(e) => IOResult::failed(self.count, io_error_to_stream_error(&e)),
       }
     } else {
       IOResult::failed(self.count, StreamError::Failed)
@@ -205,4 +205,9 @@ impl SinkLogic for WriteToPathSinkLogic {
     self.writer = None;
     self.completion.complete(Ok(IOResult::failed(self.count, error)));
   }
+}
+
+// `std::io::Error` を `StreamError::IoError` に変換する。
+fn io_error_to_stream_error(e: &std::io::Error) -> StreamError {
+  StreamError::IoError { kind: alloc::format!("{:?}", e.kind()), message: alloc::format!("{e}") }
 }

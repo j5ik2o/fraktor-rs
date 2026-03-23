@@ -64,6 +64,13 @@ pub enum StreamError {
   NeverMaterialized,
   /// Stream is terminated. Materialized value is detached.
   StreamDetached,
+  /// Indicates an IO operation failed.
+  IoError {
+    /// IO error kind identifier (e.g. `"BrokenPipe"`, `"UnexpectedEof"`).
+    kind:    alloc::string::String,
+    /// Human-readable description of the error.
+    message: alloc::string::String,
+  },
 }
 
 impl fmt::Display for StreamError {
@@ -97,6 +104,9 @@ impl fmt::Display for StreamError {
       },
       | Self::StreamDetached => {
         write!(f, "stream is terminated, materialized value is detached")
+      },
+      | Self::IoError { kind, message } => {
+        write!(f, "IO error ({kind}): {message}")
       },
     }
   }
