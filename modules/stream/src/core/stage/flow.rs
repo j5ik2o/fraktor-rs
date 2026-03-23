@@ -26,6 +26,9 @@ mod tests;
 mod logic;
 use logic::*;
 
+#[cfg(feature = "compression")]
+const FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT: usize = 1024 * 1024;
+
 /// Flow stage definition.
 pub struct Flow<In, Out, Mat> {
   graph: StreamGraph,
@@ -60,6 +63,12 @@ where
   pub(in crate::core) fn from_kill_switch_state(kill_switch_state: KillSwitchStateHandle) -> Self {
     let mut graph = StreamGraph::new();
     graph.push_stage(StageDefinition::Flow(kill_switch_definition::<T>(kill_switch_state)));
+    Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+
+  pub(in crate::core) fn from_coupled_termination_state(kill_switch_state: KillSwitchStateHandle) -> Self {
+    let mut graph = StreamGraph::new();
+    graph.push_stage(StageDefinition::Flow(coupled_termination_definition::<T>(kill_switch_state)));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 }
@@ -3183,8 +3192,9 @@ where
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
     use crate::core::Compression;
-    let definition =
-      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::gunzip_bytes(value.as_ref())?)]));
+    let definition = try_map_concat_definition::<Out, Out, _>(|value| {
+      Ok(vec![Out::from(Compression::gunzip_bytes_with_options(value.as_ref(), FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT)?)])
+    });
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -3207,7 +3217,11 @@ where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
     use crate::core::Compression;
     let definition = try_map_concat_definition::<Out, Out, _>(|value| {
-      Ok(vec![Out::from(Compression::inflate_bytes(value.as_ref())?)])
+      Ok(vec![Out::from(Compression::inflate_bytes_with_options(
+        value.as_ref(),
+        FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT,
+        true,
+      )?)])
     });
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -3441,9 +3455,10 @@ where
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
     let ks = crate::core::lifecycle::SharedKillSwitch::new();
-    let wrapped_source = source.via(ks.flow::<Out>());
+    let state = ks.state_handle();
+    let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source(sink, wrapped_source);
-    ks.flow::<In>().via_mat(base, KeepRight)
+    Flow::<In, In, StreamNotUsed>::from_coupled_termination_state(state).via_mat(base, KeepRight)
   }
 
   /// Creates a coupled flow from a sink and a source with materialized value control.
@@ -3461,9 +3476,10 @@ where
   where
     C: MatCombineRule<Mat1, Mat2>, {
     let ks = crate::core::lifecycle::SharedKillSwitch::new();
-    let wrapped_source = source.via(ks.flow::<Out>());
+    let state = ks.state_handle();
+    let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source_mat(sink, wrapped_source, combine);
-    ks.flow::<In>().via_mat(base, KeepRight)
+    Flow::<In, In, StreamNotUsed>::from_coupled_termination_state(state).via_mat(base, KeepRight)
   }
 }
 
@@ -5028,6 +5044,29 @@ where
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = KillSwitchLogic::<In> {
+    state:              kill_switch_state,
+    shutdown_requested: false,
+    _pd:                PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowKillSwitch,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
+pub(in crate::core) fn coupled_termination_definition<In>(kill_switch_state: KillSwitchStateHandle) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = CoupledTerminationLogic::<In> {
     state:              kill_switch_state,
     shutdown_requested: false,
     _pd:                PhantomData,

@@ -16,6 +16,8 @@ mod concat_logic;
 mod concat_source_logic;
 /// Conflate-with-seed logic.
 mod conflate_with_seed_logic;
+/// Coupled termination logic.
+mod coupled_termination_logic;
 /// Debounce logic.
 mod debounce_logic;
 /// Drop (skip first N) logic.
@@ -147,6 +149,7 @@ pub(super) use completion_timeout_logic::*;
 pub(super) use concat_logic::*;
 pub(super) use concat_source_logic::*;
 pub(super) use conflate_with_seed_logic::*;
+pub(super) use coupled_termination_logic::*;
 pub(super) use debounce_logic::*;
 pub(super) use drop_logic::*;
 pub(super) use drop_while_logic::*;

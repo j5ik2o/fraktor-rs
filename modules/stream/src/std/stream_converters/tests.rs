@@ -47,7 +47,7 @@ fn drive_to_completion<Mat>(materialized: &Materialized<Mat>) {
 
 #[test]
 fn from_reader_reads_all_bytes_as_chunks() {
-  // Given: a reader producing "hello world" (11 bytes) with chunk_size 4
+  // 準備: "hello world" (11 bytes) を返す reader と chunk_size=4
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"hello world".to_vec())), 4);
   let graph = source
     .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
@@ -55,12 +55,16 @@ fn from_reader_reads_all_bytes_as_chunks() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
 
-  // Then: all chunks are emitted and IOResult reports total bytes
-  let (io_result, completion) = materialized.materialized();
+  // 検証: すべての chunk が流れ、IOResult に総バイト数が入る
+  let (io_result_completion, completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 11);
 
-  // Flatten chunks to verify all data was read
+  // chunk を平坦化して全データを確認
   match completion.poll() {
     | Completion::Ready(Ok(chunks)) => {
       let flat: alloc::vec::Vec<u8> = chunks.into_iter().flatten().collect();
@@ -72,7 +76,7 @@ fn from_reader_reads_all_bytes_as_chunks() {
 
 #[test]
 fn from_reader_empty_reader_returns_zero_count() {
-  // Given: an empty reader
+  // 準備: 空の reader
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(alloc::vec::Vec::<u8>::new())), 8192);
   let graph = source
     .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
@@ -80,8 +84,12 @@ fn from_reader_empty_reader_returns_zero_count() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
 
-  // Then: IOResult reports 0 bytes and no chunks emitted
-  let (io_result, completion) = materialized.materialized();
+  // 検証: IOResult が 0 バイト完了を返し、chunk は空
+  let (io_result_completion, completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 0);
   assert_eq!(completion.poll(), Completion::Ready(Ok(alloc::vec::Vec::<alloc::vec::Vec<u8>>::new())));
@@ -89,7 +97,7 @@ fn from_reader_empty_reader_returns_zero_count() {
 
 #[test]
 fn from_reader_single_chunk_when_data_fits() {
-  // Given: a reader with exactly 5 bytes and chunk_size 8192
+  // 準備: 5 バイトだけ返す reader と大きめの chunk_size
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcde".to_vec())), 8192);
   let graph = source
     .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
@@ -97,8 +105,12 @@ fn from_reader_single_chunk_when_data_fits() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
 
-  // Then: exactly one chunk of 5 bytes is emitted
-  let (io_result, completion) = materialized.materialized();
+  // 検証: 5 バイトの chunk が 1 つだけ流れる
+  let (io_result_completion, completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 5);
   match completion.poll() {
@@ -112,7 +124,7 @@ fn from_reader_single_chunk_when_data_fits() {
 
 #[test]
 fn from_reader_exact_chunk_boundary() {
-  // Given: a reader with exactly 8 bytes and chunk_size 4
+  // 準備: 8 バイトを返す reader と chunk_size=4
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcdefgh".to_vec())), 4);
   let graph = source
     .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
@@ -120,8 +132,12 @@ fn from_reader_exact_chunk_boundary() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
 
-  // Then: exactly two chunks of 4 bytes each are emitted
-  let (io_result, completion) = materialized.materialized();
+  // 検証: 4 バイト chunk が 2 つ流れる
+  let (io_result_completion, completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(io_result.was_successful());
   assert_eq!(io_result.count(), 8);
   match completion.poll() {
@@ -136,7 +152,7 @@ fn from_reader_exact_chunk_boundary() {
 
 #[test]
 fn from_reader_io_error_returns_failed_io_result() {
-  // Given: a reader that fails immediately
+  // 準備: 即座に失敗する reader
   struct FailingReader;
   impl io::Read for FailingReader {
     fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
@@ -151,8 +167,12 @@ fn from_reader_io_error_returns_failed_io_result() {
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
 
-  // Then: IOResult reports failure with 0 bytes read
-  let (io_result, _completion) = materialized.materialized();
+  // 検証: IOResult が 0 バイト失敗を返す
+  let (io_result_completion, _completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(!io_result.was_successful());
   assert_eq!(io_result.count(), 0);
   assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
@@ -169,7 +189,11 @@ fn from_reader_rejects_zero_chunk_size() {
   drive_to_completion(&materialized);
 
   // 検証: InvalidInput として失敗する
-  let (io_result, completion) = materialized.materialized();
+  let (io_result_completion, completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
   assert!(!io_result.was_successful());
   assert_eq!(io_result.count(), 0);
   assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));

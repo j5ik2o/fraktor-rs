@@ -8,7 +8,7 @@ use std::io::{BufReader, BufWriter, Read, Write};
 
 use super::io_error_to_stream_error;
 use crate::core::{
-  DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamCompletion, StreamError,
+  DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamCompletion, StreamError,
   stage::{Sink, Source, StageKind},
 };
 
@@ -22,47 +22,31 @@ pub struct StreamConverters;
 impl StreamConverters {
   /// Creates a source that reads bytes from a reader in chunks.
   ///
-  /// The factory closure is called eagerly to obtain the reader. Data is read
-  /// in `chunk_size`-byte chunks and each chunk is emitted as a `Vec<u8>`
-  /// element. The materialized value is an [`IOResult`] containing the total
-  /// number of bytes read and the completion status.
+  /// The factory closure is called when the source is constructed to obtain the
+  /// reader. Data is read lazily on each pull in `chunk_size`-byte chunks and
+  /// each chunk is emitted as a `Vec<u8>` element.
   ///
-  /// **Note:** The current implementation reads all data into memory before
-  /// emitting chunks. A future version should lazily read on demand, matching
-  /// Pekko's `StreamConverters.fromInputStream` behavior.
-  ///
-  /// On read failure the source emits all chunks read so far and the
-  /// `IOResult` records the error.
+  /// The materialized value is a [`StreamCompletion<IOResult>`] that completes
+  /// with the total number of bytes read and the completion status.
   #[must_use]
-  pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<alloc::vec::Vec<u8>, IOResult>
+  pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<alloc::vec::Vec<u8>, StreamCompletion<IOResult>>
   where
     F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static, {
+    let completion = StreamCompletion::new();
     if chunk_size == 0 {
       let error = std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk_size must be greater than 0");
-      return Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&error)));
+      completion.complete(Ok(IOResult::failed(0, io_error_to_stream_error(&error))));
+      return Source::empty().map_materialized_value(move |_| completion);
     }
 
-    let raw_reader = factory();
-    let mut reader = BufReader::new(raw_reader);
-    let mut chunks: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
-    let mut total_bytes: u64 = 0;
-    let mut buf = alloc::vec![0u8; chunk_size];
-
-    loop {
-      match reader.read(&mut buf) {
-        | Ok(0) => break,
-        | Ok(n) => {
-          total_bytes += n as u64;
-          chunks.push(buf[..n].to_vec());
-        },
-        | Err(e) => {
-          let error = io_error_to_stream_error(&e);
-          return Source::from_iterator(chunks).map_materialized_value(move |_| IOResult::failed(total_bytes, error));
-        },
-      }
-    }
-
-    Source::from_iterator(chunks).map_materialized_value(move |_| IOResult::successful(total_bytes))
+    Source::from_logic(StageKind::Custom, ReaderSourceLogic {
+      reader: Some(BufReader::new(factory())),
+      chunk_size,
+      total_bytes: 0,
+      completion: completion.clone(),
+      done: false,
+    })
+    .map_materialized_value(move |_| completion)
   }
 
   /// Creates a sink that writes received bytes to a writer.
@@ -94,6 +78,48 @@ struct WriteToWriterSinkLogic<F> {
   writer:     Option<BufWriter<Box<dyn std::io::Write + Send>>>,
   count:      u64,
   completion: StreamCompletion<IOResult>,
+}
+
+struct ReaderSourceLogic {
+  reader:      Option<BufReader<Box<dyn std::io::Read + Send>>>,
+  chunk_size:  usize,
+  total_bytes: u64,
+  completion:  StreamCompletion<IOResult>,
+  done:        bool,
+}
+
+impl SourceLogic for ReaderSourceLogic {
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    if self.done {
+      return Ok(None);
+    }
+
+    let Some(reader) = &mut self.reader else {
+      self.done = true;
+      return Ok(None);
+    };
+
+    let mut buf = alloc::vec![0u8; self.chunk_size];
+    match reader.read(&mut buf) {
+      | Ok(0) => {
+        self.done = true;
+        self.reader = None;
+        self.completion.complete(Ok(IOResult::successful(self.total_bytes)));
+        Ok(None)
+      },
+      | Ok(n) => {
+        self.total_bytes += n as u64;
+        Ok(Some(Box::new(buf[..n].to_vec())))
+      },
+      | Err(e) => {
+        self.done = true;
+        self.reader = None;
+        let error = io_error_to_stream_error(&e);
+        self.completion.complete(Ok(IOResult::failed(self.total_bytes, error.clone())));
+        Err(error)
+      },
+    }
+  }
 }
 
 impl<F> SinkLogic for WriteToWriterSinkLogic<F>
