@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData};
 
-use super::{StreamDslError, StreamNotUsed, extract_last_ctx_and_values, flow::Flow};
+use super::{MatCombineRule, StreamDslError, StreamNotUsed, extract_last_ctx_and_values, flow::Flow, sink::Sink};
 
 #[cfg(test)]
 mod tests;
@@ -161,5 +161,115 @@ where
     T: Send + Sync + 'static, {
     let composed = self.inner.via(other.inner);
     FlowWithContext { inner: composed, _pd: PhantomData }
+  }
+
+  /// Composes with another context-preserving flow using a custom materialized value rule.
+  #[must_use]
+  pub fn via_mat<T, Mat2, C>(
+    self,
+    other: FlowWithContext<Ctx, Out, T, Mat2>,
+    combine: C,
+  ) -> FlowWithContext<Ctx, In, T, C::Out>
+  where
+    T: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let composed = self.inner.via_mat(other.inner, combine);
+    FlowWithContext { inner: composed, _pd: PhantomData }
+  }
+
+  /// Adds a side sink that receives only the data value.
+  #[must_use]
+  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> FlowWithContext<Ctx, In, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let inner = self.inner.also_to(sink.contramap(|(_, value): (Ctx, Out)| value));
+    FlowWithContext { inner, _pd: PhantomData }
+  }
+
+  /// Adds a side sink that receives only the context value.
+  #[must_use]
+  pub fn also_to_context<Mat2>(self, sink: Sink<Ctx, Mat2>) -> FlowWithContext<Ctx, In, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let inner = self.inner.also_to(sink.contramap(|(ctx, _): (Ctx, Out)| ctx));
+    FlowWithContext { inner, _pd: PhantomData }
+  }
+
+  /// Taps each data value to a side sink while preserving the main path.
+  #[must_use]
+  pub fn wire_tap<Mat2>(self, sink: Sink<Out, Mat2>) -> FlowWithContext<Ctx, In, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(_, value): (Ctx, Out)| value), super::keep_left::KeepLeft);
+    FlowWithContext { inner, _pd: PhantomData }
+  }
+
+  /// Taps each context value to a side sink while preserving the main path.
+  #[must_use]
+  pub fn wire_tap_context<Mat2>(self, sink: Sink<Ctx, Mat2>) -> FlowWithContext<Ctx, In, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(ctx, _): (Ctx, Out)| ctx), super::keep_left::KeepLeft);
+    FlowWithContext { inner, _pd: PhantomData }
+  }
+
+  /// Maps elements asynchronously while serializing work per partition.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `parallelism` is zero.
+  pub fn map_async_partitioned<Out2, P, Partitioner, F, Fut>(
+    self,
+    parallelism: usize,
+    mut partitioner: Partitioner,
+    mut func: F,
+  ) -> Result<FlowWithContext<Ctx, In, Out2, Mat>, StreamDslError>
+  where
+    Out2: Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Out2> + Send + 'static, {
+    let mapped = self.inner.map_async_partitioned(
+      parallelism,
+      move |(_, value)| partitioner(value),
+      move |(ctx, value), partition| {
+        let fut = func(value, partition);
+        async move { (ctx, fut.await) }
+      },
+    )?;
+    Ok(FlowWithContext { inner: mapped, _pd: PhantomData })
+  }
+
+  /// Maps elements asynchronously per partition without preserving downstream order.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `parallelism` is zero.
+  pub fn map_async_partitioned_unordered<Out2, P, Partitioner, F, Fut>(
+    self,
+    parallelism: usize,
+    mut partitioner: Partitioner,
+    mut func: F,
+  ) -> Result<FlowWithContext<Ctx, In, Out2, Mat>, StreamDslError>
+  where
+    Out2: Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Out2> + Send + 'static, {
+    let mapped = self.inner.map_async_partitioned_unordered(
+      parallelism,
+      move |(_, value)| partitioner(value),
+      move |(ctx, value), partition| {
+        let fut = func(value, partition);
+        async move { (ctx, fut.await) }
+      },
+    )?;
+    Ok(FlowWithContext { inner: mapped, _pd: PhantomData })
   }
 }
