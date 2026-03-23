@@ -1,4 +1,10 @@
-use std::io;
+use std::{
+  io,
+  sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+  },
+};
 
 use crate::{
   core::{
@@ -198,6 +204,48 @@ fn from_reader_rejects_zero_chunk_size() {
   assert_eq!(io_result.count(), 0);
   assert!(matches!(io_result.error(), Some(StreamError::IoError { .. })));
   assert_eq!(completion.poll(), Completion::Ready(Ok(alloc::vec::Vec::<alloc::vec::Vec<u8>>::new())));
+}
+
+#[test]
+fn from_reader_defers_factory_until_stream_runs() {
+  let called = Arc::new(AtomicBool::new(false));
+  let source = StreamConverters::from_reader(
+    {
+      let called = called.clone();
+      move || {
+        called.store(true, Ordering::SeqCst);
+        Box::new(io::Cursor::new(b"hi".to_vec()))
+      }
+    },
+    8,
+  );
+
+  assert!(!called.load(Ordering::SeqCst));
+
+  let graph = source
+    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).expect("run");
+  drive_to_completion(&materialized);
+
+  assert!(called.load(Ordering::SeqCst));
+}
+
+#[test]
+fn from_reader_completes_io_result_when_downstream_cancels() {
+  let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcdefgh".to_vec())), 4);
+  let graph = source.to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<u8>>>::head(), KeepBoth);
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).expect("run");
+  drive_to_completion(&materialized);
+
+  let (io_result_completion, _completion) = materialized.materialized();
+  let io_result = match io_result_completion.poll() {
+    | Completion::Ready(Ok(io_result)) => io_result,
+    | other => panic!("expected Ready(Ok(IOResult)), got {other:?}"),
+  };
+  assert!(io_result.was_successful());
+  assert_eq!(io_result.count(), 4);
 }
 
 // --- to_writer テスト ---

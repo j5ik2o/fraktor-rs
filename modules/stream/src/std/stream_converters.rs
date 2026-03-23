@@ -22,7 +22,7 @@ pub struct StreamConverters;
 impl StreamConverters {
   /// Creates a source that reads bytes from a reader in chunks.
   ///
-  /// The factory closure is called when the source is constructed to obtain the
+  /// The factory closure is called lazily on the first pull to obtain the
   /// reader. Data is read lazily on each pull in `chunk_size`-byte chunks and
   /// each chunk is emitted as a `Vec<u8>` element.
   ///
@@ -40,7 +40,8 @@ impl StreamConverters {
     }
 
     Source::from_logic(StageKind::Custom, ReaderSourceLogic {
-      reader: Some(BufReader::new(factory())),
+      factory: Some(factory),
+      reader: None,
       chunk_size,
       total_bytes: 0,
       completion: completion.clone(),
@@ -80,7 +81,8 @@ struct WriteToWriterSinkLogic<F> {
   completion: StreamCompletion<IOResult>,
 }
 
-struct ReaderSourceLogic {
+struct ReaderSourceLogic<F> {
+  factory:     Option<F>,
   reader:      Option<BufReader<Box<dyn std::io::Read + Send>>>,
   chunk_size:  usize,
   total_bytes: u64,
@@ -88,14 +90,24 @@ struct ReaderSourceLogic {
   done:        bool,
 }
 
-impl SourceLogic for ReaderSourceLogic {
+impl<F> SourceLogic for ReaderSourceLogic<F>
+where
+  F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static,
+{
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     if self.done {
       return Ok(None);
     }
 
+    if self.reader.is_none()
+      && let Some(factory) = self.factory.take()
+    {
+      self.reader = Some(BufReader::new(factory()));
+    }
+
     let Some(reader) = &mut self.reader else {
       self.done = true;
+      self.completion.complete(Ok(IOResult::successful(self.total_bytes)));
       return Ok(None);
     };
 
@@ -119,6 +131,14 @@ impl SourceLogic for ReaderSourceLogic {
         Err(error)
       },
     }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.done = true;
+    self.factory = None;
+    self.reader = None;
+    self.completion.complete(Ok(IOResult::successful(self.total_bytes)));
+    Ok(())
   }
 }
 
