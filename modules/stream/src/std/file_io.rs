@@ -43,8 +43,9 @@ impl FileIO {
 
   /// Creates a source that reads bytes from a file with configurable options.
   ///
-  /// Reads up to `chunk_size` bytes starting from `start_position`. If the
-  /// start position is past the end of the file, the source emits zero elements.
+  /// Reads all bytes starting from `start_position`, using `chunk_size` as the
+  /// internal read buffer size. If the start position is past the end of the
+  /// file, the source emits zero elements.
   ///
   /// Corresponds to Pekko's `FileIO.fromPath(f, chunkSize, startPosition)`.
   #[must_use]
@@ -56,10 +57,16 @@ impl FileIO {
     let result = (|| -> Result<alloc::vec::Vec<u8>, std::io::Error> {
       let mut file = fs::File::open(path.as_ref())?;
       file.seek(SeekFrom::Start(start_position))?;
+      let mut all_bytes = alloc::vec::Vec::new();
       let mut buf = alloc::vec![0u8; chunk_size];
-      let n = file.read(&mut buf)?;
-      buf.truncate(n);
-      Ok(buf)
+      loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+          break;
+        }
+        all_bytes.extend_from_slice(&buf[..n]);
+      }
+      Ok(all_bytes)
     })();
 
     match result {
@@ -160,7 +167,7 @@ impl SinkLogic for WriteToPathSinkLogic {
       if let Some(pos) = self.start_position
         && file.seek(SeekFrom::Start(pos)).is_err()
       {
-        // Seek failed; leave writer as None so on_complete reports failure.
+        // シーク失敗。writer を None のままにして on_complete で失敗を報告。
         return demand.request(1);
       }
       self.writer = Some(BufWriter::new(file));

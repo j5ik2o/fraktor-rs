@@ -26,6 +26,10 @@ impl StreamConverters {
   /// element. The materialized value is an [`IOResult`] containing the total
   /// number of bytes read and the completion status.
   ///
+  /// **Note:** The current implementation reads all data into memory before
+  /// emitting chunks. A future version should lazily read on demand, matching
+  /// Pekko's `StreamConverters.fromInputStream` behavior.
+  ///
   /// On read failure the source emits all chunks read so far and the
   /// `IOResult` records the error.
   #[must_use]
@@ -45,7 +49,9 @@ impl StreamConverters {
           total_bytes += n as u64;
           chunks.push(buf[..n].to_vec());
         },
-        | Err(_) => {
+        | Err(_e) => {
+          // TODO: std::io::Error の詳細は StreamError::Failed に含められない。
+          // IoError バリアント追加時に改善予定。
           return Source::from_iterator(chunks)
             .map_materialized_value(move |_| IOResult::failed(total_bytes, StreamError::Failed));
         },
@@ -101,10 +107,12 @@ where
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
     if let Some(writer) = &mut self.writer {
       if writer.write_all(&[byte]).is_err() {
+        // 書き込み失敗時は writer を破棄。on_complete で IOResult::failed として報告。
         self.writer = None;
       } else {
         self.count += 1;
         if self.auto_flush && writer.flush().is_err() {
+          // フラッシュ失敗時も writer を破棄。on_complete で IOResult::failed として報告。
           self.writer = None;
         }
       }

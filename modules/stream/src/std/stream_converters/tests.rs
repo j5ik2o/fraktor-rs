@@ -31,17 +31,19 @@ impl Materializer for TestMaterializer {
   }
 }
 
+const MAX_DRIVE_ITERATIONS: usize = 256;
+
 fn drive_to_completion<Mat>(materialized: &Materialized<Mat>) {
-  for _ in 0..256 {
+  for _ in 0..MAX_DRIVE_ITERATIONS {
     let _ = materialized.handle().drive();
     if materialized.handle().state().is_terminal() {
       return;
     }
   }
-  panic!("stream did not reach terminal state after 256 drive iterations");
+  panic!("ストリームが {MAX_DRIVE_ITERATIONS} 回の drive で終了状態に達しなかった");
 }
 
-// --- from_reader tests ---
+// --- from_reader テスト ---
 
 #[test]
 fn from_reader_reads_all_bytes_as_chunks() {
@@ -155,7 +157,7 @@ fn from_reader_io_error_returns_failed_io_result() {
   assert_eq!(io_result.count(), 0);
 }
 
-// --- to_writer tests ---
+// --- to_writer テスト ---
 
 #[test]
 fn to_writer_writes_all_bytes() {
@@ -278,7 +280,7 @@ fn to_writer_io_error_returns_failed_io_result() {
   }
 }
 
-// --- Test helper types ---
+// --- テストヘルパー型 ---
 
 /// Writer backed by a shared Vec<u8> for verifying written bytes.
 struct SharedWriter(

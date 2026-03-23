@@ -4,43 +4,43 @@ use crate::core::{ActorSourceRef, BoundedSourceQueue, OverflowStrategy, QueueOff
 
 #[test]
 fn actor_source_ref_tell_enqueues_value() {
-  // Given: an ActorSourceRef backed by a queue of capacity 4
+  // 準備: 容量4のキューに紐づく ActorSourceRef
   let queue = BoundedSourceQueue::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
 
-  // When: sending a value via tell
+  // 実行: tell で値を送信
   let result = source_ref.tell(42_u32);
 
-  // Then: the value is enqueued
+  // 検証: 値がエンキューされる
   assert_eq!(result, QueueOfferResult::Enqueued);
 }
 
 #[test]
 fn actor_source_ref_tell_respects_overflow_strategy() {
-  // Given: an ActorSourceRef backed by a queue of capacity 1 with Fail strategy
+  // 準備: 容量1・Fail戦略のキューに紐づく ActorSourceRef
   let queue = BoundedSourceQueue::new(1, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
 
-  // When: sending more values than the buffer can hold
+  // 実行: バッファ容量を超える値を送信
   let first = source_ref.tell(1_u32);
   let second = source_ref.tell(2_u32);
 
-  // Then: first succeeds, second fails with BufferOverflow
+  // 検証: 1つ目は成功、2つ目は BufferOverflow で失敗
   assert_eq!(first, QueueOfferResult::Enqueued);
   assert_eq!(second, QueueOfferResult::Failure(StreamError::BufferOverflow));
 }
 
 #[test]
 fn actor_source_ref_tell_returns_queue_closed_after_complete() {
-  // Given: an ActorSourceRef that has been completed
+  // 準備: 完了済みの ActorSourceRef
   let queue = BoundedSourceQueue::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
   source_ref.complete();
 
-  // When: attempting to tell after completion
+  // 実行: 完了後に tell を試行
   let result = source_ref.tell(1_u32);
 
-  // Then: QueueClosed is returned
+  // 検証: QueueClosed が返される
   assert_eq!(result, QueueOfferResult::QueueClosed);
 }
 
@@ -48,15 +48,15 @@ fn actor_source_ref_tell_returns_queue_closed_after_complete() {
 
 #[test]
 fn actor_source_ref_complete_closes_queue() {
-  // Given: an open ActorSourceRef
+  // 準備: オープン状態の ActorSourceRef
   let queue = BoundedSourceQueue::<u32>::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
   assert!(!source_ref.is_closed());
 
-  // When: completing
+  // 実行: 完了
   source_ref.complete();
 
-  // Then: the queue is closed
+  // 検証: キューが閉じる
   assert!(source_ref.is_closed());
 }
 
@@ -64,14 +64,14 @@ fn actor_source_ref_complete_closes_queue() {
 
 #[test]
 fn actor_source_ref_fail_closes_queue_with_error() {
-  // Given: an open ActorSourceRef
+  // 準備: オープン状態の ActorSourceRef
   let queue = BoundedSourceQueue::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
 
-  // When: failing with an error
+  // 実行: エラーで失敗させる
   source_ref.fail(StreamError::Failed);
 
-  // Then: the queue is closed and subsequent tells report the failure
+  // 検証: キューが閉じ、以降の tell は失敗を報告
   assert!(source_ref.is_closed());
   assert_eq!(source_ref.tell(1_u32), QueueOfferResult::Failure(StreamError::Failed));
 }
@@ -80,11 +80,11 @@ fn actor_source_ref_fail_closes_queue_with_error() {
 
 #[test]
 fn actor_source_ref_is_closed_returns_false_when_open() {
-  // Given: a freshly created ActorSourceRef
+  // 準備: 新しく作成した ActorSourceRef
   let queue = BoundedSourceQueue::<u32>::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
 
-  // Then: is_closed returns false
+  // 検証: is_closed は false
   assert!(!source_ref.is_closed());
 }
 
@@ -92,18 +92,18 @@ fn actor_source_ref_is_closed_returns_false_when_open() {
 
 #[test]
 fn actor_source_ref_clone_shares_queue() {
-  // Given: an ActorSourceRef and its clone
+  // 準備: ActorSourceRef とそのクローン
   let queue = BoundedSourceQueue::new(4, OverflowStrategy::Fail);
   let source_ref = ActorSourceRef::new(queue);
   let cloned = source_ref.clone();
 
-  // When: telling via the original
-  let _ = source_ref.tell(1_u32);
+  // 実行: オリジナル経由で tell、結果を検証
+  assert_eq!(source_ref.tell(1_u32), QueueOfferResult::Enqueued);
 
-  // When: completing via the clone
+  // 実行: クローン経由で完了
   cloned.complete();
 
-  // Then: both see the closed state
+  // 検証: 両方が閉じた状態を確認
   assert!(source_ref.is_closed());
   assert!(cloned.is_closed());
 }

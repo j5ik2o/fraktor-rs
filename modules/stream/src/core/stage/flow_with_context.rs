@@ -130,9 +130,7 @@ where
   /// # Errors
   ///
   /// Returns `StreamDslError` if `size` is zero.
-  pub fn grouped(self, size: usize) -> Result<FlowWithContext<Ctx, In, Vec<Out>, Mat>, StreamDslError>
-  where
-    Ctx: Clone, {
+  pub fn grouped(self, size: usize) -> Result<FlowWithContext<Ctx, In, Vec<Out>, Mat>, StreamDslError> {
     let grouped = self.inner.grouped(size)?;
     let mapped = grouped.map_concat(extract_last_ctx_and_values);
     Ok(FlowWithContext { inner: mapped, _pd: PhantomData })

@@ -71,9 +71,10 @@ impl ActorSource {
     T: Send + Sync + 'static,
     Ack: Clone + PartialEq + Send + Sync + 'static,
     ReceiveAck: FnMut() -> Option<Ack> + Send + Sync + 'static, {
-    // Internal buffer for the ack-based protocol. The actual backpressure
-    // is enforced by the ack handshake, not by queue overflow. The buffer
-    // allows multiple tells to be queued before pull consumes them.
+    // ack ベースプロトコルの内部バッファ。実際のバックプレッシャーは ack
+    // ハンドシェイクで制御されるため、キューオーバーフローではなく ack 待ちで
+    // 流量が調整される。バッファサイズ 16 は ack 応答前に複数の tell を
+    // キューイングするための余裕であり、Pekko の実装に倣った値。
     let queue = BoundedSourceQueue::new(16, OverflowStrategy::Fail);
     let source_ref = ActorSourceRef::new(queue.clone());
     let logic = ActorRefBackpressureSourceLogic::<T, Ack, ReceiveAck> {

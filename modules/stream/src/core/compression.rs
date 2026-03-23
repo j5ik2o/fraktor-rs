@@ -14,8 +14,8 @@ use super::StreamError;
 pub struct Compression;
 
 impl Compression {
-  /// Default maximum bytes per decompressed chunk (1 MiB).
-  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 1024 * 1024;
+  /// Default maximum bytes per decompressed chunk (64 KiB).
+  pub const MAX_BYTES_PER_CHUNK_DEFAULT: usize = 64 * 1024;
 
   /// Compresses bytes using gzip format with default compression level (6).
   #[must_use]
@@ -31,7 +31,7 @@ impl Compression {
     output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
     output.extend_from_slice(&payload);
     output.extend_from_slice(&crc32(bytes).to_le_bytes());
-    // RFC 1952: ISIZE is input size mod 2^32.
+    // RFC 1952: ISIZE は入力サイズの mod 2^32。
     output.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
     output
   }
@@ -161,7 +161,7 @@ impl Compression {
     }
   }
 
-  // --- internal helpers ---
+  // --- 内部ヘルパー ---
 
   fn deflate_raw(bytes: &[u8], level: u8) -> Vec<u8> {
     miniz_oxide::deflate::compress_to_vec(bytes, level)

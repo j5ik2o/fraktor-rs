@@ -1,6 +1,6 @@
 use crate::core::CancellationStrategyKind;
 
-// --- variant construction ---
+// --- バリアント構築 ---
 
 #[test]
 fn all_variants_are_constructible() {
@@ -9,7 +9,7 @@ fn all_variants_are_constructible() {
   let _ = CancellationStrategyKind::PropagateFailure;
 }
 
-// --- equality ---
+// --- 等値性 ---
 
 #[test]
 fn same_variants_are_equal() {
@@ -25,7 +25,7 @@ fn different_variants_are_not_equal() {
   assert_ne!(CancellationStrategyKind::CompleteStage, CancellationStrategyKind::PropagateFailure);
 }
 
-// --- clone ---
+// --- クローン ---
 
 #[test]
 fn clone_preserves_variant() {
@@ -34,7 +34,7 @@ fn clone_preserves_variant() {
   assert_eq!(original, cloned);
 }
 
-// --- copy ---
+// --- コピー ---
 
 #[test]
 fn copy_semantics_work() {
@@ -43,7 +43,7 @@ fn copy_semantics_work() {
   assert_eq!(a, b);
 }
 
-// --- debug ---
+// --- デバッグ表示 ---
 
 #[test]
 fn debug_format_is_non_empty() {

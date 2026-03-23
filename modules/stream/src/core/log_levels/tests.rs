@@ -66,10 +66,10 @@ fn clone_box_produces_independent_copy() {
 
   // Then: the clone has the same values
   let result = cloned.as_any().downcast_ref::<LogLevels>();
-  assert!(result.is_some());
-  assert_eq!(result.unwrap().on_element, LogLevel::Debug);
-  assert_eq!(result.unwrap().on_finish, LogLevel::Info);
-  assert_eq!(result.unwrap().on_failure, LogLevel::Error);
+  let levels = result.unwrap();
+  assert_eq!(levels.on_element, LogLevel::Debug);
+  assert_eq!(levels.on_finish, LogLevel::Info);
+  assert_eq!(levels.on_failure, LogLevel::Error);
 }
 
 #[test]

@@ -172,18 +172,18 @@ fn from_path_with_options_reads_partial_file_with_start_position() {
   tmp.write_all(b"abcdefghij").unwrap();
   tmp.flush().unwrap();
 
-  // When: reading from start_position=3 with chunk_size=4
+  // When: reading from start_position=3 with chunk_size=4 (バッファサイズ)
   let source = FileIO::from_path_with_options(tmp.path(), 4, 3);
   let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
 
-  // Then: only bytes "defg" (positions 3..7) are read
+  // Then: start_position=3 以降の全バイト "defghij" が読まれる
   let (io_result, completion) = materialized.materialized();
   assert!(io_result.was_successful());
-  assert_eq!(io_result.count(), 4);
-  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![b'd', b'e', b'f', b'g'])));
+  assert_eq!(io_result.count(), 7);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(vec![b'd', b'e', b'f', b'g', b'h', b'i', b'j'])));
 }
 
 #[test]

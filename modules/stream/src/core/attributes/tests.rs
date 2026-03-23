@@ -108,9 +108,11 @@ fn and_merges_typed_attributes_from_both_sources() {
   // When: merging them
   let merged = left.and(right);
 
-  // Then: both types are accessible
+  // Then: both方の型が取得可能
   let buffer = merged.get::<InputBuffer>();
   assert!(buffer.is_some());
+  let log_levels = merged.get::<LogLevels>();
+  assert!(log_levels.is_some());
 }
 
 // --- clone() preserves typed attributes (regression test for QA-001) ---
