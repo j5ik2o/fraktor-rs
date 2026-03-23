@@ -104,17 +104,18 @@ where
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
-    if let Some(writer) = &mut self.writer {
-      if writer.write_all(&[byte]).is_err() {
-        // 書き込み失敗時は writer を破棄。on_complete で IOResult::failed として報告。
-        self.writer = None;
-      } else {
-        self.count += 1;
-        if self.auto_flush && writer.flush().is_err() {
-          // フラッシュ失敗時も writer を破棄。on_complete で IOResult::failed として報告。
-          self.writer = None;
-        }
-      }
+    let Some(writer) = &mut self.writer else {
+      // writer が既に破棄されている場合は即完了。
+      return Ok(SinkDecision::Complete);
+    };
+    if writer.write_all(&[byte]).is_err() {
+      self.writer = None;
+      return Ok(SinkDecision::Complete);
+    }
+    self.count += 1;
+    if self.auto_flush && writer.flush().is_err() {
+      self.writer = None;
+      return Ok(SinkDecision::Complete);
     }
     demand.request(1)?;
     Ok(SinkDecision::Continue)

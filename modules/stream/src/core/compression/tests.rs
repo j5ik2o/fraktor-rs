@@ -100,11 +100,11 @@ fn inflate_rejects_invalid_data() {
 
 #[test]
 fn inflate_with_max_bytes_rejects_oversized_output() {
-  // 準備: max_bytes_per_chunk を超えるサイズに解凍されるデータ
+  // 準備: max_bytes_per_chunk を超えるサイズに解凍されるデータ（nowrap=true で圧縮）
   let input: Vec<u8> = alloc::vec![0; 1024];
-  let compressed = Compression::deflate_bytes(&input);
+  let compressed = Compression::deflate_bytes_with_options(&input, 6, true);
 
-  // 実行: 非常に小さい制限で解凍
+  // 実行: 非常に小さい制限で解凍（nowrap=true で一致させる）
   let result = Compression::inflate_bytes_with_options(&compressed, 16, true);
 
   // 検証: 解凍サイズが制限を超えるためエラー
@@ -142,9 +142,9 @@ fn gunzip_rejects_invalid_magic_bytes() {
 // --- max_bytes_per_chunk_default 定数 ---
 
 #[test]
-fn max_bytes_per_chunk_default_is_64k() {
-  // 検証: Pekko の MaxBytesPerChunkDefault と一致
-  assert_eq!(Compression::MAX_BYTES_PER_CHUNK_DEFAULT, 64 * 1024);
+fn max_bytes_per_chunk_default_is_1m() {
+  // 検証: 元の MAX_DECOMPRESSED_BYTES (1 MiB) と一致
+  assert_eq!(Compression::MAX_BYTES_PER_CHUNK_DEFAULT, 1024 * 1024);
 }
 
 // --- nowrap オプション ---

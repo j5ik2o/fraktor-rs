@@ -178,13 +178,15 @@ impl SinkLogic for WriteToPathSinkLogic {
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let byte = *input.downcast::<u8>().map_err(|_| StreamError::TypeMismatch)?;
-    if let Some(writer) = &mut self.writer {
-      if writer.write_all(&[byte]).is_err() {
-        self.writer = None;
-      } else {
-        self.count += 1;
-      }
+    let Some(writer) = &mut self.writer else {
+      // writer が既に破棄されている場合は即完了。
+      return Ok(SinkDecision::Complete);
+    };
+    if writer.write_all(&[byte]).is_err() {
+      self.writer = None;
+      return Ok(SinkDecision::Complete);
     }
+    self.count += 1;
     demand.request(1)?;
     Ok(SinkDecision::Continue)
   }
