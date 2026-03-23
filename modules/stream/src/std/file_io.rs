@@ -5,7 +5,7 @@ mod tests;
 
 use std::{
   fs,
-  io::{BufWriter, Write},
+  io::{BufWriter, Read, Seek, SeekFrom, Write},
   path::{Path, PathBuf},
 };
 
@@ -41,6 +41,36 @@ impl FileIO {
     }
   }
 
+  /// Creates a source that reads bytes from a file with configurable options.
+  ///
+  /// Reads up to `chunk_size` bytes starting from `start_position`. If the
+  /// start position is past the end of the file, the source emits zero elements.
+  ///
+  /// Corresponds to Pekko's `FileIO.fromPath(f, chunkSize, startPosition)`.
+  #[must_use]
+  pub fn from_path_with_options<P: AsRef<Path>>(
+    path: P,
+    chunk_size: usize,
+    start_position: u64,
+  ) -> Source<u8, IOResult> {
+    let result = (|| -> Result<alloc::vec::Vec<u8>, std::io::Error> {
+      let mut file = fs::File::open(path.as_ref())?;
+      file.seek(SeekFrom::Start(start_position))?;
+      let mut buf = alloc::vec![0u8; chunk_size];
+      let n = file.read(&mut buf)?;
+      buf.truncate(n);
+      Ok(buf)
+    })();
+
+    match result {
+      | Ok(bytes) => {
+        let count = bytes.len() as u64;
+        Source::from_iterator(bytes).map_materialized_value(move |_| IOResult::successful(count))
+      },
+      | Err(_) => Source::empty().map_materialized_value(|_| IOResult::failed(0, StreamError::Failed)),
+    }
+  }
+
   /// Creates a sink that writes received bytes to a file at the given path.
   ///
   /// The file is opened when the stream starts. Each byte is written through a
@@ -55,22 +85,84 @@ impl FileIO {
   pub fn to_path<P: AsRef<Path>>(path: P) -> Sink<u8, StreamCompletion<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
     let completion = StreamCompletion::new();
-    let logic =
-      WriteToPathSinkLogic { path: path_buf, writer: None, count: 0, completion: completion.clone() };
+    let logic = WriteToPathSinkLogic {
+      path:           path_buf,
+      options:        None,
+      start_position: None,
+      writer:         None,
+      count:          0,
+      completion:     completion.clone(),
+    };
+    Sink::from_definition(StageKind::Custom, logic, completion)
+  }
+
+  /// Creates a sink that writes received bytes to a file with the given open
+  /// options.
+  ///
+  /// The `options` parameter controls how the file is opened (e.g. append,
+  /// create, truncate). Corresponds to Pekko's `FileIO.toPath(f, options)`.
+  #[must_use]
+  pub fn to_path_with_options<P: AsRef<Path>>(
+    path: P,
+    options: fs::OpenOptions,
+  ) -> Sink<u8, StreamCompletion<IOResult>> {
+    let path_buf = path.as_ref().to_path_buf();
+    let completion = StreamCompletion::new();
+    let logic = WriteToPathSinkLogic {
+      path:           path_buf,
+      options:        Some(options),
+      start_position: None,
+      writer:         None,
+      count:          0,
+      completion:     completion.clone(),
+    };
+    Sink::from_definition(StageKind::Custom, logic, completion)
+  }
+
+  /// Creates a sink that writes received bytes to a file at the given position.
+  ///
+  /// The `start_position` parameter specifies the byte offset at which writing
+  /// begins. Corresponds to Pekko's `FileIO.toPath(f, options, startPosition)`.
+  #[must_use]
+  pub fn to_path_with_position<P: AsRef<Path>>(
+    path: P,
+    options: fs::OpenOptions,
+    start_position: u64,
+  ) -> Sink<u8, StreamCompletion<IOResult>> {
+    let path_buf = path.as_ref().to_path_buf();
+    let completion = StreamCompletion::new();
+    let logic = WriteToPathSinkLogic {
+      path:           path_buf,
+      options:        Some(options),
+      start_position: Some(start_position),
+      writer:         None,
+      count:          0,
+      completion:     completion.clone(),
+    };
     Sink::from_definition(StageKind::Custom, logic, completion)
   }
 }
 
 struct WriteToPathSinkLogic {
-  path:       PathBuf,
-  writer:     Option<BufWriter<fs::File>>,
-  count:      u64,
-  completion: StreamCompletion<IOResult>,
+  path:           PathBuf,
+  options:        Option<fs::OpenOptions>,
+  start_position: Option<u64>,
+  writer:         Option<BufWriter<fs::File>>,
+  count:          u64,
+  completion:     StreamCompletion<IOResult>,
 }
 
 impl SinkLogic for WriteToPathSinkLogic {
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
-    if let Ok(file) = fs::File::create(&self.path) {
+    let file_result =
+      if let Some(options) = self.options.take() { options.open(&self.path) } else { fs::File::create(&self.path) };
+    if let Ok(mut file) = file_result {
+      if let Some(pos) = self.start_position
+        && file.seek(SeekFrom::Start(pos)).is_err()
+      {
+        // Seek failed; leave writer as None so on_complete reports failure.
+        return demand.request(1);
+      }
       self.writer = Some(BufWriter::new(file));
     }
     demand.request(1)
