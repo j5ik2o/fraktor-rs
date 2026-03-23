@@ -7,9 +7,10 @@
 - Pekko 参照: `references/pekko/stream/src/main/scala/org/apache/pekko/stream/`
 
 計数ポリシー:
-- Pekko 側は `scaladsl/*` と `stage/*` の top-level public 型を母集団にする
+- Pekko 側は `scaladsl/*`、`stage/*`、`snapshot/*` の top-level public 型を母集団にする
 - `javadsl/*` は Scala DSL の重複 wrapper が多いため、カバレッジ母集団から除外し、必要なものだけ備考で補足する
 - `impl/*` は内部実装なので母集団から除外する
+- 例外型（`NeverMaterializedException` 等）は母集団に含め、fraktor-rs 側で `StreamError` へ統合されている場合は部分実装として扱う
 - fraktor-rs 側は `modules/stream/src/core` と `modules/stream/src/std` の純粋な `pub` 型を母集団にする
 - カバレッジは「型単位」の概算であり、最終判断はカテゴリ別ギャップを優先する
 
