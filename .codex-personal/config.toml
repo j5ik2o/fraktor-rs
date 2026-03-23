@@ -30,9 +30,13 @@ config_file = "agents/reviewer.toml"
 description = "Implementation-focused agent for small targeted fixes."
 config_file = "agents/worker.toml"
 
+# NOTE: `uvx --from git+https://github.com/oraios/serena@<version>` のような
+# `@version` 固定は壊れやすい。Serena 側の project.yml / serena_config.yml の
+# フォーマット変更とズレると、MCP 初期化時に handshake 前に落ちることがある。
+# 実際に `@v0.1.4` 固定では `language` KeyError で起動失敗したため、ここでは pin しない。
 [mcp_servers.serena]
 command = "zsh"
-args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx --from git+https://github.com/oraios/serena@v0.1.4 serena start-mcp-server --context codex --project . --enable-web-dashboard false"]
+args = ["-lc", "export HOME=\"$PWD/.serena-home\"; mkdir -p \"$HOME\"; exec uvx --from git+https://github.com/oraios/serena serena start-mcp-server --context codex --project . --enable-web-dashboard false"]
 
 [tui]
 status_line = ["current-dir", "git-branch"]

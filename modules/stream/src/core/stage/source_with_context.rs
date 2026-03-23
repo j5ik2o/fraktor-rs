@@ -1,6 +1,7 @@
-use core::marker::PhantomData;
+use alloc::vec::Vec;
+use core::{future::Future, marker::PhantomData};
 
-use super::{flow_with_context::FlowWithContext, source::Source};
+use super::{StreamDslError, extract_last_ctx_and_values, flow_with_context::FlowWithContext, source::Source};
 
 #[cfg(test)]
 mod tests;
@@ -58,6 +59,88 @@ where
     F: FnMut(Ctx) -> Ctx2 + Send + Sync + 'static, {
     let mapped = self.inner.map(move |(ctx, value)| (func(ctx), value));
     SourceWithContext { inner: mapped, _pd: PhantomData }
+  }
+
+  /// Expands each element into multiple elements, each carrying the same context.
+  #[must_use]
+  pub fn map_concat<Out2, I, F>(self, mut f: F) -> SourceWithContext<Ctx, Out2, Mat>
+  where
+    Ctx: Clone,
+    Out2: Send + Sync + 'static,
+    I: IntoIterator<Item = Out2> + 'static,
+    F: FnMut(Out) -> I + Send + Sync + 'static, {
+    let mapped = self.inner.map_concat(move |(ctx, value)| f(value).into_iter().map(move |item| (ctx.clone(), item)));
+    SourceWithContext { inner: mapped, _pd: PhantomData }
+  }
+
+  /// Filters elements where the predicate returns false, preserving context.
+  #[must_use]
+  pub fn filter_not<F>(self, mut predicate: F) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    self.filter(move |value| !predicate(value))
+  }
+
+  /// Filters and maps elements in one step, preserving context.
+  #[must_use]
+  pub fn collect<Out2, F>(self, mut f: F) -> SourceWithContext<Ctx, Out2, Mat>
+  where
+    Out2: Send + Sync + 'static,
+    F: FnMut(Out) -> Option<Out2> + Send + Sync + 'static, {
+    let mapped = self.inner.map_concat(move |(ctx, value)| f(value).map(|out| (ctx, out)));
+    SourceWithContext { inner: mapped, _pd: PhantomData }
+  }
+
+  /// Applies an async transformation to each element, preserving context.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `parallelism` is zero.
+  pub fn map_async<Out2, Fut, F>(
+    self,
+    parallelism: usize,
+    mut f: F,
+  ) -> Result<SourceWithContext<Ctx, Out2, Mat>, StreamDslError>
+  where
+    Out2: Send + Sync + 'static,
+    Fut: Future<Output = Out2> + Send + 'static,
+    F: FnMut(Out) -> Fut + Send + Sync + 'static, {
+    let mapped = self.inner.map_async(parallelism, move |(ctx, value)| {
+      let fut = f(value);
+      async move { (ctx, fut.await) }
+    })?;
+    Ok(SourceWithContext { inner: mapped, _pd: PhantomData })
+  }
+
+  /// Groups elements into fixed-size batches.
+  ///
+  /// The context of each group is the context of the last element in the group.
+  /// Core logic is shared via [`extract_last_ctx_and_values`]; the wrapper type
+  /// differs between `FlowWithContext` and `SourceWithContext`.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `size` is zero.
+  pub fn grouped(self, size: usize) -> Result<SourceWithContext<Ctx, Vec<Out>, Mat>, StreamDslError> {
+    let grouped = self.inner.grouped(size)?;
+    let mapped = grouped.map_concat(extract_last_ctx_and_values);
+    Ok(SourceWithContext { inner: mapped, _pd: PhantomData })
+  }
+
+  /// Creates sliding windows over elements.
+  ///
+  /// The context of each window is the context of the last element in the window.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `size` is zero.
+  pub fn sliding(self, size: usize) -> Result<SourceWithContext<Ctx, Vec<Out>, Mat>, StreamDslError>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let sliding = self.inner.sliding(size)?;
+    let mapped = sliding.map_concat(extract_last_ctx_and_values);
+    Ok(SourceWithContext { inner: mapped, _pd: PhantomData })
   }
 
   /// Composes with a context-preserving flow.

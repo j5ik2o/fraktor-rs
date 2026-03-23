@@ -7,9 +7,10 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowMonitor, FlowSubFlow, MatCombine, MatCombineRule,
-  OverflowStrategy, RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError,
-  StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
+  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy,
+  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
+  StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
+  flow_monitor_impl::FlowMonitorImpl,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   validate_positive_argument,
@@ -24,6 +25,9 @@ mod tests;
 
 mod logic;
 use logic::*;
+
+#[cfg(feature = "compression")]
+const FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT: usize = 1024 * 1024;
 
 /// Flow stage definition.
 pub struct Flow<In, Out, Mat> {
@@ -59,6 +63,12 @@ where
   pub(in crate::core) fn from_kill_switch_state(kill_switch_state: KillSwitchStateHandle) -> Self {
     let mut graph = StreamGraph::new();
     graph.push_stage(StageDefinition::Flow(kill_switch_definition::<T>(kill_switch_state)));
+    Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
+  }
+
+  pub(in crate::core) fn from_coupled_termination_state(kill_switch_state: KillSwitchStateHandle) -> Self {
+    let mut graph = StreamGraph::new();
+    graph.push_stage(StageDefinition::Flow(coupled_termination_definition::<T>(kill_switch_state)));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
   }
 }
@@ -3100,9 +3110,9 @@ where
   #[must_use]
   pub fn monitor_mat<C>(self, _combine: C) -> Flow<In, Out, C::Out>
   where
-    C: MatCombineRule<Mat, FlowMonitor<Out>>, {
+    C: MatCombineRule<Mat, FlowMonitorImpl<Out>>, {
     let (graph, left_mat) = self.into_parts();
-    let mat = combine_mat::<Mat, FlowMonitor<Out>, C>(left_mat, FlowMonitor::<Out>::new());
+    let mat = combine_mat::<Mat, FlowMonitorImpl<Out>, C>(left_mat, FlowMonitorImpl::<Out>::new());
     Flow::from_graph(graph, mat)
   }
 
@@ -3137,8 +3147,9 @@ where
   pub fn deflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
+    use crate::core::Compression;
     let definition =
-      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(deflate_bytes(value.as_ref()))]));
+      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::deflate_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -3158,7 +3169,9 @@ where
   pub fn gzip(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    let definition = try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(gzip_bytes(value.as_ref()))]));
+    use crate::core::Compression;
+    let definition =
+      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::gzip_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -3178,8 +3191,10 @@ where
   pub fn gzip_decompress(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    let definition =
-      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(gunzip_bytes(value.as_ref())?)]));
+    use crate::core::Compression;
+    let definition = try_map_concat_definition::<Out, Out, _>(|value| {
+      Ok(vec![Out::from(Compression::gunzip_bytes_with_options(value.as_ref(), FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT)?)])
+    });
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -3200,8 +3215,14 @@ where
   pub fn inflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    let definition =
-      try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(inflate_bytes(value.as_ref())?)]));
+    use crate::core::Compression;
+    let definition = try_map_concat_definition::<Out, Out, _>(|value| {
+      Ok(vec![Out::from(Compression::inflate_bytes_with_options(
+        value.as_ref(),
+        FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT,
+        true,
+      )?)])
+    });
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -3426,12 +3447,26 @@ where
   }
 
   /// Creates a coupled flow from a sink and a source.
+  ///
+  /// Both sides share a [`SharedKillSwitch`] so that termination of one side
+  /// can be propagated to the other via `shutdown()` or `abort()`.
+  ///
+  /// [`SharedKillSwitch`]: crate::core::lifecycle::SharedKillSwitch
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
-    Self::from_sink_and_source(sink, source)
+    let ks = crate::core::lifecycle::SharedKillSwitch::new();
+    let state = ks.state_handle();
+    let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
+    let base = Self::from_sink_and_source(sink, wrapped_source);
+    Flow::<In, In, StreamNotUsed>::from_coupled_termination_state(state).via_mat(base, KeepRight)
   }
 
   /// Creates a coupled flow from a sink and a source with materialized value control.
+  ///
+  /// Both sides share a [`SharedKillSwitch`] so that termination of one side
+  /// can be propagated to the other via `shutdown()` or `abort()`.
+  ///
+  /// [`SharedKillSwitch`]: crate::core::lifecycle::SharedKillSwitch
   #[must_use]
   pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
     sink: Sink<In, Mat1>,
@@ -3440,7 +3475,11 @@ where
   ) -> Flow<In, Out, C::Out>
   where
     C: MatCombineRule<Mat1, Mat2>, {
-    Self::from_sink_and_source_mat(sink, source, combine)
+    let ks = crate::core::lifecycle::SharedKillSwitch::new();
+    let state = ks.state_handle();
+    let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
+    let base = Self::from_sink_and_source_mat(sink, wrapped_source, combine);
+    Flow::<In, In, StreamNotUsed>::from_coupled_termination_state(state).via_mat(base, KeepRight)
   }
 }
 
@@ -5022,6 +5061,29 @@ where
   }
 }
 
+pub(in crate::core) fn coupled_termination_definition<In>(kill_switch_state: KillSwitchStateHandle) -> FlowDefinition
+where
+  In: Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = CoupledTerminationLogic::<In> {
+    state:              kill_switch_state,
+    shutdown_requested: false,
+    _pd:                PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowKillSwitch,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+  }
+}
+
 pub(in crate::core) fn unzip_definition<In>() -> FlowDefinition
 where
   In: Send + Sync + 'static, {
@@ -5251,133 +5313,6 @@ where
     };
     stream.cancel()
   }
-}
-
-#[cfg(feature = "compression")]
-const MAX_DECOMPRESSED_BYTES: usize = 1024 * 1024;
-
-#[cfg(feature = "compression")]
-fn deflate_bytes(bytes: &[u8]) -> Vec<u8> {
-  let level = 6_u8;
-  miniz_oxide::deflate::compress_to_vec(bytes, level)
-}
-
-#[cfg(feature = "compression")]
-fn inflate_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
-  miniz_oxide::inflate::decompress_to_vec_with_limit(bytes, MAX_DECOMPRESSED_BYTES)
-    .map_err(|_| StreamError::CompressionError { kind: "deflate" })
-}
-
-#[cfg(feature = "compression")]
-fn inflate_gzip_payload_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
-  let limit = MAX_DECOMPRESSED_BYTES.saturating_add(1);
-  let decompressed = miniz_oxide::inflate::decompress_to_vec_with_limit(bytes, limit)
-    .map_err(|_| StreamError::CompressionError { kind: "deflate" })?;
-  if decompressed.len() > MAX_DECOMPRESSED_BYTES {
-    return Err(StreamError::CompressionError { kind: "gzip_too_large" });
-  }
-  Ok(decompressed)
-}
-
-#[cfg(feature = "compression")]
-fn gzip_bytes(bytes: &[u8]) -> Vec<u8> {
-  let payload = deflate_bytes(bytes);
-  let mut output = Vec::with_capacity(payload.len() + 18);
-  output.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
-  output.extend_from_slice(&payload);
-  output.extend_from_slice(&crc32(bytes).to_le_bytes());
-  // RFC 1952 に従い ISIZE は入力サイズの mod 2^32 を保持する。
-  output.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-  output
-}
-
-#[cfg(feature = "compression")]
-fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, StreamError> {
-  if bytes.len() < 18 {
-    return Err(StreamError::CompressionError { kind: "gzip_too_short" });
-  }
-  if bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08 {
-    return Err(StreamError::CompressionError { kind: "gzip_header" });
-  }
-  let flags = bytes[3];
-  if flags & 0b1110_0000 != 0 {
-    return Err(StreamError::CompressionError { kind: "gzip_flags" });
-  }
-  let payload_end = bytes.len().saturating_sub(8);
-  let mut payload_start = 10_usize;
-
-  if flags & 0x04 != 0 {
-    if payload_start + 2 > payload_end {
-      return Err(StreamError::CompressionError { kind: "gzip_extra_len" });
-    }
-    let extra_len = u16::from_le_bytes([bytes[payload_start], bytes[payload_start + 1]]) as usize;
-    payload_start += 2;
-    if payload_start + extra_len > payload_end {
-      return Err(StreamError::CompressionError { kind: "gzip_extra" });
-    }
-    payload_start += extra_len;
-  }
-  if flags & 0x08 != 0 {
-    payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
-  }
-  if flags & 0x10 != 0 {
-    payload_start = consume_gzip_zero_terminated_field(bytes, payload_start, payload_end)?;
-  }
-  if flags & 0x02 != 0 {
-    if payload_start + 2 > payload_end {
-      return Err(StreamError::CompressionError { kind: "gzip_header_crc" });
-    }
-    payload_start += 2;
-  }
-  if payload_start > payload_end {
-    return Err(StreamError::CompressionError { kind: "gzip_payload_bounds" });
-  }
-
-  let payload = &bytes[payload_start..payload_end];
-  let expected_crc =
-    u32::from_le_bytes([bytes[payload_end], bytes[payload_end + 1], bytes[payload_end + 2], bytes[payload_end + 3]]);
-  let expected_len = u32::from_le_bytes([
-    bytes[payload_end + 4],
-    bytes[payload_end + 5],
-    bytes[payload_end + 6],
-    bytes[payload_end + 7],
-  ]);
-  if usize::try_from(expected_len).ok().filter(|expected_len| *expected_len <= MAX_DECOMPRESSED_BYTES).is_none() {
-    return Err(StreamError::CompressionError { kind: "gzip_too_large" });
-  }
-  let decompressed = inflate_gzip_payload_bytes(payload)?;
-  if crc32(&decompressed) != expected_crc || (decompressed.len() as u32) != expected_len {
-    return Err(StreamError::CompressionError { kind: "gzip_trailer" });
-  }
-  Ok(decompressed)
-}
-
-#[cfg(feature = "compression")]
-fn consume_gzip_zero_terminated_field(
-  bytes: &[u8],
-  mut index: usize,
-  payload_end: usize,
-) -> Result<usize, StreamError> {
-  while index < payload_end {
-    if bytes[index] == 0 {
-      return Ok(index.saturating_add(1));
-    }
-    index = index.saturating_add(1);
-  }
-  Err(StreamError::CompressionError { kind: "gzip_string_field" })
-}
-
-#[cfg(feature = "compression")]
-fn crc32(bytes: &[u8]) -> u32 {
-  let mut crc = 0xffff_ffff_u32;
-  for &byte in bytes {
-    crc ^= u32::from(byte);
-    for _ in 0..8 {
-      let mask = (!((crc & 1).wrapping_sub(1))) & 0xedb8_8320;
-      crc = (crc >> 1) ^ mask;
-    }
-  }
-  !crc
 }
 
 pub(in crate::core::stage::flow) const fn noop_waker() -> Waker {

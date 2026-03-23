@@ -173,6 +173,65 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
     Ok(Inlet::from_id(inlet_id))
   }
 
+  /// Imports a source graph and returns its outlet port along with
+  /// the materialized value.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(sourceGraph)` with
+  /// materialized value preservation.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the source graph has no outlet.
+  pub fn add_source_mat<T, Mat2>(&mut self, source: Source<T, Mat2>) -> Result<(Outlet<T>, Mat2), StreamError>
+  where
+    T: Send + Sync + 'static, {
+    let (other_graph, mat) = source.into_parts();
+    let outlet_id = other_graph.tail_outlet().ok_or(StreamError::InvalidConnection)?;
+    self.graph.append_unwired(other_graph);
+    Ok((Outlet::from_id(outlet_id), mat))
+  }
+
+  /// Imports a flow graph and returns its (inlet, outlet) port pair along
+  /// with the materialized value.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(flowGraph)` with
+  /// materialized value preservation.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the flow graph has no inlet or outlet.
+  pub fn add_flow_mat<I, O, Mat2>(
+    &mut self,
+    flow: Flow<I, O, Mat2>,
+  ) -> Result<(Inlet<I>, Outlet<O>, Mat2), StreamError>
+  where
+    I: Send + Sync + 'static,
+    O: Send + Sync + 'static, {
+    let (other_graph, mat) = flow.into_parts();
+    let inlet_id = other_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
+    let outlet_id = other_graph.tail_outlet().ok_or(StreamError::InvalidConnection)?;
+    self.graph.append_unwired(other_graph);
+    Ok((Inlet::from_id(inlet_id), Outlet::from_id(outlet_id), mat))
+  }
+
+  /// Imports a sink graph and returns its inlet port along with the
+  /// materialized value.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.Builder.add(sinkGraph)` with
+  /// materialized value preservation.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the sink graph has no inlet.
+  pub fn add_sink_mat<T, Mat2>(&mut self, sink: Sink<T, Mat2>) -> Result<(Inlet<T>, Mat2), StreamError>
+  where
+    T: Send + Sync + 'static, {
+    let (other_graph, mat) = sink.into_parts();
+    let inlet_id = other_graph.head_inlet().ok_or(StreamError::InvalidConnection)?;
+    self.graph.append_unwired(other_graph);
+    Ok((Inlet::from_id(inlet_id), mat))
+  }
+
   /// Connects an outlet to an inlet within this builder's graph.
   ///
   /// Corresponds to Pekko's `~>` operator.
@@ -182,5 +241,30 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   /// Returns [`StreamError::InvalidConnection`] when a port is unknown.
   pub fn connect<T>(&mut self, from: &Outlet<T>, to: &Inlet<T>) -> Result<(), StreamError> {
     self.graph.connect(from, to, MatCombine::KeepLeft)
+  }
+
+  /// Connects an outlet through a flow to an inlet in one step.
+  ///
+  /// Equivalent to calling [`add_flow`](Self::add_flow) followed by two
+  /// [`connect`](Self::connect) calls. The flow's materialized value is
+  /// discarded.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the flow graph has
+  /// missing ports or the connections fail.
+  pub fn connect_via<T, U, Mat2>(
+    &mut self,
+    from: &Outlet<T>,
+    flow: Flow<T, U, Mat2>,
+    to: &Inlet<U>,
+  ) -> Result<(), StreamError>
+  where
+    T: Send + Sync + 'static,
+    U: Send + Sync + 'static, {
+    let (flow_in, flow_out) = self.add_flow(flow)?;
+    self.connect(from, &flow_in)?;
+    self.connect(&flow_out, to)?;
+    Ok(())
   }
 }

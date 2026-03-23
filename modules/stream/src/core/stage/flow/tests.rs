@@ -10,8 +10,11 @@ use crate::core::{
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
-  stage::{FlowMonitor, Sink, Source, StageKind, flow::Flow},
+  stage::{Sink, Source, StageKind, flow::Flow, flow_monitor_impl::FlowMonitorImpl},
 };
+
+#[cfg(feature = "compression")]
+const FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT: usize = 1024 * 1024;
 
 struct SequenceSourceLogic {
   values: VecDeque<u32>,
@@ -2704,7 +2707,7 @@ fn gzip_emits_raw_deflate_payload() {
 #[test]
 #[cfg(feature = "compression")]
 fn inflate_rejects_payload_exceeding_decompression_limit() {
-  let payload = vec![0x5a_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x5a_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
 
   let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
@@ -2715,7 +2718,7 @@ fn inflate_rejects_payload_exceeding_decompression_limit() {
 #[test]
 #[cfg(feature = "compression")]
 fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
-  let payload = vec![0x33_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x33_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
     .collect_values()
@@ -2732,7 +2735,7 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
 #[test]
 #[cfg(feature = "compression")]
 fn gzip_decompress_rejects_payload_exceeding_decompression_limit_with_spoofed_isize() {
-  let payload = vec![0x44_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x44_u8; FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT.saturating_add(1)];
   let mut encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
     .collect_values()
@@ -2746,6 +2749,34 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit_with_spoofed_is
     Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
 
   assert!(matches!(result, Err(StreamError::CompressionError { kind: "gzip_too_large" })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn inflate_accepts_payload_larger_than_compression_chunk_default() {
+  let payload = vec![0x6a_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
+  let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
+
+  let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
+
+  assert_eq!(result.expect("collect_values"), vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_decompress_accepts_payload_larger_than_compression_chunk_default() {
+  let payload = vec![0x7b_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
+  let encoded = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
+    .collect_values()
+    .expect("collect_values")
+    .pop()
+    .expect("encoded payload");
+
+  let result =
+    Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress()).collect_values();
+
+  assert_eq!(result.expect("collect_values"), vec![payload]);
 }
 
 #[test]
@@ -3238,7 +3269,7 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
   let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 21_u32);
   let (_graph, (left_mat, right_mat)) = flow.monitor_mat(KeepBoth).into_parts();
   assert_eq!(left_mat, 21_u32);
-  assert_eq!(right_mat, FlowMonitor::<u32>::new());
+  assert_eq!(right_mat, FlowMonitorImpl::<u32>::new());
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).monitor_mat(KeepLeft))
@@ -4337,6 +4368,44 @@ fn flow_from_sink_and_source_coupled_mat_keeps_left_materialized_value() {
   // Then: only the left (sink) materialized value is kept
   let (_graph, mat) = flow.into_parts();
   assert_eq!(mat, 99_i32);
+}
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_completes_wrapped_sink_when_source_finishes() {
+  use alloc::sync::Arc;
+  use std::sync::atomic::{AtomicBool, Ordering};
+
+  let sink_completed = Arc::new(AtomicBool::new(false));
+  let sink = Sink::<u32, _>::on_complete({
+    let sink_completed = sink_completed.clone();
+    move |_| sink_completed.store(true, Ordering::SeqCst)
+  });
+  let source = Source::<u32, _>::empty().watch_termination_mat(KeepRight);
+
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepRight);
+  let (_graph, right_completion) = flow.into_parts();
+  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
+
+  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+
+  assert!(values.is_empty());
+  assert!(sink_completed.load(Ordering::SeqCst));
+  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
+}
+
+#[test]
+fn flow_from_sink_and_source_coupled_mat_cancels_wrapped_source_when_sink_cancels() {
+  let source = Source::<u32, _>::never().watch_termination_mat(KeepRight);
+  let sink = Sink::<u32, _>::cancelled();
+
+  let flow = Flow::from_sink_and_source_coupled_mat(sink, source, KeepRight);
+  let (_graph, right_completion) = flow.into_parts();
+  let source_flow: Flow<u32, u32, StreamCompletion<()>> = Flow::from_graph(_graph, right_completion.clone());
+
+  let values = Source::single(1_u32).via(source_flow).collect_values().expect("collect_values");
+
+  assert!(values.is_empty());
+  assert_eq!(right_completion.poll(), Completion::Ready(Ok(())));
 }
 
 // --- A4: group_by with SubstreamCancelStrategy ---

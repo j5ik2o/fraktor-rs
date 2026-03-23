@@ -1,5 +1,8 @@
 use super::GraphDslBuilder;
-use crate::core::{StreamNotUsed, stage::flow::Flow};
+use crate::core::{
+  StreamNotUsed,
+  stage::{Sink, Source, flow::Flow},
+};
 
 /// Minimal namespace facade compatible with Pekko-style `GraphDSL`.
 pub struct GraphDsl;
@@ -45,5 +48,41 @@ impl GraphDsl {
     let mut builder = GraphDslBuilder::from_graph(super::StreamGraph::new(), mat);
     build_block(&mut builder);
     builder.build()
+  }
+
+  /// Creates a source from a builder block.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.create() { implicit builder => ... }` for source graphs.
+  /// The builder block receives a mutable reference to a fresh [`GraphDslBuilder`]
+  /// and can use [`add_source`](GraphDslBuilder::add_source),
+  /// [`add_flow`](GraphDslBuilder::add_flow), and [`connect`](GraphDslBuilder::connect)
+  /// to assemble a source graph.
+  #[must_use]
+  pub fn create_source<Out, F>(build_block: F) -> Source<Out, StreamNotUsed>
+  where
+    Out: Send + Sync + 'static,
+    F: FnOnce(&mut GraphDslBuilder<(), Out, StreamNotUsed>), {
+    let mut builder = GraphDslBuilder::from_graph(super::StreamGraph::new(), StreamNotUsed::new());
+    build_block(&mut builder);
+    let (graph, mat) = builder.into_parts();
+    Source::from_graph(graph, mat)
+  }
+
+  /// Creates a sink from a builder block.
+  ///
+  /// Corresponds to Pekko's `GraphDSL.create() { implicit builder => ... }` for sink graphs.
+  /// The builder block receives a mutable reference to a fresh [`GraphDslBuilder`]
+  /// and can use [`add_sink`](GraphDslBuilder::add_sink),
+  /// [`add_flow`](GraphDslBuilder::add_flow), and [`connect`](GraphDslBuilder::connect)
+  /// to assemble a sink graph.
+  #[must_use]
+  pub fn create_sink<In, F>(build_block: F) -> Sink<In, StreamNotUsed>
+  where
+    In: Send + Sync + 'static,
+    F: FnOnce(&mut GraphDslBuilder<In, (), StreamNotUsed>), {
+    let mut builder = GraphDslBuilder::from_graph(super::StreamGraph::new(), StreamNotUsed::new());
+    build_block(&mut builder);
+    let (graph, mat) = builder.into_parts();
+    Sink::from_graph(graph, mat)
   }
 }

@@ -46,13 +46,13 @@ impl IOResult {
 
   /// Returns a new `IOResult` with the given byte count.
   #[must_use]
-  pub const fn with_count(self, count: u64) -> Self {
+  pub fn with_count(self, count: u64) -> Self {
     Self { count, status: self.status }
   }
 
   /// Returns a new `IOResult` with the given status.
   #[must_use]
-  pub const fn with_status(self, status: Result<(), StreamError>) -> Self {
+  pub fn with_status(self, status: Result<(), StreamError>) -> Self {
     Self { count: self.count, status }
   }
 }

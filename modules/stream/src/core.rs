@@ -1,9 +1,20 @@
+/// Handle for sending elements into an actor-sourced stream.
+mod actor_source_ref;
+/// Type-safe attribute trait for stream stage metadata.
+mod attribute;
 /// Stream attributes for stage and graph metadata.
 mod attributes;
 /// Bounded queue materialized by source queue stages.
 mod bounded_source_queue;
+/// Cancellation strategy definitions for stream stages.
+mod cancellation_strategy_kind;
 /// Completion polling types.
 mod completion;
+/// Completion strategy for actor-sourced streams.
+mod completion_strategy;
+/// Compression facade providing gzip and deflate utilities.
+#[cfg(feature = "compression")]
+mod compression;
 /// Supervision decider function type.
 mod decider;
 /// Per-element delay strategy trait.
@@ -20,6 +31,8 @@ mod framing;
 pub mod graph;
 /// Dynamic fan-in/fan-out connectors.
 pub mod hub;
+/// Input buffer attribute for stream stage configuration.
+mod input_buffer;
 /// IO operation result type.
 mod io_result;
 /// JSON object framing utilities.
@@ -36,6 +49,10 @@ mod keep_right;
 pub mod lifecycle;
 /// Linear increasing delay strategy implementation.
 mod linear_increasing_delay;
+/// Log level definitions for stream attribute configuration.
+mod log_level;
+/// Log levels attribute for stream stage diagnostics configuration.
+mod log_levels;
 /// Materialization pipeline.
 pub mod mat;
 /// Materialization combination kinds.
@@ -92,9 +109,15 @@ mod validate_positive_argument;
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
+pub use actor_source_ref::ActorSourceRef;
+pub use attribute::Attribute;
 pub use attributes::Attributes;
 pub use bounded_source_queue::BoundedSourceQueue;
+pub use cancellation_strategy_kind::CancellationStrategyKind;
 pub use completion::Completion;
+pub use completion_strategy::CompletionStrategy;
+#[cfg(feature = "compression")]
+pub use compression::Compression;
 pub use decider::Decider;
 pub use delay_strategy::DelayStrategy;
 pub use demand::Demand;
@@ -102,6 +125,7 @@ pub use demand_tracker::DemandTracker;
 pub use fixed_delay::FixedDelay;
 use fraktor_utils_rs::core::sync::ArcShared;
 pub use framing::Framing;
+pub use input_buffer::InputBuffer;
 pub use io_result::IOResult;
 pub use json_framing::JsonFraming;
 pub use keep_both::KeepBoth;
@@ -109,6 +133,8 @@ pub use keep_left::KeepLeft;
 pub use keep_none::KeepNone;
 pub use keep_right::KeepRight;
 pub use linear_increasing_delay::LinearIncreasingDelay;
+pub use log_level::LogLevel;
+pub use log_levels::LogLevels;
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use overflow_strategy::OverflowStrategy;
