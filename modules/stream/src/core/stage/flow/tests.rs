@@ -10,7 +10,7 @@ use crate::core::{
   lifecycle::{DriveOutcome, Stream},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   shape::UniformFanInShape,
-  stage::{FlowMonitor, Sink, Source, StageKind, flow::Flow},
+  stage::{Sink, Source, StageKind, flow::Flow, flow_monitor_impl::FlowMonitorImpl},
 };
 
 struct SequenceSourceLogic {
@@ -2704,7 +2704,7 @@ fn gzip_emits_raw_deflate_payload() {
 #[test]
 #[cfg(feature = "compression")]
 fn inflate_rejects_payload_exceeding_decompression_limit() {
-  let payload = vec![0x5a_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x5a_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
 
   let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
@@ -2715,7 +2715,7 @@ fn inflate_rejects_payload_exceeding_decompression_limit() {
 #[test]
 #[cfg(feature = "compression")]
 fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
-  let payload = vec![0x33_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x33_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
     .collect_values()
@@ -2732,7 +2732,7 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit() {
 #[test]
 #[cfg(feature = "compression")]
 fn gzip_decompress_rejects_payload_exceeding_decompression_limit_with_spoofed_isize() {
-  let payload = vec![0x44_u8; super::MAX_DECOMPRESSED_BYTES.saturating_add(1)];
+  let payload = vec![0x44_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let mut encoded = Source::single(payload)
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
     .collect_values()
@@ -3238,7 +3238,7 @@ fn monitor_mat_combines_materialized_values_and_keeps_data_path_behavior() {
   let flow: Flow<u32, u32, u32> = Flow::from_graph(graph, 21_u32);
   let (_graph, (left_mat, right_mat)) = flow.monitor_mat(KeepBoth).into_parts();
   assert_eq!(left_mat, 21_u32);
-  assert_eq!(right_mat, FlowMonitor::<u32>::new());
+  assert_eq!(right_mat, FlowMonitorImpl::<u32>::new());
 
   let values = Source::single(4_u32)
     .via(Flow::new().map(|value: u32| value + 1).monitor_mat(KeepLeft))

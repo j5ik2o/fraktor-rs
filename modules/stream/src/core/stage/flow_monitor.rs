@@ -1,21 +1,16 @@
-use core::marker::PhantomData;
+//! Flow monitor trait definition.
 
-/// Materialized monitor handle for a flow output stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FlowMonitor<Out> {
-  _pd: PhantomData<fn() -> Out>,
-}
+#[cfg(test)]
+mod tests;
 
-impl<Out> FlowMonitor<Out> {
-  /// Creates a new flow monitor handle.
-  #[must_use]
-  pub const fn new() -> Self {
-    Self { _pd: PhantomData }
-  }
-}
+use super::FlowMonitorState;
 
-impl<Out> Default for FlowMonitor<Out> {
-  fn default() -> Self {
-    Self::new()
-  }
+/// Observable handle for tracking the state of a flow.
+///
+/// Corresponds to Pekko's `FlowMonitor[T]` trait.
+pub trait FlowMonitor<Out> {
+  /// Returns the current observed state.
+  fn state(&self) -> FlowMonitorState<Out>
+  where
+    Out: Clone;
 }

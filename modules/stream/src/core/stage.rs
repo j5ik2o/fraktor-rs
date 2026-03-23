@@ -16,6 +16,8 @@ use super::{
 
 /// Actor sink factory utilities.
 mod actor_sink;
+/// Actor source factory utilities.
+mod actor_source;
 /// Async callback queue for stage logic.
 mod async_callback;
 /// Bidirectional flow definition.
@@ -26,6 +28,10 @@ pub mod flow;
 mod flow_group_by_sub_flow;
 /// Flow monitor handle.
 mod flow_monitor;
+/// Default flow monitor implementation.
+mod flow_monitor_impl;
+/// Stream state tracked by a flow monitor.
+mod flow_monitor_state;
 /// Flow-oriented substream surface.
 mod flow_sub_flow;
 /// Context-preserving flow wrapper.
@@ -59,10 +65,13 @@ mod timer_graph_stage_logic;
 
 // Internal re-exports for graph_interpreter tests
 pub use actor_sink::ActorSink;
+pub use actor_source::ActorSource;
 pub use async_callback::AsyncCallback;
 pub use bidi_flow::BidiFlow;
 pub use flow_group_by_sub_flow::FlowGroupBySubFlow;
 pub use flow_monitor::FlowMonitor;
+pub use flow_monitor_impl::FlowMonitorImpl;
+pub use flow_monitor_state::FlowMonitorState;
 pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;
 pub use restart_flow::RestartFlow;
