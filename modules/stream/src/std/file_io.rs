@@ -59,7 +59,8 @@ impl FileIO {
       let mut file = fs::File::open(path.as_ref())?;
       file.seek(SeekFrom::Start(start_position))?;
       let mut all_bytes = alloc::vec::Vec::new();
-      let mut buf = alloc::vec![0u8; chunk_size];
+      let effective_chunk_size = chunk_size.max(1);
+      let mut buf = alloc::vec![0u8; effective_chunk_size];
       loop {
         let n = file.read(&mut buf)?;
         if n == 0 {

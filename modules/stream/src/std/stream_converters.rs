@@ -41,7 +41,8 @@ impl StreamConverters {
     let mut reader = BufReader::new(raw_reader);
     let mut chunks: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
     let mut total_bytes: u64 = 0;
-    let mut buf = alloc::vec![0u8; chunk_size];
+    let effective_chunk_size = chunk_size.max(1);
+    let mut buf = alloc::vec![0u8; effective_chunk_size];
 
     loop {
       match reader.read(&mut buf) {
