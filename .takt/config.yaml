@@ -1,5 +1,5 @@
-provider: copilot
-model: gpt-5.4
+provider: claude
+model: claude-opus-4-6[1m]
 concurrency: 1
 base_branch: main
 submodules: all
