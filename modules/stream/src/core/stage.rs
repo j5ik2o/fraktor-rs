@@ -1,5 +1,7 @@
 //! Stage definitions for source, flow, and sink.
 
+use alloc::vec::Vec;
+
 // Bridge submodules from core level
 // Bridge types from core level for children
 use super::{
