@@ -25,6 +25,12 @@ impl<In, Out> FlowShape<In, Out> {
   pub const fn outlet(&self) -> &Outlet<Out> {
     &self.outlet
   }
+
+  /// Consumes this flow shape and returns the inlet and outlet ports.
+  #[must_use]
+  pub const fn into_parts(self) -> (Inlet<In>, Outlet<Out>) {
+    (self.inlet, self.outlet)
+  }
 }
 
 impl<In, Out> Shape for FlowShape<In, Out> {

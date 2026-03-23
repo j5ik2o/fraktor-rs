@@ -184,3 +184,138 @@ fn create_flow_empty_block_produces_valid_flow() {
   // Then: the flow is successfully built without panic
   let (_graph, _mat) = flow.into_parts();
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3c: GraphDSL builder ergonomics — create_source / create_sink
+// ---------------------------------------------------------------------------
+
+#[test]
+fn create_source_builds_source_via_builder_block() {
+  // Given: a create_source call that adds a source and wires it
+  let source = GraphDsl::create_source(|builder: &mut GraphDslBuilder<(), u32, StreamNotUsed>| {
+    let outlet = builder.add_source(Source::single(42_u32)).unwrap();
+    let _ = outlet;
+  });
+
+  // When: the source is built successfully
+  let (_graph, _mat) = source.into_parts();
+
+  // Then: the builder block executed without panic and produced a valid source
+}
+
+#[test]
+fn create_source_empty_block_produces_valid_source() {
+  // Given: create_source with an empty build block
+  let source = GraphDsl::create_source(|_builder: &mut GraphDslBuilder<(), u32, StreamNotUsed>| {
+    // empty — no additional wiring
+  });
+
+  // Then: the source is successfully built without panic
+  let (_graph, _mat) = source.into_parts();
+}
+
+#[test]
+fn create_sink_builds_sink_via_builder_block() {
+  // Given: a create_sink call that adds a sink and wires it
+  let sink = GraphDsl::create_sink(|builder: &mut GraphDslBuilder<u32, (), StreamNotUsed>| {
+    let inlet = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
+    let _ = inlet;
+  });
+
+  // When: the sink is built successfully
+  let (_graph, _mat) = sink.into_parts();
+
+  // Then: the builder block executed without panic and produced a valid sink
+}
+
+#[test]
+fn create_sink_empty_block_produces_valid_sink() {
+  // Given: create_sink with an empty build block
+  let sink = GraphDsl::create_sink(|_builder: &mut GraphDslBuilder<u32, (), StreamNotUsed>| {
+    // empty — no additional wiring
+  });
+
+  // Then: the sink is successfully built without panic
+  let (_graph, _mat) = sink.into_parts();
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3c: GraphDSL builder ergonomics — add_*_mat (materialized value)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_source_mat_returns_outlet_and_materialized_value() {
+  // Given: a source with a custom materialized value
+  let source = Source::single(10_u32).map_materialized_value(|_| 77_i32);
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+
+  // When: adding the source with mat
+  let (outlet, mat) = builder.add_source_mat(source).unwrap();
+
+  // Then: the outlet is valid and the materialized value is preserved
+  let _ = outlet.id();
+  assert_eq!(mat, 77_i32);
+}
+
+#[test]
+fn add_flow_mat_returns_ports_and_materialized_value() {
+  // Given: a flow with a custom materialized value
+  let flow = Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1).map_materialized_value(|_| 88_i32);
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+
+  // When: adding the flow with mat
+  let (inlet, outlet, mat) = builder.add_flow_mat(flow).unwrap();
+
+  // Then: the ports are valid and the materialized value is preserved
+  let _ = inlet.id();
+  let _ = outlet.id();
+  assert_eq!(mat, 88_i32);
+}
+
+#[test]
+fn add_sink_mat_returns_inlet_and_materialized_value() {
+  // Given: a sink with a custom materialized value
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+
+  // When: adding the sink with mat
+  let (inlet, mat) = builder.add_sink_mat(sink).unwrap();
+
+  // Then: the inlet is valid and the materialized value is preserved
+  let _ = inlet.id();
+  assert_eq!(mat, 99_i32);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3c: GraphDSL builder ergonomics — connect_via
+// ---------------------------------------------------------------------------
+
+#[test]
+fn connect_via_wires_outlet_through_flow_to_inlet() {
+  // Given: a builder with a source and a sink added
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::single(5_u32)).unwrap();
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
+  let map_flow = Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2);
+
+  // When: connecting source → flow → sink in one step
+  let result = builder.connect_via(&source_out, map_flow, &sink_in);
+
+  // Then: the connection succeeds
+  assert!(result.is_ok());
+}
+
+#[test]
+fn connect_via_equivalent_to_manual_add_flow_and_connects() {
+  // Given: a builder with a source and a sink
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::from_array([1_u32, 2, 3])).unwrap();
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
+
+  // When: using connect_via instead of manual add_flow + connect + connect
+  let result = builder.connect_via(&source_out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10), &sink_in);
+
+  // Then: the graph can be built without error
+  assert!(result.is_ok());
+  let _flow = builder.build();
+}

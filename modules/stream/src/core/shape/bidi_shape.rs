@@ -1,4 +1,7 @@
-use super::{Inlet, Outlet, Shape};
+#[cfg(test)]
+mod tests;
+
+use super::{FlowShape, Inlet, Outlet, Shape};
 
 /// Shape with two input ports and two output ports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,6 +22,18 @@ impl<In1, Out1, In2, Out2> BidiShape<In1, Out1, In2, Out2> {
     bottom_outlet: Outlet<Out2>,
   ) -> Self {
     Self { top_inlet, top_outlet, bottom_inlet, bottom_outlet }
+  }
+
+  /// Creates a bidirectional shape from two flow shapes.
+  ///
+  /// The top flow shape provides the top inlet and outlet, and the bottom
+  /// flow shape provides the bottom inlet and outlet. This corresponds to
+  /// Pekko's `BidiShape.fromFlows`.
+  #[must_use]
+  pub const fn from_flows(top: FlowShape<In1, Out1>, bottom: FlowShape<In2, Out2>) -> Self {
+    let (top_in, top_out) = top.into_parts();
+    let (bottom_in, bottom_out) = bottom.into_parts();
+    Self::new(top_in, top_out, bottom_in, bottom_out)
   }
 
   /// Returns the top input port.

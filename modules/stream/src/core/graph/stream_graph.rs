@@ -170,7 +170,8 @@ impl StreamGraph {
       return;
     }
     if other.nodes.is_empty() {
-      self.attributes = self.attributes.clone().and(other.attributes);
+      let old_attrs = core::mem::take(&mut self.attributes);
+      self.attributes = old_attrs.and(other.attributes);
       self.merge_kill_switch_states(other_kill_switch_states);
       return;
     }
@@ -182,7 +183,8 @@ impl StreamGraph {
     self.ports.append(&mut other.ports);
     self.edges.append(&mut other.edges);
     self.nodes.append(&mut other.nodes);
-    self.attributes = self.attributes.clone().and(other.attributes);
+    let old_attrs = core::mem::take(&mut self.attributes);
+    self.attributes = old_attrs.and(other.attributes);
     self.merge_kill_switch_states(other_kill_switch_states);
   }
 
@@ -306,7 +308,8 @@ impl StreamGraph {
   }
 
   pub(in crate::core) fn add_attributes(&mut self, attributes: Attributes) {
-    self.attributes = self.attributes.clone().and(attributes);
+    let old_attrs = core::mem::take(&mut self.attributes);
+    self.attributes = old_attrs.and(attributes);
   }
 
   pub(in crate::core) fn set_shared_kill_switch_state(&mut self, kill_switch_state: KillSwitchStateHandle) {
