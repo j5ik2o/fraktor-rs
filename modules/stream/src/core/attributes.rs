@@ -5,7 +5,9 @@ mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-use super::{Attribute, InputBuffer, LogLevel, LogLevels};
+use super::{
+  AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+};
 
 /// Immutable collection of stream attributes.
 ///
@@ -48,6 +50,26 @@ impl Attributes {
     }
   }
 
+  /// Creates attributes containing an [`AsyncBoundaryAttr`] marker.
+  ///
+  /// Mirrors Pekko's `Attributes.asyncBoundary`.
+  #[must_use]
+  pub fn async_boundary() -> Self {
+    Self { names: alloc::vec![String::from("async-boundary")], attrs: alloc::vec![Box::new(AsyncBoundaryAttr)] }
+  }
+
+  /// Creates attributes containing a [`DispatcherAttribute`].
+  ///
+  /// A dispatcher attribute implies an async boundary; the materializer
+  /// uses the named dispatcher for the resulting island.
+  #[must_use]
+  pub fn dispatcher(name: impl Into<String>) -> Self {
+    Self {
+      names: alloc::vec![String::from("dispatcher")],
+      attrs: alloc::vec![Box::new(DispatcherAttribute::new(name))],
+    }
+  }
+
   /// Appends names and typed attributes from another collection.
   #[must_use]
   pub fn and(mut self, other: Self) -> Self {
@@ -64,6 +86,24 @@ impl Attributes {
     self.attrs.iter().find_map(|attr| attr.as_any().downcast_ref::<T>())
   }
 
+  /// Returns `true` if an attribute of type `T` is stored.
+  #[must_use]
+  pub fn contains<T: Attribute + 'static>(&self) -> bool {
+    self.get::<T>().is_some()
+  }
+
+  /// Returns all stored attributes of type `T`.
+  #[must_use]
+  pub fn get_all<T: Attribute + 'static>(&self) -> Vec<&T> {
+    self.attrs.iter().filter_map(|attr| attr.as_any().downcast_ref::<T>()).collect()
+  }
+
+  /// Creates attributes containing a [`CancellationStrategyKind`].
+  #[must_use]
+  pub fn cancellation_strategy(strategy: CancellationStrategyKind) -> Self {
+    Self { names: alloc::vec![String::from("cancellation-strategy")], attrs: alloc::vec![Box::new(strategy)] }
+  }
+
   /// Returns all configured stage names.
   #[must_use]
   pub fn names(&self) -> &[String] {
@@ -74,6 +114,16 @@ impl Attributes {
   #[must_use]
   pub fn is_empty(&self) -> bool {
     self.names.is_empty() && self.attrs.is_empty()
+  }
+
+  /// Returns `true` when these attributes indicate an async boundary.
+  ///
+  /// An async boundary is indicated by either an [`AsyncBoundaryAttr`]
+  /// or a [`DispatcherAttribute`] (which implies an async boundary).
+  /// This mirrors Pekko's `Attributes.isAsync` logic.
+  #[must_use]
+  pub fn is_async(&self) -> bool {
+    self.get::<AsyncBoundaryAttr>().is_some() || self.get::<DispatcherAttribute>().is_some()
   }
 }
 

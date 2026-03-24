@@ -23,9 +23,10 @@ use super::{
     merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, prepend_lazy_definition,
     sample_definition, scan_definition, sliding_definition, split_after_definition,
     split_after_definition_with_cancel_strategy, split_when_definition, split_when_definition_with_cancel_strategy,
-    stateful_map_concat_definition, stateful_map_definition, take_definition, take_until_definition,
-    take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
-    watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    stateful_map_concat_accumulator_definition, stateful_map_concat_definition, stateful_map_definition,
+    stateful_map_with_on_complete_definition, take_definition, take_until_definition, take_while_definition,
+    take_within_definition, throttle_definition, unzip_definition, unzip_with_definition, watch_termination_definition,
+    zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -104,6 +105,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
@@ -460,6 +462,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Ok(Source { graph, mat: queue, _pd: PhantomData })
@@ -504,6 +507,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Ok(Source { graph, mat: queue, _pd: PhantomData })
@@ -524,6 +528,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Source { graph, mat: queue, _pd: PhantomData }
@@ -636,6 +641,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(logic),
+      attributes: Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
@@ -940,6 +946,68 @@ where
     Mapper: FnMut(Out) -> I + Send + Sync + 'static,
     I: IntoIterator<Item = T> + 'static, {
     let definition = stateful_map_concat_definition::<Out, T, Factory, Mapper, I>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map stage with an on-complete callback to this source.
+  ///
+  /// The `factory` closure creates the initial state, `mapper` transforms
+  /// each element with mutable access to the state, and `on_complete` is
+  /// called once when the upstream completes, optionally emitting a final
+  /// element.
+  #[must_use]
+  pub fn stateful_map_with_on_complete<T, S, Factory, Mapper, OnComplete>(
+    mut self,
+    factory: Factory,
+    mapper: Mapper,
+    on_complete: OnComplete,
+  ) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    S: Send + Sync + 'static,
+    Factory: FnMut() -> S + Send + Sync + 'static,
+    Mapper: FnMut(&mut S, Out) -> T + Send + Sync + 'static,
+    OnComplete: FnMut(S) -> Option<T> + Send + Sync + 'static, {
+    let definition =
+      stateful_map_with_on_complete_definition::<Out, T, S, Factory, Mapper, OnComplete>(factory, mapper, on_complete);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map-concat stage using a [`StatefulMapConcatAccumulator`] to this source.
+  ///
+  /// The `factory` closure creates a fresh accumulator for each
+  /// materialization. [`StatefulMapConcatAccumulator::on_complete`] is
+  /// called when the upstream completes, allowing trailing elements to be
+  /// emitted.
+  ///
+  /// [`StatefulMapConcatAccumulator`]: crate::core::StatefulMapConcatAccumulator
+  #[must_use]
+  pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Acc + Send + Sync + 'static,
+    Acc: crate::core::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -1304,15 +1372,46 @@ where
     Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Marks this source with an async boundary attribute.
+  ///
+  /// The materializer uses this attribute to split the graph into
+  /// independently executed islands.  Unlike the legacy
+  /// `async_boundary()` method, this does **not** insert a buffer
+  /// stage; the boundary is resolved at materialization time.
+  ///
+  /// Mirrors Pekko's `Graph.async`.
+  #[must_use]
+  pub fn r#async(mut self) -> Source<Out, Mat> {
+    self.graph.mark_last_node_async();
+    self
+  }
+
+  /// Marks this source with an async boundary attribute and a named dispatcher.
+  ///
+  /// The island created by the async boundary will use the specified
+  /// dispatcher for its execution context.
+  #[must_use]
+  pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Source<Out, Mat> {
+    self.graph.mark_last_node_async();
+    self.graph.mark_last_node_dispatcher(dispatcher);
+    self
+  }
+
   /// Decouples upstream and downstream demand signaling via an async boundary.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn detach(self) -> Source<Out, Mat> {
-    self.async_boundary()
+    self.append_legacy_async_boundary()
   }
 
   /// Adds an explicit async boundary stage.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
-  pub fn async_boundary(mut self) -> Source<Out, Mat> {
+  pub fn async_boundary(self) -> Source<Out, Mat> {
+    self.append_legacy_async_boundary()
+  }
+
+  fn append_legacy_async_boundary(mut self) -> Source<Out, Mat> {
     let definition = async_boundary_definition::<Out>();
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1477,7 +1576,7 @@ where
   /// Enables restart semantics with backoff for this source.
   #[must_use]
   pub fn restart_source_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
-    self.graph.set_source_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self.graph.set_source_restart(&Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
@@ -1507,7 +1606,7 @@ where
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_source_with_settings(mut self, settings: RestartSettings) -> Source<Out, Mat> {
-    self.graph.set_source_restart(Some(RestartBackoff::from_settings(settings)));
+    self.graph.set_source_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -1554,7 +1653,7 @@ where
 
   /// Adds a group-by stage and returns substream surface for merging grouped elements.
   ///
-  /// Unsupported `SubFlow` operators, including `concat_substreams`, stay unavailable on the
+  /// Unsupported `SubFlow` operators, such as `drop`, stay unavailable on the
   /// returned surface.
   ///
   /// ```compile_fail
@@ -1564,15 +1663,6 @@ where
   ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
-  /// ```
-  ///
-  /// ```compile_fail
-  /// use fraktor_stream_rs::core::{SubstreamCancelStrategy, stage::Source};
-  ///
-  /// let _ = Source::single(1_u32)
-  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
-  ///   .expect("group_by")
-  ///   .concat_substreams();
   /// ```
   ///
   /// # Errors
@@ -2287,18 +2377,70 @@ where
     }
 
     let plan = graph.into_plan()?;
-    let mut stream = super::lifecycle::Stream::new(plan, super::StreamBufferConfig::default());
-    stream.start()?;
-    let mut idle_budget = 1024_usize;
-    while !stream.state().is_terminal() {
-      match stream.drive() {
-        | super::DriveOutcome::Progressed => idle_budget = 1024,
-        | super::DriveOutcome::Idle => {
+    let island_plan = super::graph::IslandSplitter::split(plan);
+
+    if island_plan.islands().len() <= 1 {
+      // Single island: existing path
+      let single_plan = island_plan.into_single_plan();
+      let mut stream = super::lifecycle::Stream::new(single_plan, super::StreamBufferConfig::default());
+      stream.start()?;
+      let mut idle_budget = 1024_usize;
+      while !stream.state().is_terminal() {
+        match stream.drive() {
+          | super::DriveOutcome::Progressed => idle_budget = 1024,
+          | super::DriveOutcome::Idle => {
+            if idle_budget == 0 {
+              return Err(StreamError::WouldBlock);
+            }
+            idle_budget = idle_budget.saturating_sub(1);
+          },
+        }
+      }
+    } else {
+      // Multi-island: create boundary buffers and drive all streams
+      let (mut islands, crossings) = island_plan.into_parts();
+      let mut boundaries = Vec::with_capacity(crossings.len());
+      for crossing in crossings {
+        let upstream_idx = crossing.from_island().as_usize();
+        let downstream_idx = crossing.to_island().as_usize();
+        let element_type = crossing.element_type();
+        let boundary_capacity = islands[downstream_idx]
+          .input_buffer_capacity_for_inlet(crossing.to_port())
+          .unwrap_or(super::graph::DEFAULT_BOUNDARY_CAPACITY);
+        let boundary = super::graph::IslandBoundaryShared::new(boundary_capacity);
+        boundaries.push((boundary.clone(), downstream_idx));
+        islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
+        islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
+      }
+      let mut streams: Vec<super::lifecycle::Stream> = Vec::with_capacity(islands.len());
+      for island in islands {
+        let stream_plan = island.into_stream_plan();
+        let mut stream = super::lifecycle::Stream::new(stream_plan, super::StreamBufferConfig::default());
+        stream.start()?;
+        streams.push(stream);
+      }
+      let mut idle_budget = 4096_usize;
+      while streams.iter().any(|s| !s.state().is_terminal()) {
+        let mut any_progress = false;
+        for stream in &mut streams {
+          if !stream.state().is_terminal() && matches!(stream.drive(), super::DriveOutcome::Progressed) {
+            any_progress = true;
+          }
+        }
+        if any_progress {
+          idle_budget = 4096;
+        } else {
+          if boundaries
+            .iter()
+            .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
+          {
+            return Err(StreamError::WouldBlock);
+          }
           if idle_budget == 0 {
             return Err(StreamError::WouldBlock);
           }
           idle_budget = idle_budget.saturating_sub(1);
-        },
+        }
       }
     }
     match completion.try_take() {
@@ -2966,7 +3108,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<StreamNotUsed, Out, StreamNotUsed>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> + Send> {
     Box::new(SingleSourceLogic { value: self.value.clone() })
   }
 }

@@ -2,9 +2,10 @@ use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData};
 
 use super::{
-  MatCombineRule, StreamDslError, StreamNotUsed, extract_last_ctx_and_values, flow::Flow,
+  MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow,
   flow_with_context::FlowWithContext, sink::Sink, source::Source,
 };
+use crate::core::StreamError;
 
 #[cfg(test)]
 mod tests;
@@ -207,6 +208,32 @@ where
     Out: Clone, {
     let flow = passthrough_flow_with_context::<Ctx, Out>().wire_tap_context(sink);
     self.via(flow)
+  }
+
+  /// Transforms upstream failures while preserving context.
+  ///
+  /// Normal elements pass through unchanged. When the stream fails, the
+  /// mapper transforms the error before propagation.
+  #[must_use]
+  pub fn map_error<F>(self, mapper: F) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().map_error(mapper);
+    self.via(flow)
+  }
+
+  /// Limits the rate of elements while preserving context.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `capacity` is zero.
+  pub fn throttle(
+    self,
+    capacity: usize,
+    mode: ThrottleMode,
+  ) -> Result<SourceWithContext<Ctx, Out, Mat>, StreamDslError> {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().throttle(capacity, mode)?;
+    Ok(self.via(flow))
   }
 
   /// Maps elements asynchronously while serializing work per partition.

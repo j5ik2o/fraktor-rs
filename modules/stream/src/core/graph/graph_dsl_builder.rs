@@ -267,4 +267,52 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
     self.connect(&flow_out, to)?;
     Ok(())
   }
+
+  /// Connects an outlet through a flow, returning the flow's outlet.
+  ///
+  /// Equivalent to [`add_flow`](Self::add_flow) + [`connect`](Self::connect),
+  /// but returns the downstream outlet for further chaining.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the flow graph has
+  /// missing ports or the connection fails.
+  pub fn wire_via<T, U, Mat2>(&mut self, from: &Outlet<T>, flow: Flow<T, U, Mat2>) -> Result<Outlet<U>, StreamError>
+  where
+    T: Send + Sync + 'static,
+    U: Send + Sync + 'static, {
+    let (inlet, outlet) = self.add_flow(flow)?;
+    self.connect(from, &inlet)?;
+    Ok(outlet)
+  }
+
+  /// Connects an outlet to a sink.
+  ///
+  /// Equivalent to [`add_sink`](Self::add_sink) + [`connect`](Self::connect).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the sink graph has
+  /// no inlet or the connection fails.
+  pub fn wire_to<T, Mat2>(&mut self, from: &Outlet<T>, sink: Sink<T, Mat2>) -> Result<(), StreamError>
+  where
+    T: Send + Sync + 'static, {
+    let inlet = self.add_sink(sink)?;
+    self.connect(from, &inlet)
+  }
+
+  /// Connects a source to an inlet.
+  ///
+  /// Equivalent to [`add_source`](Self::add_source) + [`connect`](Self::connect).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::InvalidConnection`] if the source graph has
+  /// no outlet or the connection fails.
+  pub fn wire_from<T, Mat2>(&mut self, source: Source<T, Mat2>, to: &Inlet<T>) -> Result<(), StreamError>
+  where
+    T: Send + Sync + 'static, {
+    let outlet = self.add_source(source)?;
+    self.connect(&outlet, to)
+  }
 }

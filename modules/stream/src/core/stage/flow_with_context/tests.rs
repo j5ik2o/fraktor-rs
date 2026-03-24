@@ -7,7 +7,7 @@ use core::{
 use std::sync::{Arc, Mutex};
 
 use crate::core::{
-  KeepBoth, StreamNotUsed,
+  KeepBoth, StreamError, StreamNotUsed, ThrottleMode,
   stage::{FlowWithContext, Sink, Source, flow::Flow},
 };
 
@@ -391,6 +391,79 @@ fn map_async_partitioned_unordered_can_emit_completion_order_while_preserving_co
 
   // 検証: 完了順は入れ替わりうるが、値とコンテキストの対応は維持される
   assert_eq!(values, vec![(200_i32, 12_u32), (100, 11)]);
+}
+
+// --- map_error テスト ---
+
+#[test]
+fn map_error_passes_normal_elements_preserving_context() {
+  // 準備: map_error を適用した FlowWithContext（通常要素はそのまま通過する）
+  let fwc: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|v: (i32, u32)| v));
+  let mapped = fwc.map_error(|_| StreamError::WouldBlock);
+
+  // 実行: 正常な要素を流す
+  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(mapped.as_flow()).collect_values().unwrap();
+
+  // 検証: 正常な要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
+}
+
+#[test]
+fn map_error_transforms_upstream_failure_preserving_context_flow() {
+  // 準備: 失敗する source に map_error を適用した FlowWithContext
+  let fwc: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|v: (i32, u32)| v));
+  let mapped = fwc.map_error(|_| StreamError::WouldBlock);
+
+  // 実行: 失敗する source を flow に接続
+  let result = Source::<(i32, u32), _>::failed(StreamError::Failed).via(mapped.as_flow()).collect_values();
+
+  // 検証: エラーが変換される
+  assert_eq!(result, Err(StreamError::WouldBlock));
+}
+
+// --- throttle テスト ---
+
+#[test]
+fn throttle_passes_elements_preserving_context() {
+  // 準備: Shaping モードの throttle を適用した FlowWithContext
+  let fwc: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|v: (i32, u32)| v));
+  let throttled = fwc.throttle(2, ThrottleMode::Shaping).expect("throttle");
+
+  // 実行: 要素を流す
+  let values = Source::from(vec![(1_i32, 10_u32), (2, 20)]).via(throttled.as_flow()).collect_values().unwrap();
+
+  // 検証: 要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
+}
+
+#[test]
+fn throttle_enforcing_mode_preserves_context() {
+  // 準備: Enforcing モードの throttle を適用した FlowWithContext
+  let fwc: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|v: (i32, u32)| v));
+  let throttled = fwc.throttle(2, ThrottleMode::Enforcing).expect("throttle");
+
+  // 実行: 単一要素を流す（キャパシティ内）
+  let values = Source::from(vec![(1_i32, 10_u32)]).via(throttled.as_flow()).collect_values().unwrap();
+
+  // 検証: 要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32)]);
+}
+
+#[test]
+fn throttle_rejects_zero_capacity_on_context_flow() {
+  // 準備: ゼロキャパシティの throttle
+  let fwc: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|v: (i32, u32)| v));
+
+  // 実行: ゼロキャパシティで throttle を作成
+  let result = fwc.throttle(0, ThrottleMode::Shaping);
+
+  // 検証: InvalidArgument エラーが返る
+  assert!(result.is_err());
 }
 
 #[test]

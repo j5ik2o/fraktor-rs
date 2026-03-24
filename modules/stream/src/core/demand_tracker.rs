@@ -27,6 +27,17 @@ impl DemandTracker {
     self.demand.has_demand()
   }
 
+  /// Returns the pending demand count.
+  ///
+  /// Returns `u64::MAX` for unbounded demand.
+  #[must_use]
+  pub const fn pending(&self) -> u64 {
+    match self.demand {
+      | Demand::Finite(n) => n,
+      | Demand::Unbounded => u64::MAX,
+    }
+  }
+
   /// Adds demand to the tracker.
   ///
   /// # Errors

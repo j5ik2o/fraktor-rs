@@ -319,3 +319,116 @@ fn connect_via_equivalent_to_manual_add_flow_and_connects() {
   assert!(result.is_ok());
   let _flow = builder.build();
 }
+
+// --- wire_via ---
+
+#[test]
+fn wire_via_connects_outlet_through_flow_and_returns_downstream_outlet() {
+  // Given: a builder with a source added
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::single(5_u32)).unwrap();
+
+  // When: wiring through a mapping flow
+  let map_flow = Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2);
+  let result = builder.wire_via(&source_out, map_flow);
+
+  // Then: the result is Ok with a new outlet
+  assert!(result.is_ok());
+}
+
+#[test]
+fn wire_via_chained_produces_correct_result() {
+  // Given: a source and two mapping flows wired in the builder
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::single(3_u32)).unwrap();
+
+  // When: chaining two wire_via calls followed by add_sink_mat + connect
+  let out1 = builder.wire_via(&source_out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1)).unwrap();
+  let out2 = builder.wire_via(&out1, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10)).unwrap();
+  let (sink_in, completion) = builder.add_sink_mat(Sink::head()).unwrap();
+  builder.connect(&out2, &sink_in).unwrap();
+
+  // Then: running the graph directly produces (3+1)*10 = 40
+  let (graph, _mat) = builder.into_parts();
+  let plan = graph.into_plan().unwrap();
+  let mut interpreter = GraphInterpreter::new(plan, crate::core::StreamBufferConfig::default());
+  drive_to_terminal(&mut interpreter);
+  assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
+}
+
+// --- wire_to ---
+
+#[test]
+fn wire_to_connects_outlet_to_sink() {
+  // Given: a builder with a source added
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::single(42_u32)).unwrap();
+
+  // When: wiring directly to a sink
+  let result = builder.wire_to(&source_out, Sink::<u32, _>::ignore());
+
+  // Then: the connection succeeds
+  assert!(result.is_ok());
+}
+
+#[test]
+fn wire_to_equivalent_to_add_sink_plus_connect() {
+  // Given: a builder with a source
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let source_out = builder.add_source(Source::from_array([1_u32, 2, 3])).unwrap();
+
+  // When: using wire_to instead of manual add_sink + connect
+  let result = builder.wire_to(&source_out, Sink::<u32, _>::ignore());
+
+  // Then: the graph can be built
+  assert!(result.is_ok());
+  let _flow = builder.build();
+}
+
+// --- wire_from ---
+
+#[test]
+fn wire_from_connects_source_to_inlet() {
+  // Given: a builder with a sink added (to get an inlet)
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
+
+  // When: wiring a source to the inlet
+  let result = builder.wire_from(Source::single(7_u32), &sink_in);
+
+  // Then: the connection succeeds
+  assert!(result.is_ok());
+}
+
+#[test]
+fn wire_from_equivalent_to_add_source_plus_connect() {
+  // Given: a builder with a flow and sink added
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+  let (flow_in, flow_out) = builder.add_flow(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1)).unwrap();
+  let sink_in = builder.add_sink(Sink::<u32, _>::ignore()).unwrap();
+  builder.connect(&flow_out, &sink_in).unwrap();
+
+  // When: using wire_from to connect a source to the flow's inlet
+  let result = builder.wire_from(Source::single(10_u32), &flow_in);
+
+  // Then: the graph can be built
+  assert!(result.is_ok());
+  let _flow = builder.build();
+}
+
+// --- wire method integration: full linear chain ---
+
+#[test]
+fn wire_methods_build_full_linear_chain() {
+  // Given: a source, two flows, and a sink
+  let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
+
+  // When: building a linear chain with wire methods
+  let out = builder.add_source(Source::single(2_u32)).unwrap();
+  let out = builder.wire_via(&out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 3)).unwrap();
+  let out = builder.wire_via(&out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 4)).unwrap();
+  builder.wire_to(&out, Sink::<u32, _>::ignore()).unwrap();
+
+  // Then: the graph can be built without error
+  let _flow = builder.build();
+}

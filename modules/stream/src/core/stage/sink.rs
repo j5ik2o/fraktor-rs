@@ -447,6 +447,7 @@ where
         supervision: SupervisionStrategy::Stop,
         restart:     None,
         logic:       Box::new(logic),
+        attributes:  Attributes::new(),
       };
       graph.push_stage(StageDefinition::Sink(definition));
       return Self { graph, mat: Mat::default(), _pd: PhantomData };
@@ -526,14 +527,14 @@ where
   /// Enables restart semantics with backoff for this sink.
   #[must_use]
   pub fn restart_sink_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    self.graph.set_sink_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self.graph.set_sink_restart(&Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_sink_with_settings(mut self, settings: RestartSettings) -> Self {
-    self.graph.set_sink_restart(Some(RestartBackoff::from_settings(settings)));
+    self.graph.set_sink_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -590,6 +591,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(logic),
+      attributes: Attributes::new(),
     };
     let mut graph = StreamGraph::new();
     graph.push_stage(StageDefinition::Sink(definition));
@@ -780,7 +782,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> + Send> {
     Box::new(IgnoreSinkLogic { completion: self.completion.clone(), _pd: PhantomData })
   }
 }
@@ -887,7 +889,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<StreamDone>> + Send> {
     Box::new(ForeachSinkLogic {
       func:       self.func.clone(),
       completion: self.completion.clone(),
@@ -1114,7 +1116,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<Acc>>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<Acc>> + Send> {
     Box::new(FoldSinkLogic {
       acc:        self.acc.clone(),
       func:       self.func.clone(),
@@ -1202,7 +1204,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> + Send> {
     Box::new(HeadSinkLogic { completion: self.completion.clone(), seen: false, _pd: PhantomData })
   }
 }
@@ -1279,7 +1281,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, StreamNotUsed, StreamCompletion<In>> + Send> {
     Box::new(LastSinkLogic { last: None, completion: self.completion.clone(), _pd: PhantomData })
   }
 }

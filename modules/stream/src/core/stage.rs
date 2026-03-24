@@ -64,6 +64,8 @@ mod stream_stage;
 mod tail_source;
 /// Timer helper for stage logic.
 mod timer_graph_stage_logic;
+/// Topic-based pub/sub stream integration.
+mod topic_pub_sub;
 
 // Internal re-exports for graph_interpreter tests
 pub use actor_sink::ActorSink;
@@ -89,6 +91,7 @@ pub use stage_kind::StageKind;
 pub use stream_stage::StreamStage;
 pub use tail_source::TailSource;
 pub use timer_graph_stage_logic::TimerGraphStageLogic;
+pub use topic_pub_sub::TopicPubSub;
 
 /// Extracts the last context and collects values from a context-value pair sequence.
 ///

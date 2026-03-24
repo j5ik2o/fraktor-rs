@@ -116,3 +116,55 @@ fn bidi_flow_split_keeps_materialized_value() {
   assert_eq!(collect_single(bottom, 1_u32), vec![11_u32]);
   assert_eq!(mat, 55_u32);
 }
+
+// --- join_mat tests ---
+
+#[test]
+fn bidi_flow_join_mat_combines_materialized_values() {
+  // Given: a BidiFlow with mat=10 and a Flow with mat=20
+  let bidi =
+    BidiFlow::from_flows_mat(Flow::new().map(|value: u32| value + 1), Flow::new().map(|value: u32| value + 10), 10_u32);
+  let flow_with_mat = Flow::new().map(|value: u32| value + 3).map_materialized_value(|_| 20_u32);
+
+  // When: join_mat combines materialized values via addition
+  let joined = bidi.join_mat(flow_with_mat, |left, right| left + right);
+
+  // Then: data flows correctly and combined mat is accessible
+  let (graph, combined_mat) = joined.into_parts();
+  assert_eq!(combined_mat, 30_u32);
+
+  // Verify data flow: 1 → +1 → +3 → +10 = 15
+  let values: Vec<u32> =
+    Source::single(1_u32).via(Flow::from_graph(graph, StreamNotUsed::new())).collect_values().expect("collect_values");
+  assert_eq!(values, vec![15_u32]);
+}
+
+#[test]
+fn bidi_flow_join_mat_preserves_data_flow() {
+  // Given: bidi(top: +1, bottom: +10) joined with flow(+3)
+  // Data path: input → top(+1) → flow(+3) → bottom(+10) → output
+  // So 1 → 2 → 5 → 15
+  let joined = BidiFlow::from_flows(Flow::new().map(|value: u32| value + 1), Flow::new().map(|value: u32| value + 10))
+    .join_mat(Flow::new().map(|value: u32| value + 3), |_, _| 42_u32);
+
+  // When: running the pipeline
+  let values = Source::single(1_u32).via(joined).collect_values().expect("collect_values");
+
+  // Then: data flows through top → middle → bottom
+  assert_eq!(values, vec![15_u32]);
+}
+
+#[test]
+fn bidi_flow_join_mat_exposes_combined_mat_via_into_parts() {
+  // Given: BidiFlow(mat=7) join_mat Flow (combine as tuple)
+  let joined =
+    BidiFlow::from_flows_mat(Flow::new().map(|value: u32| value + 1), Flow::new().map(|value: u32| value + 10), 7_u32)
+      .join_mat(Flow::new().map(|value: u32| value + 3), |left, right| (left, right));
+
+  // When: extracting parts
+  let (graph, materialized) = joined.into_parts();
+  let _ = graph;
+
+  // Then: combined materialized value is (7, StreamNotUsed)
+  assert_eq!(materialized.0, 7_u32);
+}

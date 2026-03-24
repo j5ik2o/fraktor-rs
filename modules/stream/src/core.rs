@@ -1,5 +1,7 @@
 /// Handle for sending elements into an actor-sourced stream.
 mod actor_source_ref;
+/// Marker attribute for async boundaries in stream graphs.
+mod async_boundary_attr;
 /// Type-safe attribute trait for stream stage metadata.
 mod attribute;
 /// Stream attributes for stage and graph metadata.
@@ -23,6 +25,8 @@ mod delay_strategy;
 mod demand;
 /// Demand tracking utilities.
 mod demand_tracker;
+/// Dispatcher attribute for stream graph island execution.
+mod dispatcher_attribute;
 /// Fixed delay strategy implementation.
 mod fixed_delay;
 /// Byte stream framing utilities.
@@ -65,6 +69,10 @@ pub mod operator;
 mod overflow_strategy;
 /// Queue offer result definitions.
 mod queue_offer_result;
+/// Log level for restart event diagnostics.
+mod restart_log_level;
+/// Restart log settings for restart event diagnostics.
+mod restart_log_settings;
 /// Restart/backoff configuration.
 mod restart_settings;
 /// Retry flow with exponential backoff for individual element failures.
@@ -95,6 +103,10 @@ mod stream_dsl_error;
 mod stream_error;
 /// Stream not-used marker.
 mod stream_not_used;
+/// Action taken when a subscription times out.
+mod subscription_timeout_mode;
+/// Subscription timeout settings for stream materializers.
+mod subscription_timeout_settings;
 /// `split_when` / `split_after` substream cancellation strategy.
 mod substream_cancel_strategy;
 /// Supervision strategy definitions.
@@ -110,6 +122,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
 pub use actor_source_ref::ActorSourceRef;
+pub use async_boundary_attr::AsyncBoundaryAttr;
 pub use attribute::Attribute;
 pub use attributes::Attributes;
 pub use bounded_source_queue::BoundedSourceQueue;
@@ -122,6 +135,7 @@ pub use decider::Decider;
 pub use delay_strategy::DelayStrategy;
 pub use demand::Demand;
 pub use demand_tracker::DemandTracker;
+pub use dispatcher_attribute::DispatcherAttribute;
 pub use fixed_delay::FixedDelay;
 use fraktor_utils_rs::core::sync::ArcShared;
 pub use framing::Framing;
@@ -139,6 +153,8 @@ pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use overflow_strategy::OverflowStrategy;
 pub use queue_offer_result::QueueOfferResult;
+pub use restart_log_level::RestartLogLevel;
+pub use restart_log_settings::RestartLogSettings;
 pub use restart_settings::RestartSettings;
 pub use retry_flow::RetryFlow;
 use shape::PortId;
@@ -154,13 +170,15 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
+pub use subscription_timeout_mode::SubscriptionTimeoutMode;
+pub use subscription_timeout_settings::SubscriptionTimeoutSettings;
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
 pub(crate) type DynValue = Box<dyn Any + Send + 'static>;
 
-enum StageDefinition {
+pub(crate) enum StageDefinition {
   Source(SourceDefinition),
   Flow(FlowDefinition),
   Sink(SinkDefinition),
@@ -198,42 +216,84 @@ impl StageDefinition {
       | Self::Sink(definition) => definition.mat_combine,
     }
   }
+
+  /// Returns the output `TypeId` for stages that have an outlet.
+  const fn output_type(&self) -> Option<TypeId> {
+    match self {
+      | Self::Source(definition) => Some(definition.output_type),
+      | Self::Flow(definition) => Some(definition.output_type),
+      | Self::Sink(_) => None,
+    }
+  }
+
+  /// Returns the per-stage attributes.
+  pub(crate) const fn attributes(&self) -> &Attributes {
+    match self {
+      | Self::Source(definition) => &definition.attributes,
+      | Self::Flow(definition) => &definition.attributes,
+      | Self::Sink(definition) => &definition.attributes,
+    }
+  }
+
+  /// Returns a new stage definition with the given attributes merged.
+  fn with_attributes(self, attrs: Attributes) -> Self {
+    match self {
+      | Self::Source(mut definition) => {
+        let old = core::mem::take(&mut definition.attributes);
+        definition.attributes = old.and(attrs);
+        Self::Source(definition)
+      },
+      | Self::Flow(mut definition) => {
+        let old = core::mem::take(&mut definition.attributes);
+        definition.attributes = old.and(attrs);
+        Self::Flow(definition)
+      },
+      | Self::Sink(mut definition) => {
+        let old = core::mem::take(&mut definition.attributes);
+        definition.attributes = old.and(attrs);
+        Self::Sink(definition)
+      },
+    }
+  }
 }
 
-struct SourceDefinition {
-  kind:        StageKind,
-  outlet:      PortId,
-  output_type: TypeId,
-  mat_combine: MatCombine,
-  supervision: SupervisionStrategy,
-  restart:     Option<RestartBackoff>,
-  logic:       Box<dyn SourceLogic>,
+pub(crate) struct SourceDefinition {
+  pub(crate) kind:        StageKind,
+  pub(crate) outlet:      PortId,
+  pub(crate) output_type: TypeId,
+  pub(crate) mat_combine: MatCombine,
+  pub(crate) supervision: SupervisionStrategy,
+  pub(crate) restart:     Option<RestartBackoff>,
+  pub(crate) logic:       Box<dyn SourceLogic>,
+  pub(crate) attributes:  Attributes,
 }
 
-struct FlowDefinition {
-  kind:        StageKind,
-  inlet:       PortId,
-  outlet:      PortId,
-  input_type:  TypeId,
-  output_type: TypeId,
-  mat_combine: MatCombine,
-  supervision: SupervisionStrategy,
-  restart:     Option<RestartBackoff>,
-  logic:       Box<dyn FlowLogic>,
+pub(crate) struct FlowDefinition {
+  pub(crate) kind:        StageKind,
+  pub(crate) inlet:       PortId,
+  pub(crate) outlet:      PortId,
+  pub(crate) input_type:  TypeId,
+  pub(crate) output_type: TypeId,
+  pub(crate) mat_combine: MatCombine,
+  pub(crate) supervision: SupervisionStrategy,
+  pub(crate) restart:     Option<RestartBackoff>,
+  pub(crate) logic:       Box<dyn FlowLogic>,
+  pub(crate) attributes:  Attributes,
 }
 
-struct SinkDefinition {
-  kind:        StageKind,
-  inlet:       PortId,
-  input_type:  TypeId,
-  mat_combine: MatCombine,
-  supervision: SupervisionStrategy,
-  restart:     Option<RestartBackoff>,
-  logic:       Box<dyn SinkLogic>,
+pub(crate) struct SinkDefinition {
+  pub(crate) kind:        StageKind,
+  pub(crate) inlet:       PortId,
+  pub(crate) input_type:  TypeId,
+  pub(crate) mat_combine: MatCombine,
+  pub(crate) supervision: SupervisionStrategy,
+  pub(crate) restart:     Option<RestartBackoff>,
+  pub(crate) logic:       Box<dyn SinkLogic>,
+  pub(crate) attributes:  Attributes,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RestartBackoff {
+#[derive(Debug, Clone)]
+pub(crate) struct RestartBackoff {
   settings:              RestartSettings,
   restart_count:         usize,
   cooldown_ticks:        u32,
@@ -244,19 +304,21 @@ struct RestartBackoff {
 }
 
 impl RestartBackoff {
-  const fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
+  fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
     Self::from_settings(RestartSettings::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
   }
 
   const fn from_settings(settings: RestartSettings) -> Self {
+    let min_backoff_ticks = settings.min_backoff_ticks();
+    let jitter_seed = settings.jitter_seed();
     Self {
       settings,
       restart_count: 0,
       cooldown_ticks: 0,
       pending: false,
-      current_backoff_ticks: settings.min_backoff_ticks(),
+      current_backoff_ticks: min_backoff_ticks,
       last_schedule_tick: 0,
-      jitter_state: settings.jitter_seed(),
+      jitter_state: jitter_seed,
     }
   }
 
@@ -264,7 +326,7 @@ impl RestartBackoff {
     self.pending
   }
 
-  const fn complete_on_max_restarts(self) -> bool {
+  const fn complete_on_max_restarts(&self) -> bool {
     self.settings.complete_on_max_restarts()
   }
 
@@ -328,16 +390,19 @@ impl RestartBackoff {
 /// The plan contains only stage definitions and wiring edges.
 /// Mutable execution state is created by the interpreter during materialization.
 pub(crate) struct StreamPlan {
-  stages:             Vec<StageDefinition>,
-  edges:              Vec<StreamPlanEdge>,
-  source_indices:     Vec<usize>,
-  sink_indices:       Vec<usize>,
-  flow_order:         Vec<usize>,
-  kill_switch_states: Vec<lifecycle::KillSwitchStateHandle>,
+  pub(crate) stages:         Vec<StageDefinition>,
+  pub(crate) edges:          Vec<StreamPlanEdge>,
+  pub(crate) source_indices: Vec<usize>,
+  pub(crate) sink_indices:   Vec<usize>,
+  pub(crate) flow_order:     Vec<usize>,
+  kill_switch_states:        Vec<lifecycle::KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
-  fn from_parts(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> Result<Self, StreamError> {
+  pub(crate) fn from_parts(
+    stages: Vec<StageDefinition>,
+    edges: Vec<(PortId, PortId, MatCombine)>,
+  ) -> Result<Self, StreamError> {
     if stages.is_empty() || edges.is_empty() {
       return Err(StreamError::InvalidConnection);
     }
@@ -473,6 +538,20 @@ impl StreamPlan {
     Ok(Self { stages, edges: plan_edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() })
   }
 
+  /// Creates a `StreamPlan` from pre-validated parts (used by island splitting).
+  ///
+  /// The caller is responsible for ensuring that stages, edges, and indices
+  /// are consistent. No validation is performed.
+  pub(crate) const fn from_raw_parts(
+    stages: Vec<StageDefinition>,
+    edges: Vec<StreamPlanEdge>,
+    source_indices: Vec<usize>,
+    sink_indices: Vec<usize>,
+    flow_order: Vec<usize>,
+  ) -> Self {
+    Self { stages, edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() }
+  }
+
   fn with_shared_kill_switch_state(mut self, kill_switch_state: lifecycle::KillSwitchStateHandle) -> Self {
     if self.kill_switch_states.iter().any(|existing| ArcShared::ptr_eq(existing, &kill_switch_state)) {
       return self;
@@ -486,10 +565,10 @@ impl StreamPlan {
   }
 }
 
-struct StreamPlanEdge {
-  from_port: PortId,
-  to_port:   PortId,
-  mat:       MatCombine,
+pub(crate) struct StreamPlanEdge {
+  pub(crate) from_port: PortId,
+  pub(crate) to_port:   PortId,
+  pub(crate) mat:       MatCombine,
 }
 
 pub(crate) trait SourceLogic: Send {
@@ -504,7 +583,7 @@ pub(crate) trait SourceLogic: Send {
   }
 }
 
-trait FlowLogic: Send {
+pub(crate) trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
 
   fn handles_failures(&self) -> bool {
@@ -586,17 +665,18 @@ trait FlowLogic: Send {
   }
 }
 
-enum DownstreamCancelAction {
+pub(crate) enum DownstreamCancelAction {
   Drain,
   Propagate,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SinkDecision {
   Continue,
   Complete,
 }
 
-enum FailureAction {
+pub(crate) enum FailureAction {
   Propagate(StreamError),
   Resume,
   Complete,

@@ -12,6 +12,10 @@ pub enum StageKind {
   FlowStatefulMap,
   /// Flow stage that creates a stateful map-concat mapper per materialization.
   FlowStatefulMapConcat,
+  /// Flow stage that creates a stateful mapper with on-complete per materialization.
+  FlowStatefulMapWithOnComplete,
+  /// Flow stage that uses a `StatefulMapConcatAccumulator` per materialization.
+  FlowStatefulMapConcatAccumulator,
   /// Flow stage that expands each element into zero or more elements.
   FlowMapConcat,
   /// Flow stage that emits only present mapped elements.
@@ -120,6 +124,8 @@ pub enum StageKind {
   FlowDebounce,
   /// Flow stage that samples the latest element at fixed tick intervals.
   FlowSample,
+  /// Flow stage that taps each element to a side output without back-pressuring main.
+  FlowWireTap,
   /// Sink that ignores elements.
   SinkIgnore,
   /// Sink that folds elements.

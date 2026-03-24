@@ -165,7 +165,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, StreamNotUsed> + Send> {
     Box::new(FlatMapMergeLogic {
       breadth:        self.breadth,
       func:           self.func.clone(),

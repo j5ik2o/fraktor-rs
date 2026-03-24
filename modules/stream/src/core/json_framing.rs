@@ -5,8 +5,8 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::TypeId;
 
 use super::{
-  DynValue, FlowDefinition, FlowLogic, MatCombine, StageDefinition, StreamError, StreamNotUsed, SupervisionStrategy,
-  downcast_value,
+  Attributes, DynValue, FlowDefinition, FlowLogic, MatCombine, StageDefinition, StreamError, StreamNotUsed,
+  SupervisionStrategy, downcast_value,
   graph::StreamGraph,
   shape::{Inlet, Outlet},
   stage::{StageKind, flow::Flow},
@@ -73,6 +73,7 @@ fn json_framing_definition(maximum_object_length: usize) -> FlowDefinition {
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -211,6 +212,7 @@ fn json_array_framing_definition(maximum_element_length: usize) -> FlowDefinitio
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 

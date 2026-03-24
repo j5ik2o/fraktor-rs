@@ -1049,7 +1049,7 @@ impl GraphInterpreter {
       let StageDefinition::Source(source) = &self.stages[*source_index] else {
         return false;
       };
-      if source.restart.map(|restart| restart.is_waiting()).unwrap_or(false) {
+      if source.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false) {
         return true;
       }
     }
@@ -1061,14 +1061,14 @@ impl GraphInterpreter {
     let StageDefinition::Source(source) = &self.stages[source_index] else {
       return false;
     };
-    source.restart.map(|restart| restart.is_waiting()).unwrap_or(false)
+    source.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
   }
 
   fn flow_restart_waiting(&self, stage_index: usize) -> bool {
     let StageDefinition::Flow(flow) = &self.stages[stage_index] else {
       return false;
     };
-    flow.restart.map(|restart| restart.is_waiting()).unwrap_or(false)
+    flow.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
   }
 
   fn flow_has_pending_output(&self, stage_index: usize) -> bool {
@@ -1091,7 +1091,7 @@ impl GraphInterpreter {
     let StageDefinition::Sink(sink) = &self.stages[sink_index] else {
       return false;
     };
-    sink.restart.map(|restart| restart.is_waiting()).unwrap_or(false)
+    sink.restart.as_ref().map(|restart| restart.is_waiting()).unwrap_or(false)
   }
 
   fn all_sinks_done(&self) -> bool {

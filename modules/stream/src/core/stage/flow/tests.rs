@@ -1268,6 +1268,7 @@ fn buffer_rejects_zero_capacity() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn async_boundary_keeps_single_path_behavior() {
   let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -1757,6 +1758,116 @@ fn stateful_map_concat_expands_with_stateful_mapper() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 101_u32, 3_u32, 103_u32, 6_u32, 106_u32]);
+}
+
+#[test]
+fn stateful_map_on_complete_emits_final_element() {
+  // 準備: on_complete で蓄積した合計値を末尾に出力する stateful_map
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |state| Some(state),
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 通常要素に加え、on_complete が出力した合計値が末尾に追加される
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn stateful_map_on_complete_none_emits_nothing_extra() {
+  // 準備: on_complete が None を返す（末尾要素なし）
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |_state| None,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: on_complete が None を返したため、通常要素のみ
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn stateful_map_on_complete_receives_accumulated_state() {
+  // 準備: state に値を蓄積し、on_complete で蓄積した合計を出力
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[10, 20, 30]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |state| Some(state),
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 各要素(10,20,30) + on_complete での蓄積合計(60)
+  assert_eq!(values, vec![10_u32, 20, 30, 60]);
+}
+
+#[test]
+fn stateful_map_concat_with_accumulator_processes_elements() {
+  // 準備: StatefulMapConcatAccumulator を使用した stateful_map_concat
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct DoublingAccumulator;
+
+  impl StatefulMapConcatAccumulator<u32, u32> for DoublingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      vec![input, input * 2]
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_concat_with_accumulator(|| DoublingAccumulator))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 各要素が [value, value*2] に展開される
+  assert_eq!(values, vec![1_u32, 2, 2, 4, 3, 6]);
+}
+
+#[test]
+fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
+  // 準備: on_complete で残りのバッファを排出する accumulator
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct BufferingAccumulator {
+    buffer: alloc::vec::Vec<u32>,
+  }
+
+  impl StatefulMapConcatAccumulator<u32, u32> for BufferingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      self.buffer.push(input);
+      // バッファが2つ溜まったら排出
+      if self.buffer.len() >= 2 { core::mem::take(&mut self.buffer) } else { vec![] }
+    }
+
+    fn on_complete(&mut self) -> alloc::vec::Vec<u32> {
+      // 残りのバッファを排出
+      core::mem::take(&mut self.buffer)
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: alloc::vec::Vec::new() }))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: [1,2] はバッファ満了で排出、[3] は on_complete で排出
+  assert_eq!(values, vec![1_u32, 2, 3]);
 }
 
 #[test]
@@ -2540,6 +2651,7 @@ fn operator_catalog_lookup_rejects_unknown_operator() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn detach_preserves_elements_and_order() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().detach())
@@ -3261,6 +3373,63 @@ fn wire_tap_mat_routes_elements_to_side_sink() {
   }
   assert_eq!(side_completion.poll(), Completion::Ready(Ok(4_u32)));
   assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn wire_tap_mat_preserves_all_main_path_elements_with_multiple_inputs() {
+  // 準備: 複数要素を wire_tap_mat に流す（main path が全要素を受け取ることを検証）
+  let values = Source::from_array([1_u32, 2, 3, 4, 5])
+    .via(Flow::new().wire_tap_mat(Sink::ignore(), KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: main path は全要素を受け取る
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
+}
+
+#[test]
+fn wire_tap_mat_callback_version_observes_all_elements() {
+  // 準備: callback 版 wire_tap で全要素を観測する
+  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::<u32>::new()));
+  let observed_clone = observed.clone();
+
+  let values = Source::from_array([10_u32, 20, 30])
+    .via(Flow::new().wire_tap(move |value| {
+      observed_clone.lock().push(*value);
+    }))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: main path は全要素を受け取り、callback も全要素を観測する
+  assert_eq!(values, vec![10_u32, 20, 30]);
+  assert_eq!(*observed.lock(), vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn wire_tap_mat_side_sink_receives_elements() {
+  // 準備: wire_tap_mat で fold sink を使い、要素合計を検証
+  let (mut graph, side_mat) = Source::from_array([1_u32, 2, 3])
+    .via_mat(Flow::new().wire_tap_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight), KeepRight)
+    .into_parts();
+
+  let (sink_graph, _downstream) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  let mut idle_budget = 1024_usize;
+  while !stream.state().is_terminal() {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
+    }
+  }
+
+  // 検証: side sink が全要素の合計を受け取る
+  assert_eq!(side_mat.poll(), Completion::Ready(Ok(6_u32)));
 }
 
 #[test]
@@ -4436,4 +4605,553 @@ fn flow_group_by_with_drain_strategy_creates_subflow() {
 
   // Then: the subflow is created successfully
   assert!(result.is_ok());
+}
+
+// --- r#async() ---
+
+#[test]
+fn flow_async_passes_single_element_through() {
+  // Given: a source emitting a single element
+  // When: passing through a flow with an async boundary
+  let values = Source::single(7_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: the element is forwarded unchanged
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn flow_async_passes_multiple_elements_through() {
+  // Given: a source emitting multiple elements
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]));
+
+  // When: passing through a flow with an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: all elements are forwarded in order
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
+}
+
+#[test]
+fn flow_async_preserves_element_order() {
+  // Given: a source emitting a descending sequence
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[5, 4, 3, 2, 1]));
+
+  // When: passing through an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: elements arrive in original order
+  assert_eq!(values, vec![5_u32, 4, 3, 2, 1]);
+}
+
+#[test]
+fn flow_async_handles_empty_source() {
+  // Given: an empty source
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]));
+
+  // When: passing through an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: no elements are emitted, stream completes normally
+  assert!(values.is_empty());
+}
+
+#[test]
+fn flow_async_composes_with_map() {
+  // Given: a source with map + async boundary
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: map is applied before async boundary
+  let values = source.via(Flow::new().map(|x: u32| x * 10).r#async()).collect_values().expect("collect_values");
+
+  // Then: map is applied and elements pass through the boundary
+  assert_eq!(values, vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn flow_async_composes_with_map_after() {
+  // Given: a source with async boundary followed by map
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: async boundary is applied before map
+  let values =
+    source.via(Flow::new().r#async()).via(Flow::new().map(|x: u32| x + 100)).collect_values().expect("collect_values");
+
+  // Then: both stages work correctly
+  assert_eq!(values, vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn flow_async_chained_multiple_boundaries() {
+  // Given: a source with multiple chained async boundaries
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: two async boundaries are chained
+  let values = source.via(Flow::new().r#async().r#async()).collect_values().expect("collect_values");
+
+  // Then: elements pass through both boundaries correctly
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn flow_async_propagates_upstream_error() {
+  // Given: a source that emits an error mid-stream
+  let source = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1), Err(StreamError::Failed)]),
+  );
+
+  // When: passing through an async boundary
+  let result = source.via(Flow::new().r#async()).collect_values();
+
+  // Then: the error propagates through the boundary
+  assert!(result.is_err());
+}
+
+#[test]
+fn flow_async_with_filter_composition() {
+  // Given: a source filtered then async-boundaried
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5, 6]));
+
+  // When: filter even numbers, then async boundary
+  let values = source.via(Flow::new().filter(|x: &u32| x % 2 == 0).r#async()).collect_values().expect("collect_values");
+
+  // Then: only even numbers pass through
+  assert_eq!(values, vec![2_u32, 4, 6]);
+}
+
+// --- B-1: r#async() per-node attribute propagation ---
+
+#[test]
+fn flow_async_marks_last_node_with_async_attribute_in_plan() {
+  // Given: a source → map.async() → sink pipeline
+  let source = Source::single(1_u32);
+  let flow = Flow::new().map(|x: u32| x + 1).r#async();
+
+  // When: building a complete pipeline and converting to plan
+  let (mut graph, _) = source.via(flow).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the map/async flow stage has async boundary attribute
+  let has_async_stage = plan.stages.iter().any(|s| s.attributes().is_async());
+  assert!(has_async_stage, "at least one stage should have async boundary attribute");
+}
+
+#[test]
+fn flow_async_does_not_set_async_on_preceding_stages() {
+  // Given: source → map.async() → filter → sink
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+  let flow = Flow::new().map(|x: u32| x + 1).r#async();
+  let flow2 = Flow::new().filter(|x: &u32| *x > 0);
+
+  // When: building a complete pipeline
+  let (mut graph, _) = source.via(flow).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: only the async-marked stage has async attribute; source and filter do not
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 1, "exactly one stage should have async boundary");
+}
+
+#[test]
+fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
+  // 準備: source → flow.async_with_dispatcher("custom") → sink
+  let source = Source::single(1_u32);
+  let flow = Flow::new().map(|x: u32| x).async_with_dispatcher("custom-dispatcher");
+
+  // 実行: パイプラインを構築しプランに変換
+  let (mut graph, _) = source.via(flow).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // 検証: async + dispatcher 属性が付いた stage を特定し、他の stage には付いていないことを確認
+  let async_indices: Vec<usize> =
+    plan.stages.iter().enumerate().filter(|(_, s)| s.attributes().is_async()).map(|(i, _)| i).collect();
+  assert_eq!(async_indices.len(), 1, "async 属性は 1 つの stage のみに付くべき");
+
+  let async_stage = &plan.stages[async_indices[0]];
+  let dispatcher = async_stage.attributes().get::<crate::core::DispatcherAttribute>();
+  assert!(dispatcher.is_some(), "async stage に DispatcherAttribute がない");
+  assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
+
+  // async でない stage に dispatcher が付いていないことを確認
+  for (i, stage) in plan.stages.iter().enumerate() {
+    if i != async_indices[0] {
+      assert!(!stage.attributes().is_async(), "stage {i} に意図しない async 属性が付いている");
+    }
+  }
+}
+
+#[test]
+fn flow_async_attribute_survives_via_composition() {
+  // Given: two flows composed with .via(), first has async
+  let source = Source::single(1_u32);
+  let flow1 = Flow::new().map(|x: u32| x * 2).r#async();
+  let flow2 = Flow::new().map(|x: u32| x + 1);
+
+  // When: composing flow1.via(flow2) through source with a sink
+  let (mut graph, _) = source.via(flow1).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the async-marked stage's attribute persists; flow2's stage is NOT async
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 1);
+}
+
+#[test]
+fn multiple_flow_async_marks_multiple_stages() {
+  // Given: source → flow1.async() → flow2.async() → sink
+  let source = Source::single(1_u32);
+  let flow1 = Flow::new().map(|x: u32| x * 2).r#async();
+  let flow2 = Flow::new().map(|x: u32| x + 1).r#async();
+
+  // When: building a complete pipeline
+  let (mut graph, _) = source.via(flow1).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: two stages have async boundary
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 2);
+}
+
+// --- fold_while tests ---
+
+#[test]
+fn fold_while_accumulates_while_predicate_holds() {
+  // Given: a stream of [1, 2, 3, 4]
+  // When: fold_while accumulates while acc < 6
+  let values = Source::from_array([1_u32, 2, 3, 4])
+    .via(Flow::new().fold_while(0_u32, |acc, _| *acc < 6, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: accumulation stops updating at 6 (1+2+3=6, predicate false for 4)
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32, 6_u32]);
+}
+
+#[test]
+fn fold_while_with_always_true_predicate_behaves_like_fold() {
+  // Given: a stream of [1, 2, 3]
+  // When: fold_while with always-true predicate
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().fold_while(0_u32, |_, _| true, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: behaves identically to fold
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn fold_while_with_immediately_false_predicate_emits_initial_unchanged() {
+  // Given: a stream of [10, 20, 30]
+  // When: fold_while with always-false predicate
+  let values = Source::from_array([10_u32, 20, 30])
+    .via(Flow::new().fold_while(0_u32, |_, _| false, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: accumulator never updates, emits initial value for each element
+  assert_eq!(values, vec![0_u32, 0_u32, 0_u32]);
+}
+
+#[test]
+fn fold_while_on_empty_stream_emits_nothing() {
+  // Given: an empty stream
+  // When: fold_while is applied
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().fold_while(99_u32, |_, _| true, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: no output (same as fold on empty stream)
+  assert!(values.is_empty());
+}
+
+// --- compression overload tests ---
+
+#[test]
+#[cfg(feature = "compression")]
+fn deflate_with_level_round_trips_through_inflate() {
+  // Given: a payload compressed with deflate at level 9
+  let payload = b"deflate-level-nine-payload".to_vec();
+
+  // When: deflate_with_level(9) then inflate
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_level(9))
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate())
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn deflate_with_options_nowrap_round_trips() {
+  // Given: a payload compressed with deflate level 6 nowrap=true
+  let payload = b"deflate-nowrap-options-test".to_vec();
+
+  // When: deflate_with_options(6, true) then inflate_with_options(_, true)
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_options(6, true))
+    .via(
+      Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, true),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_with_level_round_trips_through_gzip_decompress() {
+  // Given: a payload compressed with gzip at level 1
+  let payload = b"gzip-level-one-fast-compress".to_vec();
+
+  // When: gzip_with_level(1) then gzip_decompress
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_with_level(1))
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_decompress_with_max_bytes_rejects_oversized_payload() {
+  // Given: a payload larger than a small max_bytes limit
+  let payload = vec![0xaa_u8; 256];
+  let encoded = Source::single(payload)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
+    .collect_values()
+    .expect("collect_values")
+    .pop()
+    .expect("encoded payload");
+
+  // When: decompressing with max_bytes = 64
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress_with_max_bytes(64))
+    .collect_values();
+
+  // Then: compression error
+  assert!(matches!(result, Err(StreamError::CompressionError { .. })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn inflate_with_max_bytes_rejects_oversized_payload() {
+  // Given: a payload larger than a small max_bytes limit
+  let payload = vec![0xbb_u8; 256];
+  let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
+
+  // When: inflating with max_bytes = 64
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_max_bytes(64))
+    .collect_values();
+
+  // Then: compression error
+  assert!(matches!(result, Err(StreamError::CompressionError { .. })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn inflate_with_options_nowrap_false_decompresses_zlib_wrapped() {
+  // Given: a zlib-wrapped (nowrap=false) deflate payload
+  let payload = b"inflate-zlib-wrapped-test".to_vec();
+
+  // When: deflate_with_options(6, false) then inflate_with_options(_, false)
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_options(6, false))
+    .via(
+      Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, false),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+// ---------------------------------------------------------------------------
+// Flow::from_graph_stage — end-to-end integration tests
+// ---------------------------------------------------------------------------
+
+use crate::core::{
+  graph::{GraphStage, GraphStageLogic},
+  shape::{Inlet, Outlet, StreamShape},
+  stage::StageContext,
+};
+
+/// A simple map-like GraphStageLogic that adds 100 to each input.
+struct AddHundredLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for AddHundredLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    ctx.push(value + 100);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct AddHundredStage;
+
+impl GraphStage<u32, u32, StreamNotUsed> for AddHundredStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> {
+    Box::new(AddHundredLogic)
+  }
+}
+
+/// A GraphStageLogic that filters, passing only values > threshold.
+struct ThresholdFilterLogic {
+  threshold: u32,
+}
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for ThresholdFilterLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    if value > self.threshold {
+      ctx.push(value);
+    }
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct ThresholdFilterStage {
+  threshold: u32,
+}
+
+impl GraphStage<u32, u32, StreamNotUsed> for ThresholdFilterStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> {
+    Box::new(ThresholdFilterLogic { threshold: self.threshold })
+  }
+}
+
+/// A GraphStageLogic with a materialized value (counter of processed elements).
+struct CountingLogic {
+  count: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl GraphStageLogic<u32, u32, ArcShared<SpinSyncMutex<usize>>> for CountingLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    *self.count.lock() += 1;
+    ctx.push(value);
+  }
+
+  fn materialized(&mut self) -> ArcShared<SpinSyncMutex<usize>> {
+    self.count.clone()
+  }
+}
+
+struct CountingStage {
+  count: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl CountingStage {
+  fn new() -> Self {
+    Self { count: ArcShared::new(SpinSyncMutex::new(0)) }
+  }
+}
+
+impl GraphStage<u32, u32, ArcShared<SpinSyncMutex<usize>>> for CountingStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, ArcShared<SpinSyncMutex<usize>>> + Send> {
+    Box::new(CountingLogic { count: self.count.clone() })
+  }
+}
+
+#[test]
+fn from_graph_stage_map_like_stage_produces_correct_values() {
+  // Given: a custom GraphStage that adds 100
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2, 3]).via(flow).collect_values().expect("collect_values");
+
+  // Then: each value has 100 added
+  assert_eq!(values, alloc::vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn from_graph_stage_filter_like_stage_drops_elements() {
+  // Given: a custom GraphStage that filters values > 3
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(ThresholdFilterStage { threshold: 3 });
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2, 3, 4, 5]).via(flow).collect_values().expect("collect_values");
+
+  // Then: only values > 3 pass through
+  assert_eq!(values, alloc::vec![4_u32, 5]);
+}
+
+#[test]
+fn from_graph_stage_chained_with_standard_flow_operators() {
+  // Given: a custom stage chained with a standard map
+  let custom_flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+  let combined = custom_flow.via(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2));
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2]).via(combined).collect_values().expect("collect_values");
+
+  // Then: (1+100)*2=202, (2+100)*2=204
+  assert_eq!(values, alloc::vec![202_u32, 204]);
+}
+
+#[test]
+fn from_graph_stage_with_materialized_value() {
+  // Given: a counting stage with a shared counter
+  let stage = CountingStage::new();
+  let counter = stage.count.clone();
+  let flow = Flow::<u32, u32, ArcShared<SpinSyncMutex<usize>>>::from_graph_stage(stage);
+
+  // When: running through a pipeline
+  let values = Source::from_array([10_u32, 20, 30]).via(flow).collect_values().expect("collect_values");
+
+  // Then: all values pass through and the counter reflects the count
+  assert_eq!(values, alloc::vec![10_u32, 20, 30]);
+  assert_eq!(*counter.lock(), 3);
+}
+
+#[test]
+fn from_graph_stage_empty_source_produces_no_output() {
+  // Given: a custom stage with an empty source
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+
+  // When: running with an empty source
+  let values = Source::<u32, StreamNotUsed>::empty().via(flow).collect_values().expect("collect_values");
+
+  // Then: no output
+  assert!(values.is_empty());
 }
