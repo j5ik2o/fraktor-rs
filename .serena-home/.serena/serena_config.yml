@@ -142,3 +142,12 @@ project_serena_folder_location: "$projectDir/.serena"
 # the list of registered project paths (updated automatically).
 projects:
 - /Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs
+
+# list of regex patterns for memories to completely ignore.
+# Matching memories will not appear in list_memories or activate_project output
+# and cannot be accessed via read_memory or write_memory.
+# To access ignored memory files, use the read_file tool on the raw file path.
+# This is useful for projects with large numbers of archived memory files.
+# You can extend the list on a per-project basis in the project.yml configuration file.
+# Example: ["_archive/.*", "_episodes/.*"]
+ignored_memory_patterns: []

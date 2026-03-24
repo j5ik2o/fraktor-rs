@@ -1,9 +1,43 @@
 use alloc::{vec, vec::Vec};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
+use std::sync::{Arc, Mutex};
 
 use crate::core::{
-  StreamNotUsed,
-  stage::{FlowWithContext, Source, flow::Flow},
+  KeepBoth, StreamNotUsed,
+  stage::{FlowWithContext, Sink, Source, flow::Flow},
 };
+
+#[derive(Default)]
+struct YieldThenOutputFuture<T> {
+  value:       Option<T>,
+  poll_count:  u8,
+  ready_after: u8,
+}
+
+impl<T> YieldThenOutputFuture<T> {
+  fn new(value: T, ready_after: u8) -> Self {
+    Self { value: Some(value), poll_count: 0, ready_after }
+  }
+}
+
+impl<T: Unpin> Future for YieldThenOutputFuture<T> {
+  type Output = T;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let this = self.get_mut();
+    if this.poll_count < this.ready_after {
+      this.poll_count = this.poll_count.saturating_add(1);
+      cx.waker().wake_by_ref();
+      Poll::Pending
+    } else {
+      Poll::Ready(this.value.take().expect("future value"))
+    }
+  }
+}
 
 #[test]
 fn should_map_output_preserving_context() {
@@ -216,4 +250,163 @@ fn sliding_window_size_2() {
 
   // 検証: 2つのウィンドウ、各ウィンドウのコンテキストは最後の要素のもの
   assert_eq!(values, vec![(2, vec![10_u32, 20]), (3, vec![20, 30])]);
+}
+
+#[test]
+fn via_mat_combines_materialized_values() {
+  // 準備: 2つの FlowWithContext がそれぞれ異なるマテリアライズド値を持つ
+  let left: FlowWithContext<i32, u32, u32, u32> =
+    FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value).map_materialized_value(|_| 7_u32));
+  let right: FlowWithContext<i32, u32, u32, u32> = FlowWithContext::from_flow(
+    Flow::new().map(|(ctx, value): (i32, u32)| (ctx, value + 1)).map_materialized_value(|_| 9_u32),
+  );
+
+  // 実行: KeepBoth で 2つの flow を合成する
+  let (_graph, materialized) = left.via_mat(right, KeepBoth).as_flow().into_parts();
+
+  // 検証: 両方のマテリアライズド値が保持される
+  assert_eq!(materialized, (7_u32, 9_u32));
+}
+
+#[test]
+fn also_to_keeps_main_path_values_and_context() {
+  // 準備: side sink を接続した context 保持 flow
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value)).also_to(Sink::<u32, _>::ignore());
+
+  // 実行: 要素を flow に流す
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.as_flow()).collect_values().unwrap();
+
+  // 検証: main path の値とコンテキストは変化しない
+  assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
+}
+
+#[test]
+fn also_to_sends_values_to_side_sink_and_preserves_main_path() {
+  let seen = Arc::new(Mutex::new(Vec::new()));
+  let seen_for_sink = Arc::clone(&seen);
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value)).also_to(Sink::foreach(move |value: u32| {
+      seen_for_sink.lock().expect("side sink lock").push(value);
+    }));
+
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.as_flow()).collect_values().unwrap();
+
+  assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
+  assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
+}
+
+#[test]
+fn also_to_context_sends_only_contexts_to_side_sink() {
+  let seen = Arc::new(Mutex::new(Vec::new()));
+  let seen_for_sink = Arc::clone(&seen);
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> = FlowWithContext::from_flow(
+    Flow::new().map(|value: (i32, u32)| value),
+  )
+  .also_to_context(Sink::foreach(move |ctx: i32| {
+    seen_for_sink.lock().expect("context sink lock").push(ctx);
+  }));
+
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.as_flow()).collect_values().unwrap();
+
+  assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
+  assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
+}
+
+#[test]
+fn wire_tap_preserves_main_path_and_emits_values() {
+  let seen = Arc::new(Mutex::new(Vec::new()));
+  let seen_for_sink = Arc::clone(&seen);
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> = FlowWithContext::from_flow(
+    Flow::new().map(|value: (i32, u32)| value),
+  )
+  .wire_tap(Sink::foreach(move |value: u32| {
+    seen_for_sink.lock().expect("tap sink lock").push(value);
+  }));
+
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.as_flow()).collect_values().unwrap();
+
+  assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
+  assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
+}
+
+#[test]
+fn wire_tap_context_preserves_main_path_and_emits_contexts() {
+  let seen = Arc::new(Mutex::new(Vec::new()));
+  let seen_for_sink = Arc::clone(&seen);
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> = FlowWithContext::from_flow(
+    Flow::new().map(|value: (i32, u32)| value),
+  )
+  .wire_tap_context(Sink::foreach(move |ctx: i32| {
+    seen_for_sink.lock().expect("context tap lock").push(ctx);
+  }));
+
+  let values = Source::from(vec![(10_i32, 1_u32), (20, 2)]).via(flow.as_flow()).collect_values().unwrap();
+
+  assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
+  assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
+}
+
+#[test]
+fn map_async_partitioned_preserves_context_and_input_order() {
+  // 準備: 後続 partition の方が先に完了しうる非同期マップ
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value));
+  let mapped = flow
+    .map_async_partitioned(
+      2,
+      |value: &u32| (*value as usize) % 2,
+      |value: u32, partition: usize| {
+        let ready_after = if partition == 1 { 2 } else { 0 };
+        YieldThenOutputFuture::new(value + 10, ready_after)
+      },
+    )
+    .expect("map_async_partitioned");
+
+  // 実行: source 経由で materialize して要素を収集する
+  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.as_flow()).collect_values().unwrap();
+
+  // 検証: 入力順が保たれ、各要素は元のコンテキストを保持する
+  assert_eq!(values, vec![(100_i32, 11_u32), (200, 12)]);
+}
+
+#[test]
+fn map_async_partitioned_unordered_can_emit_completion_order_while_preserving_context() {
+  // 準備: 先頭入力の完了が後ろにずれる非同期マップ
+  let flow: FlowWithContext<i32, u32, u32, StreamNotUsed> =
+    FlowWithContext::from_flow(Flow::new().map(|value: (i32, u32)| value));
+  let mapped = flow
+    .map_async_partitioned_unordered(
+      2,
+      |value: &u32| (*value as usize) % 2,
+      |value: u32, partition: usize| {
+        let ready_after = if partition == 1 { 16 } else { 0 };
+        YieldThenOutputFuture::new(value + 10, ready_after)
+      },
+    )
+    .expect("map_async_partitioned_unordered");
+
+  // 実行: source 経由で materialize して要素を収集する
+  let values = Source::from(vec![(100_i32, 1_u32), (200, 2)]).via(mapped.as_flow()).collect_values().unwrap();
+
+  // 検証: 完了順は入れ替わりうるが、値とコンテキストの対応は維持される
+  assert_eq!(values, vec![(200_i32, 12_u32), (100, 11)]);
+}
+
+#[test]
+fn comments_use_japanese_in_context_wrapper_tests() {
+  let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/stage");
+  let files = [
+    ("flow_with_context/tests.rs", base.join("flow_with_context/tests.rs")),
+    ("source_with_context/tests.rs", base.join("source_with_context/tests.rs")),
+  ];
+  let forbidden_markers =
+    [concat!("// ", "Given", ":"), concat!("// ", "When", ":"), concat!("// ", "Then", ":"), concat!("tests", " ---")];
+
+  for (label, path) in files {
+    let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{label} の読み込みに失敗: {e}"));
+    for marker in forbidden_markers {
+      assert!(!content.contains(marker), "{label} に英語コメントの残骸 `{marker}` が残っています");
+    }
+  }
 }

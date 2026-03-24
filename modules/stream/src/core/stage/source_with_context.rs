@@ -1,7 +1,10 @@
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData};
 
-use super::{StreamDslError, extract_last_ctx_and_values, flow_with_context::FlowWithContext, source::Source};
+use super::{
+  MatCombineRule, StreamDslError, StreamNotUsed, extract_last_ctx_and_values, flow::Flow,
+  flow_with_context::FlowWithContext, sink::Sink, source::Source,
+};
 
 #[cfg(test)]
 mod tests;
@@ -151,4 +154,108 @@ where
     let composed = self.inner.via(flow.as_flow());
     SourceWithContext { inner: composed, _pd: PhantomData }
   }
+
+  /// Composes with a context-preserving flow using a custom materialized value rule.
+  #[must_use]
+  pub fn via_mat<T, Mat2, C>(
+    self,
+    flow: FlowWithContext<Ctx, Out, T, Mat2>,
+    combine: C,
+  ) -> SourceWithContext<Ctx, T, C::Out>
+  where
+    T: Send + Sync + 'static,
+    C: MatCombineRule<Mat, Mat2>, {
+    let composed = self.inner.via_mat(flow.as_flow(), combine);
+    SourceWithContext { inner: composed, _pd: PhantomData }
+  }
+
+  /// Adds a side sink that receives only the data value.
+  #[must_use]
+  pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().also_to(sink);
+    self.via(flow)
+  }
+
+  /// Adds a side sink that receives only the context value.
+  #[must_use]
+  pub fn also_to_context<Mat2>(self, sink: Sink<Ctx, Mat2>) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().also_to_context(sink);
+    self.via(flow)
+  }
+
+  /// Taps each data value to a side sink while preserving the main path.
+  #[must_use]
+  pub fn wire_tap<Mat2>(self, sink: Sink<Out, Mat2>) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().wire_tap(sink);
+    self.via(flow)
+  }
+
+  /// Taps each context value to a side sink while preserving the main path.
+  #[must_use]
+  pub fn wire_tap_context<Mat2>(self, sink: Sink<Ctx, Mat2>) -> SourceWithContext<Ctx, Out, Mat>
+  where
+    Ctx: Clone,
+    Out: Clone, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().wire_tap_context(sink);
+    self.via(flow)
+  }
+
+  /// Maps elements asynchronously while serializing work per partition.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `parallelism` is zero.
+  pub fn map_async_partitioned<Out2, P, Partitioner, F, Fut>(
+    self,
+    parallelism: usize,
+    partitioner: Partitioner,
+    func: F,
+  ) -> Result<SourceWithContext<Ctx, Out2, Mat>, StreamDslError>
+  where
+    Out2: Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Out2> + Send + 'static, {
+    let flow = passthrough_flow_with_context::<Ctx, Out>().map_async_partitioned(parallelism, partitioner, func)?;
+    Ok(self.via(flow))
+  }
+
+  /// Maps elements asynchronously per partition without preserving downstream order.
+  ///
+  /// # Errors
+  ///
+  /// Returns `StreamDslError` if `parallelism` is zero.
+  pub fn map_async_partitioned_unordered<Out2, P, Partitioner, F, Fut>(
+    self,
+    parallelism: usize,
+    partitioner: Partitioner,
+    func: F,
+  ) -> Result<SourceWithContext<Ctx, Out2, Mat>, StreamDslError>
+  where
+    Out2: Send + Sync + 'static,
+    P: Clone + PartialEq + Send + Sync + 'static,
+    Partitioner: FnMut(&Out) -> P + Send + Sync + 'static,
+    F: FnMut(Out, P) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Out2> + Send + 'static, {
+    let flow =
+      passthrough_flow_with_context::<Ctx, Out>().map_async_partitioned_unordered(parallelism, partitioner, func)?;
+    Ok(self.via(flow))
+  }
+}
+
+fn passthrough_flow_with_context<Ctx, Out>() -> FlowWithContext<Ctx, Out, Out, StreamNotUsed>
+where
+  Ctx: Send + Sync + 'static,
+  Out: Send + Sync + 'static, {
+  FlowWithContext::from_flow(Flow::new().map(|value: (Ctx, Out)| value))
 }
