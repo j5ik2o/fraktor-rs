@@ -180,7 +180,12 @@ impl Materializer for ActorMaterializer {
       stream.start()?;
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-      Self::register_handle(drive_actor, handle.clone())?;
+      if let Err(error) = Self::register_handle(drive_actor, handle.clone()) {
+        if let Err(_cleanup_error) = handle.cancel() {
+          // Best-effort rollback: keep the original registration failure.
+        }
+        return Err(error);
+      }
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     } else {

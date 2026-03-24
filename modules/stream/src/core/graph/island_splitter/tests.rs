@@ -294,8 +294,56 @@ fn split_transfers_dispatcher_attribute_to_island() {
 
   let island_plan = IslandSplitter::split(plan);
 
-  // Then: island 1 (containing source+flow) has the dispatcher name
-  assert_eq!(island_plan.islands()[0].dispatcher(), Some("custom-dispatcher"));
+  // Then: dispatcher は async 境界の後続 island に付与される
+  assert_eq!(island_plan.islands()[0].dispatcher(), None);
+  assert_eq!(island_plan.islands()[1].dispatcher(), Some("custom-dispatcher"));
+}
+
+#[test]
+fn split_async_cut_preserves_unrelated_branch_in_downstream_island() {
+  let source_a_out: Outlet<u32> = Outlet::new();
+  let async_in: Inlet<u32> = Inlet::new();
+  let async_out: Outlet<u32> = Outlet::new();
+  let source_b_out: Outlet<u32> = Outlet::new();
+  let merge_in: Inlet<u32> = Inlet::new();
+  let merge_out: Outlet<u32> = Outlet::new();
+  let sink_in: Inlet<u32> = Inlet::new();
+
+  let stages = alloc::vec![
+    make_source(&source_a_out, Attributes::new()),
+    make_flow(&async_in, &async_out, Attributes::async_boundary().and(Attributes::dispatcher("branch-dispatcher"))),
+    make_source(&source_b_out, Attributes::new()),
+    StageDefinition::Flow(crate::core::FlowDefinition {
+      kind:        StageKind::FlowMerge,
+      inlet:       merge_in.id(),
+      outlet:      merge_out.id(),
+      input_type:  TypeId::of::<u32>(),
+      output_type: TypeId::of::<u32>(),
+      mat_combine: MatCombine::KeepLeft,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
+      logic:       Box::new(PassthroughFlowLogic),
+      attributes:  Attributes::new(),
+    }),
+    make_sink(&sink_in, Attributes::new()),
+  ];
+  let edges = alloc::vec![
+    (source_a_out.id(), async_in.id(), MatCombine::KeepLeft),
+    (async_out.id(), merge_in.id(), MatCombine::KeepLeft),
+    (source_b_out.id(), merge_in.id(), MatCombine::KeepLeft),
+    (merge_out.id(), sink_in.id(), MatCombine::KeepLeft),
+  ];
+  let plan = build_plan(stages, edges);
+
+  let island_plan = IslandSplitter::split(plan);
+
+  assert_eq!(island_plan.islands().len(), 2);
+  assert_eq!(island_plan.crossings().len(), 1);
+  assert_eq!(island_plan.crossings()[0].from_island().as_usize(), 0);
+  assert_eq!(island_plan.crossings()[0].to_island().as_usize(), 1);
+  assert_eq!(island_plan.islands()[0].stage_count(), 2);
+  assert_eq!(island_plan.islands()[1].stage_count(), 3);
+  assert_eq!(island_plan.islands()[1].dispatcher(), Some("branch-dispatcher"));
 }
 
 // --- Longer pipeline ---

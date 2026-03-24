@@ -239,19 +239,26 @@ impl IslandPlan {
 /// new island.
 pub(crate) struct IslandSplitter;
 
+type PortStageMap = Vec<(PortId, usize)>;
+
 impl IslandSplitter {
-  fn topological_stage_order(plan: &StreamPlan) -> Vec<usize> {
-    let stage_count = plan.stages.len();
-    let mut inlet_to_stage = Vec::new();
+  fn port_stage_maps(plan: &StreamPlan) -> (PortStageMap, PortStageMap) {
     let mut outlet_to_stage = Vec::new();
-    for (stage_index, stage) in plan.stages.iter().enumerate() {
-      if let Some(inlet) = stage.inlet() {
-        inlet_to_stage.push((inlet, stage_index));
-      }
+    let mut inlet_to_stage = Vec::new();
+    for (stage_idx, stage) in plan.stages.iter().enumerate() {
       if let Some(outlet) = stage.outlet() {
-        outlet_to_stage.push((outlet, stage_index));
+        outlet_to_stage.push((outlet, stage_idx));
+      }
+      if let Some(inlet) = stage.inlet() {
+        inlet_to_stage.push((inlet, stage_idx));
       }
     }
+    (outlet_to_stage, inlet_to_stage)
+  }
+
+  fn topological_stage_order(plan: &StreamPlan) -> Vec<usize> {
+    let stage_count = plan.stages.len();
+    let (outlet_to_stage, inlet_to_stage) = Self::port_stage_maps(plan);
 
     let mut incoming = vec![0_usize; stage_count];
     let mut adjacency = vec![Vec::new(); stage_count];
@@ -288,46 +295,81 @@ impl IslandSplitter {
     if ordered.len() == stage_count { ordered } else { (0..stage_count).collect() }
   }
 
+  fn assign_islands(plan: &StreamPlan) -> (Vec<usize>, usize, Vec<Option<String>>) {
+    let stage_count = plan.stages.len();
+    let (outlet_to_stage, inlet_to_stage) = Self::port_stage_maps(plan);
+    let mut adjacency = vec![Vec::new(); stage_count];
+    let mut dispatcher_candidates = vec![Vec::<String>::new(); stage_count];
+
+    for edge in &plan.edges {
+      let Some(from_stage) = outlet_to_stage.iter().find(|(port, _)| *port == edge.from_port).map(|(_, idx)| *idx)
+      else {
+        continue;
+      };
+      let Some(to_stage) = inlet_to_stage.iter().find(|(port, _)| *port == edge.to_port).map(|(_, idx)| *idx) else {
+        continue;
+      };
+
+      if plan.stages[from_stage].attributes().is_async() {
+        if let Some(dispatcher) = plan.stages[from_stage].attributes().get::<DispatcherAttribute>() {
+          dispatcher_candidates[to_stage].push(String::from(dispatcher.name()));
+        }
+        continue;
+      }
+
+      adjacency[from_stage].push(to_stage);
+      adjacency[to_stage].push(from_stage);
+    }
+
+    let mut component = vec![usize::MAX; stage_count];
+    let mut component_count = 0_usize;
+    for start in 0..stage_count {
+      if component[start] != usize::MAX {
+        continue;
+      }
+      let mut queue = VecDeque::new();
+      queue.push_back(start);
+      component[start] = component_count;
+      while let Some(stage_index) = queue.pop_front() {
+        for next in &adjacency[stage_index] {
+          if component[*next] == usize::MAX {
+            component[*next] = component_count;
+            queue.push_back(*next);
+          }
+        }
+      }
+      component_count = component_count.saturating_add(1);
+    }
+
+    let topo_order = Self::topological_stage_order(plan);
+    let mut component_to_island = vec![usize::MAX; component_count];
+    let mut stage_island = vec![usize::MAX; stage_count];
+    let mut next_island = 0_usize;
+    for stage_index in topo_order {
+      let component_id = component[stage_index];
+      if component_to_island[component_id] == usize::MAX {
+        component_to_island[component_id] = next_island;
+        next_island = next_island.saturating_add(1);
+      }
+      stage_island[stage_index] = component_to_island[component_id];
+    }
+
+    let mut dispatcher_for_island = vec![None; next_island];
+    for (stage_index, names) in dispatcher_candidates.iter().enumerate() {
+      let island_id = stage_island[stage_index];
+      if names.is_empty() || dispatcher_for_island[island_id].is_some() {
+        continue;
+      }
+      dispatcher_for_island[island_id] = names.first().cloned();
+    }
+
+    (stage_island, next_island, dispatcher_for_island)
+  }
+
   /// Splits the given plan into islands.
   pub(crate) fn split(plan: StreamPlan) -> IslandPlan {
-    let stage_count = plan.stages.len();
-
-    // Assign each stage to an island.
-    let mut stage_island = vec![0_usize; stage_count];
-    let mut current_island = 0_usize;
-    let mut dispatcher_for_island: Vec<Option<String>> = vec![None];
-
-    let topo_order = Self::topological_stage_order(&plan);
-    for (position, stage_index) in topo_order.iter().copied().enumerate() {
-      let stage = &plan.stages[stage_index];
-      stage_island[stage_index] = current_island;
-
-      // Extract dispatcher from stage attributes if present
-      if let Some(da) = stage.attributes().get::<DispatcherAttribute>() {
-        dispatcher_for_island[current_island] = Some(String::from(da.name()));
-      }
-
-      // If this stage has async boundary, the NEXT stage starts a new island
-      if stage.attributes().is_async() && position + 1 < topo_order.len() {
-        current_island += 1;
-        dispatcher_for_island.push(None);
-      }
-    }
-
-    let island_count = current_island + 1;
-
-    // Build port-to-stage-index mapping for edge classification
-    let mut outlet_to_stage: Vec<(PortId, usize)> = Vec::new();
-    let mut inlet_to_stage: Vec<(PortId, usize)> = Vec::new();
-
-    for (stage_idx, stage) in plan.stages.iter().enumerate() {
-      if let Some(outlet) = stage.outlet() {
-        outlet_to_stage.push((outlet, stage_idx));
-      }
-      if let Some(inlet) = stage.inlet() {
-        inlet_to_stage.push((inlet, stage_idx));
-      }
-    }
+    let (stage_island, island_count, mut dispatcher_for_island) = Self::assign_islands(&plan);
+    let (outlet_to_stage, inlet_to_stage) = Self::port_stage_maps(&plan);
 
     // Classify edges as internal or crossing
     let mut island_edges: Vec<Vec<StreamPlanEdge>> = (0..island_count).map(|_| Vec::new()).collect();

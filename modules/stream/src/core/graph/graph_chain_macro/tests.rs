@@ -48,7 +48,7 @@ fn graph_chain_source_to_sink_directly() -> Result<(), StreamError> {
   Ok(())
 }
 
-// --- graph_chain! macro: source => flow => sink (verify value) ---
+// --- 手動配線: source => flow => sink (値検証) ---
 
 #[test]
 fn manual_wiring_source_flow_sink() -> Result<(), StreamError> {
@@ -93,7 +93,7 @@ fn manual_wiring_source_two_flows_sink() -> Result<(), StreamError> {
   Ok(())
 }
 
-// --- graph_chain! macro: source => flow => flow => flow => sink (verify value) ---
+// --- 手動配線: source => flow => flow => flow => sink (値検証) ---
 
 #[test]
 fn manual_wiring_source_three_flows_sink() -> Result<(), StreamError> {

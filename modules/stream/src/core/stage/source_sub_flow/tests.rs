@@ -33,6 +33,7 @@ fn run_to_completion<Mat>(graph: crate::core::mat::RunnableGraph<Mat>) {
       },
     }
   }
+  assert_eq!(stream.state(), StreamState::Completed);
 }
 
 #[test]

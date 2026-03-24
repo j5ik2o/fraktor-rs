@@ -196,6 +196,18 @@ impl GraphStageLogic<u32, u32, StreamNotUsed> for LifecycleProbeLogic {
   }
 }
 
+struct StopFailureLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for StopFailureLogic {
+  fn on_stop(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    ctx.fail(StreamError::InvalidConnection);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
 #[test]
 fn on_source_done_calls_on_complete_and_on_stop() {
   let completed = ArcShared::new(SpinSyncMutex::new(false));
@@ -229,6 +241,21 @@ fn on_downstream_cancel_returns_propagate() {
     | Ok(DownstreamCancelAction::Propagate) => {},
     | Ok(DownstreamCancelAction::Drain) => panic!("unexpected drain action"),
     | Err(error) => panic!("unexpected error: {error:?}"),
+  }
+}
+
+#[test]
+fn on_downstream_cancel_propagates_failure_set_by_on_stop() {
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(StopFailureLogic);
+  let mut adapter = GraphStageFlowAdapter::new(logic);
+
+  let result = adapter.on_downstream_cancel();
+
+  match result {
+    | Err(StreamError::InvalidConnection) => {},
+    | Err(other) => panic!("unexpected error: {other:?}"),
+    | Ok(DownstreamCancelAction::Propagate) => panic!("unexpected propagate action"),
+    | Ok(DownstreamCancelAction::Drain) => panic!("unexpected drain action"),
   }
 }
 

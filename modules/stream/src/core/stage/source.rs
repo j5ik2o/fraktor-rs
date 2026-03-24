@@ -2408,7 +2408,7 @@ where
           .input_buffer_capacity_for_inlet(crossing.to_port())
           .unwrap_or(super::graph::DEFAULT_BOUNDARY_CAPACITY);
         let boundary = super::graph::IslandBoundaryShared::new(boundary_capacity);
-        boundaries.push(boundary.clone());
+        boundaries.push((boundary.clone(), downstream_idx));
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
       }
@@ -2430,8 +2430,9 @@ where
         if any_progress {
           idle_budget = 4096;
         } else {
-          if streams.iter().any(|stream| stream.state().is_terminal())
-            && boundaries.iter().any(|boundary| boundary.is_full())
+          if boundaries
+            .iter()
+            .any(|(boundary, downstream_idx)| boundary.is_full() && streams[*downstream_idx].state().is_terminal())
           {
             return Err(StreamError::WouldBlock);
           }

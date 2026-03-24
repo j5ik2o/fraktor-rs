@@ -8,6 +8,16 @@ use crate::core::{
   graph::island_boundary::{BoundaryState, IslandBoundary, IslandBoundaryShared},
 };
 
+impl IslandBoundary {
+  fn len(&self) -> usize {
+    self.buffer.len()
+  }
+
+  fn is_empty(&self) -> bool {
+    self.buffer.is_empty()
+  }
+}
+
 impl IslandBoundaryShared {
   pub(crate) fn state(&self) -> BoundaryState {
     self.inner.lock().state().clone()
@@ -271,7 +281,7 @@ fn shared_boundary_is_clone() {
 
   // Then: both references point to the same boundary (push on one, pull on other)
   let v: Box<dyn core::any::Any + Send + 'static> = Box::new(99_u32);
-  shared.try_push(v).expect("push");
+  shared.try_push_with_state(v).expect("push");
   let (pulled, state) = shared2.try_pull_with_state();
   let value = *pulled.expect("pull").downcast::<u32>().expect("downcast");
   assert_eq!(value, 99_u32);

@@ -99,6 +99,9 @@ where
     self.ensure_started();
     self.context.mark_output_closed();
     self.logic.on_stop(&mut self.context);
+    if let Some(err) = self.context.take_failure() {
+      return Err(err);
+    }
     Ok(DownstreamCancelAction::Propagate)
   }
 

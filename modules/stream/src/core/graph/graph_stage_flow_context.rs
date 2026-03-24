@@ -54,8 +54,10 @@ where
   }
 
   /// Takes the stored failure, if any, leaving `None`.
-  pub(crate) const fn take_failure(&mut self) -> Option<StreamError> {
-    self.failed.take()
+  pub(crate) fn take_failure(&mut self) -> Option<StreamError> {
+    let failed = self.failed.clone();
+    self.failed = None;
+    failed
   }
 
   /// Marks the input port as closed.

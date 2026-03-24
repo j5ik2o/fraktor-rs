@@ -15,7 +15,7 @@ fn pull_returns_element_from_boundary() {
   // Given: a boundary with one element
   let boundary = IslandBoundaryShared::new(16);
   let v: DynValue = Box::new(42_u32);
-  boundary.try_push(v).expect("push");
+  boundary.try_push_with_state(v).expect("push");
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: pulling
@@ -49,7 +49,7 @@ fn pull_delivers_elements_in_fifo_order() {
   let boundary = IslandBoundaryShared::new(16);
   for i in 0_u32..5 {
     let v: DynValue = Box::new(i);
-    boundary.try_push(v).expect("push");
+    boundary.try_push_with_state(v).expect("push");
   }
   let mut logic = BoundarySourceLogic::new(boundary);
 
@@ -82,7 +82,7 @@ fn pull_drains_remaining_elements_before_completion() {
   // Given: a boundary with one element, then completed
   let boundary = IslandBoundaryShared::new(16);
   let v: DynValue = Box::new(10_u32);
-  boundary.try_push(v).expect("push");
+  boundary.try_push_with_state(v).expect("push");
   boundary.complete();
   let mut logic = BoundarySourceLogic::new(boundary);
 
@@ -119,7 +119,7 @@ fn pull_drains_elements_before_error() {
   // Given: a boundary with one element, then failed
   let boundary = IslandBoundaryShared::new(16);
   let v: DynValue = Box::new(7_u32);
-  boundary.try_push(v).expect("push");
+  boundary.try_push_with_state(v).expect("push");
   boundary.fail(StreamError::Failed);
   let mut logic = BoundarySourceLogic::new(boundary);
 
@@ -148,7 +148,7 @@ fn interleaved_push_and_pull_via_shared_boundary() {
 
   // Push from the "sink side"
   let v: DynValue = Box::new(1_u32);
-  boundary.try_push(v).expect("push");
+  boundary.try_push_with_state(v).expect("push");
 
   // Pull from the "source side"
   let result = logic.pull().expect("pull");
@@ -158,8 +158,8 @@ fn interleaved_push_and_pull_via_shared_boundary() {
   // Push two more, then complete
   let v1: DynValue = Box::new(2_u32);
   let v2: DynValue = Box::new(3_u32);
-  boundary.try_push(v1).expect("push");
-  boundary.try_push(v2).expect("push");
+  boundary.try_push_with_state(v1).expect("push");
+  boundary.try_push_with_state(v2).expect("push");
   boundary.complete();
 
   // Pull both

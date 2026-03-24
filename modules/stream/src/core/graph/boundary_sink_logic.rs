@@ -4,7 +4,9 @@
 //! into a shared `IslandBoundaryShared`. When the boundary buffer is full,
 //! the element is held as pending and retried on subsequent ticks.
 
-use super::island_boundary::IslandBoundaryShared;
+use fraktor_utils_rs::core::sync::ArcShared;
+
+use super::island_boundary::{BoundaryState, IslandBoundaryShared};
 use crate::core::{DemandTracker, DynValue, SinkDecision, SinkLogic, StreamError};
 
 #[cfg(test)]
@@ -13,7 +15,7 @@ mod tests;
 /// Deferred terminal signal recorded while a pending element is waiting to be flushed.
 enum PendingTerminal {
   Complete,
-  Failed(StreamError),
+  Failed(ArcShared<StreamError>),
 }
 
 /// Sink stage logic that pushes elements into an inter-island boundary buffer.
@@ -44,15 +46,17 @@ impl SinkLogic for BoundarySinkLogic {
     if self.pending.is_some() {
       return Err(StreamError::WouldBlock);
     }
-    match self.boundary.try_push(input) {
+    match self.boundary.try_push_with_state(input) {
       | Ok(()) => {
         demand.request(1)?;
         Ok(SinkDecision::Continue)
       },
-      | Err(rejected) => {
+      | Err((rejected, BoundaryState::Open)) => {
         self.pending = Some(rejected);
         Ok(SinkDecision::Continue)
       },
+      | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+      | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
     }
   }
 
@@ -70,7 +74,7 @@ impl SinkLogic for BoundarySinkLogic {
   fn on_error(&mut self, error: StreamError) {
     if self.pending.is_some() {
       // pending 要素がまだ flush されていないため、終端を遅延させる。
-      self.pending_terminal = Some(PendingTerminal::Failed(error));
+      self.pending_terminal = Some(PendingTerminal::Failed(ArcShared::new(error)));
     } else {
       self.boundary.fail(error);
     }
@@ -83,29 +87,35 @@ impl SinkLogic for BoundarySinkLogic {
     match self.pending_terminal.take() {
       | Some(PendingTerminal::Complete) => match self.boundary.try_push_then_complete(value) {
         | Ok(()) => Ok(true),
-        | Err(rejected) => {
+        | Err((rejected, BoundaryState::Open)) => {
           self.pending = Some(rejected);
           self.pending_terminal = Some(PendingTerminal::Complete);
           Ok(false)
         },
+        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
       },
-      | Some(PendingTerminal::Failed(error)) => match self.boundary.try_push_then_fail(value, error.clone()) {
+      | Some(PendingTerminal::Failed(error)) => match self.boundary.try_push_then_fail(value, (*error).clone()) {
         | Ok(()) => Ok(true),
-        | Err(rejected) => {
+        | Err((rejected, BoundaryState::Open)) => {
           self.pending = Some(rejected);
-          self.pending_terminal = Some(PendingTerminal::Failed(error));
+          self.pending_terminal = Some(PendingTerminal::Failed(error.clone()));
           Ok(false)
         },
+        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Failed(boundary_error))) => Err(boundary_error),
       },
-      | None => match self.boundary.try_push(value) {
+      | None => match self.boundary.try_push_with_state(value) {
         | Ok(()) => {
           demand.request(1)?;
           Ok(true)
         },
-        | Err(rejected) => {
+        | Err((rejected, BoundaryState::Open)) => {
           self.pending = Some(rejected);
           Ok(false)
         },
+        | Err((_rejected, BoundaryState::Completed)) => Err(StreamError::StreamDetached),
+        | Err((_rejected, BoundaryState::Failed(error))) => Err(error),
       },
     }
   }

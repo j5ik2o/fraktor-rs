@@ -48,20 +48,6 @@ impl IslandBoundary {
     Self { buffer: VecDeque::with_capacity(capacity), capacity, state: BoundaryState::Open }
   }
 
-  /// Returns the number of buffered elements.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn len(&self) -> usize {
-    self.buffer.len()
-  }
-
-  /// Returns `true` if no elements are buffered.
-  #[must_use]
-  #[allow(dead_code)]
-  pub(crate) fn is_empty(&self) -> bool {
-    self.buffer.is_empty()
-  }
-
   /// Returns `true` if the buffer reached its configured capacity.
   #[must_use]
   pub(crate) fn is_full(&self) -> bool {
@@ -142,8 +128,13 @@ impl IslandBoundaryShared {
     self.inner.lock().is_full()
   }
 
-  pub(crate) fn try_push(&self, value: DynValue) -> Result<(), DynValue> {
-    self.inner.lock().try_push(value)
+  pub(crate) fn try_push_with_state(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {
+    let mut guard = self.inner.lock();
+    let state = guard.state().clone();
+    match guard.try_push(value) {
+      | Ok(()) => Ok(()),
+      | Err(rejected) => Err((rejected, state)),
+    }
   }
 
   #[must_use]
@@ -162,16 +153,28 @@ impl IslandBoundaryShared {
     self.inner.lock().fail(error);
   }
 
-  pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), DynValue> {
+  pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {
     let mut guard = self.inner.lock();
-    guard.try_push(value)?;
+    let state = guard.state().clone();
+    match guard.try_push(value) {
+      | Ok(()) => {},
+      | Err(rejected) => return Err((rejected, state)),
+    }
     guard.complete();
     Ok(())
   }
 
-  pub(crate) fn try_push_then_fail(&self, value: DynValue, error: StreamError) -> Result<(), DynValue> {
+  pub(crate) fn try_push_then_fail(
+    &self,
+    value: DynValue,
+    error: StreamError,
+  ) -> Result<(), (DynValue, BoundaryState)> {
     let mut guard = self.inner.lock();
-    guard.try_push(value)?;
+    let state = guard.state().clone();
+    match guard.try_push(value) {
+      | Ok(()) => {},
+      | Err(rejected) => return Err((rejected, state)),
+    }
     guard.fail(error);
     Ok(())
   }

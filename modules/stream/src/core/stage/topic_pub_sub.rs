@@ -60,11 +60,10 @@ where
       let Some(mut state) = guard.take() else {
         return;
       };
-      #[allow(clippy::expect_used)]
-      state
-        .topic_actor
-        .tell(Topic::unsubscribe(state.bridge_ref.clone()))
-        .expect("TopicPubSub: topic からの unsubscribe に失敗");
+      // topic actor が既に停止している場合、unsubscribe は失敗するが整合性は壊れない。
+      if let Err(_error) = state.topic_actor.tell(Topic::unsubscribe(state.bridge_ref.clone())) {
+        // stream 終了後の best-effort cleanup
+      }
       // bridge がすでに終了している場合、追加 stop は不要。
       if let Err(_error) = state.bridge_child.stop() {
         // stream 終了後の best-effort cleanup であり、bridge が既に止まっていても整合性は壊れない。
