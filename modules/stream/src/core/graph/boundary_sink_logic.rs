@@ -32,11 +32,18 @@ impl BoundarySinkLogic {
 }
 
 impl SinkLogic for BoundarySinkLogic {
+  fn can_accept_input(&self) -> bool {
+    self.pending.is_none()
+  }
+
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
+    if self.pending.is_some() {
+      return Err(StreamError::WouldBlock);
+    }
     match self.boundary.try_push(input) {
       | Ok(()) => {
         demand.request(1)?;

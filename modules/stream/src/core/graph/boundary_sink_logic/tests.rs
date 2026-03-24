@@ -85,6 +85,48 @@ fn on_push_to_full_boundary_stores_pending() {
   // Then: sink continues (element is held internally as pending)
   assert_eq!(decision, SinkDecision::Continue);
   assert!(logic.has_pending_work());
+  assert!(!logic.can_accept_input());
+}
+
+#[test]
+fn can_accept_input_returns_false_while_pending_element_exists() {
+  let boundary = IslandBoundaryShared::new(1);
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push(v).expect("fill");
+  let mut logic = BoundarySinkLogic::new(boundary);
+  let mut demand = DemandTracker::new();
+  logic.on_start(&mut demand).expect("on_start");
+
+  let pending_value: DynValue = Box::new(99_u32);
+  logic.on_push(pending_value, &mut demand).expect("on_push");
+
+  assert!(!logic.can_accept_input());
+}
+
+#[test]
+fn on_push_while_pending_returns_would_block_without_overwriting_existing_pending() {
+  let boundary = IslandBoundaryShared::new(1);
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push(v).expect("fill");
+  let mut logic = BoundarySinkLogic::new(boundary.clone());
+  let mut demand = DemandTracker::new();
+  logic.on_start(&mut demand).expect("on_start");
+
+  let first_pending: DynValue = Box::new(99_u32);
+  logic.on_push(first_pending, &mut demand).expect("first on_push");
+
+  let second_input: DynValue = Box::new(123_u32);
+  let result = logic.on_push(second_input, &mut demand);
+  assert_eq!(result, Err(StreamError::WouldBlock));
+
+  let _ = boundary.try_pull_with_state();
+  let progressed = logic.on_tick(&mut demand).expect("on_tick");
+  assert!(progressed);
+
+  let (pulled, _state) = boundary.try_pull_with_state();
+  let pulled = pulled.expect("pull");
+  let value = *pulled.downcast::<u32>().expect("downcast");
+  assert_eq!(value, 99_u32);
 }
 
 #[test]
