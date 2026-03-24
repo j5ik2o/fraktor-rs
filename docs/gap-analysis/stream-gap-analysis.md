@@ -123,16 +123,16 @@
 - `group_by`, `split_when`, `split_after`, `merge_substreams`, `merge_substreams_with_parallelism`, `concat_substreams`
 - `via`, `via_mat`, `to`, `to_mat`, `pre_materialize`, `materialize_into_source`
 
-### SubFlow API ✅ 実装済み 3/5 (60%)
+### SubFlow API ✅ 実装済み 5/5 (100%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `SubFlow.to` | `scaladsl/SubFlow.scala` | 未対応 | core | easy | SubFlow に直接 Sink を接続するメソッドがない |
-| GroupBySubFlow のオペレーター拡充 | `scaladsl/SubFlow.scala` (FlowOps 継承) | 部分実装 | core | medium | `FlowGroupBySubFlow`/`SourceGroupBySubFlow` は `merge_substreams` のみ。parallelism 制御・変換オペレーターなし |
+| `SubFlow.to` | `scaladsl/SubFlow.scala` | 実装済み | core | easy | 全4種（`FlowSubFlow`, `SourceSubFlow`, `FlowGroupBySubFlow`, `SourceGroupBySubFlow`）で `to` メソッド実装済み |
+| GroupBySubFlow のオペレーター拡充 | `scaladsl/SubFlow.scala` (FlowOps 継承) | 実装済み | core | medium | `merge_substreams`, `merge_substreams_with_parallelism`(スタブ), `concat_substreams`(スタブ), `to`, `map`, `filter` を実装 |
 
 実装済み:
-- `FlowSubFlow` / `SourceSubFlow`: `merge_substreams`, `merge_substreams_with_parallelism`, `concat_substreams`, `map`, `filter`, `drop`, `take`, `drop_while`, `take_while`
-- `FlowGroupBySubFlow` / `SourceGroupBySubFlow`: `merge_substreams`
+- `FlowSubFlow` / `SourceSubFlow`: `merge_substreams`, `merge_substreams_with_parallelism`, `concat_substreams`, `map`, `filter`, `drop`, `take`, `drop_while`, `take_while`, `to`
+- `FlowGroupBySubFlow` / `SourceGroupBySubFlow`: `merge_substreams`, `merge_substreams_with_parallelism`(スタブ), `concat_substreams`(スタブ), `to`, `map`, `filter`
 
 ### マテリアライゼーション / ライフサイクル ✅ 実装済み 10/14 (71%)
 

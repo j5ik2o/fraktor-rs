@@ -460,6 +460,9 @@ fn verify_restart_supervision_surface() {
   let _ = Source::single(1_u32).to(sink);
 }
 
+// NOTE: async_boundary() は非同期バッファリングステージを生成するため、
+// 要件 7.1-7.4 の動作検証には r#async() では代替できない。
+// deprecated API の後方互換性テストとして allow を付与（PR #1319 で承認済み）。
 #[allow(deprecated)]
 fn verify_async_boundary_surface() {
   let source_values = Source::single(1_u32).async_boundary().collect_values().expect("source async values");

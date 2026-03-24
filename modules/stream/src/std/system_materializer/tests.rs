@@ -160,20 +160,20 @@ fn system_materializer_should_provide_working_materializer() {
 
 #[test]
 fn system_materializer_should_provide_mutable_materializer() {
-  // Given: a SystemMaterializer registered with an ActorSystem
-  // NOTE: Since Extension is behind ArcShared, mutable access to the inner
-  // SystemMaterializer requires either:
-  // (a) a SharedAccess pattern (with_write), or
-  // (b) obtaining the single ArcShared and using try_unwrap / get_mut.
-  // This test verifies that the materializer_mut() method exists and is sound
-  // when exclusive access is available.
+  // 準備: create_extension で SystemMaterializer を直接生成する。
+  // NOTE: Extension は ArcShared の背後にあるため、内部の
+  // SystemMaterializer への可変アクセスには以下のいずれかが必要:
+  // (a) SharedAccess パターン (with_write)、または
+  // (b) 単一の ArcShared を取得して try_unwrap / get_mut を使用。
+  // このテストは materializer_mut() メソッドの存在と、
+  // 排他アクセス時の安全性を検証する。
   let system = build_system();
   let id = SystemMaterializerId;
   let mut ext = id.create_extension(&system);
 
-  // When: obtaining a mutable reference to the materializer
+  // 実行: materializer への可変参照を取得
   let _materializer_mut = ext.materializer_mut();
 
-  // Then: mutable access should be possible when ownership is exclusive
+  // 検証: 排他所有時に可変アクセスが可能であること
   system.terminate().expect("terminate");
 }

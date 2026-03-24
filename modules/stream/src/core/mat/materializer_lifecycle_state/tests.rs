@@ -33,13 +33,13 @@ fn same_variants_are_equal() {
 
 #[test]
 fn clone_produces_equal_value() {
-  // Given: a lifecycle state
+  // 準備: ライフサイクル状態
   let original = MaterializerLifecycleState::Running;
 
-  // When: cloned
-  let cloned = original;
+  // 実行: clone を呼び出す
+  let cloned = original.clone();
 
-  // Then: the clone equals the original (Copy)
+  // 検証: clone は元の値と等しい
   assert_eq!(original, cloned);
 }
 
