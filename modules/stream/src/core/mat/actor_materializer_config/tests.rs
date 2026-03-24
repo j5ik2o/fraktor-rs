@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use crate::core::{
   SubscriptionTimeoutMode, SubscriptionTimeoutSettings, SupervisionStrategy,
-  mat::{ActorMaterializerConfig, StreamBufferConfig},
+  mat::ActorMaterializerConfig,
 };
 
 // --- default values ---

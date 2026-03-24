@@ -79,27 +79,6 @@ impl GraphStageLogic<u32, u32, StreamNotUsed> for FailOnZeroLogic {
 }
 
 // ---------------------------------------------------------------------------
-// Test helper: a stage that calls complete() on specific input
-// ---------------------------------------------------------------------------
-
-struct CompleteOnNinetyNineLogic;
-
-impl GraphStageLogic<u32, u32, StreamNotUsed> for CompleteOnNinetyNineLogic {
-  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
-    let value = ctx.grab();
-    if value == 99 {
-      ctx.complete();
-    } else {
-      ctx.push(value);
-    }
-  }
-
-  fn materialized(&mut self) -> StreamNotUsed {
-    StreamNotUsed::new()
-  }
-}
-
-// ---------------------------------------------------------------------------
 // apply() tests
 // ---------------------------------------------------------------------------
 

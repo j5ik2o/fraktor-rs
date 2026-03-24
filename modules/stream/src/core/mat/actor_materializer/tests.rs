@@ -211,7 +211,7 @@ fn snapshot_reflects_running_state_after_start() {
 fn snapshot_total_materialized_increments_on_successful_materialize() {
   // Given: a running materializer
   let system = build_system();
-  let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
+  let _controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
   let mut materializer =
     ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("start");

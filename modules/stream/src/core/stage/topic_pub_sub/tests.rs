@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   system::{ActorSystem, ActorSystemConfig},
-  typed::{Behaviors, Topic, TopicCommand, TypedActorSystem, TypedProps, actor::TypedActorRef},
+  typed::{Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -72,7 +72,7 @@ fn topic_pub_sub_source_should_receive_published_messages() {
   let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
-  let materialized = graph.run(&mut materializer).expect("run");
+  let _materialized = graph.run(&mut materializer).expect("run");
 
   // When: publishing messages to the topic
   topic.tell(Topic::publish(1_u32)).expect("publish 1");
@@ -202,7 +202,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   let graph = Source::from_array([10_u32, 20_u32, 30_u32]).to_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
-  let materialized = graph.run(&mut materializer).expect("run");
+  let _materialized = graph.run(&mut materializer).expect("run");
 
   // Then: the subscriber should receive all published messages
   for _ in 0..30 {
@@ -272,12 +272,11 @@ fn topic_pub_sub_source_and_sink_should_form_a_pub_sub_pipeline() {
   // Given: a topic actor with both a PubSub source and sink
   let system = build_system();
   let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
-  let mut topic = spawn_topic::<u32>(&system, "test-pipeline");
+  let topic = spawn_topic::<u32>(&system, "test-pipeline");
 
   // Set up PubSub source (subscriber)
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
 
-  let collected = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");

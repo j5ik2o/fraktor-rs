@@ -253,17 +253,17 @@ fn actor_sink_actor_ref_with_backpressure_should_resume_after_delayed_ack() {
 
 // --- actor_ref_with_backpressure_no_ack tests ---
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum NoAckMessage {
-  Element(u32),
-  Complete,
-  Failure,
-}
-
 // TODO: ActorSink::actor_ref_with_backpressure_no_ack が未実装のため一時的にゲート
 #[cfg(any())]
 mod pending_no_ack_api {
   use super::*;
+
+  #[derive(Debug, Clone, PartialEq, Eq)]
+  enum NoAckMessage {
+    Element(u32),
+    Complete,
+    Failure,
+  }
 
   #[test]
   fn actor_sink_no_ack_should_complete_stream() {

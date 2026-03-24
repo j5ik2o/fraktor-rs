@@ -62,7 +62,7 @@ fn debug_format_contains_variant_name() {
 
 #[test]
 fn equal_variants_produce_equal_hashes() {
-  use core::hash::{Hash, Hasher};
+  use core::hash::Hash;
 
   // Given: two instances of the same variant
   let a = MaterializerLifecycleState::Stopped;
