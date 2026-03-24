@@ -1,8 +1,8 @@
 use core::any::TypeId;
 
 use crate::core::{
-  Attributes, DemandTracker, DynValue, MatCombine, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
-  SourceLogic, StageDefinition, StreamError,
+  AsyncBoundaryAttr, Attributes, DemandTracker, DispatcherAttribute, DynValue, MatCombine, SinkDecision,
+  SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamError,
   graph::StreamGraph,
   shape::{Inlet, Outlet, PortId},
   stage::{Source, StageKind},
@@ -93,6 +93,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
   };
   let source2 = SourceDefinition {
     kind:        StageKind::SourceSingle,
@@ -102,6 +103,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
   };
   let sink1 = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -111,6 +113,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
+    attributes:  Attributes::new(),
   };
   let sink2 = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -120,6 +123,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
+    attributes:  Attributes::new(),
   };
 
   let mut graph = StreamGraph::new();
@@ -141,4 +145,207 @@ fn graph_tracks_attributes() {
   graph.add_attributes(Attributes::named("extra"));
 
   assert_eq!(graph.attribute_names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
+}
+
+// --- B-1: Per-node attribute infrastructure ---
+
+#[test]
+fn mark_last_node_async_sets_async_boundary_on_last_node() {
+  // Given: a graph with a source node
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(IgnoreSinkLogic),
+    attributes:  Attributes::new(),
+  };
+
+  let mut graph = StreamGraph::new();
+  graph.push_stage(StageDefinition::Source(source));
+  graph.push_stage(StageDefinition::Sink(sink));
+
+  // When: marking the last node as async
+  graph.mark_last_node_async();
+
+  // Then: connect and build plan; the sink stage (last node) should have async attribute
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  let plan = graph.into_plan().expect("into_plan");
+  let last_stage_attrs = plan.stages[1].attributes();
+  assert!(last_stage_attrs.is_async());
+  assert!(last_stage_attrs.get::<AsyncBoundaryAttr>().is_some());
+}
+
+#[test]
+fn mark_last_node_async_is_noop_on_empty_graph() {
+  // Given: an empty graph
+  let mut graph = StreamGraph::new();
+
+  // When: marking (no nodes exist)
+  graph.mark_last_node_async();
+
+  // Then: no panic; graph remains valid (though empty)
+  assert!(graph.into_plan().is_err()); // empty graph → error is expected
+}
+
+#[test]
+fn mark_last_node_dispatcher_sets_both_async_and_dispatcher() {
+  // Given: a source → sink graph
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(IgnoreSinkLogic),
+    attributes:  Attributes::new(),
+  };
+
+  let mut graph = StreamGraph::new();
+  graph.push_stage(StageDefinition::Source(source));
+  graph.push_stage(StageDefinition::Sink(sink));
+
+  // When: marking last node with dispatcher
+  graph.mark_last_node_dispatcher("my-dispatcher");
+
+  // Then: the sink stage has both AsyncBoundaryAttr and DispatcherAttribute
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  let plan = graph.into_plan().expect("into_plan");
+  let attrs = plan.stages[1].attributes();
+  assert!(attrs.is_async());
+  assert!(attrs.get::<DispatcherAttribute>().is_some());
+  assert_eq!(attrs.get::<DispatcherAttribute>().unwrap().name(), "my-dispatcher");
+}
+
+#[test]
+fn into_plan_transfers_node_attributes_to_stage_definitions() {
+  // Given: a source → sink graph where the source has async boundary
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let sink_inlet: Inlet<u32> = Inlet::new();
+
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
+  };
+  let sink = SinkDefinition {
+    kind:        StageKind::SinkIgnore,
+    inlet:       sink_inlet.id(),
+    input_type:  TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(IgnoreSinkLogic),
+    attributes:  Attributes::new(),
+  };
+
+  let mut graph = StreamGraph::new();
+  graph.push_stage(StageDefinition::Source(source));
+
+  // When: marking the source node (first and currently last) as async before adding sink
+  graph.mark_last_node_async();
+
+  graph.push_stage(StageDefinition::Sink(sink));
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the source stage has async attribute, sink does not
+  assert!(plan.stages[0].attributes().is_async());
+  assert!(!plan.stages[1].attributes().is_async());
+}
+
+#[test]
+fn node_attributes_survive_graph_append() {
+  // Given: source.async() → map, then append a sink to make a complete pipeline
+  let (mut combined_graph, _) = Source::single(1_u32).r#async().map(|x: u32| x + 1).into_parts();
+  let (sink_graph, _) = crate::core::stage::Sink::<u32, _>::ignore().into_parts();
+  combined_graph.append(sink_graph);
+
+  // When: converting to plan
+  let plan = combined_graph.into_plan().expect("into_plan");
+
+  // Then: the source stage (index 0) retains its async attribute
+  assert!(plan.stages[0].attributes().is_async());
+
+  // The map flow stage should NOT have async boundary
+  assert!(!plan.stages[1].attributes().is_async());
+}
+
+#[test]
+fn stage_definition_attributes_returns_empty_by_default() {
+  // Given: a stage definition with no attributes set
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
+  };
+  let stage = StageDefinition::Source(source);
+
+  // Then: attributes are empty
+  assert!(stage.attributes().is_empty());
+  assert!(!stage.attributes().is_async());
+}
+
+#[test]
+fn stage_definition_with_attributes_sets_attributes() {
+  // Given: a stage definition with no attributes
+  let source_outlet: Outlet<u32> = Outlet::new();
+  let source = SourceDefinition {
+    kind:        StageKind::SourceSingle,
+    outlet:      source_outlet.id(),
+    output_type: TypeId::of::<u32>(),
+    mat_combine: MatCombine::KeepRight,
+    supervision: crate::core::SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(EmptySourceLogic),
+    attributes:  Attributes::new(),
+  };
+  let stage = StageDefinition::Source(source);
+
+  // When: setting async boundary attributes
+  let stage = stage.with_attributes(Attributes::async_boundary());
+
+  // Then: attributes contain async boundary
+  assert!(stage.attributes().is_async());
+  assert!(stage.attributes().get::<AsyncBoundaryAttr>().is_some());
 }

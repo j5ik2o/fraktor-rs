@@ -102,4 +102,19 @@ where
     let (graph, _ignored) = self.top.via(flow).via(self.bottom).into_parts();
     Flow::from_graph(graph, self.mat)
   }
+
+  /// Joins this bidirectional flow with the provided flow, combining materialized values.
+  #[must_use]
+  pub fn join_mat<Mat2, MatC, Combine>(
+    self,
+    flow: Flow<OutTop, InBottom, Mat2>,
+    combine: Combine,
+  ) -> Flow<InTop, OutBottom, MatC>
+  where
+    Combine: FnOnce(Mat, Mat2) -> MatC, {
+    let (flow_graph, mat2) = flow.into_parts();
+    let flow_no_mat = Flow::from_graph(flow_graph, super::StreamNotUsed::new());
+    let (graph, _) = self.top.via(flow_no_mat).via(self.bottom).into_parts();
+    Flow::from_graph(graph, combine(self.mat, mat2))
+  }
 }

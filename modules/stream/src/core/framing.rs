@@ -2,8 +2,8 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::TypeId;
 
 use super::{
-  DynValue, FlowDefinition, FlowLogic, MatCombine, StageDefinition, StreamError, StreamNotUsed, SupervisionStrategy,
-  downcast_value,
+  Attributes, DynValue, FlowDefinition, FlowLogic, MatCombine, StageDefinition, StreamError, StreamNotUsed,
+  SupervisionStrategy, downcast_value,
   graph::StreamGraph,
   shape::{Inlet, Outlet},
   stage::{BidiFlow, StageKind, flow::Flow},
@@ -243,6 +243,7 @@ fn delimiter_framing_definition(delimiter: Vec<u8>, max_frame_length: usize, all
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -265,6 +266,7 @@ fn simple_framing_encoder_definition(maximum_message_length: usize) -> FlowDefin
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(SimpleFramingEncoderLogic { maximum_message_length }),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -287,6 +289,7 @@ fn simple_framing_decoder_definition(maximum_message_length: usize) -> FlowDefin
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(SimpleFramingDecoderLogic { maximum_message_length, buffer: Vec::new() }),
+    attributes:  Attributes::new(),
   }
 }
 

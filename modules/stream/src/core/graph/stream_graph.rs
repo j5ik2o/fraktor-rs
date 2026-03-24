@@ -85,10 +85,10 @@ impl StreamGraph {
     }
   }
 
-  pub(in crate::core) fn set_source_restart(&mut self, restart: Option<RestartBackoff>) {
+  pub(in crate::core) fn set_source_restart(&mut self, restart: &Option<RestartBackoff>) {
     for node in &mut self.nodes {
       if let StageDefinition::Source(definition) = &mut node.stage {
-        definition.restart = restart;
+        definition.restart.clone_from(restart);
       }
     }
   }
@@ -104,13 +104,13 @@ impl StreamGraph {
     }
   }
 
-  pub(in crate::core) fn set_flow_restart(&mut self, restart: Option<RestartBackoff>) {
+  pub(in crate::core) fn set_flow_restart(&mut self, restart: &Option<RestartBackoff>) {
     for node in &mut self.nodes {
       if let StageDefinition::Flow(definition) = &mut node.stage {
         if definition.kind == StageKind::FlowKillSwitch {
           continue;
         }
-        definition.restart = restart;
+        definition.restart.clone_from(restart);
       }
     }
   }
@@ -123,10 +123,10 @@ impl StreamGraph {
     }
   }
 
-  pub(in crate::core) fn set_sink_restart(&mut self, restart: Option<RestartBackoff>) {
+  pub(in crate::core) fn set_sink_restart(&mut self, restart: &Option<RestartBackoff>) {
     for node in &mut self.nodes {
       if let StageDefinition::Sink(definition) = &mut node.stage {
-        definition.restart = restart;
+        definition.restart.clone_from(restart);
       }
     }
   }
@@ -138,8 +138,28 @@ impl StreamGraph {
     if let Some(outlet) = stage.outlet() {
       self.ports.push(outlet);
     }
-    self.nodes.push(GraphNode { id: self.next_node_id, stage });
+    self.nodes.push(GraphNode { id: self.next_node_id, stage, attributes: Attributes::new() });
     self.next_node_id = self.next_node_id.saturating_add(1);
+  }
+
+  /// Marks the last node in this graph with an async boundary attribute.
+  ///
+  /// This is a no-op if the graph is empty.
+  pub(in crate::core) fn mark_last_node_async(&mut self) {
+    if let Some(node) = self.nodes.last_mut() {
+      let old = core::mem::take(&mut node.attributes);
+      node.attributes = old.and(Attributes::async_boundary());
+    }
+  }
+
+  /// Marks the last node with both async boundary and dispatcher attributes.
+  ///
+  /// This is a no-op if the graph is empty.
+  pub(in crate::core) fn mark_last_node_dispatcher(&mut self, name: impl Into<alloc::string::String>) {
+    if let Some(node) = self.nodes.last_mut() {
+      let old = core::mem::take(&mut node.attributes);
+      node.attributes = old.and(Attributes::async_boundary().and(Attributes::dispatcher(name)));
+    }
   }
 
   pub(in crate::core) fn append(&mut self, other: StreamGraph) {
@@ -195,7 +215,11 @@ impl StreamGraph {
     let mut stages = Vec::with_capacity(self.nodes.len());
     for node in self.nodes {
       Self::ensure_stage_metadata(&node.stage)?;
-      stages.push(node.stage);
+      if node.attributes.is_empty() {
+        stages.push(node.stage);
+      } else {
+        stages.push(node.stage.with_attributes(node.attributes));
+      }
     }
     let edges = self.edges.into_iter().map(|edge| (edge.from, edge.to, edge.mat)).collect();
     let mut plan = StreamPlan::from_parts(stages, edges)?;
@@ -344,8 +368,9 @@ impl Default for StreamGraph {
 }
 
 struct GraphNode {
-  id:    usize,
-  stage: StageDefinition,
+  id:         usize,
+  stage:      StageDefinition,
+  attributes: Attributes,
 }
 
 #[derive(Clone, Copy)]

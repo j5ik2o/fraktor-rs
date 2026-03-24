@@ -432,7 +432,7 @@ fn verify_restart_supervision_surface() {
     .with_jitter_seed(31);
 
   let source_values = Source::single(1_u32)
-    .restart_source_with_settings(settings)
+    .restart_source_with_settings(settings.clone())
     .supervision_resume()
     .supervision_restart()
     .supervision_stop()
@@ -443,7 +443,7 @@ fn verify_restart_supervision_surface() {
   let flow_values = Source::single(1_u32)
     .via(
       Flow::<u32, u32, StreamNotUsed>::new()
-        .restart_flow_with_settings(settings)
+        .restart_flow_with_settings(settings.clone())
         .supervision_resume()
         .supervision_restart()
         .supervision_stop(),
@@ -460,6 +460,7 @@ fn verify_restart_supervision_surface() {
   let _ = Source::single(1_u32).to(sink);
 }
 
+#[allow(deprecated)]
 fn verify_async_boundary_surface() {
   let source_values = Source::single(1_u32).async_boundary().collect_values().expect("source async values");
   assert_eq!(source_values, vec![1_u32]);

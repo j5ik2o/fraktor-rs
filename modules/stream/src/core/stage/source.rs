@@ -104,6 +104,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
@@ -460,6 +461,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Ok(Source { graph, mat: queue, _pd: PhantomData })
@@ -504,6 +506,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Ok(Source { graph, mat: queue, _pd: PhantomData })
@@ -524,6 +527,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Source { graph, mat: queue, _pd: PhantomData }
@@ -636,6 +640,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(logic),
+      attributes: Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Self { graph, mat: StreamNotUsed::new(), _pd: PhantomData }
@@ -1304,13 +1309,40 @@ where
     Ok(Source { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Marks this source with an async boundary attribute.
+  ///
+  /// The materializer uses this attribute to split the graph into
+  /// independently executed islands.  Unlike the legacy
+  /// `async_boundary()` method, this does **not** insert a buffer
+  /// stage; the boundary is resolved at materialization time.
+  ///
+  /// Mirrors Pekko's `Graph.async`.
+  #[must_use]
+  pub fn r#async(mut self) -> Source<Out, Mat> {
+    self.graph.mark_last_node_async();
+    self
+  }
+
+  /// Marks this source with an async boundary attribute and a named dispatcher.
+  ///
+  /// The island created by the async boundary will use the specified
+  /// dispatcher for its execution context.
+  #[must_use]
+  pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Source<Out, Mat> {
+    self.graph.mark_last_node_dispatcher(dispatcher);
+    self
+  }
+
   /// Decouples upstream and downstream demand signaling via an async boundary.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn detach(self) -> Source<Out, Mat> {
+    #[allow(deprecated)]
     self.async_boundary()
   }
 
   /// Adds an explicit async boundary stage.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn async_boundary(mut self) -> Source<Out, Mat> {
     let definition = async_boundary_definition::<Out>();
@@ -1477,7 +1509,7 @@ where
   /// Enables restart semantics with backoff for this source.
   #[must_use]
   pub fn restart_source_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Source<Out, Mat> {
-    self.graph.set_source_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self.graph.set_source_restart(&Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
@@ -1507,7 +1539,7 @@ where
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_source_with_settings(mut self, settings: RestartSettings) -> Source<Out, Mat> {
-    self.graph.set_source_restart(Some(RestartBackoff::from_settings(settings)));
+    self.graph.set_source_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -2287,18 +2319,59 @@ where
     }
 
     let plan = graph.into_plan()?;
-    let mut stream = super::lifecycle::Stream::new(plan, super::StreamBufferConfig::default());
-    stream.start()?;
-    let mut idle_budget = 1024_usize;
-    while !stream.state().is_terminal() {
-      match stream.drive() {
-        | super::DriveOutcome::Progressed => idle_budget = 1024,
-        | super::DriveOutcome::Idle => {
+    let island_plan = super::graph::IslandSplitter::split(plan);
+
+    if island_plan.islands().len() <= 1 {
+      // Single island: existing path
+      let single_plan = island_plan.into_single_plan();
+      let mut stream = super::lifecycle::Stream::new(single_plan, super::StreamBufferConfig::default());
+      stream.start()?;
+      let mut idle_budget = 1024_usize;
+      while !stream.state().is_terminal() {
+        match stream.drive() {
+          | super::DriveOutcome::Progressed => idle_budget = 1024,
+          | super::DriveOutcome::Idle => {
+            if idle_budget == 0 {
+              return Err(StreamError::WouldBlock);
+            }
+            idle_budget = idle_budget.saturating_sub(1);
+          },
+        }
+      }
+    } else {
+      // Multi-island: create boundary buffers and drive all streams
+      let (mut islands, crossings) = island_plan.into_parts();
+      for crossing in crossings {
+        let boundary = super::graph::IslandBoundaryShared::new(super::graph::DEFAULT_BOUNDARY_CAPACITY);
+        let upstream_idx = crossing.from_island().as_usize();
+        let downstream_idx = crossing.to_island().as_usize();
+        let element_type = crossing.element_type();
+        islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
+        islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
+      }
+      let mut streams: Vec<super::lifecycle::Stream> = Vec::with_capacity(islands.len());
+      for island in islands {
+        let stream_plan = island.into_stream_plan();
+        let mut stream = super::lifecycle::Stream::new(stream_plan, super::StreamBufferConfig::default());
+        stream.start()?;
+        streams.push(stream);
+      }
+      let mut idle_budget = 4096_usize;
+      while streams.iter().any(|s| !s.state().is_terminal()) {
+        let mut any_progress = false;
+        for stream in &mut streams {
+          if !stream.state().is_terminal() && matches!(stream.drive(), super::DriveOutcome::Progressed) {
+            any_progress = true;
+          }
+        }
+        if any_progress {
+          idle_budget = 4096;
+        } else {
           if idle_budget == 0 {
             return Err(StreamError::WouldBlock);
           }
           idle_budget = idle_budget.saturating_sub(1);
-        },
+        }
       }
     }
     match completion.try_take() {

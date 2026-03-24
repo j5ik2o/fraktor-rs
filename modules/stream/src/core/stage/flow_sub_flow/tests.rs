@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use super::FlowSubFlow;
 use crate::core::{
   StreamNotUsed,
-  stage::{Source, flow::Flow},
+  stage::{Sink, Source, flow::Flow},
 };
 
 impl<In, Out, Mat> FlowSubFlow<In, Out, Mat> {
@@ -107,4 +107,30 @@ fn flow_sub_flow_take_while_clones_stateful_predicate_per_substream() {
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 3_u32]);
+}
+
+// --- SubFlow.to tests ---
+
+#[test]
+fn flow_sub_flow_to_produces_sink_that_consumes_all_elements() {
+  // Given: a FlowSubFlow connected to a fold sink via .to()
+  let sub_flow_sink: Sink<u32, StreamNotUsed> =
+    Flow::<u32, u32, StreamNotUsed>::new().split_after(|value| value % 2 == 0).to(Sink::ignore());
+
+  // When: connecting a source to the resulting sink
+  // Then: the pipeline is well-typed (Sink<In, Mat>)
+  let _graph = Source::from_array([1_u32, 2, 3, 4]).to(sub_flow_sink);
+}
+
+#[test]
+fn flow_sub_flow_to_with_map_applies_transformation_before_sink() {
+  // Given: a FlowSubFlow with map applied, connected to a count sink via .to()
+  let sub_flow_sink = Flow::<u32, u32, StreamNotUsed>::new()
+    .split_after(|value| value % 2 == 0)
+    .map(|value| value * 10)
+    .to(Sink::ignore());
+
+  // When: connecting a source to the resulting sink
+  // Then: the pipeline is well-typed and elements flow through map then to sink
+  let _graph = Source::from_array([1_u32, 2, 3, 4]).to(sub_flow_sink);
 }

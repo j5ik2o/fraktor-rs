@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use super::{StreamDslError, flow::Flow};
+use super::{StreamDslError, flow::Flow, sink::Sink};
 
 #[cfg(test)]
 mod tests;
@@ -38,6 +38,12 @@ where
   #[must_use]
   pub fn concat_substreams(self) -> Flow<In, Out, Mat> {
     self.flow.concat_substreams()
+  }
+
+  /// Connects this sub-flow to a sink, merging substreams first.
+  #[must_use]
+  pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat> {
+    self.merge_substreams().to(sink)
   }
 
   /// Maps each element inside every substream.

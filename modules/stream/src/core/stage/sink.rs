@@ -447,6 +447,7 @@ where
         supervision: SupervisionStrategy::Stop,
         restart:     None,
         logic:       Box::new(logic),
+        attributes:  Attributes::new(),
       };
       graph.push_stage(StageDefinition::Sink(definition));
       return Self { graph, mat: Mat::default(), _pd: PhantomData };
@@ -526,14 +527,14 @@ where
   /// Enables restart semantics with backoff for this sink.
   #[must_use]
   pub fn restart_sink_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    self.graph.set_sink_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self.graph.set_sink_restart(&Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_sink_with_settings(mut self, settings: RestartSettings) -> Self {
-    self.graph.set_sink_restart(Some(RestartBackoff::from_settings(settings)));
+    self.graph.set_sink_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -590,6 +591,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(logic),
+      attributes: Attributes::new(),
     };
     let mut graph = StreamGraph::new();
     graph.push_stage(StageDefinition::Sink(definition));

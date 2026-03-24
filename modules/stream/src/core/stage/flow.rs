@@ -563,7 +563,32 @@ where
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
 
+  /// Marks this flow with an async boundary attribute.
+  ///
+  /// The materializer uses this attribute to split the graph into
+  /// independently executed islands.  Unlike the legacy
+  /// `async_boundary()` method, this does **not** insert a buffer
+  /// stage; the boundary is resolved at materialization time.
+  ///
+  /// Mirrors Pekko's `Graph.async`.
+  #[must_use]
+  pub fn r#async(mut self) -> Flow<In, Out, Mat> {
+    self.graph.mark_last_node_async();
+    self
+  }
+
+  /// Marks this flow with an async boundary attribute and a named dispatcher.
+  ///
+  /// The island created by the async boundary will use the specified
+  /// dispatcher for its execution context.
+  #[must_use]
+  pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Flow<In, Out, Mat> {
+    self.graph.mark_last_node_dispatcher(dispatcher);
+    self
+  }
+
   /// Adds an explicit async boundary stage.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn async_boundary(mut self) -> Flow<In, Out, Mat> {
     let definition = async_boundary_definition::<Out>();
@@ -730,7 +755,7 @@ where
   /// Enables restart semantics with backoff for this flow.
   #[must_use]
   pub fn restart_flow_with_backoff(mut self, min_backoff_ticks: u32, max_restarts: usize) -> Flow<In, Out, Mat> {
-    self.graph.set_flow_restart(Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
+    self.graph.set_flow_restart(&Some(RestartBackoff::new(min_backoff_ticks, max_restarts)));
     self
   }
 
@@ -760,7 +785,7 @@ where
   /// Enables restart semantics by explicit restart settings.
   #[must_use]
   pub fn restart_flow_with_settings(mut self, settings: RestartSettings) -> Flow<In, Out, Mat> {
-    self.graph.set_flow_restart(Some(RestartBackoff::from_settings(settings)));
+    self.graph.set_flow_restart(&Some(RestartBackoff::from_settings(settings)));
     self
   }
 
@@ -1492,8 +1517,10 @@ where
   }
 
   /// Decouples upstream and downstream demand signaling via an async boundary.
+  #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn detach(self) -> Flow<In, Out, Mat> {
+    #[allow(deprecated)]
     self.async_boundary()
   }
 
@@ -1539,6 +1566,25 @@ where
     Acc: Clone + Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
     self.scan(initial, func).drop(1)
+  }
+
+  /// Folds elements while a predicate holds, emitting the running accumulation.
+  ///
+  /// Once the predicate returns `false`, the accumulator stops updating and
+  /// subsequent elements are ignored (the current accumulator value is emitted
+  /// unchanged for each remaining element).
+  #[must_use]
+  pub fn fold_while<Acc, P, F>(self, initial: Acc, mut predicate: P, mut func: F) -> Flow<In, Acc, Mat>
+  where
+    Acc: Clone + Send + Sync + 'static,
+    P: FnMut(&Acc, &Out) -> bool + Send + Sync + 'static,
+    F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
+    self.fold(initial, move |acc, value| {
+      if predicate(&acc, &value) {
+        return func(acc, value);
+      }
+      acc
+    })
   }
 
   /// Reduces all elements using a binary function, emitting the running reduction.
@@ -1691,6 +1737,7 @@ where
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     let mut graph = StreamGraph::new();
     graph.push_stage(StageDefinition::Flow(definition));
@@ -3512,6 +3559,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3534,6 +3582,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3563,6 +3612,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3582,6 +3632,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3606,6 +3657,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3631,6 +3683,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3653,6 +3706,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3674,6 +3728,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3696,6 +3751,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3716,6 +3772,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3735,6 +3792,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3754,6 +3812,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3775,6 +3834,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3795,6 +3855,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3815,6 +3876,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3835,6 +3897,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3854,6 +3917,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3880,6 +3944,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3909,6 +3974,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3942,6 +4008,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -3970,6 +4037,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4000,6 +4068,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4019,6 +4088,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4047,6 +4117,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4075,6 +4146,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4097,6 +4169,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4125,6 +4198,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4155,6 +4229,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4174,6 +4249,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4193,6 +4269,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4212,6 +4289,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4232,6 +4310,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4255,6 +4334,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4275,6 +4355,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4298,6 +4379,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4323,6 +4405,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4342,6 +4425,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4361,6 +4445,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4386,6 +4471,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4405,6 +4491,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4424,6 +4511,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4444,6 +4532,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4463,6 +4552,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4496,6 +4586,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4516,6 +4607,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4537,6 +4629,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4557,6 +4650,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4577,6 +4671,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4599,6 +4694,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4635,6 +4731,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4671,6 +4768,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4696,6 +4794,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4721,6 +4820,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart: None,
     logic: Box::new(logic),
+    attributes: Attributes::new(),
   }
 }
 
@@ -4740,6 +4840,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4760,6 +4861,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4779,6 +4881,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4798,6 +4901,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4822,6 +4926,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4849,6 +4954,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4873,6 +4979,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4898,6 +5005,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4923,6 +5031,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4948,6 +5057,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4967,6 +5077,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -4992,6 +5103,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5016,6 +5128,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5035,6 +5148,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5058,6 +5172,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5081,6 +5196,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5100,6 +5216,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5121,6 +5238,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5140,6 +5258,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5165,6 +5284,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5190,6 +5310,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5216,6 +5337,7 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }
 
@@ -5375,5 +5497,6 @@ where
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
+    attributes:  Attributes::new(),
   }
 }

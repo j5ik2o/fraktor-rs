@@ -5,7 +5,7 @@ use super::{
   BoundedSourceQueue, DynValue, MatCombine, OverflowStrategy, SourceDefinition, SourceLogic, StageDefinition,
   StageKind, StreamError, SupervisionStrategy, graph::StreamGraph, shape::Outlet, source::Source,
 };
-use crate::core::ActorSourceRef;
+use crate::core::{ActorSourceRef, Attributes};
 
 #[cfg(test)]
 mod tests;
@@ -52,6 +52,7 @@ impl ActorSource {
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Source::from_graph(graph, source_ref)
@@ -94,6 +95,7 @@ impl ActorSource {
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
+      attributes:  Attributes::new(),
     };
     graph.push_stage(StageDefinition::Source(definition));
     Source::from_graph(graph, source_ref)

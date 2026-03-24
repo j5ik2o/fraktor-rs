@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, FailureAction, FlowDefinition, FlowLogic, KeepRight, MatCombine,
+  Attributes, Completion, DemandTracker, DynValue, FailureAction, FlowDefinition, FlowLogic, KeepRight, MatCombine,
   OverflowStrategy, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
   SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed,
   StreamPlan, SubstreamCancelStrategy, SupervisionStrategy,
@@ -60,6 +60,7 @@ fn source_sequence_u32(outlet: Outlet<u32>, end: u32) -> SourceDefinition {
     logic:       Box::new(SequenceSourceLogic { next: 1, end }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -72,6 +73,7 @@ fn source_single_u32(outlet: Outlet<u32>, value: u32) -> SourceDefinition {
     logic:       Box::new(SingleValueSourceLogic { value: Some(value) }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -84,6 +86,7 @@ fn source_single_pair_u32(outlet: Outlet<(u32, u32)>, value: (u32, u32)) -> Sour
     logic:       Box::new(SinglePairSourceLogic { value: Some(value) }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -96,6 +99,7 @@ fn sum_fold_u32_sink(inlet: Inlet<u32>, completion: StreamCompletion<u32>) -> Si
     logic:       Box::new(SumSinkLogic { completion, sum: 0 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -108,6 +112,7 @@ fn zip_sum_fold_u32_sink(inlet: &Inlet<Vec<u32>>, completion: StreamCompletion<u
     logic:       Box::new(ZipSumSinkLogic { completion, sum: 0 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -120,6 +125,7 @@ fn collect_u32_sequence_sink(inlet: Inlet<u32>, completion: StreamCompletion<Vec
     logic:       Box::new(CollectSequenceSinkLogic { completion, values: Vec::new() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -135,6 +141,7 @@ fn collect_u32_nested_sequence_sink(
     logic:       Box::new(CollectNestedSequenceSinkLogic { completion, values: Vec::new() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   }
 }
 
@@ -440,6 +447,7 @@ fn buffer_flow_fail_policy_fails_stream_on_overflow() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = stream_plan(
@@ -570,6 +578,7 @@ fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
     logic:       Box::new(AsyncTimerEmissionFlowLogic::new()),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -786,6 +795,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
     logic:       Box::new(AsyncTimerFailureFlowLogic::new(false)),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -820,6 +830,7 @@ fn flow_timer_outputs_survive_async_failure_with_complete() {
     logic:       Box::new(AsyncFailureStillRunsTimerFlowLogic::new(true)),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -854,6 +865,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
     logic:       Box::new(AsyncTimerFailureFlowLogic::new(true)),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -891,6 +903,7 @@ fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
     logic:       Box::new(TickFailureCompleteFlowLogic { failed_once: false }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let second_flow = FlowDefinition {
     kind:        StageKind::Custom,
@@ -902,6 +915,7 @@ fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
     logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -955,6 +969,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
     logic:       Box::new(AsyncAndTimerCompleteFlowLogic::new()),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let second_flow = FlowDefinition {
     kind:        StageKind::Custom,
@@ -966,6 +981,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
     logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -1259,6 +1275,7 @@ fn source_supervision_stop_fails_on_pull_error() {
     logic:       Box::new(FailThenEmitSourceLogic { value: 7, failed: false, emitted: false }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1288,6 +1305,7 @@ fn source_supervision_resume_skips_failed_pull_and_continues() {
     logic:       Box::new(FailThenEmitSourceLogic { value: 7, failed: false, emitted: false }),
     supervision: SupervisionStrategy::Resume,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1323,6 +1341,7 @@ fn source_supervision_restart_invokes_on_restart_and_continues() {
     }),
     supervision: SupervisionStrategy::Restart,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1358,6 +1377,7 @@ fn flow_supervision_stop_fails_on_apply_error() {
     logic:       Box::new(FailFirstThenIncrementFlowLogic { failed_once: false }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1388,6 +1408,7 @@ fn flow_supervision_resume_skips_failed_input_and_continues() {
     logic:       Box::new(FailFirstThenIncrementFlowLogic { failed_once: false }),
     supervision: SupervisionStrategy::Resume,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1418,6 +1439,7 @@ fn sink_supervision_stop_fails_on_push_error() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1451,6 +1473,7 @@ fn sink_supervision_resume_skips_failed_input_and_continues() {
     }),
     supervision: SupervisionStrategy::Resume,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1486,6 +1509,7 @@ fn sink_supervision_restart_invokes_on_restart_and_continues() {
     }),
     supervision: SupervisionStrategy::Restart,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1514,6 +1538,7 @@ fn restart_budget_exhaustion_completes_with_default_terminal_action() {
     logic:       Box::new(AlwaysFailSourceLogic),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -1523,6 +1548,7 @@ fn restart_budget_exhaustion_completes_with_default_terminal_action() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1548,6 +1574,7 @@ fn source_completion_triggers_restart_until_budget_is_exhausted() {
     logic:       Box::new(RestartableSingleSourceLogic { value: 9, emitted: false }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1581,6 +1608,7 @@ fn source_restart_with_backoff_recovers_after_failure_transition() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1620,6 +1648,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -1631,6 +1660,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
     logic:       Box::new(MapErrorPropagateFlowLogic { failure_calls: flow_failure_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1660,6 +1690,7 @@ fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     restart:     Some(RestartBackoff::from_settings(
       RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
     )),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1695,6 +1726,7 @@ fn flow_restart_with_backoff_recovers_after_failure_transition() {
     logic:       Box::new(RestartGateFlowLogic { restarted: false, restart_calls: restart_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1732,6 +1764,7 @@ fn flow_restart_is_not_bypassed_when_on_failure_propagates() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1766,6 +1799,7 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     restart:     Some(RestartBackoff::from_settings(
       RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
     )),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1798,6 +1832,7 @@ fn sink_restart_with_backoff_recovers_after_failure_transition() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1830,6 +1865,7 @@ fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     restart:     Some(RestartBackoff::from_settings(
       RestartSettings::new(0, 0, 1).with_complete_on_max_restarts(false),
     )),
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
     source_outlet.id(),
@@ -1864,6 +1900,7 @@ fn abort_while_restart_waiting_keeps_restart_callback_uninvoked() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(2, 3)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1907,6 +1944,7 @@ fn source_restart_backoff_waits_configured_ticks_before_on_restart() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(2, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = stream_plan(vec![StageDefinition::Source(source), StageDefinition::Sink(sink)], vec![(
@@ -1952,6 +1990,7 @@ fn flow_restart_backoff_waits_configured_ticks_before_on_restart() {
     logic:       Box::new(RestartGateFlowLogic { restarted: false, restart_calls: restart_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(2, 1)),
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
@@ -1993,6 +2032,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
     logic:       Box::new(RestartCounterFlowLogic { restart_calls: restart_calls.clone() }),
     supervision: SupervisionStrategy::Restart,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -2002,6 +2042,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -2031,6 +2072,7 @@ fn non_split_restart_supervision_calls_on_restart() {
     logic:       Box::new(RestartCounterFlowLogic { restart_calls: restart_calls.clone() }),
     supervision: SupervisionStrategy::Restart,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -2040,6 +2082,7 @@ fn non_split_restart_supervision_calls_on_restart() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -2064,6 +2107,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
     logic:       Box::new(CountingSourceLogic { remaining: 8, pulls: pulls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let async_boundary = async_boundary_definition::<u32>();
   let async_boundary_inlet = async_boundary.inlet;
@@ -2076,6 +2120,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
     logic:       Box::new(BlockedSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = stream_plan(
@@ -2133,6 +2178,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
     logic:       Box::new(CountingSourceLogic { remaining: 12, pulls: pulls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let flat_map_merge = flat_map_merge_definition::<u32, u32, StreamNotUsed, _>(1, |value| {
     Source::single(value).broadcast(2).expect("broadcast")
@@ -2156,6 +2202,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
     logic:       Box::new(BlockedSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = stream_plan(
     vec![
@@ -2290,6 +2337,7 @@ fn conflate_emits_aggregated_value_when_downstream_unblocks() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
   struct FailingInnerSourceLogic;
 
@@ -2328,6 +2376,7 @@ fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
     logic:       Box::new(RestartableSingleSourceLogic { value: 7, emitted: false }),
     supervision: SupervisionStrategy::Stop,
     restart:     Some(RestartBackoff::new(0, 1)),
+    attributes:  Attributes::new(),
   };
   let split_after = split_after_definition::<u32, _>(|_| true);
   let split_after_inlet = split_after.inlet;
@@ -2466,6 +2515,7 @@ fn drive_does_not_pull_without_demand() {
     logic:       Box::new(CountingSourceLogic { remaining: 1, pulls: pulls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let inlet: Inlet<u32> = Inlet::new();
   let completion = StreamCompletion::new();
@@ -2477,6 +2527,7 @@ fn drive_does_not_pull_without_demand() {
     logic:       Box::new(NoDemandSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, Vec::new(), sink);
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -2502,6 +2553,7 @@ fn drive_rejects_type_mismatch() {
     logic:       Box::new(MismatchFlowLogic),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink_inlet: Inlet<u32> = Inlet::new();
   let sink = SinkDefinition {
@@ -2512,6 +2564,7 @@ fn drive_rejects_type_mismatch() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
@@ -2544,6 +2597,7 @@ fn executes_with_topologically_sorted_flow_order() {
     logic:       Box::new(IncrementFlowLogic),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let flow2 = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -2555,6 +2609,7 @@ fn executes_with_topologically_sorted_flow_order() {
     logic:       Box::new(IncrementFlowLogic),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -2564,6 +2619,7 @@ fn executes_with_topologically_sorted_flow_order() {
     logic:       Box::new(RecordingSinkLogic { completion: completion.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = stream_plan(
@@ -2605,6 +2661,7 @@ fn rejects_cycle_plan_on_construction() {
     logic:       Box::new(IncrementFlowLogic),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = SinkDefinition {
     kind:        StageKind::SinkIgnore,
@@ -2614,6 +2671,7 @@ fn rejects_cycle_plan_on_construction() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let plan = StreamPlan::from_parts(
     vec![StageDefinition::Source(source), StageDefinition::Flow(flow), StageDefinition::Sink(sink)],
@@ -2702,6 +2760,7 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
     }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let broadcast = broadcast_definition::<u32>(2);
   let broadcast_inlet = broadcast.inlet;
@@ -2719,6 +2778,7 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let left_sink = collect_u32_sequence_sink(left_sink_inlet, left_completion.clone());
   let right_sink = collect_u32_sequence_sink(right_sink_inlet, right_completion.clone());
@@ -2791,6 +2851,7 @@ fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
     logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let shutdown_flow = FlowDefinition {
     kind:        StageKind::FlowTakeUntil,
@@ -2802,6 +2863,7 @@ fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
     logic:       Box::new(ShutdownAfterFirstOutputFlowLogic::default()),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
 
@@ -2846,6 +2908,7 @@ fn cancel_upstream_stage_calls_on_source_done_in_direct_upstream_cancellation_pa
     logic:       Box::new(SourceDoneTrackingFlowLogic { source_done_calls: source_done_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion);
 
@@ -2883,6 +2946,7 @@ fn supports_multiple_outgoing_edges_from_source() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -2894,6 +2958,7 @@ fn supports_multiple_outgoing_edges_from_source() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -2939,6 +3004,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
     logic:       Box::new(AddFlowLogic { add: 0 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -2950,6 +3016,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -2996,6 +3063,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -3042,6 +3110,7 @@ fn flow_fan_out_failure_uses_local_supervision_fallback() {
     logic:       Box::new(LocalResumeOnFailureFlowLogic { failure_calls: failure_calls.clone() }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let left_sink = collect_u32_sequence_sink(left_sink_inlet, left_completion.clone());
   let right_sink = collect_u32_sequence_sink(right_sink_inlet, right_completion.clone());
@@ -3086,6 +3155,7 @@ fn rejects_broadcast_flow_when_fan_out_does_not_match_wiring() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = StreamPlan::from_parts(
@@ -3120,6 +3190,7 @@ fn balance_flow_distributes_elements_round_robin() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -3162,6 +3233,7 @@ fn rejects_balance_flow_when_fan_out_does_not_match_wiring() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = StreamPlan::from_parts(
@@ -3195,6 +3267,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -3206,6 +3279,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let merge = merge_definition::<u32>(2);
   let merge_inlet = merge.inlet;
@@ -3253,6 +3327,7 @@ fn rejects_merge_flow_when_fan_in_does_not_match_wiring() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = StreamPlan::from_parts(
@@ -3286,6 +3361,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -3297,6 +3373,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let zip = zip_definition::<u32>(2);
   let zip_inlet = zip.inlet;
@@ -3344,6 +3421,7 @@ fn rejects_zip_flow_when_fan_in_does_not_match_wiring() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = StreamPlan::from_parts(
@@ -3374,6 +3452,7 @@ fn concat_flow_emits_elements_in_input_order() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -3385,6 +3464,7 @@ fn concat_flow_emits_elements_in_input_order() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let concat = concat_definition::<u32>(2);
   let concat_inlet = concat.inlet;
@@ -3432,6 +3512,7 @@ fn rejects_concat_flow_when_fan_in_does_not_match_wiring() {
     logic:       Box::new(RecordingSinkLogic { completion }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
 
   let plan = StreamPlan::from_parts(
@@ -3466,6 +3547,7 @@ fn partition_flow_routes_elements_by_predicate_between_outgoing_edges() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -3512,6 +3594,7 @@ fn unzip_flow_routes_tuple_components_to_two_edges() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let sink = sum_fold_u32_sink(sink_inlet, completion.clone());
 
@@ -3557,6 +3640,7 @@ fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -3568,6 +3652,7 @@ fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let interleave = interleave_definition::<u32>(2);
   let interleave_inlet = interleave.inlet;
@@ -3618,6 +3703,7 @@ fn prepend_flow_prioritizes_lower_index_inputs() {
     logic:       Box::new(AddFlowLogic { add: 10 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let right_flow = FlowDefinition {
     kind:        StageKind::FlowMap,
@@ -3629,6 +3715,7 @@ fn prepend_flow_prioritizes_lower_index_inputs() {
     logic:       Box::new(AddFlowLogic { add: 100 }),
     supervision: SupervisionStrategy::Stop,
     restart:     None,
+    attributes:  Attributes::new(),
   };
   let prepend = prepend_definition::<u32>(2);
   let prepend_inlet = prepend.inlet;

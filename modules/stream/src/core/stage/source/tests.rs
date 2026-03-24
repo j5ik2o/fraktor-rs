@@ -1382,6 +1382,7 @@ fn source_buffer_rejects_zero_capacity() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn source_async_boundary_keeps_single_path_behavior() {
   let values = Source::single(5_u32).async_boundary().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
@@ -2085,6 +2086,7 @@ fn source_supervision_variants_keep_single_path_behavior() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn source_detach_preserves_elements_and_order() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .detach()
@@ -2803,4 +2805,110 @@ fn source_flat_map_prefix_mat_preserves_data_path_behavior() {
 
   // flat_map_prefix consumes prefix (1 element), then passes rest through the inner flow
   assert_eq!(values, vec![2_u32, 3]);
+}
+
+// --- r#async() ---
+
+#[test]
+fn source_async_passes_single_element_through() {
+  // Given: a source emitting a single element
+  // When: applying an async boundary on the source
+  let values = Source::single(5_u32).r#async().collect_values().expect("collect_values");
+
+  // Then: the element is forwarded unchanged
+  assert_eq!(values, vec![5_u32]);
+}
+
+#[test]
+fn source_async_passes_multiple_elements_through() {
+  // Given: a source emitting multiple elements
+  let values = Source::from_array([1_u32, 2, 3, 4, 5]).r#async().collect_values().expect("collect_values");
+
+  // Then: all elements arrive in order
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
+}
+
+#[test]
+fn source_async_handles_empty_source() {
+  // Given: an empty source
+  let values = Source::<u32, _>::empty().r#async().collect_values().expect("collect_values");
+
+  // Then: no elements are emitted, stream completes normally
+  assert!(values.is_empty());
+}
+
+#[test]
+fn source_async_composes_with_via() {
+  use crate::core::stage::flow::Flow;
+
+  // Given: a source with async boundary, then via a map flow
+  let values = Source::from_array([10_u32, 20, 30])
+    .r#async()
+    .via(Flow::new().map(|x: u32| x + 1))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: async boundary + map compose correctly
+  assert_eq!(values, vec![11_u32, 21, 31]);
+}
+
+#[test]
+fn source_async_chained_multiple_boundaries() {
+  // Given: a source with two chained async boundaries
+  let values = Source::from_array([1_u32, 2, 3]).r#async().r#async().collect_values().expect("collect_values");
+
+  // Then: elements pass through both boundaries in order
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+// --- B-1: Source::r#async() per-node attribute propagation ---
+
+#[test]
+fn source_async_marks_source_node_with_async_attribute_in_plan() {
+  // Given: a source with async boundary → sink
+  let source = Source::single(1_u32).r#async();
+
+  // When: converting to a complete pipeline and plan
+  let (mut graph, _) = source.into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the source stage has async boundary attribute
+  assert!(plan.stages[0].attributes().is_async());
+}
+
+#[test]
+fn source_async_does_not_affect_downstream_stages() {
+  // Given: source.async() → map → sink
+  let source = Source::single(1_u32).r#async().map(|x: u32| x + 1);
+
+  // When: converting to a complete pipeline and plan
+  let (mut graph, _) = source.into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: source has async, map does not
+  assert!(plan.stages[0].attributes().is_async());
+  assert!(!plan.stages[1].attributes().is_async());
+}
+
+#[test]
+fn source_async_with_dispatcher_marks_node_with_dispatcher_attribute() {
+  // Given: a source with async + dispatcher → sink
+  let source = Source::single(1_u32).async_with_dispatcher("custom-dispatcher");
+
+  // When: converting to a complete pipeline and plan
+  let (mut graph, _) = source.into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the source stage has both async and dispatcher attributes
+  let attrs = plan.stages[0].attributes();
+  assert!(attrs.is_async());
+  let dispatcher = attrs.get::<crate::core::DispatcherAttribute>();
+  assert!(dispatcher.is_some());
+  assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
 }

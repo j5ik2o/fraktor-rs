@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
-use super::{Source, StreamDslError};
+use super::{Source, StreamDslError, sink::Sink};
+use crate::core::mat::RunnableGraph;
 
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,12 @@ where
   #[must_use]
   pub fn concat_substreams(self) -> Source<Out, Mat> {
     self.source.concat_substreams()
+  }
+
+  /// Connects this sub-flow to a sink, merging substreams first.
+  #[must_use]
+  pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {
+    self.merge_substreams().to(sink)
   }
 
   /// Maps each element inside every substream.

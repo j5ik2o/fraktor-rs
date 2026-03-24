@@ -1268,6 +1268,7 @@ fn buffer_rejects_zero_capacity() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn async_boundary_keeps_single_path_behavior() {
   let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -2540,6 +2541,7 @@ fn operator_catalog_lookup_rejects_unknown_operator() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn detach_preserves_elements_and_order() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
     .via(Flow::new().detach())
@@ -4436,4 +4438,375 @@ fn flow_group_by_with_drain_strategy_creates_subflow() {
 
   // Then: the subflow is created successfully
   assert!(result.is_ok());
+}
+
+// --- r#async() ---
+
+#[test]
+fn flow_async_passes_single_element_through() {
+  // Given: a source emitting a single element
+  // When: passing through a flow with an async boundary
+  let values = Source::single(7_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: the element is forwarded unchanged
+  assert_eq!(values, vec![7_u32]);
+}
+
+#[test]
+fn flow_async_passes_multiple_elements_through() {
+  // Given: a source emitting multiple elements
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5]));
+
+  // When: passing through a flow with an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: all elements are forwarded in order
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
+}
+
+#[test]
+fn flow_async_preserves_element_order() {
+  // Given: a source emitting a descending sequence
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[5, 4, 3, 2, 1]));
+
+  // When: passing through an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: elements arrive in original order
+  assert_eq!(values, vec![5_u32, 4, 3, 2, 1]);
+}
+
+#[test]
+fn flow_async_handles_empty_source() {
+  // Given: an empty source
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]));
+
+  // When: passing through an async boundary
+  let values = source.via(Flow::new().r#async()).collect_values().expect("collect_values");
+
+  // Then: no elements are emitted, stream completes normally
+  assert!(values.is_empty());
+}
+
+#[test]
+fn flow_async_composes_with_map() {
+  // Given: a source with map + async boundary
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: map is applied before async boundary
+  let values = source.via(Flow::new().map(|x: u32| x * 10).r#async()).collect_values().expect("collect_values");
+
+  // Then: map is applied and elements pass through the boundary
+  assert_eq!(values, vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn flow_async_composes_with_map_after() {
+  // Given: a source with async boundary followed by map
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: async boundary is applied before map
+  let values =
+    source.via(Flow::new().r#async()).via(Flow::new().map(|x: u32| x + 100)).collect_values().expect("collect_values");
+
+  // Then: both stages work correctly
+  assert_eq!(values, vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn flow_async_chained_multiple_boundaries() {
+  // Given: a source with multiple chained async boundaries
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+
+  // When: two async boundaries are chained
+  let values = source.via(Flow::new().r#async().r#async()).collect_values().expect("collect_values");
+
+  // Then: elements pass through both boundaries correctly
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
+fn flow_async_propagates_upstream_error() {
+  // Given: a source that emits an error mid-stream
+  let source = Source::<u32, _>::from_logic(
+    StageKind::Custom,
+    FailureSequenceSourceLogic::new(&[Ok(1), Err(StreamError::Failed)]),
+  );
+
+  // When: passing through an async boundary
+  let result = source.via(Flow::new().r#async()).collect_values();
+
+  // Then: the error propagates through the boundary
+  assert!(result.is_err());
+}
+
+#[test]
+fn flow_async_with_filter_composition() {
+  // Given: a source filtered then async-boundaried
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4, 5, 6]));
+
+  // When: filter even numbers, then async boundary
+  let values = source.via(Flow::new().filter(|x: &u32| x % 2 == 0).r#async()).collect_values().expect("collect_values");
+
+  // Then: only even numbers pass through
+  assert_eq!(values, vec![2_u32, 4, 6]);
+}
+
+// --- B-1: r#async() per-node attribute propagation ---
+
+#[test]
+fn flow_async_marks_last_node_with_async_attribute_in_plan() {
+  // Given: a source → map.async() → sink pipeline
+  let source = Source::single(1_u32);
+  let flow = Flow::new().map(|x: u32| x + 1).r#async();
+
+  // When: building a complete pipeline and converting to plan
+  let (mut graph, _) = source.via(flow).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the map/async flow stage has async boundary attribute
+  let has_async_stage = plan.stages.iter().any(|s| s.attributes().is_async());
+  assert!(has_async_stage, "at least one stage should have async boundary attribute");
+}
+
+#[test]
+fn flow_async_does_not_set_async_on_preceding_stages() {
+  // Given: source → map.async() → filter → sink
+  let source = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]));
+  let flow = Flow::new().map(|x: u32| x + 1).r#async();
+  let flow2 = Flow::new().filter(|x: &u32| *x > 0);
+
+  // When: building a complete pipeline
+  let (mut graph, _) = source.via(flow).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: only the async-marked stage has async attribute; source and filter do not
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 1, "exactly one stage should have async boundary");
+}
+
+#[test]
+fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
+  // Given: source → flow.async_with_dispatcher("custom") → sink
+  let source = Source::single(1_u32);
+  let flow = Flow::new().map(|x: u32| x).async_with_dispatcher("custom-dispatcher");
+
+  // When: building a complete pipeline
+  let (mut graph, _) = source.via(flow).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the async-marked stage has both AsyncBoundaryAttr and DispatcherAttribute
+  let async_stage = plan.stages.iter().find(|s| s.attributes().is_async());
+  assert!(async_stage.is_some());
+  let attrs = async_stage.unwrap().attributes();
+  let dispatcher = attrs.get::<crate::core::DispatcherAttribute>();
+  assert!(dispatcher.is_some());
+  assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
+}
+
+#[test]
+fn flow_async_attribute_survives_via_composition() {
+  // Given: two flows composed with .via(), first has async
+  let source = Source::single(1_u32);
+  let flow1 = Flow::new().map(|x: u32| x * 2).r#async();
+  let flow2 = Flow::new().map(|x: u32| x + 1);
+
+  // When: composing flow1.via(flow2) through source with a sink
+  let (mut graph, _) = source.via(flow1).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: the async-marked stage's attribute persists; flow2's stage is NOT async
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 1);
+}
+
+#[test]
+fn multiple_flow_async_marks_multiple_stages() {
+  // Given: source → flow1.async() → flow2.async() → sink
+  let source = Source::single(1_u32);
+  let flow1 = Flow::new().map(|x: u32| x * 2).r#async();
+  let flow2 = Flow::new().map(|x: u32| x + 1).r#async();
+
+  // When: building a complete pipeline
+  let (mut graph, _) = source.via(flow1).via(flow2).into_parts();
+  let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+
+  // Then: two stages have async boundary
+  let async_count = plan.stages.iter().filter(|s| s.attributes().is_async()).count();
+  assert_eq!(async_count, 2);
+}
+
+// --- fold_while tests ---
+
+#[test]
+fn fold_while_accumulates_while_predicate_holds() {
+  // Given: a stream of [1, 2, 3, 4]
+  // When: fold_while accumulates while acc < 6
+  let values = Source::from_array([1_u32, 2, 3, 4])
+    .via(Flow::new().fold_while(0_u32, |acc, _| *acc < 6, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: accumulation stops updating at 6 (1+2+3=6, predicate false for 4)
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32, 6_u32]);
+}
+
+#[test]
+fn fold_while_with_always_true_predicate_behaves_like_fold() {
+  // Given: a stream of [1, 2, 3]
+  // When: fold_while with always-true predicate
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().fold_while(0_u32, |_, _| true, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: behaves identically to fold
+  assert_eq!(values, vec![1_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn fold_while_with_immediately_false_predicate_emits_initial_unchanged() {
+  // Given: a stream of [10, 20, 30]
+  // When: fold_while with always-false predicate
+  let values = Source::from_array([10_u32, 20, 30])
+    .via(Flow::new().fold_while(0_u32, |_, _| false, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: accumulator never updates, emits initial value for each element
+  assert_eq!(values, vec![0_u32, 0_u32, 0_u32]);
+}
+
+#[test]
+fn fold_while_on_empty_stream_emits_nothing() {
+  // Given: an empty stream
+  // When: fold_while is applied
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[]))
+    .via(Flow::new().fold_while(99_u32, |_, _| true, |acc, value| acc + value))
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: no output (same as fold on empty stream)
+  assert!(values.is_empty());
+}
+
+// --- compression overload tests ---
+
+#[test]
+#[cfg(feature = "compression")]
+fn deflate_with_level_round_trips_through_inflate() {
+  // Given: a payload compressed with deflate at level 9
+  let payload = b"deflate-level-nine-payload".to_vec();
+
+  // When: deflate_with_level(9) then inflate
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_level(9))
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate())
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn deflate_with_options_nowrap_round_trips() {
+  // Given: a payload compressed with deflate level 6 nowrap=true
+  let payload = b"deflate-nowrap-options-test".to_vec();
+
+  // When: deflate_with_options(6, true) then inflate_with_options(_, true)
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_options(6, true))
+    .via(
+      Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, true),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_with_level_round_trips_through_gzip_decompress() {
+  // Given: a payload compressed with gzip at level 1
+  let payload = b"gzip-level-one-fast-compress".to_vec();
+
+  // When: gzip_with_level(1) then gzip_decompress
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_with_level(1))
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress())
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn gzip_decompress_with_max_bytes_rejects_oversized_payload() {
+  // Given: a payload larger than a small max_bytes limit
+  let payload = vec![0xaa_u8; 256];
+  let encoded = Source::single(payload)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
+    .collect_values()
+    .expect("collect_values")
+    .pop()
+    .expect("encoded payload");
+
+  // When: decompressing with max_bytes = 64
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip_decompress_with_max_bytes(64))
+    .collect_values();
+
+  // Then: compression error
+  assert!(matches!(result, Err(StreamError::CompressionError { .. })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn inflate_with_max_bytes_rejects_oversized_payload() {
+  // Given: a payload larger than a small max_bytes limit
+  let payload = vec![0xbb_u8; 256];
+  let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
+
+  // When: inflating with max_bytes = 64
+  let result = Source::single(encoded)
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_max_bytes(64))
+    .collect_values();
+
+  // Then: compression error
+  assert!(matches!(result, Err(StreamError::CompressionError { .. })));
+}
+
+#[test]
+#[cfg(feature = "compression")]
+fn inflate_with_options_nowrap_false_decompresses_zlib_wrapped() {
+  // Given: a zlib-wrapped (nowrap=false) deflate payload
+  let payload = b"inflate-zlib-wrapped-test".to_vec();
+
+  // When: deflate_with_options(6, false) then inflate_with_options(_, false)
+  let values = Source::single(payload.clone())
+    .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().deflate_with_options(6, false))
+    .via(
+      Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate_with_options(FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT, false),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // Then: original payload is recovered
+  assert_eq!(values, vec![payload]);
 }

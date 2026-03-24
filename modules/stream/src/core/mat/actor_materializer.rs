@@ -10,6 +10,7 @@ use super::{
   ActorMaterializerConfig, Materialized, Materializer, RunnableGraph, StreamError, StreamHandleId, StreamHandleImpl,
   lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
 };
+use crate::core::graph::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter};
 
 #[cfg(test)]
 mod tests;
@@ -131,12 +132,44 @@ impl Materializer for ActorMaterializer {
     }
     let drive_actor = self.drive_actor.as_ref().ok_or(StreamError::MaterializerNotStarted)?;
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, self.config.buffer_config());
-    stream.start()?;
-    let shared = StreamShared::new(stream);
-    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-    Self::register_handle(drive_actor, handle.clone())?;
-    Ok(Materialized::new(handle, materialized))
+    let island_plan = IslandSplitter::split(plan);
+
+    if island_plan.islands().len() <= 1 {
+      // Single island: existing path
+      let single_plan = island_plan.into_single_plan();
+      let mut stream = Stream::new(single_plan, self.config.buffer_config());
+      stream.start()?;
+      let shared = StreamShared::new(stream);
+      let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+      Self::register_handle(drive_actor, handle.clone())?;
+      Ok(Materialized::new(handle, materialized))
+    } else {
+      // Multi-island: create boundary buffers and register all streams
+      let (mut islands, crossings) = island_plan.into_parts();
+      for crossing in crossings {
+        let boundary = IslandBoundaryShared::new(DEFAULT_BOUNDARY_CAPACITY);
+        let upstream_idx = crossing.from_island().as_usize();
+        let downstream_idx = crossing.to_island().as_usize();
+        let element_type = crossing.element_type();
+        islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
+        islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
+      }
+      let mut primary_handle: Option<StreamHandleImpl> = None;
+      for island in islands {
+        let stream_plan = island.into_stream_plan();
+        let mut stream = Stream::new(stream_plan, self.config.buffer_config());
+        stream.start()?;
+        let shared = StreamShared::new(stream);
+        let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
+        Self::register_handle(drive_actor, handle.clone())?;
+        if primary_handle.is_none() {
+          primary_handle = Some(handle);
+        }
+      }
+      // Primary handle is the first island's handle.
+      let handle = primary_handle.ok_or(StreamError::Failed)?;
+      Ok(Materialized::new(handle, materialized))
+    }
   }
 
   fn shutdown(&mut self) -> Result<(), StreamError> {

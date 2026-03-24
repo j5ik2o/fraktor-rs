@@ -21,12 +21,16 @@ use super::{
   stage::{StageContext, StageKind},
 };
 
+mod boundary_sink_logic;
+mod boundary_source_logic;
 mod flow_fragment;
 mod graph_dsl;
 mod graph_dsl_builder;
 mod graph_interpreter;
 mod graph_stage;
 mod graph_stage_logic;
+mod island_boundary;
+mod island_splitter;
 mod stream_graph;
 
 pub use flow_fragment::FlowFragment;
@@ -35,4 +39,6 @@ pub use graph_dsl_builder::GraphDslBuilder;
 pub use graph_interpreter::GraphInterpreter;
 pub use graph_stage::GraphStage;
 pub use graph_stage_logic::GraphStageLogic;
+pub(crate) use island_boundary::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared};
+pub(crate) use island_splitter::IslandSplitter;
 pub use stream_graph::StreamGraph;
