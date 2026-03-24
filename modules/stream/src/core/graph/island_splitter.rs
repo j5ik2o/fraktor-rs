@@ -235,6 +235,9 @@ impl IslandSplitter {
 
     // Assign each stage to an island.
     // Walk stages in their original order (which is topological for linear pipelines).
+    // TODO: plan.stages の並びはビルド順であってトポロジ順とは限らない。
+    // 分岐/合流や out-of-order 構築で unrelated な stage が次 island に巻き込まれる。
+    // edge からトポロジ順を再計算して、その順に async boundary を適用すべき。
     let mut stage_island = vec![0_usize; stage_count];
     let mut current_island = 0_usize;
     let mut dispatcher_for_island: Vec<Option<String>> = vec![None];

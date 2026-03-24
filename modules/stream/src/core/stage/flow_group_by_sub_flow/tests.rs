@@ -56,7 +56,7 @@ fn flow_group_by_sub_flow_concat_substreams_preserves_all_elements() {
 }
 
 #[test]
-fn flow_group_by_sub_flow_to_produces_sink_that_consumes_all_elements() {
+fn flow_group_by_sub_flow_to_connects_to_sink() {
   // 準備: group_by → to(Sink::ignore()) で Sink<In, Mat> を生成
   let sub_flow_sink: Sink<u32, StreamNotUsed> = Flow::<u32, u32, StreamNotUsed>::new()
     .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())

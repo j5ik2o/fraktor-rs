@@ -106,7 +106,8 @@ fn apply_calls_on_start_on_first_invocation() {
 
   // When: apply is called for the first time
   let input: DynValue = Box::new(1_u32);
-  let _result = adapter.apply(input);
+  let result = adapter.apply(input);
+  assert!(result.is_ok(), "最初の apply は成功すべき");
 
   // Then: on_start was called (verified indirectly via successful execution)
   // on_start is called before on_push on the first invocation
@@ -240,4 +241,65 @@ fn filter_logic_passes_only_matching_elements() {
 
   // Then: only even values pass through
   assert_eq!(passed, alloc::vec![2_u32, 4, 6]);
+}
+
+// ---------------------------------------------------------------------------
+// Test helper: a fold-like stage that accumulates and emits result in on_complete
+// ---------------------------------------------------------------------------
+
+struct FoldSumLogic {
+  sum: u32,
+}
+
+impl FoldSumLogic {
+  fn new() -> Self {
+    Self { sum: 0 }
+  }
+}
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for FoldSumLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    self.sum += ctx.grab();
+    // fold does not push per element
+  }
+
+  fn on_complete(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    ctx.push(self.sum);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// on_source_done drains outputs pushed during on_complete
+// ---------------------------------------------------------------------------
+
+#[test]
+fn on_source_done_exposes_outputs_pushed_during_on_complete() {
+  // Given: a fold-sum adapter that accumulates values and pushes the result in on_complete
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(FoldSumLogic::new());
+  let mut adapter = GraphStageFlowAdapter::new(logic);
+
+  // When: processing several elements (no output per element)
+  for &v in &[1_u32, 2, 3] {
+    let input: DynValue = Box::new(v);
+    let outputs = adapter.apply(input).expect("apply should succeed");
+    assert!(outputs.is_empty(), "fold should not emit per element");
+  }
+
+  // And: the source finishes
+  adapter.on_source_done().expect("on_source_done should succeed");
+
+  // Then: has_pending_output reports buffered output from on_complete
+  assert!(adapter.has_pending_output(), "on_complete pushed an output; has_pending_output must be true");
+
+  // And: drain_pending returns the final sum
+  let pending = adapter.drain_pending().expect("drain_pending should succeed");
+  assert_eq!(pending.len(), 1);
+  assert_eq!(*pending[0].downcast_ref::<u32>().unwrap(), 6_u32);
+
+  // And: after draining, no more pending output
+  assert!(!adapter.has_pending_output());
 }

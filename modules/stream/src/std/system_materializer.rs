@@ -34,6 +34,7 @@ impl SystemMaterializer {
   }
 
   /// Returns a mutable reference to the underlying materializer.
+  #[must_use]
   pub const fn materializer_mut(&mut self) -> &mut ActorMaterializer {
     &mut self.materializer
   }

@@ -23,20 +23,8 @@ pub struct RestartSettings {
   log_settings:              RestartLogSettings,
 }
 
-impl PartialEq for RestartSettings {
-  fn eq(&self, other: &Self) -> bool {
-    self.min_backoff_ticks == other.min_backoff_ticks
-      && self.max_backoff_ticks == other.max_backoff_ticks
-      && self.random_factor_permille == other.random_factor_permille
-      && self.max_restarts == other.max_restarts
-      && self.max_restarts_within_ticks == other.max_restarts_within_ticks
-      && self.complete_on_max_restarts == other.complete_on_max_restarts
-      && self.jitter_seed == other.jitter_seed
-      && self.log_settings == other.log_settings
-  }
-}
-
-impl Eq for RestartSettings {}
+// PartialEq/Eq は restart_on (クロージャ) を含むため正確な等値比較ができず削除。
+// should_restart() の結果が異なる RestartSettings 同士が == になる問題を防ぐ。
 
 impl fmt::Debug for RestartSettings {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

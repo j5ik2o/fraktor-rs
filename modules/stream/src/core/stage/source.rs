@@ -1392,6 +1392,7 @@ where
   /// dispatcher for its execution context.
   #[must_use]
   pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Source<Out, Mat> {
+    self.graph.mark_last_node_async();
     self.graph.mark_last_node_dispatcher(dispatcher);
     self
   }

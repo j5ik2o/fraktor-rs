@@ -66,6 +66,11 @@ where
   pub(crate) const fn mark_output_closed(&mut self) {
     self.output_closed = true;
   }
+
+  /// Returns `true` if there are buffered output values waiting to be drained.
+  pub(crate) fn has_outputs(&self) -> bool {
+    !self.outputs.is_empty()
+  }
 }
 
 impl<In, Out> StageContext<In, Out> for GraphStageFlowContext<In, Out>

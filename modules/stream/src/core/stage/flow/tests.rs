@@ -4758,23 +4758,37 @@ fn flow_async_does_not_set_async_on_preceding_stages() {
 
 #[test]
 fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
-  // Given: source → flow.async_with_dispatcher("custom") → sink
+  // 準備: source → flow.async_with_dispatcher("custom") → sink
   let source = Source::single(1_u32);
   let flow = Flow::new().map(|x: u32| x).async_with_dispatcher("custom-dispatcher");
 
-  // When: building a complete pipeline
+  // 実行: パイプラインを構築しプランに変換
   let (mut graph, _) = source.via(flow).into_parts();
   let (sink_graph, _) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
 
-  // Then: the async-marked stage has both AsyncBoundaryAttr and DispatcherAttribute
-  let async_stage = plan.stages.iter().find(|s| s.attributes().is_async());
-  assert!(async_stage.is_some());
-  let attrs = async_stage.unwrap().attributes();
-  let dispatcher = attrs.get::<crate::core::DispatcherAttribute>();
-  assert!(dispatcher.is_some());
+  // 検証: async + dispatcher 属性が付いた stage を特定し、他の stage には付いていないことを確認
+  let async_indices: Vec<usize> = plan
+    .stages
+    .iter()
+    .enumerate()
+    .filter(|(_, s)| s.attributes().is_async())
+    .map(|(i, _)| i)
+    .collect();
+  assert_eq!(async_indices.len(), 1, "async 属性は 1 つの stage のみに付くべき");
+
+  let async_stage = &plan.stages[async_indices[0]];
+  let dispatcher = async_stage.attributes().get::<crate::core::DispatcherAttribute>();
+  assert!(dispatcher.is_some(), "async stage に DispatcherAttribute がない");
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
+
+  // async でない stage に dispatcher が付いていないことを確認
+  for (i, stage) in plan.stages.iter().enumerate() {
+    if i != async_indices[0] {
+      assert!(!stage.attributes().is_async(), "stage {i} に意図しない async 属性が付いている");
+    }
+  }
 }
 
 #[test]

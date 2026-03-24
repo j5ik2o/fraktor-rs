@@ -95,27 +95,27 @@ fn start_with_remoting_config() {
 }
 
 // ---------------------------------------------------------------------------
-// Diagnostics: lifecycle_state()
+// 診断: lifecycle_state()
 // ---------------------------------------------------------------------------
 
 #[test]
 fn new_materializer_is_idle() {
-  // Given: a freshly constructed materializer
+  // 準備: 新規 materializer を構築
   let system = build_system();
   let materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
 
-  // Then: lifecycle state is Idle
+  // 検証: ライフサイクル状態は Idle
   assert_eq!(materializer.lifecycle_state(), MaterializerLifecycleState::Idle);
 }
 
 #[test]
 fn started_materializer_is_running() {
-  // Given: a materializer that has been started
+  // 準備: start 済みの materializer
   let system = build_system();
   let mut materializer = ActorMaterializer::new(system, ActorMaterializerConfig::default());
   materializer.start().expect("start");
 
-  // Then: lifecycle state is Running
+  // 検証: ライフサイクル状態は Running
   assert_eq!(materializer.lifecycle_state(), MaterializerLifecycleState::Running);
 }
 

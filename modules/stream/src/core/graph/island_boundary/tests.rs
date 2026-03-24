@@ -239,12 +239,18 @@ fn push_after_complete_is_rejected() {
   let mut boundary = IslandBoundary::new(16);
   boundary.complete();
 
-  // When: trying to push
+  // 実行: push を試みる
   let v: Box<dyn core::any::Any + Send + 'static> = Box::new(1_u32);
   let result = boundary.try_push(v);
 
-  // Then: push fails (value returned)
-  assert!(result.is_err());
+  // 検証: push が拒否され、元の値がそのまま返却される
+  match result {
+    | Err(returned) => match returned.downcast::<u32>() {
+      | Ok(returned_value) => assert_eq!(*returned_value, 1_u32),
+      | Err(_) => panic!("返却値は元の型を保持すべき"),
+    },
+    | Ok(()) => panic!("完了後の push は拒否されるべき"),
+  }
 }
 
 // --- IslandBoundaryShared ---

@@ -26,9 +26,13 @@ where
 
   /// Merges grouped substreams with explicit parallelism.
   ///
+  /// **Stub**: Currently behaves identically to [`merge_substreams()`](Self::merge_substreams).
+  /// The `parallelism` parameter is validated but not yet used for concurrent limiting.
+  ///
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `parallelism` is zero.
+  // TODO: 実際の並列度制限付きマージを実装する。現在は merge_substreams と同一動作。
   pub fn merge_substreams_with_parallelism(self, parallelism: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     if parallelism == 0 {
       return Err(StreamDslError::InvalidArgument {
@@ -41,6 +45,11 @@ where
   }
 
   /// Concatenates grouped substreams sequentially.
+  ///
+  /// **Stub**: Currently behaves identically to [`merge_substreams()`](Self::merge_substreams).
+  /// Sequential concatenation (processing each substream to completion before
+  /// starting the next) is not yet implemented.
+  // TODO: 順次 concat（各 substream を完了まで処理してから次を開始）を実装する。
   #[must_use]
   pub fn concat_substreams(self) -> Flow<In, Out, Mat> {
     self.flow.map(|(_, value)| value)

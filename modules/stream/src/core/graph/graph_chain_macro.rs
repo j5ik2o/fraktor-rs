@@ -24,7 +24,7 @@ mod tests;
 macro_rules! graph_chain {
   // Internal: terminal — only sink remains.
   (@step $builder:expr, $prev:ident; $sink:expr) => {
-    $builder.wire_to(&$prev, $sink)
+    $builder.wire_to(&$prev, $sink)?
   };
   // Internal: recursive — consume one flow and continue.
   (@step $builder:expr, $prev:ident; $flow:expr => $($rest:tt)+) => {{

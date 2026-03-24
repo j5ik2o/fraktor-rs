@@ -92,23 +92,23 @@ fn source_sub_flow_take_while_clones_stateful_predicate_per_substream() {
   assert_eq!(values, vec![1_u32, 3_u32]);
 }
 
-// --- SubFlow.to tests ---
+// --- SubFlow.to テスト ---
 
 #[test]
 fn source_sub_flow_to_produces_runnable_graph() {
-  // Given: a SourceSubFlow connected to a sink via .to()
-  // When: .to() merges substreams and connects to the sink, producing a closed graph
+  // 準備: SourceSubFlow を sink に .to() で接続
+  // 実行: .to() は substream をマージして sink に接続し、閉じたグラフを生成
   let _graph = Source::from_array([1_u32, 2, 3, 4]).split_after(|value| value % 2 == 0).to(Sink::ignore());
 
-  // Then: the pipeline is well-typed as RunnableGraph
+  // 検証: RunnableGraph として型が正しい
 }
 
 #[test]
 fn source_sub_flow_to_with_map_applies_transformation_before_sink() {
-  // Given: a SourceSubFlow with map applied, connected to a sink via .to()
-  // When: elements flow through map in each substream then to sink
+  // 準備: map 適用済みの SourceSubFlow を sink に .to() で接続
+  // 実行: 各 substream 内の要素が map を通過してから sink に到達
   let _graph =
     Source::from_array([1_u32, 2, 3, 4]).split_after(|value| value % 2 == 0).map(|value| value * 10).to(Sink::ignore());
 
-  // Then: the pipeline is well-typed as RunnableGraph
+  // 検証: RunnableGraph として型が正しい
 }

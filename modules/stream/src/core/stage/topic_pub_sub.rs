@@ -41,11 +41,14 @@ impl TopicPubSub {
     source.map_materialized_value(move |actor_source_ref| {
       let bridge_props = TypedProps::<T>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
 
+      // TODO: bridge アクターの寿命を stream に結び付ける。
+      // 現在は stream 終了時に bridge の停止・購読解除が行われない。
+      // 短命な source() を繰り返し materialize すると subscriber が残り続ける。
       if let Ok(child) = extended.spawn_system_actor(bridge_props.to_untyped()) {
         let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
-        // Best-effort: subscription failure means no messages will be received,
-        // but the stream itself remains valid and can be completed normally.
-        if let Err(_e) = topic_actor.tell(Topic::subscribe(bridge_ref)) {}
+        // Best-effort: 購読失敗時はメッセージが受信されないが、stream 自体は有効。
+        // 安全な理由: topic actor が停止済みの場合のみ失敗し、その場合 stream は空で完了する。
+        let _result = topic_actor.tell(Topic::subscribe(bridge_ref));
       }
 
       StreamNotUsed
@@ -62,8 +65,10 @@ impl TopicPubSub {
     T: Clone + Send + Sync + 'static, {
     let mut topic = topic_actor;
     ActorSink::actor_ref(move |msg: T| {
-      // Best-effort: if the topic actor is stopped, messages are silently dropped.
-      if let Err(_e) = topic.tell(Topic::publish(msg)) {}
+      // Best-effort: topic actor が停止している場合、メッセージは静かに落ちる。
+      // 安全な理由: sink の契約上、publish は fire-and-forget であり、
+      // topic actor 停止時のデータロスは許容される設計。
+      let _result = topic.tell(Topic::publish(msg));
     })
   }
 }

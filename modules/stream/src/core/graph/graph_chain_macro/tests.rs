@@ -34,7 +34,7 @@ fn graph_chain_source_to_sink_directly() -> Result<(), StreamError> {
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
   // When: using graph_chain! with only source => sink
-  graph_chain!(builder; Source::single(42_u32) => Sink::<u32, _>::ignore())?;
+  graph_chain!(builder; Source::single(42_u32) => Sink::<u32, _>::ignore());
 
   // Then: the graph can be built
   let _flow = builder.build();
@@ -123,7 +123,7 @@ fn graph_chain_macro_builds_graph() -> Result<(), StreamError> {
     Source::from_array([1_u32, 2, 3]) =>
     Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10) =>
     Sink::<u32, _>::ignore()
-  )?;
+  );
 
   // Then: the graph can be built
   let _flow = builder.build();

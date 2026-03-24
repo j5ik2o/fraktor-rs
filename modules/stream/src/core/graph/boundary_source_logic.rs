@@ -40,4 +40,11 @@ impl SourceLogic for BoundarySourceLogic {
       | BoundaryState::Failed(err) => Err(err.clone()),
     }
   }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    // downstream cancel を boundary 越しに伝播し、upstream 側の WouldBlock 張り付きを防ぐ。
+    let mut guard = self.boundary.lock();
+    guard.complete();
+    Ok(())
+  }
 }

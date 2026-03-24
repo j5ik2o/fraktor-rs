@@ -1156,9 +1156,9 @@ fn source_as_output_stream_collects_values() {
 }
 
 #[test]
-#[allow(deprecated)]
-fn source_from_path_emits_path_bytes() {
-  let values = Source::from_path("ab").collect_values().expect("collect_values");
+fn source_from_iterator_emits_bytes() {
+  // from_path は deprecated のため、同等の from_iterator を使用
+  let values = Source::from_iterator("ab".as_bytes().to_vec()).collect_values().expect("collect_values");
   assert_eq!(values, vec![b'a', b'b']);
 }
 
@@ -1382,9 +1382,8 @@ fn source_buffer_rejects_zero_capacity() {
 }
 
 #[test]
-#[allow(deprecated)]
-fn source_async_boundary_keeps_single_path_behavior() {
-  let values = Source::single(5_u32).async_boundary().collect_values().expect("collect_values");
+fn source_async_keeps_single_path_behavior() {
+  let values = Source::single(5_u32).r#async().collect_values().expect("collect_values");
   assert_eq!(values, vec![5_u32]);
 }
 
@@ -2175,10 +2174,10 @@ fn source_supervision_variants_keep_single_path_behavior() {
 }
 
 #[test]
-#[allow(deprecated)]
-fn source_detach_preserves_elements_and_order() {
+fn source_async_preserves_elements_and_order() {
+  // detach は deprecated のため、同等の r#async() を使用
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .detach()
+    .r#async()
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);

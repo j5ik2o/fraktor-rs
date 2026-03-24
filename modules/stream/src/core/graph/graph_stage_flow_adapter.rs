@@ -35,6 +35,21 @@ where
   }
 }
 
+impl<In, Out, Mat> GraphStageFlowAdapter<In, Out, Mat>
+where
+  In: Any + Send + 'static,
+  Out: Send + 'static,
+  Mat: Send + 'static,
+{
+  /// Ensures `on_start` is called exactly once.
+  fn ensure_started(&mut self) {
+    if !self.started {
+      self.started = true;
+      self.logic.on_start(&mut self.context);
+    }
+  }
+}
+
 impl<In, Out, Mat> FlowLogic for GraphStageFlowAdapter<In, Out, Mat>
 where
   In: Any + Send + 'static,
@@ -44,10 +59,7 @@ where
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let typed_input = input.downcast::<In>().map(|b| *b).map_err(|_| StreamError::TypeMismatch)?;
 
-    if !self.started {
-      self.started = true;
-      self.logic.on_start(&mut self.context);
-    }
+    self.ensure_started();
 
     self.context.set_input(typed_input);
     self.logic.on_push(&mut self.context);
@@ -72,6 +84,7 @@ where
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.ensure_started();
     self.context.mark_input_closed();
     self.logic.on_complete(&mut self.context);
     self.logic.on_stop(&mut self.context);
@@ -82,6 +95,7 @@ where
   }
 
   fn on_downstream_cancel(&mut self) -> Result<DownstreamCancelAction, StreamError> {
+    self.ensure_started();
     self.context.mark_output_closed();
     self.logic.on_stop(&mut self.context);
     Ok(DownstreamCancelAction::Propagate)
@@ -109,5 +123,16 @@ where
   fn on_tick(&mut self, _tick_count: u64) -> Result<(), StreamError> {
     // Timer advancement is handled in on_timer()
     Ok(())
+  }
+
+  fn has_pending_output(&self) -> bool {
+    self.context.has_outputs()
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(err) = self.context.take_failure() {
+      return Err(err);
+    }
+    Ok(self.context.take_outputs())
   }
 }

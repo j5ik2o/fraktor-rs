@@ -292,7 +292,7 @@ pub(crate) struct SinkDefinition {
   pub(crate) attributes:  Attributes,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct RestartBackoff {
   settings:              RestartSettings,
   restart_count:         usize,

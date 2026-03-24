@@ -132,6 +132,10 @@ impl IslandBoundaryShared {
     Self { inner: ArcShared::new(SpinSyncMutex::new(IslandBoundary::new(capacity))) }
   }
 
+  // TODO: lock() を公開するとロック境界が呼び出し側へ漏れる。
+  // try_push / try_pull_with_state / complete / fail をラッパーメソッドとして持たせ、
+  // ガードを内部に閉じ込めるべき。BoundarySinkLogic / BoundarySourceLogic が
+  // 複合操作（push + 終端適用）をアトミックに行う必要があるため、段階的に移行する。
   /// Acquires the spinlock and returns a guard.
   ///
   /// The returned guard dereferences to `&mut IslandBoundary`.

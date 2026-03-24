@@ -688,6 +688,7 @@ where
   /// dispatcher for its execution context.
   #[must_use]
   pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Flow<In, Out, Mat> {
+    self.graph.mark_last_node_async();
     self.graph.mark_last_node_dispatcher(dispatcher);
     self
   }
@@ -3833,7 +3834,7 @@ where
     mapper,
     on_complete,
     source_done: false,
-    pending: Vec::new(),
+    pending: None,
     _pd: PhantomData,
   };
   FlowDefinition {

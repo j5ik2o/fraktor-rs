@@ -73,6 +73,7 @@ fn reverse_port_ops_from_source_with_flow_inlet() {
 
   // Then: the connection succeeds and graph can be built
   assert!(result.is_ok());
+  // 検証: build が成功してグラフが構築される
   let _flow = builder.build();
 }
 
