@@ -86,9 +86,13 @@ impl SinkLogic for BoundarySinkLogic {
             | PendingTerminal::Complete => guard.complete(),
             | PendingTerminal::Failed(err) => guard.fail(err),
           }
+          // 終端信号適用後は追加の demand を要求しない。
+          // ストリームは完了/失敗済みであり、これ以上要素は到着しない。
+          drop(guard);
+        } else {
+          drop(guard);
+          demand.request(1)?;
         }
-        drop(guard);
-        demand.request(1)?;
         Ok(true)
       },
       | Err(rejected) => {
