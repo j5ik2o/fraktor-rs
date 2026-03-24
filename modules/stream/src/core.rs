@@ -69,6 +69,8 @@ pub mod operator;
 mod overflow_strategy;
 /// Queue offer result definitions.
 mod queue_offer_result;
+/// Log level for restart event diagnostics.
+mod restart_log_level;
 /// Restart log settings for restart event diagnostics.
 mod restart_log_settings;
 /// Restart/backoff configuration.
@@ -101,6 +103,10 @@ mod stream_dsl_error;
 mod stream_error;
 /// Stream not-used marker.
 mod stream_not_used;
+/// Action taken when a subscription times out.
+mod subscription_timeout_mode;
+/// Subscription timeout settings for stream materializers.
+mod subscription_timeout_settings;
 /// `split_when` / `split_after` substream cancellation strategy.
 mod substream_cancel_strategy;
 /// Supervision strategy definitions.
@@ -147,7 +153,8 @@ pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use overflow_strategy::OverflowStrategy;
 pub use queue_offer_result::QueueOfferResult;
-pub use restart_log_settings::{RestartLogLevel, RestartLogSettings};
+pub use restart_log_level::RestartLogLevel;
+pub use restart_log_settings::RestartLogSettings;
 pub use restart_settings::RestartSettings;
 pub use retry_flow::RetryFlow;
 use shape::PortId;
@@ -163,6 +170,8 @@ pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
+pub use subscription_timeout_mode::SubscriptionTimeoutMode;
+pub use subscription_timeout_settings::SubscriptionTimeoutSettings;
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;

@@ -7,7 +7,7 @@ use core::{
 use std::sync::{Arc, Mutex};
 
 use crate::core::{
-  KeepBoth, KeepRight, StreamNotUsed,
+  KeepBoth, KeepRight, StreamError, StreamNotUsed, ThrottleMode,
   stage::{FlowWithContext, Sink, Source, SourceWithContext, flow::Flow},
 };
 
@@ -387,4 +387,73 @@ fn should_map_async_partitioned_unordered_emitting_completion_order_with_context
 
   // 検証: 完了順は変わりうるが、各結果は元のコンテキストを保持する
   assert_eq!(values, vec![(200_i32, 12_u32), (100, 11)]);
+}
+
+// --- map_error テスト ---
+
+#[test]
+fn should_map_error_passing_normal_elements_with_context() {
+  // 準備: map_error を適用した SourceWithContext（通常要素はそのまま通過する）
+  let source = Source::from(vec![(1_i32, 10_u32), (2, 20)]);
+  let swc = SourceWithContext::from_source(source).map_error(|_| StreamError::WouldBlock);
+
+  // 実行: 要素を収集する
+  let values = swc.as_source().collect_values().unwrap();
+
+  // 検証: 正常な要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
+}
+
+#[test]
+fn should_map_error_transforming_upstream_failure() {
+  // 準備: 失敗する source に map_error を適用した SourceWithContext
+  let source = Source::<(i32, u32), _>::failed(StreamError::Failed);
+  let swc = SourceWithContext::from_source(source).map_error(|_| StreamError::WouldBlock);
+
+  // 実行: 要素を収集する
+  let result = swc.as_source().collect_values();
+
+  // 検証: エラーが変換される
+  assert_eq!(result, Err(StreamError::WouldBlock));
+}
+
+// --- throttle テスト ---
+
+#[test]
+fn should_throttle_passing_elements_with_context() {
+  // 準備: Shaping モードの throttle を適用した SourceWithContext
+  let source = Source::from(vec![(1_i32, 10_u32), (2, 20)]);
+  let swc = SourceWithContext::from_source(source).throttle(2, ThrottleMode::Shaping).expect("throttle");
+
+  // 実行: 要素を収集する
+  let values = swc.as_source().collect_values().unwrap();
+
+  // 検証: 要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
+}
+
+#[test]
+fn should_throttle_enforcing_mode_preserving_context() {
+  // 準備: Enforcing モードの throttle を適用した SourceWithContext
+  let source = Source::from(vec![(1_i32, 10_u32)]);
+  let swc = SourceWithContext::from_source(source).throttle(2, ThrottleMode::Enforcing).expect("throttle");
+
+  // 実行: 要素を収集する
+  let values = swc.as_source().collect_values().unwrap();
+
+  // 検証: 要素はコンテキスト付きでそのまま通過する
+  assert_eq!(values, vec![(1, 10_u32)]);
+}
+
+#[test]
+fn should_throttle_rejecting_zero_capacity() {
+  // 準備: ゼロキャパシティの throttle
+  let source = Source::from(vec![(1_i32, 10_u32)]);
+  let swc = SourceWithContext::from_source(source);
+
+  // 実行: ゼロキャパシティで throttle を作成
+  let result = swc.throttle(0, ThrottleMode::Shaping);
+
+  // 検証: エラーが返る
+  assert!(result.is_err());
 }

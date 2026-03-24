@@ -42,4 +42,24 @@ pub trait StageContext<In, Out> {
   fn advance_timers(&mut self) -> Vec<u64> {
     self.timer_graph_stage_logic().advance()
   }
+
+  /// Returns true if pull has been called on the input.
+  fn has_been_pulled(&self) -> bool {
+    false
+  }
+
+  /// Returns true if an input element is available to grab.
+  fn is_available(&self) -> bool {
+    false
+  }
+
+  /// Returns true if the input port is closed.
+  fn is_closed_in(&self) -> bool {
+    false
+  }
+
+  /// Returns true if the output port is closed.
+  fn is_closed_out(&self) -> bool {
+    false
+  }
 }

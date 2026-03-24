@@ -1761,6 +1761,116 @@ fn stateful_map_concat_expands_with_stateful_mapper() {
 }
 
 #[test]
+fn stateful_map_on_complete_emits_final_element() {
+  // 準備: on_complete で蓄積した合計値を末尾に出力する stateful_map
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |state| Some(state),
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 通常要素に加え、on_complete が出力した合計値が末尾に追加される
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn stateful_map_on_complete_none_emits_nothing_extra() {
+  // 準備: on_complete が None を返す（末尾要素なし）
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |_state| None,
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: on_complete が None を返したため、通常要素のみ
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn stateful_map_on_complete_receives_accumulated_state() {
+  // 準備: state に値を蓄積し、on_complete で蓄積した合計を出力
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[10, 20, 30]))
+    .via(Flow::new().stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |state| Some(state),
+    ))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 各要素(10,20,30) + on_complete での蓄積合計(60)
+  assert_eq!(values, vec![10_u32, 20, 30, 60]);
+}
+
+#[test]
+fn stateful_map_concat_with_accumulator_processes_elements() {
+  // 準備: StatefulMapConcatAccumulator を使用した stateful_map_concat
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct DoublingAccumulator;
+
+  impl StatefulMapConcatAccumulator<u32, u32> for DoublingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      vec![input, input * 2]
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_concat_with_accumulator(|| DoublingAccumulator))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 各要素が [value, value*2] に展開される
+  assert_eq!(values, vec![1_u32, 2, 2, 4, 3, 6]);
+}
+
+#[test]
+fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
+  // 準備: on_complete で残りのバッファを排出する accumulator
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct BufferingAccumulator {
+    buffer: alloc::vec::Vec<u32>,
+  }
+
+  impl StatefulMapConcatAccumulator<u32, u32> for BufferingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      self.buffer.push(input);
+      // バッファが2つ溜まったら排出
+      if self.buffer.len() >= 2 { core::mem::take(&mut self.buffer) } else { vec![] }
+    }
+
+    fn on_complete(&mut self) -> alloc::vec::Vec<u32> {
+      // 残りのバッファを排出
+      core::mem::take(&mut self.buffer)
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .via(Flow::new().stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: alloc::vec::Vec::new() }))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: [1,2] はバッファ満了で排出、[3] は on_complete で排出
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
 fn drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .via(Flow::new().drop(2))
@@ -3263,6 +3373,63 @@ fn wire_tap_mat_routes_elements_to_side_sink() {
   }
   assert_eq!(side_completion.poll(), Completion::Ready(Ok(4_u32)));
   assert_eq!(downstream_completion.poll(), Completion::Ready(Ok(StreamDone::new())));
+}
+
+#[test]
+fn wire_tap_mat_preserves_all_main_path_elements_with_multiple_inputs() {
+  // 準備: 複数要素を wire_tap_mat に流す（main path が全要素を受け取ることを検証）
+  let values = Source::from_array([1_u32, 2, 3, 4, 5])
+    .via(Flow::new().wire_tap_mat(Sink::ignore(), KeepLeft))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: main path は全要素を受け取る
+  assert_eq!(values, vec![1_u32, 2, 3, 4, 5]);
+}
+
+#[test]
+fn wire_tap_mat_callback_version_observes_all_elements() {
+  // 準備: callback 版 wire_tap で全要素を観測する
+  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::<u32>::new()));
+  let observed_clone = observed.clone();
+
+  let values = Source::from_array([10_u32, 20, 30])
+    .via(Flow::new().wire_tap(move |value| {
+      observed_clone.lock().push(*value);
+    }))
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: main path は全要素を受け取り、callback も全要素を観測する
+  assert_eq!(values, vec![10_u32, 20, 30]);
+  assert_eq!(*observed.lock(), vec![10_u32, 20, 30]);
+}
+
+#[test]
+fn wire_tap_mat_side_sink_receives_elements() {
+  // 準備: wire_tap_mat で fold sink を使い、要素合計を検証
+  let (mut graph, side_mat) = Source::from_array([1_u32, 2, 3])
+    .via_mat(Flow::new().wire_tap_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight), KeepRight)
+    .into_parts();
+
+  let (sink_graph, _downstream) = Sink::<u32, _>::ignore().into_parts();
+  graph.append(sink_graph);
+  let plan = graph.into_plan().expect("into_plan");
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  stream.start().expect("start");
+  let mut idle_budget = 1024_usize;
+  while !stream.state().is_terminal() {
+    match stream.drive() {
+      | DriveOutcome::Progressed => idle_budget = 1024,
+      | DriveOutcome::Idle => {
+        assert!(idle_budget > 0, "stream stalled");
+        idle_budget = idle_budget.saturating_sub(1);
+      },
+    }
+  }
+
+  // 検証: side sink が全要素の合計を受け取る
+  assert_eq!(side_mat.poll(), Completion::Ready(Ok(6_u32)));
 }
 
 #[test]
@@ -4809,4 +4976,173 @@ fn inflate_with_options_nowrap_false_decompresses_zlib_wrapped() {
 
   // Then: original payload is recovered
   assert_eq!(values, vec![payload]);
+}
+
+// ---------------------------------------------------------------------------
+// Flow::from_graph_stage — end-to-end integration tests
+// ---------------------------------------------------------------------------
+
+use crate::core::{
+  graph::{GraphStage, GraphStageLogic},
+  shape::{Inlet, Outlet, StreamShape},
+  stage::StageContext,
+};
+
+/// A simple map-like GraphStageLogic that adds 100 to each input.
+struct AddHundredLogic;
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for AddHundredLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    ctx.push(value + 100);
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct AddHundredStage;
+
+impl GraphStage<u32, u32, StreamNotUsed> for AddHundredStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> {
+    Box::new(AddHundredLogic)
+  }
+}
+
+/// A GraphStageLogic that filters, passing only values > threshold.
+struct ThresholdFilterLogic {
+  threshold: u32,
+}
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for ThresholdFilterLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    if value > self.threshold {
+      ctx.push(value);
+    }
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
+struct ThresholdFilterStage {
+  threshold: u32,
+}
+
+impl GraphStage<u32, u32, StreamNotUsed> for ThresholdFilterStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> {
+    Box::new(ThresholdFilterLogic { threshold: self.threshold })
+  }
+}
+
+/// A GraphStageLogic with a materialized value (counter of processed elements).
+struct CountingLogic {
+  count: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl GraphStageLogic<u32, u32, ArcShared<SpinSyncMutex<usize>>> for CountingLogic {
+  fn on_push(&mut self, ctx: &mut dyn StageContext<u32, u32>) {
+    let value = ctx.grab();
+    *self.count.lock() += 1;
+    ctx.push(value);
+  }
+
+  fn materialized(&mut self) -> ArcShared<SpinSyncMutex<usize>> {
+    self.count.clone()
+  }
+}
+
+struct CountingStage {
+  count: ArcShared<SpinSyncMutex<usize>>,
+}
+
+impl CountingStage {
+  fn new() -> Self {
+    Self { count: ArcShared::new(SpinSyncMutex::new(0)) }
+  }
+}
+
+impl GraphStage<u32, u32, ArcShared<SpinSyncMutex<usize>>> for CountingStage {
+  fn shape(&self) -> StreamShape<u32, u32> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<u32, u32, ArcShared<SpinSyncMutex<usize>>> + Send> {
+    Box::new(CountingLogic { count: self.count.clone() })
+  }
+}
+
+#[test]
+fn from_graph_stage_map_like_stage_produces_correct_values() {
+  // Given: a custom GraphStage that adds 100
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2, 3]).via(flow).collect_values().expect("collect_values");
+
+  // Then: each value has 100 added
+  assert_eq!(values, alloc::vec![101_u32, 102, 103]);
+}
+
+#[test]
+fn from_graph_stage_filter_like_stage_drops_elements() {
+  // Given: a custom GraphStage that filters values > 3
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(ThresholdFilterStage { threshold: 3 });
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2, 3, 4, 5]).via(flow).collect_values().expect("collect_values");
+
+  // Then: only values > 3 pass through
+  assert_eq!(values, alloc::vec![4_u32, 5]);
+}
+
+#[test]
+fn from_graph_stage_chained_with_standard_flow_operators() {
+  // Given: a custom stage chained with a standard map
+  let custom_flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+  let combined = custom_flow.via(Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2));
+
+  // When: running through a pipeline
+  let values = Source::from_array([1_u32, 2]).via(combined).collect_values().expect("collect_values");
+
+  // Then: (1+100)*2=202, (2+100)*2=204
+  assert_eq!(values, alloc::vec![202_u32, 204]);
+}
+
+#[test]
+fn from_graph_stage_with_materialized_value() {
+  // Given: a counting stage with a shared counter
+  let stage = CountingStage::new();
+  let counter = stage.count.clone();
+  let flow = Flow::<u32, u32, ArcShared<SpinSyncMutex<usize>>>::from_graph_stage(stage);
+
+  // When: running through a pipeline
+  let values = Source::from_array([10_u32, 20, 30]).via(flow).collect_values().expect("collect_values");
+
+  // Then: all values pass through and the counter reflects the count
+  assert_eq!(values, alloc::vec![10_u32, 20, 30]);
+  assert_eq!(*counter.lock(), 3);
+}
+
+#[test]
+fn from_graph_stage_empty_source_produces_no_output() {
+  // Given: a custom stage with an empty source
+  let flow = Flow::<u32, u32, StreamNotUsed>::from_graph_stage(AddHundredStage);
+
+  // When: running with an empty source
+  let values = Source::<u32, StreamNotUsed>::empty().via(flow).collect_values().expect("collect_values");
+
+  // Then: no output
+  assert!(values.is_empty());
 }

@@ -106,6 +106,49 @@ where
 impl<In, Out, Mat> Flow<In, Out, Mat>
 where
   In: Send + Sync + 'static,
+  Out: Send + 'static,
+  Mat: Send + 'static,
+{
+  /// Creates a flow from a `GraphStage` implementation.
+  ///
+  /// The stage's `create_logic()` produces a `GraphStageLogic` that is
+  /// wrapped in a `GraphStageFlowAdapter` and integrated into the stream
+  /// graph as a standard flow stage.
+  #[must_use]
+  #[allow(clippy::needless_pass_by_value)] // API consistency: Pekko's fromGraph consumes the stage
+  pub fn from_graph_stage<S>(stage: S) -> Self
+  where
+    S: crate::core::graph::GraphStage<In, Out, Mat> + Send + 'static, {
+    use crate::core::graph::GraphStageFlowAdapter;
+
+    let mut logic = stage.create_logic();
+    let mat = logic.materialized();
+    let adapter = GraphStageFlowAdapter::new(logic);
+
+    let inlet: Inlet<In> = Inlet::new();
+    let outlet: Outlet<Out> = Outlet::new();
+    let definition = FlowDefinition {
+      kind:        StageKind::Custom,
+      inlet:       inlet.id(),
+      outlet:      outlet.id(),
+      input_type:  TypeId::of::<In>(),
+      output_type: TypeId::of::<Out>(),
+      mat_combine: MatCombine::KeepRight,
+      supervision: SupervisionStrategy::Stop,
+      restart:     None,
+      logic:       Box::new(adapter),
+      attributes:  Attributes::new(),
+    };
+
+    let mut graph = StreamGraph::new();
+    graph.push_stage(StageDefinition::Flow(definition));
+    Flow::from_graph(graph, mat)
+  }
+}
+
+impl<In, Out, Mat> Flow<In, Out, Mat>
+where
+  In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
 {
   /// Composes this flow with the provided flow.
@@ -237,6 +280,68 @@ where
     Mapper: FnMut(Out) -> I + Send + Sync + 'static,
     I: IntoIterator<Item = T> + 'static, {
     let definition = stateful_map_concat_definition::<Out, T, Factory, Mapper, I>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map stage with an on-complete callback to this flow.
+  ///
+  /// The `factory` closure creates the initial state, `mapper` transforms
+  /// each element with mutable access to the state, and `on_complete` is
+  /// called once when the upstream completes, optionally emitting a final
+  /// element.
+  #[must_use]
+  pub fn stateful_map_with_on_complete<T, S, Factory, Mapper, OnComplete>(
+    mut self,
+    factory: Factory,
+    mapper: Mapper,
+    on_complete: OnComplete,
+  ) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    S: Send + Sync + 'static,
+    Factory: FnMut() -> S + Send + Sync + 'static,
+    Mapper: FnMut(&mut S, Out) -> T + Send + Sync + 'static,
+    OnComplete: FnMut(S) -> Option<T> + Send + Sync + 'static, {
+    let definition =
+      stateful_map_with_on_complete_definition::<Out, T, S, Factory, Mapper, OnComplete>(factory, mapper, on_complete);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map-concat stage using a [`StatefulMapConcatAccumulator`] to this flow.
+  ///
+  /// The `factory` closure creates a fresh accumulator for each
+  /// materialization. [`StatefulMapConcatAccumulator::on_complete`] is
+  /// called when the upstream completes, allowing trailing elements to be
+  /// emitted.
+  ///
+  /// [`StatefulMapConcatAccumulator`]: crate::core::StatefulMapConcatAccumulator
+  #[must_use]
+  pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Flow<In, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Acc + Send + Sync + 'static,
+    Acc: crate::core::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
@@ -812,7 +917,7 @@ where
 
   /// Adds a group-by stage and returns substream surface for merging grouped elements.
   ///
-  /// Unsupported `SubFlow` operators, including `concat_substreams`, stay unavailable on the
+  /// Unsupported `SubFlow` operators, such as `drop`, stay unavailable on the
   /// returned surface.
   ///
   /// ```compile_fail
@@ -822,15 +927,6 @@ where
   ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
-  /// ```
-  ///
-  /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
-  ///
-  /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
-  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
-  ///   .expect("group_by")
-  ///   .concat_substreams();
   /// ```
   ///
   /// # Errors
@@ -3133,12 +3229,41 @@ where
   }
 
   /// Adds a wire-tap stage and combines materialized values.
+  ///
+  /// Unlike `also_to_mat` (broadcast-based), the tap side never
+  /// back-pressures the main path. In the current tick-based model
+  /// both behave identically, but the dedicated `WireTap` stage
+  /// preserves the Pekko contract for future async island support.
   #[must_use]
-  pub fn wire_tap_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Flow<In, Out, C::Out>
+  pub fn wire_tap_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Flow<In, Out, C::Out>
   where
     Out: Clone,
     C: MatCombineRule<Mat, Mat2>, {
-    self.also_to_mat(sink, combine)
+    let (mut graph, left_mat) = self.into_parts();
+    let (mut sink_graph, right_mat) = sink.into_parts();
+    let wire_tap = wire_tap_definition::<Out>();
+    let wire_tap_inlet = wire_tap.inlet;
+    let wire_tap_outlet = wire_tap.outlet;
+    let upstream_outlet = graph.tail_outlet();
+    graph.push_stage(StageDefinition::Flow(wire_tap));
+    if let Some(upstream_outlet) = upstream_outlet {
+      graph.connect_or_panic(
+        &Outlet::<Out>::from_id(upstream_outlet),
+        &Inlet::<Out>::from_id(wire_tap_inlet),
+        MatCombine::KeepLeft,
+      );
+    }
+    let passthrough = map_definition::<Out, Out, _>(|value| value);
+    let passthrough_inlet = passthrough.inlet;
+    sink_graph.push_stage(StageDefinition::Flow(passthrough));
+    graph.append(sink_graph);
+    graph.connect_or_panic(
+      &Outlet::<Out>::from_id(wire_tap_outlet),
+      &Inlet::<Out>::from_id(passthrough_inlet),
+      MatCombine::KeepLeft,
+    );
+    let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
+    Flow::from_graph(graph, mat)
   }
 
   /// Adds an actor-watch compatibility stage.
@@ -3675,6 +3800,76 @@ where
   let logic = StatefulMapConcatLogic::<In, Out, Factory, Mapper, I> { factory, mapper, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowStatefulMapConcat,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
+}
+
+pub(in crate::core) fn stateful_map_with_on_complete_definition<In, Out, S, Factory, Mapper, OnComplete>(
+  mut factory: Factory,
+  mapper: Mapper,
+  on_complete: OnComplete,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  S: Send + Sync + 'static,
+  Factory: FnMut() -> S + Send + Sync + 'static,
+  Mapper: FnMut(&mut S, In) -> Out + Send + Sync + 'static,
+  OnComplete: FnMut(S) -> Option<Out> + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let state = factory();
+  let logic = StatefulMapWithOnCompleteLogic::<In, Out, S, Factory, Mapper, OnComplete> {
+    factory,
+    state,
+    mapper,
+    on_complete,
+    source_done: false,
+    pending: Vec::new(),
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapWithOnComplete,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
+}
+
+pub(in crate::core) fn stateful_map_concat_accumulator_definition<In, Out, Factory, Acc>(
+  mut factory: Factory,
+) -> FlowDefinition
+where
+  In: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+  Factory: FnMut() -> Acc + Send + Sync + 'static,
+  Acc: crate::core::StatefulMapConcatAccumulator<In, Out> + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let accumulator = factory();
+  let logic = StatefulMapConcatAccumulatorLogic::<In, Out, Factory, Acc> {
+    factory,
+    accumulator,
+    source_done: false,
+    pending: Vec::new(),
+    _pd: PhantomData,
+  };
+  FlowDefinition {
+    kind:        StageKind::FlowStatefulMapConcatAccumulator,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
@@ -4832,6 +5027,26 @@ where
   let logic = BroadcastLogic::<In> { fan_out, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::FlowBroadcast,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<In>(),
+    output_type: TypeId::of::<In>(),
+    mat_combine: MatCombine::KeepLeft,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
+}
+
+pub(in crate::core) fn wire_tap_definition<In>() -> FlowDefinition
+where
+  In: Clone + Send + Sync + 'static, {
+  let inlet: Inlet<In> = Inlet::new();
+  let outlet: Outlet<In> = Outlet::new();
+  let logic = WireTapLogic::<In> { _pd: PhantomData };
+  FlowDefinition {
+    kind:        StageKind::FlowWireTap,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),

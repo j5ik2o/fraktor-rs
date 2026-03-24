@@ -1,4 +1,4 @@
-use super::flow::Flow;
+use super::{StreamDslError, flow::Flow, sink::Sink};
 
 #[cfg(test)]
 mod tests;
@@ -22,5 +22,50 @@ where
   #[must_use]
   pub fn merge_substreams(self) -> Flow<In, Out, Mat> {
     self.flow.map(|(_, value)| value)
+  }
+
+  /// Merges grouped substreams with explicit parallelism.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamDslError`] when `parallelism` is zero.
+  pub fn merge_substreams_with_parallelism(self, parallelism: usize) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+    if parallelism == 0 {
+      return Err(StreamDslError::InvalidArgument {
+        name:   "parallelism",
+        value:  0,
+        reason: "must be greater than zero",
+      });
+    }
+    Ok(self.flow.map(|(_, value)| value))
+  }
+
+  /// Concatenates grouped substreams sequentially.
+  #[must_use]
+  pub fn concat_substreams(self) -> Flow<In, Out, Mat> {
+    self.flow.map(|(_, value)| value)
+  }
+
+  /// Connects this sub-flow to a sink, merging substreams first.
+  #[must_use]
+  pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat> {
+    self.merge_substreams().to(sink)
+  }
+
+  /// Maps each element's value within grouped substreams, preserving keys.
+  #[must_use]
+  pub fn map<T, F>(self, mut func: F) -> FlowGroupBySubFlow<In, Key, T, Mat>
+  where
+    T: Send + Sync + 'static,
+    F: FnMut(Out) -> T + Send + Sync + 'static, {
+    FlowGroupBySubFlow::from_flow(self.flow.map(move |(key, value)| (key, func(value))))
+  }
+
+  /// Filters elements within grouped substreams by value, preserving keys.
+  #[must_use]
+  pub fn filter<F>(self, mut predicate: F) -> FlowGroupBySubFlow<In, Key, Out, Mat>
+  where
+    F: FnMut(&Out) -> bool + Send + Sync + 'static, {
+    FlowGroupBySubFlow::from_flow(self.flow.filter(move |(_, value)| predicate(value)))
   }
 }

@@ -7,7 +7,8 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
-  ActorMaterializerConfig, Materialized, Materializer, RunnableGraph, StreamError, StreamHandleId, StreamHandleImpl,
+  ActorMaterializerConfig, Materialized, Materializer, MaterializerLifecycleState, MaterializerSnapshot, RunnableGraph,
+  StreamError, StreamHandleId, StreamHandleImpl,
   lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
 };
 use crate::core::graph::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter};
@@ -17,31 +18,39 @@ mod tests;
 
 /// Materializer backed by an actor system.
 pub struct ActorMaterializer {
-  system:      Option<ActorSystem>,
-  config:      ActorMaterializerConfig,
-  state:       MaterializerState,
-  drive_actor: Option<ChildRef>,
-  tick_handle: Option<fraktor_actor_rs::core::scheduler::SchedulerHandle>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MaterializerState {
-  Idle,
-  Running,
-  Stopped,
+  system:             Option<ActorSystem>,
+  config:             ActorMaterializerConfig,
+  state:              MaterializerLifecycleState,
+  drive_actor:        Option<ChildRef>,
+  tick_handle:        Option<fraktor_actor_rs::core::scheduler::SchedulerHandle>,
+  total_materialized: u64,
 }
 
 impl ActorMaterializer {
   /// Creates a new materializer bound to the provided actor system.
   #[must_use]
   pub const fn new(system: ActorSystem, config: ActorMaterializerConfig) -> Self {
-    Self { system: Some(system), config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
+    Self {
+      system: Some(system),
+      config,
+      state: MaterializerLifecycleState::Idle,
+      drive_actor: None,
+      tick_handle: None,
+      total_materialized: 0,
+    }
   }
 
   /// Creates a materializer without an actor system (testing helper).
   #[must_use]
   pub const fn new_without_system(config: ActorMaterializerConfig) -> Self {
-    Self { system: None, config, state: MaterializerState::Idle, drive_actor: None, tick_handle: None }
+    Self {
+      system: None,
+      config,
+      state: MaterializerLifecycleState::Idle,
+      drive_actor: None,
+      tick_handle: None,
+      total_materialized: 0,
+    }
   }
 
   fn system(&self) -> Result<ActorSystem, StreamError> {
@@ -102,14 +111,44 @@ impl ActorMaterializer {
   pub fn shutdown(&mut self) -> Result<(), StreamError> {
     Materializer::shutdown(self)
   }
+
+  /// Returns a diagnostic snapshot of this materializer.
+  #[must_use]
+  pub const fn snapshot(&self) -> MaterializerSnapshot {
+    MaterializerSnapshot::new(self.state, self.total_materialized)
+  }
+
+  /// Returns the current lifecycle state.
+  #[must_use]
+  pub const fn lifecycle_state(&self) -> MaterializerLifecycleState {
+    self.state
+  }
+
+  /// Returns true if the materializer is running.
+  #[must_use]
+  pub const fn is_running(&self) -> bool {
+    matches!(self.state, MaterializerLifecycleState::Running)
+  }
+
+  /// Returns true if the materializer has not yet been started.
+  #[must_use]
+  pub const fn is_idle(&self) -> bool {
+    matches!(self.state, MaterializerLifecycleState::Idle)
+  }
+
+  /// Returns true if the materializer has been shut down.
+  #[must_use]
+  pub const fn is_stopped(&self) -> bool {
+    matches!(self.state, MaterializerLifecycleState::Stopped)
+  }
 }
 
 impl Materializer for ActorMaterializer {
   fn start(&mut self) -> Result<(), StreamError> {
     match self.state {
-      | MaterializerState::Running => return Err(StreamError::MaterializerAlreadyStarted),
-      | MaterializerState::Stopped => return Err(StreamError::MaterializerStopped),
-      | MaterializerState::Idle => {},
+      | MaterializerLifecycleState::Running => return Err(StreamError::MaterializerAlreadyStarted),
+      | MaterializerLifecycleState::Stopped => return Err(StreamError::MaterializerStopped),
+      | MaterializerLifecycleState::Idle => {},
     }
 
     let system = self.system()?;
@@ -120,15 +159,15 @@ impl Materializer for ActorMaterializer {
 
     self.drive_actor = Some(drive_actor);
     self.tick_handle = Some(tick_handle);
-    self.state = MaterializerState::Running;
+    self.state = MaterializerLifecycleState::Running;
     Ok(())
   }
 
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     match self.state {
-      | MaterializerState::Idle => return Err(StreamError::MaterializerNotStarted),
-      | MaterializerState::Stopped => return Err(StreamError::MaterializerStopped),
-      | MaterializerState::Running => {},
+      | MaterializerLifecycleState::Idle => return Err(StreamError::MaterializerNotStarted),
+      | MaterializerLifecycleState::Stopped => return Err(StreamError::MaterializerStopped),
+      | MaterializerLifecycleState::Running => {},
     }
     let drive_actor = self.drive_actor.as_ref().ok_or(StreamError::MaterializerNotStarted)?;
     let (plan, materialized) = graph.into_parts();
@@ -142,6 +181,7 @@ impl Materializer for ActorMaterializer {
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
       Self::register_handle(drive_actor, handle.clone())?;
+      self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     } else {
       // Multi-island: create boundary buffers and register all streams
@@ -168,22 +208,23 @@ impl Materializer for ActorMaterializer {
       }
       // Primary handle is the first island's handle.
       let handle = primary_handle.ok_or(StreamError::Failed)?;
+      self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     }
   }
 
   fn shutdown(&mut self) -> Result<(), StreamError> {
     match self.state {
-      | MaterializerState::Idle => return Err(StreamError::MaterializerNotStarted),
-      | MaterializerState::Stopped => return Err(StreamError::MaterializerStopped),
-      | MaterializerState::Running => {},
+      | MaterializerLifecycleState::Idle => return Err(StreamError::MaterializerNotStarted),
+      | MaterializerLifecycleState::Stopped => return Err(StreamError::MaterializerStopped),
+      | MaterializerLifecycleState::Running => {},
     }
 
     // Shutdown is a one-way transition: once initiated, the materializer is
     // unconditionally Stopped regardless of whether individual teardown steps
     // succeed. Rolling back to Running after partial teardown (e.g. tick
     // cancelled but drive actor still alive) would leave a worse inconsistency.
-    self.state = MaterializerState::Stopped;
+    self.state = MaterializerLifecycleState::Stopped;
 
     let system = self.system()?;
     // cancel returns false when the job already fired or was not registered;

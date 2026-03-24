@@ -108,10 +108,14 @@ mod sliding_logic;
 mod split_after_logic;
 /// Split-when logic.
 mod split_when_logic;
+/// Stateful map-concat accumulator logic.
+mod stateful_map_concat_accumulator_logic;
 /// Stateful map-concat logic.
 mod stateful_map_concat_logic;
 /// Stateful map logic.
 mod stateful_map_logic;
+/// Stateful map with on-complete logic.
+mod stateful_map_with_on_complete_logic;
 /// Strategy-based per-element delay logic.
 mod strategy_delay_logic;
 /// Take (first N) logic.
@@ -133,6 +137,8 @@ mod unzip_logic;
 mod unzip_with_logic;
 /// Watch-termination logic.
 mod watch_termination_logic;
+/// Wire-tap (fire-and-forget side output) logic.
+mod wire_tap_logic;
 /// Zip-all logic.
 mod zip_all_logic;
 /// Zip logic.
@@ -195,8 +201,10 @@ pub(super) use scan_logic::*;
 pub(super) use sliding_logic::*;
 pub(super) use split_after_logic::*;
 pub(super) use split_when_logic::*;
+pub(super) use stateful_map_concat_accumulator_logic::*;
 pub(super) use stateful_map_concat_logic::*;
 pub(super) use stateful_map_logic::*;
+pub(super) use stateful_map_with_on_complete_logic::*;
 pub(super) use strategy_delay_logic::*;
 pub(super) use take_logic::*;
 pub(super) use take_until_logic::*;
@@ -208,6 +216,7 @@ pub(super) use try_map_concat_logic::*;
 pub(super) use unzip_logic::*;
 pub(super) use unzip_with_logic::*;
 pub(super) use watch_termination_logic::*;
+pub(super) use wire_tap_logic::*;
 pub(super) use zip_all_logic::*;
 pub(super) use zip_logic::*;
 pub(super) use zip_with_index_logic::*;

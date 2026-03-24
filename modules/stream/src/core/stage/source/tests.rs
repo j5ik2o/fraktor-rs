@@ -1607,6 +1607,95 @@ fn source_stateful_map_concat_expands_with_stateful_mapper() {
 }
 
 #[test]
+fn source_stateful_map_on_complete_emits_final_element() {
+  // 準備: on_complete で蓄積した合計値を末尾に出力する stateful_map
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |state| Some(state),
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 通常要素に加え、on_complete が出力した合計値が末尾に追加される
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 6_u32]);
+}
+
+#[test]
+fn source_stateful_map_on_complete_none_emits_nothing_extra() {
+  // 準備: on_complete が None を返す（末尾要素なし）
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map_with_on_complete(
+      || 0_u32,
+      |state, value| {
+        *state = state.saturating_add(value);
+        value
+      },
+      |_state| None,
+    )
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: on_complete が None を返したため、通常要素のみ
+  assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
+}
+
+#[test]
+fn source_stateful_map_concat_with_accumulator_processes_elements() {
+  // 準備: StatefulMapConcatAccumulator を使用した stateful_map_concat
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct DoublingAccumulator;
+
+  impl StatefulMapConcatAccumulator<u32, u32> for DoublingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      vec![input, input * 2]
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map_concat_with_accumulator(|| DoublingAccumulator)
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: 各要素が [value, value*2] に展開される
+  assert_eq!(values, vec![1_u32, 2, 2, 4, 3, 6]);
+}
+
+#[test]
+fn source_stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
+  // 準備: on_complete で残りのバッファを排出する accumulator
+  use crate::core::StatefulMapConcatAccumulator;
+
+  struct BufferingAccumulator {
+    buffer: alloc::vec::Vec<u32>,
+  }
+
+  impl StatefulMapConcatAccumulator<u32, u32> for BufferingAccumulator {
+    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+      self.buffer.push(input);
+      if self.buffer.len() >= 2 { core::mem::take(&mut self.buffer) } else { vec![] }
+    }
+
+    fn on_complete(&mut self) -> alloc::vec::Vec<u32> {
+      core::mem::take(&mut self.buffer)
+    }
+  }
+
+  let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
+    .stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: alloc::vec::Vec::new() })
+    .collect_values()
+    .expect("collect_values");
+
+  // 検証: [1,2] はバッファ満了で排出、[3] は on_complete で排出
+  assert_eq!(values, vec![1_u32, 2, 3]);
+}
+
+#[test]
 fn source_drop_skips_first_elements() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3, 4]))
     .drop(2)

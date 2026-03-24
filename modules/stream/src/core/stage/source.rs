@@ -23,9 +23,10 @@ use super::{
     merge_substreams_with_parallelism_definition, partition_definition, prepend_definition, prepend_lazy_definition,
     sample_definition, scan_definition, sliding_definition, split_after_definition,
     split_after_definition_with_cancel_strategy, split_when_definition, split_when_definition_with_cancel_strategy,
-    stateful_map_concat_definition, stateful_map_definition, take_definition, take_until_definition,
-    take_while_definition, take_within_definition, throttle_definition, unzip_definition, unzip_with_definition,
-    watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
+    stateful_map_concat_accumulator_definition, stateful_map_concat_definition, stateful_map_definition,
+    stateful_map_with_on_complete_definition, take_definition, take_until_definition, take_while_definition,
+    take_within_definition, throttle_definition, unzip_definition, unzip_with_definition, watch_termination_definition,
+    zip_all_definition, zip_definition, zip_with_index_definition,
   },
   graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
@@ -958,6 +959,68 @@ where
     Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
+  /// Adds a stateful-map stage with an on-complete callback to this source.
+  ///
+  /// The `factory` closure creates the initial state, `mapper` transforms
+  /// each element with mutable access to the state, and `on_complete` is
+  /// called once when the upstream completes, optionally emitting a final
+  /// element.
+  #[must_use]
+  pub fn stateful_map_with_on_complete<T, S, Factory, Mapper, OnComplete>(
+    mut self,
+    factory: Factory,
+    mapper: Mapper,
+    on_complete: OnComplete,
+  ) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    S: Send + Sync + 'static,
+    Factory: FnMut() -> S + Send + Sync + 'static,
+    Mapper: FnMut(&mut S, Out) -> T + Send + Sync + 'static,
+    OnComplete: FnMut(S) -> Option<T> + Send + Sync + 'static, {
+    let definition =
+      stateful_map_with_on_complete_definition::<Out, T, S, Factory, Mapper, OnComplete>(factory, mapper, on_complete);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
+  /// Adds a stateful-map-concat stage using a [`StatefulMapConcatAccumulator`] to this source.
+  ///
+  /// The `factory` closure creates a fresh accumulator for each
+  /// materialization. [`StatefulMapConcatAccumulator::on_complete`] is
+  /// called when the upstream completes, allowing trailing elements to be
+  /// emitted.
+  ///
+  /// [`StatefulMapConcatAccumulator`]: crate::core::StatefulMapConcatAccumulator
+  #[must_use]
+  pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Source<T, Mat>
+  where
+    T: Send + Sync + 'static,
+    Factory: FnMut() -> Acc + Send + Sync + 'static,
+    Acc: crate::core::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
+    let inlet_id = definition.inlet;
+    let from = self.graph.tail_outlet();
+    self.graph.push_stage(StageDefinition::Flow(definition));
+    if let Some(from) = from {
+      self.graph.connect_or_panic(
+        &Outlet::<Out>::from_id(from),
+        &Inlet::<Out>::from_id(inlet_id),
+        MatCombine::KeepLeft,
+      );
+    }
+    Source { graph: self.graph, mat: self.mat, _pd: PhantomData }
+  }
+
   /// Adds a map-concat stage to this source.
   #[must_use]
   pub fn map_concat<T, F, I>(mut self, func: F) -> Source<T, Mat>
@@ -1586,7 +1649,7 @@ where
 
   /// Adds a group-by stage and returns substream surface for merging grouped elements.
   ///
-  /// Unsupported `SubFlow` operators, including `concat_substreams`, stay unavailable on the
+  /// Unsupported `SubFlow` operators, such as `drop`, stay unavailable on the
   /// returned surface.
   ///
   /// ```compile_fail
@@ -1596,15 +1659,6 @@ where
   ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
   ///   .expect("group_by")
   ///   .drop(1);
-  /// ```
-  ///
-  /// ```compile_fail
-  /// use fraktor_stream_rs::core::{SubstreamCancelStrategy, stage::Source};
-  ///
-  /// let _ = Source::single(1_u32)
-  ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
-  ///   .expect("group_by")
-  ///   .concat_substreams();
   /// ```
   ///
   /// # Errors
@@ -3039,7 +3093,7 @@ where
     StreamShape::new(Inlet::new(), Outlet::new())
   }
 
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<StreamNotUsed, Out, StreamNotUsed>> {
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<StreamNotUsed, Out, StreamNotUsed> + Send> {
     Box::new(SingleSourceLogic { value: self.value.clone() })
   }
 }

@@ -7,5 +7,5 @@ pub trait GraphStage<In, Out, Mat> {
   /// Returns the stage shape.
   fn shape(&self) -> StreamShape<In, Out>;
   /// Creates the stage logic instance.
-  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, Mat>>;
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<In, Out, Mat> + Send>;
 }

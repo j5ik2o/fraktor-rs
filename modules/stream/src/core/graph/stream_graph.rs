@@ -241,6 +241,8 @@ impl StreamGraph {
             | StageKind::FlowMapAsync
             | StageKind::FlowStatefulMap
             | StageKind::FlowStatefulMapConcat
+            | StageKind::FlowStatefulMapWithOnComplete
+            | StageKind::FlowStatefulMapConcatAccumulator
             | StageKind::FlowMapConcat
             | StageKind::FlowMapOption
             | StageKind::FlowFilter
@@ -295,6 +297,7 @@ impl StreamGraph {
             | StageKind::FlowWatchTermination
             | StageKind::FlowDebounce
             | StageKind::FlowSample
+            | StageKind::FlowWireTap
             | StageKind::Custom
         )
       },

@@ -6,9 +6,15 @@ mod file_io;
 mod source;
 /// Adapters for converting between Rust IO types and stream stages.
 mod stream_converters;
+/// Per-ActorSystem shared materializer extension.
+mod system_materializer;
+/// Extension ID for SystemMaterializer.
+mod system_materializer_id;
 
 pub use file_io::FileIO;
 pub use stream_converters::StreamConverters;
+pub use system_materializer::SystemMaterializer;
+pub use system_materializer_id::SystemMaterializerId;
 
 use crate::core::StreamError;
 

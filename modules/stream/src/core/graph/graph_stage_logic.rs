@@ -23,6 +23,11 @@ pub trait GraphStageLogic<In, Out, Mat> {
   /// Called when a timer fires.
   fn on_timer(&mut self, _ctx: &mut dyn StageContext<In, Out>, _timer_key: u64) {}
 
+  /// Called after the stage terminates (upstream finish or downstream cancel).
+  ///
+  /// Equivalent to Pekko's `postStop()`. Use for resource cleanup.
+  fn on_stop(&mut self, _ctx: &mut dyn StageContext<In, Out>) {}
+
   /// Returns the materialized value for this stage.
   fn materialized(&mut self) -> Mat;
 }
