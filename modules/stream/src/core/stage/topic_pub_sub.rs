@@ -4,6 +4,7 @@
 mod tests;
 
 use fraktor_actor_rs::core::{
+  error::ActorError,
   system::ActorSystem,
   typed::{Behavior, Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
 };
@@ -41,15 +42,16 @@ impl TopicPubSub {
     source.map_materialized_value(move |actor_source_ref| {
       let bridge_props = TypedProps::<T>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
 
-      // TODO: bridge アクターの寿命を stream に結び付ける。
+      // TODO(#1344): bridge アクターの寿命を stream に結び付ける。
       // 現在は stream 終了時に bridge の停止・購読解除が行われない。
       // 短命な source() を繰り返し materialize すると subscriber が残り続ける。
-      if let Ok(child) = extended.spawn_system_actor(bridge_props.to_untyped()) {
-        let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
-        // Best-effort: 購読失敗時はメッセージが受信されないが、stream 自体は有効。
-        // 安全な理由: topic actor が停止済みの場合のみ失敗し、その場合 stream は空で完了する。
-        let _result = topic_actor.tell(Topic::subscribe(bridge_ref));
-      }
+      let child = extended
+        .spawn_system_actor(bridge_props.to_untyped())
+        .expect("TopicPubSub: bridge actor の spawn に失敗");
+      let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
+      topic_actor
+        .tell(Topic::subscribe(bridge_ref))
+        .expect("TopicPubSub: topic への subscribe に失敗");
 
       StreamNotUsed
     })
@@ -65,10 +67,9 @@ impl TopicPubSub {
     T: Clone + Send + Sync + 'static, {
     let mut topic = topic_actor;
     ActorSink::actor_ref(move |msg: T| {
-      // Best-effort: topic actor が停止している場合、メッセージは静かに落ちる。
-      // 安全な理由: sink の契約上、publish は fire-and-forget であり、
-      // topic actor 停止時のデータロスは許容される設計。
-      let _result = topic.tell(Topic::publish(msg));
+      topic
+        .tell(Topic::publish(msg))
+        .expect("TopicPubSub: topic への publish に失敗");
     })
   }
 }
@@ -78,11 +79,14 @@ fn bridge_behavior<T>(actor_source_ref: crate::core::ActorSourceRef<T>) -> Behav
 where
   T: Clone + Send + Sync + 'static, {
   Behaviors::receive_message(move |_ctx, msg: &T| {
-    // Forward topic message to the stream queue.
-    // The queue applies the configured overflow strategy internally;
-    // QueueOfferResult is intentionally not inspected because the overflow
-    // policy has already been applied by the bounded queue.
-    let _result = actor_source_ref.tell(msg.clone());
-    Ok(Behaviors::same())
+    match actor_source_ref.tell(msg.clone()) {
+      crate::core::QueueOfferResult::Enqueued | crate::core::QueueOfferResult::Dropped => Ok(Behaviors::same()),
+      crate::core::QueueOfferResult::QueueClosed => {
+        Err(ActorError::recoverable("TopicPubSub: stream queue is closed"))
+      }
+      crate::core::QueueOfferResult::Failure(err) => {
+        Err(ActorError::recoverable(alloc::format!("TopicPubSub: queue offer failed: {:?}", err)))
+      }
+    }
   })
 }

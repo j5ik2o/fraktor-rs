@@ -1401,6 +1401,7 @@ where
   #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn detach(self) -> Source<Out, Mat> {
+    // detach() は async_boundary() の後継 API。内部委譲のため deprecated 呼び出しが必要。
     #[allow(deprecated)]
     self.async_boundary()
   }
