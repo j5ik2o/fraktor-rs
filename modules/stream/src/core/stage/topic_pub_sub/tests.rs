@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::{
     tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   system::{ActorSystem, ActorSystemConfig},
-  typed::{Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
+  typed::{Behaviors, Topic, TopicCommand, TopicStats, TypedProps, actor::TypedActorRef},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -105,6 +105,55 @@ fn topic_pub_sub_source_should_be_constructible_and_connectable_to_sink() {
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let _materialized = graph.run(&mut materializer).expect("run");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
+  let system = build_system();
+  let controller = system.tick_driver_bundle().manual_controller().expect("controller").clone();
+  let mut topic = spawn_topic::<u32>(&system, "test-cleanup");
+
+  let graph =
+    TopicPubSub::source(topic.clone(), 8, OverflowStrategy::DropHead, &system).to_mat(Sink::head(), KeepRight);
+  let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
+  materializer.start().expect("start materializer");
+  let _materialized = graph.run(&mut materializer).expect("run");
+
+  for _ in 0..5 {
+    controller.inject_and_drive(1);
+  }
+
+  topic.tell(Topic::publish(7_u32)).expect("publish");
+  for _ in 0..50 {
+    controller.inject_and_drive(1);
+  }
+
+  for _ in 0..20 {
+    controller.inject_and_drive(1);
+  }
+
+  let mut subscriber_count = None;
+  for _ in 0..20 {
+    let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats).expect("ask stats");
+    for _ in 0..10 {
+      controller.inject_and_drive(1);
+      if stats.future().is_ready() {
+        break;
+      }
+    }
+    if !stats.future().is_ready() {
+      continue;
+    }
+    let mut stats_future = stats.future().clone();
+    let stats = stats_future.try_take().expect("stats ready").expect("stats ok");
+    subscriber_count = Some(stats.local_subscriber_count());
+    if stats.local_subscriber_count() == 0 {
+      break;
+    }
+  }
+  assert_eq!(subscriber_count, Some(0));
 
   system.terminate().expect("terminate");
 }

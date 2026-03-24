@@ -3,20 +3,122 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
+
 use fraktor_actor_rs::core::{
+  actor::ChildRef,
   error::ActorError,
   system::ActorSystem,
   typed::{Behavior, Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
 };
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use super::{ActorSink, ActorSource, Sink, Source, StreamCompletion, StreamDone};
-use crate::core::{OverflowStrategy, StreamNotUsed};
+use super::{ActorSink, ActorSource, Sink, Source, StageContext, StreamCompletion, StreamDone, flow::Flow};
+use crate::core::{
+  OverflowStrategy, StreamError, StreamNotUsed,
+  graph::{GraphStage, GraphStageLogic},
+  shape::{Inlet, Outlet, StreamShape},
+};
 
 /// Topic-based pub/sub stream integration (Pekko `PubSub` equivalent).
 ///
 /// Provides factory methods to create sources and sinks that integrate
 /// with the typed [`Topic`] pub/sub actor.
 pub struct TopicPubSub;
+
+struct TopicSourceCleanupState<T>
+where
+  T: Clone + Send + Sync + 'static, {
+  topic_actor:  TypedActorRef<TopicCommand<T>>,
+  bridge_ref:   TypedActorRef<T>,
+  bridge_child: ChildRef,
+}
+
+#[derive(Clone)]
+struct TopicSourceCleanup<T>
+where
+  T: Clone + Send + Sync + 'static, {
+  state: ArcShared<SpinSyncMutex<Option<TopicSourceCleanupState<T>>>>,
+}
+
+impl<T> TopicSourceCleanup<T>
+where
+  T: Clone + Send + Sync + 'static,
+{
+  fn new() -> Self {
+    Self { state: ArcShared::new(SpinSyncMutex::new(None)) }
+  }
+
+  fn install(&self, topic_actor: TypedActorRef<TopicCommand<T>>, bridge_ref: TypedActorRef<T>, bridge_child: ChildRef) {
+    let mut guard = self.state.lock();
+    *guard = Some(TopicSourceCleanupState { topic_actor, bridge_ref, bridge_child });
+  }
+
+  fn cleanup(&self) {
+    {
+      let mut guard = self.state.lock();
+      let Some(mut state) = guard.take() else {
+        return;
+      };
+      #[allow(clippy::expect_used)]
+      state
+        .topic_actor
+        .tell(Topic::unsubscribe(state.bridge_ref.clone()))
+        .expect("TopicPubSub: topic からの unsubscribe に失敗");
+      // bridge がすでに終了している場合、追加 stop は不要。
+      if let Err(_error) = state.bridge_child.stop() {
+        // stream 終了後の best-effort cleanup であり、bridge が既に止まっていても整合性は壊れない。
+      }
+    }
+  }
+}
+
+struct TopicSourceCleanupStage<T>
+where
+  T: Clone + Send + Sync + 'static, {
+  cleanup: TopicSourceCleanup<T>,
+}
+
+impl<T> GraphStage<T, T, StreamNotUsed> for TopicSourceCleanupStage<T>
+where
+  T: Clone + Send + Sync + 'static,
+{
+  fn shape(&self) -> StreamShape<T, T> {
+    StreamShape::new(Inlet::new(), Outlet::new())
+  }
+
+  fn create_logic(&self) -> Box<dyn GraphStageLogic<T, T, StreamNotUsed> + Send> {
+    Box::new(TopicSourceCleanupLogic { cleanup: self.cleanup.clone() })
+  }
+}
+
+struct TopicSourceCleanupLogic<T>
+where
+  T: Clone + Send + Sync + 'static, {
+  cleanup: TopicSourceCleanup<T>,
+}
+
+impl<T> GraphStageLogic<T, T, StreamNotUsed> for TopicSourceCleanupLogic<T>
+where
+  T: Clone + Send + Sync + 'static,
+{
+  fn on_push(&mut self, ctx: &mut dyn StageContext<T, T>) {
+    let value = ctx.grab();
+    ctx.push(value);
+  }
+
+  fn on_error(&mut self, _ctx: &mut dyn StageContext<T, T>, _error: StreamError) {
+    self.cleanup.cleanup();
+  }
+
+  fn on_stop(&mut self, _ctx: &mut dyn StageContext<T, T>) {
+    self.cleanup.cleanup();
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed
+  }
+}
 
 impl TopicPubSub {
   /// Creates a source that subscribes to a topic and receives published messages.
@@ -30,8 +132,7 @@ impl TopicPubSub {
   ///
   /// # Panics
   ///
-  /// Panics if the bridge actor cannot be spawned (system shutting down)
-  /// or if subscribing to the topic fails (topic actor stopped).
+  /// Panics when spawning the bridge actor or subscribing it to the topic fails.
   #[must_use]
   pub fn source<T>(
     mut topic_actor: TypedActorRef<TopicCommand<T>>,
@@ -41,21 +142,21 @@ impl TopicPubSub {
   ) -> Source<T, StreamNotUsed>
   where
     T: Clone + Send + Sync + 'static, {
-    let source = ActorSource::actor_ref::<T>(buffer_size, overflow_strategy);
+    let cleanup = TopicSourceCleanup::new();
+    let source_ref = ActorSource::actor_ref::<T>(buffer_size, overflow_strategy);
+    let source = source_ref
+      .via_mat(Flow::from_graph_stage(TopicSourceCleanupStage { cleanup: cleanup.clone() }), crate::core::KeepLeft);
     let extended = system.extended();
 
     source.map_materialized_value(move |actor_source_ref| {
       let bridge_props = TypedProps::<T>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
-
-      // TODO(#1344): bridge アクターの寿命を stream に結び付ける。
-      // 現在は stream 終了時に bridge の停止・購読解除が行われない。
-      // 短命な source() を繰り返し materialize すると subscriber が残り続ける。
       #[allow(clippy::expect_used)]
       let child =
         extended.spawn_system_actor(bridge_props.to_untyped()).expect("TopicPubSub: bridge actor の spawn に失敗");
       let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
       #[allow(clippy::expect_used)]
-      topic_actor.tell(Topic::subscribe(bridge_ref)).expect("TopicPubSub: topic への subscribe に失敗");
+      topic_actor.tell(Topic::subscribe(bridge_ref.clone())).expect("TopicPubSub: topic への subscribe に失敗");
+      cleanup.install(topic_actor.clone(), bridge_ref, child);
 
       StreamNotUsed
     })
