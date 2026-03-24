@@ -27,6 +27,11 @@ impl TopicPubSub {
   ///
   /// The overflow strategy controls what happens when the internal buffer
   /// is full and the bridge actor receives more messages from the topic.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the bridge actor cannot be spawned (system shutting down)
+  /// or if subscribing to the topic fails (topic actor stopped).
   #[must_use]
   pub fn source<T>(
     mut topic_actor: TypedActorRef<TopicCommand<T>>,
@@ -45,9 +50,11 @@ impl TopicPubSub {
       // TODO(#1344): bridge アクターの寿命を stream に結び付ける。
       // 現在は stream 終了時に bridge の停止・購読解除が行われない。
       // 短命な source() を繰り返し materialize すると subscriber が残り続ける。
+      #[allow(clippy::expect_used)]
       let child =
         extended.spawn_system_actor(bridge_props.to_untyped()).expect("TopicPubSub: bridge actor の spawn に失敗");
       let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
+      #[allow(clippy::expect_used)]
       topic_actor.tell(Topic::subscribe(bridge_ref)).expect("TopicPubSub: topic への subscribe に失敗");
 
       StreamNotUsed
@@ -58,12 +65,17 @@ impl TopicPubSub {
   ///
   /// Each element flowing through the sink is wrapped in a
   /// [`Topic::publish`] command and sent to the topic actor.
+  ///
+  /// # Panics
+  ///
+  /// Panics if publishing to the topic fails (topic actor stopped).
   #[must_use]
   pub fn sink<T>(topic_actor: TypedActorRef<TopicCommand<T>>) -> Sink<T, StreamCompletion<StreamDone>>
   where
     T: Clone + Send + Sync + 'static, {
     let mut topic = topic_actor;
     ActorSink::actor_ref(move |msg: T| {
+      #[allow(clippy::expect_used)]
       topic.tell(Topic::publish(msg)).expect("TopicPubSub: topic への publish に失敗");
     })
   }
