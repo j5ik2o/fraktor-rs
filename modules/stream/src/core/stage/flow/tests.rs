@@ -4769,13 +4769,8 @@ fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
   let plan = graph.into_plan().expect("into_plan");
 
   // 検証: async + dispatcher 属性が付いた stage を特定し、他の stage には付いていないことを確認
-  let async_indices: Vec<usize> = plan
-    .stages
-    .iter()
-    .enumerate()
-    .filter(|(_, s)| s.attributes().is_async())
-    .map(|(i, _)| i)
-    .collect();
+  let async_indices: Vec<usize> =
+    plan.stages.iter().enumerate().filter(|(_, s)| s.attributes().is_async()).map(|(i, _)| i).collect();
   assert_eq!(async_indices.len(), 1, "async 属性は 1 つの stage のみに付くべき");
 
   let async_stage = &plan.stages[async_indices[0]];
