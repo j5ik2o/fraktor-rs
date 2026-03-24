@@ -5,7 +5,7 @@ use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 
 pub(in crate::core::stage::flow) struct StatefulMapWithOnCompleteLogic<In, Out, S, Factory, Mapper, OnComplete> {
   pub(in crate::core::stage::flow) factory:     Factory,
-  pub(in crate::core::stage::flow) state:       S,
+  pub(in crate::core::stage::flow) state:       Option<S>,
   pub(in crate::core::stage::flow) mapper:      Mapper,
   pub(in crate::core::stage::flow) on_complete: OnComplete,
   pub(in crate::core::stage::flow) source_done: bool,
@@ -26,13 +26,15 @@ where
 {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = downcast_value::<In>(input)?;
-    let output = (self.mapper)(&mut self.state, value);
+    #[allow(clippy::expect_used)]
+    let output = (self.mapper)(self.state.as_mut().expect("state must exist while source is active"), value);
     Ok(vec![Box::new(output) as DynValue])
   }
 
   fn on_source_done(&mut self) -> Result<(), StreamError> {
     self.source_done = true;
-    let state = core::mem::replace(&mut self.state, (self.factory)());
+    #[allow(clippy::expect_used)]
+    let state = self.state.take().expect("state must exist while source completes");
     if let Some(final_value) = (self.on_complete)(state) {
       self.pending = Some(Box::new(final_value) as DynValue);
     }
@@ -51,7 +53,7 @@ where
   }
 
   fn on_restart(&mut self) -> Result<(), StreamError> {
-    self.state = (self.factory)();
+    self.state = Some((self.factory)());
     self.source_done = false;
     self.pending = None;
     Ok(())

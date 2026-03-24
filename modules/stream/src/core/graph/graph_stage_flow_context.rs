@@ -44,6 +44,7 @@ where
 
   /// Sets the current input element (called by the adapter before `on_push`).
   pub(crate) fn set_input(&mut self, input: In) {
+    self.pulled = false;
     self.input = Some(input);
   }
 

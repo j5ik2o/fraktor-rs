@@ -43,8 +43,8 @@ fn on_push_forwards_element_to_boundary() {
 
   // Then: element is in the boundary buffer
   assert_eq!(decision, SinkDecision::Continue);
-  let mut guard = boundary.lock();
-  let pulled = guard.try_pull().expect("pull");
+  let (pulled, _state) = boundary.try_pull_with_state();
+  let pulled = pulled.expect("pull");
   let v = *pulled.downcast::<u32>().expect("downcast");
   assert_eq!(v, 42_u32);
 }
@@ -72,11 +72,8 @@ fn on_push_requests_more_demand_after_success() {
 fn on_push_to_full_boundary_stores_pending() {
   // Given: a boundary with capacity 1, already full
   let boundary = IslandBoundaryShared::new(1);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(0_u32);
-    guard.try_push(v).expect("fill");
-  }
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push(v).expect("fill");
   let mut logic = BoundarySinkLogic::new(boundary.clone());
   let mut demand = DemandTracker::new();
   logic.on_start(&mut demand).expect("on_start");
@@ -94,11 +91,8 @@ fn on_push_to_full_boundary_stores_pending() {
 fn on_tick_retries_pending_push() {
   // Given: a full boundary with a pending element
   let boundary = IslandBoundaryShared::new(1);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(0_u32);
-    guard.try_push(v).expect("fill");
-  }
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push(v).expect("fill");
   let mut logic = BoundarySinkLogic::new(boundary.clone());
   let mut demand = DemandTracker::new();
   logic.on_start(&mut demand).expect("on_start");
@@ -108,10 +102,7 @@ fn on_tick_retries_pending_push() {
   assert!(logic.has_pending_work());
 
   // When: we free the boundary and tick
-  {
-    let mut guard = boundary.lock();
-    let _ = guard.try_pull(); // free one slot
-  }
+  let _ = boundary.try_pull_with_state(); // free one slot
   let progress = logic.on_tick(&mut demand).expect("on_tick");
 
   // Then: pending element is now pushed, progress reported
@@ -119,8 +110,8 @@ fn on_tick_retries_pending_push() {
   assert!(!logic.has_pending_work());
 
   // And the element is in the boundary
-  let mut guard = boundary.lock();
-  let pulled = guard.try_pull().expect("pull");
+  let (pulled, _state) = boundary.try_pull_with_state();
+  let pulled = pulled.expect("pull");
   let v = *pulled.downcast::<u32>().expect("downcast");
   assert_eq!(v, 99_u32);
 }
@@ -144,11 +135,8 @@ fn on_tick_without_pending_returns_no_progress() {
 fn on_tick_with_still_full_boundary_returns_no_progress() {
   // Given: a full boundary with a pending element
   let boundary = IslandBoundaryShared::new(1);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(0_u32);
-    guard.try_push(v).expect("fill");
-  }
+  let v: DynValue = Box::new(0_u32);
+  boundary.try_push(v).expect("fill");
   let mut logic = BoundarySinkLogic::new(boundary);
   let mut demand = DemandTracker::new();
   logic.on_start(&mut demand).expect("on_start");
@@ -178,8 +166,7 @@ fn on_complete_marks_boundary_as_completed() {
   logic.on_complete().expect("on_complete");
 
   // Then: boundary state is Completed
-  let guard = boundary.lock();
-  assert_eq!(*guard.state(), BoundaryState::Completed);
+  assert_eq!(boundary.state(), BoundaryState::Completed);
 }
 
 // --- Error propagation ---
@@ -196,9 +183,8 @@ fn on_error_marks_boundary_as_failed() {
   logic.on_error(StreamError::Failed);
 
   // Then: boundary state is Failed
-  let guard = boundary.lock();
-  match guard.state() {
-    | BoundaryState::Failed(err) => assert_eq!(*err, StreamError::Failed),
+  match boundary.state() {
+    | BoundaryState::Failed(err) => assert_eq!(err, StreamError::Failed),
     | other => panic!("expected Failed, got {other:?}"),
   }
 }

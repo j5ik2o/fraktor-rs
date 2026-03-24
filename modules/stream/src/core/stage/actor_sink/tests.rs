@@ -128,6 +128,19 @@ fn actor_sink_actor_ref_should_not_cancel_upstream() {
 }
 
 #[test]
+fn actor_sink_actor_ref_with_result_should_fail_stream_when_callback_fails() {
+  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+    ActorSink::actor_ref_with_result(|value| if value == 2 { Err(StreamError::Failed) } else { Ok(()) }),
+    KeepRight,
+  );
+  let mut materializer = TestMaterializer;
+  let materialized = graph.run(&mut materializer).expect("run");
+  drive_until_terminal(&materialized);
+
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Err(StreamError::Failed)));
+}
+
+#[test]
 fn actor_sink_actor_ref_with_backpressure_should_complete_stream() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8, 1_u8, 1_u8])));

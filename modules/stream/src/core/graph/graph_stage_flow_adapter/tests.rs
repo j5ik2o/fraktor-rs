@@ -1,7 +1,11 @@
 use alloc::{boxed::Box, vec::Vec};
 
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+
 use super::GraphStageFlowAdapter;
-use crate::core::{DynValue, FlowLogic, StreamError, StreamNotUsed, graph::GraphStageLogic, stage::StageContext};
+use crate::core::{
+  DownstreamCancelAction, DynValue, FlowLogic, StreamError, StreamNotUsed, graph::GraphStageLogic, stage::StageContext,
+};
 
 // ---------------------------------------------------------------------------
 // Test helper: a map-like GraphStageLogic that multiplies by 2
@@ -162,24 +166,49 @@ fn apply_returns_error_when_logic_calls_fail() {
   let result = adapter.apply(input);
 
   // Then: the error from fail() is propagated
-  assert!(result.is_err());
+  match result {
+    | Err(StreamError::InvalidConnection) => {},
+    | Err(other) => panic!("unexpected error: {other:?}"),
+    | Ok(_) => panic!("expected InvalidConnection error"),
+  }
 }
 
 // ---------------------------------------------------------------------------
 // on_source_done() tests
 // ---------------------------------------------------------------------------
 
+struct LifecycleProbeLogic {
+  completed: ArcShared<SpinSyncMutex<bool>>,
+  stopped:   ArcShared<SpinSyncMutex<bool>>,
+}
+
+impl GraphStageLogic<u32, u32, StreamNotUsed> for LifecycleProbeLogic {
+  fn on_complete(&mut self, _ctx: &mut dyn StageContext<u32, u32>) {
+    *self.completed.lock() = true;
+  }
+
+  fn on_stop(&mut self, _ctx: &mut dyn StageContext<u32, u32>) {
+    *self.stopped.lock() = true;
+  }
+
+  fn materialized(&mut self) -> StreamNotUsed {
+    StreamNotUsed::new()
+  }
+}
+
 #[test]
 fn on_source_done_calls_on_complete_and_on_stop() {
-  // Given: a DoubleLogic adapter
-  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> = Box::new(DoubleLogic::new());
+  let completed = ArcShared::new(SpinSyncMutex::new(false));
+  let stopped = ArcShared::new(SpinSyncMutex::new(false));
+  let logic: Box<dyn GraphStageLogic<u32, u32, StreamNotUsed> + Send> =
+    Box::new(LifecycleProbeLogic { completed: completed.clone(), stopped: stopped.clone() });
   let mut adapter = GraphStageFlowAdapter::new(logic);
 
-  // When: on_source_done is called
   let result = adapter.on_source_done();
 
-  // Then: no error (on_complete + on_stop called successfully)
   assert!(result.is_ok());
+  assert!(*completed.lock());
+  assert!(*stopped.lock());
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +225,11 @@ fn on_downstream_cancel_returns_propagate() {
   let result = adapter.on_downstream_cancel();
 
   // Then: returns Propagate action
-  assert!(result.is_ok());
+  match result {
+    | Ok(DownstreamCancelAction::Propagate) => {},
+    | Ok(DownstreamCancelAction::Drain) => panic!("unexpected drain action"),
+    | Err(error) => panic!("unexpected error: {error:?}"),
+  }
 }
 
 // ---------------------------------------------------------------------------

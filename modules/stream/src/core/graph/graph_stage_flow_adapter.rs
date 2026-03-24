@@ -76,6 +76,7 @@ where
   }
 
   fn on_failure(&mut self, error: StreamError) -> Result<FailureAction, StreamError> {
+    self.ensure_started();
     self.logic.on_error(&mut self.context, error);
     if let Some(err) = self.context.take_failure() {
       return Ok(FailureAction::Propagate(err));

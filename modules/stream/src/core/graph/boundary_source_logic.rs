@@ -25,26 +25,25 @@ impl BoundarySourceLogic {
 
 impl SourceLogic for BoundarySourceLogic {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
-    let mut guard = self.boundary.lock();
-    if let Some(value) = guard.try_pull() {
+    let (value, state) = self.boundary.try_pull_with_state();
+    if let Some(value) = value {
       return Ok(Some(value));
     }
     // Buffer is empty — check upstream lifecycle state.
-    match guard.state() {
+    match state {
       // Open: upstream hasn't finished; use WouldBlock to tell the interpreter
       // "skip me this tick" without completing the source.
       | BoundaryState::Open => Err(StreamError::WouldBlock),
       // Completed: upstream finished and buffer drained; signal source exhaustion.
       | BoundaryState::Completed => Ok(None),
       // Failed: upstream failed and buffer drained; propagate the error.
-      | BoundaryState::Failed(err) => Err(err.clone()),
+      | BoundaryState::Failed(err) => Err(err),
     }
   }
 
   fn on_cancel(&mut self) -> Result<(), StreamError> {
     // downstream cancel を boundary 越しに伝播し、upstream 側の WouldBlock 張り付きを防ぐ。
-    let mut guard = self.boundary.lock();
-    guard.complete();
+    self.boundary.complete();
     Ok(())
   }
 }

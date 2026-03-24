@@ -1,3 +1,5 @@
+use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+
 use crate::{
   core::{
     Completion, StreamError, StreamNotUsed,
@@ -30,25 +32,30 @@ fn drive_to_terminal(interpreter: &mut GraphInterpreter) {
 
 #[test]
 fn graph_chain_source_to_sink_directly() -> Result<(), StreamError> {
-  // Given: a builder and a source + sink
+  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::new()));
+  let observed_ref = observed.clone();
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
-  // When: using graph_chain! with only source => sink
-  graph_chain!(builder; Source::single(42_u32) => Sink::<u32, _>::ignore());
+  graph_chain!(builder; Source::single(42_u32) => Sink::<u32, _>::foreach(move |value| {
+    observed_ref.lock().push(value);
+  }));
 
-  // Then: the graph can be built
-  let _flow = builder.build();
+  let (graph, _mat) = builder.into_parts();
+  let plan = graph.into_plan()?;
+  let mut interpreter = GraphInterpreter::new(plan, crate::core::StreamBufferConfig::default());
+  drive_to_terminal(&mut interpreter);
+  assert_eq!(*observed.lock(), alloc::vec![42_u32]);
   Ok(())
 }
 
 // --- graph_chain! macro: source => flow => sink (verify value) ---
 
 #[test]
-fn graph_chain_source_flow_sink() -> Result<(), StreamError> {
+fn manual_wiring_source_flow_sink() -> Result<(), StreamError> {
   // Given: a builder
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
-  // When: using graph_chain! with one intermediate flow, then add completion sink
+  // 実行: source => flow を手動配線し、completion sink を接続する
   let source_out = builder.add_source(Source::single(5_u32))?;
   let out = builder.wire_via(&source_out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2))?;
   let (sink_in, completion) = builder.add_sink_mat(Sink::head())?;
@@ -66,11 +73,11 @@ fn graph_chain_source_flow_sink() -> Result<(), StreamError> {
 // --- graph_chain! macro: source => flow => flow => sink (verify value) ---
 
 #[test]
-fn graph_chain_source_two_flows_sink() -> Result<(), StreamError> {
+fn manual_wiring_source_two_flows_sink() -> Result<(), StreamError> {
   // Given: a builder
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
-  // When: using graph_chain! to wire source => flow => flow, then completion sink
+  // 実行: source => flow => flow を手動配線し、completion sink を接続する
   let source_out = builder.add_source(Source::single(3_u32))?;
   let out = builder.wire_via(&source_out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1))?;
   let out = builder.wire_via(&out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10))?;
@@ -89,11 +96,11 @@ fn graph_chain_source_two_flows_sink() -> Result<(), StreamError> {
 // --- graph_chain! macro: source => flow => flow => flow => sink (verify value) ---
 
 #[test]
-fn graph_chain_source_three_flows_sink() -> Result<(), StreamError> {
+fn manual_wiring_source_three_flows_sink() -> Result<(), StreamError> {
   // Given: a builder
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
-  // When: wiring source => flow => flow => flow, then completion sink
+  // 実行: source => flow => flow => flow を手動配線し、completion sink を接続する
   let source_out = builder.add_source(Source::single(2_u32))?;
   let out = builder.wire_via(&source_out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v + 1))?;
   let out = builder.wire_via(&out, Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 2))?;
@@ -114,18 +121,23 @@ fn graph_chain_source_three_flows_sink() -> Result<(), StreamError> {
 
 #[test]
 fn graph_chain_macro_builds_graph() -> Result<(), StreamError> {
-  // Given: a builder
+  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::new()));
+  let observed_ref = observed.clone();
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
-  // When: using graph_chain! macro for linear chain
   graph_chain!(
     builder;
     Source::from_array([1_u32, 2, 3]) =>
     Flow::<u32, u32, StreamNotUsed>::new().map(|v| v * 10) =>
-    Sink::<u32, _>::ignore()
+    Sink::<u32, _>::foreach(move |value| {
+      observed_ref.lock().push(value);
+    })
   );
 
-  // Then: the graph can be built
-  let _flow = builder.build();
+  let (graph, _mat) = builder.into_parts();
+  let plan = graph.into_plan()?;
+  let mut interpreter = GraphInterpreter::new(plan, crate::core::StreamBufferConfig::default());
+  drive_to_terminal(&mut interpreter);
+  assert_eq!(*observed.lock(), alloc::vec![10_u32, 20, 30]);
   Ok(())
 }

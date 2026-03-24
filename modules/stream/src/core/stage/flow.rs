@@ -1677,12 +1677,7 @@ where
     Acc: Clone + Send + Sync + 'static,
     P: FnMut(&Acc, &Out) -> bool + Send + Sync + 'static,
     F: FnMut(Acc, Out) -> Acc + Send + Sync + 'static, {
-    self.fold(initial, move |acc, value| {
-      if predicate(&acc, &value) {
-        return func(acc, value);
-      }
-      acc
-    })
+    self.fold(initial, move |acc, value| if predicate(&acc, &value) { func(acc, value) } else { acc })
   }
 
   /// Reduces all elements using a binary function, emitting the running reduction.
@@ -3831,7 +3826,7 @@ where
   let state = factory();
   let logic = StatefulMapWithOnCompleteLogic::<In, Out, S, Factory, Mapper, OnComplete> {
     factory,
-    state,
+    state: Some(state),
     mapper,
     on_complete,
     source_done: false,

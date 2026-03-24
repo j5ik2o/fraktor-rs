@@ -65,18 +65,13 @@ impl TopicPubSub {
   ///
   /// Each element flowing through the sink is wrapped in a
   /// [`Topic::publish`] command and sent to the topic actor.
-  ///
-  /// # Panics
-  ///
-  /// Panics if publishing to the topic fails (topic actor stopped).
   #[must_use]
   pub fn sink<T>(topic_actor: TypedActorRef<TopicCommand<T>>) -> Sink<T, StreamCompletion<StreamDone>>
   where
     T: Clone + Send + Sync + 'static, {
     let mut topic = topic_actor;
-    ActorSink::actor_ref(move |msg: T| {
-      #[allow(clippy::expect_used)]
-      topic.tell(Topic::publish(msg)).expect("TopicPubSub: topic への publish に失敗");
+    ActorSink::actor_ref_with_result(move |msg: T| {
+      topic.tell(Topic::publish(msg)).map_err(|_error| crate::core::StreamError::Failed)
     })
   }
 }

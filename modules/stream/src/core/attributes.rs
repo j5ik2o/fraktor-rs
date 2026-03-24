@@ -5,7 +5,9 @@ mod tests;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
 
-use super::{AsyncBoundaryAttr, Attribute, DispatcherAttribute, InputBuffer, LogLevel, LogLevels};
+use super::{
+  AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+};
 
 /// Immutable collection of stream attributes.
 ///
@@ -82,6 +84,24 @@ impl Attributes {
   #[must_use]
   pub fn get<T: Attribute + 'static>(&self) -> Option<&T> {
     self.attrs.iter().find_map(|attr| attr.as_any().downcast_ref::<T>())
+  }
+
+  /// Returns `true` if an attribute of type `T` is stored.
+  #[must_use]
+  pub fn contains<T: Attribute + 'static>(&self) -> bool {
+    self.get::<T>().is_some()
+  }
+
+  /// Returns all stored attributes of type `T`.
+  #[must_use]
+  pub fn get_all<T: Attribute + 'static>(&self) -> Vec<&T> {
+    self.attrs.iter().filter_map(|attr| attr.as_any().downcast_ref::<T>()).collect()
+  }
+
+  /// Creates attributes containing a [`CancellationStrategyKind`].
+  #[must_use]
+  pub fn cancellation_strategy(strategy: CancellationStrategyKind) -> Self {
+    Self { names: alloc::vec![String::from("cancellation-strategy")], attrs: alloc::vec![Box::new(strategy)] }
   }
 
   /// Returns all configured stage names.

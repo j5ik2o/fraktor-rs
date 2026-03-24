@@ -1,7 +1,31 @@
 use crate::core::{
-  SubstreamCancelStrategy,
+  StreamDslError, SubstreamCancelStrategy,
   stage::{Source, sink::Sink},
 };
+
+impl<Key, Out, Mat> super::SourceGroupBySubFlow<Key, Out, Mat>
+where
+  Key: Send + Sync + 'static,
+  Out: Send + Sync + 'static,
+{
+  pub(crate) fn merge_substreams_with_parallelism(
+    self,
+    parallelism: usize,
+  ) -> Result<Source<Out, Mat>, StreamDslError> {
+    if parallelism == 0 {
+      return Err(StreamDslError::InvalidArgument {
+        name:   "parallelism",
+        value:  0,
+        reason: "must be greater than zero",
+      });
+    }
+    Ok(self.merge_substreams())
+  }
+
+  pub(crate) fn concat_substreams(self) -> Source<Out, Mat> {
+    self.merge_substreams()
+  }
+}
 
 #[test]
 fn source_group_by_sub_flow_merge_substreams_preserves_repeated_keys() {

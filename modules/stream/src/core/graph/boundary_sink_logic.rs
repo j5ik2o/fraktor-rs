@@ -37,10 +37,8 @@ impl SinkLogic for BoundarySinkLogic {
   }
 
   fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
-    let mut guard = self.boundary.lock();
-    match guard.try_push(input) {
+    match self.boundary.try_push(input) {
       | Ok(()) => {
-        drop(guard);
         demand.request(1)?;
         Ok(SinkDecision::Continue)
       },
@@ -57,8 +55,7 @@ impl SinkLogic for BoundarySinkLogic {
       // on_tick で pending push 成功後に boundary を閉じる。
       self.pending_terminal = Some(PendingTerminal::Complete);
     } else {
-      let mut guard = self.boundary.lock();
-      guard.complete();
+      self.boundary.complete();
     }
     Ok(())
   }
@@ -68,8 +65,7 @@ impl SinkLogic for BoundarySinkLogic {
       // pending 要素がまだ flush されていないため、終端を遅延させる。
       self.pending_terminal = Some(PendingTerminal::Failed(error));
     } else {
-      let mut guard = self.boundary.lock();
-      guard.fail(error);
+      self.boundary.fail(error);
     }
   }
 
@@ -77,27 +73,32 @@ impl SinkLogic for BoundarySinkLogic {
     let Some(value) = self.pending.take() else {
       return Ok(false);
     };
-    let mut guard = self.boundary.lock();
-    match guard.try_push(value) {
-      | Ok(()) => {
-        // pending flush 成功 — 遅延された終端信号があれば適用する。
-        if let Some(terminal) = self.pending_terminal.take() {
-          match terminal {
-            | PendingTerminal::Complete => guard.complete(),
-            | PendingTerminal::Failed(err) => guard.fail(err),
-          }
-          // 終端信号適用後は追加の demand を要求しない。
-          // ストリームは完了/失敗済みであり、これ以上要素は到着しない。
-          drop(guard);
-        } else {
-          drop(guard);
-          demand.request(1)?;
-        }
-        Ok(true)
+    match self.pending_terminal.take() {
+      | Some(PendingTerminal::Complete) => match self.boundary.try_push_then_complete(value) {
+        | Ok(()) => Ok(true),
+        | Err(rejected) => {
+          self.pending = Some(rejected);
+          self.pending_terminal = Some(PendingTerminal::Complete);
+          Ok(false)
+        },
       },
-      | Err(rejected) => {
-        self.pending = Some(rejected);
-        Ok(false)
+      | Some(PendingTerminal::Failed(error)) => match self.boundary.try_push_then_fail(value, error.clone()) {
+        | Ok(()) => Ok(true),
+        | Err(rejected) => {
+          self.pending = Some(rejected);
+          self.pending_terminal = Some(PendingTerminal::Failed(error));
+          Ok(false)
+        },
+      },
+      | None => match self.boundary.try_push(value) {
+        | Ok(()) => {
+          demand.request(1)?;
+          Ok(true)
+        },
+        | Err(rejected) => {
+          self.pending = Some(rejected);
+          Ok(false)
+        },
       },
     }
   }

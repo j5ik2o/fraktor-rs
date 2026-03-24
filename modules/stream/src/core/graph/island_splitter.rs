@@ -4,13 +4,13 @@
 //! based on per-stage async boundary attributes. This is the foundation
 //! for Pekko-compatible multi-island materialization.
 
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, string::String, vec, vec::Vec};
 use core::any::TypeId;
 
 use super::{island_boundary::IslandBoundaryShared, shape::PortId};
 use crate::core::{
-  Attributes, DispatcherAttribute, MatCombine, SinkDefinition, SourceDefinition, StageDefinition, StreamPlan,
-  StreamPlanEdge, SupervisionStrategy, stage::StageKind,
+  Attributes, DispatcherAttribute, InputBuffer, MatCombine, SinkDefinition, SourceDefinition, StageDefinition,
+  StreamPlan, StreamPlanEdge, SupervisionStrategy, stage::StageKind,
 };
 
 #[cfg(test)]
@@ -71,6 +71,17 @@ impl SingleIslandPlan {
   #[must_use]
   pub(crate) fn sink_indices(&self) -> &[usize] {
     &self.sink_indices
+  }
+
+  #[must_use]
+  pub(crate) fn input_buffer_capacity_for_inlet(&self, inlet: PortId) -> Option<usize> {
+    self.stages.iter().find_map(|stage| {
+      let stage_inlet = stage.inlet()?;
+      if stage_inlet != inlet {
+        return None;
+      }
+      stage.attributes().get::<InputBuffer>().map(|buffer| buffer.max)
+    })
   }
 
   /// Adds a boundary sink stage that receives from the given upstream outlet port
@@ -229,21 +240,67 @@ impl IslandPlan {
 pub(crate) struct IslandSplitter;
 
 impl IslandSplitter {
+  fn topological_stage_order(plan: &StreamPlan) -> Vec<usize> {
+    let stage_count = plan.stages.len();
+    let mut inlet_to_stage = Vec::new();
+    let mut outlet_to_stage = Vec::new();
+    for (stage_index, stage) in plan.stages.iter().enumerate() {
+      if let Some(inlet) = stage.inlet() {
+        inlet_to_stage.push((inlet, stage_index));
+      }
+      if let Some(outlet) = stage.outlet() {
+        outlet_to_stage.push((outlet, stage_index));
+      }
+    }
+
+    let mut incoming = vec![0_usize; stage_count];
+    let mut adjacency = vec![Vec::new(); stage_count];
+    for edge in &plan.edges {
+      let Some(from_stage) = outlet_to_stage.iter().find(|(port, _)| *port == edge.from_port).map(|(_, idx)| *idx)
+      else {
+        continue;
+      };
+      let Some(to_stage) = inlet_to_stage.iter().find(|(port, _)| *port == edge.to_port).map(|(_, idx)| *idx) else {
+        continue;
+      };
+      incoming[to_stage] = incoming[to_stage].saturating_add(1);
+      adjacency[from_stage].push(to_stage);
+    }
+
+    let mut ready = VecDeque::new();
+    for (stage_index, count) in incoming.iter().enumerate() {
+      if *count == 0 {
+        ready.push_back(stage_index);
+      }
+    }
+
+    let mut ordered = Vec::with_capacity(stage_count);
+    while let Some(stage_index) = ready.pop_front() {
+      ordered.push(stage_index);
+      for next_index in &adjacency[stage_index] {
+        incoming[*next_index] = incoming[*next_index].saturating_sub(1);
+        if incoming[*next_index] == 0 {
+          ready.push_back(*next_index);
+        }
+      }
+    }
+
+    if ordered.len() == stage_count { ordered } else { (0..stage_count).collect() }
+  }
+
   /// Splits the given plan into islands.
   pub(crate) fn split(plan: StreamPlan) -> IslandPlan {
     let stage_count = plan.stages.len();
 
     // Assign each stage to an island.
-    // Walk stages in their original order (which is topological for linear pipelines).
-    // TODO: plan.stages の並びはビルド順であってトポロジ順とは限らない。
-    // 分岐/合流や out-of-order 構築で unrelated な stage が次 island に巻き込まれる。
-    // edge からトポロジ順を再計算して、その順に async boundary を適用すべき。
     let mut stage_island = vec![0_usize; stage_count];
     let mut current_island = 0_usize;
     let mut dispatcher_for_island: Vec<Option<String>> = vec![None];
 
-    for (i, stage) in plan.stages.iter().enumerate() {
-      stage_island[i] = current_island;
+    let topo_order = Self::topological_stage_order(&plan);
+    for (position, stage_index) in topo_order.iter().copied().enumerate() {
+      let stage = &plan.stages[stage_index];
+      stage_island[stage_index] = current_island;
 
       // Extract dispatcher from stage attributes if present
       if let Some(da) = stage.attributes().get::<DispatcherAttribute>() {
@@ -251,7 +308,7 @@ impl IslandSplitter {
       }
 
       // If this stage has async boundary, the NEXT stage starts a new island
-      if stage.attributes().is_async() && i + 1 < stage_count {
+      if stage.attributes().is_async() && position + 1 < topo_order.len() {
         current_island += 1;
         dispatcher_for_island.push(None);
       }

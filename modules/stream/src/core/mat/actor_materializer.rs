@@ -1,4 +1,4 @@
-use alloc::format;
+use alloc::{format, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -187,27 +187,42 @@ impl Materializer for ActorMaterializer {
       // Multi-island: create boundary buffers and register all streams
       let (mut islands, crossings) = island_plan.into_parts();
       for crossing in crossings {
-        let boundary = IslandBoundaryShared::new(DEFAULT_BOUNDARY_CAPACITY);
         let upstream_idx = crossing.from_island().as_usize();
         let downstream_idx = crossing.to_island().as_usize();
         let element_type = crossing.element_type();
+        let boundary_capacity = islands[downstream_idx]
+          .input_buffer_capacity_for_inlet(crossing.to_port())
+          .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
+        let boundary = IslandBoundaryShared::new(boundary_capacity);
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
       }
-      let mut primary_handle: Option<StreamHandleImpl> = None;
+      let mut handles: Vec<StreamHandleImpl> = Vec::with_capacity(islands.len());
       for island in islands {
         let stream_plan = island.into_stream_plan();
         let mut stream = Stream::new(stream_plan, self.config.buffer_config());
-        stream.start()?;
+        if let Err(error) = stream.start() {
+          for handle in &handles {
+            if let Err(_cleanup_error) = handle.cancel() {
+              // Best-effort rollback: we still return the original startup failure.
+            }
+          }
+          return Err(error);
+        }
         let shared = StreamShared::new(stream);
-        let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-        Self::register_handle(drive_actor, handle.clone())?;
-        if primary_handle.is_none() {
-          primary_handle = Some(handle);
+        handles.push(StreamHandleImpl::new(StreamHandleId::next(), shared));
+      }
+      for handle in &handles {
+        if let Err(error) = Self::register_handle(drive_actor, handle.clone()) {
+          for registered in &handles {
+            if let Err(_cleanup_error) = registered.cancel() {
+              // Best-effort rollback: we still return the original registration failure.
+            }
+          }
+          return Err(error);
         }
       }
-      // Primary handle is the first island's handle.
-      let handle = primary_handle.ok_or(StreamError::Failed)?;
+      let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     }

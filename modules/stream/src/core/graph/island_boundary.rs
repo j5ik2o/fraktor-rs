@@ -6,7 +6,6 @@
 //! can detect end-of-stream or failure after draining remaining elements.
 
 use alloc::collections::VecDeque;
-use core::ops::DerefMut;
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
@@ -61,6 +60,12 @@ impl IslandBoundary {
   #[allow(dead_code)]
   pub(crate) fn is_empty(&self) -> bool {
     self.buffer.is_empty()
+  }
+
+  /// Returns `true` if the buffer reached its configured capacity.
+  #[must_use]
+  pub(crate) fn is_full(&self) -> bool {
+    self.buffer.len() >= self.capacity
   }
 
   /// Returns the current lifecycle state.
@@ -132,14 +137,42 @@ impl IslandBoundaryShared {
     Self { inner: ArcShared::new(SpinSyncMutex::new(IslandBoundary::new(capacity))) }
   }
 
-  // TODO: lock() を公開するとロック境界が呼び出し側へ漏れる。
-  // try_push / try_pull_with_state / complete / fail をラッパーメソッドとして持たせ、
-  // ガードを内部に閉じ込めるべき。BoundarySinkLogic / BoundarySourceLogic が
-  // 複合操作（push + 終端適用）をアトミックに行う必要があるため、段階的に移行する。
-  /// Acquires the spinlock and returns a guard.
-  ///
-  /// The returned guard dereferences to `&mut IslandBoundary`.
-  pub(crate) fn lock(&self) -> impl DerefMut<Target = IslandBoundary> + '_ {
-    self.inner.lock()
+  #[must_use]
+  pub(crate) fn is_full(&self) -> bool {
+    self.inner.lock().is_full()
+  }
+
+  pub(crate) fn try_push(&self, value: DynValue) -> Result<(), DynValue> {
+    self.inner.lock().try_push(value)
+  }
+
+  #[must_use]
+  pub(crate) fn try_pull_with_state(&self) -> (Option<DynValue>, BoundaryState) {
+    let mut guard = self.inner.lock();
+    let value = guard.try_pull();
+    let state = guard.state().clone();
+    (value, state)
+  }
+
+  pub(crate) fn complete(&self) {
+    self.inner.lock().complete();
+  }
+
+  pub(crate) fn fail(&self, error: StreamError) {
+    self.inner.lock().fail(error);
+  }
+
+  pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), DynValue> {
+    let mut guard = self.inner.lock();
+    guard.try_push(value)?;
+    guard.complete();
+    Ok(())
+  }
+
+  pub(crate) fn try_push_then_fail(&self, value: DynValue, error: StreamError) -> Result<(), DynValue> {
+    let mut guard = self.inner.lock();
+    guard.try_push(value)?;
+    guard.fail(error);
+    Ok(())
   }
 }

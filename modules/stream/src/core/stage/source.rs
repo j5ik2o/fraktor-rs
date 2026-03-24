@@ -1401,15 +1401,17 @@ where
   #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
   pub fn detach(self) -> Source<Out, Mat> {
-    // detach() は async_boundary() の後継 API。内部委譲のため deprecated 呼び出しが必要。
-    #[allow(deprecated)]
-    self.async_boundary()
+    self.append_legacy_async_boundary()
   }
 
   /// Adds an explicit async boundary stage.
   #[deprecated(since = "0.1.0", note = "Use r#async() instead")]
   #[must_use]
-  pub fn async_boundary(mut self) -> Source<Out, Mat> {
+  pub fn async_boundary(self) -> Source<Out, Mat> {
+    self.append_legacy_async_boundary()
+  }
+
+  fn append_legacy_async_boundary(mut self) -> Source<Out, Mat> {
     let definition = async_boundary_definition::<Out>();
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -2397,11 +2399,16 @@ where
     } else {
       // Multi-island: create boundary buffers and drive all streams
       let (mut islands, crossings) = island_plan.into_parts();
+      let mut boundaries = Vec::with_capacity(crossings.len());
       for crossing in crossings {
-        let boundary = super::graph::IslandBoundaryShared::new(super::graph::DEFAULT_BOUNDARY_CAPACITY);
         let upstream_idx = crossing.from_island().as_usize();
         let downstream_idx = crossing.to_island().as_usize();
         let element_type = crossing.element_type();
+        let boundary_capacity = islands[downstream_idx]
+          .input_buffer_capacity_for_inlet(crossing.to_port())
+          .unwrap_or(super::graph::DEFAULT_BOUNDARY_CAPACITY);
+        let boundary = super::graph::IslandBoundaryShared::new(boundary_capacity);
+        boundaries.push(boundary.clone());
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
       }
@@ -2423,6 +2430,11 @@ where
         if any_progress {
           idle_budget = 4096;
         } else {
+          if streams.iter().any(|stream| stream.state().is_terminal())
+            && boundaries.iter().any(|boundary| boundary.is_full())
+          {
+            return Err(StreamError::WouldBlock);
+          }
           if idle_budget == 0 {
             return Err(StreamError::WouldBlock);
           }

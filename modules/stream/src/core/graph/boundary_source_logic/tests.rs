@@ -14,11 +14,8 @@ use crate::core::{
 fn pull_returns_element_from_boundary() {
   // Given: a boundary with one element
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(42_u32);
-    guard.try_push(v).expect("push");
-  }
+  let v: DynValue = Box::new(42_u32);
+  boundary.try_push(v).expect("push");
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: pulling
@@ -50,12 +47,9 @@ fn pull_from_empty_open_boundary_returns_would_block() {
 fn pull_delivers_elements_in_fifo_order() {
   // Given: a boundary with multiple elements
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    for i in 0_u32..5 {
-      let v: DynValue = Box::new(i);
-      guard.try_push(v).expect("push");
-    }
+  for i in 0_u32..5 {
+    let v: DynValue = Box::new(i);
+    boundary.try_push(v).expect("push");
   }
   let mut logic = BoundarySourceLogic::new(boundary);
 
@@ -73,10 +67,7 @@ fn pull_delivers_elements_in_fifo_order() {
 fn pull_from_empty_completed_boundary_returns_none() {
   // Given: a completed boundary with no remaining elements
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    guard.complete();
-  }
+  boundary.complete();
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: pulling
@@ -90,12 +81,9 @@ fn pull_from_empty_completed_boundary_returns_none() {
 fn pull_drains_remaining_elements_before_completion() {
   // Given: a boundary with one element, then completed
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(10_u32);
-    guard.try_push(v).expect("push");
-    guard.complete();
-  }
+  let v: DynValue = Box::new(10_u32);
+  boundary.try_push(v).expect("push");
+  boundary.complete();
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: first pull gets the buffered element
@@ -115,10 +103,7 @@ fn pull_drains_remaining_elements_before_completion() {
 fn pull_from_empty_failed_boundary_returns_error() {
   // Given: a failed boundary with no remaining elements
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    guard.fail(StreamError::Failed);
-  }
+  boundary.fail(StreamError::Failed);
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: pulling
@@ -133,12 +118,9 @@ fn pull_from_empty_failed_boundary_returns_error() {
 fn pull_drains_elements_before_error() {
   // Given: a boundary with one element, then failed
   let boundary = IslandBoundaryShared::new(16);
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(7_u32);
-    guard.try_push(v).expect("push");
-    guard.fail(StreamError::Failed);
-  }
+  let v: DynValue = Box::new(7_u32);
+  boundary.try_push(v).expect("push");
+  boundary.fail(StreamError::Failed);
   let mut logic = BoundarySourceLogic::new(boundary);
 
   // When: first pull gets the buffered element
@@ -165,11 +147,8 @@ fn interleaved_push_and_pull_via_shared_boundary() {
   assert_eq!(logic.pull().unwrap_err(), StreamError::WouldBlock);
 
   // Push from the "sink side"
-  {
-    let mut guard = boundary.lock();
-    let v: DynValue = Box::new(1_u32);
-    guard.try_push(v).expect("push");
-  }
+  let v: DynValue = Box::new(1_u32);
+  boundary.try_push(v).expect("push");
 
   // Pull from the "source side"
   let result = logic.pull().expect("pull");
@@ -177,14 +156,11 @@ fn interleaved_push_and_pull_via_shared_boundary() {
   assert_eq!(value, 1_u32);
 
   // Push two more, then complete
-  {
-    let mut guard = boundary.lock();
-    let v1: DynValue = Box::new(2_u32);
-    let v2: DynValue = Box::new(3_u32);
-    guard.try_push(v1).expect("push");
-    guard.try_push(v2).expect("push");
-    guard.complete();
-  }
+  let v1: DynValue = Box::new(2_u32);
+  let v2: DynValue = Box::new(3_u32);
+  boundary.try_push(v1).expect("push");
+  boundary.try_push(v2).expect("push");
+  boundary.complete();
 
   // Pull both
   let r1 = logic.pull().expect("pull").expect("some");

@@ -326,11 +326,6 @@ fn clone_preserves_dispatcher_attr() {
 }
 
 // --- contains<T>() / get_all<T>() / cancellation_strategy() tests ---
-// TODO(#1349): Attributes::contains, get_all, cancellation_strategy が未実装。
-// API 実装時にこれらのテストを有効化すること。
-// #[cfg(any())] を使用している理由: 未実装 API を参照しているためコンパイル不可。
-// #[ignore] では型レベルのエラーを抑えられないため、この方式を採用。
-#[cfg(any())]
 mod pending_attributes_api {
   use super::*;
 
