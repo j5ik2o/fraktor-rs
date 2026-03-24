@@ -89,11 +89,17 @@ impl ActorRef {
   ///
   /// This method delegates to the internal sender which uses interior mutability.
   /// The `&self` signature is intentional as no external mutable borrow is required.
+  pub fn tell(&self, message: AnyMessage) {
+    if let Err(_error) = self.try_tell(message) {}
+  }
+
+  /// Sends a message to the referenced actor and returns the enqueue result.
   ///
   /// # Errors
   ///
   /// Returns an error if the mailbox is full, closed, or the actor doesn't exist.
-  pub fn tell(&self, message: AnyMessage) -> Result<(), SendError> {
+  #[doc(hidden)]
+  pub fn try_tell(&self, message: AnyMessage) -> Result<(), SendError> {
     match self.sender.send(message) {
       | Ok(()) => Ok(()),
       | Err(error) => {
@@ -106,20 +112,12 @@ impl ActorRef {
   }
 
   /// Sends `PoisonPill` to the referenced actor via the user message channel.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error when message delivery fails.
-  pub fn poison_pill(&self) -> Result<(), SendError> {
+  pub fn poison_pill(&self) {
     self.tell(AnyMessage::new(SystemMessage::PoisonPill))
   }
 
   /// Sends `Kill` to the referenced actor via the user message channel.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error when message delivery fails.
-  pub fn kill(&self) -> Result<(), SendError> {
+  pub fn kill(&self) {
     self.tell(AnyMessage::new(SystemMessage::Kill))
   }
 
@@ -135,7 +133,7 @@ impl ActorRef {
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_sender(reply_ref.clone());
-    self.tell(envelope)?;
+    self.try_tell(envelope)?;
     if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
       system.register_ask_future(future.clone());
     }

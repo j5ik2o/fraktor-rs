@@ -29,7 +29,7 @@ struct ReplyingSender {
 impl ActorRefSender for ReplyingSender {
   fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
     if let Some(sender) = message.sender() {
-      sender.tell(AnyMessage::new(7_u32))?;
+      let _: () = sender.tell(AnyMessage::new(7_u32));
       self.replies.lock().push(7);
     }
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)

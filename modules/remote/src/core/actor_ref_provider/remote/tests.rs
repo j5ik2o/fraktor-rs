@@ -8,7 +8,7 @@ use fraktor_actor_rs::core::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
   },
-  error::{ActorError, SendError},
+  error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -91,7 +91,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
   let writer = provider.writer_for_test();
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
-  remote.tell(AnyMessage::new("hello".to_string())).expect("send succeeds");
+  let _: () = remote.tell(AnyMessage::new("hello".to_string()));
 
   let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope exists");
   assert_eq!(envelope.recipient().to_relative_string(), "/user/user/svc");
@@ -135,12 +135,15 @@ fn remote_watch_hook_tracks_watcher_lifecycle() {
 }
 
 #[test]
-fn sender_rejects_quarantined_authority() {
+fn tell_to_quarantined_authority_records_dead_letter() {
   let system = build_system();
   let mut provider = provider(&system);
   let remote = provider.actor_ref(remote_path()).expect("actor ref");
 
   system.state().remote_authority_set_quarantine("127.0.0.1:4100", Some(Duration::from_secs(10)));
-  let result = remote.tell(AnyMessage::new("hello".to_string()));
-  assert!(matches!(result, Err(SendError::Closed(_))));
+  let _: () = remote.tell(AnyMessage::new("hello".to_string()));
+
+  let queued = provider.writer_for_test().with_write(|writer| writer.try_next()).expect("writer");
+  assert!(queued.is_none());
+  assert_eq!(system.state().dead_letters().len(), 1);
 }

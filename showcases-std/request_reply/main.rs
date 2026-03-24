@@ -41,8 +41,11 @@ enum RequesterMsg {
 fn responder() -> Behavior<ResponderMsg> {
   Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
     | ResponderMsg::GetValue { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(42).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(42))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
   })
@@ -99,7 +102,7 @@ fn main() {
   let termination = system.when_terminated();
 
   // ask リクエストを開始
-  system.user_guardian_ref().tell(RequesterMsg::Start).expect("start");
+  let _: () = system.user_guardian_ref().tell(RequesterMsg::Start);
 
   // ask の完了をフラグで待機
   while !done.load(Ordering::Acquire) {

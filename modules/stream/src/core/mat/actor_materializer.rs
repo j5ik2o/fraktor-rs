@@ -59,12 +59,12 @@ impl ActorMaterializer {
 
   fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
     let message = AnyMessage::new(StreamDriveCommand::Register { handle });
-    actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
+    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
   }
 
   fn send_command(actor: &ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
     let message = AnyMessage::new(command);
-    actor.actor_ref().tell(message).map_err(|_| StreamError::Failed)
+    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
   }
 
   fn schedule_ticks(

@@ -20,8 +20,9 @@ use crate::core::{
   event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced, journal_error::JournalError,
   journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
   pending_handler_invocation::PendingHandlerInvocation, persistence_context::PersistenceContext,
-  persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr, read_event_adapter::ReadEventAdapter,
-  snapshot::Snapshot, snapshot_message::SnapshotMessage, write_event_adapter::WriteEventAdapter,
+  persistence_error::PersistenceError, persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr,
+  read_event_adapter::ReadEventAdapter, snapshot::Snapshot, snapshot_message::SnapshotMessage,
+  write_event_adapter::WriteEventAdapter,
 };
 
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
@@ -165,6 +166,42 @@ fn context_sends_snapshot_messages() {
 
   let messages = snapshot_store.lock();
   assert_eq!(messages.len(), 1);
+}
+
+#[test]
+fn send_write_messages_returns_message_passing_error_when_journal_delivery_fails() {
+  let journal_ref = create_failing_sender();
+  let (snapshot_ref, _snapshot_store) = create_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+
+  let message = JournalMessage::DeleteMessagesTo {
+    persistence_id: "pid-1".to_string(),
+    to_sequence_nr: 10,
+    sender:         ActorRef::null(),
+  };
+
+  let result = context.send_write_messages(message);
+
+  assert!(matches!(result, Err(PersistenceError::MessagePassing(reason)) if reason.contains("Closed")));
+}
+
+#[test]
+fn send_snapshot_message_returns_message_passing_error_when_snapshot_delivery_fails() {
+  let (journal_ref, _journal_store) = create_sender();
+  let snapshot_ref = create_failing_sender();
+  let mut context = DummyContext::new("pid-1".to_string());
+  context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
+
+  let message = SnapshotMessage::DeleteSnapshots {
+    persistence_id: "pid-1".to_string(),
+    criteria:       crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria::latest(),
+    sender:         ActorRef::null(),
+  };
+
+  let result = context.send_snapshot_message(message);
+
+  assert!(matches!(result, Err(PersistenceError::MessagePassing(reason)) if reason.contains("Closed")));
 }
 
 #[test]

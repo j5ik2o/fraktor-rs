@@ -5,8 +5,11 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use super::RecipientRef;
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContext, Pid, actor_ref::ActorRef},
-  error::ActorError,
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  },
+  error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
@@ -29,7 +32,7 @@ impl Actor for ProbeActor {
       self.received.lock().push(*value);
     } else if let Some(request) = message.downcast_ref::<EchoRequest>() {
       let reply_to = request.reply_to.clone();
-      reply_to.tell(AnyMessage::new(request.value)).map_err(|error| ActorError::from_send_error(&error))?;
+      let _: () = reply_to.tell(AnyMessage::new(request.value));
     }
     Ok(())
   }
@@ -39,6 +42,14 @@ impl Actor for ProbeActor {
 struct EchoRequest {
   value:    u32,
   reply_to: ActorRef,
+}
+
+struct FailingSender;
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
+  }
 }
 
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
@@ -60,7 +71,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn send_via_recipient<R>(recipient: &mut R, message: u32)
 where
   R: RecipientRef<u32>, {
-  recipient.tell(message).expect("tell");
+  let _: () = recipient.tell(message);
 }
 
 #[test]
@@ -127,4 +138,13 @@ fn untyped_recipient_ref_supports_ask() {
   let result = response.future().with_write(|future| future.try_take()).expect("ready");
   let reply = result.expect("ask ok");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&99));
+}
+
+#[test]
+fn typed_actor_ref_try_tell_reports_send_error() {
+  let recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
+
+  let result = recipient.try_tell(1);
+
+  assert!(matches!(result, Err(SendError::Closed(_))));
 }

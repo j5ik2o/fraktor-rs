@@ -69,7 +69,7 @@ fn spawn_endpoint_supervisor(
 
 fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) -> Result<(), RemotingError> {
   guardian
-    .tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())))
+    .try_tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())))
     .map_err(|error| RemotingError::HookRegistrationFailed(format!("{error:?}")))
 }
 
@@ -87,7 +87,7 @@ impl EndpointSupervisorActor {
     self.control.lock().notify_system_shutdown();
     self
       .guardian
-      .tell(AnyMessage::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())))
+      .try_tell(AnyMessage::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())))
       .map_err(|error| ActorError::from_send_error(&error))
   }
 }

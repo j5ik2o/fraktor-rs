@@ -40,7 +40,7 @@ pub async fn graceful_stop_with_message(
   if system.cell(&pid).is_none() {
     return Ok(());
   }
-  if target.tell(stop_message).is_err() {
+  if target.try_tell(stop_message).is_err() {
     if system.cell(&pid).is_none() {
       return Ok(());
     }

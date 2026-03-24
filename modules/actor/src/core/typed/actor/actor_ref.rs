@@ -50,12 +50,13 @@ where
   }
 
   /// Sends a typed message to the actor.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the message cannot be delivered.
-  pub fn tell(&mut self, message: M) -> Result<(), SendError> {
-    self.inner.tell(AnyMessage::new(message))
+  pub fn tell(&mut self, message: M) {
+    self.inner.tell(AnyMessage::new(message));
+  }
+
+  /// Sends a typed message while preserving enqueue failures for internal callers.
+  pub(crate) fn try_tell(&self, message: M) -> Result<(), SendError> {
+    self.inner.try_tell(AnyMessage::new(message))
   }
 
   /// Sends a typed request and obtains the ask response.
@@ -81,7 +82,7 @@ where
     };
     let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
     let message = build(reply_typed);
-    self.inner.tell(AnyMessage::new(message))?;
+    self.try_tell(message)?;
     Ok(TypedAskResponse::from_generic(AskResponse::new(reply_ref, future)))
   }
 

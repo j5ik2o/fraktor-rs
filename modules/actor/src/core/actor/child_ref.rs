@@ -33,12 +33,8 @@ impl ChildRef {
   }
 
   /// Sends a user message to the child actor.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error when the mailbox cannot accept the message.
-  pub fn tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
-    self.actor.tell(message)
+  pub fn tell(&mut self, message: AnyMessage) {
+    self.actor.tell(message);
   }
 
   /// Sends a request to the child actor and returns the associated ask response.

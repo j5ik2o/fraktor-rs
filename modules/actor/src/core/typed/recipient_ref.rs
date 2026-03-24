@@ -33,11 +33,7 @@ where
   fn pid(&self) -> Pid;
 
   /// Delivers `message` to the recipient.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the message cannot be enqueued.
-  fn tell(&mut self, message: M) -> Result<(), SendError>;
+  fn tell(&mut self, message: M);
 
   /// Sends a typed request and obtains the ask response.
   ///
@@ -67,7 +63,7 @@ where
     TypedActorRef::pid(self)
   }
 
-  fn tell(&mut self, message: M) -> Result<(), SendError> {
+  fn tell(&mut self, message: M) {
     TypedActorRef::tell(self, message)
   }
 
@@ -96,8 +92,8 @@ where
     ActorRef::pid(self)
   }
 
-  fn tell(&mut self, message: M) -> Result<(), SendError> {
-    ActorRef::tell(self, AnyMessage::new(message))
+  fn tell(&mut self, message: M) {
+    ActorRef::tell(self, AnyMessage::new(message));
   }
 
   fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
@@ -114,7 +110,7 @@ where
       ActorRef::new(self.pid(), reply_sender)
     };
     let message = build(reply_ref.clone());
-    ActorRef::tell(self, AnyMessage::new(message))?;
+    ActorRef::try_tell(self, AnyMessage::new(message))?;
     Ok(AskResponse::new(reply_ref, future))
   }
 }

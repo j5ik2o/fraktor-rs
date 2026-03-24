@@ -156,7 +156,7 @@ impl ActorContext<'_> {
   /// Returns an error if no reply target is set or sending fails.
   pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
     match self.sender.as_mut() {
-      | Some(target) => target.tell(message),
+      | Some(target) => target.try_tell(message),
       | None => Err(SendError::no_recipient(message)),
     }
   }
@@ -322,7 +322,7 @@ impl ActorContext<'_> {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,
     };
-    target.tell(envelope)
+    target.try_tell(envelope)
   }
 
   /// Returns the metadata tags associated with the running actor.

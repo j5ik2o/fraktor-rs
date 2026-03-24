@@ -4,11 +4,12 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::{
   actor::{
-    Actor, ActorContext,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   dead_letter::DeadLetterReason,
-  error::ActorError,
+  error::{ActorError, SendError},
   event::stream::CorrelationId,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
@@ -39,12 +40,20 @@ struct RecordingActor {
   events: ArcShared<NoStdMutex<Vec<String>>>,
 }
 
+struct FailingSender;
+
 impl Actor for RecordingActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(payload) = message.downcast_ref::<String>() {
       self.events.lock().push(payload.clone());
     }
     Ok(())
+  }
+}
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
   }
 }
 
@@ -158,4 +167,28 @@ fn deliver_routes_message_to_local_actor() {
 
   reader.deliver(inbound).expect("deliver succeeds");
   assert_eq!(events.lock().as_slice(), &["delivered".to_string()]);
+}
+
+#[test]
+fn deliver_returns_send_error_and_unregisters_temp_actor_when_temp_delivery_fails() {
+  let system = build_system();
+  let serialization = serialization_extension(&system);
+  let reader = EndpointReader::new(system.downgrade(), serialization);
+  let temp_ref = ActorRef::new(Pid::new(55, 1), FailingSender);
+  let temp_name = system.state().register_temp_actor(temp_ref.clone());
+  let recipient = system.state().actor_path(&temp_ref.pid()).expect("temp actor path");
+
+  let inbound = InboundEnvelope::new(
+    recipient,
+    remote_node(),
+    AnyMessage::new("deliver-temp".to_string()),
+    None,
+    CorrelationId::from_u128(2),
+    crate::core::envelope::OutboundPriority::User,
+  );
+
+  let result = reader.deliver(inbound);
+
+  assert!(matches!(result, Err(SendError::Closed(_))));
+  assert!(system.state().temp_actor(&temp_name).is_none());
 }

@@ -56,7 +56,7 @@ where
     target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
     // best-effort: monitor send failure is non-fatal but logged.
-    if let Err(e) = self.monitor_ref.tell(message.clone()) {
+    if let Err(e) = self.monitor_ref.try_tell(message.clone()) {
       ctx.system().emit_log(
         crate::core::event::logging::LogLevel::Warn,
         alloc::format!("failed to send message to monitor: {:?}", e),

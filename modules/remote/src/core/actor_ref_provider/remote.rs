@@ -152,7 +152,7 @@ impl RemoteActorRefProvider {
   fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     self
       .watcher_daemon
-      .tell(AnyMessage::new(command))
+      .try_tell(AnyMessage::new(command))
       .map(|_| ())
       .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))
   }

@@ -69,10 +69,10 @@ fn producer_start_and_register_consumer_connect() {
     TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
 
   // プロデューサーコントローラーを開始する。
-  pc_ref.tell(ProducerController::start(producer_ref)).expect("start");
+  let _: () = pc_ref.tell(ProducerController::start(producer_ref));
 
   // コンシューマーを登録する。
-  pc_ref.tell(ProducerController::register_consumer(cc_ref.clone())).expect("register consumer");
+  let _: () = pc_ref.tell(ProducerController::register_consumer(cc_ref.clone()));
 
   // ProducerController は接続されるはずだが、実際の RequestNext 配信は
   // コンシューマー側が Request を送信することに依存する。最低限、システムが
@@ -101,9 +101,10 @@ fn consumer_controller_delivers_to_consumer() {
       let delivered = delivered_clone.clone();
       Behaviors::receive_message(move |_ctx, delivery: &ConsumerControllerDelivery<u32>| {
         delivered.lock().push(*delivery.message());
-        let mut confirm_to = delivery.confirm_to().clone();
+        let confirm_to = delivery.confirm_to().clone();
         confirm_to
-          .tell(ConsumerControllerConfirmed)
+          .as_untyped()
+          .try_tell(crate::core::messaging::AnyMessage::new(ConsumerControllerConfirmed))
           .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
         Ok(Behaviors::same())
       })
@@ -113,7 +114,7 @@ fn consumer_controller_delivers_to_consumer() {
   let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.actor_ref().clone());
 
   // コンシューマーを開始する。
-  cc_ref.tell(ConsumerController::start(consumer_ref)).expect("start consumer");
+  let _: () = cc_ref.tell(ConsumerController::start(consumer_ref));
 
   // プロデューサーコントローラーを生成する。
   let pc_props = TypedProps::<ProducerControllerCommand<u32>>::from_behavior_factory(|| {
@@ -126,8 +127,11 @@ fn consumer_controller_delivers_to_consumer() {
   let producer_props = TypedProps::<ProducerControllerRequestNext<u32>>::from_behavior_factory({
     move || {
       Behaviors::receive_message(move |_ctx, req: &ProducerControllerRequestNext<u32>| {
-        let mut send_to = req.send_next_to().clone();
-        send_to.tell(42_u32).map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let send_to = req.send_next_to().clone();
+        send_to
+          .as_untyped()
+          .try_tell(crate::core::messaging::AnyMessage::new(42_u32))
+          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
         Ok(Behaviors::same())
       })
     }
@@ -137,12 +141,10 @@ fn consumer_controller_delivers_to_consumer() {
     TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
 
   // CC 登録時にプロデューサー参照が準備済みとなるよう、先に PC を開始する。
-  pc_ref.tell(ProducerController::start(producer_ref)).expect("start producer");
+  let _: () = pc_ref.tell(ProducerController::start(producer_ref));
 
   // コンシューマーコントローラーをプロデューサーコントローラーに登録する。
-  cc_ref
-    .tell(ConsumerController::register_to_producer_controller(pc_ref.clone()))
-    .expect("register to producer controller");
+  let _: () = cc_ref.tell(ConsumerController::register_to_producer_controller(pc_ref.clone()));
 
   // コンシューマーへの配達を待つ。
   // インラインディスパッチでは、CC のフロー制御 Request が最初の配達確認前に
@@ -211,7 +213,7 @@ fn work_pulling_start_and_get_worker_stats() {
   let stats_ref = TypedActorRef::<WorkerStats>::from_untyped(stats_cell.actor_ref().clone());
 
   // ワーカー登録前は統計が 0 であること。
-  wppc_ref.tell(WorkPullingProducerController::get_worker_stats(stats_ref.clone())).expect("get stats");
+  let _: () = wppc_ref.tell(WorkPullingProducerController::get_worker_stats(stats_ref.clone()));
 
   wait_until(|| !stats_received.lock().is_empty());
   assert_eq!(stats_received.lock()[0], 0);
@@ -250,9 +252,10 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
       let delivered = delivered_clone.clone();
       Behaviors::receive_message(move |_ctx, delivery: &ConsumerControllerDelivery<u32>| {
         delivered.lock().push(*delivery.message());
-        let mut confirm_to = delivery.confirm_to().clone();
+        let confirm_to = delivery.confirm_to().clone();
         confirm_to
-          .tell(ConsumerControllerConfirmed)
+          .as_untyped()
+          .try_tell(crate::core::messaging::AnyMessage::new(ConsumerControllerConfirmed))
           .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
         Ok(Behaviors::same())
       })
@@ -262,19 +265,22 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.actor_ref().clone());
 
   // コンシューマーコントローラーを開始する。
-  cc_ref.tell(ConsumerController::start(consumer_ref)).expect("start consumer");
+  let _: () = cc_ref.tell(ConsumerController::start(consumer_ref));
 
   // ワーカーのコンシューマーコントローラーを Receptionist に登録する。
   if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref.clone())).expect("register worker");
+    let _: () = receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref.clone()));
   }
 
   // RequestNext 受信時にメッセージを送信するモックプロデューサーを生成する。
   let producer_props = TypedProps::<WorkPullingProducerControllerRequestNext<u32>>::from_behavior_factory({
     move || {
       Behaviors::receive_message(move |_ctx, req: &WorkPullingProducerControllerRequestNext<u32>| {
-        let mut send_to = req.send_next_to().clone();
-        send_to.tell(99_u32).map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let send_to = req.send_next_to().clone();
+        send_to
+          .as_untyped()
+          .try_tell(crate::core::messaging::AnyMessage::new(99_u32))
+          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
         Ok(Behaviors::same())
       })
     }
@@ -284,7 +290,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
     TypedActorRef::<WorkPullingProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
 
   // ワークプリング・プロデューサーコントローラーを開始する。
-  wppc_ref.tell(WorkPullingProducerController::start(producer_ref)).expect("start wp producer");
+  let _: () = wppc_ref.tell(WorkPullingProducerController::start(producer_ref));
 
   // コンシューマーへの配達を待つ。
   wait_until(|| !delivered.lock().is_empty());

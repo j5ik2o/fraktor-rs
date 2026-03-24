@@ -56,15 +56,15 @@ fn unsubscribe_should_stop_listing_updates() {
   let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn listing subscriber");
   let subscriber_ref = TypedActorRef::<Listing>::from_untyped(subscriber.actor_ref().clone());
 
-  receptionist.tell(Receptionist::subscribe(&key, subscriber_ref.clone())).expect("subscribe receptionist");
+  let _: () = receptionist.tell(Receptionist::subscribe(&key, subscriber_ref.clone()));
   wait_until(|| *updates.lock() == 1);
 
-  receptionist.tell(Receptionist::unsubscribe(&key, subscriber_ref)).expect("unsubscribe receptionist");
+  let _: () = receptionist.tell(Receptionist::unsubscribe(&key, subscriber_ref));
 
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+  let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
 
   for _ in 0..10_000 {
     assert_eq!(*updates.lock(), 1);
@@ -83,7 +83,7 @@ fn terminated_routee_should_be_removed_from_listing() {
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+  let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
 
   wait_until(|| !find_listing(&mut receptionist, &key).is_empty());
 
@@ -113,7 +113,7 @@ fn terminated_subscriber_should_be_cleaned_up() {
   let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn listing subscriber");
   let subscriber_ref = TypedActorRef::<Listing>::from_untyped(subscriber.actor_ref().clone());
 
-  receptionist.tell(Receptionist::subscribe(&key, subscriber_ref)).expect("subscribe receptionist");
+  let _: () = receptionist.tell(Receptionist::subscribe(&key, subscriber_ref));
   wait_until(|| *updates.lock() == 1);
 
   subscriber.stop().expect("stop listing subscriber");
@@ -121,7 +121,7 @@ fn terminated_subscriber_should_be_cleaned_up() {
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+  let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
 
   for _ in 0..10_000 {
     assert_eq!(*updates.lock(), 1);

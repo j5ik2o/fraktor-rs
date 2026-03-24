@@ -105,9 +105,9 @@ impl Actor for GuardianActor {
     let child = spawn_persistent(ctx, &props)
       .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
 
-    child.tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send Add(1) failed"))?;
-    child.tell(AnyMessage::new(Command::Add(5))).map_err(|_| ActorError::recoverable("send Add(5) failed"))?;
-    child.tell(AnyMessage::new(Command::Add(3))).map_err(|_| ActorError::recoverable("send Add(3) failed"))?;
+    child.try_tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send Add(1) failed"))?;
+    child.try_tell(AnyMessage::new(Command::Add(5))).map_err(|_| ActorError::recoverable("send Add(5) failed"))?;
+    child.try_tell(AnyMessage::new(Command::Add(3))).map_err(|_| ActorError::recoverable("send Add(3) failed"))?;
     Ok(())
   }
 }
@@ -130,7 +130,7 @@ fn main() {
   let system = fraktor_actor_rs::std::system::ActorSystem::new_with_config(&props, &config).expect("system");
   let termination = system.when_terminated();
 
-  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   // コマンド処理と flush_batch 完了を待機してからシャットダウン
   thread::sleep(std::time::Duration::from_millis(500));

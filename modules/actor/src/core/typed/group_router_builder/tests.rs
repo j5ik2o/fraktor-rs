@@ -72,9 +72,9 @@ fn group_router_should_route_via_system_receptionist() {
   });
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-  receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee to receptionist");
+  let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
 
-  router.tell(42_u32).expect("route message");
+  let _: () = router.tell(42_u32);
   wait_until(|| records.lock().as_slice() == [42_u32]);
 
   system.terminate().expect("terminate");
@@ -111,14 +111,14 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
     let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-    receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+    let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
   wait_until(|| {
-    let _ = router.tell(5_u32);
+    let _: () = router.tell(5_u32);
     records.lock().iter().any(|(_, message)| *message == 5)
   });
-  router.tell(5_u32).expect("route same message");
+  let _: () = router.tell(5_u32);
   wait_until(|| records.lock().iter().filter(|(_, message)| *message == 5).count() == 2);
 
   let routed_indices: Vec<usize> =
@@ -185,17 +185,17 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
     let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-    receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+    let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
   wait_until(|| {
-    let _ = router.tell(100_u32);
+    let _: () = router.tell(100_u32);
     !records.lock().is_empty()
   });
   records.lock().clear();
 
   for message in 0..4_u32 {
-    router.tell(message).expect("tell");
+    let _: () = router.tell(message);
   }
   wait_until(|| records.lock().len() == 4);
 
@@ -241,17 +241,17 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
     let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-    receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+    let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
   wait_until(|| {
-    let _ = router.tell(200_u32);
+    let _: () = router.tell(200_u32);
     !records.lock().is_empty()
   });
   records.lock().clear();
 
   for message in 0..6_u32 {
-    router.tell(message).expect("tell");
+    let _: () = router.tell(message);
   }
   wait_until(|| records.lock().len() == 6);
 
@@ -299,17 +299,17 @@ fn group_router_uses_round_robin_routing_by_default() {
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
     let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-    receptionist.tell(Receptionist::register(&key, routee_ref)).expect("register routee");
+    let _: () = receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
   wait_until(|| {
-    let _ = router.tell(300_u32);
+    let _: () = router.tell(300_u32);
     !records.lock().is_empty()
   });
   records.lock().clear();
 
   for message in 0..4_u32 {
-    router.tell(message).expect("tell");
+    let _: () = router.tell(message);
   }
   wait_until(|| records.lock().len() == 4);
 
@@ -359,12 +359,10 @@ fn group_router_should_route_via_explicit_receptionist() {
   });
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
-  explicit_receptionist
-    .tell(Receptionist::register(&key, routee_ref))
-    .expect("register routee to explicit receptionist");
+  explicit_receptionist.tell(Receptionist::register(&key, routee_ref));
 
   wait_until(|| {
-    let _ = router.tell(64_u32);
+    let _: () = router.tell(64_u32);
     records.lock().as_slice().contains(&64_u32)
   });
 
@@ -432,16 +430,22 @@ fn group_router_should_ignore_mismatched_listing_update() {
             events.lock().push("subscribed");
 
             let listing = Listing::new(service_id.clone(), *type_id, vec![routee_ref.clone().into_untyped()]);
-            let mut reply_to = reply_to.clone();
-            reply_to.tell(listing).expect("send initial listing");
+            let reply_to = reply_to.clone();
+            reply_to
+              .as_untyped()
+              .try_tell(crate::core::messaging::AnyMessage::new(listing))
+              .expect("send initial listing");
           },
           | ReceptionistCommand::Register { .. } => {
             let reply_to = subscriber.lock().clone();
-            if let Some(mut reply_to) = reply_to {
+            if let Some(reply_to) = reply_to {
               events.lock().push("mismatch_sent");
               let listing =
                 Listing::new(key.id(), TypeId::of::<u64>(), vec![mismatched_routee_ref.clone().into_untyped()]);
-              reply_to.tell(listing).expect("send mismatched listing");
+              reply_to
+                .as_untyped()
+                .try_tell(crate::core::messaging::AnyMessage::new(listing))
+                .expect("send mismatched listing");
             }
           },
           | _ => {},
@@ -463,18 +467,18 @@ fn group_router_should_ignore_mismatched_listing_update() {
   let mut explicit_receptionist = receptionist_ref;
 
   wait_until(|| {
-    let _ = router.tell(1_u32);
+    let _: () = router.tell(1_u32);
     records.lock().contains(&1_u32)
   });
 
-  explicit_receptionist.tell(Receptionist::register(&key, routee_ref)).expect("trigger mismatched listing update");
+  let _: () = explicit_receptionist.tell(Receptionist::register(&key, routee_ref));
   wait_until(|| events.lock().contains(&"mismatch_sent"));
 
   for _ in 0..10_000 {
     spin_loop();
   }
 
-  router.tell(2_u32).expect("route message after mismatched listing");
+  let _: () = router.tell(2_u32);
   wait_until(|| records.lock().contains(&2_u32));
   assert!(mismatched_records.lock().is_empty());
 

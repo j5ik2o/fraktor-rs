@@ -91,8 +91,8 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let mut sub = subscriber.clone();
-          if let Err(e) = sub.tell(listing) {
+          let sub = subscriber.clone();
+          if let Err(e) = sub.try_tell(listing) {
             ctx.system().emit_log(
               crate::core::event::logging::LogLevel::Warn,
               alloc::format!("receptionist failed to send initial listing to subscriber: {:?}", e),
@@ -126,8 +126,8 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let mut reply = reply_to.clone();
-          if let Err(e) = reply.tell(listing) {
+          let reply = reply_to.clone();
+          if let Err(e) = reply.try_tell(listing) {
             ctx.system().emit_log(
               crate::core::event::logging::LogLevel::Warn,
               alloc::format!("receptionist failed to send find result: {:?}", e),
@@ -235,8 +235,8 @@ fn notify_subscribers(
     let refs = registrations.get(key).cloned().unwrap_or_default();
     let listing = Listing::new(key.0.clone(), key.1, refs);
     for sub in subs {
-      let mut s = sub.clone();
-      if s.tell(listing.clone()).is_err() {
+      let s = sub.clone();
+      if s.try_tell(listing.clone()).is_err() {
         failed_pids.push(sub.pid());
       }
     }

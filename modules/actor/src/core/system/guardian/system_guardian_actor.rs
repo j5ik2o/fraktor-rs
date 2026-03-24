@@ -85,7 +85,7 @@ impl SystemGuardianActor {
           for hook in &mut self.hooks {
             hook
               .actor
-              .tell(AnyMessage::new(SystemGuardianProtocol::TerminationHook))
+              .try_tell(AnyMessage::new(SystemGuardianProtocol::TerminationHook))
               .map_err(|error| ActorError::from_send_error(&error))?;
           }
           Ok(())

@@ -64,8 +64,8 @@ impl Topic {
             return Behaviors::stopped();
           },
         };
-      let mut receptionist_ref = receptionist.clone();
-      if let Err(error) = receptionist_ref.tell(Receptionist::subscribe(&topic_key, adapter)) {
+      let receptionist_ref = receptionist.clone();
+      if let Err(error) = receptionist_ref.try_tell(Receptionist::subscribe(&topic_key, adapter)) {
         let message = alloc::format!("topic failed to subscribe to receptionist for {}: {:?}", topic_key.id(), error);
         ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
         return Behaviors::stopped();
@@ -90,9 +90,9 @@ impl Topic {
                 .map_err(|error| ActorError::from_send_error(&error))?;
               state.local_subscribers.push(subscriber);
               if state.local_subscribers.len() == 1 {
-                let mut receptionist = receptionist.clone();
+                let receptionist = receptionist.clone();
                 receptionist
-                  .tell(Receptionist::register(&topic_key_for_messages, ctx.self_ref()))
+                  .try_tell(Receptionist::register(&topic_key_for_messages, ctx.self_ref()))
                   .map_err(|error| ActorError::from_send_error(&error))?;
               }
             }
@@ -109,9 +109,9 @@ impl Topic {
             deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx)?;
           },
           | super::topic_command::TopicCommandKind::GetTopicStats { reply_to } => {
-            let mut reply_to = reply_to;
+            let reply_to = reply_to;
             reply_to
-              .tell(TopicStats::new(state.local_subscribers.len(), state.topic_instances.len()))
+              .try_tell(TopicStats::new(state.local_subscribers.len(), state.topic_instances.len()))
               .map_err(|error| ActorError::from_send_error(&error))?;
           },
           | super::topic_command::TopicCommandKind::TopicInstancesUpdated(listing) => {
@@ -173,7 +173,7 @@ where
   M: Clone + Send + Sync + 'static, {
   if state.local_subscribers.is_empty() {
     receptionist
-      .tell(Receptionist::deregister(topic_key, ctx.self_ref()))
+      .try_tell(Receptionist::deregister(topic_key, ctx.self_ref()))
       .map_err(|error| ActorError::from_send_error(&error))?;
   }
   Ok(())
@@ -189,8 +189,8 @@ fn publish_local<M>(subscribers: &[TypedActorRef<M>], message: &M) -> Result<(),
 where
   M: Clone + Send + Sync + 'static, {
   for subscriber in subscribers {
-    let mut subscriber = subscriber.clone();
-    subscriber.tell(message.clone()).map_err(|error| ActorError::from_send_error(&error))?;
+    let subscriber = subscriber.clone();
+    subscriber.try_tell(message.clone()).map_err(|error| ActorError::from_send_error(&error))?;
   }
   Ok(())
 }
@@ -199,9 +199,9 @@ fn publish_instances<M>(topic_instances: &[TypedActorRef<TopicCommand<M>>], mess
 where
   M: Clone + Send + Sync + 'static, {
   for topic in topic_instances {
-    let mut topic = topic.clone();
+    let topic = topic.clone();
     topic
-      .tell(TopicCommand::message_published(message.clone()))
+      .try_tell(TopicCommand::message_published(message.clone()))
       .map_err(|error| ActorError::from_send_error(&error))?;
   }
   Ok(())

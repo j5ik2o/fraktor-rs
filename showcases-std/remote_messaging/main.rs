@@ -65,7 +65,7 @@ impl Actor for SenderGuardian {
       // Ping メッセージを組み立て、reply_to に自身のアドレスをセット
       let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
       println!("[sender] -> remote: {}", cmd.text);
-      cmd.target.clone().tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
+      cmd.target.clone().try_tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
     } else if let Some(pong) = message.downcast_ref::<String>() {
       // 受信側からの応答を表示
       println!("[sender] <- reply: {pong}");

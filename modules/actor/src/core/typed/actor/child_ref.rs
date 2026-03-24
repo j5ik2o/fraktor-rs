@@ -40,12 +40,8 @@ where
   }
 
   /// Sends a typed message to the child.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the message cannot be delivered.
-  pub fn tell(&mut self, message: M) -> Result<(), SendError> {
-    self.inner.tell(AnyMessage::new(message))
+  pub fn tell(&mut self, message: M) {
+    self.inner.tell(AnyMessage::new(message));
   }
 
   /// Sends a typed request to the child actor.

@@ -286,11 +286,11 @@ where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::RequestNext(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::RequestNext(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
-      | DeferredAction::SendSequenced(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::SendSequenced(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
     }
   }

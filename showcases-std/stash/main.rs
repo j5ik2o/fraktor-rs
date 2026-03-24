@@ -51,8 +51,11 @@ fn closed(total: i32, stash: StashBuffer<Command>) -> Behavior<Command> {
       Ok(open(total))
     },
     | Command::Read { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(total))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
   })
@@ -64,8 +67,11 @@ fn open(total: i32) -> Behavior<Command> {
     | Command::Buffer(value) => Ok(open(total + value)),
     | Command::Open => Ok(Behaviors::same()),
     | Command::Read { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(total))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
   })
@@ -86,11 +92,11 @@ fn main() {
   let mut actor = system.user_guardian_ref();
 
   // closed 状態で Buffer メッセージを送信（stash される）
-  actor.tell(Command::Buffer(5)).expect("buffer one");
-  actor.tell(Command::Buffer(3)).expect("buffer two");
+  let _: () = actor.tell(Command::Buffer(5));
+  let _: () = actor.tell(Command::Buffer(3));
 
   // Open で stash を再生して open 状態に遷移
-  actor.tell(Command::Open).expect("open");
+  let _: () = actor.tell(Command::Open);
 
   // unstash 後の合計を読み取る
   // 5 + 100 = 105, 3 + 100 = 103 → open(0) で 105 + 103 = 208

@@ -51,8 +51,11 @@ fn router_guardian(
             Ok(Behaviors::same())
           },
           | Command::Read { reply_to } => {
-            let mut reply_to = reply_to.clone();
-            reply_to.tell(records.lock().clone()).map_err(|e| ActorError::from_send_error(&e))?;
+            let reply_to = reply_to.clone();
+            reply_to
+              .as_untyped()
+              .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(records.lock().clone()))
+              .map_err(|e| ActorError::from_send_error(&e))?;
             Ok(Behaviors::same())
           },
         })
@@ -78,7 +81,7 @@ fn main() {
 
   // 4つのワークメッセージを送信（2つのルーティーに分配される）
   for value in 0..4_u32 {
-    router.tell(Command::Work(value)).expect("route work");
+    let _: () = router.tell(Command::Work(value));
   }
   thread::sleep(Duration::from_millis(30));
 

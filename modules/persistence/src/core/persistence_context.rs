@@ -526,7 +526,7 @@ impl<A: 'static> PersistenceContext<A> {
     self.ensure_ready()?;
     self
       .journal_actor_ref
-      .tell(AnyMessage::new(message))
+      .try_tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
       .map(|_| ())
   }
@@ -541,7 +541,7 @@ impl<A: 'static> PersistenceContext<A> {
     self.ensure_ready()?;
     self
       .snapshot_actor_ref
-      .tell(AnyMessage::new(message))
+      .try_tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
       .map(|_| ())
   }

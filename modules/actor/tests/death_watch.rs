@@ -92,7 +92,7 @@ impl Actor for HarnessWatcher {
       return Ok(());
     }
     if message.downcast_ref::<QueueUserEvent>().is_some() {
-      ctx.self_ref().tell(AnyMessage::new(UserProbe)).map_err(|_| ActorError::recoverable("self send failed"))?;
+      ctx.self_ref().try_tell(AnyMessage::new(UserProbe)).map_err(|_| ActorError::recoverable("self send failed"))?;
       self.stop_child();
       return Ok(());
     }
@@ -106,10 +106,13 @@ impl Actor for HarnessWatcher {
           let log = request.log.clone();
           move || SecondaryWatcher::new(log.clone())
         });
-        let mut secondary = ctx
+        let secondary = ctx
           .spawn_child(&watcher_props)
           .map_err(|error| ActorError::recoverable(format!("spawn secondary failed: {:?}", error)))?;
-        secondary.tell(AnyMessage::new(child.clone())).map_err(|_| ActorError::recoverable("link failed"))?;
+        secondary
+          .actor_ref()
+          .try_tell(AnyMessage::new(child.clone()))
+          .map_err(|_| ActorError::recoverable("link failed"))?;
       }
       return Ok(());
     }
@@ -215,22 +218,22 @@ impl CycleGuardian {
 impl Actor for CycleGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<StartCycle>().is_some() {
-      let mut actor_a = ctx
+      let actor_a = ctx
         .spawn_child(&Props::from_fn({
           let log_a = self.log_a.clone();
           move || CycleActor::new(log_a.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn a failed: {:?}", error)))?;
-      let mut actor_b = ctx
+      let actor_b = ctx
         .spawn_child(&Props::from_fn({
           let log_b = self.log_b.clone();
           move || CycleActor::new(log_b.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn b failed: {:?}", error)))?;
-      actor_a.tell(AnyMessage::new(actor_b.clone())).map_err(|_| ActorError::recoverable("link a"))?;
-      actor_b.tell(AnyMessage::new(actor_a.clone())).map_err(|_| ActorError::recoverable("link b"))?;
-      actor_a.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop a"))?;
-      actor_b.tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop b"))?;
+      actor_a.actor_ref().try_tell(AnyMessage::new(actor_b.clone())).map_err(|_| ActorError::recoverable("link a"))?;
+      actor_b.actor_ref().try_tell(AnyMessage::new(actor_a.clone())).map_err(|_| ActorError::recoverable("link b"))?;
+      actor_a.actor_ref().try_tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop a"))?;
+      actor_b.actor_ref().try_tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop b"))?;
     }
     Ok(())
   }
@@ -263,8 +266,8 @@ fn death_watch_notifies_parent_on_child_stop() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   let child_pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
   let observed = wait_until(200, &|| terminated.lock().len() == 1);
@@ -289,9 +292,9 @@ fn death_watch_unwatch_suppresses_notifications() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild)).expect("unwatch");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   thread::sleep(Duration::from_millis(50));
   assert!(terminated.lock().is_empty());
@@ -314,12 +317,10 @@ fn death_watch_handles_multiple_watchers() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system
-    .user_guardian_ref()
-    .tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }))
-    .expect("spawn secondary");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () =
+    system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   let pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();
   let primary_ready = wait_until(200, &|| primary_log.lock().len() == 1);
@@ -345,13 +346,13 @@ fn watch_after_stop_triggers_immediate_notification() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
   let first = wait_until(200, &|| terminated.lock().len() == 1);
   assert!(first);
   terminated.lock().clear();
 
-  system.user_guardian_ref().tell(AnyMessage::new(WatchAfterStop)).expect("rewatch");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(WatchAfterStop));
 
   let observed = wait_until(200, &|| terminated.lock().len() == 1);
   assert!(observed);
@@ -369,7 +370,7 @@ fn spawn_child_watched_notifies_on_stop() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
   let observed = wait_until(200, &|| !terminated.lock().is_empty());
   assert!(observed);
 }
@@ -397,8 +398,8 @@ fn terminated_and_user_messages_are_both_processed() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(QueueUserEvent)).expect("queue event");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(QueueUserEvent));
 
   let observed = wait_until(200, &|| order.lock().len() >= 2);
   assert!(observed);
@@ -422,7 +423,7 @@ fn cyclic_watchers_do_not_deadlock() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(StartCycle)).expect("start cycle");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StartCycle));
 
   let observed = wait_until(500, &|| log_b.lock().len() == 1);
   let snapshot_b = log_b.lock().clone();
@@ -506,8 +507,8 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   let child_pid = child_slot.lock().as_ref().map(|c| c.pid()).unwrap();
   let observed = wait_until(200, &|| custom_log.lock().len() == 1);
@@ -532,9 +533,9 @@ fn watch_with_unwatch_clears_custom_message_registration() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(SpawnChild)).expect("spawn child");
-  system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild)).expect("unwatch");
-  system.user_guardian_ref().tell(AnyMessage::new(StopChild)).expect("stop child");
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(UnwatchChild));
+  let _: () = system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   thread::sleep(Duration::from_millis(50));
   assert!(custom_log.lock().is_empty(), "no custom message after unwatch");

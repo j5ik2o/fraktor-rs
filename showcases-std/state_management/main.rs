@@ -36,8 +36,11 @@ fn counter(total: i32) -> Behavior<CounterCommand> {
       Ok(counter(total + delta))
     },
     | CounterCommand::Read { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(total))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
   })
@@ -66,8 +69,11 @@ fn locked(pass_count: u32) -> Behavior<GateCommand> {
       Ok(Behaviors::ignore())
     },
     | GateCommand::ReadPassCount { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(pass_count).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(pass_count))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
     | GateCommand::Shutdown => Ok(Behaviors::stopped()),
@@ -86,8 +92,11 @@ fn unlocked(pass_count: u32) -> Behavior<GateCommand> {
       Ok(Behaviors::ignore())
     },
     | GateCommand::ReadPassCount { reply_to } => {
-      let mut reply_to = reply_to.clone();
-      reply_to.tell(pass_count).map_err(|e| ActorError::from_send_error(&e))?;
+      let reply_to = reply_to.clone();
+      reply_to
+        .as_untyped()
+        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(pass_count))
+        .map_err(|e| ActorError::from_send_error(&e))?;
       Ok(Behaviors::same())
     },
     | GateCommand::Shutdown => Ok(Behaviors::stopped()),
@@ -115,8 +124,8 @@ fn run_counter() {
   let mut counter_ref = system.user_guardian_ref();
   let termination = system.when_terminated();
 
-  counter_ref.tell(CounterCommand::Add(4)).expect("add first");
-  counter_ref.tell(CounterCommand::Add(6)).expect("add second");
+  let _: () = counter_ref.tell(CounterCommand::Add(4));
+  let _: () = counter_ref.tell(CounterCommand::Add(6));
 
   let response = counter_ref.ask::<i32, _>(|reply_to| CounterCommand::Read { reply_to }).expect("ask read");
   let mut future = response.future().clone();
@@ -146,13 +155,13 @@ fn run_gate() {
   let termination = system.when_terminated();
 
   // コインなしで通過を試みる（拒否される）
-  gate.tell(GateCommand::PassThrough).expect("fail first pass");
+  let _: () = gate.tell(GateCommand::PassThrough);
   // コインを投入してゲートを開く
-  gate.tell(GateCommand::InsertCoin).expect("unlock once");
+  let _: () = gate.tell(GateCommand::InsertCoin);
   // 余分なコイン（無視される）
-  gate.tell(GateCommand::InsertCoin).expect("extra coin");
+  let _: () = gate.tell(GateCommand::InsertCoin);
   // 通過（ゲートが閉まる）
-  gate.tell(GateCommand::PassThrough).expect("pass after unlock");
+  let _: () = gate.tell(GateCommand::PassThrough);
 
   let response = gate.ask::<u32, _>(|reply_to| GateCommand::ReadPassCount { reply_to }).expect("ask count");
   let mut future = response.future().clone();
@@ -166,7 +175,7 @@ fn run_gate() {
     }
   }
 
-  gate.tell(GateCommand::Shutdown).expect("shutdown gate");
+  let _: () = gate.tell(GateCommand::Shutdown);
 
   system.terminate().expect("terminate");
   while !termination.with_read(|af| af.is_ready()) {

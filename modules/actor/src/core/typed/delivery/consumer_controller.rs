@@ -333,11 +333,11 @@ where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::SendToProducer(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::SendToProducer(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
-      | DeferredAction::Deliver(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::Deliver(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
     }
   }

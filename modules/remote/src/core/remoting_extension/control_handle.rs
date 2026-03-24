@@ -180,7 +180,7 @@ impl RemotingControlHandle {
     let daemon = self.inner.watcher_daemon.lock().clone();
     match daemon {
       | Some(daemon) => daemon
-        .tell(AnyMessage::new(command))
+        .try_tell(AnyMessage::new(command))
         .map(|_| ())
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
       | None => Err(RemotingError::TransportUnavailable("watcher daemon not registered; command dropped".into())),

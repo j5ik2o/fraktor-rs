@@ -37,7 +37,7 @@ impl DeliveryEndpoint for LocalDeliveryEndpoint {
     for subscriber in request.subscribers {
       match subscriber {
         | PubSubSubscriber::ActorRef(actor_ref) => {
-          if let Err(error) = actor_ref.tell(payload.clone()) {
+          if let Err(error) = actor_ref.try_tell(payload.clone()) {
             let status = map_send_error(&error);
             failed.push(SubscriberDeliveryReport { subscriber: PubSubSubscriber::ActorRef(actor_ref), status });
           }

@@ -30,13 +30,13 @@ impl ActorRefSender for TestSender {
 fn tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
   let reference: ActorRef = ActorRef::new(pid, TestSender);
-  assert!(reference.tell(AnyMessage::new("ping")).is_ok());
+  let _: () = reference.tell(AnyMessage::new("ping"));
 }
 
 #[test]
 fn null_sender_returns_error() {
   let reference: ActorRef = ActorRef::null();
-  let error = reference.tell(AnyMessage::new("ping")).unwrap_err();
+  let error = reference.try_tell(AnyMessage::new("ping")).unwrap_err();
   assert!(matches!(error, SendError::Closed(_)));
 }
 

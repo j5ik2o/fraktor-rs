@@ -287,8 +287,8 @@ fn subscribe_to_receptionist<A>(
   A: Clone + Send + Sync + 'static, {
   let subscribe_cmd = Receptionist::subscribe(worker_service_key, listing_adapter.clone());
   let system = ctx.system();
-  if let Some(mut receptionist_ref) = system.receptionist_ref()
-    && let Err(e) = receptionist_ref.tell(subscribe_cmd)
+  if let Some(receptionist_ref) = system.receptionist_ref()
+    && let Err(e) = receptionist_ref.try_tell(subscribe_cmd)
   {
     ctx.system().emit_log(
       LogLevel::Warn,
@@ -445,17 +445,17 @@ where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | WppcDeferredAction::Tell(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | WppcDeferredAction::Tell(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
-      | WppcDeferredAction::TellWorkerStats(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | WppcDeferredAction::TellWorkerStats(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
-      | WppcDeferredAction::RequestNext(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | WppcDeferredAction::RequestNext(target, msg) => {
+        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
       },
       | WppcDeferredAction::StopWorkerPc(pc_ref) => {
-        pc_ref.as_untyped().poison_pill().map_err(|e| ActorError::from_send_error(&e))?;
+        stop_worker_producer_controller(&pc_ref)?;
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         // ワーカー PC を生成し、先に state に登録してから tell() する。
@@ -468,14 +468,16 @@ where
           // ワーカー PC に Start と RegisterConsumer を送信する。
           // InternalDemand がインラインで処理され、state.workers に
           // 登録済みなので demand シグナルが正しく反映される。
-          let mut pc_start = pc_ref.clone();
+          let pc_start = pc_ref.clone();
           pc_start
-            .tell(ProducerController::start(demand_adapter.clone()))
+            .try_tell(ProducerController::start(demand_adapter.clone()))
             .map_err(|e| ActorError::from_send_error(&e))?;
 
           let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
-          let mut pc_reg = pc_ref;
-          pc_reg.tell(ProducerController::register_consumer(cc_ref)).map_err(|e| ActorError::from_send_error(&e))?;
+          let pc_reg = pc_ref;
+          pc_reg
+            .try_tell(ProducerController::register_consumer(cc_ref))
+            .map_err(|e| ActorError::from_send_error(&e))?;
 
           // バッファ済みメッセージを排出する
           let mut s = state.lock();
@@ -485,11 +487,11 @@ where
           drop(s);
           for da in drain_deferred {
             match da {
-              | WppcDeferredAction::Tell(mut t, m) => {
-                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
+              | WppcDeferredAction::Tell(t, m) => {
+                t.try_tell(m).map_err(|e| ActorError::from_send_error(&e))?;
               },
-              | WppcDeferredAction::RequestNext(mut t, m) => {
-                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
+              | WppcDeferredAction::RequestNext(t, m) => {
+                t.try_tell(m).map_err(|e| ActorError::from_send_error(&e))?;
               },
               | _ => {},
             }
@@ -499,6 +501,17 @@ where
     }
   }
   Ok(())
+}
+
+fn stop_worker_producer_controller<A>(pc_ref: &TypedActorRef<ProducerControllerCommand<A>>) -> Result<(), ActorError>
+where
+  A: Clone + Send + Sync + 'static, {
+  pc_ref
+    .as_untyped()
+    .try_tell(crate::core::messaging::AnyMessage::new(
+      crate::core::messaging::system_message::SystemMessage::PoisonPill,
+    ))
+    .map_err(|e| ActorError::from_send_error(&e))
 }
 
 /// Result of spawning a per-worker ProducerController.

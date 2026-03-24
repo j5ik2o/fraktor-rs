@@ -87,7 +87,7 @@ where
       return;
     }
     self.poll_scheduled = true;
-    if ctx.self_ref().tell(AnyMessage::new(SnapshotPoll)).is_err() {
+    if ctx.self_ref().try_tell(AnyMessage::new(SnapshotPoll)).is_err() {
       // tell失敗時にフラグをリセットし、ポーリング停止を防ぐ
       self.poll_scheduled = false;
     }
@@ -183,7 +183,7 @@ where
 
 /// Sends a response, returning `true` if delivery failed.
 fn tell_or_fail(sender: &ActorRef, msg: AnyMessage) -> bool {
-  sender.tell(msg).is_err()
+  sender.try_tell(msg).is_err()
 }
 
 fn poll_entry<S: SnapshotStore>(

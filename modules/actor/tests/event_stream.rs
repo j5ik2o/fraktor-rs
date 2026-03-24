@@ -91,7 +91,7 @@ fn dead_letter_event_is_published_when_send_fails() {
   let actor_ref = child.actor_ref().clone();
 
   child.suspend().expect("suspend child");
-  let result = actor_ref.tell(AnyMessage::new("ping"));
+  let result = actor_ref.try_tell(AnyMessage::new("ping"));
   assert!(matches!(result, Err(fraktor_actor_rs::core::error::SendError::Suspended(_))));
 
   wait_until(|| !system.dead_letters().is_empty());

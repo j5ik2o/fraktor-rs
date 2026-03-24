@@ -127,7 +127,7 @@ where
       };
 
       let subscribe_cmd = Receptionist::subscribe(&key, listing_ref.clone());
-      if let Err(e) = receptionist.lock().tell(subscribe_cmd) {
+      if let Err(e) = receptionist.lock().try_tell(subscribe_cmd) {
         ctx.system().emit_log(
           LogLevel::Warn,
           format!("group router failed to subscribe to receptionist: {:?}", e),
@@ -160,8 +160,8 @@ where
           };
           vec![guard[idx].clone()]
         };
-        for mut target in targets {
-          if let Err(e) = target.tell(message.clone()) {
+        for target in targets {
+          if let Err(e) = target.try_tell(message.clone()) {
             ctx.system().emit_log(
               LogLevel::Warn,
               format!("group router failed to send message to routee: {:?}", e),
@@ -174,7 +174,7 @@ where
       .receive_signal(move |ctx, signal| {
         if matches!(signal, BehaviorSignal::Stopped) {
           let unsubscribe = Receptionist::unsubscribe(&key_for_signal, listing_ref_for_signal.clone());
-          if let Err(e) = receptionist_for_signal.lock().tell(unsubscribe) {
+          if let Err(e) = receptionist_for_signal.lock().try_tell(unsubscribe) {
             ctx.system().emit_log(
               LogLevel::Warn,
               format!("group router failed to unsubscribe from receptionist: {:?}", e),
