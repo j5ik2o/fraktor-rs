@@ -1,5 +1,7 @@
 # stream モジュール ギャップ分析
 
+TCP, TLSがらみはスコープアウトしてください。remoteモジュールとの兼ね合いを検討してから対応します。
+
 > [!IMPORTANT]
 > このドキュメントで最優先の指示は `async()` である。
 > `async()` は YAGNI の対象外であり、Gate 0 の blocker として扱う。
