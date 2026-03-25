@@ -326,8 +326,7 @@ fn actor_context_forward_preserves_sender() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  // forward returns () (fire-and-forget, Pekko-compatible)
-  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
+  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -357,8 +356,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  // forward returns () (fire-and-forget, Pekko-compatible)
-  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
+  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -585,6 +583,6 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  // forward returns () (fire-and-forget), even when target sender fails
-  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
+  let result = context.forward(&target_ref, AnyMessage::new(42_u32));
+  assert!(result.is_err());
 }

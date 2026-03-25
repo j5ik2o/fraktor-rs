@@ -262,10 +262,14 @@ where
   /// This mirrors Pekko's `ActorRef.forward`. The message envelope retains the
   /// original sender so that the final recipient can reply to the original
   /// requester. Delivery is fire-and-forget.
-  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C)
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if forwarding fails synchronously while enqueueing.
+  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().forward(target.as_untyped(), AnyMessage::new(message));
+    self.inner().forward(target.as_untyped(), AnyMessage::new(message))
   }
 
   /// Schedules a message to be sent to the specified target after `delay`.

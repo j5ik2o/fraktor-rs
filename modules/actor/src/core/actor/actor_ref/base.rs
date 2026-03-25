@@ -9,14 +9,17 @@ use core::{
   time::Duration,
 };
 
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Pid,
     actor_path::ActorPath,
     actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
   },
+  error::SendError,
   futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResponse, AskResult, system_message::SystemMessage},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   pattern,
   system::state::{SystemStateShared, SystemStateWeak},
 };
@@ -89,21 +92,52 @@ impl ActorRef {
   /// Failures are recorded via the dead-letter / observation path but never
   /// surfaced to the caller. This matches Pekko's at-most-once `tell` semantics.
   pub fn tell(&self, message: AnyMessage) {
-    if let Err(error) = self.sender.send(message)
+    // ここだけ握りつぶしを許容する
+    if self.try_tell(message).is_err() {}
+  }
+
+  /// Sends a message through the underlying sender and preserves synchronous
+  /// delivery failures for infrastructure code that must react to them.
+  ///
+  /// `tell()` should remain the preferred public API for fire-and-forget
+  /// semantics. This helper exists for subsystems such as `ask`,
+  /// persistence, and cluster request orchestration.
+  ///
+  /// On failure the error is also recorded via the system's observation path
+  /// when the reference is path-aware.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when the underlying sender rejects the message.
+  #[doc(hidden)]
+  pub fn try_tell(&self, message: AnyMessage) -> Result<(), SendError> {
+    let result = self.sender.send(message);
+    if let Err(error) = &result
       && let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade())
     {
-      system.record_send_error(Some(self.pid), &error);
+      system.record_send_error(Some(self.pid), error);
     }
+    result
   }
 
   /// Sends `PoisonPill` to the referenced actor via the user message channel.
   pub fn poison_pill(&self) {
-    self.tell(AnyMessage::new(SystemMessage::PoisonPill))
+    if self.try_poison_pill().is_err() {}
+  }
+
+  /// Sends `PoisonPill` to the referenced actor via the user message channel.
+  pub fn try_poison_pill(&self) -> Result<(), SendError> {
+    self.try_tell(AnyMessage::new(SystemMessage::PoisonPill))
   }
 
   /// Sends `Kill` to the referenced actor via the user message channel.
   pub fn kill(&self) {
-    self.tell(AnyMessage::new(SystemMessage::Kill))
+    if self.try_kill().is_err() {}
+  }
+
+  /// Sends `Kill` to the referenced actor via the user message channel.
+  pub fn try_kill(&self) -> Result<(), SendError> {
+    self.try_tell(AnyMessage::new(SystemMessage::Kill))
   }
 
   /// Sends a request and obtains a future that resolves with the reply.
@@ -116,7 +150,13 @@ impl ActorRef {
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_sender(reply_ref.clone());
-    self.tell(envelope);
+    if self.try_tell(envelope).is_err() {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+      return AskResponse::new(reply_ref, future);
+    }
     if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
       system.register_ask_future(future.clone());
     }

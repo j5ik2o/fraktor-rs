@@ -125,12 +125,13 @@ fn actor_ref_tell_with_system_records_error() {
 }
 
 #[test]
-fn actor_ref_ask_returns_response_handle_even_when_delivery_fails() {
+fn actor_ref_ask_completes_send_failed_when_delivery_fails() {
   let actor: ActorRef = ActorRef::null();
 
   let response = actor.ask(AnyMessage::new(42_u32));
   assert_eq!(response.sender().pid(), actor.pid());
-  assert!(response.future().with_read(|future| !future.is_ready()));
+  let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
+  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed)));
 }
 
 #[test]

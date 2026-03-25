@@ -217,7 +217,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
 }
 
 #[test]
-fn redelivery_tick_ignores_send_failure_and_advances_attempt() {
+fn redelivery_tick_does_not_advance_attempt_when_send_fails() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
   let mut delivery = AtLeastOnceDelivery::new(config);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
@@ -227,6 +227,6 @@ fn redelivery_tick_ignores_send_failure_and_advances_attempt() {
 
   let tick = RedeliveryTick;
   let warning = delivery.handle_message(&tick, TimerInstant::from_ticks(1, resolution));
-  assert_eq!(warning.expect("warning should still be emitted").count(), 1);
-  assert_eq!(delivery.unconfirmed_deliveries()[0].attempt(), 2);
+  assert!(warning.is_none());
+  assert_eq!(delivery.unconfirmed_deliveries()[0].attempt(), 1);
 }

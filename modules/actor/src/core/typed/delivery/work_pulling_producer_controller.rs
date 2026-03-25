@@ -437,15 +437,9 @@ fn execute_wppc_deferred<A>(
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | WppcDeferredAction::Tell(mut target, msg) => {
-        target.tell(msg);
-      },
-      | WppcDeferredAction::TellWorkerStats(mut target, msg) => {
-        target.tell(msg);
-      },
-      | WppcDeferredAction::RequestNext(mut target, msg) => {
-        target.tell(msg);
-      },
+      | WppcDeferredAction::Tell(mut target, msg) => target.tell(msg),
+      | WppcDeferredAction::TellWorkerStats(mut target, msg) => target.tell(msg),
+      | WppcDeferredAction::RequestNext(mut target, msg) => target.tell(msg),
       | WppcDeferredAction::StopWorkerPc(pc_ref) => {
         stop_worker_producer_controller(&pc_ref);
       },
@@ -475,12 +469,8 @@ fn execute_wppc_deferred<A>(
           drop(s);
           for da in drain_deferred {
             match da {
-              | WppcDeferredAction::Tell(mut t, m) => {
-                t.tell(m);
-              },
-              | WppcDeferredAction::RequestNext(mut t, m) => {
-                t.tell(m);
-              },
+              | WppcDeferredAction::Tell(mut t, m) => t.tell(m),
+              | WppcDeferredAction::RequestNext(mut t, m) => t.tell(m),
               | _ => {},
             }
           }
@@ -495,7 +485,10 @@ where
   A: Clone + Send + Sync + 'static, {
   pc_ref
     .as_untyped()
-    .tell(crate::core::messaging::AnyMessage::new(crate::core::messaging::system_message::SystemMessage::PoisonPill));
+    .try_tell(crate::core::messaging::AnyMessage::new(
+      crate::core::messaging::system_message::SystemMessage::PoisonPill,
+    ))
+    .ok();
 }
 
 /// Result of spawning a per-worker ProducerController.

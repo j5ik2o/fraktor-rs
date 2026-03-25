@@ -2,13 +2,15 @@
 
 use core::marker::PhantomData;
 
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
   futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResponse, AskResult},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, status_reply::StatusReply},
 };
 
@@ -53,6 +55,17 @@ where
     self.inner.tell(AnyMessage::new(message));
   }
 
+  /// Sends a typed message to the actor and preserves synchronous enqueue
+  /// failures for internal runtime code.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the underlying mailbox rejects the message.
+  #[doc(hidden)]
+  pub fn try_tell(&self, message: M) -> Result<(), crate::core::error::SendError> {
+    self.inner.try_tell(AnyMessage::new(message))
+  }
+
   /// Sends a typed request and obtains the ask response.
   ///
   /// The request message is built with an explicit reply target.
@@ -67,16 +80,22 @@ where
     F: FnOnce(TypedActorRef<R>) -> M, {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = if let Some(system) = self.inner.system_state() {
-      let reply_ref = ActorRef::with_system(self.inner.pid(), reply_sender, &system);
-      system.register_ask_future(future.clone());
-      reply_ref
+    let system = self.inner.system_state();
+    let reply_ref = if let Some(system) = &system {
+      ActorRef::with_system(self.inner.pid(), reply_sender, system)
     } else {
       ActorRef::new(self.inner.pid(), reply_sender)
     };
     let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
     let message = build(reply_typed);
-    self.inner.tell(AnyMessage::new(message));
+    if self.inner.try_tell(AnyMessage::new(message)).is_err() {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+    } else if let Some(system) = system {
+      system.register_ask_future(future.clone());
+    }
     TypedAskResponse::from_generic(AskResponse::new(reply_ref, future))
   }
 

@@ -187,9 +187,15 @@ where
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
           for repr in messages.iter().cloned() {
-            sender.tell(AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }));
+            if sender
+              .try_tell(AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }))
+              .is_err()
+            {}
           }
-          sender.tell(AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }));
+          if sender
+            .try_tell(AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -199,17 +205,23 @@ where
             Some(entry)
           } else {
             for repr in messages.iter().cloned() {
-              sender.tell(AnyMessage::new(JournalResponse::WriteMessageFailure {
-                repr,
-                cause: error.clone(),
-                instance_id: *instance_id,
-              }));
+              if sender
+                .try_tell(AnyMessage::new(JournalResponse::WriteMessageFailure {
+                  repr,
+                  cause: error.clone(),
+                  instance_id: *instance_id,
+                }))
+                .is_err()
+              {}
             }
-            sender.tell(AnyMessage::new(JournalResponse::WriteMessagesFailed {
-              cause:       error,
-              write_count: messages.len() as u64,
-              instance_id: *instance_id,
-            }));
+            if sender
+              .try_tell(AnyMessage::new(JournalResponse::WriteMessagesFailed {
+                cause:       error,
+                write_count: messages.len() as u64,
+                instance_id: *instance_id,
+              }))
+              .is_err()
+            {}
             None
           }
         },
@@ -252,7 +264,10 @@ where
     | JournalInFlight::Delete { future, sender, persistence_id, to_sequence_nr, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          sender.tell(AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }));
+          if sender
+            .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -261,10 +276,13 @@ where
             *future = Box::pin(journal.delete_messages_to(persistence_id, *to_sequence_nr));
             Some(entry)
           } else {
-            sender.tell(AnyMessage::new(JournalResponse::DeleteMessagesFailure {
-              cause:          error,
-              to_sequence_nr: *to_sequence_nr,
-            }));
+            if sender
+              .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesFailure {
+                cause:          error,
+                to_sequence_nr: *to_sequence_nr,
+              }))
+              .is_err()
+            {}
             None
           }
         },
@@ -274,10 +292,13 @@ where
     | JournalInFlight::Highest { future, sender, persistence_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(sequence_nr)) => {
-          sender.tell(AnyMessage::new(JournalResponse::HighestSequenceNr {
-            persistence_id: persistence_id.clone(),
-            sequence_nr,
-          }));
+          if sender
+            .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNr {
+              persistence_id: persistence_id.clone(),
+              sequence_nr,
+            }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -286,10 +307,13 @@ where
             *future = Box::pin(journal.highest_sequence_nr(persistence_id));
             Some(entry)
           } else {
-            sender.tell(AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
-              persistence_id: persistence_id.clone(),
-              cause:          error,
-            }));
+            if sender
+              .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
+                persistence_id: persistence_id.clone(),
+                cause:          error,
+              }))
+              .is_err()
+            {}
             None
           }
         },

@@ -64,18 +64,18 @@ fn tell_on_failing_sender_returns_unit() {
   let _: () = reference.tell(AnyMessage::new("will-fail"));
 }
 
-/// `send_for_ask` is a pub(crate) fallible send helper used only by `ask`.
+/// `try_tell` is a hidden fallible send helper used by infrastructure code such as `ask`.
 /// It returns `Result<(), SendError>` so that `ask` can propagate send failures.
 #[test]
-fn send_for_ask_returns_result_on_success() {
+fn try_tell_returns_result_on_success() {
   let pid = Pid::new(5, 1);
   let reference: ActorRef = ActorRef::new(pid, TestSender);
-  reference.tell(AnyMessage::new("ask-payload"));
+  assert!(reference.try_tell(AnyMessage::new("ask-payload")).is_ok());
 }
 
-/// `send_for_ask` propagates the error when the sender fails.
+/// `try_tell` propagates the error when the sender fails.
 #[test]
-fn send_for_ask_returns_error_on_failure() {
+fn try_tell_returns_error_on_failure() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
@@ -86,7 +86,7 @@ fn send_for_ask_returns_error_on_failure() {
 
   let pid = Pid::new(10, 1);
   let reference: ActorRef = ActorRef::new(pid, FailingSender);
-  reference.tell(AnyMessage::new("will-fail"));
+  assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
 /// `ask` はレスポンスハンドルを返し、結果は future 側で観測する。
@@ -97,9 +97,9 @@ fn ask_returns_response_handle() {
   let _response = reference.ask(AnyMessage::new("ask-payload"));
 }
 
-/// `ask` on a failing sender alsoレスポンスハンドル自体は返す。
+/// `ask` on a failing sender completes the future with `SendFailed`.
 #[test]
-fn ask_on_failing_sender_returns_response_handle() {
+fn ask_on_failing_sender_completes_future_with_send_failed() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
@@ -112,7 +112,8 @@ fn ask_on_failing_sender_returns_response_handle() {
   let reference: ActorRef = ActorRef::new(pid, FailingSender);
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_eq!(response.sender().pid(), pid);
-  assert!(response.future().with_read(|future| !future.is_ready()));
+  let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
+  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed)));
 }
 
 struct NoopActor;

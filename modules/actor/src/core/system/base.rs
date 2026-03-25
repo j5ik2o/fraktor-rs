@@ -481,7 +481,7 @@ impl ActorSystem {
       self.state.clone().mark_terminated();
       Ok(())
     } else {
-      self.force_termination_hooks();
+      self.force_termination_hooks()?;
       Ok(())
     }
   }
@@ -654,12 +654,13 @@ impl ActorSystem {
     }
   }
 
-  fn force_termination_hooks(&self) {
+  fn force_termination_hooks(&self) -> Result<(), SendError> {
     if let Some(system_pid) = self.state.system_guardian_pid()
       && let Some(system_ref) = self.actor_ref(system_pid)
     {
-      system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks));
+      system_ref.try_tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks))?;
     }
+    Ok(())
   }
 }
 

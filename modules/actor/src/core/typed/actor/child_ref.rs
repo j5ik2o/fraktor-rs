@@ -44,6 +44,17 @@ where
     self.inner.tell(AnyMessage::new(message));
   }
 
+  /// Sends a typed message to the child and preserves synchronous enqueue
+  /// failures for internal runtime code.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the child mailbox rejects the message.
+  #[doc(hidden)]
+  pub fn try_tell(&self, message: M) -> Result<(), SendError> {
+    self.inner.try_tell(AnyMessage::new(message))
+  }
+
   /// Sends a typed request to the child actor.
   ///
   /// The request message is built with an explicit reply target.

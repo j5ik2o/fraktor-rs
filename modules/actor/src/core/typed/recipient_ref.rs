@@ -3,13 +3,15 @@
 #[cfg(test)]
 mod tests;
 
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
   futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResponse, AskResult},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, actor::TypedActorRef},
 };
 
@@ -101,15 +103,21 @@ where
     F: FnOnce(Self::ReplyRef<R>) -> M, {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = if let Some(system) = self.system_state() {
-      let reply_ref = ActorRef::with_system(self.pid(), reply_sender, &system);
-      system.register_ask_future(future.clone());
-      reply_ref
+    let system = self.system_state();
+    let reply_ref = if let Some(system) = &system {
+      ActorRef::with_system(self.pid(), reply_sender, system)
     } else {
       ActorRef::new(self.pid(), reply_sender)
     };
     let message = build(reply_ref.clone());
-    ActorRef::tell(self, AnyMessage::new(message));
+    if self.try_tell(AnyMessage::new(message)).is_err() {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+    } else if let Some(system) = system {
+      system.register_ask_future(future.clone());
+    }
     AskResponse::new(reply_ref, future)
   }
 }

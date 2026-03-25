@@ -184,7 +184,10 @@ where
     | SnapshotInFlight::Save { future, metadata, snapshot, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }));
+          if sender
+            .try_tell(AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -193,7 +196,10 @@ where
             *future = Box::pin(snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
             Some(entry)
           } else {
-            sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }));
+            if sender
+              .try_tell(AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }))
+              .is_err()
+            {}
             None
           }
         },
@@ -203,10 +209,13 @@ where
     | SnapshotInFlight::Load { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(snapshot)) => {
-          sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
-            snapshot,
-            to_sequence_nr: criteria.max_sequence_nr(),
-          }));
+          if sender
+            .try_tell(AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
+              snapshot,
+              to_sequence_nr: criteria.max_sequence_nr(),
+            }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -225,7 +234,10 @@ where
     | SnapshotInFlight::DeleteOne { future, metadata, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }));
+          if sender
+            .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -234,7 +246,10 @@ where
             *future = Box::pin(snapshot_store.delete_snapshot(metadata));
             Some(entry)
           } else {
-            sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }));
+            if sender
+              .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }))
+              .is_err()
+            {}
             None
           }
         },
@@ -244,7 +259,10 @@ where
     | SnapshotInFlight::DeleteMany { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }));
+          if sender
+            .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }))
+            .is_err()
+          {}
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -253,8 +271,10 @@ where
             *future = Box::pin(snapshot_store.delete_snapshots(persistence_id, criteria.clone()));
             Some(entry)
           } else {
-            sender
-              .tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }));
+            if sender
+              .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }))
+              .is_err()
+            {}
             None
           }
         },

@@ -40,7 +40,7 @@ pub async fn graceful_stop_with_message(
   if system.cell(&pid).is_none() {
     return Ok(());
   }
-  target.tell(stop_message);
+  target.try_tell(stop_message).map_err(|_| AskError::SendFailed)?;
 
   let mut remaining = timeout;
   let mut delay_provider = system.delay_provider();

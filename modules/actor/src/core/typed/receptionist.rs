@@ -15,6 +15,7 @@ use crate::core::{
     receptionist_command::ReceptionistCommand, service_key::ServiceKey,
   },
 };
+use crate::core::error::ActorError;
 
 /// Composite key for internal registry lookups.
 type RegistryKey = (String, TypeId);
@@ -77,8 +78,8 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let mut sub = subscriber.clone();
-          sub.tell(listing);
+          let sub = subscriber.clone();
+          sub.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
           let subscribers = guard.subscribers.entry(key).or_default();
           if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
             if let Err(e) = ctx.watch(subscriber) {
@@ -106,8 +107,8 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let mut reply = reply_to.clone();
-          reply.tell(listing);
+          let reply = reply_to.clone();
+          reply.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
         },
       }
       Ok(Behaviors::same())

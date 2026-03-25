@@ -168,7 +168,7 @@ fn context_sends_snapshot_messages() {
 }
 
 #[test]
-fn send_write_messages_succeeds_even_when_journal_delivery_fails() {
+fn send_write_messages_returns_message_passing_error_when_journal_delivery_fails() {
   let journal_ref = create_failing_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -181,11 +181,13 @@ fn send_write_messages_succeeds_even_when_journal_delivery_fails() {
   };
 
   let result = context.send_write_messages(message);
-  assert!(result.is_ok());
+  assert!(
+    matches!(result, Err(crate::core::persistence_error::PersistenceError::MessagePassing(reason)) if reason.contains("Closed"))
+  );
 }
 
 #[test]
-fn send_snapshot_message_succeeds_even_when_snapshot_delivery_fails() {
+fn send_snapshot_message_returns_message_passing_error_when_snapshot_delivery_fails() {
   let (journal_ref, _journal_store) = create_sender();
   let snapshot_ref = create_failing_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -198,7 +200,9 @@ fn send_snapshot_message_succeeds_even_when_snapshot_delivery_fails() {
   };
 
   let result = context.send_snapshot_message(message);
-  assert!(result.is_ok());
+  assert!(
+    matches!(result, Err(crate::core::persistence_error::PersistenceError::MessagePassing(reason)) if reason.contains("Closed"))
+  );
 }
 
 #[test]
@@ -549,7 +553,7 @@ fn flush_batch_reuses_pre_boxed_async_handler_without_double_boxing() {
 }
 
 #[test]
-fn flush_batch_keeps_persisting_state_even_when_journal_delivery_fails() {
+fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion() {
   let journal_ref = create_failing_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -558,10 +562,10 @@ fn flush_batch_keeps_persisting_state_even_when_journal_delivery_fails() {
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   let result = context.flush_batch(ActorRef::null());
-  assert!(result.is_ok());
-  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
-  assert_eq!(context.pending_invocations.len(), 1);
-  assert!(context.stash_until_batch_completion);
+  assert!(result.is_err());
+  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
+  assert!(context.pending_invocations.is_empty());
+  assert!(!context.stash_until_batch_completion);
 }
 
 #[test]

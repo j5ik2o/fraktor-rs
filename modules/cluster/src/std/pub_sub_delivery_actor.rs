@@ -42,11 +42,21 @@ impl DeliveryEndpoint for PubSubDeliveryActor {
     for subscriber in request.subscribers {
       match subscriber {
         | PubSubSubscriber::ActorRef(actor_ref) => {
-          actor_ref.tell(payload.clone());
+          if actor_ref.try_tell(payload.clone()).is_err() {
+            failed.push(SubscriberDeliveryReport {
+              subscriber: PubSubSubscriber::ActorRef(actor_ref),
+              status:     DeliveryStatus::SubscriberUnreachable,
+            });
+          }
         },
         | PubSubSubscriber::ClusterIdentity(identity) => match self.cluster_api.get(&identity) {
           | Ok(actor_ref) => {
-            actor_ref.tell(payload.clone());
+            if actor_ref.try_tell(payload.clone()).is_err() {
+              failed.push(SubscriberDeliveryReport {
+                subscriber: PubSubSubscriber::ClusterIdentity(identity),
+                status:     DeliveryStatus::SubscriberUnreachable,
+              });
+            }
           },
           | Err(_) => failed.push(SubscriberDeliveryReport {
             subscriber: PubSubSubscriber::ClusterIdentity(identity),

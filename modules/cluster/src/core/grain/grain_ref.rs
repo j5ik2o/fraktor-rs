@@ -117,8 +117,12 @@ impl GrainRef {
       },
     };
     let envelope = message.clone().with_sender(sender.clone());
-    actor_ref.tell(envelope);
-    Ok(())
+    actor_ref.try_tell(envelope).map_err(|error| {
+      let call_error = GrainCallError::RequestFailed(ClusterRequestError::SendFailed { reason: format!("{error:?}") });
+      self.publish_call_failed(&call_error);
+      self.record_call_failed();
+      call_error
+    })
   }
 
   /// Sends a request with an explicit sender and returns the ask response.
@@ -186,12 +190,25 @@ impl GrainRef {
     let state = self.api.system().state();
     let future = ActorFutureShared::<AskResult>::new();
     let reply_pid = state.allocate_pid();
-    let reply_context = GrainReplyContext { state: state.clone(), temp_pid: Some(reply_pid) };
+    let reply_context = GrainReplyContext {
+      identity:     self.identity.clone(),
+      event_stream: self.event_stream.clone(),
+      metrics:      self.metrics.clone(),
+      state:        state.clone(),
+      temp_pid:     Some(reply_pid),
+    };
     let reply_sender = GrainReplySender::new(future.clone(), forward_to, reply_context);
     let reply_ref = ActorRef::with_system(reply_pid, reply_sender, &state);
     let temp_name = state.register_temp_actor(reply_ref.clone());
     let envelope = message.clone().with_sender(reply_ref.clone());
-    actor_ref.tell(envelope);
+    if let Err(error) = actor_ref.try_tell(envelope) {
+      state.unregister_temp_actor(&temp_name);
+      let request_error = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
+      let call_error = GrainCallError::RequestFailed(request_error);
+      self.publish_call_failed(&call_error);
+      self.record_call_failed();
+      return Err(call_error);
+    }
     state.register_ask_future(future.clone());
     let response = AskResponse::new(reply_ref, future);
     if let Some(timeout) = self.options.timeout {
@@ -297,7 +314,17 @@ impl SchedulerRunnable for GrainRetryRunnable {
         publish_grain_event(&self.context.event_stream, event);
         update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_retried());
         let envelope = message.clone().with_sender(reply_ref.clone());
-        actor_ref.tell(envelope);
+        if let Err(error) = actor_ref.try_tell(envelope) {
+          let request_error = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
+          let call_error = GrainCallError::RequestFailed(request_error.clone());
+          publish_grain_event(&self.context.event_stream, GrainEvent::CallFailed {
+            identity: self.context.identity.clone(),
+            reason:   format!("{call_error:?}"),
+          });
+          update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_failed());
+          complete_future(&self.future, &request_error);
+          self.context.cleanup_temp_reply();
+        }
       },
       | GrainRetryAction::Timeout => {
         let event = GrainEvent::CallTimedOut { identity: self.context.identity.clone() };
@@ -371,7 +398,18 @@ impl ActorRefSender for GrainReplySender {
     }
 
     if let Some(target) = &self.forward_to {
-      target.tell(message.clone());
+      if let Err(error) = target.try_tell(message.clone()) {
+        let request_error = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
+        let call_error = GrainCallError::RequestFailed(request_error.clone());
+        publish_grain_event(&self.context.event_stream, GrainEvent::CallFailed {
+          identity: self.context.identity.clone(),
+          reason:   format!("{call_error:?}"),
+        });
+        update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_failed());
+        complete_future(&self.future, &request_error);
+        self.context.cleanup_temp_reply();
+        return Ok(SendOutcome::Delivered);
+      }
     }
 
     let waker = self.future.with_write(|inner| inner.complete(Ok(message)));
@@ -384,8 +422,11 @@ impl ActorRefSender for GrainReplySender {
 }
 
 struct GrainReplyContext {
-  state:    SystemStateShared,
-  temp_pid: Option<Pid>,
+  identity:     ClusterIdentity,
+  event_stream: EventStreamShared,
+  metrics:      Option<GrainMetricsShared>,
+  state:        SystemStateShared,
+  temp_pid:     Option<Pid>,
 }
 
 impl GrainReplyContext {

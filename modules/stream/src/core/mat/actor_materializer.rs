@@ -57,14 +57,14 @@ impl ActorMaterializer {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) {
+  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
     let message = AnyMessage::new(StreamDriveCommand::Register { handle });
-    actor.actor_ref().tell(message);
+    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
   }
 
-  fn send_command(actor: &ChildRef, command: StreamDriveCommand) {
+  fn send_command(actor: &ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
     let message = AnyMessage::new(command);
-    actor.actor_ref().tell(message);
+    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
   }
 
   fn schedule_ticks(
@@ -180,7 +180,7 @@ impl Materializer for ActorMaterializer {
       stream.start()?;
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-      Self::register_handle(drive_actor, handle.clone());
+      Self::register_handle(drive_actor, handle.clone())?;
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     } else {
@@ -213,7 +213,7 @@ impl Materializer for ActorMaterializer {
         handles.push(StreamHandleImpl::new(StreamHandleId::next(), shared));
       }
       for handle in &handles {
-        Self::register_handle(drive_actor, handle.clone());
+        Self::register_handle(drive_actor, handle.clone())?;
       }
       let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
       self.total_materialized += 1;
@@ -241,7 +241,7 @@ impl Materializer for ActorMaterializer {
       system.scheduler().with_write(|scheduler| scheduler.cancel(&handle));
     }
     if let Some(actor) = self.drive_actor.take() {
-      Self::send_command(&actor, StreamDriveCommand::Shutdown);
+      Self::send_command(&actor, StreamDriveCommand::Shutdown)?;
     }
     Ok(())
   }

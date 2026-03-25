@@ -156,10 +156,11 @@ impl AtLeastOnceDelivery {
       .take(burst_limit)
     {
       let warning = (delivery.attempt() == warning_attempt).then(|| delivery.clone());
-      Self::send_delivery(delivery);
-      delivery.mark_redelivered(now);
-      if let Some(warning) = warning {
-        warnings.push(warning);
+      if Self::send_delivery(delivery) {
+        delivery.mark_redelivered(now);
+        if let Some(warning) = warning {
+          warnings.push(warning);
+        }
       }
     }
 
@@ -214,15 +215,15 @@ impl AtLeastOnceDelivery {
     let delivery_id = self.next_delivery_id();
     let payload = ArcShared::new(build(delivery_id));
     let message = AnyMessage::from_erased(payload.clone(), sender.clone(), false);
-    destination.tell(message);
+    destination.try_tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
 
     let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp, 1);
     self.add_unconfirmed(unconfirmed);
     Ok(delivery_id)
   }
 
-  fn send_delivery(delivery: &UnconfirmedDelivery) {
+  fn send_delivery(delivery: &UnconfirmedDelivery) -> bool {
     let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned(), false);
-    delivery.destination().tell(message);
+    delivery.destination().try_tell(message).is_ok()
   }
 }
