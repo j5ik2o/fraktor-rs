@@ -548,9 +548,7 @@ impl ActorSystem {
     let receptionist = self.spawn_child(system_guardian.pid(), &receptionist_props)?;
     let receptionist_pid = receptionist.pid();
     let receptionist_ref = receptionist.into_actor_ref();
-    if let Err(error) =
-      self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist_ref)
-    {
+    if let Err(error) = self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist_ref) {
       if let Some(cell) = self.state.cell(&receptionist_pid) {
         self.rollback_spawn(Some(system_guardian.pid()), &cell, receptionist_pid);
       }

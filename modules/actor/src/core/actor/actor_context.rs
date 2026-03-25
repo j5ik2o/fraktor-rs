@@ -78,7 +78,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when no current message is active or when the actor cell is unavailable.
-  pub fn stash(&self) -> Result<(), ActorError> {
+  pub fn stash(&mut self) -> Result<(), ActorError> {
     self.stash_with_limit(usize::MAX)
   }
 
@@ -88,7 +88,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error when no current message is active, when the stash reached `max_messages`,
   /// or when the actor cell is unavailable.
-  pub fn stash_with_limit(&self, max_messages: usize) -> Result<(), ActorError> {
+  pub fn stash_with_limit(&mut self, max_messages: usize) -> Result<(), ActorError> {
     let message = self
       .current_message
       .as_ref()
@@ -359,7 +359,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error if the actor is unavailable or already stopped.
-  pub fn pipe_to_self<Fut, Map, Output>(&self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
+  pub fn pipe_to_self<Fut, Map, Output>(&mut self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
   where
     Fut: Future<Output = Output> + Send + 'static,
     Map: FnOnce(Output) -> AnyMessage + Send + 'static, {

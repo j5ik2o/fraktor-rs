@@ -73,7 +73,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the stash capacity is reached or when context stashing fails.
-  pub fn stash(&self, ctx: &TypedActorContext<'_, M>) -> Result<(), ActorError> {
+  pub fn stash(&self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     ctx.stash_with_limit(self.capacity)
   }
 

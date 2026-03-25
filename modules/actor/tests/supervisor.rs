@@ -320,7 +320,8 @@ impl Actor for RootGuardian {
         move || SupervisorActor::new(supervisor_log.clone(), child_slot.clone(), child_log.clone())
       });
 
-      let mut supervisor = ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
+      let mut supervisor =
+        ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
       self.supervisor_slot.lock().replace(supervisor.clone());
       supervisor.tell(AnyMessage::new(Start));
     }

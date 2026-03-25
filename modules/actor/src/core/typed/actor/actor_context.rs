@@ -208,8 +208,8 @@ where
   /// # Errors
   ///
   /// Returns an error when no current message is active or actor cell access fails.
-  pub fn stash(&self) -> Result<(), ActorError> {
-    self.inner().stash()
+  pub fn stash(&mut self) -> Result<(), ActorError> {
+    self.inner_mut().stash()
   }
 
   /// Stashes the currently processed message with an explicit capacity limit.
@@ -218,8 +218,8 @@ where
   ///
   /// Returns an error when no current message is active, when the stash reached `max_messages`,
   /// or when the actor cell is unavailable.
-  pub fn stash_with_limit(&self, max_messages: usize) -> Result<(), ActorError> {
-    self.inner().stash_with_limit(max_messages)
+  pub fn stash_with_limit(&mut self, max_messages: usize) -> Result<(), ActorError> {
+    self.inner_mut().stash_with_limit(max_messages)
   }
 
   /// Re-enqueues the oldest stashed message back to the actor mailbox.
@@ -280,7 +280,11 @@ where
   /// # Errors
   ///
   /// Returns an error if forwarding fails synchronously while enqueueing.
-  pub fn try_forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
+  pub fn try_forward<C>(
+    &mut self,
+    target: &mut TypedActorRef<C>,
+    message: C,
+  ) -> Result<(), crate::core::error::SendError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
@@ -385,7 +389,7 @@ where
       });
       AnyMessage::new(adapt)
     };
-    self.inner().pipe_to_self(mapped, |message| message)
+    self.inner_mut().pipe_to_self(mapped, |message| message)
   }
 
   /// Configures an idle timeout that sends `message` when no messages are received within

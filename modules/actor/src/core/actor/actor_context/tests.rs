@@ -66,7 +66,7 @@ impl Actor for ProbeActor {
 fn actor_context_new() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
 }
 
@@ -74,7 +74,7 @@ fn actor_context_new() {
 fn actor_context_system() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let retrieved_system = context.system();
   let _ = retrieved_system;
 }
@@ -83,7 +83,7 @@ fn actor_context_system() {
 fn actor_context_pid() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
 }
 
@@ -91,7 +91,7 @@ fn actor_context_pid() {
 fn actor_context_sender_initially_none() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   assert!(context.sender().is_none());
 }
 
@@ -121,7 +121,7 @@ fn actor_context_reply_without_sender() {
 fn actor_context_children() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   let children = context.children();
   assert_eq!(children.len(), 0);
@@ -144,7 +144,7 @@ fn actor_context_log() {
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   context.log(LogLevel::Info, String::from("test message"));
   context.log(LogLevel::Error, String::from("error message"));
@@ -170,7 +170,7 @@ fn actor_context_pipe_to_self_enqueues_message() {
     move || ProbeActor::new(log.clone())
   });
   register_cell(&system, pid, "self", &props);
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   context.pipe_to_self(async { 41_i32 }, AnyMessage::new).expect("pipe to self");
 
@@ -188,7 +188,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
     move || ProbeActor::new(log.clone())
   });
   register_cell(&system, pid, "self", &props);
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   let signal = ActorFutureShared::<i32>::new();
   let future = {
@@ -211,7 +211,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
 fn actor_context_stash_requires_active_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let result = context.stash();
   assert!(result.is_err());
 }
@@ -264,7 +264,7 @@ fn actor_context_stash_with_limit_requires_active_message() {
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "self", &props);
 
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let error = context.stash_with_limit(10).expect_err("should fail without active message");
 
   assert!(matches!(error, ActorError::Recoverable(reason) if reason.as_str().contains("active user message")));
