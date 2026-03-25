@@ -1,8 +1,7 @@
 //! Tests for AskError.
 
-use crate::core::error::ActorErrorReason;
-
 use super::AskError;
+use crate::core::error::ActorErrorReason;
 
 #[test]
 fn timeout_has_correct_display() {
