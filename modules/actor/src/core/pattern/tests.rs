@@ -223,7 +223,7 @@ fn graceful_stop_returns_send_failed_without_system() {
   let actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
   let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
 
-  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed))));
+  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
 }
 
 #[test]

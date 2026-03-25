@@ -88,8 +88,8 @@ where
     };
     let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
     let message = build(reply_typed);
-    if self.inner.try_tell(AnyMessage::new(message)).is_err() {
-      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+    if let Err(error) = self.inner.try_tell(AnyMessage::new(message)) {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
       if let Some(waker) = waker {
         waker.wake();
       }

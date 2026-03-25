@@ -34,7 +34,7 @@ pub async fn graceful_stop_with_message(
   timeout: Duration,
 ) -> Result<(), AskError> {
   let Some(system) = target.system_state() else {
-    return Err(AskError::SendFailed);
+    return Err(AskError::send_failed("system state unavailable"));
   };
   let pid = target.pid();
   if system.cell(&pid).is_none() {

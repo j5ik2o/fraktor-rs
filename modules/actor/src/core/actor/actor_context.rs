@@ -327,7 +327,12 @@ impl ActorContext<'_> {
   ///
   /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
   /// original sender of the currently processed message so the final recipient
-  /// can reply to the original requester. Delivery is fire-and-forget.
+  /// can reply to the original requester.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when forwarding fails synchronously while
+  /// enqueueing the message into the target mailbox.
   pub fn try_forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),

@@ -131,7 +131,7 @@ fn actor_ref_ask_completes_send_failed_when_delivery_fails() {
   let response = actor.ask(AnyMessage::new(42_u32));
   assert_eq!(response.sender().pid(), actor.pid());
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
-  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed)));
+  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed(_))));
 }
 
 #[test]

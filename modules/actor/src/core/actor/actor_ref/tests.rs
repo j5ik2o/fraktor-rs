@@ -113,7 +113,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_eq!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
-  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed)));
+  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed(_))));
 }
 
 struct NoopActor;

@@ -356,8 +356,8 @@ fn complete_future(future: &ActorFutureShared<AskResult>, error: &ClusterRequest
   let ask_error = match error {
     | ClusterRequestError::Timeout => AskError::Timeout,
     | ClusterRequestError::ResolveFailed(_) => AskError::DeadLetter,
-    | ClusterRequestError::SendFailed { .. } => AskError::SendFailed,
-    | ClusterRequestError::TimeoutScheduleFailed { .. } => AskError::SendFailed,
+    | ClusterRequestError::SendFailed { reason } => AskError::send_failed(reason.clone()),
+    | ClusterRequestError::TimeoutScheduleFailed { reason } => AskError::send_failed(reason.clone()),
   };
 
   let waker = future.with_write(|inner| if inner.is_ready() { None } else { inner.complete(Err(ask_error)) });

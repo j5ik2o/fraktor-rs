@@ -110,8 +110,8 @@ where
       ActorRef::new(self.pid(), reply_sender)
     };
     let message = build(reply_ref.clone());
-    if self.try_tell(AnyMessage::new(message)).is_err() {
-      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+    if let Err(error) = self.try_tell(AnyMessage::new(message)) {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
       if let Some(waker) = waker {
         waker.wake();
       }

@@ -158,8 +158,8 @@ impl ActorRef {
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_sender(reply_ref.clone());
-    if self.try_tell(envelope).is_err() {
-      let waker = future.with_write(|inner| inner.complete(Err(AskError::SendFailed)));
+    if let Err(error) = self.try_tell(envelope) {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
       if let Some(waker) = waker {
         waker.wake();
       }

@@ -364,7 +364,7 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let ask_error = result.expect_err("expect send failed");
-  assert_eq!(ask_error, fraktor_actor_rs::core::messaging::AskError::SendFailed);
+  assert!(matches!(ask_error, fraktor_actor_rs::core::messaging::AskError::SendFailed(_)));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
