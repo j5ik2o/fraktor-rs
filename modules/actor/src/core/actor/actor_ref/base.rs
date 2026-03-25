@@ -97,11 +97,10 @@ impl ActorRef {
   }
 
   /// Sends a message through the underlying sender and preserves synchronous
-  /// delivery failures for infrastructure code that must react to them.
+  /// delivery failures.
   ///
-  /// `tell()` should remain the preferred public API for fire-and-forget
-  /// semantics. This helper exists for subsystems such as `ask`,
-  /// persistence, and cluster request orchestration.
+  /// Use this when the caller must observe enqueue failure explicitly.
+  /// [`tell`](Self::tell) remains the fire-and-forget variant.
   ///
   /// On failure the error is also recorded via the system's observation path
   /// when the reference is path-aware.
@@ -109,7 +108,6 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns [`SendError`] when the underlying sender rejects the message.
-  #[doc(hidden)]
   pub fn try_tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
     let result = self.sender.send(message);
     if let Err(error) = &result

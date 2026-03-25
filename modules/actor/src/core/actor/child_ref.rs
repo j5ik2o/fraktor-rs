@@ -44,12 +44,11 @@ impl ChildRef {
   }
 
   /// Sends a user message to the child actor and preserves synchronous
-  /// enqueue failures for internal runtime code.
+  /// enqueue failures.
   ///
   /// # Errors
   ///
   /// Returns an error when the child mailbox rejects the message.
-  #[doc(hidden)]
   pub fn try_tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
     self.actor.try_tell(message)
   }

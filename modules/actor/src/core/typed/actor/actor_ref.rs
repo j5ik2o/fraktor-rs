@@ -62,12 +62,11 @@ where
   }
 
   /// Sends a typed message to the actor and preserves synchronous enqueue
-  /// failures for internal runtime code.
+  /// failures.
   ///
   /// # Errors
   ///
   /// Returns an error when the underlying mailbox rejects the message.
-  #[doc(hidden)]
   pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::error::SendError> {
     self.inner.try_tell(AnyMessage::new(message))
   }

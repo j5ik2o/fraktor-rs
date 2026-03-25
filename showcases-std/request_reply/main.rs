@@ -98,7 +98,8 @@ fn main() {
   let termination = system.when_terminated();
 
   // ask リクエストを開始
-  system.user_guardian_ref().tell(RequesterMsg::Start);
+  let mut guardian = system.user_guardian_ref();
+  guardian.try_tell(RequesterMsg::Start).expect("enqueue RequesterMsg::Start");
 
   // ask の完了をフラグで待機
   while !done.load(Ordering::Acquire) {
