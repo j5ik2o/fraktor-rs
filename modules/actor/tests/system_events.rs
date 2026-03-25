@@ -60,7 +60,7 @@ fn lifecycle_and_log_events_are_published() {
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| {
     let snapshot = events.lock().clone();

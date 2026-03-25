@@ -82,15 +82,18 @@ where
     Self { snapshot_store, in_flight: Vec::new(), poll_scheduled: false, config }
   }
 
-  fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) {
+  fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if self.poll_scheduled || self.in_flight.is_empty() {
-      return;
+      return Ok(());
     }
     self.poll_scheduled = true;
-    ctx.self_ref().tell(AnyMessage::new(SnapshotPoll));
+    ctx
+      .self_ref()
+      .try_tell(AnyMessage::new(SnapshotPoll))
+      .map_err(|error| ActorError::from_send_error(&error))
   }
 
-  fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) {
+  fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.poll_scheduled = false;
     let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
@@ -98,12 +101,12 @@ where
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
     for entry in in_flight {
-      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max) {
+      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max)? {
         pending.push(entry);
       }
     }
     self.in_flight = pending;
-    self.schedule_poll(ctx);
+    self.schedule_poll(ctx)
   }
 }
 
@@ -116,7 +119,7 @@ where
 {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<SnapshotPoll>().is_some() {
-      self.poll_in_flight(ctx);
+      self.poll_in_flight(ctx)?;
       return Ok(());
     }
 
@@ -162,7 +165,7 @@ where
           });
         },
       }
-      self.poll_in_flight(ctx);
+      self.poll_in_flight(ctx)?;
     }
     Ok(())
   }
@@ -174,7 +177,7 @@ fn poll_entry<S: SnapshotStore>(
   mut entry: SnapshotInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> Option<SnapshotInFlight>
+) -> Result<Option<SnapshotInFlight>, ActorError>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
@@ -184,101 +187,96 @@ where
     | SnapshotInFlight::Save { future, metadata, snapshot, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          if sender
+          sender
             .try_tell(AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }))
-            .is_err()
-          {}
-          None
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            if sender
+            sender
               .try_tell(AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }))
-              .is_err()
-            {}
-            None
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
     | SnapshotInFlight::Load { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(snapshot)) => {
-          if sender
+          sender
             .try_tell(AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
               snapshot,
               to_sequence_nr: criteria.max_sequence_nr(),
             }))
-            .is_err()
-          {}
-          None
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(snapshot_store.load_snapshot(persistence_id, criteria.clone()));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error }));
-            None
+            sender
+              .try_tell(AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error }))
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
     | SnapshotInFlight::DeleteOne { future, metadata, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          if sender
+          sender
             .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }))
-            .is_err()
-          {}
-          None
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(snapshot_store.delete_snapshot(metadata));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            if sender
+            sender
               .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }))
-              .is_err()
-            {}
-            None
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
     | SnapshotInFlight::DeleteMany { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          if sender
+          sender
             .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }))
-            .is_err()
-          {}
-          None
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(snapshot_store.delete_snapshots(persistence_id, criteria.clone()));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            if sender
+            sender
               .try_tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }))
-              .is_err()
-            {}
-            None
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
   }

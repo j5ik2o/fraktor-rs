@@ -50,12 +50,12 @@ fn recoverable_failure_restarts_child() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let mut child = child_slot.lock().clone().expect("child");
   assert_eq!(*log.lock(), vec!["child_pre_start"]);
 
-  let _: () = child.tell(AnyMessage::new(TriggerRecoverable));
+  child.tell(AnyMessage::new(TriggerRecoverable));
 
   assert_eq!(*log.lock(), vec!["child_pre_start", "child_fail", "child_post_stop", "child_pre_start"],);
 }
@@ -78,11 +78,11 @@ fn fatal_failure_stops_child() {
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let mut child = child_slot.lock().clone().expect("child");
   let child_pid = child.pid();
-  let _: () = child.tell(AnyMessage::new(TriggerFatal));
+  child.tell(AnyMessage::new(TriggerFatal));
 
   wait_until(
     || {
@@ -114,7 +114,7 @@ fn escalate_failure_restarts_supervisor() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
 
@@ -124,7 +124,7 @@ fn escalate_failure_restarts_supervisor() {
   assert_eq!(*supervisor_log.lock(), vec!["supervisor_pre_start"]);
   assert_eq!(*child_log.lock(), vec!["child_pre_start"]);
 
-  let _: () = child.tell(AnyMessage::new(TriggerRecoverable));
+  child.tell(AnyMessage::new(TriggerRecoverable));
 
   wait_until(|| supervisor_log.lock().len() >= 3 && child_log.lock().len() >= 4, Duration::from_millis(20));
 
@@ -152,12 +152,12 @@ fn panic_propagates_without_intervention() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(20));
   let mut child = child_slot.lock().clone().expect("child");
 
   let result = catch_unwind(AssertUnwindSafe(|| {
-    let _: () = child.tell(AnyMessage::new("boom"));
+    child.tell(AnyMessage::new("boom"));
   }));
 
   assert!(result.is_err());
@@ -178,14 +178,14 @@ fn resume_directive_continues_child_without_restart() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| child_slot.lock().is_some(), Duration::from_millis(100));
   let mut child = child_slot.lock().clone().expect("child");
   wait_until(|| log.lock().contains(&"child_pre_start"), Duration::from_millis(100));
   assert_eq!(*log.lock(), vec!["child_pre_start"]);
 
-  let _: () = child.tell(AnyMessage::new(TriggerRecoverable));
+  child.tell(AnyMessage::new(TriggerRecoverable));
 
   // Resume の場合、子アクターは再起動されない。つまり:
   // - pre_start は再度呼ばれない（2回目の "child_pre_start" がない）
@@ -322,7 +322,7 @@ impl Actor for RootGuardian {
 
       let supervisor = ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
       self.supervisor_slot.lock().replace(supervisor.clone());
-      let _: () = supervisor.actor_ref().tell(AnyMessage::new(Start));
+      supervisor.actor_ref().tell(AnyMessage::new(Start));
     }
     Ok(())
   }

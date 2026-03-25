@@ -113,7 +113,7 @@ fn spawn_and_tell_delivers_message() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);
   while log.lock().is_empty() && std::time::Instant::now() < dead_line {
@@ -151,7 +151,7 @@ fn auto_naming_and_duplicate_detection() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);
   while spawned.lock().len() < 3 && std::time::Instant::now() < dead_line {

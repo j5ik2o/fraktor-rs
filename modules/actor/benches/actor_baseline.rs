@@ -109,7 +109,7 @@ impl Actor for PingPongActor {
       } else {
         let next =
           PingPong { done: command.done.clone(), peer: ctx.self_ref(), remaining: command.remaining - 1 };
-        let _: () = command.peer.clone().tell(AnyMessage::new(next));
+        command.peer.clone().tell(AnyMessage::new(next));
       }
     }
     Ok(())
@@ -166,7 +166,7 @@ impl TellBenchFixture {
     let props = Props::from_fn(|| RegistryGuardian);
     let system = TokioBenchSystem::new(&props);
     let (reply_to, receiver) = sync_channel(1);
-    let _: () = system.system.user_guardian_ref().tell(AnyMessage::new(RegisterChild { reply_to }));
+    system.system.user_guardian_ref().tell(AnyMessage::new(RegisterChild { reply_to }));
     let actor_ref = receiver.recv_timeout(WAIT_TIMEOUT).expect("registered child ref");
     Self { actor_ref, system }
   }
@@ -199,7 +199,7 @@ impl PingPongBenchFixture {
   fn run_roundtrip(&self, rounds: usize) {
     let (done, receiver) = sync_channel(1);
     let message = PingPong { done, peer: self.pong_ref.clone(), remaining: rounds };
-    let _: () = self.ping_ref.clone().tell(AnyMessage::new(message));
+    self.ping_ref.clone().tell(AnyMessage::new(message));
     wait_for(receiver);
   }
 
@@ -213,7 +213,7 @@ where
   F: FnOnce(SyncSender<()>) -> T,
   T: Send + Sync + 'static, {
   let (done, receiver) = sync_channel(1);
-  let _: () = target.tell(AnyMessage::new(message_factory(done)));
+  target.tell(AnyMessage::new(message_factory(done)));
   receiver
 }
 
@@ -223,7 +223,7 @@ fn wait_for(receiver: Receiver<()>) {
 
 fn register_child(system: &ActorSystem) -> ActorRef {
   let (reply_to, receiver) = sync_channel(1);
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(RegisterChild { reply_to }));
+  system.user_guardian_ref().tell(AnyMessage::new(RegisterChild { reply_to }));
   receiver.recv_timeout(WAIT_TIMEOUT).expect("registered child ref")
 }
 

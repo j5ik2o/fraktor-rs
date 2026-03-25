@@ -92,7 +92,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   child.suspend().expect("suspend child");
   // tell is fire-and-forget; the suspended message is routed to dead letters internally
-  let _: () = actor_ref.tell(AnyMessage::new("ping"));
+  actor_ref.tell(AnyMessage::new("ping"));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();

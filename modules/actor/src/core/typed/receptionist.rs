@@ -10,12 +10,12 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
+  error::ActorError,
   typed::{
     actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors, listing::Listing,
     receptionist_command::ReceptionistCommand, service_key::ServiceKey,
   },
 };
-use crate::core::error::ActorError;
 
 /// Composite key for internal registry lookups.
 type RegistryKey = (String, TypeId);

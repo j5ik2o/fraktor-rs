@@ -190,7 +190,7 @@ fn recovery_flow_snapshot_then_replay() {
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   for _ in 0..50 {
     controller.inject_and_drive(1);
@@ -241,7 +241,7 @@ fn persist_flow_keeps_values_independent() {
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   for _ in 0..5 {
     controller.inject_and_drive(1);
@@ -249,8 +249,8 @@ fn persist_flow_keeps_values_independent() {
 
   let refs_guard = refs.lock();
   assert_eq!(refs_guard.len(), 2);
-  let _: () = refs_guard[0].tell(AnyMessage::new(Command::Add(2)));
-  let _: () = refs_guard[1].tell(AnyMessage::new(Command::Add(5)));
+  refs_guard[0].tell(AnyMessage::new(Command::Add(2)));
+  refs_guard[1].tell(AnyMessage::new(Command::Add(5)));
   drop(refs_guard);
 
   for _ in 0..10 {

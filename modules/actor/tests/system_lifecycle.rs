@@ -41,7 +41,7 @@ fn stop_self_propagates_to_children() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);
   while child_states.lock().len() < 2 && std::time::Instant::now() < dead_line {

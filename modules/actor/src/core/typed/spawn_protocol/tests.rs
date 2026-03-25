@@ -98,7 +98,7 @@ fn spawn_protocol_spawns_anonymous_children() {
   wait_until(|| future.is_ready());
   let child = future.try_take().expect("reply").expect("child ref");
 
-  let _: () = child.clone().tell(ProbeCommand::Ping);
+  child.clone().tell(ProbeCommand::Ping);
   wait_until(|| start_count.load(Ordering::SeqCst) == 1);
 
   system.terminate().expect("terminate");
@@ -128,8 +128,8 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
   let mut first_ref = first_future.try_take().expect("first reply").expect("first child");
   let mut second_ref = second_future.try_take().expect("second reply").expect("second child");
 
-  let _: () = first_ref.tell(ProbeCommand::Ping);
-  let _: () = second_ref.tell(OtherProbeCommand::Pong);
+  first_ref.tell(ProbeCommand::Ping);
+  second_ref.tell(OtherProbeCommand::Pong);
   wait_until(|| first_start_count.load(Ordering::SeqCst) == 1 && second_start_count.load(Ordering::SeqCst) == 1);
 
   system.terminate().expect("terminate");

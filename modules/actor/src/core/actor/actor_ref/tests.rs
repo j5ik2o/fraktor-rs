@@ -34,7 +34,7 @@ fn tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
   let reference: ActorRef = ActorRef::new(pid, TestSender);
   // Type constraint: tell MUST return ()
-  let _: () = reference.tell(AnyMessage::new("ping"));
+  reference.tell(AnyMessage::new("ping"));
 }
 
 /// `tell` on a null (closed) sender does not panic; it silently drops the message.
@@ -43,7 +43,7 @@ fn tell_delegates_to_sender() {
 fn tell_on_null_sender_does_not_panic() {
   let reference: ActorRef = ActorRef::null();
   // tell is fire-and-forget: no Result, no panic
-  let _: () = reference.tell(AnyMessage::new("ping"));
+  reference.tell(AnyMessage::new("ping"));
 }
 
 /// `tell` on a failing sender records the error via the dead letter system
@@ -61,7 +61,7 @@ fn tell_on_failing_sender_returns_unit() {
   let pid = Pid::new(10, 1);
   let reference: ActorRef = ActorRef::new(pid, FailingSender);
   // tell MUST return () even when the sender fails
-  let _: () = reference.tell(AnyMessage::new("will-fail"));
+  reference.tell(AnyMessage::new("will-fail"));
 }
 
 /// `try_tell` is a hidden fallible send helper used by infrastructure code such as `ask`.

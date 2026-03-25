@@ -87,7 +87,7 @@ impl TypedActor<CounterMessage> for CounterActor {
       },
       | CounterMessage::Get { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(self.total);
+        reply_to.tell(self.total);
         Ok(())
       },
     }
@@ -103,8 +103,8 @@ fn typed_actor_system_handles_basic_flow() {
   let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
 
-  let _: () = counter.tell(CounterMessage::Increment(2));
-  let _: () = counter.tell(CounterMessage::Increment(5));
+  counter.tell(CounterMessage::Increment(2));
+  counter.tell(CounterMessage::Increment(5));
 
   let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to });
   let mut future = response.future().clone();
@@ -145,8 +145,8 @@ fn typed_behaviors_handle_recursive_state() {
   let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
 
-  let _: () = counter.tell(CounterMessage::Increment(3));
-  let _: () = counter.tell(CounterMessage::Increment(5));
+  counter.tell(CounterMessage::Increment(3));
+  counter.tell(CounterMessage::Increment(5));
 
   let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to });
   let mut future = response.future().clone();
@@ -167,9 +167,9 @@ fn typed_behaviors_ignore_keeps_current_state() {
   let system = TypedActorSystem::<IgnoreCommand>::new(&props, tick_driver).expect("system");
   let mut gate = system.user_guardian_ref();
 
-  let _: () = gate.tell(IgnoreCommand::Add(1));
-  let _: () = gate.tell(IgnoreCommand::Reject);
-  let _: () = gate.tell(IgnoreCommand::Add(5));
+  gate.tell(IgnoreCommand::Add(1));
+  gate.tell(IgnoreCommand::Reject);
+  gate.tell(IgnoreCommand::Add(5));
 
   let response = gate.ask::<u32, _>(|reply_to| IgnoreCommand::Read { reply_to });
   let mut future = response.future().clone();
@@ -190,9 +190,9 @@ fn typed_behaviors_stash_buffered_messages_across_transition() {
   let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let _: () = actor.tell(StashCommand::Buffer(4));
-  let _: () = actor.tell(StashCommand::Buffer(3));
-  let _: () = actor.tell(StashCommand::Open);
+  actor.tell(StashCommand::Buffer(4));
+  actor.tell(StashCommand::Buffer(3));
+  actor.tell(StashCommand::Open);
 
   wait_until(|| read_stash_total(&mut actor) == 7);
   assert_eq!(read_stash_total(&mut actor), 7);
@@ -213,9 +213,9 @@ fn typed_behaviors_with_stash_limits_capacity() {
   let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let _: () = actor.tell(StashCommand::Buffer(4));
-  let _: () = actor.tell(StashCommand::Buffer(3));
-  let _: () = actor.tell(StashCommand::Open);
+  actor.tell(StashCommand::Buffer(4));
+  actor.tell(StashCommand::Buffer(3));
+  actor.tell(StashCommand::Open);
 
   wait_until(|| read_stash_total(&mut actor) == 4);
   assert_eq!(read_stash_total(&mut actor), 4);
@@ -240,9 +240,9 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
   let mut adapter = adapter_slot.lock().clone().expect("adapter available");
 
-  let _: () = adapter.tell(4);
-  let _: () = adapter.tell(3);
-  let _: () = actor.tell(StashCommand::Open);
+  adapter.tell(4);
+  adapter.tell(3);
+  actor.tell(StashCommand::Open);
 
   wait_until(|| read_stash_total(&mut actor) == 7);
   assert_eq!(read_stash_total(&mut actor), 7);
@@ -259,9 +259,9 @@ fn typed_behaviors_unstash_replays_before_already_queued_messages() {
   let system = TypedActorSystem::<StashOrderCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let _: () = actor.tell(StashOrderCommand::Buffer(String::from("stashed")));
-  let _: () = actor.tell(StashOrderCommand::Open);
-  let _: () = actor.tell(StashOrderCommand::Marker(String::from("queued")));
+  actor.tell(StashOrderCommand::Buffer(String::from("stashed")));
+  actor.tell(StashOrderCommand::Open);
+  actor.tell(StashOrderCommand::Marker(String::from("queued")));
 
   wait_until(|| read_stash_order_log(&mut actor).len() == 2);
   assert_eq!(read_stash_order_log(&mut actor), vec![String::from("buffer:stashed"), String::from("marker:queued")]);
@@ -323,7 +323,7 @@ impl TypedActor<MismatchCommand> for MismatchActor {
   ) -> Result<(), ActorError> {
     match message {
       | MismatchCommand::Trigger { reply_to } => {
-        let _: () = reply_to.as_untyped().tell(AnyMessage::new("unexpected".to_string()));
+        reply_to.as_untyped().tell(AnyMessage::new("unexpected".to_string()));
         Ok(())
       },
     }
@@ -340,7 +340,7 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
       | SchedulerProbeCommand::Check { reply_to } => {
         let _ = ctx.system().scheduler();
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(true);
+        reply_to.tell(true);
         Ok(())
       },
     }
@@ -410,7 +410,7 @@ fn behavior_counter(total: i32) -> Behavior<CounterMessage> {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
     | CounterMessage::Get { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(total);
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -422,7 +422,7 @@ fn ignore_gate(total: u32) -> Behavior<IgnoreCommand> {
     | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
     | IgnoreCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(total);
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -463,7 +463,7 @@ fn stash_locked_behavior(total: u32, stash: StashBuffer<StashCommand>) -> Behavi
     },
     | StashCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(total);
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -489,7 +489,7 @@ fn stash_limited_locked_behavior(
     },
     | StashCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(total);
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -501,7 +501,7 @@ fn stash_open_behavior(total: u32) -> Behavior<StashCommand> {
     | StashCommand::Open => Ok(Behaviors::same()),
     | StashCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(total);
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -526,7 +526,7 @@ fn stash_order_locked_behavior(
     },
     | StashOrderCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(history.clone());
+      reply_to.tell(history.clone());
       Ok(Behaviors::same())
     },
   })
@@ -547,7 +547,7 @@ fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand
     | StashOrderCommand::Open => Ok(Behaviors::same()),
     | StashOrderCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(history.clone());
+      reply_to.tell(history.clone());
       Ok(Behaviors::same())
     },
   })
@@ -631,7 +631,7 @@ fn supervised_parent_behavior(child: TypedProps<ChildCommand>) -> Behavior<Super
     let handle = child_ref.actor_ref();
     Behaviors::receive_message(move |_ctx, message| match message {
       | SupervisorCommand::CrashChild => {
-        let _: () = handle.clone().tell(ChildCommand::Crash);
+        handle.clone().tell(ChildCommand::Crash);
         Ok(Behaviors::same())
       },
     })
@@ -664,7 +664,7 @@ fn behaviors_supervise_restarts_children() {
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
-  let _: () = parent.tell(SupervisorCommand::CrashChild);
+  parent.tell(SupervisorCommand::CrashChild);
 
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
 
@@ -688,12 +688,12 @@ fn intercepted_behavior_survives_supervised_restart() {
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
-  let _: () = parent.tell(SupervisorCommand::CrashChild);
+  parent.tell(SupervisorCommand::CrashChild);
   wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 1);
 
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
 
-  let _: () = parent.tell(SupervisorCommand::CrashChild);
+  parent.tell(SupervisorCommand::CrashChild);
   wait_until(|| interceptor_counter.load(Ordering::SeqCst) >= 2);
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 3);
 
@@ -716,7 +716,7 @@ fn behaviors_supervise_stops_children() {
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
-  let _: () = parent.tell(SupervisorCommand::CrashChild);
+  parent.tell(SupervisorCommand::CrashChild);
 
   // 子アクターは再起動しないはずなので、カウンターが 1 のままであることを短期間検証する。
   for _ in 0..1_000 {
@@ -744,7 +744,7 @@ fn backoff_strategy_via_supervise_on_failure() {
 
   wait_until(|| start_counter.load(Ordering::SeqCst) == 1);
 
-  let _: () = parent.tell(SupervisorCommand::CrashChild);
+  parent.tell(SupervisorCommand::CrashChild);
 
   // バックオフ戦略では、回復可能なエラー時に子アクターが再起動されることを確認する。
   wait_until(|| start_counter.load(Ordering::SeqCst) >= 2);
@@ -781,7 +781,7 @@ fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand> {
     | AdapterCounterCommand::Set(delta) => Ok(counter_behavior(value + delta)),
     | AdapterCounterCommand::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      let _: () = reply_to.tell(value);
+      reply_to.tell(value);
       Ok(Behaviors::same())
     },
   })
@@ -803,8 +803,8 @@ fn message_adapter_converts_external_messages() {
   assert!(wait_for(|| adapter_slot.lock().is_some()), "adapter never registered");
   let mut adapter = adapter_slot.lock().clone().expect("adapter available");
 
-  let _: () = adapter.tell("5".to_string());
-  let _: () = adapter.tell("3".to_string());
+  adapter.tell("5".to_string());
+  adapter.tell("3".to_string());
 
   wait_until(|| read_counter_value(&mut actor) == 8);
   let value = read_counter_value(&mut actor);
@@ -834,7 +834,7 @@ fn adapter_not_found_routes_to_dead_letter() {
 
   let payload = AdapterPayload::new(7_u64);
   let envelope = AdapterEnvelope::new(payload, None);
-  let _: () = untyped.tell(AnyMessage::new(envelope));
+  untyped.tell(AnyMessage::new(envelope));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();

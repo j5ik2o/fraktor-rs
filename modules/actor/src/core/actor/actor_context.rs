@@ -311,12 +311,24 @@ impl ActorContext<'_> {
     Ok(())
   }
 
+  /// Forwards a message to the target, preserving the current sender.
+  ///
+  /// This is the user-facing fire-and-forget variant. Synchronous forwarding
+  /// failures are observed internally and recorded via the system's send-error
+  /// observation path.
+  pub fn forward(&self, target: &ActorRef, message: AnyMessage) {
+    let result = self.try_forward(target, message);
+    if let Err(error) = result {
+      self.system.state().record_send_error(Some(target.pid()), &error);
+    }
+  }
+
   /// Forwards the given message to the target, preserving the current sender.
   ///
   /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
   /// original sender of the currently processed message so the final recipient
   /// can reply to the original requester. Delivery is fire-and-forget.
-  pub fn forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  pub fn try_forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,

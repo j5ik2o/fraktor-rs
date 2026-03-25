@@ -32,7 +32,7 @@ impl Actor for ProbeActor {
       self.received.lock().push(*value);
     } else if let Some(request) = message.downcast_ref::<EchoRequest>() {
       let reply_to = request.reply_to.clone();
-      let _: () = reply_to.tell(AnyMessage::new(request.value));
+      reply_to.tell(AnyMessage::new(request.value));
     }
     Ok(())
   }
@@ -71,7 +71,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn send_via_recipient<R>(recipient: &mut R, message: u32)
 where
   R: RecipientRef<u32>, {
-  let _: () = recipient.tell(message);
+  recipient.tell(message);
 }
 
 #[test]
@@ -154,7 +154,7 @@ fn typed_actor_ref_tell_returns_unit() {
   let mut recipient = TypedActorRef::<u32>::from_untyped(cell.actor_ref());
 
   // Type constraint: tell MUST return ()
-  let _: () = recipient.tell(42);
+  recipient.tell(42);
   wait_until(|| received.lock().as_slice() == [42]);
 }
 
@@ -164,5 +164,5 @@ fn typed_actor_ref_tell_on_failing_sender_does_not_panic() {
   let mut recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
 
   // tell is fire-and-forget: no Result, no panic
-  let _: () = recipient.tell(1);
+  recipient.tell(1);
 }

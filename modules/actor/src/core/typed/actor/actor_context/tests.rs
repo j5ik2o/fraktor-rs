@@ -49,8 +49,8 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
   let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn actor");
   let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.actor_ref().clone());
 
-  let _: () = actor.tell(1);
-  let _: () = actor.tell(1);
+  actor.tell(1);
+  actor.tell(1);
   wait_until(|| *inner_count.lock() == 2);
 
   assert_eq!(*outer_count.lock(), 1);
@@ -94,12 +94,12 @@ fn ask_sends_request_and_delivers_adapted_response() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::Value { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(42);
+        reply_to.tell(42);
         Ok(Behaviors::same())
       },
       | ResponderMsg::StatusSuccess { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(StatusReply::success(99));
+        reply_to.tell(StatusReply::success(99));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -151,7 +151,7 @@ fn ask_sends_request_and_delivers_adapted_response() {
   // Wait for the responder ref to be registered
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  let _: () = actor.tell(RequesterMsg::DoAsk);
+  actor.tell(RequesterMsg::DoAsk);
   wait_until(|| *received.lock() == 42);
 
   assert_eq!(*received.lock(), 42);
@@ -174,7 +174,7 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
       | ResponderMsg::Value { .. } => Ok(Behaviors::same()),
       | ResponderMsg::StatusSuccess { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(StatusReply::success(99));
+        reply_to.tell(StatusReply::success(99));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -225,7 +225,7 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  let _: () = actor.tell(RequesterMsg::DoAskWithStatus);
+  actor.tell(RequesterMsg::DoAskWithStatus);
   wait_until(|| *received.lock() == 99);
 
   assert_eq!(*received.lock(), 99);
@@ -292,7 +292,7 @@ fn ask_timeout_delivers_error_to_actor() {
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  let _: () = actor.tell(RequesterMsg::DoAsk);
+  actor.tell(RequesterMsg::DoAsk);
   wait_until(|| *got_failure.lock());
 
   assert!(*got_failure.lock(), "timeout should deliver failure to actor");
@@ -314,7 +314,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::Value { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(10);
+        reply_to.tell(10);
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -379,7 +379,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  let _: () = actor.tell(RequesterMsg::DoAsk);
+  actor.tell(RequesterMsg::DoAsk);
   // Both asks should deliver 10 each, totaling 20.
   wait_until(|| *total_received.lock() == 20);
 
@@ -478,7 +478,7 @@ fn ask_with_status_error_preserves_failure_reason() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::FailureStatus { reply_to } => {
         let mut reply_to = reply_to.clone();
-        let _: () = reply_to.tell(StatusReply::<u32>::error("domain failure reason"));
+        reply_to.tell(StatusReply::<u32>::error("domain failure reason"));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -532,7 +532,7 @@ fn ask_with_status_error_preserves_failure_reason() {
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  let _: () = actor.tell(RequesterMsg::DoAskWithStatusError);
+  actor.tell(RequesterMsg::DoAskWithStatusError);
   wait_until(|| !captured_reason.lock().is_empty());
 
   assert_eq!(

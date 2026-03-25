@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::vec::Vec;
+use alloc::{format, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_rs::core::{actor::actor_ref::ActorRef, messaging::AnyMessage};

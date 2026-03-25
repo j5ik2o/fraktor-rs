@@ -78,9 +78,9 @@ fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: topic にメッセージを publish
-  let _: () = topic.tell(Topic::publish(1_u32));
-  let _: () = topic.tell(Topic::publish(2_u32));
-  let _: () = topic.tell(Topic::publish(3_u32));
+  topic.tell(Topic::publish(1_u32));
+  topic.tell(Topic::publish(2_u32));
+  topic.tell(Topic::publish(3_u32));
 
   for _ in 0..20 {
     controller.inject_and_drive(1);
@@ -125,7 +125,7 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
     controller.inject_and_drive(1);
   }
 
-  let _: () = topic.tell(Topic::publish(7_u32));
+  topic.tell(Topic::publish(7_u32));
   for _ in 0..50 {
     controller.inject_and_drive(1);
   }
@@ -174,7 +174,7 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
 
   // When: バッファ容量を超えるメッセージを一括 publish
   for i in 0..10_u32 {
-    let _: () = topic.tell(Topic::publish(i));
+    topic.tell(Topic::publish(i));
   }
 
   for _ in 0..20 {
@@ -208,8 +208,8 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
 
   // When: 複数の呼び出し元から同じ topic に publish
   let mut topic2 = topic.clone();
-  let _: () = topic.tell(Topic::publish(100_u32));
-  let _: () = topic2.tell(Topic::publish(200_u32));
+  topic.tell(Topic::publish(100_u32));
+  topic2.tell(Topic::publish(200_u32));
 
   for _ in 0..20 {
     controller.inject_and_drive(1);
@@ -244,7 +244,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   let subscriber = system.extended().spawn_system_actor(&subscriber_props.to_untyped()).expect("spawn subscriber");
   let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.actor_ref().clone());
 
-  let _: () = topic.tell(Topic::subscribe(subscriber_ref));
+  topic.tell(Topic::subscribe(subscriber_ref));
 
   // Allow subscription to propagate
   for _ in 0..5 {

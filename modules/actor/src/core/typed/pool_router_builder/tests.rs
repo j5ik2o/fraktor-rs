@@ -150,7 +150,7 @@ fn pool_router_builder_with_broadcast_delivers_to_all_routees() {
   let pool_size = 3_usize;
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::Broadcast);
 
-  let _: () = router.tell(11);
+  router.tell(11);
   wait_until(|| records.lock().len() == pool_size);
 
   let mut routees: Vec<usize> =
@@ -194,11 +194,11 @@ fn pool_router_builder_with_broadcast_predicate_only_broadcasts_matching_message
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
-  let _: () = router.tell(7);
+  router.tell(7);
   wait_until(|| records.lock().len() == 1);
   assert_eq!(records.lock().iter().filter(|(_, message)| *message == 7).count(), 1);
 
-  let _: () = router.tell(99);
+  router.tell(99);
   wait_until(|| records.lock().iter().filter(|(_, message)| *message == 99).count() == pool_size);
 
   system.terminate().expect("terminate");
@@ -212,7 +212,7 @@ fn pool_router_builder_with_random_routes_reproducibly_from_seed() {
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::Random { seed });
 
   for message in 0..message_count {
-    let _: () = router.tell(message as u32);
+    router.tell(message as u32);
   }
   wait_until(|| records.lock().len() == message_count);
 
@@ -238,7 +238,7 @@ fn pool_router_builder_with_consistent_hash_routes_to_hash_bucket() {
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::ConsistentHash);
 
   for message in messages {
-    let _: () = router.tell(message);
+    router.tell(message);
   }
   wait_until(|| records.lock().len() == messages.len());
 
@@ -332,7 +332,7 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
 
   // ラウンドロビンで全routeeを使い切るのに十分なメッセージを送信
   for msg in 0..lower_bound as u32 {
-    let _: () = router.tell(msg);
+    router.tell(msg);
   }
   wait_until(|| records.lock().len() == lower_bound);
 
@@ -387,7 +387,7 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
   // 残存する全routeeを巡回するのに十分なメッセージを送信
   let message_count = upper_bound * 2;
   for msg in 0..message_count as u32 {
-    let _: () = router.tell(msg);
+    router.tell(msg);
   }
   wait_until(|| records.lock().len() == message_count);
 

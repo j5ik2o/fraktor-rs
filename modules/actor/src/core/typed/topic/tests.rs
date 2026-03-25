@@ -43,8 +43,8 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
   let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn subscriber");
   let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.actor_ref().clone());
 
-  let _: () = topic.tell(Topic::subscribe(subscriber_ref.clone()));
-  let _: () = topic.tell(Topic::publish(42_u32));
+  topic.tell(Topic::subscribe(subscriber_ref.clone()));
+  topic.tell(Topic::publish(42_u32));
   wait_until(|| received.lock().as_slice() == [42_u32]);
 
   let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
@@ -54,8 +54,8 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
   assert_eq!(stats.local_subscriber_count(), 1);
   assert!(stats.topic_instance_count() >= 1);
 
-  let _: () = topic.tell(Topic::unsubscribe(subscriber_ref));
-  let _: () = topic.tell(Topic::publish(99_u32));
+  topic.tell(Topic::unsubscribe(subscriber_ref));
+  topic.tell(Topic::publish(99_u32));
   wait_until(|| received.lock().as_slice() == [42_u32]);
 
   system.terminate().expect("terminate");

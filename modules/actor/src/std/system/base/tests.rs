@@ -26,7 +26,7 @@ async fn new_bootstraps_system_with_tokio_defaults() {
   let props = Props::from_fn(|| GuardianActor);
   let system = ActorSystem::new(&props).expect("system");
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   assert_eq!(system.state().system_name(), "default-system");
 
