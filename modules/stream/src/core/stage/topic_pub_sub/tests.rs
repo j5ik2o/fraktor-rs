@@ -48,7 +48,7 @@ where
   let name = alloc::string::String::from(name);
   let topic_props = TypedProps::<TopicCommand<T>>::from_behavior_factory(move || Topic::behavior(name.clone()));
   let child = system.extended().spawn_system_actor(&topic_props.to_untyped()).expect("spawn topic");
-  TypedActorRef::<TopicCommand<T>>::from_untyped(child.actor_ref().clone())
+  TypedActorRef::<TopicCommand<T>>::from_untyped(child.into_actor_ref())
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -242,7 +242,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
     }
   });
   let subscriber = system.extended().spawn_system_actor(&subscriber_props.to_untyped()).expect("spawn subscriber");
-  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.actor_ref().clone());
+  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.into_actor_ref());
 
   topic.tell(Topic::subscribe(subscriber_ref));
 

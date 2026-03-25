@@ -32,6 +32,12 @@ impl ChildRef {
     &self.actor
   }
 
+  /// Consumes the child reference and returns the underlying actor reference.
+  #[must_use]
+  pub fn into_actor_ref(self) -> ActorRef {
+    self.actor
+  }
+
   /// Sends a user message to the child actor.
   pub fn tell(&mut self, message: AnyMessage) {
     self.actor.tell(message);

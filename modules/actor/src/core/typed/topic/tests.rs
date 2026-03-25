@@ -27,7 +27,7 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
 
   let topic_props = TypedProps::<TopicCommand<u32>>::from_behavior_factory(|| Topic::behavior("numbers"));
   let topic = system.as_untyped().spawn(topic_props.to_untyped()).expect("spawn topic");
-  let mut topic = TypedActorRef::<TopicCommand<u32>>::from_untyped(topic.actor_ref().clone());
+  let mut topic = TypedActorRef::<TopicCommand<u32>>::from_untyped(topic.into_actor_ref());
 
   let received = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber_props = TypedProps::<u32>::from_behavior_factory({
@@ -41,7 +41,7 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
     }
   });
   let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn subscriber");
-  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.actor_ref().clone());
+  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.into_actor_ref());
 
   topic.tell(Topic::subscribe(subscriber_ref.clone()));
   topic.tell(Topic::publish(42_u32));

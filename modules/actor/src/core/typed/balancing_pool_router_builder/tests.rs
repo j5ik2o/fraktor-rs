@@ -61,7 +61,7 @@ fn balancing_pool_distributes_to_idle_workers() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
         router_ref.clone().tell(msg.clone());
@@ -141,7 +141,7 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
         router_ref.clone().tell(msg.clone());
@@ -206,7 +206,7 @@ fn balancing_pool_stops_when_all_routees_terminate() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
         router_ref.clone().tell(msg.clone());
@@ -261,7 +261,7 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
         router_ref.clone().tell(msg.clone());

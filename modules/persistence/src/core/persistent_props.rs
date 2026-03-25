@@ -1,7 +1,7 @@
 //! Public entry points for persistent actor construction.
 
 use fraktor_actor_rs::core::{
-  actor::{ActorContext, actor_ref::ActorRef},
+  actor::{ActorContext, ChildRef, actor_ref::ActorRef},
   props::Props,
   spawn::SpawnError,
 };
@@ -23,5 +23,5 @@ where
 ///
 /// Returns [`SpawnError`] when the child actor cannot be spawned.
 pub fn spawn_persistent(ctx: &ActorContext<'_>, props: &Props) -> Result<ActorRef, SpawnError> {
-  ctx.spawn_child(props).map(|child| child.actor_ref().clone())
+  ctx.spawn_child(props).map(ChildRef::into_actor_ref)
 }

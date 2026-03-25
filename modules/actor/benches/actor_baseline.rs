@@ -79,7 +79,7 @@ impl Actor for RegistryGuardian {
       let child = ctx
         .spawn_child(&Props::from_fn(|| NotifyActor))
         .map_err(|_| ActorError::recoverable("spawn notify child failed"))?;
-      command.reply_to.send(child.actor_ref().clone()).expect("register child ref");
+      command.reply_to.send(child.into_actor_ref()).expect("register child ref");
     }
     Ok(())
   }
@@ -93,7 +93,7 @@ impl Actor for PingPongRegistryGuardian {
       let child = ctx
         .spawn_child(&Props::from_fn(|| PingPongActor))
         .map_err(|_| ActorError::recoverable("spawn ping-pong child failed"))?;
-      command.reply_to.send(child.actor_ref().clone()).expect("register ping-pong child ref");
+      command.reply_to.send(child.into_actor_ref()).expect("register ping-pong child ref");
     }
     Ok(())
   }
@@ -208,7 +208,7 @@ impl PingPongBenchFixture {
   }
 }
 
-fn send_and_receive<T, F>(message_factory: F, target: ActorRef) -> Receiver<()>
+fn send_and_receive<T, F>(message_factory: F, mut target: ActorRef) -> Receiver<()>
 where
   F: FnOnce(SyncSender<()>) -> T,
   T: Send + Sync + 'static, {

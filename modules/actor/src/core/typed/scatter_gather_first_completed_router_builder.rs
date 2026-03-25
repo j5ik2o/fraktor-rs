@@ -117,7 +117,7 @@ where
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         match ctx.spawn_child_watched(&props) {
-          | Ok(child) => routee_vec.push(child.actor_ref().clone()),
+          | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("scatter-gather router failed to spawn child: {:?}", e);
             ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));

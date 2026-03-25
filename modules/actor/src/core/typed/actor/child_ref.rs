@@ -103,6 +103,12 @@ where
     &self.inner
   }
 
+  /// Consumes the wrapper and returns the typed actor reference.
+  #[must_use]
+  pub fn into_actor_ref(self) -> TypedActorRef<M> {
+    TypedActorRef::from_untyped(self.inner.into_actor_ref())
+  }
+
   /// Consumes the wrapper and returns the untyped child reference.
   #[must_use]
   pub fn into_untyped(self) -> ChildRef {

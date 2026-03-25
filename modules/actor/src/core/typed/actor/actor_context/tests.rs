@@ -47,7 +47,7 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
     }
   });
   let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn actor");
-  let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.actor_ref().clone());
+  let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
 
   actor.tell(1);
   actor.tell(1);
@@ -146,7 +146,7 @@ fn ask_sends_request_and_delivers_adapted_response() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   // Wait for the responder ref to be registered
   wait_until(|| responder_ref_slot.lock().is_some());
@@ -221,7 +221,7 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
@@ -288,7 +288,7 @@ fn ask_timeout_delivers_error_to_actor() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
@@ -375,7 +375,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
@@ -528,7 +528,7 @@ fn ask_with_status_error_preserves_failure_reason() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 

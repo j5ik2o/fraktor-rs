@@ -51,13 +51,12 @@ fn responder() -> Behavior<ResponderMsg> {
 fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
   Behaviors::setup(move |ctx| {
     // 子アクターとして responder を生成
-    let child = ctx.spawn_child(&TypedProps::from_behavior_factory(responder)).expect("spawn responder");
-    let responder_ref = child.actor_ref();
+    let responder = ctx.spawn_child(&TypedProps::from_behavior_factory(responder)).expect("spawn responder");
     let done = done.clone();
 
     Behaviors::receive_message(move |ctx, msg: &RequesterMsg| match msg {
       | RequesterMsg::Start => {
-        let mut target = responder_ref.clone();
+        let mut target = responder.actor_ref();
         ctx
           .ask(
             &mut target,

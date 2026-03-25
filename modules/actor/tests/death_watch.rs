@@ -106,11 +106,10 @@ impl Actor for HarnessWatcher {
           let log = request.log.clone();
           move || SecondaryWatcher::new(log.clone())
         });
-        let secondary = ctx
+        let mut secondary = ctx
           .spawn_child(&watcher_props)
           .map_err(|error| ActorError::recoverable(format!("spawn secondary failed: {:?}", error)))?;
-        let mut secondary_ref = secondary.actor_ref().clone();
-        secondary_ref.tell(AnyMessage::new(child.clone()));
+        secondary.tell(AnyMessage::new(child.clone()));
       }
       return Ok(());
     }
@@ -228,10 +227,12 @@ impl Actor for CycleGuardian {
           move || CycleActor::new(log_b.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn b failed: {:?}", error)))?;
-      let mut actor_a_ref = actor_a.actor_ref().clone();
-      actor_a_ref.tell(AnyMessage::new(actor_b.clone()));
-      let mut actor_b_ref = actor_b.actor_ref().clone();
-      actor_b_ref.tell(AnyMessage::new(actor_a.clone()));
+      let actor_a_child = actor_a.clone();
+      let actor_b_child = actor_b.clone();
+      let mut actor_a_ref = actor_a.into_actor_ref();
+      actor_a_ref.tell(AnyMessage::new(actor_b_child));
+      let mut actor_b_ref = actor_b.into_actor_ref();
+      actor_b_ref.tell(AnyMessage::new(actor_a_child));
       actor_a_ref.tell(AnyMessage::new(StopChild));
       actor_b_ref.tell(AnyMessage::new(StopChild));
     }

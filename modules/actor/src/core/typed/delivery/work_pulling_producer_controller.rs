@@ -521,7 +521,7 @@ where
     },
   };
 
-  let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.actor_ref().clone());
+  let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.into_actor_ref());
 
   let entry = WorkerEntry {
     worker_ref:          worker_ref.clone(),

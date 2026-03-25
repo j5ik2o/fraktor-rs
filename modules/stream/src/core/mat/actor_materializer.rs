@@ -57,16 +57,14 @@ impl ActorMaterializer {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
+  fn register_handle(actor: &mut ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
     let message = AnyMessage::new(StreamDriveCommand::Register { handle });
-    let mut actor_ref = actor.actor_ref().clone();
-    actor_ref.try_tell(message).map_err(|_| StreamError::Failed)
+    actor.try_tell(message).map_err(|_| StreamError::Failed)
   }
 
-  fn send_command(actor: &ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
+  fn send_command(actor: &mut ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
     let message = AnyMessage::new(command);
-    let mut actor_ref = actor.actor_ref().clone();
-    actor_ref.try_tell(message).map_err(|_| StreamError::Failed)
+    actor.try_tell(message).map_err(|_| StreamError::Failed)
   }
 
   fn schedule_ticks(
@@ -74,7 +72,7 @@ impl ActorMaterializer {
     actor: &ChildRef,
     interval: Duration,
   ) -> Result<fraktor_actor_rs::core::scheduler::SchedulerHandle, StreamError> {
-    let receiver = actor.actor_ref().clone();
+    let receiver = actor.clone().into_actor_ref();
     let command = SchedulerCommand::SendMessage {
       receiver,
       message: AnyMessage::new(StreamDriveCommand::Tick),
@@ -171,7 +169,7 @@ impl Materializer for ActorMaterializer {
       | MaterializerLifecycleState::Stopped => return Err(StreamError::MaterializerStopped),
       | MaterializerLifecycleState::Running => {},
     }
-    let drive_actor = self.drive_actor.as_ref().ok_or(StreamError::MaterializerNotStarted)?;
+    let drive_actor = self.drive_actor.as_mut().ok_or(StreamError::MaterializerNotStarted)?;
     let (plan, materialized) = graph.into_parts();
     let island_plan = IslandSplitter::split(plan);
 
@@ -242,8 +240,8 @@ impl Materializer for ActorMaterializer {
     if let Some(handle) = self.tick_handle.take() {
       system.scheduler().with_write(|scheduler| scheduler.cancel(&handle));
     }
-    if let Some(actor) = self.drive_actor.take() {
-      Self::send_command(&actor, StreamDriveCommand::Shutdown)?;
+    if let Some(mut actor) = self.drive_actor.take() {
+      Self::send_command(&mut actor, StreamDriveCommand::Shutdown)?;
     }
     Ok(())
   }

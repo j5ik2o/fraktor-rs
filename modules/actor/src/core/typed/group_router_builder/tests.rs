@@ -56,7 +56,7 @@ fn group_router_should_route_via_system_receptionist() {
   );
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist_ref().expect("system receptionist");
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -71,7 +71,7 @@ fn group_router_should_route_via_system_receptionist() {
     }
   });
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
   receptionist.tell(Receptionist::register(&key, routee_ref));
 
   router.tell(42_u32);
@@ -94,7 +94,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
     move || Routers::group(key.clone()).with_consistent_hash_routing(|message| message.to_string()).build()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist_ref().expect("system receptionist");
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -110,7 +110,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
       }
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
     receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
@@ -168,7 +168,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
     move || Routers::group(key.clone()).with_round_robin_routing().build()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist_ref().expect("system receptionist");
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -184,7 +184,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
       }
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
     receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
@@ -224,7 +224,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
     move || Routers::group(key.clone()).with_random_routing(11).build()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist_ref().expect("system receptionist");
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -240,7 +240,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
       }
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
     receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
@@ -282,7 +282,7 @@ fn group_router_uses_round_robin_routing_by_default() {
     move || Routers::group(key.clone()).build()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist_ref().expect("system receptionist");
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -298,7 +298,7 @@ fn group_router_uses_round_robin_routing_by_default() {
       }
     });
     let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
     receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
@@ -335,7 +335,7 @@ fn group_router_should_route_via_explicit_receptionist() {
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
   let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior);
   let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn explicit receptionist");
-  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.into_actor_ref());
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
@@ -343,7 +343,7 @@ fn group_router_should_route_via_explicit_receptionist() {
     move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut explicit_receptionist = receptionist_ref;
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -358,7 +358,7 @@ fn group_router_should_route_via_explicit_receptionist() {
     }
   });
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
   explicit_receptionist.tell(Receptionist::register(&key, routee_ref));
 
   wait_until(|| {
@@ -390,7 +390,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
     }
   });
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
-  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.actor_ref().clone());
+  let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
 
   let mismatched_records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let mismatched_routee_props = TypedProps::<u64>::from_behavior_factory({
@@ -405,7 +405,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
   });
   let mismatched_routee =
     system.as_untyped().spawn(mismatched_routee_props.to_untyped()).expect("spawn mismatched routee");
-  let mismatched_routee_ref = TypedActorRef::<u64>::from_untyped(mismatched_routee.actor_ref().clone());
+  let mismatched_routee_ref = TypedActorRef::<u64>::from_untyped(mismatched_routee.into_actor_ref());
 
   let subscriber = ArcShared::new(NoStdMutex::new(None::<TypedActorRef<Listing>>));
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -450,7 +450,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
     }
   });
   let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn explicit receptionist");
-  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.into_actor_ref());
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
@@ -458,7 +458,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
     move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
-  let mut router = TypedActorRef::<u32>::from_untyped(router.actor_ref().clone());
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut explicit_receptionist = receptionist_ref;
 
   wait_until(|| {
@@ -506,7 +506,7 @@ fn group_router_should_unsubscribe_when_stopped() {
     }
   });
   let receptionist = system.as_untyped().spawn(receptionist_props.to_untyped()).expect("spawn tracking receptionist");
-  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.actor_ref().clone());
+  let receptionist_ref = TypedActorRef::<ReceptionistCommand>::from_untyped(receptionist.into_actor_ref());
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();

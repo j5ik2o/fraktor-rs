@@ -42,13 +42,13 @@ fn producer_start_and_register_consumer_connect() {
     ProducerController::behavior("test-producer")
   });
   let pc_cell = system.as_untyped().spawn(pc_props.to_untyped()).expect("spawn producer controller");
-  let mut pc_ref = TypedActorRef::<ProducerControllerCommand<u32>>::from_untyped(pc_cell.actor_ref().clone());
+  let mut pc_ref = TypedActorRef::<ProducerControllerCommand<u32>>::from_untyped(pc_cell.into_actor_ref());
 
   // コンシューマーコントローラーを生成する。
   let cc_props =
     TypedProps::<ConsumerControllerCommand<u32>>::from_behavior_factory(|| ConsumerController::behavior::<u32>());
   let cc_cell = system.as_untyped().spawn(cc_props.to_untyped()).expect("spawn consumer controller");
-  let cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.actor_ref().clone());
+  let cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.into_actor_ref());
 
   // 受信した RequestNext シグナルを追跡する。
   let request_next_received = ArcShared::new(NoStdMutex::new(Vec::<u64>::new()));
@@ -65,8 +65,7 @@ fn producer_start_and_register_consumer_connect() {
     }
   });
   let producer_cell = system.as_untyped().spawn(producer_props.to_untyped()).expect("spawn producer");
-  let producer_ref =
-    TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
+  let producer_ref = TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.into_actor_ref());
 
   // プロデューサーコントローラーを開始する。
   pc_ref.tell(ProducerController::start(producer_ref));
@@ -93,7 +92,7 @@ fn consumer_controller_delivers_to_consumer() {
   let cc_props =
     TypedProps::<ConsumerControllerCommand<u32>>::from_behavior_factory(|| ConsumerController::behavior::<u32>());
   let cc_cell = system.as_untyped().spawn(cc_props.to_untyped()).expect("spawn consumer controller");
-  let mut cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.actor_ref().clone());
+  let mut cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.into_actor_ref());
 
   // 配達を処理して Confirmed を送信するコンシューマーを生成する。
   let consumer_props = TypedProps::<ConsumerControllerDelivery<u32>>::from_behavior_factory({
@@ -108,7 +107,7 @@ fn consumer_controller_delivers_to_consumer() {
     }
   });
   let consumer_cell = system.as_untyped().spawn(consumer_props.to_untyped()).expect("spawn consumer");
-  let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.actor_ref().clone());
+  let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.into_actor_ref());
 
   // コンシューマーを開始する。
   cc_ref.tell(ConsumerController::start(consumer_ref));
@@ -118,7 +117,7 @@ fn consumer_controller_delivers_to_consumer() {
     ProducerController::behavior("test-producer")
   });
   let pc_cell = system.as_untyped().spawn(pc_props.to_untyped()).expect("spawn producer controller");
-  let mut pc_ref = TypedActorRef::<ProducerControllerCommand<u32>>::from_untyped(pc_cell.actor_ref().clone());
+  let mut pc_ref = TypedActorRef::<ProducerControllerCommand<u32>>::from_untyped(pc_cell.into_actor_ref());
 
   // RequestNext 受信時にメッセージを送信するモックプロデューサーを生成する。
   let producer_props = TypedProps::<ProducerControllerRequestNext<u32>>::from_behavior_factory({
@@ -131,8 +130,7 @@ fn consumer_controller_delivers_to_consumer() {
     }
   });
   let producer_cell = system.as_untyped().spawn(producer_props.to_untyped()).expect("spawn producer");
-  let producer_ref =
-    TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
+  let producer_ref = TypedActorRef::<ProducerControllerRequestNext<u32>>::from_untyped(producer_cell.into_actor_ref());
 
   // CC 登録時にプロデューサー参照が準備済みとなるよう、先に PC を開始する。
   pc_ref.tell(ProducerController::start(producer_ref));
@@ -187,7 +185,7 @@ fn work_pulling_start_and_get_worker_stats() {
   });
   let wppc_cell = system.as_untyped().spawn(wppc_props.to_untyped()).expect("spawn work-pulling producer controller");
   let mut wppc_ref =
-    TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.actor_ref().clone());
+    TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.into_actor_ref());
 
   // ワーカー統計のレスポンスを追跡する。
   let stats_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
@@ -204,7 +202,7 @@ fn work_pulling_start_and_get_worker_stats() {
     }
   });
   let stats_cell = system.as_untyped().spawn(stats_props.to_untyped()).expect("spawn stats");
-  let stats_ref = TypedActorRef::<WorkerStats>::from_untyped(stats_cell.actor_ref().clone());
+  let stats_ref = TypedActorRef::<WorkerStats>::from_untyped(stats_cell.into_actor_ref());
 
   // ワーカー登録前は統計が 0 であること。
   wppc_ref.tell(WorkPullingProducerController::get_worker_stats(stats_ref.clone()));
@@ -228,7 +226,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   });
   let wppc_cell = system.as_untyped().spawn(wppc_props.to_untyped()).expect("spawn work-pulling producer controller");
   let mut wppc_ref =
-    TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.actor_ref().clone());
+    TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.into_actor_ref());
 
   // 配達を追跡する。
   let delivered = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
@@ -238,7 +236,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   let cc_props =
     TypedProps::<ConsumerControllerCommand<u32>>::from_behavior_factory(|| ConsumerController::behavior::<u32>());
   let cc_cell = system.as_untyped().spawn(cc_props.to_untyped()).expect("spawn cc");
-  let mut cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.actor_ref().clone());
+  let mut cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.into_actor_ref());
 
   // 配達を処理するコンシューマーを生成する。
   let consumer_props = TypedProps::<ConsumerControllerDelivery<u32>>::from_behavior_factory({
@@ -253,7 +251,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
     }
   });
   let consumer_cell = system.as_untyped().spawn(consumer_props.to_untyped()).expect("spawn consumer");
-  let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.actor_ref().clone());
+  let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.into_actor_ref());
 
   // コンシューマーコントローラーを開始する。
   cc_ref.tell(ConsumerController::start(consumer_ref));
@@ -275,7 +273,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   });
   let producer_cell = system.as_untyped().spawn(producer_props.to_untyped()).expect("spawn producer");
   let producer_ref =
-    TypedActorRef::<WorkPullingProducerControllerRequestNext<u32>>::from_untyped(producer_cell.actor_ref().clone());
+    TypedActorRef::<WorkPullingProducerControllerRequestNext<u32>>::from_untyped(producer_cell.into_actor_ref());
 
   // ワークプリング・プロデューサーコントローラーを開始する。
   wppc_ref.tell(WorkPullingProducerController::start(producer_ref));

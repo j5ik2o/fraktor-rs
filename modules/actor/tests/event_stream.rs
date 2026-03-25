@@ -87,12 +87,11 @@ fn dead_letter_event_is_published_when_send_fails() {
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   wait_until(|| child_slot.lock().is_some());
-  let child = child_slot.lock().clone().expect("child");
-  let mut actor_ref = child.actor_ref().clone();
+  let mut child = child_slot.lock().clone().expect("child");
 
   child.suspend().expect("suspend child");
   // tell is fire-and-forget; the suspended message is routed to dead letters internally
-  actor_ref.tell(AnyMessage::new("ping"));
+  child.tell(AnyMessage::new("ping"));
 
   wait_until(|| !system.dead_letters().is_empty());
   let entries = system.dead_letters();

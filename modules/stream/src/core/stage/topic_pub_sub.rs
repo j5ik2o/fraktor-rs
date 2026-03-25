@@ -150,7 +150,7 @@ impl TopicPubSub {
       #[allow(clippy::expect_used)]
       let child =
         extended.spawn_system_actor(bridge_props.to_untyped()).expect("TopicPubSub: bridge actor の spawn に失敗");
-      let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
+      let bridge_ref = TypedActorRef::<T>::from_untyped(child.clone().into_actor_ref());
       send_topic_command(&topic_actor, Topic::subscribe(bridge_ref.clone()));
       cleanup.install(topic_actor.clone(), bridge_ref, child);
 
