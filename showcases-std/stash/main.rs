@@ -8,10 +8,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --example stash`
 
 use fraktor_actor_rs::{
-  core::{
-    error::ActorError,
-    typed::{Behavior, StashBuffer, TypedActorSystem, TypedProps, actor::TypedActorRef},
-  },
+  core::typed::{Behavior, StashBuffer, TypedActorSystem, TypedProps, actor::TypedActorRef},
   std::typed::Behaviors,
 };
 use fraktor_showcases_std::support;
@@ -51,11 +48,8 @@ fn closed(total: i32, stash: StashBuffer<Command>) -> Behavior<Command> {
       Ok(open(total))
     },
     | Command::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to
-        .as_untyped()
-        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(total))
-        .map_err(|e| ActorError::from_send_error(&e))?;
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -67,11 +61,8 @@ fn open(total: i32) -> Behavior<Command> {
     | Command::Buffer(value) => Ok(open(total + value)),
     | Command::Open => Ok(Behaviors::same()),
     | Command::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to
-        .as_untyped()
-        .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(total))
-        .map_err(|e| ActorError::from_send_error(&e))?;
+      let mut reply_to = reply_to.clone();
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -92,16 +83,16 @@ fn main() {
   let mut actor = system.user_guardian_ref();
 
   // closed 状態で Buffer メッセージを送信（stash される）
-  let _: () = actor.tell(Command::Buffer(5));
-  let _: () = actor.tell(Command::Buffer(3));
+  actor.tell(Command::Buffer(5));
+  actor.tell(Command::Buffer(3));
 
   // Open で stash を再生して open 状態に遷移
-  let _: () = actor.tell(Command::Open);
+  actor.tell(Command::Open);
 
   // unstash 後の合計を読み取る
   // 5 + 100 = 105, 3 + 100 = 103 → open(0) で 105 + 103 = 208
   thread::sleep(Duration::from_millis(50));
-  let response = actor.ask::<i32, _>(|reply_to| Command::Read { reply_to }).expect("ask");
+  let response = actor.ask::<i32, _>(|reply_to| Command::Read { reply_to });
   let mut future = response.future().clone();
   let deadline = Instant::now() + Duration::from_secs(1);
   while !future.is_ready() {

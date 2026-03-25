@@ -89,10 +89,10 @@ impl ActorRef {
   /// Failures are recorded via the dead-letter / observation path but never
   /// surfaced to the caller. This matches Pekko's at-most-once `tell` semantics.
   pub fn tell(&self, message: AnyMessage) {
-    if let Err(error) = self.sender.send(message) {
-      if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
-        system.record_send_error(Some(self.pid), &error);
-      }
+    if let Err(error) = self.sender.send(message)
+      && let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade())
+    {
+      system.record_send_error(Some(self.pid), &error);
     }
   }
 
@@ -108,11 +108,9 @@ impl ActorRef {
 
   /// Sends a request and obtains a future that resolves with the reply.
   ///
-  /// The future resolves with `Ok(message)` on success, or `Err(AskError)` on failure.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the message cannot be delivered.
+  /// The returned future resolves with `Ok(message)` on success, or
+  /// `Err(AskError)` when the request times out or the reply path fails.
+  #[must_use]
   pub fn ask(&self, message: AnyMessage) -> AskResponse {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
@@ -126,10 +124,7 @@ impl ActorRef {
   }
 
   /// Sends a request and arranges timeout completion on the returned ask future.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the request cannot be delivered.
+  #[must_use]
   pub fn ask_with_timeout(&self, message: AnyMessage, timeout: Duration) -> AskResponse {
     pattern::ask_with_timeout(self, message, timeout)
   }

@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::ActorRef;
 use crate::core::{
@@ -125,14 +125,12 @@ fn actor_ref_tell_with_system_records_error() {
 }
 
 #[test]
-fn actor_ref_ask_still_returns_send_error_when_delivery_fails() {
+fn actor_ref_ask_returns_response_handle_even_when_delivery_fails() {
   let actor: ActorRef = ActorRef::null();
 
-  let error = match actor.ask(AnyMessage::new(42_u32)) {
-    | Ok(_) => panic!("ask should fail"),
-    | Err(error) => error,
-  };
-  assert!(matches!(error, SendError::Closed(_)));
+  let response = actor.ask(AnyMessage::new(42_u32));
+  assert_eq!(response.sender().pid(), actor.pid());
+  assert!(response.future().with_read(|future| !future.is_ready()));
 }
 
 #[test]

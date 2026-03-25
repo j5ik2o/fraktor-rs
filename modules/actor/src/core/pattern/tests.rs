@@ -115,7 +115,7 @@ fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
   let replies = ArcShared::new(NoStdMutex::new(Vec::new()));
   let actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
 
-  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   let result = response.future().with_write(|inner| inner.try_take()).expect("reply result");
   let reply = result.expect("successful reply");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&7_u32));
@@ -125,7 +125,7 @@ fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
 fn ask_with_timeout_without_system_times_out_immediately() {
   let actor = ActorRef::new(Pid::new(41, 0), SilentSender);
 
-  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout result");
   assert!(matches!(result, Err(AskError::Timeout)));
@@ -140,8 +140,7 @@ fn ask_with_timeout_times_out_after_scheduler_tick() {
   let cell = ActorCell::create(state.clone(), pid, None, "ask-timeout".into(), &props).expect("create actor");
   state.register_cell(cell.clone());
 
-  let response =
-    cell.actor_ref().ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = cell.actor_ref().ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   assert!(response.future().with_read(|inner| !inner.is_ready()));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
@@ -164,7 +163,7 @@ fn child_ref_ask_with_timeout_times_out_after_scheduler_tick() {
   let child_props = Props::from_fn(|| NoopActor);
   let mut child = context.spawn_child(&child_props).expect("spawn child");
 
-  let response = child.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = child.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   assert!(response.future().with_read(|inner| !inner.is_ready()));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));

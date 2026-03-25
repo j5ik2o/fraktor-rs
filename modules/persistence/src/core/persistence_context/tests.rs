@@ -20,9 +20,8 @@ use crate::core::{
   event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced, journal_error::JournalError,
   journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
   pending_handler_invocation::PendingHandlerInvocation, persistence_context::PersistenceContext,
-  persistence_error::PersistenceError, persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr,
-  read_event_adapter::ReadEventAdapter, snapshot::Snapshot, snapshot_message::SnapshotMessage,
-  write_event_adapter::WriteEventAdapter,
+  persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr, read_event_adapter::ReadEventAdapter,
+  snapshot::Snapshot, snapshot_message::SnapshotMessage, write_event_adapter::WriteEventAdapter,
 };
 
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
@@ -169,7 +168,7 @@ fn context_sends_snapshot_messages() {
 }
 
 #[test]
-fn send_write_messages_returns_message_passing_error_when_journal_delivery_fails() {
+fn send_write_messages_succeeds_even_when_journal_delivery_fails() {
   let journal_ref = create_failing_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -182,12 +181,11 @@ fn send_write_messages_returns_message_passing_error_when_journal_delivery_fails
   };
 
   let result = context.send_write_messages(message);
-
-  assert!(matches!(result, Err(PersistenceError::MessagePassing(reason)) if reason.contains("Closed")));
+  assert!(result.is_ok());
 }
 
 #[test]
-fn send_snapshot_message_returns_message_passing_error_when_snapshot_delivery_fails() {
+fn send_snapshot_message_succeeds_even_when_snapshot_delivery_fails() {
   let (journal_ref, _journal_store) = create_sender();
   let snapshot_ref = create_failing_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -200,8 +198,7 @@ fn send_snapshot_message_returns_message_passing_error_when_snapshot_delivery_fa
   };
 
   let result = context.send_snapshot_message(message);
-
-  assert!(matches!(result, Err(PersistenceError::MessagePassing(reason)) if reason.contains("Closed")));
+  assert!(result.is_ok());
 }
 
 #[test]
@@ -552,7 +549,7 @@ fn flush_batch_reuses_pre_boxed_async_handler_without_double_boxing() {
 }
 
 #[test]
-fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion() {
+fn flush_batch_keeps_persisting_state_even_when_journal_delivery_fails() {
   let journal_ref = create_failing_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
@@ -561,10 +558,10 @@ fn flush_batch_send_failure_rolls_back_and_clears_stash_until_batch_completion()
 
   context.add_to_event_batch(1_i32, true, None, Box::new(|_actor: &mut DummyActor, _repr| {}));
   let result = context.flush_batch(ActorRef::null());
-  assert!(result.is_err());
-  assert_eq!(context.state(), PersistentActorState::ProcessingCommands);
-  assert!(context.pending_invocations.is_empty());
-  assert!(!context.stash_until_batch_completion);
+  assert!(result.is_ok());
+  assert_eq!(context.state(), PersistentActorState::PersistingEvents);
+  assert_eq!(context.pending_invocations.len(), 1);
+  assert!(context.stash_until_batch_completion);
 }
 
 #[test]

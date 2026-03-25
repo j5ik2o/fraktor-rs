@@ -132,18 +132,18 @@ impl AtLeastOnceDelivery {
   }
 
   /// Handles a redelivery tick message and returns a warning payload when the threshold is reached.
-  pub fn handle_message(
-    &mut self,
-    message: &dyn Any,
-    now: TimerInstant,
-  ) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
+  ///
+  /// Returns `None` when `message` is not a [`RedeliveryTick`] or when no
+  /// delivery crosses the warning threshold on this tick.
+  #[must_use]
+  pub fn handle_message(&mut self, message: &dyn Any, now: TimerInstant) -> Option<UnconfirmedWarning> {
     if !Self::is_redelivery_tick(message) {
-      return Ok(None);
+      return None;
     }
     self.redeliver_overdue(now)
   }
 
-  fn redeliver_overdue(&mut self, now: TimerInstant) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
+  fn redeliver_overdue(&mut self, now: TimerInstant) -> Option<UnconfirmedWarning> {
     let mut warnings = Vec::new();
     let redeliver_interval = self.config.redeliver_interval();
     let warning_attempt = self.config.warn_after_number_of_unconfirmed_attempts();
@@ -163,7 +163,7 @@ impl AtLeastOnceDelivery {
       }
     }
 
-    if warnings.is_empty() { Ok(None) } else { Ok(Some(UnconfirmedWarning::new(warnings))) }
+    if warnings.is_empty() { None } else { Some(UnconfirmedWarning::new(warnings)) }
   }
 
   fn is_overdue(delivery: &UnconfirmedDelivery, now: TimerInstant, redeliver_interval: core::time::Duration) -> bool {

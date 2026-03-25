@@ -25,7 +25,7 @@ fn new_test_system() -> TypedActorSystem<u32> {
 }
 
 fn find_listing(receptionist: &mut TypedActorRef<ReceptionistCommand>, key: &ServiceKey<u32>) -> Listing {
-  let response = receptionist.ask::<Listing, _>(|reply_to| Receptionist::find(key, reply_to)).expect("ask find");
+  let response = receptionist.ask::<Listing, _>(|reply_to| Receptionist::find(key, reply_to));
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("find result").expect("listing payload")

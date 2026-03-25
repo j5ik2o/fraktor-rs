@@ -136,7 +136,7 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
 
   let mut subscriber_count = None;
   for _ in 0..20 {
-    let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats).expect("ask stats");
+    let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
     for _ in 0..10 {
       controller.inject_and_drive(1);
       if stats.future().is_ready() {

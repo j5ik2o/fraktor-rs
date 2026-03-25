@@ -68,11 +68,9 @@ fn spawn_protocol_spawns_named_children() {
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
 
-  let response = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&start_count), "child", reply_to)
-    })
-    .expect("spawn named");
+  let response = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(probe_props(&start_count), "child", reply_to)
+  });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let child = future.try_take().expect("reply").expect("child ref");
@@ -93,11 +91,9 @@ fn spawn_protocol_spawns_anonymous_children() {
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
 
-  let response = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn_anonymous(probe_props(&start_count), reply_to)
-    })
-    .expect("spawn anonymous");
+  let response = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn_anonymous(probe_props(&start_count), reply_to)
+  });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let child = future.try_take().expect("reply").expect("child ref");
@@ -119,16 +115,12 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
 
-  let first = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&first_start_count), "first", reply_to)
-    })
-    .expect("spawn first");
-  let second = parent
-    .ask::<TypedActorRef<OtherProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(other_probe_props(&second_start_count), "second", reply_to)
-    })
-    .expect("spawn second");
+  let first = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(probe_props(&first_start_count), "first", reply_to)
+  });
+  let second = parent.ask::<TypedActorRef<OtherProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(other_probe_props(&second_start_count), "second", reply_to)
+  });
 
   let mut first_future = first.future().clone();
   let mut second_future = second.future().clone();
@@ -154,33 +146,27 @@ fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   let mut parent = system.user_guardian_ref();
 
   // First spawn with name "probe" succeeds.
-  let first = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&start_count), "probe", reply_to)
-    })
-    .expect("first spawn");
+  let first = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(probe_props(&start_count), "probe", reply_to)
+  });
   let mut first_future = first.future().clone();
   wait_until(|| first_future.is_ready());
   first_future.try_take().expect("first reply").expect("first child ref");
   wait_until(|| start_count.load(Ordering::SeqCst) == 1);
 
   // Duplicate name spawn: execute() fails internally; the actor must stay alive.
-  let dup = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&Arc::new(AtomicUsize::new(0))), "probe", reply_to)
-    })
-    .expect("duplicate spawn accepted");
+  let dup = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(probe_props(&Arc::new(AtomicUsize::new(0))), "probe", reply_to)
+  });
   let dup_future = dup.future().clone();
 
   // Prove the SpawnProtocol actor is still alive by spawning a survivor.
   // Because the mailbox is FIFO, when the survivor reply arrives the duplicate
   // command has already been processed — so we can assert no reply was sent.
   let survivor_count = Arc::new(AtomicUsize::new(0));
-  let survivor = parent
-    .ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
-      SpawnProtocol::spawn(probe_props(&survivor_count), "survivor", reply_to)
-    })
-    .expect("survivor spawn");
+  let survivor = parent.ask::<TypedActorRef<ProbeCommand>, _>(|reply_to| {
+    SpawnProtocol::spawn(probe_props(&survivor_count), "survivor", reply_to)
+  });
   let mut survivor_future = survivor.future().clone();
   wait_until(|| survivor_future.is_ready());
   let survivor_ref = survivor_future.try_take().expect("survivor reply").expect("survivor child ref");

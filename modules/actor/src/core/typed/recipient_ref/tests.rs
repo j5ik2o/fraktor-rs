@@ -117,8 +117,7 @@ fn typed_recipient_ref_supports_ask() {
   let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest {
     value:    41,
     reply_to: reply_to.into_untyped(),
-  })
-  .expect("ask");
+  });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   assert_eq!(future.try_take().expect("ready").expect("ok"), 41);
@@ -132,10 +131,10 @@ fn untyped_recipient_ref_supports_ask() {
   let cell = register_cell(&system, pid, "untyped-ask", &props);
   let mut recipient = cell.actor_ref();
 
-  let response =
-    RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 99, reply_to }).expect("ask");
-  wait_until(|| response.future().with_read(|future| future.is_ready()));
-  let result = response.future().with_write(|future| future.try_take()).expect("ready");
+  let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 99, reply_to });
+  let future = response.future().clone();
+  wait_until(|| future.with_read(|inner| inner.is_ready()));
+  let result = future.with_write(|inner| inner.try_take()).expect("ready");
   let reply = result.expect("ask ok");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&99));
 }

@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::{AnyMessage, AskError},
+  messaging::AnyMessage,
   props::Props,
   scheduler::{
     SchedulerConfig, SchedulerShared,
@@ -97,7 +97,7 @@ fn request_retries_on_timeout_until_policy_exhausted() {
 }
 
 #[test]
-fn request_emits_failure_event_and_updates_metrics() {
+fn request_returns_response_handle_when_delivery_fails() {
   let (system, ext) = build_system_with_extension_config(
     || Box::new(StaticIdentityLookup::new("node1:8080")),
     None,
@@ -114,17 +114,14 @@ fn request_emits_failure_event_and_updates_metrics() {
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRef::new(api, identity.clone());
 
-  let err = match grain_ref.request(&AnyMessage::new(())) {
-    | Ok(_) => panic!("request should fail"),
-    | Err(err) => err,
-  };
-  assert!(matches!(err, crate::core::grain::GrainCallError::RequestFailed(_)));
+  let response = grain_ref.request(&AnyMessage::new(())).expect("request response");
+  assert!(response.future().with_read(|future| !future.is_ready()));
 
   let events = recorder.events();
-  assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
+  assert!(!events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
 
   let metrics = ext.grain_metrics().expect("metrics");
-  assert_eq!(metrics.call_failures(), 1);
+  assert_eq!(metrics.call_failures(), 0);
 }
 
 fn run_scheduler(system: &ActorSystem, duration: core::time::Duration) {
@@ -341,7 +338,7 @@ fn request_with_sender_forwards_reply_and_completes_future() {
 }
 
 #[test]
-fn request_with_sender_forward_failure_completes_error_and_emits_event() {
+fn request_with_sender_forward_failure_still_completes_reply() {
   let (system, ext) = build_system_with_extension_config(
     || Box::new(StaticIdentityLookup::new("node1:8080")),
     None,
@@ -363,14 +360,14 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
     grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
-  let ask_error = result.expect_err("expect send failed");
-  assert_eq!(ask_error, AskError::SendFailed);
+  let reply = result.expect("reply should still complete");
+  assert_eq!(reply.payload().downcast_ref::<String>(), Some(&String::from("reply")));
 
   let events = recorder.events();
-  assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
+  assert!(!events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
 
   let metrics = ext.grain_metrics().expect("metrics");
-  assert_eq!(metrics.call_failures(), 1);
+  assert_eq!(metrics.call_failures(), 0);
 }
 
 #[test]

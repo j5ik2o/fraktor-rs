@@ -80,21 +80,10 @@ fn parent() -> Behavior<ParentCommand> {
     Behaviors::receive_message(move |_ctx, message: &ParentCommand| match message {
       | ParentCommand::Start => {
         println!("[parent] 子アクターにクラッシュを指示します");
-        child_ref
-          .clone()
-          .as_untyped()
-          .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(ChildCommand::Crash))
-          .map_err(|e| ActorError::from_send_error(&e))?;
-        child_ref
-          .clone()
-          .as_untyped()
-          .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(ChildCommand::Crash))
-          .map_err(|e| ActorError::from_send_error(&e))?;
-        child_ref
-          .clone()
-          .as_untyped()
-          .try_tell(fraktor_actor_rs::core::messaging::AnyMessage::new(ChildCommand::Work))
-          .map_err(|e| ActorError::from_send_error(&e))?;
+        let mut child = child_ref.clone();
+        child.tell(ChildCommand::Crash);
+        child.tell(ChildCommand::Crash);
+        child.tell(ChildCommand::Work);
         Ok(Behaviors::same())
       },
     })
@@ -130,7 +119,7 @@ fn main() {
   let termination = system.when_terminated();
 
   // 親アクターにメッセージを送信して子ライフサイクルのデモを開始
-  let _: () = system.user_guardian_ref().tell(ParentCommand::Start);
+  system.user_guardian_ref().tell(ParentCommand::Start);
 
   // supervision と再起動が行われる時間を待つ
   thread::sleep(std::time::Duration::from_millis(300));

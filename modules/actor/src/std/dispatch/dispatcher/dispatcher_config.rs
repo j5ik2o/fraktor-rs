@@ -54,7 +54,10 @@ impl DispatcherConfig {
   #[cfg(feature = "tokio-executor")]
   #[must_use]
   pub fn default_config() -> Self {
-    Self::try_default_config().expect("Tokio runtime handle unavailable")
+    match Self::try_default_config() {
+      | Some(config) => config,
+      | None => panic!("Tokio runtime handle unavailable"),
+    }
   }
 
   /// Creates a configuration from the current Tokio runtime handle.

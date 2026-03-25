@@ -53,9 +53,9 @@ pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> Cir
 
 /// Sends a request and arranges timeout completion on the returned ask future.
 ///
-/// # Errors
-///
-/// Returns an error if the request cannot be delivered.
+/// The returned future resolves with a timeout error when the reply is not
+/// observed before the deadline.
+#[must_use]
 pub fn ask_with_timeout(
   actor_ref: &crate::core::actor::actor_ref::ActorRef,
   message: crate::core::messaging::AnyMessage,

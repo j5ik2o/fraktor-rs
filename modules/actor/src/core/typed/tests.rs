@@ -106,7 +106,7 @@ fn typed_actor_system_handles_basic_flow() {
   let _: () = counter.tell(CounterMessage::Increment(2));
   let _: () = counter.tell(CounterMessage::Increment(5));
 
-  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to }).expect("ask get");
+  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -148,7 +148,7 @@ fn typed_behaviors_handle_recursive_state() {
   let _: () = counter.tell(CounterMessage::Increment(3));
   let _: () = counter.tell(CounterMessage::Increment(5));
 
-  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to }).expect("ask get");
+  let response = counter.ask::<i32, _>(|reply_to| CounterMessage::Get { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -171,7 +171,7 @@ fn typed_behaviors_ignore_keeps_current_state() {
   let _: () = gate.tell(IgnoreCommand::Reject);
   let _: () = gate.tell(IgnoreCommand::Add(5));
 
-  let response = gate.ask::<u32, _>(|reply_to| IgnoreCommand::Read { reply_to }).expect("ask read");
+  let response = gate.ask::<u32, _>(|reply_to| IgnoreCommand::Read { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let payload = future.try_take().expect("reply available").expect("typed payload");
@@ -356,7 +356,7 @@ fn typed_ask_reports_type_mismatch() {
   let system = TypedActorSystem::<MismatchCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let response = actor.ask::<i32, _>(|reply_to| MismatchCommand::Trigger { reply_to }).expect("ask");
+  let response = actor.ask::<i32, _>(|reply_to| MismatchCommand::Trigger { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result");
@@ -375,7 +375,7 @@ fn typed_context_exposes_scheduler() {
   let system = TypedActorSystem::<SchedulerProbeCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
 
-  let response = actor.ask::<bool, _>(|reply_to| SchedulerProbeCommand::Check { reply_to }).expect("ask");
+  let response = actor.ask::<bool, _>(|reply_to| SchedulerProbeCommand::Check { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   let result = future.try_take().expect("result").expect("payload");
@@ -869,22 +869,21 @@ fn pipe_to_self_converts_messages_via_adapter() {
 }
 
 fn read_counter_value(actor: &mut TypedActorRef<AdapterCounterCommand>) -> i32 {
-  let response = actor.ask::<i32, _>(|reply_to| AdapterCounterCommand::Read { reply_to }).expect("ask read");
+  let response = actor.ask::<i32, _>(|reply_to| AdapterCounterCommand::Read { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")
 }
 
 fn read_stash_total(actor: &mut TypedActorRef<StashCommand>) -> u32 {
-  let response = actor.ask::<u32, _>(|reply_to| StashCommand::Read { reply_to }).expect("ask stash read");
+  let response = actor.ask::<u32, _>(|reply_to| StashCommand::Read { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")
 }
 
 fn read_stash_order_log(actor: &mut TypedActorRef<StashOrderCommand>) -> Vec<String> {
-  let response =
-    actor.ask::<Vec<String>, _>(|reply_to| StashOrderCommand::Read { reply_to }).expect("ask stash order read");
+  let response = actor.ask::<Vec<String>, _>(|reply_to| StashOrderCommand::Read { reply_to });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")

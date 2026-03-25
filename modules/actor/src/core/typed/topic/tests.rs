@@ -47,7 +47,7 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
   let _: () = topic.tell(Topic::publish(42_u32));
   wait_until(|| received.lock().as_slice() == [42_u32]);
 
-  let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats).expect("ask stats");
+  let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
   wait_until(|| stats.future().is_ready());
   let mut stats_future = stats.future().clone();
   let stats = stats_future.try_take().expect("stats ready").expect("stats ok");

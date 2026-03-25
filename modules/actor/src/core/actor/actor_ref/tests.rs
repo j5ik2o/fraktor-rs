@@ -1,3 +1,5 @@
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -87,17 +89,17 @@ fn send_for_ask_returns_error_on_failure() {
   reference.tell(AnyMessage::new("will-fail"));
 }
 
-/// `ask` still returns `Result` (its contract is separate from tell).
+/// `ask` はレスポンスハンドルを返し、結果は future 側で観測する。
 #[test]
-fn ask_returns_result() {
+fn ask_returns_response_handle() {
   let pid = Pid::new(5, 1);
   let reference: ActorRef = ActorRef::new(pid, TestSender);
-  let result = reference.ask(AnyMessage::new("ask-payload"));
+  let _response = reference.ask(AnyMessage::new("ask-payload"));
 }
 
-/// `ask` on a failing sender returns an error.
+/// `ask` on a failing sender alsoレスポンスハンドル自体は返す。
 #[test]
-fn ask_on_failing_sender_returns_error() {
+fn ask_on_failing_sender_returns_response_handle() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
@@ -108,8 +110,9 @@ fn ask_on_failing_sender_returns_error() {
 
   let pid = Pid::new(10, 1);
   let reference: ActorRef = ActorRef::new(pid, FailingSender);
-  let result = reference.ask(AnyMessage::new("will-fail"));
-  assert!(result.is_err());
+  let response = reference.ask(AnyMessage::new("will-fail"));
+  assert_eq!(response.sender().pid(), pid);
+  assert!(response.future().with_read(|future| !future.is_ready()));
 }
 
 struct NoopActor;

@@ -8,7 +8,6 @@ use alloc::boxed::Box;
 use fraktor_actor_rs::core::{
   actor::ChildRef,
   error::ActorError,
-  messaging::AnyMessage,
   system::ActorSystem,
   typed::{Behavior, Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
 };
@@ -178,7 +177,8 @@ impl TopicPubSub {
 fn send_topic_command<T>(topic_actor: &TypedActorRef<TopicCommand<T>>, command: TopicCommand<T>)
 where
   T: Clone + Send + Sync + 'static, {
-  topic_actor.as_untyped().tell(AnyMessage::new(command));
+  let mut topic_actor = topic_actor.clone();
+  topic_actor.tell(command);
 }
 
 /// Creates the bridge actor behavior that forwards messages to the stream queue.

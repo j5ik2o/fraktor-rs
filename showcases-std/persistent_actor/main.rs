@@ -130,7 +130,7 @@ fn main() {
   let system = fraktor_actor_rs::std::system::ActorSystem::new_with_config(&props, &config).expect("system");
   let termination = system.when_terminated();
 
-  let _: () = system.user_guardian_ref().tell(AnyMessage::new(Start));
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   // コマンド処理と flush_batch 完了を待機してからシャットダウン
   thread::sleep(std::time::Duration::from_millis(500));
