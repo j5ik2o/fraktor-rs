@@ -169,7 +169,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when spawning the child fails.
-  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+  pub fn spawn_child(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.system.spawn_child(self.pid, props)
   }
 
@@ -194,7 +194,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn stop_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.stop()
   }
 
@@ -203,7 +203,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_self(&self) -> Result<(), SendError> {
+  pub fn stop_self(&mut self) -> Result<(), SendError> {
     self.system.stop_actor(self.pid)
   }
 
@@ -212,7 +212,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the suspend signal cannot be delivered.
-  pub fn suspend_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn suspend_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.suspend()
   }
 
@@ -221,7 +221,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the resume signal cannot be delivered.
-  pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn resume_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.resume()
   }
 
@@ -230,7 +230,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch(&self, target: &ActorRef) -> Result<(), SendError> {
+  pub fn watch(&mut self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -254,7 +254,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the unwatch signal.
-  pub fn unwatch(&self, target: &ActorRef) -> Result<(), SendError> {
+  pub fn unwatch(&mut self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -276,7 +276,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error when spawning fails or when installing the watch registration cannot be
   /// performed.
-  pub fn spawn_child_watched(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+  pub fn spawn_child_watched(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
     let child = self.spawn_child(props)?;
     if self.watch(child.actor_ref()).is_err() {
       // Best-effort stop: watch failed so the child must be cleaned up.
@@ -296,7 +296,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch_with(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  pub fn watch_with(&mut self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -316,7 +316,7 @@ impl ActorContext<'_> {
   /// This is the user-facing fire-and-forget variant. Synchronous forwarding
   /// failures are observed internally and recorded via the system's send-error
   /// observation path.
-  pub fn forward(&self, target: &mut ActorRef, message: AnyMessage) {
+  pub fn forward(&mut self, target: &mut ActorRef, message: AnyMessage) {
     let result = self.try_forward(target, message);
     if let Err(error) = result {
       self.system.state().record_send_error(Some(target.pid()), &error);
@@ -333,7 +333,7 @@ impl ActorContext<'_> {
   ///
   /// Returns [`SendError`] when forwarding fails synchronously while
   /// enqueueing the message into the target mailbox.
-  pub fn try_forward(&self, target: &mut ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  pub fn try_forward(&mut self, target: &mut ActorRef, message: AnyMessage) -> Result<(), SendError> {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,

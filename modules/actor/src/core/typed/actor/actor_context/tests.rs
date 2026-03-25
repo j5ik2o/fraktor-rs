@@ -422,7 +422,7 @@ fn forward_preserves_sender_through_typed_context() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let mut typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
   typed_ctx.try_forward(&mut target, 42_u32).expect("forward");
 
   let captured = inbox.lock();

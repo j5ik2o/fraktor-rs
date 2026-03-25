@@ -131,7 +131,7 @@ fn actor_context_children() {
 fn actor_context_spawn_child_with_invalid_parent() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let props = Props::from_fn(|| TestActor);
 
   let result = context.spawn_child(&props);
@@ -354,7 +354,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   context.try_forward(&mut target_ref, AnyMessage::new(42_u32)).expect("forward");
 
@@ -378,7 +378,7 @@ fn actor_context_watch_enqueues_system_message() {
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
 
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   let target_ref = target.actor_ref();
   assert!(context.watch(&target_ref).is_ok());
   assert!(target.watchers_snapshot().contains(&watcher_pid));
@@ -400,7 +400,7 @@ fn actor_context_watch_missing_actor_notifies_self() {
   let target_ref = target.actor_ref();
   system.state().remove_cell(&target_pid);
 
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   assert!(context.watch(&target_ref).is_ok());
   assert_eq!(watcher_log.lock().clone(), vec![target_pid]);
 }
@@ -413,7 +413,7 @@ fn actor_context_unwatch_enqueues_message() {
   let props = Props::from_fn(|| TestActor);
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   let target_ref = target.actor_ref();
 
   assert!(context.watch(&target_ref).is_ok());
@@ -427,7 +427,7 @@ fn spawn_child_watched_installs_watch() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child_watched(&child_props).expect("child spawn succeeds");
@@ -442,7 +442,7 @@ fn actor_context_child_by_name_returns_matching_child() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child(&child_props).expect("spawn child");
@@ -471,7 +471,7 @@ fn actor_context_stop_child_returns_ok() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child(&child_props).expect("spawn child");
@@ -579,7 +579,7 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   let result = context.try_forward(&mut target_ref, AnyMessage::new(42_u32));
   assert!(result.is_err());

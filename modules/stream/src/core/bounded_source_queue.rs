@@ -45,7 +45,7 @@ impl<T> BoundedSourceQueue<T> {
 
   /// Offers a value into the queue.
   #[must_use]
-  pub fn offer(&self, value: T) -> QueueOfferResult {
+  pub fn offer(&mut self, value: T) -> QueueOfferResult {
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
       return QueueOfferResult::Failure(error.clone());
@@ -89,7 +89,7 @@ impl<T> BoundedSourceQueue<T> {
   /// # Panics
   ///
   /// Panics when the queue has already been completed or failed.
-  pub fn complete(&self) {
+  pub fn complete(&mut self) {
     assert!(self.complete_if_open(), "bounded source queue already terminated: complete");
   }
 
@@ -116,7 +116,7 @@ impl<T> BoundedSourceQueue<T> {
   /// # Panics
   ///
   /// Panics when the queue has already been completed or failed.
-  pub fn fail(&self, error: StreamError) {
+  pub fn fail(&mut self, error: StreamError) {
     assert!(self.fail_if_open(error), "bounded source queue already terminated: fail");
   }
 

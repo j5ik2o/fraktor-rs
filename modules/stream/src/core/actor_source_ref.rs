@@ -32,7 +32,7 @@ impl<T> ActorSourceRef<T> {
   /// Returns [`QueueOfferResult`] indicating whether the value was
   /// enqueued, dropped, or rejected.
   #[must_use]
-  pub fn tell(&self, msg: T) -> QueueOfferResult {
+  pub fn tell(&mut self, msg: T) -> QueueOfferResult {
     self.queue.offer(msg)
   }
 
@@ -41,7 +41,7 @@ impl<T> ActorSourceRef<T> {
   /// # Panics
   ///
   /// Panics when the queue has already been completed or failed.
-  pub fn complete(&self) {
+  pub fn complete(&mut self) {
     self.queue.complete();
   }
 
@@ -50,7 +50,7 @@ impl<T> ActorSourceRef<T> {
   /// # Panics
   ///
   /// Panics when the queue has already been completed or failed.
-  pub fn fail(&self, error: StreamError) {
+  pub fn fail(&mut self, error: StreamError) {
     self.queue.fail(error);
   }
 

@@ -107,7 +107,7 @@ where
     };
     let tail_outlet = Outlet::<Out>::from_id(tail_outlet_id);
     let queue = SourceQueue::new();
-    let sink_queue = queue.clone();
+    let mut sink_queue = queue.clone();
     let sink = Sink::foreach(move |value: Out| match sink_queue.offer(value) {
       | QueueOfferResult::Enqueued => {},
       | QueueOfferResult::Failure(error) => sink_queue.fail(error),

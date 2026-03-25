@@ -185,7 +185,8 @@ where
 fn bridge_behavior<T>(actor_source_ref: crate::core::ActorSourceRef<T>) -> Behavior<T>
 where
   T: Clone + Send + Sync + 'static, {
-  Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.tell(msg.clone()) {
+  let actor_source_ref = ArcShared::new(SpinSyncMutex::new(actor_source_ref));
+  Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.lock().tell(msg.clone()) {
     | crate::core::QueueOfferResult::Enqueued | crate::core::QueueOfferResult::Dropped => Ok(Behaviors::same()),
     | crate::core::QueueOfferResult::QueueClosed => Err(ActorError::recoverable("TopicPubSub: stream queue is closed")),
     | crate::core::QueueOfferResult::Failure(err) => {

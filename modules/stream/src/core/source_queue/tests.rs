@@ -2,7 +2,7 @@ use crate::core::{QueueOfferResult, SourceQueue, StreamError};
 
 #[test]
 fn source_queue_should_enqueue_and_poll_in_fifo_order() {
-  let queue = SourceQueue::new();
+  let mut queue = SourceQueue::new();
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
 
@@ -13,7 +13,7 @@ fn source_queue_should_enqueue_and_poll_in_fifo_order() {
 
 #[test]
 fn source_queue_should_reject_offer_after_complete() {
-  let queue = SourceQueue::<u32>::new();
+  let mut queue = SourceQueue::<u32>::new();
   queue.complete();
 
   assert_eq!(queue.offer(10_u32), QueueOfferResult::QueueClosed);
@@ -22,7 +22,7 @@ fn source_queue_should_reject_offer_after_complete() {
 
 #[test]
 fn source_queue_should_return_failure_after_fail() {
-  let queue = SourceQueue::<u32>::new();
+  let mut queue = SourceQueue::<u32>::new();
   queue.fail(StreamError::Failed);
 
   assert_eq!(queue.offer(10_u32), QueueOfferResult::Failure(StreamError::Failed));
@@ -31,7 +31,7 @@ fn source_queue_should_return_failure_after_fail() {
 
 #[test]
 fn source_queue_should_report_drained_after_complete_and_poll() {
-  let queue = SourceQueue::<u32>::new();
+  let mut queue = SourceQueue::<u32>::new();
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   queue.complete();
 
@@ -51,7 +51,7 @@ fn source_queue_complete_if_open_should_ignore_already_completed_queue() {
 
 #[test]
 fn source_queue_close_for_cancel_should_discard_buffered_values() {
-  let queue = SourceQueue::<u32>::new();
+  let mut queue = SourceQueue::<u32>::new();
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);

@@ -159,7 +159,7 @@ fn child_ref_ask_with_timeout_times_out_after_scheduler_tick() {
     ActorCell::create(state.clone(), parent_pid, None, "parent".into(), &parent_props).expect("create parent");
   state.register_cell(parent_cell);
 
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| NoopActor);
   let mut child = context.spawn_child(&child_props).expect("spawn child");
 

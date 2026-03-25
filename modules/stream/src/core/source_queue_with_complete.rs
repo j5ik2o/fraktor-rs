@@ -86,11 +86,11 @@ impl<T> SourceQueueWithComplete<T> {
   }
 
   /// Offers a value into the queue and returns an asynchronous acknowledgement.
-  pub fn offer(&self, value: T) -> impl Future<Output = QueueOfferResult> {
+  pub fn offer(&mut self, value: T) -> impl Future<Output = QueueOfferResult> + use<T> {
     QueueOfferFuture { completion: self.offer_now(value) }
   }
 
-  fn offer_now(&self, value: T) -> StreamCompletion<QueueOfferResult> {
+  fn offer_now(&mut self, value: T) -> StreamCompletion<QueueOfferResult> {
     let completion = StreamCompletion::new();
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
@@ -190,7 +190,7 @@ impl<T> SourceQueueWithComplete<T> {
   }
 
   /// Completes the queue and rejects subsequent offers.
-  pub fn complete(&self) {
+  pub fn complete(&mut self) {
     let should_complete = {
       let mut guard = self.inner.lock();
       guard.closed = true;
@@ -220,7 +220,7 @@ impl<T> SourceQueueWithComplete<T> {
   }
 
   /// Fails the queue and rejects subsequent offers.
-  pub fn fail(&self, error: StreamError) {
+  pub fn fail(&mut self, error: StreamError) {
     let mut guard = self.inner.lock();
     self.fail_with_guard(&mut guard, error);
   }

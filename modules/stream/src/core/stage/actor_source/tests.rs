@@ -50,7 +50,8 @@ fn actor_source_actor_ref_should_emit_told_values() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: telling values and then completing
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
   assert_eq!(source_ref.tell(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(source_ref.tell(2_u32), QueueOfferResult::Enqueued);
   assert_eq!(source_ref.tell(3_u32), QueueOfferResult::Enqueued);
@@ -70,7 +71,8 @@ fn actor_source_actor_ref_should_complete_with_empty_output_when_no_values_told(
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: completing immediately without telling any values
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
   source_ref.complete();
 
   // Then: stream completes with empty output
@@ -87,7 +89,7 @@ fn actor_source_actor_ref_should_respect_overflow_strategy() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: telling more values than buffer can hold
-  let (source_ref, _completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
   assert_eq!(source_ref.tell(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(source_ref.tell(2_u32), QueueOfferResult::Enqueued);
 
@@ -105,7 +107,8 @@ fn actor_source_actor_ref_should_use_drop_head_overflow() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: telling 3 values into buffer of size 2 with DropHead, then completing
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
   let _ = source_ref.tell(1_u32);
   let _ = source_ref.tell(2_u32);
   let _ = source_ref.tell(3_u32);
@@ -123,7 +126,7 @@ fn actor_source_actor_ref_should_reject_tell_after_complete() {
   let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
-  let (source_ref, _completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
   source_ref.complete();
 
   // When: telling after completion
@@ -140,7 +143,7 @@ fn actor_source_actor_ref_should_reject_tell_after_fail() {
   let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
-  let (source_ref, _completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
   source_ref.fail(StreamError::Failed);
 
   // When: telling after failure
@@ -157,10 +160,11 @@ fn actor_source_actor_ref_materialized_ref_is_clone() {
   let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
 
   // When: cloning the ref and telling via the clone
-  let cloned = source_ref.clone();
+  let mut cloned = source_ref.clone();
   let _ = cloned.tell(10_u32);
   source_ref.complete();
 
@@ -192,7 +196,8 @@ fn actor_source_actor_ref_with_backpressure_should_emit_told_values() {
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: telling values with acks between each
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
   let _ = source_ref.tell(1_u32);
   acks.lock().push_back(1_u8);
   let _ = source_ref.tell(2_u32);
@@ -218,7 +223,8 @@ fn actor_source_actor_ref_with_backpressure_should_complete_with_empty_output() 
   let materialized = graph.run(&mut materializer).expect("run");
 
   // When: completing immediately without telling any values
-  let (source_ref, completion) = materialized.materialized();
+  let mut source_ref = materialized.materialized().0.clone();
+  let completion = materialized.materialized().1.clone();
   source_ref.complete();
   acks.lock().push_back(1_u8);
 

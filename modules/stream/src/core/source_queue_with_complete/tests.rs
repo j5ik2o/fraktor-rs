@@ -39,7 +39,7 @@ impl Wake for WakeCounter {
 
 #[test]
 fn source_queue_with_complete_should_enqueue_and_complete_after_drain() {
-  let queue = SourceQueueWithComplete::new(2, OverflowStrategy::DropTail, 1);
+  let mut queue = SourceQueueWithComplete::new(2, OverflowStrategy::DropTail, 1);
   let completion = queue.watch_completion();
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
@@ -57,7 +57,7 @@ fn source_queue_with_complete_should_enqueue_and_complete_after_drain() {
 
 #[test]
 fn source_queue_with_complete_should_wait_for_space_on_backpressure() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
   let mut waiting_offer = pin!(queue.offer(2_u32));
@@ -74,7 +74,7 @@ fn source_queue_with_complete_should_wait_for_space_on_backpressure() {
 
 #[test]
 fn source_queue_with_complete_should_fail_offer_when_pending_offer_limit_is_exceeded() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
 
@@ -93,7 +93,7 @@ fn source_queue_with_complete_should_fail_offer_when_pending_offer_limit_is_exce
 
 #[test]
 fn source_queue_with_complete_should_allow_zero_capacity() {
-  let queue = SourceQueueWithComplete::new(0, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(0, OverflowStrategy::Backpressure, 1);
   let mut waiting_offer = pin!(queue.offer(10_u32));
   let (waker, wake_counter) = tracking_waker();
   let mut context = Context::from_waker(&waker);
@@ -108,7 +108,7 @@ fn source_queue_with_complete_should_allow_zero_capacity() {
 
 #[test]
 fn source_queue_with_complete_should_reject_offer_after_complete() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::DropTail, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::DropTail, 1);
   let completion = queue.watch_completion();
 
   assert_eq!(poll_ready(queue.offer(1_u32)), QueueOfferResult::Enqueued);
@@ -123,7 +123,7 @@ fn source_queue_with_complete_should_reject_offer_after_complete() {
 
 #[test]
 fn source_queue_with_complete_should_fail_offer_and_completion_after_fail() {
-  let queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::DropTail, 1);
+  let mut queue = SourceQueueWithComplete::<u32>::new(1, OverflowStrategy::DropTail, 1);
   let completion = queue.watch_completion();
 
   queue.fail(StreamError::Failed);
@@ -134,7 +134,7 @@ fn source_queue_with_complete_should_fail_offer_and_completion_after_fail() {
 
 #[test]
 fn source_queue_with_complete_should_fail_pending_offer_after_fail() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
 
@@ -151,7 +151,7 @@ fn source_queue_with_complete_should_fail_pending_offer_after_fail() {
 
 #[test]
 fn source_queue_with_complete_should_allow_configured_number_of_pending_offers() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 2);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 2);
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
 
@@ -173,7 +173,7 @@ fn source_queue_with_complete_should_allow_configured_number_of_pending_offers()
 
 #[test]
 fn source_queue_with_complete_close_for_cancel_should_resolve_pending_offer_and_completion() {
-  let queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
   let (waker, wake_counter) = tracking_waker();
   let mut context = Context::from_waker(&waker);

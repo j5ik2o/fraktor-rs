@@ -96,10 +96,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_child<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
+  pub fn spawn_child<C>(&mut self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child(typed_props.to_untyped())?;
+    let child = self.inner_mut().spawn_child(typed_props.to_untyped())?;
     Ok(TypedChildRef::from_untyped(child))
   }
 
@@ -108,10 +108,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned or watched.
-  pub fn spawn_child_watched<C>(&self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
+  pub fn spawn_child_watched<C>(&mut self, typed_props: &TypedProps<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let child = self.inner().spawn_child_watched(typed_props.to_untyped())?;
+    let child = self.inner_mut().spawn_child_watched(typed_props.to_untyped())?;
     Ok(TypedChildRef::from_untyped(child))
   }
 
@@ -120,10 +120,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
+  pub fn watch<C>(&mut self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().watch(target.as_untyped())
+    self.inner_mut().watch(target.as_untyped())
   }
 
   /// Watches the provided typed target with a custom message.
@@ -134,10 +134,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the watch operation cannot be performed.
-  pub fn watch_with<C>(&self, target: &TypedActorRef<C>, message: M) -> Result<(), SendError>
+  pub fn watch_with<C>(&mut self, target: &TypedActorRef<C>, message: M) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().watch_with(target.as_untyped(), AnyMessage::new(message))
+    self.inner_mut().watch_with(target.as_untyped(), AnyMessage::new(message))
   }
 
   /// Stops watching the provided typed target.
@@ -145,10 +145,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the unwatch operation cannot be performed.
-  pub fn unwatch<C>(&self, target: &TypedActorRef<C>) -> Result<(), SendError>
+  pub fn unwatch<C>(&mut self, target: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().unwatch(target.as_untyped())
+    self.inner_mut().unwatch(target.as_untyped())
   }
 
   /// Stops the running actor.
@@ -156,8 +156,8 @@ where
   /// # Errors
   ///
   /// Returns an error if the stop signal cannot be sent.
-  pub fn stop_self(&self) -> Result<(), SendError> {
-    self.inner().stop_self()
+  pub fn stop_self(&mut self) -> Result<(), SendError> {
+    self.inner_mut().stop_self()
   }
 
   /// Stops the specified typed child actor.
@@ -165,10 +165,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the stop signal cannot be sent.
-  pub fn stop_child<C>(&self, child: &TypedChildRef<C>) -> Result<(), SendError>
+  pub fn stop_child<C>(&mut self, child: &TypedChildRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().stop_child(child.as_untyped())
+    self.inner_mut().stop_child(child.as_untyped())
   }
 
   /// Stops the actor identified by the provided typed actor reference.
@@ -179,10 +179,10 @@ where
   /// # Errors
   ///
   /// Returns an error if the stop signal cannot be sent.
-  pub fn stop_actor_by_ref<C>(&self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
+  pub fn stop_actor_by_ref<C>(&mut self, actor_ref: &TypedActorRef<C>) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().system().stop_actor(actor_ref.as_untyped().pid())
+    self.inner_mut().system().stop_actor(actor_ref.as_untyped().pid())
   }
 
   /// Returns the list of supervised children as untyped [`ChildRef`] values.
@@ -262,7 +262,7 @@ where
   /// This is the user-facing fire-and-forget variant. Synchronous forwarding
   /// failures are observed internally and recorded via the system's send-error
   /// observation path.
-  pub fn forward<C>(&self, target: &mut TypedActorRef<C>, message: C)
+  pub fn forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C)
   where
     C: Send + Sync + 'static, {
     let result = self.try_forward(target, message);
@@ -280,10 +280,10 @@ where
   /// # Errors
   ///
   /// Returns an error if forwarding fails synchronously while enqueueing.
-  pub fn try_forward<C>(&self, target: &mut TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
+  pub fn try_forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
+    self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
   }
 
   /// Schedules a message to be sent to the specified target after `delay`.

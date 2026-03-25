@@ -735,7 +735,7 @@ fn source_maybe_alias_matches_from_option_behavior() {
 #[test]
 fn source_queue_materializes_bounded_queue_and_emits_offered_values() {
   let source = Source::queue(4).expect("queue");
-  let (graph, queue) = source.into_parts();
+  let (graph, mut queue) = source.into_parts();
   assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
   queue.complete();
@@ -747,7 +747,7 @@ fn source_queue_materializes_bounded_queue_and_emits_offered_values() {
 fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
   let source = Source::queue(4)
     .expect("queue")
-    .map_materialized_value(|queue| {
+    .map_materialized_value(|mut queue| {
       assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
       assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
       queue.complete();
@@ -761,7 +761,7 @@ fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
 
 #[test]
 fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let queue = crate::core::SourceQueue::new();
+  let mut queue = crate::core::SourceQueue::new();
   let mut logic = super::UnboundedQueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
@@ -778,7 +778,7 @@ fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
 #[test]
 fn source_queue_unbounded_materializes_source_queue_and_emits_offered_values() {
   let source = Source::<u32, _>::queue_unbounded();
-  let (graph, queue) = source.into_parts();
+  let (graph, mut queue) = source.into_parts();
   assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(21_u32), QueueOfferResult::Enqueued);
   queue.complete();
@@ -799,7 +799,7 @@ fn source_queue_rejects_zero_capacity() {
 #[test]
 fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered_values() {
   let source = Source::queue_with_overflow(4, OverflowStrategy::DropTail).expect("queue_with_overflow");
-  let (graph, queue) = source.into_parts();
+  let (graph, mut queue) = source.into_parts();
   assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
   assert_eq!(poll_ready(queue.offer(31_u32)), QueueOfferResult::Enqueued);
   let completion = queue.watch_completion();
@@ -812,7 +812,7 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
 
 #[test]
 fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
   let mut logic = super::QueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
@@ -829,7 +829,7 @@ fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
 #[test]
 fn source_queue_with_overflow_allows_zero_capacity() {
   let source = Source::<u32, _>::queue_with_overflow(0, OverflowStrategy::Backpressure).expect("queue_with_overflow");
-  let (_graph, queue) = source.into_parts();
+  let (_graph, mut queue) = source.into_parts();
   let mut waiting_offer = pin!(queue.offer(30_u32));
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -844,7 +844,7 @@ fn source_queue_with_overflow_allows_zero_capacity() {
 fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
   let source = Source::queue_with_overflow_and_max_concurrent_offers(1, OverflowStrategy::Backpressure, 2)
     .expect("queue_with_overflow");
-  let (_graph, queue) = source.into_parts();
+  let (_graph, mut queue) = source.into_parts();
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
 
@@ -866,7 +866,7 @@ fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
 
 #[test]
 fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
-  let queue = crate::core::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = crate::core::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -889,7 +889,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
   let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
-  let source = Source::create(2, move |queue| {
+  let source = Source::create(2, move |mut queue| {
     *called_clone.lock() = true;
     assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
     assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
@@ -922,7 +922,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
 
 #[test]
 fn source_create_take_should_not_panic_when_producer_already_completed_queue() {
-  let source = Source::create(2, |queue| {
+  let source = Source::create(2, |mut queue| {
     assert_eq!(queue.offer(40_u32), QueueOfferResult::Enqueued);
     assert_eq!(queue.offer(41_u32), QueueOfferResult::Enqueued);
     queue.complete();
@@ -936,7 +936,7 @@ fn source_create_take_should_not_panic_when_producer_already_completed_queue() {
 
 #[test]
 fn source_create_auto_completes_queue_when_producer_returns_without_termination() {
-  let source = Source::create(2, |queue| {
+  let source = Source::create(2, |mut queue| {
     assert_eq!(queue.offer(50_u32), QueueOfferResult::Enqueued);
     assert_eq!(queue.offer(51_u32), QueueOfferResult::Enqueued);
   })
@@ -970,7 +970,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   let producer_paused = Arc::new(AtomicBool::new(true));
   let producer_paused_in_closure = Arc::clone(&producer_paused);
 
-  let source = Source::create(1, move |queue| {
+  let source = Source::create(1, move |mut queue| {
     assert_eq!(queue.offer(60_u32), QueueOfferResult::Enqueued);
     let mut resumed = false;
     for _ in 0..scaled_attempts(10_000) {
@@ -1053,7 +1053,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
 
 #[test]
 fn source_create_propagates_queue_failure_from_producer() {
-  let source = Source::<u32, _>::create(2, |queue| {
+  let source = Source::<u32, _>::create(2, |mut queue| {
     queue.fail(StreamError::Failed);
   })
   .expect("create");
@@ -1526,7 +1526,7 @@ fn source_flatten_flattens_nested_sources_in_order_and_skips_empty_inner_sources
 
 #[test]
 fn source_flatten_emits_inner_head_without_waiting_for_inner_completion() {
-  let (inner_graph, inner_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let (inner_graph, mut inner_queue) = Source::<u32, _>::queue_unbounded().into_parts();
   let inner = Source::from_graph(inner_graph, StreamNotUsed::new());
   assert_eq!(inner_queue.offer(42_u32), QueueOfferResult::Enqueued);
   let mut materializer = RecordingMaterializer::default();
