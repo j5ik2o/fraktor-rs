@@ -109,7 +109,8 @@ impl Actor for HarnessWatcher {
         let secondary = ctx
           .spawn_child(&watcher_props)
           .map_err(|error| ActorError::recoverable(format!("spawn secondary failed: {:?}", error)))?;
-        secondary.actor_ref().tell(AnyMessage::new(child.clone()));
+        let mut secondary_ref = secondary.actor_ref().clone();
+        secondary_ref.tell(AnyMessage::new(child.clone()));
       }
       return Ok(());
     }
@@ -227,10 +228,12 @@ impl Actor for CycleGuardian {
           move || CycleActor::new(log_b.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn b failed: {:?}", error)))?;
-      actor_a.actor_ref().tell(AnyMessage::new(actor_b.clone()));
-      actor_b.actor_ref().tell(AnyMessage::new(actor_a.clone()));
-      actor_a.actor_ref().tell(AnyMessage::new(StopChild));
-      actor_b.actor_ref().tell(AnyMessage::new(StopChild));
+      let mut actor_a_ref = actor_a.actor_ref().clone();
+      actor_a_ref.tell(AnyMessage::new(actor_b.clone()));
+      let mut actor_b_ref = actor_b.actor_ref().clone();
+      actor_b_ref.tell(AnyMessage::new(actor_a.clone()));
+      actor_a_ref.tell(AnyMessage::new(StopChild));
+      actor_b_ref.tell(AnyMessage::new(StopChild));
     }
     Ok(())
   }
@@ -315,8 +318,7 @@ fn death_watch_handles_multiple_watchers() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(SpawnChild));
-  let _: () =
-    system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
+  system.user_guardian_ref().tell(AnyMessage::new(SpawnSecondaryWatcherMessage { log: secondary_log.clone() }));
   system.user_guardian_ref().tell(AnyMessage::new(StopChild));
 
   let pid = child_slot.lock().as_ref().map(|child| child.pid()).unwrap();

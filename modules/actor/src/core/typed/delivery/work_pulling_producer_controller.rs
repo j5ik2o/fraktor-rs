@@ -440,8 +440,8 @@ fn execute_wppc_deferred<A>(
       | WppcDeferredAction::Tell(mut target, msg) => target.tell(msg),
       | WppcDeferredAction::TellWorkerStats(mut target, msg) => target.tell(msg),
       | WppcDeferredAction::RequestNext(mut target, msg) => target.tell(msg),
-      | WppcDeferredAction::StopWorkerPc(pc_ref) => {
-        stop_worker_producer_controller(&pc_ref);
+      | WppcDeferredAction::StopWorkerPc(mut pc_ref) => {
+        stop_worker_producer_controller(&mut pc_ref);
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         // ワーカー PC を生成し、先に state に登録してから tell() する。
@@ -480,11 +480,11 @@ fn execute_wppc_deferred<A>(
   }
 }
 
-fn stop_worker_producer_controller<A>(pc_ref: &TypedActorRef<ProducerControllerCommand<A>>)
+fn stop_worker_producer_controller<A>(pc_ref: &mut TypedActorRef<ProducerControllerCommand<A>>)
 where
   A: Clone + Send + Sync + 'static, {
   pc_ref
-    .as_untyped()
+    .as_untyped_mut()
     .try_tell(crate::core::messaging::AnyMessage::new(
       crate::core::messaging::system_message::SystemMessage::PoisonPill,
     ))

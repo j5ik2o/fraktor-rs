@@ -86,7 +86,7 @@ impl Topic {
                 .map_err(|error| ActorError::from_send_error(&error))?;
               state.local_subscribers.push(subscriber);
               if state.local_subscribers.len() == 1 {
-                let receptionist = receptionist.clone();
+                let mut receptionist = receptionist.clone();
                 receptionist
                   .try_tell(Receptionist::register(&topic_key_for_messages, ctx.self_ref()))
                   .map_err(|error| ActorError::from_send_error(&error))?;
@@ -105,7 +105,7 @@ impl Topic {
             deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx);
           },
           | super::topic_command::TopicCommandKind::GetTopicStats { reply_to } => {
-            let reply_to = reply_to;
+            let mut reply_to = reply_to;
             reply_to
               .try_tell(TopicStats::new(state.local_subscribers.len(), state.topic_instances.len()))
               .map_err(|error| ActorError::from_send_error(&error))?;

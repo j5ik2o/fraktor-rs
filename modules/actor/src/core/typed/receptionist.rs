@@ -78,7 +78,7 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let sub = subscriber.clone();
+          let mut sub = subscriber.clone();
           sub.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
           let subscribers = guard.subscribers.entry(key).or_default();
           if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
@@ -107,7 +107,7 @@ impl Receptionist {
           let key = (service_id.clone(), *type_id);
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
-          let reply = reply_to.clone();
+          let mut reply = reply_to.clone();
           reply.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
         },
       }

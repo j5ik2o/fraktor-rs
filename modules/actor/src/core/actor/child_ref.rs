@@ -44,7 +44,7 @@ impl ChildRef {
   ///
   /// Returns an error when the child mailbox rejects the message.
   #[doc(hidden)]
-  pub fn try_tell(&self, message: AnyMessage) -> Result<(), SendError> {
+  pub fn try_tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
     self.actor.try_tell(message)
   }
 
@@ -53,6 +53,7 @@ impl ChildRef {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
+  #[must_use]
   pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
     self.actor.ask(message)
   }
@@ -62,6 +63,7 @@ impl ChildRef {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
+  #[must_use]
   pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> AskResponse {
     self.actor.ask_with_timeout(message, timeout)
   }

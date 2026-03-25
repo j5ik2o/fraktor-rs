@@ -51,7 +51,7 @@ where
   ///
   /// Returns an error when the child mailbox rejects the message.
   #[doc(hidden)]
-  pub fn try_tell(&self, message: M) -> Result<(), SendError> {
+  pub fn try_tell(&mut self, message: M) -> Result<(), SendError> {
     self.inner.try_tell(AnyMessage::new(message))
   }
 

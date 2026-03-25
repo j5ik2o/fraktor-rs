@@ -38,6 +38,12 @@ where
     &self.inner
   }
 
+  /// Returns the underlying untyped reference mutably.
+  #[must_use]
+  pub const fn as_untyped_mut(&mut self) -> &mut ActorRef {
+    &mut self.inner
+  }
+
   /// Consumes the wrapper and returns the untyped reference.
   #[must_use]
   pub fn into_untyped(self) -> ActorRef {
@@ -62,7 +68,7 @@ where
   ///
   /// Returns an error when the underlying mailbox rejects the message.
   #[doc(hidden)]
-  pub fn try_tell(&self, message: M) -> Result<(), crate::core::error::SendError> {
+  pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::error::SendError> {
     self.inner.try_tell(AnyMessage::new(message))
   }
 
