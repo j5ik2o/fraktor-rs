@@ -28,7 +28,7 @@ struct ReplyingSender {
 
 impl ActorRefSender for ReplyingSender {
   fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
-    if let Some(sender) = message.sender() {
+    if let Some(mut sender) = message.sender().cloned() {
       sender.tell(AnyMessage::new(7_u32));
       self.replies.lock().push(7);
     }
@@ -113,7 +113,7 @@ fn noop_waker() -> Waker {
 fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
   let system = ActorSystem::new_empty().state();
   let replies = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
+  let mut actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
 
   let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   let result = response.future().with_write(|inner| inner.try_take()).expect("reply result");
@@ -123,7 +123,7 @@ fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
 
 #[test]
 fn ask_with_timeout_without_system_times_out_immediately() {
-  let actor = ActorRef::new(Pid::new(41, 0), SilentSender);
+  let mut actor = ActorRef::new(Pid::new(41, 0), SilentSender);
 
   let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
 
@@ -188,8 +188,8 @@ fn graceful_stop_finishes_after_target_disappears() {
       .expect("schedule removal");
   });
 
-  let actor_ref = cell.actor_ref();
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(5)));
+  let mut actor_ref = cell.actor_ref();
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(5)));
   match poll_future(future.as_mut()) {
     | Poll::Ready(Ok(())) => {},
     | Poll::Pending => {
@@ -209,8 +209,9 @@ fn graceful_stop_with_message_returns_timeout_when_target_stays_alive() {
   let cell = ActorCell::create(state.clone(), pid, None, "stubborn".into(), &props).expect("create actor");
   state.register_cell(cell.clone());
 
-  let actor_ref = cell.actor_ref();
-  let mut future = Box::pin(graceful_stop_with_message(&actor_ref, AnyMessage::new("stop"), Duration::from_millis(1)));
+  let mut actor_ref = cell.actor_ref();
+  let mut future =
+    Box::pin(graceful_stop_with_message(&mut actor_ref, AnyMessage::new("stop"), Duration::from_millis(1)));
   assert!(matches!(poll_future(future.as_mut()), Poll::Pending));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
@@ -220,8 +221,8 @@ fn graceful_stop_with_message_returns_timeout_when_target_stays_alive() {
 
 #[test]
 fn graceful_stop_returns_send_failed_without_system() {
-  let actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
 }
@@ -229,8 +230,8 @@ fn graceful_stop_returns_send_failed_without_system() {
 #[test]
 fn graceful_stop_succeeds_when_target_is_already_terminated() {
   let system = ActorSystem::new_empty().state();
-  let actor_ref = ActorRef::with_system(Pid::new(91, 0), SilentSender, &system);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::with_system(Pid::new(91, 0), SilentSender, &system);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Ok(()))));
 }
@@ -246,8 +247,8 @@ fn graceful_stop_enters_poll_loop_when_stop_message_is_silently_dropped() {
 
   // stop message の同期送信が失敗しても、graceful_stop 自体はただちには
   // 失敗せず、停止観測のための poll loop に入る。
-  let actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Pending));
 }
@@ -261,8 +262,8 @@ fn graceful_stop_succeeds_when_target_disappears_during_send() {
   let cell = ActorCell::create(state.clone(), pid, None, "disappearing".into(), &props).expect("create actor");
   state.register_cell(cell);
 
-  let actor_ref = ActorRef::with_system(pid, DisappearingSender { pid, system: state.clone() }, &state);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::with_system(pid, DisappearingSender { pid, system: state.clone() }, &state);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Ok(()))));
 }

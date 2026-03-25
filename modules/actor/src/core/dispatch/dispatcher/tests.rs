@@ -132,7 +132,7 @@ fn schedule_adapter_receives_pending_signal() {
   dispatcher.register_invoker(invoker);
 
   mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
-  let sender = dispatcher.into_sender();
+  let mut sender = dispatcher.into_sender();
 
   let handle = thread::spawn(move || {
     sender.send(AnyMessage::new(2usize)).expect("second message");

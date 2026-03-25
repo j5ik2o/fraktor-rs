@@ -144,7 +144,7 @@ fn batch_flow_applies_all_events() {
     }
   }
 
-  if let Some(child) = child_refs.lock().first().cloned() {
+  if let Some(mut child) = child_refs.lock().first().cloned() {
     child.tell(AnyMessage::new(Command::AddAll(vec![1, 2, 3])));
   }
 

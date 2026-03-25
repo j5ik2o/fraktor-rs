@@ -37,7 +37,7 @@ impl ActorRefSenderShared {
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
-  pub fn send(&self, message: AnyMessage) -> Result<(), SendError> {
+  pub fn send(&mut self, message: AnyMessage) -> Result<(), SendError> {
     // ロック解放後にアウトカムを適用し、再入によるデッドロックを防ぐ
     let outcome = {
       let mut sender = self.inner.lock();

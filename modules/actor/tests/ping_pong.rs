@@ -54,7 +54,8 @@ impl Actor for RecordingGuardian {
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child.clone());
-      child.actor_ref().tell(AnyMessage::new(Deliver(99)));
+      let mut child_ref = child.actor_ref().clone();
+      child_ref.tell(AnyMessage::new(Deliver(99)));
     }
     Ok(())
   }

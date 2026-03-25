@@ -91,7 +91,7 @@ impl ActorRef {
   ///
   /// Failures are recorded via the dead-letter / observation path but never
   /// surfaced to the caller. This matches Pekko's at-most-once `tell` semantics.
-  pub fn tell(&self, message: AnyMessage) {
+  pub fn tell(&mut self, message: AnyMessage) {
     // ここだけ握りつぶしを許容する
     if self.try_tell(message).is_err() {}
   }
@@ -110,7 +110,7 @@ impl ActorRef {
   ///
   /// Returns [`SendError`] when the underlying sender rejects the message.
   #[doc(hidden)]
-  pub fn try_tell(&self, message: AnyMessage) -> Result<(), SendError> {
+  pub fn try_tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
     let result = self.sender.send(message);
     if let Err(error) = &result
       && let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade())
@@ -121,7 +121,7 @@ impl ActorRef {
   }
 
   /// Sends `PoisonPill` to the referenced actor via the user message channel.
-  pub fn poison_pill(&self) {
+  pub fn poison_pill(&mut self) {
     if self.try_poison_pill().is_err() {}
   }
 
@@ -130,12 +130,12 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns [`SendError`] when the underlying mailbox rejects the message.
-  pub fn try_poison_pill(&self) -> Result<(), SendError> {
+  pub fn try_poison_pill(&mut self) -> Result<(), SendError> {
     self.try_tell(AnyMessage::new(SystemMessage::PoisonPill))
   }
 
   /// Sends `Kill` to the referenced actor via the user message channel.
-  pub fn kill(&self) {
+  pub fn kill(&mut self) {
     if self.try_kill().is_err() {}
   }
 
@@ -144,7 +144,7 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns [`SendError`] when the underlying mailbox rejects the message.
-  pub fn try_kill(&self) -> Result<(), SendError> {
+  pub fn try_kill(&mut self) -> Result<(), SendError> {
     self.try_tell(AnyMessage::new(SystemMessage::Kill))
   }
 
@@ -153,7 +153,7 @@ impl ActorRef {
   /// The returned future resolves with `Ok(message)` on success, or
   /// `Err(AskError)` when the request times out or the reply path fails.
   #[must_use]
-  pub fn ask(&self, message: AnyMessage) -> AskResponse {
+  pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = ActorRef::new(self.pid, reply_sender);
@@ -173,7 +173,7 @@ impl ActorRef {
 
   /// Sends a request and arranges timeout completion on the returned ask future.
   #[must_use]
-  pub fn ask_with_timeout(&self, message: AnyMessage, timeout: Duration) -> AskResponse {
+  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> AskResponse {
     pattern::ask_with_timeout(self, message, timeout)
   }
 

@@ -89,7 +89,7 @@ fn actor_ref_sends_messages_via_endpoint_writer() {
   let system = build_system();
   let mut provider = provider(&system);
   let writer = provider.writer_for_test();
-  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+  let mut remote = provider.actor_ref(remote_path()).expect("actor ref");
 
   remote.tell(AnyMessage::new("hello".to_string()));
 
@@ -138,7 +138,7 @@ fn remote_watch_hook_tracks_watcher_lifecycle() {
 fn tell_to_quarantined_authority_records_dead_letter() {
   let system = build_system();
   let mut provider = provider(&system);
-  let remote = provider.actor_ref(remote_path()).expect("actor ref");
+  let mut remote = provider.actor_ref(remote_path()).expect("actor ref");
 
   system.state().remote_authority_set_quarantine("127.0.0.1:4100", Some(Duration::from_secs(10)));
   remote.tell(AnyMessage::new("hello".to_string()));

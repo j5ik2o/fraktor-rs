@@ -323,7 +323,8 @@ impl TypedActor<MismatchCommand> for MismatchActor {
   ) -> Result<(), ActorError> {
     match message {
       | MismatchCommand::Trigger { reply_to } => {
-        reply_to.as_untyped().tell(AnyMessage::new("unexpected".to_string()));
+        let mut reply_to = reply_to.clone();
+        reply_to.as_untyped_mut().tell(AnyMessage::new("unexpected".to_string()));
         Ok(())
       },
     }
@@ -830,7 +831,7 @@ fn adapter_not_found_routes_to_dead_letter() {
   );
   let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
-  let untyped = actor.as_untyped().clone();
+  let mut untyped = actor.as_untyped().clone();
 
   let payload = AdapterPayload::new(7_u64);
   let envelope = AdapterEnvelope::new(payload, None);

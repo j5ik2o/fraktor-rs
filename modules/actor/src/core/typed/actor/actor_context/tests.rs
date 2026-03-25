@@ -413,7 +413,7 @@ fn forward_preserves_sender_through_typed_context() {
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let target_untyped = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
-  let target = TypedActorRef::<u32>::from_untyped(target_untyped);
+  let mut target = TypedActorRef::<u32>::from_untyped(target_untyped);
 
   let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
 
@@ -423,7 +423,7 @@ fn forward_preserves_sender_through_typed_context() {
   context.set_sender(Some(original_sender.clone()));
 
   let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
-  typed_ctx.try_forward(&target, 42_u32).expect("forward");
+  typed_ctx.try_forward(&mut target, 42_u32).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);

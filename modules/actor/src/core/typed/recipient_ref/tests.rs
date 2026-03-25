@@ -31,7 +31,7 @@ impl Actor for ProbeActor {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.received.lock().push(*value);
     } else if let Some(request) = message.downcast_ref::<EchoRequest>() {
-      let reply_to = request.reply_to.clone();
+      let mut reply_to = request.reply_to.clone();
       reply_to.tell(AnyMessage::new(request.value));
     }
     Ok(())

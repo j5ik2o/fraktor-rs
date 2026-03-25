@@ -317,7 +317,7 @@ fn actor_context_forward_preserves_sender() {
   }
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let original_sender = ActorRef::new(Pid::new(800, 0), crate::core::actor::actor_ref::NullSender);
 
@@ -326,7 +326,7 @@ fn actor_context_forward_preserves_sender() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  context.try_forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
+  context.try_forward(&mut target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -350,13 +350,13 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   }
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  context.try_forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
+  context.try_forward(&mut target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -575,12 +575,12 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
     }
   }
 
-  let target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  let result = context.try_forward(&target_ref, AnyMessage::new(42_u32));
+  let result = context.try_forward(&mut target_ref, AnyMessage::new(42_u32));
   assert!(result.is_err());
 }

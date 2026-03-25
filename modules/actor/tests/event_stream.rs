@@ -88,7 +88,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   wait_until(|| child_slot.lock().is_some());
   let child = child_slot.lock().clone().expect("child");
-  let actor_ref = child.actor_ref().clone();
+  let mut actor_ref = child.actor_ref().clone();
 
   child.suspend().expect("suspend child");
   // tell is fire-and-forget; the suspended message is routed to dead letters internally

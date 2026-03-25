@@ -17,7 +17,7 @@ const STOP_POLL_INTERVAL: Duration = Duration::from_millis(1);
 ///
 /// Returns [`AskError::SendFailed`] when the system state is unavailable,
 /// or [`AskError::Timeout`] when the actor does not stop before `timeout`.
-pub async fn graceful_stop(target: &ActorRef, timeout: Duration) -> Result<(), AskError> {
+pub async fn graceful_stop(target: &mut ActorRef, timeout: Duration) -> Result<(), AskError> {
   graceful_stop_with_message(target, AnyMessage::new(SystemMessage::PoisonPill), timeout).await
 }
 
@@ -29,7 +29,7 @@ pub async fn graceful_stop(target: &ActorRef, timeout: Duration) -> Result<(), A
 /// Returns [`AskError::SendFailed`] when the system state is unavailable,
 /// or [`AskError::Timeout`] when the actor does not stop before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &ActorRef,
+  target: &mut ActorRef,
   stop_message: AnyMessage,
   timeout: Duration,
 ) -> Result<(), AskError> {

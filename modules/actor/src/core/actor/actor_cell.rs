@@ -843,7 +843,7 @@ impl MessageInvoker for ActorCellInvoker {
       }
     }
     if let Some(identify) = message.payload().downcast_ref::<Identify>() {
-      if let Some(sender) = message.sender().cloned() {
+      if let Some(mut sender) = message.sender().cloned() {
         let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
         // Best-effort reply: the requester may have stopped before the reply arrives.
         sender.try_tell(AnyMessage::new(identity)).map_err(|error| ActorError::from_send_error(&error))?;

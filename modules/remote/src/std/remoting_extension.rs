@@ -44,7 +44,8 @@ impl RemotingExtension {
     control.lock().register_remote_transport_shared(shared_transport.clone());
     let guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
-    register_shutdown_hook(&guardian, &supervisor);
+    let mut guardian = guardian;
+    register_shutdown_hook(&mut guardian, &supervisor);
     if config.auto_start() {
       control.lock().start()?;
     }
@@ -67,7 +68,7 @@ fn spawn_endpoint_supervisor(
   Ok(child.actor_ref().clone())
 }
 
-fn register_shutdown_hook(guardian: &ActorRef, supervisor: &ActorRef) {
+fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) {
   guardian.tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())));
 }
 

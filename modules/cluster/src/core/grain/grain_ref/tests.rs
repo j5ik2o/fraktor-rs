@@ -296,10 +296,10 @@ impl ActorRefSender for TestSender {
       return Err(SendError::timeout(AnyMessage::new(())));
     }
     if matches!(self.behavior, SendBehavior::Reply)
-      && let Some(sender) = message.sender().cloned()
+      && let Some(mut sender) = message.sender().cloned()
     {
       let reply = AnyMessage::new(String::from("reply"));
-      let _ = sender.tell(reply);
+      sender.tell(reply);
     }
     if let Some(counter) = &self.counter {
       *counter.lock() += 1;

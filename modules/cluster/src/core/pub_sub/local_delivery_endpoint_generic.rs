@@ -36,7 +36,7 @@ impl DeliveryEndpoint for LocalDeliveryEndpoint {
     let mut failed = Vec::new();
     for subscriber in request.subscribers {
       match subscriber {
-        | PubSubSubscriber::ActorRef(actor_ref) => {
+        | PubSubSubscriber::ActorRef(mut actor_ref) => {
           if actor_ref.try_tell(payload.clone()).is_err() {
             failed.push(SubscriberDeliveryReport {
               subscriber: PubSubSubscriber::ActorRef(actor_ref),

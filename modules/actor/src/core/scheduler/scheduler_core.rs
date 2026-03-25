@@ -509,7 +509,7 @@ impl Scheduler {
     match command {
       | SchedulerCommand::Noop => {},
       | SchedulerCommand::SendMessage { receiver, message, .. } => {
-        let receiver = receiver.clone();
+        let mut receiver = receiver.clone();
         // Best-effort delivery: scheduled messages may fail if the target
         // actor has already stopped; this is normal and not actionable.
         receiver.tell(message.clone());

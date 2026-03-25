@@ -32,7 +32,7 @@ impl ActorRefSender for TestSender {
 #[test]
 fn tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
-  let reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
   // Type constraint: tell MUST return ()
   reference.tell(AnyMessage::new("ping"));
 }
@@ -41,7 +41,7 @@ fn tell_delegates_to_sender() {
 /// This replaces the old `null_sender_returns_error` test that depended on `try_tell`.
 #[test]
 fn tell_on_null_sender_does_not_panic() {
-  let reference: ActorRef = ActorRef::null();
+  let mut reference: ActorRef = ActorRef::null();
   // tell is fire-and-forget: no Result, no panic
   reference.tell(AnyMessage::new("ping"));
 }
@@ -59,7 +59,7 @@ fn tell_on_failing_sender_returns_unit() {
   }
 
   let pid = Pid::new(10, 1);
-  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
   // tell MUST return () even when the sender fails
   reference.tell(AnyMessage::new("will-fail"));
 }
@@ -69,7 +69,7 @@ fn tell_on_failing_sender_returns_unit() {
 #[test]
 fn try_tell_returns_result_on_success() {
   let pid = Pid::new(5, 1);
-  let reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
   assert!(reference.try_tell(AnyMessage::new("ask-payload")).is_ok());
 }
 
@@ -85,7 +85,7 @@ fn try_tell_returns_error_on_failure() {
   }
 
   let pid = Pid::new(10, 1);
-  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
   assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
@@ -93,7 +93,7 @@ fn try_tell_returns_error_on_failure() {
 #[test]
 fn ask_returns_response_handle() {
   let pid = Pid::new(5, 1);
-  let reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
   let _response = reference.ask(AnyMessage::new("ask-payload"));
 }
 
@@ -109,7 +109,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   }
 
   let pid = Pid::new(10, 1);
-  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_eq!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");

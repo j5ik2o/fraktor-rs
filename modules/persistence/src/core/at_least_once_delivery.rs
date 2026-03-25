@@ -201,7 +201,7 @@ impl AtLeastOnceDelivery {
   /// Returns `PersistenceError::MessagePassing` when the delivery limit is exceeded.
   pub fn deliver<M>(
     &mut self,
-    destination: ActorRef,
+    mut destination: ActorRef,
     sender: Option<ActorRef>,
     timestamp: TimerInstant,
     build: impl FnOnce(u64) -> M,
@@ -224,6 +224,7 @@ impl AtLeastOnceDelivery {
 
   fn send_delivery(delivery: &UnconfirmedDelivery) -> bool {
     let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned(), false);
-    delivery.destination().try_tell(message).is_ok()
+    let mut destination = delivery.destination().clone();
+    destination.try_tell(message).is_ok()
   }
 }

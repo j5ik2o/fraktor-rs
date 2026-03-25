@@ -521,7 +521,7 @@ impl<A: 'static> PersistenceContext<A> {
   /// # Errors
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
-  pub fn send_write_messages(&self, message: JournalMessage) -> Result<(), PersistenceError> {
+  pub fn send_write_messages(&mut self, message: JournalMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .journal_actor_ref
@@ -534,7 +534,7 @@ impl<A: 'static> PersistenceContext<A> {
   /// # Errors
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
-  pub fn send_snapshot_message(&self, message: SnapshotMessage) -> Result<(), PersistenceError> {
+  pub fn send_snapshot_message(&mut self, message: SnapshotMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .snapshot_actor_ref

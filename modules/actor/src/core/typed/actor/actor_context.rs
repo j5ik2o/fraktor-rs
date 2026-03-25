@@ -262,7 +262,7 @@ where
   /// This is the user-facing fire-and-forget variant. Synchronous forwarding
   /// failures are observed internally and recorded via the system's send-error
   /// observation path.
-  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C)
+  pub fn forward<C>(&self, target: &mut TypedActorRef<C>, message: C)
   where
     C: Send + Sync + 'static, {
     let result = self.try_forward(target, message);
@@ -280,10 +280,10 @@ where
   /// # Errors
   ///
   /// Returns an error if forwarding fails synchronously while enqueueing.
-  pub fn try_forward<C>(&self, target: &TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
+  pub fn try_forward<C>(&self, target: &mut TypedActorRef<C>, message: C) -> Result<(), crate::core::error::SendError>
   where
     C: Send + Sync + 'static, {
-    self.inner().try_forward(target.as_untyped(), AnyMessage::new(message))
+    self.inner().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
   }
 
   /// Schedules a message to be sent to the specified target after `delay`.

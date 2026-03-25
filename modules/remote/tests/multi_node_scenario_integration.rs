@@ -106,8 +106,10 @@ async fn loopback_provider_routes_messages_for_multiple_remote_authorities() -> 
     .watch_remote(second_authority)
     .map_err(|error| anyhow!("{error}"))?;
 
-  let remote_a = provider.clone().actor_ref(remote_path("remote-a", "127.0.0.1", 25520, "svc-a")).expect("actor ref");
-  let remote_b = provider.clone().actor_ref(remote_path("remote-b", "127.0.0.1", 25521, "svc-b")).expect("actor ref");
+  let mut remote_a =
+    provider.clone().actor_ref(remote_path("remote-a", "127.0.0.1", 25520, "svc-a")).expect("actor ref");
+  let mut remote_b =
+    provider.clone().actor_ref(remote_path("remote-b", "127.0.0.1", 25521, "svc-b")).expect("actor ref");
   remote_a.tell(AnyMessage::new("to-a".to_string()));
   remote_b.tell(AnyMessage::new("to-b".to_string()));
 

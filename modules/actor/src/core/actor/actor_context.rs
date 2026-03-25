@@ -158,7 +158,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error if no reply target is set.
   pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
-    match self.sender.as_ref() {
+    match self.sender.as_mut() {
       | Some(target) => target.try_tell(message),
       | None => Err(SendError::no_recipient(message)),
     }
@@ -316,7 +316,7 @@ impl ActorContext<'_> {
   /// This is the user-facing fire-and-forget variant. Synchronous forwarding
   /// failures are observed internally and recorded via the system's send-error
   /// observation path.
-  pub fn forward(&self, target: &ActorRef, message: AnyMessage) {
+  pub fn forward(&self, target: &mut ActorRef, message: AnyMessage) {
     let result = self.try_forward(target, message);
     if let Err(error) = result {
       self.system.state().record_send_error(Some(target.pid()), &error);
@@ -333,7 +333,7 @@ impl ActorContext<'_> {
   ///
   /// Returns [`SendError`] when forwarding fails synchronously while
   /// enqueueing the message into the target mailbox.
-  pub fn try_forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  pub fn try_forward(&self, target: &mut ActorRef, message: AnyMessage) -> Result<(), SendError> {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,

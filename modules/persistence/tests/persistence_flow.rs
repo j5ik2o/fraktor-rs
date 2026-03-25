@@ -247,7 +247,7 @@ fn persist_flow_keeps_values_independent() {
     controller.inject_and_drive(1);
   }
 
-  let refs_guard = refs.lock();
+  let mut refs_guard = refs.lock();
   assert_eq!(refs_guard.len(), 2);
   refs_guard[0].tell(AnyMessage::new(Command::Add(2)));
   refs_guard[1].tell(AnyMessage::new(Command::Add(5)));

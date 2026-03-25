@@ -107,7 +107,7 @@ impl GrainRef {
       self.record_call_failed();
       return Err(error);
     }
-    let actor_ref = match self.resolve_with_retry() {
+    let mut actor_ref = match self.resolve_with_retry() {
       | Ok(actor_ref) => actor_ref,
       | Err(error) => {
         let wrapped = GrainCallError::ResolveFailed(error);
@@ -178,7 +178,7 @@ impl GrainRef {
       self.record_call_failed();
       return Err(error);
     }
-    let actor_ref = match self.resolve_with_retry() {
+    let mut actor_ref = match self.resolve_with_retry() {
       | Ok(actor_ref) => actor_ref,
       | Err(error) => {
         let wrapped = GrainCallError::ResolveFailed(error);
@@ -314,6 +314,7 @@ impl SchedulerRunnable for GrainRetryRunnable {
         publish_grain_event(&self.context.event_stream, event);
         update_grain_metrics(&self.context.metrics, |metrics| metrics.record_call_retried());
         let envelope = message.clone().with_sender(reply_ref.clone());
+        let mut actor_ref = actor_ref.clone();
         if let Err(error) = actor_ref.try_tell(envelope) {
           let request_error = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
           let call_error = GrainCallError::RequestFailed(request_error.clone());
@@ -398,6 +399,7 @@ impl ActorRefSender for GrainReplySender {
     }
 
     if let Some(target) = &self.forward_to {
+      let mut target = target.clone();
       if let Err(error) = target.try_tell(message.clone()) {
         let request_error = ClusterRequestError::SendFailed { reason: format!("{error:?}") };
         let call_error = GrainCallError::RequestFailed(request_error.clone());

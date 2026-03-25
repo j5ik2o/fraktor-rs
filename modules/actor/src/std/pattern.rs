@@ -57,7 +57,7 @@ pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> Cir
 /// observed before the deadline.
 #[must_use]
 pub fn ask_with_timeout(
-  actor_ref: &crate::core::actor::actor_ref::ActorRef,
+  actor_ref: &mut crate::core::actor::actor_ref::ActorRef,
   message: crate::core::messaging::AnyMessage,
   timeout: Duration,
 ) -> crate::core::messaging::AskResponse {
@@ -72,7 +72,7 @@ pub fn ask_with_timeout(
 /// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop(
-  target: &crate::core::actor::actor_ref::ActorRef,
+  target: &mut crate::core::actor::actor_ref::ActorRef,
   timeout: Duration,
 ) -> Result<(), crate::core::messaging::AskError> {
   crate::core::pattern::graceful_stop(target, timeout).await
@@ -87,7 +87,7 @@ pub async fn graceful_stop(
 /// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &crate::core::actor::actor_ref::ActorRef,
+  target: &mut crate::core::actor::actor_ref::ActorRef,
   stop_message: crate::core::messaging::AnyMessage,
   timeout: Duration,
 ) -> Result<(), crate::core::messaging::AskError> {

@@ -35,14 +35,14 @@ impl ActorRefSender for RecordingSender {
 
 #[test]
 fn null_sender_uses_fire_and_forget_tell_contract() {
-  let null: ActorRef = ActorRef::null();
+  let mut null: ActorRef = ActorRef::null();
   null.tell(AnyMessage::new(1_u32));
 }
 
 #[test]
 fn new_actor_ref_forwards_messages() {
   let (count, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  let mut actor: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
   actor.tell(AnyMessage::new(42_u32));
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -58,8 +58,8 @@ fn actor_ref_pid() {
 #[test]
 fn actor_ref_clone() {
   let (count, sender) = RecordingSender::new();
-  let actor1: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
-  let actor2 = actor1.clone();
+  let mut actor1: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  let mut actor2 = actor1.clone();
 
   assert_eq!(actor1.pid(), actor2.pid());
 
@@ -117,7 +117,7 @@ fn actor_ref_path_resolves_segments() {
 fn actor_ref_tell_with_system_records_error() {
   let system = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
-  let actor: ActorRef = ActorRef::with_system(pid, NullSender, &system);
+  let mut actor: ActorRef = ActorRef::with_system(pid, NullSender, &system);
 
   actor.tell(AnyMessage::new(42_u32));
   let deadletters = system.dead_letters();
@@ -126,7 +126,7 @@ fn actor_ref_tell_with_system_records_error() {
 
 #[test]
 fn actor_ref_ask_completes_send_failed_when_delivery_fails() {
-  let actor: ActorRef = ActorRef::null();
+  let mut actor: ActorRef = ActorRef::null();
 
   let response = actor.ask(AnyMessage::new(42_u32));
   assert_eq!(response.sender().pid(), actor.pid());
@@ -178,7 +178,7 @@ fn actor_ref_hash() {
 
 #[test]
 fn no_sender_is_equivalent_to_null() {
-  let no_sender: ActorRef = ActorRef::no_sender();
+  let mut no_sender: ActorRef = ActorRef::no_sender();
   let null: ActorRef = ActorRef::null();
   assert_eq!(no_sender.pid(), null.pid());
   no_sender.tell(AnyMessage::new(1_u32));
@@ -187,7 +187,7 @@ fn no_sender_is_equivalent_to_null() {
 #[test]
 fn actor_ref_poison_pill_without_system_uses_user_channel() {
   let (count, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRef::new(Pid::new(10, 0), sender);
+  let mut actor: ActorRef = ActorRef::new(Pid::new(10, 0), sender);
   actor.poison_pill();
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -195,7 +195,7 @@ fn actor_ref_poison_pill_without_system_uses_user_channel() {
 #[test]
 fn actor_ref_kill_without_system_uses_user_channel() {
   let (count, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRef::new(Pid::new(11, 0), sender);
+  let mut actor: ActorRef = ActorRef::new(Pid::new(11, 0), sender);
   actor.kill();
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -225,7 +225,7 @@ fn actor_ref_poison_pill_with_system_enqueues_user_message() {
   let cell = ActorCell::create(system.clone(), pid, None, "probe".into(), &props).expect("create actor cell");
   system.register_cell(cell.clone());
 
-  let actor: ActorRef = cell.actor_ref();
+  let mut actor: ActorRef = cell.actor_ref();
   actor.poison_pill();
   assert_eq!(system.dead_letters().len(), 0, "poison pill via user channel should not produce dead letters");
 }

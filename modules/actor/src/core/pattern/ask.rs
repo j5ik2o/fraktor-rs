@@ -17,7 +17,7 @@ use crate::core::{
 /// The returned future resolves with `Err(AskError::Timeout)` when the
 /// request cannot be observed before the deadline.
 #[must_use]
-pub fn ask_with_timeout(actor_ref: &ActorRef, message: AnyMessage, timeout: Duration) -> AskResponse {
+pub fn ask_with_timeout(actor_ref: &mut ActorRef, message: AnyMessage, timeout: Duration) -> AskResponse {
   let ask_response = actor_ref.ask(message);
   if let Some(system) = actor_ref.system_state() {
     install_ask_timeout(ask_response.future(), &system, timeout);

@@ -179,7 +179,7 @@ impl RemotingControlHandle {
   pub(crate) fn dispatch_remote_watcher_command(&self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     let daemon = self.inner.watcher_daemon.lock().clone();
     match daemon {
-      | Some(daemon) => {
+      | Some(mut daemon) => {
         daemon.tell(AnyMessage::new(command));
         Ok(())
       },
