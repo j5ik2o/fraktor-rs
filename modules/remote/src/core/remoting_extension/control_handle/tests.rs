@@ -194,19 +194,14 @@ fn dispatch_remote_watcher_command_returns_error_without_daemon() {
 }
 
 #[test]
-fn dispatch_remote_watcher_command_propagates_daemon_send_failure() {
+fn dispatch_remote_watcher_command_with_null_daemon_does_not_propagate_error() {
   let handle = build_started_control_without_transport();
   handle.register_remote_watcher_daemon(ActorRef::null());
 
-  let error = handle
-    .dispatch_remote_watcher_command(RemoteWatcherCommand::heartbeat("127.0.0.1:25520"))
-    .expect_err("dispatch should fail when watcher daemon mailbox rejects messages");
-  match error {
-    | RemotingError::TransportUnavailable(reason) => {
-      assert!(reason.contains("Closed"), "unexpected reason: {reason}");
-    },
-    | other => panic!("unexpected error: {other:?}"),
-  }
+  // After tell() Unit化, send failures are recorded internally (fire-and-forget)
+  // and dispatch_remote_watcher_command returns Ok(()) when a daemon is registered.
+  let result = handle.dispatch_remote_watcher_command(RemoteWatcherCommand::heartbeat("127.0.0.1:25520"));
+  assert!(result.is_ok(), "dispatch should succeed (fire-and-forget) even with null daemon");
 }
 
 #[test]

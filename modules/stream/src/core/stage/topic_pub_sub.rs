@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
   actor::ChildRef,
-  error::{ActorError, SendError},
+  error::ActorError,
   messaging::AnyMessage,
   system::ActorSystem,
   typed::{Behavior, Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
@@ -61,10 +61,8 @@ where
       let Some(state) = guard.take() else {
         return;
       };
-      // topic actor が既に停止している場合、unsubscribe は失敗するが整合性は壊れない。
-      if let Err(_error) = send_topic_command(&state.topic_actor, Topic::unsubscribe(state.bridge_ref.clone())) {
-        // stream 終了後の best-effort cleanup
-      }
+      // topic actor が既に停止している場合、tell は dead letter 経由で記録されるが整合性は壊れない。
+      send_topic_command(&state.topic_actor, Topic::unsubscribe(state.bridge_ref.clone()));
       // bridge がすでに終了している場合、追加 stop は不要。
       if let Err(_error) = state.bridge_child.stop() {
         // stream 終了後の best-effort cleanup であり、bridge が既に止まっていても整合性は壊れない。
@@ -154,9 +152,7 @@ impl TopicPubSub {
       let child =
         extended.spawn_system_actor(bridge_props.to_untyped()).expect("TopicPubSub: bridge actor の spawn に失敗");
       let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
-      #[allow(clippy::expect_used)]
-      send_topic_command(&topic_actor, Topic::subscribe(bridge_ref.clone()))
-        .expect("TopicPubSub: topic への subscribe に失敗");
+      send_topic_command(&topic_actor, Topic::subscribe(bridge_ref.clone()));
       cleanup.install(topic_actor.clone(), bridge_ref, child);
 
       StreamNotUsed
@@ -173,18 +169,16 @@ impl TopicPubSub {
     T: Clone + Send + Sync + 'static, {
     let topic = topic_actor;
     ActorSink::actor_ref_with_result(move |msg: T| {
-      send_topic_command(&topic, Topic::publish(msg)).map_err(|_error| crate::core::StreamError::Failed)
+      send_topic_command(&topic, Topic::publish(msg));
+      Ok(())
     })
   }
 }
 
-fn send_topic_command<T>(
-  topic_actor: &TypedActorRef<TopicCommand<T>>,
-  command: TopicCommand<T>,
-) -> Result<(), SendError>
+fn send_topic_command<T>(topic_actor: &TypedActorRef<TopicCommand<T>>, command: TopicCommand<T>)
 where
   T: Clone + Send + Sync + 'static, {
-  topic_actor.as_untyped().try_tell(AnyMessage::new(command))
+  topic_actor.as_untyped().tell(AnyMessage::new(command));
 }
 
 /// Creates the bridge actor behavior that forwards messages to the stream queue.

@@ -98,9 +98,9 @@ impl EndpointReader {
     if let Some(temp_name) = temp_actor_name(&recipient)
       && let Some(temp_ref) = system.state().temp_actor(temp_name)
     {
-      let result = temp_ref.try_tell(message);
+      temp_ref.tell(message);
       system.state().unregister_temp_actor(temp_name);
-      return result;
+      return Ok(());
     }
     let Some(pid) = system.pid_by_path(&recipient) else {
       return self.record_missing_recipient_with_system(&system, recipient, message);
@@ -108,7 +108,8 @@ impl EndpointReader {
     let Some(actor_ref) = system.actor_ref_by_pid(pid) else {
       return self.record_missing_recipient_with_system(&system, recipient, message);
     };
-    actor_ref.try_tell(message)
+    actor_ref.tell(message);
+    Ok(())
   }
 
   fn record_missing_recipient_with_system(

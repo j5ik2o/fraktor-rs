@@ -15,7 +15,6 @@ use crate::core::{
     actor_path::ActorPath,
     actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
   },
-  error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult, system_message::SystemMessage},
   pattern,
@@ -85,29 +84,15 @@ impl ActorRef {
     self.system.as_ref().and_then(|weak| weak.upgrade())
   }
 
-  /// Sends a message to the referenced actor.
+  /// Sends a message to the referenced actor (fire-and-forget).
   ///
-  /// This method delegates to the internal sender which uses interior mutability.
-  /// The `&self` signature is intentional as no external mutable borrow is required.
+  /// Failures are recorded via the dead-letter / observation path but never
+  /// surfaced to the caller. This matches Pekko's at-most-once `tell` semantics.
   pub fn tell(&self, message: AnyMessage) {
-    if let Err(_error) = self.try_tell(message) {}
-  }
-
-  /// Sends a message to the referenced actor and returns the enqueue result.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the mailbox is full, closed, or the actor doesn't exist.
-  #[doc(hidden)]
-  pub fn try_tell(&self, message: AnyMessage) -> Result<(), SendError> {
-    match self.sender.send(message) {
-      | Ok(()) => Ok(()),
-      | Err(error) => {
-        if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
-          system.record_send_error(Some(self.pid), &error);
-        }
-        Err(error)
-      },
+    if let Err(error) = self.sender.send(message) {
+      if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
+        system.record_send_error(Some(self.pid), &error);
+      }
     }
   }
 
@@ -128,16 +113,16 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns an error if the message cannot be delivered.
-  pub fn ask(&self, message: AnyMessage) -> Result<AskResponse, SendError> {
+  pub fn ask(&self, message: AnyMessage) -> AskResponse {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = ActorRef::new(self.pid, reply_sender);
     let envelope = message.with_sender(reply_ref.clone());
-    self.try_tell(envelope)?;
+    self.tell(envelope);
     if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
       system.register_ask_future(future.clone());
     }
-    Ok(AskResponse::new(reply_ref, future))
+    AskResponse::new(reply_ref, future)
   }
 
   /// Sends a request and arranges timeout completion on the returned ask future.
@@ -145,7 +130,7 @@ impl ActorRef {
   /// # Errors
   ///
   /// Returns an error if the request cannot be delivered.
-  pub fn ask_with_timeout(&self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, SendError> {
+  pub fn ask_with_timeout(&self, message: AnyMessage, timeout: Duration) -> AskResponse {
     pattern::ask_with_timeout(self, message, timeout)
   }
 

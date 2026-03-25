@@ -1,4 +1,4 @@
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::{
@@ -57,14 +57,14 @@ impl ActorMaterializer {
     self.system.clone().ok_or(StreamError::ActorSystemMissing)
   }
 
-  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) -> Result<(), StreamError> {
+  fn register_handle(actor: &ChildRef, handle: StreamHandleImpl) {
     let message = AnyMessage::new(StreamDriveCommand::Register { handle });
-    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
+    actor.actor_ref().tell(message);
   }
 
-  fn send_command(actor: &ChildRef, command: StreamDriveCommand) -> Result<(), StreamError> {
+  fn send_command(actor: &ChildRef, command: StreamDriveCommand) {
     let message = AnyMessage::new(command);
-    actor.actor_ref().try_tell(message).map_err(|_| StreamError::Failed)
+    actor.actor_ref().tell(message);
   }
 
   fn schedule_ticks(
@@ -180,12 +180,7 @@ impl Materializer for ActorMaterializer {
       stream.start()?;
       let shared = StreamShared::new(stream);
       let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
-      if let Err(error) = Self::register_handle(drive_actor, handle.clone()) {
-        if let Err(_cleanup_error) = handle.cancel() {
-          // Best-effort rollback: keep the original registration failure.
-        }
-        return Err(error);
-      }
+      Self::register_handle(drive_actor, handle.clone());
       self.total_materialized += 1;
       Ok(Materialized::new(handle, materialized))
     } else {
@@ -218,14 +213,7 @@ impl Materializer for ActorMaterializer {
         handles.push(StreamHandleImpl::new(StreamHandleId::next(), shared));
       }
       for handle in &handles {
-        if let Err(error) = Self::register_handle(drive_actor, handle.clone()) {
-          for registered in &handles {
-            if let Err(_cleanup_error) = registered.cancel() {
-              // Best-effort rollback: we still return the original registration failure.
-            }
-          }
-          return Err(error);
-        }
+        Self::register_handle(drive_actor, handle.clone());
       }
       let handle = handles.first().cloned().ok_or(StreamError::Failed)?;
       self.total_materialized += 1;
@@ -253,17 +241,7 @@ impl Materializer for ActorMaterializer {
       system.scheduler().with_write(|scheduler| scheduler.cancel(&handle));
     }
     if let Some(actor) = self.drive_actor.take() {
-      // State is already Stopped and drive_actor is consumed. If send fails,
-      // the drive actor will eventually be stopped by actor system shutdown.
-      // Returning Err here would be misleading: the materializer IS stopped
-      // and the caller has no recovery action.
-      if let Err(error) = Self::send_command(&actor, StreamDriveCommand::Shutdown) {
-        system.emit_log(
-          fraktor_actor_rs::core::event::logging::LogLevel::Warn,
-          format!("materializer shutdown: failed to send Shutdown to drive actor: {error:?}"),
-          None,
-        );
-      }
+      Self::send_command(&actor, StreamDriveCommand::Shutdown);
     }
     Ok(())
   }

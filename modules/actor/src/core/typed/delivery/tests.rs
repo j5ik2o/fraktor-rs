@@ -101,11 +101,8 @@ fn consumer_controller_delivers_to_consumer() {
       let delivered = delivered_clone.clone();
       Behaviors::receive_message(move |_ctx, delivery: &ConsumerControllerDelivery<u32>| {
         delivered.lock().push(*delivery.message());
-        let confirm_to = delivery.confirm_to().clone();
-        confirm_to
-          .as_untyped()
-          .try_tell(crate::core::messaging::AnyMessage::new(ConsumerControllerConfirmed))
-          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let mut confirm_to = delivery.confirm_to().clone();
+        let _: () = confirm_to.tell(ConsumerControllerConfirmed);
         Ok(Behaviors::same())
       })
     }
@@ -127,11 +124,8 @@ fn consumer_controller_delivers_to_consumer() {
   let producer_props = TypedProps::<ProducerControllerRequestNext<u32>>::from_behavior_factory({
     move || {
       Behaviors::receive_message(move |_ctx, req: &ProducerControllerRequestNext<u32>| {
-        let send_to = req.send_next_to().clone();
-        send_to
-          .as_untyped()
-          .try_tell(crate::core::messaging::AnyMessage::new(42_u32))
-          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let mut send_to = req.send_next_to().clone();
+        let _: () = send_to.tell(42_u32);
         Ok(Behaviors::same())
       })
     }
@@ -252,11 +246,8 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
       let delivered = delivered_clone.clone();
       Behaviors::receive_message(move |_ctx, delivery: &ConsumerControllerDelivery<u32>| {
         delivered.lock().push(*delivery.message());
-        let confirm_to = delivery.confirm_to().clone();
-        confirm_to
-          .as_untyped()
-          .try_tell(crate::core::messaging::AnyMessage::new(ConsumerControllerConfirmed))
-          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let mut confirm_to = delivery.confirm_to().clone();
+        let _: () = confirm_to.tell(ConsumerControllerConfirmed);
         Ok(Behaviors::same())
       })
     }
@@ -276,11 +267,8 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   let producer_props = TypedProps::<WorkPullingProducerControllerRequestNext<u32>>::from_behavior_factory({
     move || {
       Behaviors::receive_message(move |_ctx, req: &WorkPullingProducerControllerRequestNext<u32>| {
-        let send_to = req.send_next_to().clone();
-        send_to
-          .as_untyped()
-          .try_tell(crate::core::messaging::AnyMessage::new(99_u32))
-          .map_err(|e| crate::core::error::ActorError::from_send_error(&e))?;
+        let mut send_to = req.send_next_to().clone();
+        let _: () = send_to.tell(99_u32);
         Ok(Behaviors::same())
       })
     }

@@ -18,7 +18,6 @@ use fraktor_actor_rs::core::{
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
-  event::logging::LogLevel,
   messaging::{AnyMessage, system_message::SystemMessage},
   system::{
     ActorSystem, ActorSystemWeak,
@@ -149,18 +148,8 @@ impl RemoteActorRefProvider {
     self.control.lock().record_authority_snapshot(snapshot);
   }
 
-  fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
-    self
-      .watcher_daemon
-      .try_tell(AnyMessage::new(command))
-      .map(|_| ())
-      .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))
-  }
-
-  fn emit_remote_watch_dispatch_error(&self, error: &RemotingError) {
-    if let Some(system) = self.system.upgrade() {
-      system.emit_log(LogLevel::Warn, format!("failed to dispatch remote watcher command: {error}"), None);
-    }
+  fn dispatch_remote_watch(&mut self, command: RemoteWatcherCommand) {
+    self.watcher_daemon.tell(AnyMessage::new(command));
   }
 
   fn track_watch(&mut self, target: Pid, watcher: Pid) -> Option<(ActorPathParts, bool)> {
@@ -193,10 +182,8 @@ impl RemoteActorRefProvider {
 impl RemoteWatchHook for RemoteActorRefProvider {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, should_send)) = self.track_watch(target, watcher) {
-      if should_send
-        && let Err(error) = self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher })
-      {
-        self.emit_remote_watch_dispatch_error(&error);
+      if should_send {
+        self.dispatch_remote_watch(RemoteWatcherCommand::Watch { target: parts, watcher });
       }
       true
     } else {
@@ -206,10 +193,8 @@ impl RemoteWatchHook for RemoteActorRefProvider {
 
   fn handle_unwatch(&mut self, target: Pid, watcher: Pid) -> bool {
     if let Some((parts, removed)) = self.track_unwatch(target, watcher) {
-      if removed
-        && let Err(error) = self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher })
-      {
-        self.emit_remote_watch_dispatch_error(&error);
+      if removed {
+        self.dispatch_remote_watch(RemoteWatcherCommand::Unwatch { target: parts, watcher });
       }
       true
     } else {

@@ -7,7 +7,6 @@ use crate::core::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
-  error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult},
   typed::{TypedAskResponse, status_reply::StatusReply},
@@ -54,11 +53,6 @@ where
     self.inner.tell(AnyMessage::new(message));
   }
 
-  /// Sends a typed message while preserving enqueue failures for internal callers.
-  pub(crate) fn try_tell(&self, message: M) -> Result<(), SendError> {
-    self.inner.try_tell(AnyMessage::new(message))
-  }
-
   /// Sends a typed request and obtains the ask response.
   ///
   /// The request message is built with an explicit reply target.
@@ -67,7 +61,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponse<R>, SendError>
+  pub fn ask<R, F>(&mut self, build: F) -> TypedAskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<R>) -> M, {
@@ -82,8 +76,8 @@ where
     };
     let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
     let message = build(reply_typed);
-    self.try_tell(message)?;
-    Ok(TypedAskResponse::from_generic(AskResponse::new(reply_ref, future)))
+    self.inner.tell(AnyMessage::new(message));
+    TypedAskResponse::from_generic(AskResponse::new(reply_ref, future))
   }
 
   /// Sends a typed request expecting a [`StatusReply<R>`] response.
@@ -95,7 +89,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask_with_status<R, F>(&mut self, build: F) -> Result<TypedAskResponse<StatusReply<R>>, SendError>
+  pub fn ask_with_status<R, F>(&mut self, build: F) -> TypedAskResponse<StatusReply<R>>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<StatusReply<R>>) -> M, {

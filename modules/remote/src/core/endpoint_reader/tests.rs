@@ -170,7 +170,7 @@ fn deliver_routes_message_to_local_actor() {
 }
 
 #[test]
-fn deliver_returns_send_error_and_unregisters_temp_actor_when_temp_delivery_fails() {
+fn deliver_unregisters_temp_actor_even_when_underlying_sender_fails() {
   let system = build_system();
   let serialization = serialization_extension(&system);
   let reader = EndpointReader::new(system.downgrade(), serialization);
@@ -187,8 +187,10 @@ fn deliver_returns_send_error_and_unregisters_temp_actor_when_temp_delivery_fail
     crate::core::envelope::OutboundPriority::User,
   );
 
+  // After tell() Unit化, send failures are recorded internally (fire-and-forget)
+  // and deliver returns Ok(()) even when the underlying sender fails.
   let result = reader.deliver(inbound);
 
-  assert!(matches!(result, Err(SendError::Closed(_))));
+  assert!(result.is_ok(), "deliver should return Ok (fire-and-forget)");
   assert!(system.state().temp_actor(&temp_name).is_none());
 }

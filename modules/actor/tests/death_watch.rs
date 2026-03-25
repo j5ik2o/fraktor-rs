@@ -92,7 +92,7 @@ impl Actor for HarnessWatcher {
       return Ok(());
     }
     if message.downcast_ref::<QueueUserEvent>().is_some() {
-      ctx.self_ref().try_tell(AnyMessage::new(UserProbe)).map_err(|_| ActorError::recoverable("self send failed"))?;
+      let _: () = ctx.self_ref().tell(AnyMessage::new(UserProbe));
       self.stop_child();
       return Ok(());
     }
@@ -109,10 +109,7 @@ impl Actor for HarnessWatcher {
         let secondary = ctx
           .spawn_child(&watcher_props)
           .map_err(|error| ActorError::recoverable(format!("spawn secondary failed: {:?}", error)))?;
-        secondary
-          .actor_ref()
-          .try_tell(AnyMessage::new(child.clone()))
-          .map_err(|_| ActorError::recoverable("link failed"))?;
+        let _: () = secondary.actor_ref().tell(AnyMessage::new(child.clone()));
       }
       return Ok(());
     }
@@ -230,10 +227,10 @@ impl Actor for CycleGuardian {
           move || CycleActor::new(log_b.clone())
         }))
         .map_err(|error| ActorError::recoverable(format!("spawn b failed: {:?}", error)))?;
-      actor_a.actor_ref().try_tell(AnyMessage::new(actor_b.clone())).map_err(|_| ActorError::recoverable("link a"))?;
-      actor_b.actor_ref().try_tell(AnyMessage::new(actor_a.clone())).map_err(|_| ActorError::recoverable("link b"))?;
-      actor_a.actor_ref().try_tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop a"))?;
-      actor_b.actor_ref().try_tell(AnyMessage::new(StopChild)).map_err(|_| ActorError::recoverable("stop b"))?;
+      let _: () = actor_a.actor_ref().tell(AnyMessage::new(actor_b.clone()));
+      let _: () = actor_b.actor_ref().tell(AnyMessage::new(actor_a.clone()));
+      let _: () = actor_a.actor_ref().tell(AnyMessage::new(StopChild));
+      let _: () = actor_b.actor_ref().tell(AnyMessage::new(StopChild));
     }
     Ok(())
   }

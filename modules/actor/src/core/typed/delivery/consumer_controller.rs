@@ -8,7 +8,6 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  error::ActorError,
   event::logging::LogLevel,
   typed::{
     Behaviors,
@@ -186,7 +185,7 @@ impl ConsumerController {
           (deferred, should_stop)
         }; // state lock released here
 
-        execute_deferred(deferred)?;
+        execute_deferred(deferred);
         if should_stop {
           return Ok(Behaviors::stopped());
         }
@@ -328,18 +327,17 @@ fn collect_send_request<A>(
   }
 }
 
-fn execute_deferred<A>(actions: Vec<DeferredAction<A>>) -> Result<(), ActorError>
+fn execute_deferred<A>(actions: Vec<DeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::SendToProducer(target, msg) => {
-        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::SendToProducer(mut target, msg) => {
+        target.tell(msg);
       },
-      | DeferredAction::Deliver(target, msg) => {
-        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::Deliver(mut target, msg) => {
+        target.tell(msg);
       },
     }
   }
-  Ok(())
 }

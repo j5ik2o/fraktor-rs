@@ -326,7 +326,8 @@ fn actor_context_forward_preserves_sender() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+  // forward returns () (fire-and-forget, Pekko-compatible)
+  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -356,7 +357,8 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+  // forward returns () (fire-and-forget, Pekko-compatible)
+  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -504,4 +506,85 @@ fn actor_context_tags_returns_empty_without_tags() {
   let context = ActorContext::new(&system, pid);
 
   assert!(context.tags().is_empty());
+}
+
+/// `reply` with a valid sender uses `tell` (fire-and-forget) but still returns `Ok(())`
+/// because the "no recipient" failure is a distinct concern from send failure.
+#[test]
+fn actor_context_reply_with_sender_returns_ok() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct CapturingSender {
+    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  }
+
+  impl ActorRefSender for CapturingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      self.inbox.lock().push(message);
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let sender_ref = ActorRef::new(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_sender(Some(sender_ref));
+
+  let result = context.reply(AnyMessage::new(42_u32));
+  assert!(result.is_ok());
+
+  let captured = inbox.lock();
+  assert_eq!(captured.len(), 1);
+}
+
+/// `reply` with a failing sender still returns `Ok(())` because send failure
+/// is fire-and-forget (tell semantics). Only "no recipient" returns Err.
+#[test]
+fn actor_context_reply_with_failing_sender_returns_ok() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      Err(crate::core::error::SendError::closed(message))
+    }
+  }
+
+  let sender_ref = ActorRef::new(Pid::new(800, 0), FailingSender);
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_sender(Some(sender_ref));
+
+  // reply returns Ok(()) because the recipient exists; send failure is fire-and-forget
+  let result = context.reply(AnyMessage::new(42_u32));
+  assert!(result.is_ok());
+}
+
+/// `forward` on a failing target does not propagate the error (fire-and-forget).
+#[test]
+fn actor_context_forward_on_failing_target_does_not_propagate_error() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      Err(crate::core::error::SendError::closed(message))
+    }
+  }
+
+  let target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  // forward returns () (fire-and-forget), even when target sender fails
+  let _: () = context.forward(&target_ref, AnyMessage::new(42_u32));
 }

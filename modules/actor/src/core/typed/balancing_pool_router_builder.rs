@@ -45,11 +45,8 @@ where
 
   /// Enqueue a message. If an idle worker exists, dispatch immediately.
   fn enqueue(&mut self, message: M) {
-    if let Some(worker) = self.idle_workers.pop() {
-      if worker.try_tell(message.clone()).is_err() {
-        // worker が停止済み — メッセージを pending に戻す（worker は再登録しない）
-        self.pending.push_back(message);
-      }
+    if let Some(mut worker) = self.idle_workers.pop() {
+      worker.tell(message);
     } else {
       self.pending.push_back(message);
     }
@@ -58,11 +55,8 @@ where
   /// Register a worker as idle. If pending work exists, dispatch it.
   fn register_idle(&mut self, worker: TypedActorRef<M>) {
     if let Some(msg) = self.pending.pop_front() {
-      let w = worker;
-      if w.try_tell(msg.clone()).is_err() {
-        // worker が停止済み — メッセージを pending の先頭に戻す（worker は再登録しない）
-        self.pending.push_front(msg);
-      }
+      let mut w = worker;
+      w.tell(msg);
     } else {
       self.idle_workers.push(worker);
     }

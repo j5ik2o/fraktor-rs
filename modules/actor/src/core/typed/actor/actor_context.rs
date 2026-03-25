@@ -261,15 +261,11 @@ where
   ///
   /// This mirrors Pekko's `ActorRef.forward`. The message envelope retains the
   /// original sender so that the final recipient can reply to the original
-  /// requester.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if sending the message fails.
-  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C) -> Result<(), SendError>
+  /// requester. Delivery is fire-and-forget.
+  pub fn forward<C>(&self, target: &TypedActorRef<C>, message: C)
   where
     C: Send + Sync + 'static, {
-    self.inner().forward(target.as_untyped(), AnyMessage::new(message))
+    self.inner().forward(target.as_untyped(), AnyMessage::new(message));
   }
 
   /// Schedules a message to be sent to the specified target after `delay`.
@@ -421,7 +417,7 @@ where
     Res: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<Res>) -> Req,
     G: Fn(Result<Res, TypedAskError>) -> M + Send + Sync + 'static, {
-    let ask_response = target.ask::<Res, _>(create_request)?;
+    let ask_response = target.ask::<Res, _>(create_request);
     let (_, ask_future) = ask_response.into_parts();
     let raw_future = ask_future.into_inner();
 
@@ -473,7 +469,7 @@ where
     Res: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<StatusReply<Res>>) -> Req,
     G: Fn(Result<Res, TypedAskError>) -> M + Send + Sync + 'static, {
-    let ask_response = target.ask::<StatusReply<Res>, _>(create_request)?;
+    let ask_response = target.ask::<StatusReply<Res>, _>(create_request);
     let (_, ask_future) = ask_response.into_parts();
     let raw_future = ask_future.into_inner();
 

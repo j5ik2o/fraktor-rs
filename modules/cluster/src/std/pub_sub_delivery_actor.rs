@@ -42,17 +42,11 @@ impl DeliveryEndpoint for PubSubDeliveryActor {
     for subscriber in request.subscribers {
       match subscriber {
         | PubSubSubscriber::ActorRef(actor_ref) => {
-          if let Err(error) = actor_ref.try_tell(payload.clone()) {
-            let status = map_send_error(&error);
-            failed.push(SubscriberDeliveryReport { subscriber: PubSubSubscriber::ActorRef(actor_ref), status });
-          }
+          actor_ref.tell(payload.clone());
         },
         | PubSubSubscriber::ClusterIdentity(identity) => match self.cluster_api.get(&identity) {
           | Ok(actor_ref) => {
-            if let Err(error) = actor_ref.try_tell(payload.clone()) {
-              let status = map_send_error(&error);
-              failed.push(SubscriberDeliveryReport { subscriber: PubSubSubscriber::ClusterIdentity(identity), status });
-            }
+            actor_ref.tell(payload.clone());
           },
           | Err(_) => failed.push(SubscriberDeliveryReport {
             subscriber: PubSubSubscriber::ClusterIdentity(identity),
@@ -83,14 +77,6 @@ fn deserialize_batch(
     messages.push(AnyMessage::new(value));
   }
   Ok(messages)
-}
-
-const fn map_send_error(error: &fraktor_actor_rs::core::error::SendError) -> DeliveryStatus {
-  use fraktor_actor_rs::core::error::SendError;
-  match error {
-    | SendError::Timeout(_) => DeliveryStatus::Timeout,
-    | _ => DeliveryStatus::SubscriberUnreachable,
-  }
 }
 
 fn aggregate_status(failed: &[SubscriberDeliveryReport]) -> DeliveryStatus {

@@ -60,7 +60,7 @@ pub fn ask_with_timeout(
   actor_ref: &crate::core::actor::actor_ref::ActorRef,
   message: crate::core::messaging::AnyMessage,
   timeout: Duration,
-) -> Result<crate::core::messaging::AskResponse, crate::core::error::SendError> {
+) -> crate::core::messaging::AskResponse {
   crate::core::pattern::ask_with_timeout(actor_ref, message, timeout)
 }
 

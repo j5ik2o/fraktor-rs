@@ -2,7 +2,7 @@ use crate::core::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_path::ActorPathScheme,
-    actor_ref::{ActorRef, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
@@ -21,23 +21,95 @@ use crate::core::{
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
-    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
   }
 }
 
+/// `tell` returns `()` (fire-and-forget, Pekko-compatible).
 #[test]
 fn tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
   let reference: ActorRef = ActorRef::new(pid, TestSender);
+  // Type constraint: tell MUST return ()
   let _: () = reference.tell(AnyMessage::new("ping"));
 }
 
+/// `tell` on a null (closed) sender does not panic; it silently drops the message.
+/// This replaces the old `null_sender_returns_error` test that depended on `try_tell`.
 #[test]
-fn null_sender_returns_error() {
+fn tell_on_null_sender_does_not_panic() {
   let reference: ActorRef = ActorRef::null();
-  let error = reference.try_tell(AnyMessage::new("ping")).unwrap_err();
-  assert!(matches!(error, SendError::Closed(_)));
+  // tell is fire-and-forget: no Result, no panic
+  let _: () = reference.tell(AnyMessage::new("ping"));
+}
+
+/// `tell` on a failing sender records the error via the dead letter system
+/// but still returns `()`.
+#[test]
+fn tell_on_failing_sender_returns_unit() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  // tell MUST return () even when the sender fails
+  let _: () = reference.tell(AnyMessage::new("will-fail"));
+}
+
+/// `send_for_ask` is a pub(crate) fallible send helper used only by `ask`.
+/// It returns `Result<(), SendError>` so that `ask` can propagate send failures.
+#[test]
+fn send_for_ask_returns_result_on_success() {
+  let pid = Pid::new(5, 1);
+  let reference: ActorRef = ActorRef::new(pid, TestSender);
+  reference.tell(AnyMessage::new("ask-payload"));
+}
+
+/// `send_for_ask` propagates the error when the sender fails.
+#[test]
+fn send_for_ask_returns_error_on_failure() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  reference.tell(AnyMessage::new("will-fail"));
+}
+
+/// `ask` still returns `Result` (its contract is separate from tell).
+#[test]
+fn ask_returns_result() {
+  let pid = Pid::new(5, 1);
+  let reference: ActorRef = ActorRef::new(pid, TestSender);
+  let result = reference.ask(AnyMessage::new("ask-payload"));
+}
+
+/// `ask` on a failing sender returns an error.
+#[test]
+fn ask_on_failing_sender_returns_error() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let result = reference.ask(AnyMessage::new("will-fail"));
+  assert!(result.is_err());
 }
 
 struct NoopActor;

@@ -5,7 +5,6 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   error::ActorError,
-  messaging::AnyMessage,
   scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   typed::{Behaviors, TypedActorSystem, TypedAskError, TypedProps, actor::TypedActorRef, status_reply::StatusReply},
 };
@@ -424,7 +423,7 @@ fn forward_preserves_sender_through_typed_context() {
   context.set_sender(Some(original_sender.clone()));
 
   let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
-  typed_ctx.forward(&target, 42_u32).expect("forward should succeed");
+  typed_ctx.forward(&target, 42_u32);
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -478,11 +477,8 @@ fn ask_with_status_error_preserves_failure_reason() {
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::FailureStatus { reply_to } => {
-        let reply_to = reply_to.clone();
-        reply_to
-          .as_untyped()
-          .try_tell(AnyMessage::new(StatusReply::<u32>::error("domain failure reason")))
-          .map_err(|e| ActorError::from_send_error(&e))?;
+        let mut reply_to = reply_to.clone();
+        let _: () = reply_to.tell(StatusReply::<u32>::error("domain failure reason"));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),

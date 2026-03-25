@@ -87,10 +87,7 @@ where
       return;
     }
     self.poll_scheduled = true;
-    if ctx.self_ref().try_tell(AnyMessage::new(SnapshotPoll)).is_err() {
-      // tell失敗時にフラグをリセットし、ポーリング停止を防ぐ
-      self.poll_scheduled = false;
-    }
+    ctx.self_ref().tell(AnyMessage::new(SnapshotPoll));
   }
 
   fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) {
@@ -100,20 +97,10 @@ where
     let mut pending = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
-    let mut total_send_failures: u32 = 0;
     for entry in in_flight {
-      let (remaining, fails) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max);
-      total_send_failures = total_send_failures.saturating_add(fails);
-      if let Some(entry) = remaining {
+      if let Some(entry) = poll_entry(&mut self.snapshot_store, entry, &mut cx, retry_max) {
         pending.push(entry);
       }
-    }
-    if total_send_failures > 0 {
-      ctx.system().emit_log(
-        fraktor_actor_rs::core::event::logging::LogLevel::Warn,
-        alloc::format!("snapshot actor: {total_send_failures} response(s) failed to deliver"),
-        Some(ctx.pid()),
-      );
     }
     self.in_flight = pending;
     self.schedule_poll(ctx);
@@ -181,31 +168,23 @@ where
   }
 }
 
-/// Sends a response, returning `true` if delivery failed.
-fn tell_or_fail(sender: &ActorRef, msg: AnyMessage) -> bool {
-  sender.try_tell(msg).is_err()
-}
-
+/// Returns `Some(entry)` when the in-flight operation is still pending.
 fn poll_entry<S: SnapshotStore>(
   snapshot_store: &mut S,
   mut entry: SnapshotInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> (Option<SnapshotInFlight>, u32)
+) -> Option<SnapshotInFlight>
 where
   for<'a> S::SaveFuture<'a>: Send + 'static,
   for<'a> S::LoadFuture<'a>: Send + 'static,
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static, {
-  let mut fails: u32 = 0;
-  let remaining = match &mut entry {
+  match &mut entry {
     | SnapshotInFlight::Save { future, metadata, snapshot, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }),
-          ));
+          sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotSuccess { metadata: metadata.clone() }));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -214,10 +193,7 @@ where
             *future = Box::pin(snapshot_store.save_snapshot(metadata.clone(), snapshot.clone()));
             Some(entry)
           } else {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }),
-            ));
+            sender.tell(AnyMessage::new(SnapshotResponse::SaveSnapshotFailure { metadata: metadata.clone(), error }));
             None
           }
         },
@@ -227,13 +203,10 @@ where
     | SnapshotInFlight::Load { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(snapshot)) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
-              snapshot,
-              to_sequence_nr: criteria.max_sequence_nr(),
-            }),
-          ));
+          sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotResult {
+            snapshot,
+            to_sequence_nr: criteria.max_sequence_nr(),
+          }));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -242,7 +215,7 @@ where
             *future = Box::pin(snapshot_store.load_snapshot(persistence_id, criteria.clone()));
             Some(entry)
           } else {
-            fails += u32::from(tell_or_fail(sender, AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error })));
+            sender.tell(AnyMessage::new(SnapshotResponse::LoadSnapshotFailed { error }));
             None
           }
         },
@@ -252,10 +225,7 @@ where
     | SnapshotInFlight::DeleteOne { future, metadata, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }),
-          ));
+          sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotSuccess { metadata: metadata.clone() }));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -264,10 +234,7 @@ where
             *future = Box::pin(snapshot_store.delete_snapshot(metadata));
             Some(entry)
           } else {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }),
-            ));
+            sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotFailure { metadata: metadata.clone(), error }));
             None
           }
         },
@@ -277,10 +244,7 @@ where
     | SnapshotInFlight::DeleteMany { future, persistence_id, criteria, sender, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }),
-          ));
+          sender.tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsSuccess { criteria: criteria.clone() }));
           None
         },
         | Poll::Ready(Err(error)) => {
@@ -289,16 +253,13 @@ where
             *future = Box::pin(snapshot_store.delete_snapshots(persistence_id, criteria.clone()));
             Some(entry)
           } else {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }),
-            ));
+            sender
+              .tell(AnyMessage::new(SnapshotResponse::DeleteSnapshotsFailure { criteria: criteria.clone(), error }));
             None
           }
         },
         | Poll::Pending => Some(entry),
       }
     },
-  };
-  (remaining, fails)
+  }
 }

@@ -322,10 +322,7 @@ impl Actor for RootGuardian {
 
       let supervisor = ctx.spawn_child(&supervisor_props).map_err(|_| ActorError::recoverable("spawn supervisor"))?;
       self.supervisor_slot.lock().replace(supervisor.clone());
-      supervisor
-        .actor_ref()
-        .try_tell(AnyMessage::new(Start))
-        .map_err(|_| ActorError::recoverable("start supervisor"))?;
+      let _: () = supervisor.actor_ref().tell(AnyMessage::new(Start));
     }
     Ok(())
   }

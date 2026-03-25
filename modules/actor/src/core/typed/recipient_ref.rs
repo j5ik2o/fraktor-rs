@@ -8,7 +8,6 @@ use crate::core::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
-  error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskResponse, AskResult},
   typed::{TypedAskResponse, actor::TypedActorRef},
@@ -40,7 +39,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M;
@@ -67,7 +66,7 @@ where
     TypedActorRef::tell(self, message)
   }
 
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M, {
@@ -96,7 +95,7 @@ where
     ActorRef::tell(self, AnyMessage::new(message));
   }
 
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M, {
@@ -110,7 +109,7 @@ where
       ActorRef::new(self.pid(), reply_sender)
     };
     let message = build(reply_ref.clone());
-    ActorRef::try_tell(self, AnyMessage::new(message))?;
-    Ok(AskResponse::new(reply_ref, future))
+    ActorRef::tell(self, AnyMessage::new(message));
+    AskResponse::new(reply_ref, future)
   }
 }

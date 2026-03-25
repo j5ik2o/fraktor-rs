@@ -50,11 +50,11 @@ impl Actor for RecordingGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
       let log = self.log.clone();
-      let mut child = ctx
+      let child = ctx
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child.clone());
-      child.actor_ref().try_tell(AnyMessage::new(Deliver(99))).map_err(|_| ActorError::recoverable("send failed"))?;
+      child.actor_ref().tell(AnyMessage::new(Deliver(99)));
     }
     Ok(())
   }

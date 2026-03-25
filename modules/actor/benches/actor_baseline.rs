@@ -109,11 +109,7 @@ impl Actor for PingPongActor {
       } else {
         let next =
           PingPong { done: command.done.clone(), peer: ctx.self_ref(), remaining: command.remaining - 1 };
-        command
-          .peer
-          .clone()
-          .try_tell(AnyMessage::new(next))
-          .map_err(|_| ActorError::recoverable("ping-pong send failed"))?;
+        let _: () = command.peer.clone().tell(AnyMessage::new(next));
       }
     }
     Ok(())

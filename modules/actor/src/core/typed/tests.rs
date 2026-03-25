@@ -86,11 +86,8 @@ impl TypedActor<CounterMessage> for CounterActor {
         Ok(())
       },
       | CounterMessage::Get { reply_to } => {
-        let reply_to = reply_to.clone();
-        reply_to
-          .as_untyped()
-          .try_tell(AnyMessage::new(self.total))
-          .map_err(|error| ActorError::from_send_error(&error))?;
+        let mut reply_to = reply_to.clone();
+        let _: () = reply_to.tell(self.total);
         Ok(())
       },
     }
@@ -325,10 +322,10 @@ impl TypedActor<MismatchCommand> for MismatchActor {
     message: &MismatchCommand,
   ) -> Result<(), ActorError> {
     match message {
-      | MismatchCommand::Trigger { reply_to } => reply_to
-        .as_untyped()
-        .try_tell(AnyMessage::new("unexpected".to_string()))
-        .map_err(|error| ActorError::from_send_error(&error)),
+      | MismatchCommand::Trigger { reply_to } => {
+        let _: () = reply_to.as_untyped().tell(AnyMessage::new("unexpected".to_string()));
+        Ok(())
+      },
     }
   }
 }
@@ -342,8 +339,9 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
     match message {
       | SchedulerProbeCommand::Check { reply_to } => {
         let _ = ctx.system().scheduler();
-        let reply_to = reply_to.clone();
-        reply_to.try_tell(true).map_err(|error| ActorError::from_send_error(&error))
+        let mut reply_to = reply_to.clone();
+        let _: () = reply_to.tell(true);
+        Ok(())
       },
     }
   }
@@ -411,8 +409,8 @@ fn behavior_counter(total: i32) -> Behavior<CounterMessage> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | CounterMessage::Increment(delta) => Ok(behavior_counter(total + delta)),
     | CounterMessage::Get { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -423,8 +421,8 @@ fn ignore_gate(total: u32) -> Behavior<IgnoreCommand> {
     | IgnoreCommand::Add(delta) => Ok(ignore_gate(total + delta)),
     | IgnoreCommand::Reject => Ok(Behaviors::ignore()),
     | IgnoreCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -464,8 +462,8 @@ fn stash_locked_behavior(total: u32, stash: StashBuffer<StashCommand>) -> Behavi
       Ok(stash_open_behavior(total))
     },
     | StashCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -490,8 +488,8 @@ fn stash_limited_locked_behavior(
       Ok(stash_open_behavior(total))
     },
     | StashCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -502,8 +500,8 @@ fn stash_open_behavior(total: u32) -> Behavior<StashCommand> {
     | StashCommand::Buffer(delta) => Ok(stash_open_behavior(total + delta)),
     | StashCommand::Open => Ok(Behaviors::same()),
     | StashCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(total).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -527,11 +525,8 @@ fn stash_order_locked_behavior(
       Ok(stash_order_open_behavior(history.clone()))
     },
     | StashOrderCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to
-        .as_untyped()
-        .try_tell(AnyMessage::new(history.clone()))
-        .map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(history.clone());
       Ok(Behaviors::same())
     },
   })
@@ -551,11 +546,8 @@ fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand
     },
     | StashOrderCommand::Open => Ok(Behaviors::same()),
     | StashOrderCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to
-        .as_untyped()
-        .try_tell(AnyMessage::new(history.clone()))
-        .map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(history.clone());
       Ok(Behaviors::same())
     },
   })
@@ -788,8 +780,8 @@ fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand> {
   Behaviors::receive_message(move |_ctx, message| match message {
     | AdapterCounterCommand::Set(delta) => Ok(counter_behavior(value + delta)),
     | AdapterCounterCommand::Read { reply_to } => {
-      let reply_to = reply_to.clone();
-      reply_to.try_tell(value).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = reply_to.clone();
+      let _: () = reply_to.tell(value);
       Ok(Behaviors::same())
     },
   })

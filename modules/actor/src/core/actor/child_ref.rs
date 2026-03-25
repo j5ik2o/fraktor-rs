@@ -42,7 +42,7 @@ impl ChildRef {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
-  pub fn ask(&mut self, message: AnyMessage) -> Result<AskResponse, SendError> {
+  pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
     self.actor.ask(message)
   }
 
@@ -51,7 +51,7 @@ impl ChildRef {
   /// # Errors
   ///
   /// Returns an error when the message cannot be enqueued.
-  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, SendError> {
+  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> AskResponse {
     self.actor.ask_with_timeout(message, timeout)
   }
 

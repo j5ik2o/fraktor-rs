@@ -156,14 +156,8 @@ where
         } else {
           // reply_to なし（fire-and-forget）— 最初の1台のみに送信する（broadcast しない）
           if let Some(first) = guard.first() {
-            let r = first.clone();
-            if let Err(e) = r.try_tell(message.clone()) {
-              ctx.system().emit_log(
-                LogLevel::Warn,
-                alloc::format!("tail-chopping router failed to send message to routee: {:?}", e),
-                Some(ctx.pid()),
-              );
-            }
+            let mut r = first.clone();
+            r.tell(message.clone());
           }
         }
 
@@ -228,7 +222,7 @@ fn spawn_chop_coordinator<'a, M, R>(
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
   // spawn 失敗時に timeout_reply を返すため、事前に控えておく
-  let fallback_reply_to = params.reply_to.clone();
+  let mut fallback_reply_to = params.reply_to.clone();
   let fallback_timeout_reply = params.timeout_reply.clone();
   let coord_props = chop_coordinator_props(params);
 
@@ -238,11 +232,7 @@ fn spawn_chop_coordinator<'a, M, R>(
       let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
       // caller が無応答にならないよう timeout_reply を即時返却する。
-      // tell 自体が失敗してもログ済みなのでここでは抑制する。
-      if let Err(tell_err) = fallback_reply_to.try_tell(fallback_timeout_reply) {
-        let msg = alloc::format!("failed to send timeout_reply after coordinator spawn failure: {:?}", tell_err);
-        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
-      }
+      fallback_reply_to.tell(fallback_timeout_reply);
     },
   }
 }
@@ -277,14 +267,8 @@ where
 
       // 最初の routee へ即時送信する
       if let Some(first) = routees.first() {
-        let r = first.clone();
-        if let Err(e) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
-          ctx.system().emit_log(
-            LogLevel::Warn,
-            alloc::format!("tail-chopping coordinator failed to send request to first routee: {:?}", e),
-            Some(ctx.pid()),
-          );
-        }
+        let mut r = first.clone();
+        r.tell((create_request)(&message, adapter_ref.clone()));
       }
 
       // 次送信のインターバルタイマーを設定する（routee が2体以上の場合のみ）
@@ -315,26 +299,14 @@ where
 
       Behaviors::receive_message(move |ctx, cmd: &ChopCommand<R>| match cmd {
         | ChopCommand::Reply(r) => {
-          if let Err(e) = (*reply_to).clone().try_tell(r.clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("tail-chopping coordinator failed to forward reply: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          (*reply_to).clone().tell(r.clone());
           Ok(Behaviors::stopped())
         },
         | ChopCommand::SendNext => {
           let mut idx = current_index.lock();
           if *idx < routees.len() {
-            let r = routees[*idx].clone();
-            if let Err(e) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
-              ctx.system().emit_log(
-                LogLevel::Warn,
-                alloc::format!("tail-chopping coordinator failed to send request to routee: {:?}", e),
-                Some(ctx.pid()),
-              );
-            }
+            let mut r = routees[*idx].clone();
+            r.tell((create_request)(&message, adapter_ref.clone()));
             *idx += 1;
             if *idx < routees.len()
               && let Err(e) = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext)
@@ -349,13 +321,7 @@ where
           Ok(Behaviors::same())
         },
         | ChopCommand::FinalTimeout => {
-          if let Err(e) = (*reply_to).clone().try_tell((*timeout_reply).clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("tail-chopping coordinator failed to send timeout reply: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          (*reply_to).clone().tell((*timeout_reply).clone());
           Ok(Behaviors::stopped())
         },
       })

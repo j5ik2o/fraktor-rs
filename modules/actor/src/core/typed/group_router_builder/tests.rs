@@ -430,11 +430,8 @@ fn group_router_should_ignore_mismatched_listing_update() {
             events.lock().push("subscribed");
 
             let listing = Listing::new(service_id.clone(), *type_id, vec![routee_ref.clone().into_untyped()]);
-            let reply_to = reply_to.clone();
-            reply_to
-              .as_untyped()
-              .try_tell(crate::core::messaging::AnyMessage::new(listing))
-              .expect("send initial listing");
+            let mut reply_to = reply_to.clone();
+            let _: () = reply_to.tell(listing);
           },
           | ReceptionistCommand::Register { .. } => {
             let reply_to = subscriber.lock().clone();
@@ -442,10 +439,8 @@ fn group_router_should_ignore_mismatched_listing_update() {
               events.lock().push("mismatch_sent");
               let listing =
                 Listing::new(key.id(), TypeId::of::<u64>(), vec![mismatched_routee_ref.clone().into_untyped()]);
-              reply_to
-                .as_untyped()
-                .try_tell(crate::core::messaging::AnyMessage::new(listing))
-                .expect("send mismatched listing");
+              let mut reply_to = reply_to.clone();
+              let _: () = reply_to.tell(listing);
             }
           },
           | _ => {},

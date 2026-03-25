@@ -174,15 +174,15 @@ impl RemotingControlHandle {
   /// # Errors
   ///
   /// Returns [`RemotingError::TransportUnavailable`] when the watcher daemon is not yet
-  /// registered or when the tell operation fails.
+  /// registered.
   #[cfg(feature = "tokio-transport")]
   pub(crate) fn dispatch_remote_watcher_command(&self, command: RemoteWatcherCommand) -> Result<(), RemotingError> {
     let daemon = self.inner.watcher_daemon.lock().clone();
     match daemon {
-      | Some(daemon) => daemon
-        .try_tell(AnyMessage::new(command))
-        .map(|_| ())
-        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}"))),
+      | Some(daemon) => {
+        daemon.tell(AnyMessage::new(command));
+        Ok(())
+      },
       | None => Err(RemotingError::TransportUnavailable("watcher daemon not registered; command dropped".into())),
     }
   }

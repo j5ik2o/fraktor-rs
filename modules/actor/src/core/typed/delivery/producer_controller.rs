@@ -8,7 +8,6 @@ use alloc::{string::String, vec::Vec};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  error::ActorError,
   event::logging::LogLevel,
   typed::{
     Behaviors,
@@ -208,7 +207,7 @@ impl ProducerController {
           deferred
         }; // ステートロックはここで解放される
 
-        execute_deferred(deferred)?;
+        execute_deferred(deferred);
         Ok(Behaviors::same())
       })
     })
@@ -281,18 +280,17 @@ where
   }
 }
 
-fn execute_deferred<A>(actions: Vec<DeferredAction<A>>) -> Result<(), ActorError>
+fn execute_deferred<A>(actions: Vec<DeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::RequestNext(target, msg) => {
-        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::RequestNext(mut target, msg) => {
+        target.tell(msg);
       },
-      | DeferredAction::SendSequenced(target, msg) => {
-        target.try_tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
+      | DeferredAction::SendSequenced(mut target, msg) => {
+        target.tell(msg);
       },
     }
   }
-  Ok(())
 }

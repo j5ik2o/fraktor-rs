@@ -151,12 +151,18 @@ impl ActorContext<'_> {
 
   /// Sends a reply to the caller if a reply target is present.
   ///
+  /// The send itself is fire-and-forget; only the absence of a reply target
+  /// is treated as an error.
+  ///
   /// # Errors
   ///
-  /// Returns an error if no reply target is set or sending fails.
+  /// Returns an error if no reply target is set.
   pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
-    match self.sender.as_mut() {
-      | Some(target) => target.try_tell(message),
+    match self.sender.as_ref() {
+      | Some(target) => {
+        target.tell(message);
+        Ok(())
+      },
       | None => Err(SendError::no_recipient(message)),
     }
   }
@@ -312,17 +318,13 @@ impl ActorContext<'_> {
   ///
   /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
   /// original sender of the currently processed message so the final recipient
-  /// can reply to the original requester.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if sending the message fails.
-  pub fn forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  /// can reply to the original requester. Delivery is fire-and-forget.
+  pub fn forward(&self, target: &ActorRef, message: AnyMessage) {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,
     };
-    target.try_tell(envelope)
+    target.tell(envelope);
   }
 
   /// Returns the metadata tags associated with the running actor.

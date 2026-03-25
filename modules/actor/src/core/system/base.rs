@@ -657,9 +657,8 @@ impl ActorSystem {
   fn force_termination_hooks(&self) {
     if let Some(system_pid) = self.state.system_guardian_pid()
       && let Some(system_ref) = self.actor_ref(system_pid)
-      && let Err(error) = system_ref.try_tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks))
     {
-      self.state.record_send_error(Some(system_pid), &error);
+      system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks));
     }
   }
 }

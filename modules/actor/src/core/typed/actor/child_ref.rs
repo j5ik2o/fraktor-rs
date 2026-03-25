@@ -51,7 +51,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponse<R>, SendError>
+  pub fn ask<R, F>(&mut self, build: F) -> TypedAskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<R>) -> M, {

@@ -6,7 +6,6 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
-  error::SendError,
   futures::ActorFutureShared,
   messaging::{AnyMessage, AskError, AskResponse, AskResult},
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
@@ -18,18 +17,14 @@ use crate::core::{
 /// # Errors
 ///
 /// Returns an error if the request cannot be delivered.
-pub fn ask_with_timeout(
-  actor_ref: &ActorRef,
-  message: AnyMessage,
-  timeout: Duration,
-) -> Result<AskResponse, SendError> {
-  let response = actor_ref.ask(message)?;
+pub fn ask_with_timeout(actor_ref: &ActorRef, message: AnyMessage, timeout: Duration) -> AskResponse {
+  let ask_response = actor_ref.ask(message);
   if let Some(system) = actor_ref.system_state() {
-    install_ask_timeout(response.future(), &system, timeout);
+    install_ask_timeout(ask_response.future(), &system, timeout);
   } else {
-    complete_with_timeout(response.future());
+    complete_with_timeout(ask_response.future());
   }
-  Ok(response)
+  ask_response
 }
 
 pub(crate) fn install_ask_timeout(

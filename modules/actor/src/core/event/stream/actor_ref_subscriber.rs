@@ -54,8 +54,6 @@ impl ActorRefEventStreamSubscriber {
 impl EventStreamSubscriber for ActorRefEventStreamSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     let message = AnyMessage::new(event.clone());
-    if self.actor_ref.try_tell(message).is_err() {
-      self.failed_deliver.fetch_add(1, Ordering::Relaxed);
-    }
+    self.actor_ref.tell(message);
   }
 }

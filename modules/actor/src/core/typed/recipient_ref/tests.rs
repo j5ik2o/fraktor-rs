@@ -140,11 +140,30 @@ fn untyped_recipient_ref_supports_ask() {
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&99));
 }
 
+/// `TypedActorRef::tell` returns `()` (fire-and-forget, Pekko-compatible).
+/// `try_tell` no longer exists on TypedActorRef.
 #[test]
-fn typed_actor_ref_try_tell_reports_send_error() {
-  let recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
+fn typed_actor_ref_tell_returns_unit() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let received = received.clone();
+    move || ProbeActor::new(received.clone())
+  });
+  let cell = register_cell(&system, pid, "typed-tell", &props);
+  let mut recipient = TypedActorRef::<u32>::from_untyped(cell.actor_ref());
 
-  let result = recipient.try_tell(1);
+  // Type constraint: tell MUST return ()
+  let _: () = recipient.tell(42);
+  wait_until(|| received.lock().as_slice() == [42]);
+}
 
-  assert!(matches!(result, Err(SendError::Closed(_))));
+/// `TypedActorRef::tell` on a failing sender does not panic.
+#[test]
+fn typed_actor_ref_tell_on_failing_sender_does_not_panic() {
+  let mut recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
+
+  // tell is fire-and-forget: no Result, no panic
+  let _: () = recipient.tell(1);
 }

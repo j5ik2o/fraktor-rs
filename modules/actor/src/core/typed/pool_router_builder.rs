@@ -274,14 +274,8 @@ where
             (select_targets)(&guard, message)
           }
         };
-        for target in targets {
-          if let Err(e) = target.try_tell(message.clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("pool router failed to send message to routee: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+        for mut target in targets {
+          target.tell(message.clone());
         }
         Ok(Behaviors::same())
       })
