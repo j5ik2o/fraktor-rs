@@ -423,7 +423,7 @@ fn forward_preserves_sender_through_typed_context() {
   context.set_sender(Some(original_sender.clone()));
 
   let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
-  typed_ctx.forward(&target, 42_u32).expect("forward");
+  typed_ctx.try_forward(&target, 42_u32).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);

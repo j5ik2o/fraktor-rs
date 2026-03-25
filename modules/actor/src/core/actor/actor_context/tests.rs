@@ -326,7 +326,7 @@ fn actor_context_forward_preserves_sender() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
+  context.try_forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -356,7 +356,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
+  context.try_forward(&target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -506,8 +506,7 @@ fn actor_context_tags_returns_empty_without_tags() {
   assert!(context.tags().is_empty());
 }
 
-/// `reply` with a valid sender uses `tell` (fire-and-forget) but still returns `Ok(())`
-/// because the "no recipient" failure is a distinct concern from send failure.
+/// `reply` with a valid sender returns `Ok(())`.
 #[test]
 fn actor_context_reply_with_sender_returns_ok() {
   use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
@@ -538,10 +537,9 @@ fn actor_context_reply_with_sender_returns_ok() {
   assert_eq!(captured.len(), 1);
 }
 
-/// `reply` with a failing sender still returns `Ok(())` because send failure
-/// is fire-and-forget (tell semantics). Only "no recipient" returns Err.
+/// `reply` with a failing sender propagates the synchronous send failure.
 #[test]
-fn actor_context_reply_with_failing_sender_returns_ok() {
+fn actor_context_reply_with_failing_sender_returns_err() {
   use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
 
   struct FailingSender;
@@ -559,9 +557,9 @@ fn actor_context_reply_with_failing_sender_returns_ok() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(sender_ref));
 
-  // reply returns Ok(()) because the recipient exists; send failure is fire-and-forget
+  // reply uses try_tell internally, so synchronous delivery failure is returned.
   let result = context.reply(AnyMessage::new(42_u32));
-  assert!(result.is_ok());
+  assert!(matches!(result, Err(crate::core::error::SendError::Closed(_))));
 }
 
 /// `forward` on a failing target does not propagate the error (fire-and-forget).
@@ -583,6 +581,6 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
 
-  let result = context.forward(&target_ref, AnyMessage::new(42_u32));
+  let result = context.try_forward(&target_ref, AnyMessage::new(42_u32));
   assert!(result.is_err());
 }

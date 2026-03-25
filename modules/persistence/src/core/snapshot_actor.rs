@@ -87,10 +87,7 @@ where
       return Ok(());
     }
     self.poll_scheduled = true;
-    ctx
-      .self_ref()
-      .try_tell(AnyMessage::new(SnapshotPoll))
-      .map_err(|error| ActorError::from_send_error(&error))
+    ctx.self_ref().try_tell(AnyMessage::new(SnapshotPoll)).map_err(|error| ActorError::from_send_error(&error))
   }
 
   fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {

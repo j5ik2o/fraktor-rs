@@ -244,10 +244,8 @@ fn graceful_stop_enters_poll_loop_when_stop_message_is_silently_dropped() {
   let cell = ActorCell::create(state.clone(), pid, None, "send-failed".into(), &props).expect("create actor");
   state.register_cell(cell);
 
-  // After tell() Unit化, send failures are fire-and-forget.
-  // graceful_stop enters the poll loop and waits for timeout rather than
-  // returning SendFailed immediately. With a noop waker the delay never
-  // resolves, so the first poll returns Pending.
+  // stop message の同期送信が失敗しても、graceful_stop 自体はただちには
+  // 失敗せず、停止観測のための poll loop に入る。
   let actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
   let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
 
