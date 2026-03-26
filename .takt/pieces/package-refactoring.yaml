@@ -20,6 +20,7 @@ instructions:
   design-package-structure: ../facets/instructions/design-package-structure.md
   plan-package-migration: ../facets/instructions/plan-package-migration.md
   pkg-implement: ../facets/instructions/pkg-implement.md
+  pkg-review-arch: ../facets/instructions/pkg-review-arch.md
   pkg-review-qa: ../facets/instructions/pkg-review-qa.md
   pkg-supervise: ../facets/instructions/pkg-supervise.md
   pkg-ai-review: ../facets/instructions/pkg-ai-review.md
@@ -38,7 +39,9 @@ report_formats:
   ai-review: ../facets/output-contracts/ai-review.md
   coder-scope: ../facets/output-contracts/coder-scope.md
   coder-decisions: ../facets/output-contracts/pkg-coder-decisions.md
-  summary: ../facets/output-contracts/summary.md
+  pkg-architect-review: ../facets/output-contracts/pkg-architect-review.md
+  pkg-supervisor-validation: ../facets/output-contracts/pkg-supervisor-validation.md
+  pkg-summary: ../facets/output-contracts/pkg-summary.md
 
 loop_monitors:
   - cycle:
@@ -295,11 +298,11 @@ movements:
         rules:
           - condition: approved
           - condition: needs_fix
-        instruction: review-arch
+        instruction: pkg-review-arch
         output_contracts:
           report:
             - name: architect-review.md
-              format: architecture-review
+              format: pkg-architect-review
       - name: qa-review
         edit: false
         persona: qa-reviewer
@@ -380,9 +383,9 @@ movements:
     output_contracts:
       report:
         - name: supervisor-validation.md
-          format: supervisor-validation
+          format: pkg-supervisor-validation
         - name: summary.md
-          format: summary
+          format: pkg-summary
           use_judge: false
     rules:
       - condition: すべて問題なし
