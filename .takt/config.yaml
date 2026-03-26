@@ -10,7 +10,7 @@ persona_providers:
     model: gpt-5.4-high
   coder:
     provider: cursor
-    model: gpt-5.3-codex-xhigh
+    model: composer-2-fast
   cc-sdd-requirements-analyst:
     provider: cursor
     model: gpt-5.4-high
@@ -35,6 +35,9 @@ persona_providers:
   supervisor:
     provider: cursor
     model: gpt-5.4-xhigh
+  package-structure-analyst:
+    provider: cursor
+    model: gpt-5.4-high
   dual-supervisor:
     provider: cursor
     model: gpt-5.4-xhigh
