@@ -29,7 +29,7 @@ use crate::core::{
       metrics_event::MailboxPressureEvent,
     },
   },
-  error::ActorError,
+  error::{ActorError, SendError},
   event::stream::EventStreamEvent,
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::{
@@ -535,16 +535,15 @@ impl ActorCell {
     let task = ContextPipeTask::new(id, future, self.pid, self.system());
     state.pipe_tasks.push(task);
     drop(state);
-    self.poll_pipe_task(id);
-    Ok(())
+    self.poll_pipe_task(id).map_err(|_error| PipeSpawnError::TargetStopped)
   }
 
-  fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
+  fn poll_pipe_task(&self, task_id: ContextPipeTaskId) -> Result<(), SendError> {
     let message = {
       let mut state = self.state.lock();
       let tasks = &mut state.pipe_tasks;
       let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
-        return;
+        return Ok(());
       };
       match tasks[index].poll() {
         | Poll::Ready(message) => {
@@ -556,8 +555,9 @@ impl ActorCell {
     };
 
     if let Some(message) = message {
-      self.actor_ref().tell(message);
+      return self.actor_ref().try_tell(message);
     }
+    Ok(())
   }
 
   fn drop_pipe_tasks(&self) {
@@ -572,8 +572,8 @@ impl ActorCell {
     self.state.lock().watch_with_messages.clear();
   }
 
-  fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
-    self.poll_pipe_task(task_id);
+  fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) -> Result<(), SendError> {
+    self.poll_pipe_task(task_id)
   }
 
   fn notify_watchers_on_stop(&self) {
@@ -907,8 +907,7 @@ impl MessageInvoker for ActorCellInvoker {
       },
       | SystemMessage::Terminated(pid) => cell.handle_terminated(pid),
       | SystemMessage::PipeTask(task_id) => {
-        cell.handle_pipe_task_ready(task_id);
-        Ok(())
+        cell.handle_pipe_task_ready(task_id).map_err(|error| ActorError::from_send_error(&error))
       },
     }
   }

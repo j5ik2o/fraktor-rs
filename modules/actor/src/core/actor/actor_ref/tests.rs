@@ -1,3 +1,5 @@
+use alloc::string::ToString;
+
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
@@ -28,28 +30,24 @@ impl ActorRefSender for TestSender {
   }
 }
 
-/// `tell` returns `()` (fire-and-forget, Pekko-compatible).
+/// `try_tell` succeeds when the underlying sender accepts the message.
 #[test]
-fn tell_delegates_to_sender() {
+fn try_tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
   let mut reference: ActorRef = ActorRef::new(pid, TestSender);
-  // Type constraint: tell MUST return ()
-  reference.tell(AnyMessage::new("ping"));
+  assert!(reference.try_tell(AnyMessage::new("ping")).is_ok());
 }
 
-/// `tell` on a null (closed) sender does not panic; it silently drops the message.
-/// This replaces the old `null_sender_returns_error` test that depended on `try_tell`.
+/// `try_tell` on a null sender reports `Closed`.
 #[test]
-fn tell_on_null_sender_does_not_panic() {
+fn try_tell_on_null_sender_returns_closed() {
   let mut reference: ActorRef = ActorRef::null();
-  // tell is fire-and-forget: no Result, no panic
-  reference.tell(AnyMessage::new("ping"));
+  assert!(matches!(reference.try_tell(AnyMessage::new("ping")), Err(SendError::Closed(_))));
 }
 
-/// `tell` on a failing sender records the error via the dead letter system
-/// but still returns `()`.
+/// `try_tell` on a failing sender returns the underlying send error.
 #[test]
-fn tell_on_failing_sender_returns_unit() {
+fn try_tell_on_failing_sender_returns_error() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
@@ -60,8 +58,7 @@ fn tell_on_failing_sender_returns_unit() {
 
   let pid = Pid::new(10, 1);
   let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
-  // tell MUST return () even when the sender fails
-  reference.tell(AnyMessage::new("will-fail"));
+  assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
 /// `try_tell` is a hidden fallible send helper used by infrastructure code such as `ask`.

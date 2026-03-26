@@ -355,9 +355,9 @@ fn poison_pill_user_message_preserves_user_ordering() {
   let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
-  cell.actor_ref().tell(AnyMessage::new(1_u8));
+  assert!(cell.actor_ref().try_tell(AnyMessage::new(1_u8)).is_ok());
   cell.actor_ref().poison_pill();
-  cell.actor_ref().tell(AnyMessage::new(2_u8));
+  assert!(cell.actor_ref().try_tell(AnyMessage::new(2_u8)).is_ok());
 
   wait_until(|| log.lock().len() >= 3);
   let snapshot = log.lock().clone();
@@ -395,7 +395,7 @@ fn system_queue_is_drained_before_user_queue() {
   state.register_cell(cell.clone());
 
   cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
-  cell.actor_ref().tell(AnyMessage::new(()));
+  assert!(cell.actor_ref().try_tell(AnyMessage::new(())).is_ok());
 
   cell.dispatcher().register_for_execution(ScheduleHints {
     has_system_messages: true,

@@ -34,16 +34,16 @@ impl ActorRefSender for RecordingSender {
 }
 
 #[test]
-fn null_sender_uses_fire_and_forget_tell_contract() {
+fn null_sender_try_tell_returns_closed() {
   let mut null: ActorRef = ActorRef::null();
-  null.tell(AnyMessage::new(1_u32));
+  assert!(matches!(null.try_tell(AnyMessage::new(1_u32)), Err(SendError::Closed(_))));
 }
 
 #[test]
 fn new_actor_ref_forwards_messages() {
   let (count, sender) = RecordingSender::new();
   let mut actor: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
-  actor.tell(AnyMessage::new(42_u32));
+  assert!(actor.try_tell(AnyMessage::new(42_u32)).is_ok());
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
 
@@ -63,8 +63,8 @@ fn actor_ref_clone() {
 
   assert_eq!(actor1.pid(), actor2.pid());
 
-  actor1.tell(AnyMessage::new(1_u32));
-  actor2.tell(AnyMessage::new(2_u32));
+  assert!(actor1.try_tell(AnyMessage::new(1_u32)).is_ok());
+  assert!(actor2.try_tell(AnyMessage::new(2_u32)).is_ok());
   assert_eq!(count.load(Ordering::Relaxed), 2);
 }
 
@@ -114,12 +114,12 @@ fn actor_ref_path_resolves_segments() {
 }
 
 #[test]
-fn actor_ref_tell_with_system_records_error() {
+fn actor_ref_try_tell_with_system_records_error() {
   let system = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let mut actor: ActorRef = ActorRef::with_system(pid, NullSender, &system);
 
-  actor.tell(AnyMessage::new(42_u32));
+  assert!(matches!(actor.try_tell(AnyMessage::new(42_u32)), Err(SendError::Closed(_))));
   let deadletters = system.dead_letters();
   assert_eq!(deadletters.len(), 1);
 }
@@ -177,11 +177,11 @@ fn actor_ref_hash() {
 }
 
 #[test]
-fn no_sender_is_equivalent_to_null() {
+fn no_sender_try_tell_is_equivalent_to_null() {
   let mut no_sender: ActorRef = ActorRef::no_sender();
   let null: ActorRef = ActorRef::null();
   assert_eq!(no_sender.pid(), null.pid());
-  no_sender.tell(AnyMessage::new(1_u32));
+  assert!(matches!(no_sender.try_tell(AnyMessage::new(1_u32)), Err(SendError::Closed(_))));
 }
 
 #[test]

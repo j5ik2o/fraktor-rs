@@ -92,7 +92,7 @@ impl ActorRef {
   /// Failures are recorded via the dead-letter / observation path but never
   /// surfaced to the caller. This matches Pekko's at-most-once `tell` semantics.
   pub fn tell(&mut self, message: AnyMessage) {
-    // ここだけ握りつぶしを許容する
+    // 公開 API としての fire-and-forget 契約を維持する。
     if self.try_tell(message).is_err() {}
   }
 
