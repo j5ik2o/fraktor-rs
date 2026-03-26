@@ -557,7 +557,7 @@ fn actor_context_reply_with_failing_sender_returns_err() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(sender_ref));
 
-  // reply uses try_tell internally, so synchronous delivery failure is returned.
+  // reply は内部で try_tell を使うため、同期配送失敗が返される。
   let result = context.reply(AnyMessage::new(42_u32));
   assert!(matches!(result, Err(crate::core::error::SendError::Closed(_))));
 }
