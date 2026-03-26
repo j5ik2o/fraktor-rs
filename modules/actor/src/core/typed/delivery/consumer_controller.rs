@@ -332,8 +332,8 @@ where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::SendToProducer(mut target, msg) => target.tell(msg),
-      | DeferredAction::Deliver(mut target, msg) => target.tell(msg),
+      | DeferredAction::SendToProducer(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | DeferredAction::Deliver(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
     }
   }
 }

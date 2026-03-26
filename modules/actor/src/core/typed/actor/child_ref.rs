@@ -40,6 +40,7 @@ where
   }
 
   /// Sends a typed message to the child.
+  #[cfg(not(fraktor_disable_tell))]
   pub fn tell(&mut self, message: M) {
     self.inner.tell(AnyMessage::new(message));
   }

@@ -201,7 +201,7 @@ fn notify_subscribers(
     let listing = Listing::new(key.0.clone(), key.1, refs);
     for sub in subs {
       let mut s = sub.clone();
-      s.tell(listing.clone());
+      if let Err(_error) = s.try_tell(listing.clone()) {}
     }
   }
 }

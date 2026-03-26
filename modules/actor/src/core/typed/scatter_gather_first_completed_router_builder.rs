@@ -164,7 +164,13 @@ where
         } else {
           for routee in &routee_snapshot {
             let mut r = routee.clone();
-            r.tell(message.clone());
+            if let Err(error) = r.try_tell(message.clone()) {
+              ctx.system().emit_log(
+                LogLevel::Warn,
+                alloc::format!("scatter-gather router failed to deliver message to routee: {:?}", error),
+                Some(ctx.pid()),
+              );
+            }
           }
         }
 
@@ -208,7 +214,8 @@ fn spawn_gather_coordinator<'a, M, R>(
   let coord_props = TypedProps::<R>::from_behavior_factory(move || -> Behavior<R> {
     let rt = reply_to.clone();
     Behaviors::receive_message(move |_ctx, msg: &R| {
-      rt.clone().tell(msg.clone());
+      let mut reply_to = rt.clone();
+      if let Err(_error) = reply_to.try_tell(msg.clone()) {}
       Ok(Behaviors::stopped())
     })
   });
@@ -223,7 +230,13 @@ fn spawn_gather_coordinator<'a, M, R>(
       let coord_ref = coord_child.actor_ref();
       for routee in routees {
         let mut r = routee.clone();
-        r.tell((create_request)(message, coord_ref.clone()));
+        if let Err(error) = r.try_tell((create_request)(message, coord_ref.clone())) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("scatter-gather coordinator failed to deliver request: {:?}", error),
+            Some(ctx.pid()),
+          );
+        }
       }
       if let Err(e) = ctx.schedule_once(within, coord_ref, timeout_reply.clone()) {
         ctx.system().emit_log(
@@ -237,7 +250,7 @@ fn spawn_gather_coordinator<'a, M, R>(
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
       // caller が無応答にならないよう timeout_reply を即時返却する
-      fallback_reply_to.tell(fallback_timeout_reply);
+      if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
     },
   }
 }

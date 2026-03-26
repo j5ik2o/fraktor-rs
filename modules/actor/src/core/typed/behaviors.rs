@@ -56,7 +56,7 @@ where
     target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
     // best-effort: monitor send failure is non-fatal (recorded via dead-letter path).
-    self.monitor_ref.tell(message.clone());
+    if let Err(_error) = self.monitor_ref.try_tell(message.clone()) {}
     target(ctx, message)
   }
 }

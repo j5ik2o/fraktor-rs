@@ -51,6 +51,7 @@ libraries = [
 
 [workspace.lints.rust]
 unused_must_use = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
 
 [workspace.lints.clippy]
 let_underscore_must_use = "deny"

@@ -287,7 +287,13 @@ fn subscribe_to_receptionist<A>(
   let subscribe_cmd = Receptionist::subscribe(worker_service_key, listing_adapter.clone());
   let system = ctx.system();
   if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    receptionist_ref.tell(subscribe_cmd);
+    if let Err(error) = receptionist_ref.try_tell(subscribe_cmd) {
+      ctx.system().emit_log(
+        LogLevel::Warn,
+        alloc::format!("work-pulling producer controller failed to subscribe receptionist: {:?}", error),
+        Some(ctx.pid()),
+      );
+    }
   }
 }
 
@@ -437,9 +443,9 @@ fn execute_wppc_deferred<A>(
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | WppcDeferredAction::Tell(mut target, msg) => target.tell(msg),
-      | WppcDeferredAction::TellWorkerStats(mut target, msg) => target.tell(msg),
-      | WppcDeferredAction::RequestNext(mut target, msg) => target.tell(msg),
+      | WppcDeferredAction::Tell(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | WppcDeferredAction::TellWorkerStats(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | WppcDeferredAction::RequestNext(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
       | WppcDeferredAction::StopWorkerPc(mut pc_ref) => {
         stop_worker_producer_controller(&mut pc_ref);
       },
@@ -455,11 +461,11 @@ fn execute_wppc_deferred<A>(
           // InternalDemand がインラインで処理され、state.workers に
           // 登録済みなので demand シグナルが正しく反映される。
           let mut pc_start = pc_ref.clone();
-          pc_start.tell(ProducerController::start(demand_adapter.clone()));
+          if let Err(_error) = pc_start.try_tell(ProducerController::start(demand_adapter.clone())) {}
 
           let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
           let mut pc_reg = pc_ref;
-          pc_reg.tell(ProducerController::register_consumer(cc_ref));
+          if let Err(_error) = pc_reg.try_tell(ProducerController::register_consumer(cc_ref)) {}
 
           // バッファ済みメッセージを排出する
           let mut s = state.lock();
@@ -469,8 +475,8 @@ fn execute_wppc_deferred<A>(
           drop(s);
           for da in drain_deferred {
             match da {
-              | WppcDeferredAction::Tell(mut t, m) => t.tell(m),
-              | WppcDeferredAction::RequestNext(mut t, m) => t.tell(m),
+              | WppcDeferredAction::Tell(mut t, m) => if let Err(_error) = t.try_tell(m) {},
+              | WppcDeferredAction::RequestNext(mut t, m) => if let Err(_error) = t.try_tell(m) {},
               | _ => {},
             }
           }

@@ -46,7 +46,9 @@ where
   /// Enqueue a message. If an idle worker exists, dispatch immediately.
   fn enqueue(&mut self, message: M) {
     if let Some(mut worker) = self.idle_workers.pop() {
-      worker.tell(message);
+      if worker.try_tell(message.clone()).is_err() {
+        self.pending.push_front(message);
+      }
     } else {
       self.pending.push_back(message);
     }
@@ -56,7 +58,9 @@ where
   fn register_idle(&mut self, worker: TypedActorRef<M>) {
     if let Some(msg) = self.pending.pop_front() {
       let mut w = worker;
-      w.tell(msg);
+      if w.try_tell(msg.clone()).is_err() {
+        self.pending.push_front(msg);
+      }
     } else {
       self.idle_workers.push(worker);
     }

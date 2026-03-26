@@ -34,6 +34,7 @@ where
   fn pid(&self) -> Pid;
 
   /// Delivers `message` to the recipient.
+  #[cfg(not(fraktor_disable_tell))]
   fn tell(&mut self, message: M);
 
   /// Sends a typed request and obtains the ask response.
@@ -64,6 +65,7 @@ where
     TypedActorRef::pid(self)
   }
 
+  #[cfg(not(fraktor_disable_tell))]
   fn tell(&mut self, message: M) {
     TypedActorRef::tell(self, message)
   }
@@ -93,6 +95,7 @@ where
     ActorRef::pid(self)
   }
 
+  #[cfg(not(fraktor_disable_tell))]
   fn tell(&mut self, message: M) {
     ActorRef::tell(self, AnyMessage::new(message));
   }

@@ -39,6 +39,7 @@ impl ChildRef {
   }
 
   /// Sends a user message to the child actor.
+  #[cfg(not(fraktor_disable_tell))]
   pub fn tell(&mut self, message: AnyMessage) {
     self.actor.tell(message);
   }

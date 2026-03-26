@@ -512,7 +512,7 @@ impl Scheduler {
         let mut receiver = receiver.clone();
         // Best-effort delivery: scheduled messages may fail if the target
         // actor has already stopped; this is normal and not actionable.
-        receiver.tell(message.clone());
+        if let Err(_error) = receiver.try_tell(message.clone()) {}
       },
       | SchedulerCommand::RunRunnable { runnable, .. } => {
         runnable.run(batch);

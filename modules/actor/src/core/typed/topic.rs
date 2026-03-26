@@ -65,7 +65,11 @@ impl Topic {
           },
         };
       let mut receptionist_ref = receptionist.clone();
-      receptionist_ref.tell(Receptionist::subscribe(&topic_key, adapter));
+      if let Err(error) = receptionist_ref.try_tell(Receptionist::subscribe(&topic_key, adapter)) {
+        let message = alloc::format!("topic failed to subscribe to receptionist: {:?}", error);
+        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
+        return Behaviors::stopped();
+      }
 
       let state_for_message = state.clone();
       let topic_key_for_messages = topic_key.clone();
@@ -167,7 +171,13 @@ fn deregister_if_empty<M>(
 ) where
   M: Clone + Send + Sync + 'static, {
   if state.local_subscribers.is_empty() {
-    receptionist.tell(Receptionist::deregister(topic_key, ctx.self_ref()));
+    if let Err(error) = receptionist.try_tell(Receptionist::deregister(topic_key, ctx.self_ref())) {
+      ctx.system().emit_log(
+        LogLevel::Warn,
+        alloc::format!("topic failed to deregister from receptionist: {:?}", error),
+        Some(ctx.pid()),
+      );
+    }
   }
 }
 
@@ -182,7 +192,7 @@ where
   M: Clone + Send + Sync + 'static, {
   for subscriber in subscribers {
     let mut subscriber = subscriber.clone();
-    subscriber.tell(message.clone());
+    if let Err(_error) = subscriber.try_tell(message.clone()) {}
   }
 }
 
@@ -191,6 +201,6 @@ where
   M: Clone + Send + Sync + 'static, {
   for topic in topic_instances {
     let mut topic = topic.clone();
-    topic.tell(TopicCommand::message_published(message.clone()));
+    if let Err(_error) = topic.try_tell(TopicCommand::message_published(message.clone())) {}
   }
 }
