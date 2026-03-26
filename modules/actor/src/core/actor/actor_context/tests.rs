@@ -66,7 +66,7 @@ impl Actor for ProbeActor {
 fn actor_context_new() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
 }
 
@@ -74,7 +74,7 @@ fn actor_context_new() {
 fn actor_context_system() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
   let retrieved_system = context.system();
   let _ = retrieved_system;
 }
@@ -83,7 +83,7 @@ fn actor_context_system() {
 fn actor_context_pid() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
   assert_eq!(context.pid(), pid);
 }
 
@@ -91,7 +91,7 @@ fn actor_context_pid() {
 fn actor_context_sender_initially_none() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
   assert!(context.sender().is_none());
 }
 
@@ -121,7 +121,7 @@ fn actor_context_reply_without_sender() {
 fn actor_context_children() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
 
   let children = context.children();
   assert_eq!(children.len(), 0);
@@ -144,7 +144,7 @@ fn actor_context_log() {
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
+  let context = ActorContext::new(&system, pid);
 
   context.log(LogLevel::Info, String::from("test message"));
   context.log(LogLevel::Error, String::from("error message"));

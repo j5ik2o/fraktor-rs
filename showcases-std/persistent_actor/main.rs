@@ -102,7 +102,7 @@ impl Actor for GuardianActor {
     }
 
     let props = persistent_props(|| CounterActor::new("counter-1"));
-    let child = spawn_persistent(ctx, &props)
+    let mut child = spawn_persistent(ctx, &props)
       .map_err(|error| ActorError::recoverable(format!("spawn persistent actor failed: {error:?}")))?;
 
     child.try_tell(AnyMessage::new(Command::Add(1))).map_err(|_| ActorError::recoverable("send Add(1) failed"))?;
