@@ -170,14 +170,14 @@ fn deregister_if_empty<M>(
   ctx: &mut crate::core::typed::actor::TypedActorContext<'_, TopicCommand<M>>,
 ) where
   M: Clone + Send + Sync + 'static, {
-  if state.local_subscribers.is_empty() {
-    if let Err(error) = receptionist.try_tell(Receptionist::deregister(topic_key, ctx.self_ref())) {
-      ctx.system().emit_log(
-        LogLevel::Warn,
-        alloc::format!("topic failed to deregister from receptionist: {:?}", error),
-        Some(ctx.pid()),
-      );
-    }
+  if state.local_subscribers.is_empty()
+    && let Err(error) = receptionist.try_tell(Receptionist::deregister(topic_key, ctx.self_ref()))
+  {
+    ctx.system().emit_log(
+      LogLevel::Warn,
+      alloc::format!("topic failed to deregister from receptionist: {:?}", error),
+      Some(ctx.pid()),
+    );
   }
 }
 

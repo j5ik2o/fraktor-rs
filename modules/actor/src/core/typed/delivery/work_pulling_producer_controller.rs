@@ -286,14 +286,14 @@ fn subscribe_to_receptionist<A>(
   A: Clone + Send + Sync + 'static, {
   let subscribe_cmd = Receptionist::subscribe(worker_service_key, listing_adapter.clone());
   let system = ctx.system();
-  if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    if let Err(error) = receptionist_ref.try_tell(subscribe_cmd) {
-      ctx.system().emit_log(
-        LogLevel::Warn,
-        alloc::format!("work-pulling producer controller failed to subscribe receptionist: {:?}", error),
-        Some(ctx.pid()),
-      );
-    }
+  if let Some(mut receptionist_ref) = system.receptionist_ref()
+    && let Err(error) = receptionist_ref.try_tell(subscribe_cmd)
+  {
+    ctx.system().emit_log(
+      LogLevel::Warn,
+      alloc::format!("work-pulling producer controller failed to subscribe receptionist: {:?}", error),
+      Some(ctx.pid()),
+    );
   }
 }
 
