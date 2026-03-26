@@ -317,10 +317,7 @@ impl ActorContext<'_> {
   /// failures are observed internally and recorded via the system's send-error
   /// observation path.
   pub fn forward(&mut self, target: &mut ActorRef, message: AnyMessage) {
-    let result = self.try_forward(target, message);
-    if let Err(error) = result {
-      self.system.state().record_send_error(Some(target.pid()), &error);
-    }
+    let _forward_result = self.try_forward(target, message);
   }
 
   /// Forwards the given message to the target, preserving the current sender.

@@ -265,10 +265,7 @@ where
   pub fn forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C)
   where
     C: Send + Sync + 'static, {
-    let result = self.try_forward(target, message);
-    if let Err(error) = result {
-      self.inner().system().state().record_send_error(Some(target.pid()), &error);
-    }
+    let _forward_result = self.try_forward(target, message);
   }
 
   /// Forwards a message to the target, preserving the current sender.

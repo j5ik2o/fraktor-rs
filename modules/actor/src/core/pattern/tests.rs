@@ -251,12 +251,8 @@ fn graceful_stop_enters_poll_loop_and_records_send_failure_when_stop_send_fails(
   let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Pending));
-  assert!(
-    state
-      .dead_letters()
-      .iter()
-      .any(|entry| entry.recipient() == Some(pid) && entry.reason() == crate::core::dead_letter::DeadLetterReason::RecipientUnavailable)
-  );
+  assert!(state.dead_letters().iter().any(|entry| entry.recipient() == Some(pid)
+    && entry.reason() == crate::core::dead_letter::DeadLetterReason::RecipientUnavailable));
 }
 
 #[test]
