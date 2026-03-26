@@ -10,7 +10,7 @@ fn should_return_none_when_queue_is_empty() {
 
 #[test]
 fn should_pull_elements_in_fifo_order() {
-  let queue = SinkQueue::<i32>::new();
+  let mut queue = SinkQueue::<i32>::new();
   queue.push(1);
   queue.push(2);
   queue.push(3);
@@ -24,7 +24,7 @@ fn should_pull_elements_in_fifo_order() {
 
 #[test]
 fn should_share_state_across_clones() {
-  let queue = SinkQueue::<i32>::new();
+  let mut queue = SinkQueue::<i32>::new();
   let clone = queue.clone();
 
   queue.push(42);
@@ -34,7 +34,7 @@ fn should_share_state_across_clones() {
 
 #[test]
 fn should_report_length_correctly() {
-  let queue = SinkQueue::<i32>::new();
+  let mut queue = SinkQueue::<i32>::new();
   assert_eq!(queue.len(), 0);
   assert!(queue.is_empty());
 
@@ -49,7 +49,7 @@ fn should_report_length_correctly() {
 
 #[test]
 fn should_return_none_after_cancel() {
-  let queue = SinkQueue::<i32>::new();
+  let mut queue = SinkQueue::<i32>::new();
   queue.push(1);
   queue.push(2);
 
@@ -63,7 +63,7 @@ fn should_return_none_after_cancel() {
 
 #[test]
 fn should_discard_pushes_after_cancel() {
-  let queue = SinkQueue::<i32>::new();
+  let mut queue = SinkQueue::<i32>::new();
   queue.cancel();
 
   queue.push(42);
@@ -73,8 +73,8 @@ fn should_discard_pushes_after_cancel() {
 
 #[test]
 fn should_cancel_across_clones() {
-  let queue = SinkQueue::<i32>::new();
-  let clone = queue.clone();
+  let mut queue = SinkQueue::<i32>::new();
+  let mut clone = queue.clone();
 
   queue.push(1);
   clone.cancel();

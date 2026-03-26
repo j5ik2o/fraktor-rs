@@ -1,6 +1,7 @@
 //! Tests for AskError.
 
 use super::AskError;
+use crate::core::error::ActorErrorReason;
 
 #[test]
 fn timeout_has_correct_display() {
@@ -18,15 +19,16 @@ fn dead_letter_has_correct_display() {
 
 #[test]
 fn send_failed_has_correct_display() {
-  let error = AskError::SendFailed;
+  let error = AskError::send_failed("mailbox closed");
   let message = alloc::format!("{error}");
   assert!(message.contains("SendFailed"), "display should mention send failed");
+  assert!(message.contains("mailbox closed"), "display should include reason");
 }
 
 #[test]
-fn ask_error_implements_copy() {
+fn ask_error_is_cloneable() {
   let error = AskError::Timeout;
-  let copied = error;
+  let copied = error.clone();
   assert_eq!(error, copied);
 }
 
@@ -41,7 +43,7 @@ fn ask_error_implements_debug() {
 fn ask_error_variants_are_distinct() {
   let timeout = AskError::Timeout;
   let dead_letter = AskError::DeadLetter;
-  let send_failed = AskError::SendFailed;
+  let send_failed = AskError::send_failed(ActorErrorReason::new("send failed"));
 
   assert_ne!(timeout, dead_letter);
   assert_ne!(timeout, send_failed);

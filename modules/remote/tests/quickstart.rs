@@ -204,8 +204,8 @@ async fn remote_provider_enqueues_message() -> Result<()> {
     .inner_mut()
     .watch_remote(ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", bind_port))))
     .map_err(|error| anyhow!("{error}"))?;
-  let remote = provider.clone().actor_ref(remote_path(bind_port)).expect("actor ref");
-  remote.tell(AnyMessage::new("loopback".to_string())).expect("send succeeds");
+  let mut remote = provider.clone().actor_ref(remote_path(bind_port)).expect("actor ref");
+  remote.tell(AnyMessage::new("loopback".to_string()));
 
   let writer = provider.inner().lock().inner().inner().lock().inner().writer_for_test();
   let envelope = writer.with_write(|w| w.try_next()).expect("poll writer").expect("envelope");

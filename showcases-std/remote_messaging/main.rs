@@ -65,7 +65,7 @@ impl Actor for SenderGuardian {
       // Ping メッセージを組み立て、reply_to に自身のアドレスをセット
       let envelope = AnyMessage::new(Ping { text: cmd.text.clone(), reply_to: ctx.self_ref() });
       println!("[sender] -> remote: {}", cmd.text);
-      cmd.target.clone().tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
+      cmd.target.clone().try_tell(envelope).map_err(|e| ActorError::recoverable(format!("send failed: {e:?}")))?;
     } else if let Some(pong) = message.downcast_ref::<String>() {
       // 受信側からの応答を表示
       println!("[sender] <- reply: {pong}");
@@ -84,11 +84,8 @@ impl Actor for ReceiverGuardian {
       println!("[receiver] <- received: {}", ping.text);
       // reply_to アドレスに応答を送信
       let reply = format!("echo:{}", ping.text);
-      ping
-        .reply_to
-        .clone()
-        .tell(AnyMessage::new(reply))
-        .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
+      let mut reply_to = ping.reply_to.clone();
+      reply_to.try_tell(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
     }
     Ok(())
   }
@@ -140,9 +137,9 @@ async fn main() -> Result<()> {
 
   // 送信側から受信側へ Ping を送信
   // ActorRef をそのまま渡すだけで、canonical アドレス付与とリモート配送はランタイムが自動処理する
-  sender
-    .user_guardian_ref()
-    .tell(AnyMessage::new(StartPing {
+  let mut sender_guardian = sender.user_guardian_ref();
+  sender_guardian
+    .try_tell(AnyMessage::new(StartPing {
       target: receiver.user_guardian_ref(),
       text:   "hello over remoting".to_string(),
     }))

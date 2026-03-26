@@ -1,8 +1,12 @@
+use alloc::string::ToString;
+
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_path::ActorPathScheme,
-    actor_ref::{ActorRef, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   },
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
@@ -21,23 +25,92 @@ use crate::core::{
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
-    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
   }
 }
 
+/// `try_tell` succeeds when the underlying sender accepts the message.
 #[test]
-fn tell_delegates_to_sender() {
+fn try_tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
-  let reference: ActorRef = ActorRef::new(pid, TestSender);
-  assert!(reference.tell(AnyMessage::new("ping")).is_ok());
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  assert!(reference.try_tell(AnyMessage::new("ping")).is_ok());
 }
 
+/// `try_tell` on a null sender reports `Closed`.
 #[test]
-fn null_sender_returns_error() {
-  let reference: ActorRef = ActorRef::null();
-  let error = reference.tell(AnyMessage::new("ping")).unwrap_err();
-  assert!(matches!(error, SendError::Closed(_)));
+fn try_tell_on_null_sender_returns_closed() {
+  let mut reference: ActorRef = ActorRef::null();
+  assert!(matches!(reference.try_tell(AnyMessage::new("ping")), Err(SendError::Closed(_))));
+}
+
+/// `try_tell` on a failing sender returns the underlying send error.
+#[test]
+fn try_tell_on_failing_sender_returns_error() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
+}
+
+/// `try_tell` is a hidden fallible send helper used by infrastructure code such as `ask`.
+/// It returns `Result<(), SendError>` so that `ask` can propagate send failures.
+#[test]
+fn try_tell_returns_result_on_success() {
+  let pid = Pid::new(5, 1);
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  assert!(reference.try_tell(AnyMessage::new("ask-payload")).is_ok());
+}
+
+/// `try_tell` propagates the error when the sender fails.
+#[test]
+fn try_tell_returns_error_on_failure() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
+}
+
+/// `ask` はレスポンスハンドルを返し、結果は future 側で観測する。
+#[test]
+fn ask_returns_response_handle() {
+  let pid = Pid::new(5, 1);
+  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let _response = reference.ask(AnyMessage::new("ask-payload"));
+}
+
+/// `ask` on a failing sender completes the future with `SendFailed`.
+#[test]
+fn ask_on_failing_sender_completes_future_with_send_failed() {
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Err(SendError::closed(message))
+    }
+  }
+
+  let pid = Pid::new(10, 1);
+  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let response = reference.ask(AnyMessage::new("will-fail"));
+  assert_eq!(response.sender().pid(), pid);
+  let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
+  assert!(matches!(result, Err(crate::core::messaging::AskError::SendFailed(_))));
 }
 
 struct NoopActor;

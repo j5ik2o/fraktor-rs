@@ -481,7 +481,7 @@ impl ActorSystem {
       self.state.clone().mark_terminated();
       Ok(())
     } else {
-      self.force_termination_hooks();
+      self.force_termination_hooks()?;
       Ok(())
     }
   }
@@ -546,11 +546,11 @@ impl ActorSystem {
       TypedProps::<ReceptionistCommand>::from_behavior_factory(Receptionist::behavior).into_untyped();
     let receptionist_props = receptionist_props.with_name(SYSTEM_RECEPTIONIST_TOP_LEVEL);
     let receptionist = self.spawn_child(system_guardian.pid(), &receptionist_props)?;
-    if let Err(error) =
-      self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist.actor_ref().clone())
-    {
-      if let Some(cell) = self.state.cell(&receptionist.pid()) {
-        self.rollback_spawn(Some(system_guardian.pid()), &cell, receptionist.pid());
+    let receptionist_pid = receptionist.pid();
+    let receptionist_ref = receptionist.into_actor_ref();
+    if let Err(error) = self.extended().register_extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL, receptionist_ref) {
+      if let Some(cell) = self.state.cell(&receptionist_pid) {
+        self.rollback_spawn(Some(system_guardian.pid()), &cell, receptionist_pid);
       }
       return Err(SpawnError::SystemBuildError(format!("system receptionist registration failed: {error:?}")));
     }
@@ -654,13 +654,13 @@ impl ActorSystem {
     }
   }
 
-  fn force_termination_hooks(&self) {
+  fn force_termination_hooks(&self) -> Result<(), SendError> {
     if let Some(system_pid) = self.state.system_guardian_pid()
-      && let Some(system_ref) = self.actor_ref(system_pid)
-      && let Err(error) = system_ref.tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks))
+      && let Some(mut system_ref) = self.actor_ref(system_pid)
     {
-      self.state.record_send_error(Some(system_pid), &error);
+      system_ref.try_tell(AnyMessage::new(SystemGuardianProtocol::ForceTerminateHooks))?;
     }
+    Ok(())
   }
 }
 

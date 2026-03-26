@@ -1,7 +1,40 @@
-provider: claude
-model: claude-opus-4-6[1m]
+provider: cursor
+model: gpt-5.4-high
 concurrency: 1
 base_branch: main
 submodules: all
 
-
+persona_providers:
+  planner:
+    provider: cursor
+    model: gpt-5.4-high
+  coder:
+    provider: cursor
+    model: gpt-5.3-codex-xhigh
+  cc-sdd-requirements-analyst:
+    provider: cursor
+    model: gpt-5.4-high
+  ai-antipattern-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  architecture-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  frontend-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  security-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  qa-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  requirements-reviewer:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  supervisor:
+    provider: cursor
+    model: gpt-5.4-xhigh
+  dual-supervisor:
+    provider: cursor
+    model: gpt-5.4-xhigh

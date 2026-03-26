@@ -62,7 +62,7 @@ impl<T> SinkQueue<T> {
   /// This method returns immediately without waiting for finalization.
   /// After cancellation, [`pull`](Self::pull) always returns `None` and
   /// [`push`](Self::push) silently discards elements.
-  pub fn cancel(&self) {
+  pub fn cancel(&mut self) {
     let mut guard = self.inner.lock();
     guard.cancelled = true;
     guard.queue.clear();
@@ -75,7 +75,7 @@ impl<T> SinkQueue<T> {
     guard.cancelled
   }
 
-  pub(crate) fn push(&self, value: T) {
+  pub(crate) fn push(&mut self, value: T) {
     let mut guard = self.inner.lock();
     if guard.cancelled {
       return;

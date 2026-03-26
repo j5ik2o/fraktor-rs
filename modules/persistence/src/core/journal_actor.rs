@@ -82,41 +82,28 @@ where
     Self { journal, in_flight: Vec::new(), poll_scheduled: false, config }
   }
 
-  fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) {
+  fn schedule_poll(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     if self.poll_scheduled || self.in_flight.is_empty() {
-      return;
+      return Ok(());
     }
     self.poll_scheduled = true;
-    if ctx.self_ref().tell(AnyMessage::new(JournalPoll)).is_err() {
-      // tell失敗時にフラグをリセットし、ポーリング停止を防ぐ
-      self.poll_scheduled = false;
-    }
+    ctx.self_ref().try_tell(AnyMessage::new(JournalPoll)).map_err(|error| ActorError::from_send_error(&error))
   }
 
-  fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) {
+  fn poll_in_flight(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     self.poll_scheduled = false;
     let waker = Waker::noop();
     let mut cx = Context::from_waker(waker);
     let mut pending = Vec::new();
     let retry_max = self.config.retry_max();
     let in_flight = core::mem::take(&mut self.in_flight);
-    let mut total_send_failures: u32 = 0;
     for entry in in_flight {
-      let (remaining, fails) = poll_entry(&mut self.journal, entry, &mut cx, retry_max);
-      total_send_failures = total_send_failures.saturating_add(fails);
-      if let Some(entry) = remaining {
+      if let Some(entry) = poll_entry(&mut self.journal, entry, &mut cx, retry_max)? {
         pending.push(entry);
       }
     }
-    if total_send_failures > 0 {
-      ctx.system().emit_log(
-        fraktor_actor_rs::core::event::logging::LogLevel::Warn,
-        alloc::format!("journal actor: {total_send_failures} response(s) failed to deliver"),
-        Some(ctx.pid()),
-      );
-    }
     self.in_flight = pending;
-    self.schedule_poll(ctx);
+    self.schedule_poll(ctx)
   }
 }
 
@@ -129,7 +116,7 @@ where
 {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<JournalPoll>().is_some() {
-      self.poll_in_flight(ctx);
+      self.poll_in_flight(ctx)?;
       return Ok(());
     }
 
@@ -177,74 +164,64 @@ where
           });
         },
       }
-      self.poll_in_flight(ctx);
+      self.poll_in_flight(ctx)?;
     }
     Ok(())
   }
 }
 
-/// Sends a response, returning `true` if delivery failed.
-fn tell_or_fail(sender: &ActorRef, msg: AnyMessage) -> bool {
-  sender.tell(msg).is_err()
-}
-
-/// Returns `(remaining_entry, send_failure_count)`.
+/// Returns `Some(entry)` when the in-flight operation is still pending.
 fn poll_entry<J: Journal>(
   journal: &mut J,
   mut entry: JournalInFlight,
   cx: &mut Context<'_>,
   retry_max: u32,
-) -> (Option<JournalInFlight>, u32)
+) -> Result<Option<JournalInFlight>, ActorError>
 where
   for<'a> J::WriteFuture<'a>: Send + 'static,
   for<'a> J::ReplayFuture<'a>: Send + 'static,
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static, {
-  let mut fails: u32 = 0;
-  let remaining = match &mut entry {
+  match &mut entry {
     | JournalInFlight::Write { future, messages, sender, instance_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
           for repr in messages.iter().cloned() {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }),
-            ));
+            sender
+              .try_tell(AnyMessage::new(JournalResponse::WriteMessageSuccess { repr, instance_id: *instance_id }))
+              .map_err(|error| ActorError::from_send_error(&error))?;
           }
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }),
-          ));
-          None
+          sender
+            .try_tell(AnyMessage::new(JournalResponse::WriteMessagesSuccessful { instance_id: *instance_id }))
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(journal.write_messages(messages));
-            Some(entry)
+            Ok(Some(entry))
           } else {
             for repr in messages.iter().cloned() {
-              fails += u32::from(tell_or_fail(
-                sender,
-                AnyMessage::new(JournalResponse::WriteMessageFailure {
+              sender
+                .try_tell(AnyMessage::new(JournalResponse::WriteMessageFailure {
                   repr,
                   cause: error.clone(),
                   instance_id: *instance_id,
-                }),
-              ));
+                }))
+                .map_err(|send_error| ActorError::from_send_error(&send_error))?;
             }
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(JournalResponse::WriteMessagesFailed {
+            sender
+              .try_tell(AnyMessage::new(JournalResponse::WriteMessagesFailed {
                 cause:       error,
                 write_count: messages.len() as u64,
                 instance_id: *instance_id,
-              }),
-            ));
-            None
+              }))
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
     | JournalInFlight::Replay {
@@ -263,86 +240,83 @@ where
           if repr.deleted() {
             continue;
           }
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(JournalResponse::ReplayedMessage { persistent_repr: repr }),
-          ));
+          sender
+            .try_tell(AnyMessage::new(JournalResponse::ReplayedMessage { persistent_repr: repr }))
+            .map_err(|error| ActorError::from_send_error(&error))?;
         }
-        fails += u32::from(tell_or_fail(
-          sender,
-          AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }),
-        ));
-        None
+        sender
+          .try_tell(AnyMessage::new(JournalResponse::RecoverySuccess { highest_sequence_nr: highest }))
+          .map_err(|error| ActorError::from_send_error(&error))?;
+        Ok(None)
       },
       | Poll::Ready(Err(error)) => {
         if *retry_count < retry_max {
           *retry_count = retry_count.saturating_add(1);
           *future = Box::pin(journal.replay_messages(persistence_id, *from_sequence_nr, *to_sequence_nr, *max));
-          Some(entry)
+          Ok(Some(entry))
         } else {
-          fails +=
-            u32::from(tell_or_fail(sender, AnyMessage::new(JournalResponse::ReplayMessagesFailure { cause: error })));
-          None
+          sender
+            .try_tell(AnyMessage::new(JournalResponse::ReplayMessagesFailure { cause: error }))
+            .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+          Ok(None)
         }
       },
-      | Poll::Pending => Some(entry),
+      | Poll::Pending => Ok(Some(entry)),
     },
     | JournalInFlight::Delete { future, sender, persistence_id, to_sequence_nr, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(())) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }),
-          ));
-          None
+          sender
+            .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesSuccess { to_sequence_nr: *to_sequence_nr }))
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(journal.delete_messages_to(persistence_id, *to_sequence_nr));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(JournalResponse::DeleteMessagesFailure {
+            sender
+              .try_tell(AnyMessage::new(JournalResponse::DeleteMessagesFailure {
                 cause:          error,
                 to_sequence_nr: *to_sequence_nr,
-              }),
-            ));
-            None
+              }))
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
     | JournalInFlight::Highest { future, sender, persistence_id, retry_count } => {
       match Future::poll(future.as_mut(), cx) {
         | Poll::Ready(Ok(sequence_nr)) => {
-          fails += u32::from(tell_or_fail(
-            sender,
-            AnyMessage::new(JournalResponse::HighestSequenceNr { persistence_id: persistence_id.clone(), sequence_nr }),
-          ));
-          None
+          sender
+            .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNr {
+              persistence_id: persistence_id.clone(),
+              sequence_nr,
+            }))
+            .map_err(|error| ActorError::from_send_error(&error))?;
+          Ok(None)
         },
         | Poll::Ready(Err(error)) => {
           if *retry_count < retry_max {
             *retry_count = retry_count.saturating_add(1);
             *future = Box::pin(journal.highest_sequence_nr(persistence_id));
-            Some(entry)
+            Ok(Some(entry))
           } else {
-            fails += u32::from(tell_or_fail(
-              sender,
-              AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
+            sender
+              .try_tell(AnyMessage::new(JournalResponse::HighestSequenceNrFailure {
                 persistence_id: persistence_id.clone(),
                 cause:          error,
-              }),
-            ));
-            None
+              }))
+              .map_err(|send_error| ActorError::from_send_error(&send_error))?;
+            Ok(None)
           }
         },
-        | Poll::Pending => Some(entry),
+        | Poll::Pending => Ok(Some(entry)),
       }
     },
-  };
-  (remaining, fails)
+  }
 }

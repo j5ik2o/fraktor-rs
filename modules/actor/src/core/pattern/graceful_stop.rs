@@ -15,9 +15,10 @@ const STOP_POLL_INTERVAL: Duration = Duration::from_millis(1);
 ///
 /// # Errors
 ///
-/// Returns [`AskError::SendFailed`] when the stop message cannot be delivered,
+/// Returns [`AskError::SendFailed`] when the system state is unavailable or the
+/// stop message cannot be enqueued while the target actor is still alive,
 /// or [`AskError::Timeout`] when the actor does not stop before `timeout`.
-pub async fn graceful_stop(target: &ActorRef, timeout: Duration) -> Result<(), AskError> {
+pub async fn graceful_stop(target: &mut ActorRef, timeout: Duration) -> Result<(), AskError> {
   graceful_stop_with_message(target, AnyMessage::new(SystemMessage::PoisonPill), timeout).await
 }
 
@@ -26,25 +27,29 @@ pub async fn graceful_stop(target: &ActorRef, timeout: Duration) -> Result<(), A
 ///
 /// # Errors
 ///
-/// Returns [`AskError::SendFailed`] when the stop message cannot be delivered,
+/// Returns [`AskError::SendFailed`] when the system state is unavailable or the
+/// stop message cannot be enqueued while the target actor is still alive,
 /// or [`AskError::Timeout`] when the actor does not stop before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &ActorRef,
+  target: &mut ActorRef,
   stop_message: AnyMessage,
   timeout: Duration,
 ) -> Result<(), AskError> {
   let Some(system) = target.system_state() else {
-    return Err(AskError::SendFailed);
+    return Err(AskError::send_failed("system state unavailable"));
   };
   let pid = target.pid();
   if system.cell(&pid).is_none() {
     return Ok(());
   }
-  if target.tell(stop_message).is_err() {
+  if let Err(send_error) = target.try_tell(stop_message) {
     if system.cell(&pid).is_none() {
       return Ok(());
     }
-    return Err(AskError::SendFailed);
+    return Err(AskError::from(&send_error));
+  }
+  if system.cell(&pid).is_none() {
+    return Ok(());
   }
 
   let mut remaining = timeout;

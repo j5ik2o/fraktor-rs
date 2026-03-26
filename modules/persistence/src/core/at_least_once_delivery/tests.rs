@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::{
 
 use crate::core::{
   at_least_once_delivery::AtLeastOnceDelivery, at_least_once_delivery_config::AtLeastOnceDeliveryConfig,
-  persistence_error::PersistenceError, redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery,
+  redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery,
 };
 
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
@@ -147,13 +147,11 @@ fn redelivery_tick_emits_warning_only_when_attempt_reaches_threshold() {
   let tick = RedeliveryTick;
   let warning = delivery
     .handle_message(&tick, TimerInstant::from_ticks(1, resolution))
-    .expect("redelivery should succeed")
     .expect("warning should be emitted at threshold");
   assert_eq!(warning.count(), 1);
   assert_eq!(warning.unconfirmed_deliveries()[0].delivery_id(), 1);
 
-  let no_warning =
-    delivery.handle_message(&tick, TimerInstant::from_ticks(2, resolution)).expect("redelivery should succeed");
+  let no_warning = delivery.handle_message(&tick, TimerInstant::from_ticks(2, resolution));
   assert!(no_warning.is_none());
   assert_eq!(delivery.unconfirmed_deliveries()[0].attempt(), 3);
 }
@@ -179,13 +177,11 @@ fn delivery_snapshot_restore_restarts_warning_counter() {
   restored.set_delivery_snapshot(snapshot, TimerInstant::from_ticks(10, resolution));
 
   let tick = RedeliveryTick;
-  let first_tick_warning =
-    restored.handle_message(&tick, TimerInstant::from_ticks(10, resolution)).expect("redelivery should succeed");
+  let first_tick_warning = restored.handle_message(&tick, TimerInstant::from_ticks(10, resolution));
   assert!(first_tick_warning.is_none());
 
   let second_tick_warning = restored
     .handle_message(&tick, TimerInstant::from_ticks(11, resolution))
-    .expect("redelivery should succeed")
     .expect("warning should restart after restore");
   assert_eq!(second_tick_warning.count(), 1);
   assert_eq!(second_tick_warning.unconfirmed_deliveries()[0].delivery_id(), 1);
@@ -213,7 +209,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
   restored.set_delivery_snapshot(snapshot, restore_now);
 
   let tick = RedeliveryTick;
-  let warning = restored.handle_message(&tick, restore_now).expect("redelivery should succeed");
+  let warning = restored.handle_message(&tick, restore_now);
   assert!(warning.is_none());
   assert_eq!(restored.unconfirmed_deliveries()[0].attempt(), 1);
   assert_eq!(restored.unconfirmed_deliveries()[0].timestamp(), restore_now);
@@ -221,7 +217,7 @@ fn delivery_snapshot_restore_redelivers_immediately_when_restore_time_is_before_
 }
 
 #[test]
-fn redelivery_tick_propagates_send_failure() {
+fn redelivery_tick_does_not_advance_attempt_when_send_fails() {
   let config = AtLeastOnceDeliveryConfig::new(Duration::from_secs(1), 10, 2, 1);
   let mut delivery = AtLeastOnceDelivery::new(config);
   let payload: ArcShared<dyn core::any::Any + Send + Sync> = ArcShared::new(1_u32);
@@ -230,10 +226,7 @@ fn redelivery_tick_propagates_send_failure() {
   delivery.add_unconfirmed(UnconfirmedDelivery::new(1, create_failing_sender(), payload, None, timestamp, 1));
 
   let tick = RedeliveryTick;
-  let result = delivery.handle_message(&tick, TimerInstant::from_ticks(1, resolution));
-  assert!(matches!(
-    result,
-    Err(PersistenceError::MessagePassing(reason)) if reason.contains("Closed")
-  ));
+  let warning = delivery.handle_message(&tick, TimerInstant::from_ticks(1, resolution));
+  assert!(warning.is_none());
   assert_eq!(delivery.unconfirmed_deliveries()[0].attempt(), 1);
 }

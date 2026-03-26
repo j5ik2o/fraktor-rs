@@ -61,10 +61,10 @@ fn balancing_pool_distributes_to_idle_workers() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
-        let _ = router_ref.clone().tell(msg.clone());
+        router_ref.clone().tell(msg.clone());
         Ok(Behaviors::same())
       })
     })
@@ -80,7 +80,7 @@ fn balancing_pool_distributes_to_idle_workers() {
 
   // Send multiple work items.
   for i in 0..5 {
-    guardian.tell(WorkItem { id: i }).expect("tell");
+    guardian.tell(WorkItem { id: i });
   }
 
   wait_until(|| processed_check.lock().len() >= 5);
@@ -141,10 +141,10 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
-        let _ = router_ref.clone().tell(msg.clone());
+        router_ref.clone().tell(msg.clone());
         Ok(Behaviors::same())
       })
     })
@@ -160,9 +160,9 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
 
   // Send 3 messages: both routees will stop after 1 each.
   // The 3rd message goes to the shared queue but no idle worker should pull it.
-  guardian.tell(WorkItem { id: 10 }).expect("tell");
-  guardian.tell(WorkItem { id: 20 }).expect("tell");
-  guardian.tell(WorkItem { id: 30 }).expect("tell");
+  guardian.tell(WorkItem { id: 10 });
+  guardian.tell(WorkItem { id: 20 });
+  guardian.tell(WorkItem { id: 30 });
 
   // Wait for the two routees to process their messages.
   wait_until(|| processed_check.lock().len() >= 2);
@@ -206,10 +206,10 @@ fn balancing_pool_stops_when_all_routees_terminate() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
-        let _ = router_ref.clone().tell(msg.clone());
+        router_ref.clone().tell(msg.clone());
         Ok(Behaviors::same())
       })
     })
@@ -224,8 +224,8 @@ fn balancing_pool_stops_when_all_routees_terminate() {
   let mut guardian = system.user_guardian_ref();
 
   // Send 2 messages to consume both routees (they each stop after 1 message).
-  guardian.tell(WorkItem { id: 1 }).expect("tell");
-  guardian.tell(WorkItem { id: 2 }).expect("tell");
+  guardian.tell(WorkItem { id: 1 });
+  guardian.tell(WorkItem { id: 2 });
 
   wait_until(|| processed_check.lock().len() >= 2);
 
@@ -261,10 +261,10 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<WorkItem>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
+      let router_ref = router_child.into_actor_ref();
 
       Behaviors::receive_message(move |_ctx, msg: &WorkItem| {
-        let _ = router_ref.clone().tell(msg.clone());
+        router_ref.clone().tell(msg.clone());
         Ok(Behaviors::same())
       })
     })
@@ -279,7 +279,7 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
   let mut guardian = system.user_guardian_ref();
 
   // Send a message; no routee should process it since all stopped at start.
-  guardian.tell(WorkItem { id: 99 }).expect("tell");
+  guardian.tell(WorkItem { id: 99 });
 
   // Give spins to ensure no delivery happens.
   for _ in 0..10_000 {

@@ -135,7 +135,7 @@ fn batch_flow_applies_all_events() {
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let controller = system.tick_driver_bundle().manual_controller().expect("manual controller").clone();
 
-  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   for _ in 0..20 {
     controller.inject_and_drive(1);
@@ -144,8 +144,8 @@ fn batch_flow_applies_all_events() {
     }
   }
 
-  if let Some(child) = child_refs.lock().first().cloned() {
-    let _ = child.tell(AnyMessage::new(Command::AddAll(vec![1, 2, 3])));
+  if let Some(mut child) = child_refs.lock().first().cloned() {
+    child.tell(AnyMessage::new(Command::AddAll(vec![1, 2, 3])));
   }
 
   for _ in 0..10 {

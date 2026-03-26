@@ -52,7 +52,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
-  system.user_guardian_ref().tell(AnyMessage::new("first")).expect("send");
+  system.user_guardian_ref().tell(AnyMessage::new("first"));
 
   wait_until(|| {
     let events = events.lock().clone();

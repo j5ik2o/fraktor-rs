@@ -32,7 +32,7 @@ fn responding_routee_behavior(source: usize) -> Behavior<TestReq> {
   Behaviors::receive_message(move |_ctx, msg: &TestReq| {
     match msg {
       | TestReq::Query { id, reply_to } => {
-        let _ = reply_to.clone().tell(TestReply { id: *id, source });
+        reply_to.clone().tell(TestReply { id: *id, source });
       },
     }
     Ok(Behaviors::same())
@@ -45,7 +45,7 @@ fn tracking_routee_behavior(source: usize, tracker: ArcShared<NoStdMutex<Vec<usi
     match msg {
       | TestReq::Query { id, reply_to } => {
         tracker.lock().push(source);
-        let _ = reply_to.clone().tell(TestReply { id: *id, source });
+        reply_to.clone().tell(TestReply { id: *id, source });
       },
     }
     Ok(Behaviors::same())
@@ -135,7 +135,7 @@ fn scatter_gather_returns_first_reply() {
       let cf2 = cf.clone();
       let collector_props = TypedProps::<TestReply>::from_behavior_factory(move || cf2());
       let collector_child = ctx.spawn_child(&collector_props).expect("collector");
-      let collector_ref = collector_child.actor_ref().clone();
+      let collector_ref = collector_child.into_actor_ref();
 
       let rf2 = rf.clone();
       let router_behavior_factory = ArcShared::new(move || {
@@ -160,12 +160,12 @@ fn scatter_gather_returns_first_reply() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
 
       Behaviors::receive_message(move |_ctx, msg: &TestReq| {
         match msg {
           | TestReq::Query { id, .. } => {
-            let _ = router_ref.clone().tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
+            let mut router = router_child.clone();
+            router.tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
           },
         }
         Ok(Behaviors::same())
@@ -182,7 +182,7 @@ fn scatter_gather_returns_first_reply() {
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(crate::core::actor::actor_ref::ActorRef::no_sender());
-  guardian.tell(TestReq::Query { id: 42, reply_to: dummy_reply_to }).expect("tell");
+  guardian.tell(TestReq::Query { id: 42, reply_to: dummy_reply_to });
 
   wait_until(|| !replies_for_check.lock().is_empty());
 
@@ -224,7 +224,7 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
       let cf2 = cf.clone();
       let collector_props = TypedProps::<TestReply>::from_behavior_factory(move || cf2());
       let collector_child = ctx.spawn_child(&collector_props).expect("collector");
-      let collector_ref = collector_child.actor_ref().clone();
+      let collector_ref = collector_child.into_actor_ref();
 
       let tr2 = tr.clone();
       let router_behavior_factory = ArcShared::new(move || {
@@ -246,12 +246,12 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
 
       Behaviors::receive_message(move |_ctx, msg: &TestReq| {
         match msg {
           | TestReq::Query { id, .. } => {
-            let _ = router_ref.clone().tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
+            let mut router = router_child.clone();
+            router.tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
           },
         }
         Ok(Behaviors::same())
@@ -268,7 +268,7 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(crate::core::actor::actor_ref::ActorRef::no_sender());
-  guardian.tell(TestReq::Query { id: 99, reply_to: dummy_reply_to }).expect("tell");
+  guardian.tell(TestReq::Query { id: 99, reply_to: dummy_reply_to });
 
   // メッセージ伝播を待ち、スケジューラを駆動してタイムアウトを発火させる
   for _ in 0..20 {
@@ -435,7 +435,7 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
       let cf2 = cf.clone();
       let collector_props = TypedProps::<TestReply>::from_behavior_factory(move || cf2());
       let collector_child = ctx.spawn_child(&collector_props).expect("collector");
-      let collector_ref = collector_child.actor_ref().clone();
+      let collector_ref = collector_child.into_actor_ref();
 
       let tr2 = tr.clone();
       let router_behavior_factory = ArcShared::new(move || {
@@ -458,12 +458,12 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
       let rbf = router_behavior_factory.clone();
       let router_props = TypedProps::<TestReq>::from_behavior_factory(move || rbf());
       let router_child = ctx.spawn_child(&router_props).expect("router");
-      let router_ref = router_child.actor_ref().clone();
 
       Behaviors::receive_message(move |_ctx, msg: &TestReq| {
         match msg {
           | TestReq::Query { id, .. } => {
-            let _ = router_ref.clone().tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
+            let mut router = router_child.clone();
+            router.tell(TestReq::Query { id: *id, reply_to: collector_ref.clone() });
           },
         }
         Ok(Behaviors::same())
@@ -480,7 +480,7 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
   let mut guardian = system.user_guardian_ref();
 
   let dummy_reply_to = TypedActorRef::from_untyped(crate::core::actor::actor_ref::ActorRef::no_sender());
-  guardian.tell(TestReq::Query { id: 77, reply_to: dummy_reply_to }).expect("tell");
+  guardian.tell(TestReq::Query { id: 77, reply_to: dummy_reply_to });
 
   // coordinator spawn 失敗 → 即時 timeout_reply が返るはず
   wait_until(|| !replies_for_check.lock().is_empty());

@@ -78,7 +78,7 @@ where
     .extended()
     .spawn_system_actor(&props)
     .map_err(|error| PersistenceError::MessagePassing(format!("spawn error: {error:?}")))?;
-  Ok(child.actor_ref().clone())
+  Ok(child.into_actor_ref())
 }
 
 struct JournalActorWrapper<J: Journal> {

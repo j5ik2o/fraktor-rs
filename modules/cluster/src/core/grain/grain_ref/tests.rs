@@ -11,7 +11,7 @@ use fraktor_actor_rs::core::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
   extension::ExtensionInstallers,
-  messaging::{AnyMessage, AskError},
+  messaging::AnyMessage,
   props::Props,
   scheduler::{
     SchedulerConfig, SchedulerShared,
@@ -296,10 +296,10 @@ impl ActorRefSender for TestSender {
       return Err(SendError::timeout(AnyMessage::new(())));
     }
     if matches!(self.behavior, SendBehavior::Reply)
-      && let Some(sender) = message.sender().cloned()
+      && let Some(mut sender) = message.sender().cloned()
     {
       let reply = AnyMessage::new(String::from("reply"));
-      let _ = sender.tell(reply);
+      sender.tell(reply);
     }
     if let Some(counter) = &self.counter {
       *counter.lock() += 1;
@@ -364,7 +364,7 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let ask_error = result.expect_err("expect send failed");
-  assert_eq!(ask_error, AskError::SendFailed);
+  assert!(matches!(ask_error, fraktor_actor_rs::core::messaging::AskError::SendFailed(_)));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));

@@ -40,12 +40,19 @@ where
   }
 
   /// Sends a typed message to the child.
+  #[cfg(not(fraktor_disable_tell))]
+  pub fn tell(&mut self, message: M) {
+    self.inner.tell(AnyMessage::new(message));
+  }
+
+  /// Sends a typed message to the child and preserves synchronous enqueue
+  /// failures.
   ///
   /// # Errors
   ///
-  /// Returns an error if the message cannot be delivered.
-  pub fn tell(&mut self, message: M) -> Result<(), SendError> {
-    self.inner.tell(AnyMessage::new(message))
+  /// Returns an error when the child mailbox rejects the message.
+  pub fn try_tell(&mut self, message: M) -> Result<(), SendError> {
+    self.inner.try_tell(AnyMessage::new(message))
   }
 
   /// Sends a typed request to the child actor.
@@ -55,7 +62,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponse<R>, SendError>
+  pub fn ask<R, F>(&mut self, build: F) -> TypedAskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<R>) -> M, {
@@ -94,6 +101,12 @@ where
   #[must_use]
   pub const fn as_untyped(&self) -> &ChildRef {
     &self.inner
+  }
+
+  /// Consumes the wrapper and returns the typed actor reference.
+  #[must_use]
+  pub fn into_actor_ref(self) -> TypedActorRef<M> {
+    TypedActorRef::from_untyped(self.inner.into_actor_ref())
   }
 
   /// Consumes the wrapper and returns the untyped child reference.

@@ -109,14 +109,11 @@ impl ClusterApi {
     message: AnyMessage,
     timeout: Option<Duration>,
   ) -> Result<AskResponse, ClusterRequestError> {
-    let actor_ref = self.get(identity).map_err(ClusterRequestError::ResolveFailed)?;
-    let response =
-      actor_ref.ask(message).map_err(|error| ClusterRequestError::SendFailed { reason: format!("{error:?}") })?;
-
+    let mut actor_ref = self.get(identity).map_err(ClusterRequestError::ResolveFailed)?;
+    let response = actor_ref.ask(message);
     if let Some(timeout) = timeout {
       self.schedule_timeout(timeout, response.future().clone())?;
     }
-
     Ok(response)
   }
 

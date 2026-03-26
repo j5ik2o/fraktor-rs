@@ -36,10 +36,12 @@ impl DeliveryEndpoint for LocalDeliveryEndpoint {
     let mut failed = Vec::new();
     for subscriber in request.subscribers {
       match subscriber {
-        | PubSubSubscriber::ActorRef(actor_ref) => {
-          if let Err(error) = actor_ref.tell(payload.clone()) {
-            let status = map_send_error(&error);
-            failed.push(SubscriberDeliveryReport { subscriber: PubSubSubscriber::ActorRef(actor_ref), status });
+        | PubSubSubscriber::ActorRef(mut actor_ref) => {
+          if actor_ref.try_tell(payload.clone()).is_err() {
+            failed.push(SubscriberDeliveryReport {
+              subscriber: PubSubSubscriber::ActorRef(actor_ref),
+              status:     DeliveryStatus::SubscriberUnreachable,
+            });
           }
         },
         | PubSubSubscriber::ClusterIdentity(identity) => {
@@ -72,14 +74,6 @@ fn deserialize_batch(
     messages.push(AnyMessage::new(value));
   }
   Ok(messages)
-}
-
-const fn map_send_error(error: &fraktor_actor_rs::core::error::SendError) -> DeliveryStatus {
-  use fraktor_actor_rs::core::error::SendError;
-  match error {
-    | SendError::Timeout(_) => DeliveryStatus::Timeout,
-    | _ => DeliveryStatus::SubscriberUnreachable,
-  }
 }
 
 fn aggregate_status(failed: &[SubscriberDeliveryReport]) -> DeliveryStatus {

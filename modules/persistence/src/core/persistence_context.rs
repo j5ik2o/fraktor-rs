@@ -521,14 +521,12 @@ impl<A: 'static> PersistenceContext<A> {
   /// # Errors
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
-  /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
-  pub fn send_write_messages(&self, message: JournalMessage) -> Result<(), PersistenceError> {
+  pub fn send_write_messages(&mut self, message: JournalMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .journal_actor_ref
-      .tell(AnyMessage::new(message))
+      .try_tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
-      .map(|_| ())
   }
 
   /// Sends snapshot messages through the persistence extension.
@@ -536,14 +534,12 @@ impl<A: 'static> PersistenceContext<A> {
   /// # Errors
   ///
   /// Returns `PersistenceError::StateMachine` when context is unbound.
-  /// Returns `PersistenceError::MessagePassing` when the message cannot be delivered.
-  pub fn send_snapshot_message(&self, message: SnapshotMessage) -> Result<(), PersistenceError> {
+  pub fn send_snapshot_message(&mut self, message: SnapshotMessage) -> Result<(), PersistenceError> {
     self.ensure_ready()?;
     self
       .snapshot_actor_ref
-      .tell(AnyMessage::new(message))
+      .try_tell(AnyMessage::new(message))
       .map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))
-      .map(|_| ())
   }
 
   fn to_journal_repr(repr: &PersistentRepr) -> PersistentRepr {

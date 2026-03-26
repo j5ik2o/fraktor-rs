@@ -78,7 +78,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when no current message is active or when the actor cell is unavailable.
-  pub fn stash(&self) -> Result<(), ActorError> {
+  pub fn stash(&mut self) -> Result<(), ActorError> {
     self.stash_with_limit(usize::MAX)
   }
 
@@ -88,7 +88,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error when no current message is active, when the stash reached `max_messages`,
   /// or when the actor cell is unavailable.
-  pub fn stash_with_limit(&self, max_messages: usize) -> Result<(), ActorError> {
+  pub fn stash_with_limit(&mut self, max_messages: usize) -> Result<(), ActorError> {
     let message = self
       .current_message
       .as_ref()
@@ -151,12 +151,15 @@ impl ActorContext<'_> {
 
   /// Sends a reply to the caller if a reply target is present.
   ///
+  /// This forwards the result of `try_tell` on the current sender.
+  ///
   /// # Errors
   ///
-  /// Returns an error if no reply target is set or sending fails.
+  /// Returns an error if no reply target is set or if the reply message cannot
+  /// be enqueued.
   pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
     match self.sender.as_mut() {
-      | Some(target) => target.tell(message),
+      | Some(target) => target.try_tell(message),
       | None => Err(SendError::no_recipient(message)),
     }
   }
@@ -166,7 +169,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when spawning the child fails.
-  pub fn spawn_child(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+  pub fn spawn_child(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
     self.system.spawn_child(self.pid, props)
   }
 
@@ -191,7 +194,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn stop_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.stop()
   }
 
@@ -200,7 +203,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the stop message cannot be delivered.
-  pub fn stop_self(&self) -> Result<(), SendError> {
+  pub fn stop_self(&mut self) -> Result<(), SendError> {
     self.system.stop_actor(self.pid)
   }
 
@@ -209,7 +212,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the suspend signal cannot be delivered.
-  pub fn suspend_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn suspend_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.suspend()
   }
 
@@ -218,7 +221,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the resume signal cannot be delivered.
-  pub fn resume_child(&self, child: &ChildRef) -> Result<(), SendError> {
+  pub fn resume_child(&mut self, child: &ChildRef) -> Result<(), SendError> {
     child.resume()
   }
 
@@ -227,7 +230,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch(&self, target: &ActorRef) -> Result<(), SendError> {
+  pub fn watch(&mut self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -251,7 +254,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the unwatch signal.
-  pub fn unwatch(&self, target: &ActorRef) -> Result<(), SendError> {
+  pub fn unwatch(&mut self, target: &ActorRef) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -273,7 +276,7 @@ impl ActorContext<'_> {
   ///
   /// Returns an error when spawning fails or when installing the watch registration cannot be
   /// performed.
-  pub fn spawn_child_watched(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+  pub fn spawn_child_watched(&mut self, props: &Props) -> Result<ChildRef, SpawnError> {
     let child = self.spawn_child(props)?;
     if self.watch(child.actor_ref()).is_err() {
       // Best-effort stop: watch failed so the child must be cleaned up.
@@ -293,7 +296,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error when the runtime cannot enqueue the watch signal.
-  pub fn watch_with(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  pub fn watch_with(&mut self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
     if target.pid() == self.pid {
       return Ok(());
     }
@@ -308,6 +311,15 @@ impl ActorContext<'_> {
     Ok(())
   }
 
+  /// Forwards a message to the target, preserving the current sender.
+  ///
+  /// This is the user-facing fire-and-forget variant. Synchronous forwarding
+  /// failures are observed internally and recorded via the system's send-error
+  /// observation path.
+  pub fn forward(&mut self, target: &mut ActorRef, message: AnyMessage) {
+    let _forward_result = self.try_forward(target, message);
+  }
+
   /// Forwards the given message to the target, preserving the current sender.
   ///
   /// This mirrors Pekko's `ActorRef.forward`. The message is sent with the
@@ -316,13 +328,14 @@ impl ActorContext<'_> {
   ///
   /// # Errors
   ///
-  /// Returns an error if sending the message fails.
-  pub fn forward(&self, target: &ActorRef, message: AnyMessage) -> Result<(), SendError> {
+  /// Returns [`SendError`] when forwarding fails synchronously while
+  /// enqueueing the message into the target mailbox.
+  pub fn try_forward(&mut self, target: &mut ActorRef, message: AnyMessage) -> Result<(), SendError> {
     let envelope = match &self.sender {
       | Some(sender) => message.with_sender(sender.clone()),
       | None => message,
     };
-    target.tell(envelope)
+    target.try_tell(envelope)
   }
 
   /// Returns the metadata tags associated with the running actor.
@@ -343,7 +356,7 @@ impl ActorContext<'_> {
   /// # Errors
   ///
   /// Returns an error if the actor is unavailable or already stopped.
-  pub fn pipe_to_self<Fut, Map, Output>(&self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
+  pub fn pipe_to_self<Fut, Map, Output>(&mut self, future: Fut, map: Map) -> Result<(), PipeSpawnError>
   where
     Fut: Future<Output = Output> + Send + 'static,
     Map: FnOnce(Output) -> AnyMessage + Send + 'static, {

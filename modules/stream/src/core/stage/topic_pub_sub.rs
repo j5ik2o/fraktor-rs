@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
   actor::ChildRef,
-  error::ActorError,
+  error::{ActorError, SendError},
   system::ActorSystem,
   typed::{Behavior, Behaviors, Topic, TopicCommand, TypedProps, actor::TypedActorRef},
 };
@@ -57,12 +57,12 @@ where
   fn cleanup(&self) {
     {
       let mut guard = self.state.lock();
-      let Some(mut state) = guard.take() else {
+      let Some(state) = guard.take() else {
         return;
       };
-      // topic actor が既に停止している場合、unsubscribe は失敗するが整合性は壊れない。
-      if let Err(_error) = state.topic_actor.tell(Topic::unsubscribe(state.bridge_ref.clone())) {
-        // stream 終了後の best-effort cleanup
+      // stream 終了後の best-effort cleanup であり、topic actor が既に停止していても整合性は壊れない。
+      if let Err(_error) = send_topic_command(&state.topic_actor, Topic::unsubscribe(state.bridge_ref.clone())) {
+        // best-effort cleanup のため、unsubscribe 失敗は無視してよい。
       }
       // bridge がすでに終了している場合、追加 stop は不要。
       if let Err(_error) = state.bridge_child.stop() {
@@ -134,7 +134,7 @@ impl TopicPubSub {
   /// Panics when spawning the bridge actor or subscribing it to the topic fails.
   #[must_use]
   pub fn source<T>(
-    mut topic_actor: TypedActorRef<TopicCommand<T>>,
+    topic_actor: TypedActorRef<TopicCommand<T>>,
     buffer_size: usize,
     overflow_strategy: OverflowStrategy,
     system: &ActorSystem,
@@ -152,9 +152,10 @@ impl TopicPubSub {
       #[allow(clippy::expect_used)]
       let child =
         extended.spawn_system_actor(bridge_props.to_untyped()).expect("TopicPubSub: bridge actor の spawn に失敗");
-      let bridge_ref = TypedActorRef::<T>::from_untyped(child.actor_ref().clone());
-      #[allow(clippy::expect_used)]
-      topic_actor.tell(Topic::subscribe(bridge_ref.clone())).expect("TopicPubSub: topic への subscribe に失敗");
+      let bridge_ref = TypedActorRef::<T>::from_untyped(child.clone().into_actor_ref());
+      if let Err(error) = send_topic_command(&topic_actor, Topic::subscribe(bridge_ref.clone())) {
+        panic!("TopicPubSub: topic actor への subscribe に失敗: {error:?}");
+      }
       cleanup.install(topic_actor.clone(), bridge_ref, child);
 
       StreamNotUsed
@@ -169,18 +170,29 @@ impl TopicPubSub {
   pub fn sink<T>(topic_actor: TypedActorRef<TopicCommand<T>>) -> Sink<T, StreamCompletion<StreamDone>>
   where
     T: Clone + Send + Sync + 'static, {
-    let mut topic = topic_actor;
+    let topic = topic_actor;
     ActorSink::actor_ref_with_result(move |msg: T| {
-      topic.tell(Topic::publish(msg)).map_err(|_error| crate::core::StreamError::Failed)
+      send_topic_command(&topic, Topic::publish(msg)).map_err(|error| StreamError::from_send_error(&error))
     })
   }
+}
+
+fn send_topic_command<T>(
+  topic_actor: &TypedActorRef<TopicCommand<T>>,
+  command: TopicCommand<T>,
+) -> Result<(), SendError>
+where
+  T: Clone + Send + Sync + 'static, {
+  let mut topic_actor = topic_actor.clone();
+  topic_actor.try_tell(command)
 }
 
 /// Creates the bridge actor behavior that forwards messages to the stream queue.
 fn bridge_behavior<T>(actor_source_ref: crate::core::ActorSourceRef<T>) -> Behavior<T>
 where
   T: Clone + Send + Sync + 'static, {
-  Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.tell(msg.clone()) {
+  let actor_source_ref = ArcShared::new(SpinSyncMutex::new(actor_source_ref));
+  Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.lock().tell(msg.clone()) {
     | crate::core::QueueOfferResult::Enqueued | crate::core::QueueOfferResult::Dropped => Ok(Behaviors::same()),
     | crate::core::QueueOfferResult::QueueClosed => Err(ActorError::recoverable("TopicPubSub: stream queue is closed")),
     | crate::core::QueueOfferResult::Failure(err) => {

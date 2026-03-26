@@ -8,10 +8,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --example stash`
 
 use fraktor_actor_rs::{
-  core::{
-    error::ActorError,
-    typed::{Behavior, StashBuffer, TypedActorSystem, TypedProps, actor::TypedActorRef},
-  },
+  core::typed::{Behavior, StashBuffer, TypedActorSystem, TypedProps, actor::TypedActorRef},
   std::typed::Behaviors,
 };
 use fraktor_showcases_std::support;
@@ -52,7 +49,7 @@ fn closed(total: i32, stash: StashBuffer<Command>) -> Behavior<Command> {
     },
     | Command::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -65,7 +62,7 @@ fn open(total: i32) -> Behavior<Command> {
     | Command::Open => Ok(Behaviors::same()),
     | Command::Read { reply_to } => {
       let mut reply_to = reply_to.clone();
-      reply_to.tell(total).map_err(|e| ActorError::from_send_error(&e))?;
+      reply_to.tell(total);
       Ok(Behaviors::same())
     },
   })
@@ -86,16 +83,16 @@ fn main() {
   let mut actor = system.user_guardian_ref();
 
   // closed 状態で Buffer メッセージを送信（stash される）
-  actor.tell(Command::Buffer(5)).expect("buffer one");
-  actor.tell(Command::Buffer(3)).expect("buffer two");
+  actor.tell(Command::Buffer(5));
+  actor.tell(Command::Buffer(3));
 
   // Open で stash を再生して open 状態に遷移
-  actor.tell(Command::Open).expect("open");
+  actor.tell(Command::Open);
 
   // unstash 後の合計を読み取る
   // 5 + 100 = 105, 3 + 100 = 103 → open(0) で 105 + 103 = 208
   thread::sleep(Duration::from_millis(50));
-  let response = actor.ask::<i32, _>(|reply_to| Command::Read { reply_to }).expect("ask");
+  let response = actor.ask::<i32, _>(|reply_to| Command::Read { reply_to });
   let mut future = response.future().clone();
   let deadline = Instant::now() + Duration::from_secs(1);
   while !future.is_ready() {

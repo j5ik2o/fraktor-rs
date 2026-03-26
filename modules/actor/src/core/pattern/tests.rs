@@ -28,8 +28,8 @@ struct ReplyingSender {
 
 impl ActorRefSender for ReplyingSender {
   fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
-    if let Some(sender) = message.sender() {
-      sender.tell(AnyMessage::new(7_u32))?;
+    if let Some(mut sender) = message.sender().cloned() {
+      sender.tell(AnyMessage::new(7_u32));
       self.replies.lock().push(7);
     }
     Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
@@ -110,12 +110,13 @@ fn noop_waker() -> Waker {
 }
 
 #[test]
-fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
+fn ask_with_timeout_preserves_immediate_reply_without_installing_timeout() {
   let system = ActorSystem::new_empty().state();
   let replies = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
+  let mut actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
 
-  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
   let result = response.future().with_write(|inner| inner.try_take()).expect("reply result");
   let reply = result.expect("successful reply");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&7_u32));
@@ -123,9 +124,9 @@ fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
 
 #[test]
 fn ask_with_timeout_without_system_times_out_immediately() {
-  let actor = ActorRef::new(Pid::new(41, 0), SilentSender);
+  let mut actor = ActorRef::new(Pid::new(41, 0), SilentSender);
 
-  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout result");
   assert!(matches!(result, Err(AskError::Timeout)));
@@ -140,8 +141,7 @@ fn ask_with_timeout_times_out_after_scheduler_tick() {
   let cell = ActorCell::create(state.clone(), pid, None, "ask-timeout".into(), &props).expect("create actor");
   state.register_cell(cell.clone());
 
-  let response =
-    cell.actor_ref().ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = cell.actor_ref().ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   assert!(response.future().with_read(|inner| !inner.is_ready()));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
@@ -160,11 +160,11 @@ fn child_ref_ask_with_timeout_times_out_after_scheduler_tick() {
     ActorCell::create(state.clone(), parent_pid, None, "parent".into(), &parent_props).expect("create parent");
   state.register_cell(parent_cell);
 
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| NoopActor);
   let mut child = context.spawn_child(&child_props).expect("spawn child");
 
-  let response = child.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1)).expect("ask should send");
+  let response = child.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
   assert!(response.future().with_read(|inner| !inner.is_ready()));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
@@ -189,8 +189,8 @@ fn graceful_stop_finishes_after_target_disappears() {
       .expect("schedule removal");
   });
 
-  let actor_ref = cell.actor_ref();
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(5)));
+  let mut actor_ref = cell.actor_ref();
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(5)));
   match poll_future(future.as_mut()) {
     | Poll::Ready(Ok(())) => {},
     | Poll::Pending => {
@@ -210,8 +210,9 @@ fn graceful_stop_with_message_returns_timeout_when_target_stays_alive() {
   let cell = ActorCell::create(state.clone(), pid, None, "stubborn".into(), &props).expect("create actor");
   state.register_cell(cell.clone());
 
-  let actor_ref = cell.actor_ref();
-  let mut future = Box::pin(graceful_stop_with_message(&actor_ref, AnyMessage::new("stop"), Duration::from_millis(1)));
+  let mut actor_ref = cell.actor_ref();
+  let mut future =
+    Box::pin(graceful_stop_with_message(&mut actor_ref, AnyMessage::new("stop"), Duration::from_millis(1)));
   assert!(matches!(poll_future(future.as_mut()), Poll::Pending));
 
   state.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
@@ -221,23 +222,23 @@ fn graceful_stop_with_message_returns_timeout_when_target_stays_alive() {
 
 #[test]
 fn graceful_stop_returns_send_failed_without_system() {
-  let actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
-  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed))));
+  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
 }
 
 #[test]
 fn graceful_stop_succeeds_when_target_is_already_terminated() {
   let system = ActorSystem::new_empty().state();
-  let actor_ref = ActorRef::with_system(Pid::new(91, 0), SilentSender, &system);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::with_system(Pid::new(91, 0), SilentSender, &system);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Ok(()))));
 }
 
 #[test]
-fn graceful_stop_returns_send_failed_when_stop_message_cannot_be_delivered() {
+fn graceful_stop_returns_send_failed_when_stop_send_fails_and_target_stays_alive() {
   let system = ActorSystem::new_empty();
   let state = system.state();
   let pid = state.allocate_pid();
@@ -245,10 +246,14 @@ fn graceful_stop_returns_send_failed_when_stop_message_cannot_be_delivered() {
   let cell = ActorCell::create(state.clone(), pid, None, "send-failed".into(), &props).expect("create actor");
   state.register_cell(cell);
 
-  let actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  // stop message の同期送信が失敗し、actor がまだ生存している場合は
+  // graceful_stop 自体も即座に SendFailed を返す。
+  let mut actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
-  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed))));
+  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
+  assert!(state.dead_letters().iter().any(|entry| entry.recipient() == Some(pid)
+    && entry.reason() == crate::core::dead_letter::DeadLetterReason::RecipientUnavailable));
 }
 
 #[test]
@@ -260,8 +265,8 @@ fn graceful_stop_succeeds_when_target_disappears_during_send() {
   let cell = ActorCell::create(state.clone(), pid, None, "disappearing".into(), &props).expect("create actor");
   state.register_cell(cell);
 
-  let actor_ref = ActorRef::with_system(pid, DisappearingSender { pid, system: state.clone() }, &state);
-  let mut future = Box::pin(graceful_stop(&actor_ref, Duration::from_millis(1)));
+  let mut actor_ref = ActorRef::with_system(pid, DisappearingSender { pid, system: state.clone() }, &state);
+  let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Ok(()))));
 }

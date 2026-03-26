@@ -173,7 +173,7 @@ where
     Ok(())
   }
 
-  fn stash_current_message(&self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
+  fn stash_current_message(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
     match ctx.stash_with_limit(self.actor.stash_capacity()) {
       | Ok(()) => Ok(()),
       | Err(error) if ActorContext::is_stash_overflow_error(&error) => match self.actor.stash_overflow_strategy() {

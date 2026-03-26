@@ -1,6 +1,6 @@
 //! Standard-library wiring for remoting extension lifecycle.
 
-use alloc::{format, string::ToString};
+use alloc::string::ToString;
 
 use fraktor_actor_rs::core::{
   actor::{Actor, ActorContext, actor_ref::ActorRef},
@@ -42,9 +42,10 @@ impl RemotingExtension {
     transport.install_backpressure_hook(control.lock().backpressure_hook());
     let shared_transport: RemoteTransportShared = RemoteTransportShared::new(transport);
     control.lock().register_remote_transport_shared(shared_transport.clone());
-    let mut guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
+    let guardian = system.system_guardian_ref().ok_or(RemotingError::SystemGuardianUnavailable)?;
     let supervisor = spawn_endpoint_supervisor(system, &guardian, control.clone())?;
-    register_shutdown_hook(&mut guardian, &supervisor)?;
+    let mut guardian = guardian;
+    register_shutdown_hook(&mut guardian, &supervisor);
     if config.auto_start() {
       control.lock().start()?;
     }
@@ -67,10 +68,8 @@ fn spawn_endpoint_supervisor(
   Ok(child.actor_ref().clone())
 }
 
-fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) -> Result<(), RemotingError> {
-  guardian
-    .tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())))
-    .map_err(|error| RemotingError::HookRegistrationFailed(format!("{error:?}")))
+fn register_shutdown_hook(guardian: &mut ActorRef, supervisor: &ActorRef) {
+  guardian.tell(AnyMessage::new(SystemGuardianProtocol::RegisterTerminationHook(supervisor.clone())));
 }
 
 struct EndpointSupervisorActor {
@@ -83,12 +82,9 @@ impl EndpointSupervisorActor {
     Self { control, guardian }
   }
 
-  fn acknowledge_shutdown(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+  fn acknowledge_shutdown(&mut self, ctx: &mut ActorContext<'_>) {
     self.control.lock().notify_system_shutdown();
-    self
-      .guardian
-      .tell(AnyMessage::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())))
-      .map_err(|error| ActorError::from_send_error(&error))
+    self.guardian.tell(AnyMessage::new(SystemGuardianProtocol::TerminationHookDone(ctx.self_ref())));
   }
 }
 
@@ -97,7 +93,7 @@ impl Actor for EndpointSupervisorActor {
     if let Some(protocol) = message.downcast_ref::<SystemGuardianProtocol>()
       && matches!(protocol, SystemGuardianProtocol::TerminationHook)
     {
-      self.acknowledge_shutdown(ctx)?;
+      self.acknowledge_shutdown(ctx);
     }
     Ok(())
   }

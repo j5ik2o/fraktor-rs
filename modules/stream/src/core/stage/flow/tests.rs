@@ -248,7 +248,7 @@ fn concat_lazy_appends_secondary_source_after_primary_completion() {
 
 #[test]
 fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion() {
-  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let (secondary_graph, mut secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
   let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
   assert_eq!(secondary_queue.offer(10_u32), QueueOfferResult::Enqueued);
 
@@ -273,7 +273,7 @@ fn prepend_lazy_emits_secondary_source_before_primary_values() {
 
 #[test]
 fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion() {
-  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let (secondary_graph, mut secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
   let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
   assert_eq!(secondary_queue.offer(1_u32), QueueOfferResult::Enqueued);
 
@@ -307,7 +307,7 @@ fn or_else_ignores_secondary_source_after_primary_emits() {
 
 #[test]
 fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
-  let (secondary_graph, secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
+  let (secondary_graph, mut secondary_queue) = Source::<u32, _>::queue_unbounded().into_parts();
   let secondary = Source::from_graph(secondary_graph, StreamNotUsed::new());
   assert_eq!(secondary_queue.offer(5_u32), QueueOfferResult::Enqueued);
 

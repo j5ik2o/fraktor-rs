@@ -2,14 +2,15 @@
 
 use core::marker::PhantomData;
 
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
-  error::SendError,
   futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResponse, AskResult},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, status_reply::StatusReply},
 };
 
@@ -37,6 +38,12 @@ where
     &self.inner
   }
 
+  /// Returns the underlying untyped reference mutably.
+  #[must_use]
+  pub const fn as_untyped_mut(&mut self) -> &mut ActorRef {
+    &mut self.inner
+  }
+
   /// Consumes the wrapper and returns the untyped reference.
   #[must_use]
   pub fn into_untyped(self) -> ActorRef {
@@ -50,12 +57,19 @@ where
   }
 
   /// Sends a typed message to the actor.
+  #[cfg(not(fraktor_disable_tell))]
+  pub fn tell(&mut self, message: M) {
+    self.inner.tell(AnyMessage::new(message));
+  }
+
+  /// Sends a typed message to the actor and preserves synchronous enqueue
+  /// failures.
   ///
   /// # Errors
   ///
-  /// Returns an error if the message cannot be delivered.
-  pub fn tell(&mut self, message: M) -> Result<(), SendError> {
-    self.inner.tell(AnyMessage::new(message))
+  /// Returns an error when the underlying mailbox rejects the message.
+  pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::error::SendError> {
+    self.inner.try_tell(AnyMessage::new(message))
   }
 
   /// Sends a typed request and obtains the ask response.
@@ -66,23 +80,29 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask<R, F>(&mut self, build: F) -> Result<TypedAskResponse<R>, SendError>
+  pub fn ask<R, F>(&mut self, build: F) -> TypedAskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<R>) -> M, {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = if let Some(system) = self.inner.system_state() {
-      let reply_ref = ActorRef::with_system(self.inner.pid(), reply_sender, &system);
-      system.register_ask_future(future.clone());
-      reply_ref
+    let system = self.inner.system_state();
+    let reply_ref = if let Some(system) = &system {
+      ActorRef::with_system(self.inner.pid(), reply_sender, system)
     } else {
       ActorRef::new(self.inner.pid(), reply_sender)
     };
     let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
     let message = build(reply_typed);
-    self.inner.tell(AnyMessage::new(message))?;
-    Ok(TypedAskResponse::from_generic(AskResponse::new(reply_ref, future)))
+    if let Err(error) = self.inner.try_tell(AnyMessage::new(message)) {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+    } else if let Some(system) = system {
+      system.register_ask_future(future.clone());
+    }
+    TypedAskResponse::from_generic(AskResponse::new(reply_ref, future))
   }
 
   /// Sends a typed request expecting a [`StatusReply<R>`] response.
@@ -94,7 +114,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  pub fn ask_with_status<R, F>(&mut self, build: F) -> Result<TypedAskResponse<StatusReply<R>>, SendError>
+  pub fn ask_with_status<R, F>(&mut self, build: F) -> TypedAskResponse<StatusReply<R>>
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<StatusReply<R>>) -> M, {

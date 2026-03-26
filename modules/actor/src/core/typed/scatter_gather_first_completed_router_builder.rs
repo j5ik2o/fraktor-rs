@@ -117,7 +117,7 @@ where
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         match ctx.spawn_child_watched(&props) {
-          | Ok(child) => routee_vec.push(child.actor_ref().clone()),
+          | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("scatter-gather router failed to spawn child: {:?}", e);
             ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
@@ -164,10 +164,10 @@ where
         } else {
           for routee in &routee_snapshot {
             let mut r = routee.clone();
-            if let Err(e) = r.tell(message.clone()) {
+            if let Err(error) = r.try_tell(message.clone()) {
               ctx.system().emit_log(
                 LogLevel::Warn,
-                alloc::format!("scatter-gather router failed to send message to routee: {:?}", e),
+                alloc::format!("scatter-gather router failed to deliver message to routee: {:?}", error),
                 Some(ctx.pid()),
               );
             }
@@ -213,14 +213,9 @@ fn spawn_gather_coordinator<'a, M, R>(
 
   let coord_props = TypedProps::<R>::from_behavior_factory(move || -> Behavior<R> {
     let rt = reply_to.clone();
-    Behaviors::receive_message(move |ctx, msg: &R| {
-      if let Err(e) = rt.clone().tell(msg.clone()) {
-        ctx.system().emit_log(
-          LogLevel::Warn,
-          alloc::format!("scatter-gather coordinator failed to forward reply: {:?}", e),
-          Some(ctx.pid()),
-        );
-      }
+    Behaviors::receive_message(move |_ctx, msg: &R| {
+      let mut reply_to = rt.clone();
+      if let Err(_error) = reply_to.try_tell(msg.clone()) {}
       Ok(Behaviors::stopped())
     })
   });
@@ -235,10 +230,10 @@ fn spawn_gather_coordinator<'a, M, R>(
       let coord_ref = coord_child.actor_ref();
       for routee in routees {
         let mut r = routee.clone();
-        if let Err(e) = r.tell((create_request)(message, coord_ref.clone())) {
+        if let Err(error) = r.try_tell((create_request)(message, coord_ref.clone())) {
           ctx.system().emit_log(
             LogLevel::Warn,
-            alloc::format!("scatter-gather coordinator failed to send request to routee: {:?}", e),
+            alloc::format!("scatter-gather coordinator failed to deliver request: {:?}", error),
             Some(ctx.pid()),
           );
         }
@@ -255,10 +250,7 @@ fn spawn_gather_coordinator<'a, M, R>(
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
       // caller が無応答にならないよう timeout_reply を即時返却する
-      if let Err(tell_err) = fallback_reply_to.tell(fallback_timeout_reply) {
-        let msg = alloc::format!("failed to send timeout_reply after coordinator spawn failure: {:?}", tell_err);
-        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
-      }
+      if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
     },
   }
 }

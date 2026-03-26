@@ -96,7 +96,7 @@ fn main() {
   let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
   let termination = system.when_terminated();
 
-  system.user_guardian_ref().tell(Command::Start).expect("start");
+  system.user_guardian_ref().tell(Command::Start);
 
   // タイマーが動作する時間を待つ
   thread::sleep(std::time::Duration::from_millis(300));

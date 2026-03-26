@@ -47,10 +47,10 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
     }
   });
   let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn actor");
-  let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.actor_ref().clone());
+  let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
 
-  actor.tell(1).expect("first");
-  actor.tell(1).expect("second");
+  actor.tell(1);
+  actor.tell(1);
   wait_until(|| *inner_count.lock() == 2);
 
   assert_eq!(*outer_count.lock(), 1);
@@ -94,12 +94,12 @@ fn ask_sends_request_and_delivers_adapted_response() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::Value { reply_to } => {
         let mut reply_to = reply_to.clone();
-        reply_to.tell(42).map_err(|e| ActorError::from_send_error(&e))?;
+        reply_to.tell(42);
         Ok(Behaviors::same())
       },
       | ResponderMsg::StatusSuccess { reply_to } => {
         let mut reply_to = reply_to.clone();
-        reply_to.tell(StatusReply::success(99)).map_err(|e| ActorError::from_send_error(&e))?;
+        reply_to.tell(StatusReply::success(99));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -146,12 +146,12 @@ fn ask_sends_request_and_delivers_adapted_response() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   // Wait for the responder ref to be registered
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  actor.tell(RequesterMsg::DoAsk).expect("send DoAsk");
+  actor.tell(RequesterMsg::DoAsk);
   wait_until(|| *received.lock() == 42);
 
   assert_eq!(*received.lock(), 42);
@@ -174,7 +174,7 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
       | ResponderMsg::Value { .. } => Ok(Behaviors::same()),
       | ResponderMsg::StatusSuccess { reply_to } => {
         let mut reply_to = reply_to.clone();
-        reply_to.tell(StatusReply::success(99)).map_err(|e| ActorError::from_send_error(&e))?;
+        reply_to.tell(StatusReply::success(99));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -221,11 +221,11 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  actor.tell(RequesterMsg::DoAskWithStatus).expect("send DoAskWithStatus");
+  actor.tell(RequesterMsg::DoAskWithStatus);
   wait_until(|| *received.lock() == 99);
 
   assert_eq!(*received.lock(), 99);
@@ -288,11 +288,11 @@ fn ask_timeout_delivers_error_to_actor() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  actor.tell(RequesterMsg::DoAsk).expect("send DoAsk");
+  actor.tell(RequesterMsg::DoAsk);
   wait_until(|| *got_failure.lock());
 
   assert!(*got_failure.lock(), "timeout should deliver failure to actor");
@@ -314,7 +314,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::Value { reply_to } => {
         let mut reply_to = reply_to.clone();
-        reply_to.tell(10).map_err(|e| ActorError::from_send_error(&e))?;
+        reply_to.tell(10);
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -375,11 +375,11 @@ fn ask_concurrent_same_response_type_delivers_both() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  actor.tell(RequesterMsg::DoAsk).expect("send DoAsk");
+  actor.tell(RequesterMsg::DoAsk);
   // Both asks should deliver 10 each, totaling 20.
   wait_until(|| *total_received.lock() == 20);
 
@@ -413,7 +413,7 @@ fn forward_preserves_sender_through_typed_context() {
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let target_untyped = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
-  let target = TypedActorRef::<u32>::from_untyped(target_untyped);
+  let mut target = TypedActorRef::<u32>::from_untyped(target_untyped);
 
   let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
 
@@ -422,8 +422,8 @@ fn forward_preserves_sender_through_typed_context() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
-  typed_ctx.forward(&target, 42_u32).expect("forward should succeed");
+  let mut typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  typed_ctx.try_forward(&mut target, 42_u32).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -478,9 +478,7 @@ fn ask_with_status_error_preserves_failure_reason() {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
       | ResponderMsg::FailureStatus { reply_to } => {
         let mut reply_to = reply_to.clone();
-        reply_to
-          .tell(StatusReply::<u32>::error("domain failure reason"))
-          .map_err(|e| ActorError::from_send_error(&e))?;
+        reply_to.tell(StatusReply::<u32>::error("domain failure reason"));
         Ok(Behaviors::same())
       },
       | _ => Ok(Behaviors::same()),
@@ -530,11 +528,11 @@ fn ask_with_status_error_preserves_failure_reason() {
   });
 
   let actor = system.as_untyped().spawn(requester_props.to_untyped()).expect("spawn requester");
-  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.actor_ref().clone());
+  let mut actor = TypedActorRef::<RequesterMsg>::from_untyped(actor.into_actor_ref());
 
   wait_until(|| responder_ref_slot.lock().is_some());
 
-  actor.tell(RequesterMsg::DoAskWithStatusError).expect("send DoAskWithStatusError");
+  actor.tell(RequesterMsg::DoAskWithStatusError);
   wait_until(|| !captured_reason.lock().is_empty());
 
   assert_eq!(

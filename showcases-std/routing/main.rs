@@ -8,10 +8,7 @@
 use std::time::{Duration, Instant};
 
 use fraktor_actor_rs::{
-  core::{
-    error::ActorError,
-    typed::{Routers, TypedActorSystem, TypedProps, actor::TypedActorRef},
-  },
+  core::typed::{Routers, TypedActorSystem, TypedProps, actor::TypedActorRef},
   std::typed::Behaviors,
 };
 use fraktor_showcases_std::support;
@@ -52,7 +49,7 @@ fn router_guardian(
           },
           | Command::Read { reply_to } => {
             let mut reply_to = reply_to.clone();
-            reply_to.tell(records.lock().clone()).map_err(|e| ActorError::from_send_error(&e))?;
+            reply_to.tell(records.lock().clone());
             Ok(Behaviors::same())
           },
         })
@@ -78,12 +75,12 @@ fn main() {
 
   // 4つのワークメッセージを送信（2つのルーティーに分配される）
   for value in 0..4_u32 {
-    router.tell(Command::Work(value)).expect("route work");
+    router.tell(Command::Work(value));
   }
   thread::sleep(Duration::from_millis(30));
 
   // 結果を読み取る
-  let response = router.ask::<Vec<(usize, u32)>, _>(|reply_to| Command::Read { reply_to }).expect("ask");
+  let response = router.ask::<Vec<(usize, u32)>, _>(|reply_to| Command::Read { reply_to });
   let mut future = response.future().clone();
   let deadline = Instant::now() + Duration::from_secs(1);
   while !future.is_ready() {

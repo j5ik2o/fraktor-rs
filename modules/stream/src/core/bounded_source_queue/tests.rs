@@ -2,7 +2,7 @@ use crate::core::{BoundedSourceQueue, OverflowStrategy, QueueOfferResult, Stream
 
 #[test]
 fn bounded_source_queue_should_enqueue_until_capacity() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -17,7 +17,7 @@ fn bounded_source_queue_should_panic_when_capacity_is_zero() {
 
 #[test]
 fn bounded_source_queue_should_drop_head_when_configured() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropHead);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropHead);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -29,7 +29,7 @@ fn bounded_source_queue_should_drop_head_when_configured() {
 
 #[test]
 fn bounded_source_queue_should_drop_tail_when_configured() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -41,7 +41,7 @@ fn bounded_source_queue_should_drop_tail_when_configured() {
 
 #[test]
 fn bounded_source_queue_should_fail_offer_when_backpressure_and_full() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::Backpressure);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::Backpressure);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -55,7 +55,7 @@ fn bounded_source_queue_should_fail_offer_when_backpressure_and_full() {
 
 #[test]
 fn bounded_source_queue_should_drop_buffer_and_keep_latest() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropBuffer);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropBuffer);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -67,7 +67,7 @@ fn bounded_source_queue_should_drop_buffer_and_keep_latest() {
 
 #[test]
 fn bounded_source_queue_should_fail_when_configured() {
-  let queue = BoundedSourceQueue::new(1, OverflowStrategy::Fail);
+  let mut queue = BoundedSourceQueue::new(1, OverflowStrategy::Fail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Failure(StreamError::BufferOverflow));
@@ -76,7 +76,7 @@ fn bounded_source_queue_should_fail_when_configured() {
 
 #[test]
 fn bounded_source_queue_should_report_queue_closed_after_complete() {
-  let queue = BoundedSourceQueue::new(1, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(1, OverflowStrategy::DropTail);
   queue.complete();
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::QueueClosed);
@@ -85,7 +85,7 @@ fn bounded_source_queue_should_report_queue_closed_after_complete() {
 
 #[test]
 fn bounded_source_queue_should_drain_buffer_after_complete() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);
@@ -102,7 +102,7 @@ fn bounded_source_queue_should_drain_buffer_after_complete() {
 
 #[test]
 fn bounded_source_queue_should_fail_offer_and_poll_after_fail() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
 
@@ -116,7 +116,7 @@ fn bounded_source_queue_should_fail_offer_and_poll_after_fail() {
 #[test]
 #[should_panic(expected = "bounded source queue already terminated: complete")]
 fn bounded_source_queue_should_panic_when_completed_twice() {
-  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
   queue.complete();
   queue.complete();
@@ -125,7 +125,7 @@ fn bounded_source_queue_should_panic_when_completed_twice() {
 #[test]
 #[should_panic(expected = "bounded source queue already terminated: fail")]
 fn bounded_source_queue_should_panic_when_failed_twice() {
-  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
   queue.fail(StreamError::Failed);
   queue.fail(StreamError::Failed);
@@ -133,7 +133,7 @@ fn bounded_source_queue_should_panic_when_failed_twice() {
 
 #[test]
 fn bounded_source_queue_fail_if_open_should_ignore_already_completed_queue() {
-  let queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::<u32>::new(1, OverflowStrategy::DropTail);
 
   queue.complete();
   assert!(!queue.fail_if_open(StreamError::Failed));
@@ -142,7 +142,7 @@ fn bounded_source_queue_fail_if_open_should_ignore_already_completed_queue() {
 
 #[test]
 fn bounded_source_queue_close_for_cancel_should_discard_buffered_values() {
-  let queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
 
   assert_eq!(queue.offer(1_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(2_u32), QueueOfferResult::Enqueued);

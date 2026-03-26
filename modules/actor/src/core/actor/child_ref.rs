@@ -32,30 +32,43 @@ impl ChildRef {
     &self.actor
   }
 
+  /// Consumes the child reference and returns the underlying actor reference.
+  #[must_use]
+  pub fn into_actor_ref(self) -> ActorRef {
+    self.actor
+  }
+
   /// Sends a user message to the child actor.
+  #[cfg(not(fraktor_disable_tell))]
+  pub fn tell(&mut self, message: AnyMessage) {
+    self.actor.tell(message);
+  }
+
+  /// Sends a user message to the child actor and preserves synchronous
+  /// enqueue failures.
   ///
   /// # Errors
   ///
-  /// Returns an error when the mailbox cannot accept the message.
-  pub fn tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
-    self.actor.tell(message)
+  /// Returns an error when the child mailbox rejects the message.
+  pub fn try_tell(&mut self, message: AnyMessage) -> Result<(), SendError> {
+    self.actor.try_tell(message)
   }
 
   /// Sends a request to the child actor and returns the associated ask response.
   ///
-  /// # Errors
-  ///
-  /// Returns an error when the message cannot be enqueued.
-  pub fn ask(&mut self, message: AnyMessage) -> Result<AskResponse, SendError> {
+  /// Delivery failures and timeouts are observed through the returned ask
+  /// response future.
+  #[must_use]
+  pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
     self.actor.ask(message)
   }
 
   /// Sends a request to the child actor and arranges timeout completion on the response future.
   ///
-  /// # Errors
-  ///
-  /// Returns an error when the message cannot be enqueued.
-  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> Result<AskResponse, SendError> {
+  /// Delivery failures and timeouts are observed through the returned ask
+  /// response future.
+  #[must_use]
+  pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> AskResponse {
     self.actor.ask_with_timeout(message, timeout)
   }
 

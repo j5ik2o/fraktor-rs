@@ -556,10 +556,9 @@ impl ActorCell {
     };
 
     if let Some(message) = message {
-      match self.actor_ref().tell(message) {
-        | Ok(()) => {},
-        | Err(error) => self.system().record_send_error(Some(self.pid), &error),
-      }
+      // pipe_to_self の完了通知は actor 自身の mailbox への best-effort 送信であり、
+      // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
+      let _pipe_delivery = self.actor_ref().try_tell(message);
     }
   }
 
@@ -576,7 +575,7 @@ impl ActorCell {
   }
 
   fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
-    self.poll_pipe_task(task_id);
+    self.poll_pipe_task(task_id)
   }
 
   fn notify_watchers_on_stop(&self) {
@@ -602,13 +601,8 @@ impl ActorCell {
   pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
     let custom_message = self.take_watch_with_message(terminated_pid);
     if let Some(message) = custom_message {
-      match self.actor_ref().tell(message) {
-        | Ok(()) => Ok(()),
-        | Err(error) => {
-          self.system().record_send_error(Some(self.pid), &error);
-          Err(ActorError::from_send_error(&error))
-        },
-      }
+      self.actor_ref().try_tell(message).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(())
     } else {
       let system = ActorSystem::from_state(self.system());
       let mut ctx = ActorContext::new(&system, self.pid);
@@ -851,12 +845,10 @@ impl MessageInvoker for ActorCellInvoker {
       }
     }
     if let Some(identify) = message.payload().downcast_ref::<Identify>() {
-      if let Some(sender) = message.sender().cloned() {
+      if let Some(mut sender) = message.sender().cloned() {
         let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
         // Best-effort reply: the requester may have stopped before the reply arrives.
-        if let Err(send_error) = sender.tell(AnyMessage::new(identity)) {
-          cell.system().record_send_error(Some(cell.pid), &send_error);
-        }
+        sender.try_tell(AnyMessage::new(identity)).map_err(|error| ActorError::from_send_error(&error))?;
       }
       // NOTE: No reply is sent if sender is None (no deadLetters in no_std).
       // Use with_sender() to receive ActorIdentity replies.

@@ -43,7 +43,7 @@ fn main() {
   let termination = system.when_terminated();
 
   // guardian にメッセージを送信
-  system.user_guardian_ref().tell(Command::Greet).expect("tell");
+  system.user_guardian_ref().tell(Command::Greet);
 
   // システムを終了
   // NOTE: 本番コードでは条件変数やチャネルベースの待機を使用してください

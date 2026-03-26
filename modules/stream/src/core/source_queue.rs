@@ -44,7 +44,7 @@ impl<T> SourceQueue<T> {
 
   /// Offers a value into the queue.
   #[must_use]
-  pub fn offer(&self, value: T) -> QueueOfferResult {
+  pub fn offer(&mut self, value: T) -> QueueOfferResult {
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
       return QueueOfferResult::Failure(error.clone());
@@ -57,7 +57,7 @@ impl<T> SourceQueue<T> {
   }
 
   /// Completes the queue and rejects subsequent offers.
-  pub fn complete(&self) {
+  pub fn complete(&mut self) {
     let mut guard = self.inner.lock();
     guard.closed = true;
   }
@@ -81,7 +81,7 @@ impl<T> SourceQueue<T> {
   }
 
   /// Fails the queue and rejects subsequent offers.
-  pub fn fail(&self, error: StreamError) {
+  pub fn fail(&mut self, error: StreamError) {
     let mut guard = self.inner.lock();
     guard.failure = Some(error);
     guard.closed = true;

@@ -112,7 +112,7 @@ where
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         match ctx.spawn_child_watched(&props) {
-          | Ok(child) => routee_vec.push(child.actor_ref().clone()),
+          | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("tail-chopping router failed to spawn child: {:?}", e);
             ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
@@ -157,10 +157,10 @@ where
           // reply_to なし（fire-and-forget）— 最初の1台のみに送信する（broadcast しない）
           if let Some(first) = guard.first() {
             let mut r = first.clone();
-            if let Err(e) = r.tell(message.clone()) {
+            if let Err(error) = r.try_tell(message.clone()) {
               ctx.system().emit_log(
                 LogLevel::Warn,
-                alloc::format!("tail-chopping router failed to send message to routee: {:?}", e),
+                alloc::format!("tail-chopping router failed to deliver message to routee: {:?}", error),
                 Some(ctx.pid()),
               );
             }
@@ -238,11 +238,7 @@ fn spawn_chop_coordinator<'a, M, R>(
       let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
       // caller が無応答にならないよう timeout_reply を即時返却する。
-      // tell 自体が失敗してもログ済みなのでここでは抑制する。
-      if let Err(tell_err) = fallback_reply_to.tell(fallback_timeout_reply) {
-        let msg = alloc::format!("failed to send timeout_reply after coordinator spawn failure: {:?}", tell_err);
-        ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
-      }
+      if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
     },
   }
 }
@@ -278,10 +274,10 @@ where
       // 最初の routee へ即時送信する
       if let Some(first) = routees.first() {
         let mut r = first.clone();
-        if let Err(e) = r.tell((create_request)(&message, adapter_ref.clone())) {
+        if let Err(error) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
           ctx.system().emit_log(
             LogLevel::Warn,
-            alloc::format!("tail-chopping coordinator failed to send request to first routee: {:?}", e),
+            alloc::format!("tail-chopping coordinator failed to deliver initial request: {:?}", error),
             Some(ctx.pid()),
           );
         }
@@ -315,23 +311,18 @@ where
 
       Behaviors::receive_message(move |ctx, cmd: &ChopCommand<R>| match cmd {
         | ChopCommand::Reply(r) => {
-          if let Err(e) = (*reply_to).clone().tell(r.clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("tail-chopping coordinator failed to forward reply: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          let mut target = (*reply_to).clone();
+          if let Err(_error) = target.try_tell(r.clone()) {}
           Ok(Behaviors::stopped())
         },
         | ChopCommand::SendNext => {
           let mut idx = current_index.lock();
           if *idx < routees.len() {
             let mut r = routees[*idx].clone();
-            if let Err(e) = r.tell((create_request)(&message, adapter_ref.clone())) {
+            if let Err(error) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
               ctx.system().emit_log(
                 LogLevel::Warn,
-                alloc::format!("tail-chopping coordinator failed to send request to routee: {:?}", e),
+                alloc::format!("tail-chopping coordinator failed to deliver request: {:?}", error),
                 Some(ctx.pid()),
               );
             }
@@ -349,13 +340,8 @@ where
           Ok(Behaviors::same())
         },
         | ChopCommand::FinalTimeout => {
-          if let Err(e) = (*reply_to).clone().tell((*timeout_reply).clone()) {
-            ctx.system().emit_log(
-              LogLevel::Warn,
-              alloc::format!("tail-chopping coordinator failed to send timeout reply: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          let mut target = (*reply_to).clone();
+          if let Err(_error) = target.try_tell((*timeout_reply).clone()) {}
           Ok(Behaviors::stopped())
         },
       })

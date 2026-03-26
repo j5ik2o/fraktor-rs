@@ -5,8 +5,11 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use super::RecipientRef;
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContext, Pid, actor_ref::ActorRef},
-  error::ActorError,
+  actor::{
+    Actor, ActorCell, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  },
+  error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
   system::ActorSystem,
@@ -28,8 +31,8 @@ impl Actor for ProbeActor {
     if let Some(value) = message.downcast_ref::<u32>() {
       self.received.lock().push(*value);
     } else if let Some(request) = message.downcast_ref::<EchoRequest>() {
-      let reply_to = request.reply_to.clone();
-      reply_to.tell(AnyMessage::new(request.value)).map_err(|error| ActorError::from_send_error(&error))?;
+      let mut reply_to = request.reply_to.clone();
+      reply_to.tell(AnyMessage::new(request.value));
     }
     Ok(())
   }
@@ -39,6 +42,14 @@ impl Actor for ProbeActor {
 struct EchoRequest {
   value:    u32,
   reply_to: ActorRef,
+}
+
+struct FailingSender;
+
+impl ActorRefSender for FailingSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
+  }
 }
 
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
@@ -60,7 +71,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn send_via_recipient<R>(recipient: &mut R, message: u32)
 where
   R: RecipientRef<u32>, {
-  recipient.tell(message).expect("tell");
+  recipient.tell(message);
 }
 
 #[test]
@@ -106,8 +117,7 @@ fn typed_recipient_ref_supports_ask() {
   let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest {
     value:    41,
     reply_to: reply_to.into_untyped(),
-  })
-  .expect("ask");
+  });
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   assert_eq!(future.try_take().expect("ready").expect("ok"), 41);
@@ -121,10 +131,38 @@ fn untyped_recipient_ref_supports_ask() {
   let cell = register_cell(&system, pid, "untyped-ask", &props);
   let mut recipient = cell.actor_ref();
 
-  let response =
-    RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 99, reply_to }).expect("ask");
-  wait_until(|| response.future().with_read(|future| future.is_ready()));
-  let result = response.future().with_write(|future| future.try_take()).expect("ready");
+  let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 99, reply_to });
+  let future = response.future().clone();
+  wait_until(|| future.with_read(|inner| inner.is_ready()));
+  let result = future.with_write(|inner| inner.try_take()).expect("ready");
   let reply = result.expect("ask ok");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&99));
+}
+
+/// `TypedActorRef::tell` returns `()` (fire-and-forget, Pekko-compatible).
+/// `try_tell` no longer exists on TypedActorRef.
+#[test]
+fn typed_actor_ref_tell_returns_unit() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let received = received.clone();
+    move || ProbeActor::new(received.clone())
+  });
+  let cell = register_cell(&system, pid, "typed-tell", &props);
+  let mut recipient = TypedActorRef::<u32>::from_untyped(cell.actor_ref());
+
+  // Type constraint: tell MUST return ()
+  recipient.tell(42);
+  wait_until(|| received.lock().as_slice() == [42]);
+}
+
+/// `TypedActorRef::tell` on a failing sender does not panic.
+#[test]
+fn typed_actor_ref_tell_on_failing_sender_does_not_panic() {
+  let mut recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
+
+  // tell is fire-and-forget: no Result, no panic
+  recipient.tell(1);
 }

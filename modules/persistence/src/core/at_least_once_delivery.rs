@@ -132,21 +132,18 @@ impl AtLeastOnceDelivery {
   }
 
   /// Handles a redelivery tick message and returns a warning payload when the threshold is reached.
-  /// # Errors
   ///
-  /// Returns `PersistenceError::MessagePassing` when any redelivery send fails.
-  pub fn handle_message(
-    &mut self,
-    message: &dyn Any,
-    now: TimerInstant,
-  ) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
+  /// Returns `None` when `message` is not a [`RedeliveryTick`] or when no
+  /// delivery crosses the warning threshold on this tick.
+  #[must_use]
+  pub fn handle_message(&mut self, message: &dyn Any, now: TimerInstant) -> Option<UnconfirmedWarning> {
     if !Self::is_redelivery_tick(message) {
-      return Ok(None);
+      return None;
     }
     self.redeliver_overdue(now)
   }
 
-  fn redeliver_overdue(&mut self, now: TimerInstant) -> Result<Option<UnconfirmedWarning>, PersistenceError> {
+  fn redeliver_overdue(&mut self, now: TimerInstant) -> Option<UnconfirmedWarning> {
     let mut warnings = Vec::new();
     let redeliver_interval = self.config.redeliver_interval();
     let warning_attempt = self.config.warn_after_number_of_unconfirmed_attempts();
@@ -159,14 +156,15 @@ impl AtLeastOnceDelivery {
       .take(burst_limit)
     {
       let warning = (delivery.attempt() == warning_attempt).then(|| delivery.clone());
-      Self::send_delivery(delivery)?;
-      delivery.mark_redelivered(now);
-      if let Some(warning) = warning {
-        warnings.push(warning);
+      if Self::send_delivery(delivery) {
+        delivery.mark_redelivered(now);
+        if let Some(warning) = warning {
+          warnings.push(warning);
+        }
       }
     }
 
-    if warnings.is_empty() { Ok(None) } else { Ok(Some(UnconfirmedWarning::new(warnings))) }
+    if warnings.is_empty() { None } else { Some(UnconfirmedWarning::new(warnings)) }
   }
 
   fn is_overdue(delivery: &UnconfirmedDelivery, now: TimerInstant, redeliver_interval: core::time::Duration) -> bool {
@@ -200,11 +198,10 @@ impl AtLeastOnceDelivery {
   ///
   /// # Errors
   ///
-  /// Returns `PersistenceError::MessagePassing` when the delivery limit is exceeded
-  /// or when the destination rejects the message.
+  /// Returns `PersistenceError::MessagePassing` when the delivery limit is exceeded.
   pub fn deliver<M>(
     &mut self,
-    destination: ActorRef,
+    mut destination: ActorRef,
     sender: Option<ActorRef>,
     timestamp: TimerInstant,
     build: impl FnOnce(u64) -> M,
@@ -218,16 +215,16 @@ impl AtLeastOnceDelivery {
     let delivery_id = self.next_delivery_id();
     let payload = ArcShared::new(build(delivery_id));
     let message = AnyMessage::from_erased(payload.clone(), sender.clone(), false);
-    destination.tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
+    destination.try_tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
 
     let unconfirmed = UnconfirmedDelivery::new(delivery_id, destination, payload, sender, timestamp, 1);
     self.add_unconfirmed(unconfirmed);
     Ok(delivery_id)
   }
 
-  fn send_delivery(delivery: &UnconfirmedDelivery) -> Result<(), PersistenceError> {
+  fn send_delivery(delivery: &UnconfirmedDelivery) -> bool {
     let message = AnyMessage::from_erased(delivery.payload_arc(), delivery.sender().cloned(), false);
-    delivery.destination().tell(message).map_err(|error| PersistenceError::MessagePassing(format!("{error:?}")))?;
-    Ok(())
+    let mut destination = delivery.destination().clone();
+    destination.try_tell(message).is_ok()
   }
 }

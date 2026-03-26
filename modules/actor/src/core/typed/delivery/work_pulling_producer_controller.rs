@@ -13,7 +13,6 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
-  error::ActorError,
   event::logging::LogLevel,
   typed::{
     Behaviors, Listing, Receptionist, ServiceKey,
@@ -271,7 +270,7 @@ impl WorkPullingProducerController {
           deferred
         }; // ステートロックはここで解放される
 
-        execute_wppc_deferred(deferred, ctx, &state)?;
+        execute_wppc_deferred(deferred, ctx, &state);
         Ok(Behaviors::same())
       })
     })
@@ -288,11 +287,11 @@ fn subscribe_to_receptionist<A>(
   let subscribe_cmd = Receptionist::subscribe(worker_service_key, listing_adapter.clone());
   let system = ctx.system();
   if let Some(mut receptionist_ref) = system.receptionist_ref()
-    && let Err(e) = receptionist_ref.tell(subscribe_cmd)
+    && let Err(error) = receptionist_ref.try_tell(subscribe_cmd)
   {
     ctx.system().emit_log(
       LogLevel::Warn,
-      alloc::format!("failed to subscribe to receptionist: {:?}", e),
+      alloc::format!("work-pulling producer controller failed to subscribe receptionist: {:?}", error),
       Some(ctx.pid()),
     );
   }
@@ -440,22 +439,15 @@ fn execute_wppc_deferred<A>(
   actions: Vec<WppcDeferredAction<A>>,
   ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   state: &ArcShared<RuntimeMutex<WorkPullingState<A>>>,
-) -> Result<(), ActorError>
-where
+) where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | WppcDeferredAction::Tell(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
-      },
-      | WppcDeferredAction::TellWorkerStats(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
-      },
-      | WppcDeferredAction::RequestNext(mut target, msg) => {
-        target.tell(msg).map_err(|e| ActorError::from_send_error(&e))?;
-      },
-      | WppcDeferredAction::StopWorkerPc(pc_ref) => {
-        pc_ref.as_untyped().poison_pill().map_err(|e| ActorError::from_send_error(&e))?;
+      | WppcDeferredAction::Tell(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | WppcDeferredAction::TellWorkerStats(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | WppcDeferredAction::RequestNext(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | WppcDeferredAction::StopWorkerPc(mut pc_ref) => {
+        stop_worker_producer_controller(&mut pc_ref);
       },
       | WppcDeferredAction::SpawnWorker { worker_ref, producer_id: pc_producer_id, demand_adapter } => {
         // ワーカー PC を生成し、先に state に登録してから tell() する。
@@ -469,13 +461,11 @@ where
           // InternalDemand がインラインで処理され、state.workers に
           // 登録済みなので demand シグナルが正しく反映される。
           let mut pc_start = pc_ref.clone();
-          pc_start
-            .tell(ProducerController::start(demand_adapter.clone()))
-            .map_err(|e| ActorError::from_send_error(&e))?;
+          if let Err(_error) = pc_start.try_tell(ProducerController::start(demand_adapter.clone())) {}
 
           let cc_ref = TypedActorRef::<ConsumerControllerCommand<A>>::from_untyped(worker_ref.clone());
           let mut pc_reg = pc_ref;
-          pc_reg.tell(ProducerController::register_consumer(cc_ref)).map_err(|e| ActorError::from_send_error(&e))?;
+          if let Err(_error) = pc_reg.try_tell(ProducerController::register_consumer(cc_ref)) {}
 
           // バッファ済みメッセージを排出する
           let mut s = state.lock();
@@ -485,12 +475,8 @@ where
           drop(s);
           for da in drain_deferred {
             match da {
-              | WppcDeferredAction::Tell(mut t, m) => {
-                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
-              },
-              | WppcDeferredAction::RequestNext(mut t, m) => {
-                t.tell(m).map_err(|e| ActorError::from_send_error(&e))?;
-              },
+              | WppcDeferredAction::Tell(mut t, m) => if let Err(_error) = t.try_tell(m) {},
+              | WppcDeferredAction::RequestNext(mut t, m) => if let Err(_error) = t.try_tell(m) {},
               | _ => {},
             }
           }
@@ -498,7 +484,17 @@ where
       },
     }
   }
-  Ok(())
+}
+
+fn stop_worker_producer_controller<A>(pc_ref: &mut TypedActorRef<ProducerControllerCommand<A>>)
+where
+  A: Clone + Send + Sync + 'static, {
+  pc_ref
+    .as_untyped_mut()
+    .try_tell(crate::core::messaging::AnyMessage::new(
+      crate::core::messaging::system_message::SystemMessage::PoisonPill,
+    ))
+    .ok();
 }
 
 /// Result of spawning a per-worker ProducerController.
@@ -531,7 +527,7 @@ where
     },
   };
 
-  let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.actor_ref().clone());
+  let pc_ref = TypedActorRef::<ProducerControllerCommand<A>>::from_untyped(pc_cell.into_actor_ref());
 
   let entry = WorkerEntry {
     worker_ref:          worker_ref.clone(),

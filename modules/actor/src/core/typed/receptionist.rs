@@ -3,13 +3,14 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   actor::actor_ref::ActorRef,
+  error::ActorError,
   typed::{
     actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors, listing::Listing,
     receptionist_command::ReceptionistCommand, service_key::ServiceKey,
@@ -60,14 +61,7 @@ impl Receptionist {
                 Some(ctx.pid()),
               );
             }
-            let failed = notify_subscribers(&guard.subscribers, &key, &guard.registrations);
-            for pid in failed {
-              ctx.system().emit_log(
-                crate::core::event::logging::LogLevel::Warn,
-                format!("receptionist failed to notify subscriber {pid:?} on register"),
-                Some(ctx.pid()),
-              );
-            }
+            notify_subscribers(&guard.subscribers, &key, &guard.registrations);
           }
         },
         | ReceptionistCommand::Deregister { service_id, type_id, actor_ref } => {
@@ -76,14 +70,7 @@ impl Receptionist {
             let before = entry.len();
             entry.retain(|r| r.pid() != actor_ref.pid());
             if entry.len() != before {
-              let failed = notify_subscribers(&guard.subscribers, &key, &guard.registrations);
-              for pid in failed {
-                ctx.system().emit_log(
-                  crate::core::event::logging::LogLevel::Warn,
-                  format!("receptionist failed to notify subscriber {pid:?} on deregister"),
-                  Some(ctx.pid()),
-                );
-              }
+              notify_subscribers(&guard.subscribers, &key, &guard.registrations);
             }
           }
         },
@@ -92,13 +79,7 @@ impl Receptionist {
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
           let mut sub = subscriber.clone();
-          if let Err(e) = sub.tell(listing) {
-            ctx.system().emit_log(
-              crate::core::event::logging::LogLevel::Warn,
-              alloc::format!("receptionist failed to send initial listing to subscriber: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          sub.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
           let subscribers = guard.subscribers.entry(key).or_default();
           if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
             if let Err(e) = ctx.watch(subscriber) {
@@ -127,18 +108,12 @@ impl Receptionist {
           let current = guard.registrations.get(&key).cloned().unwrap_or_default();
           let listing = Listing::new(service_id.clone(), *type_id, current);
           let mut reply = reply_to.clone();
-          if let Err(e) = reply.tell(listing) {
-            ctx.system().emit_log(
-              crate::core::event::logging::LogLevel::Warn,
-              alloc::format!("receptionist failed to send find result: {:?}", e),
-              Some(ctx.pid()),
-            );
-          }
+          reply.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
         },
       }
       Ok(Behaviors::same())
     })
-    .receive_signal(move |ctx, signal| {
+    .receive_signal(move |_ctx, signal| {
       let BehaviorSignal::Terminated(terminated_pid) = signal else {
         return Ok(Behaviors::same());
       };
@@ -160,14 +135,7 @@ impl Receptionist {
       guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
 
       for key in &updated_keys {
-        let failed = notify_subscribers(&guard.subscribers, key, &guard.registrations);
-        for pid in failed {
-          ctx.system().emit_log(
-            crate::core::event::logging::LogLevel::Warn,
-            format!("receptionist failed to notify subscriber {pid:?} on terminated"),
-            Some(ctx.pid()),
-          );
-        }
+        notify_subscribers(&guard.subscribers, key, &guard.registrations);
       }
       Ok(Behaviors::same())
     })
@@ -223,23 +191,17 @@ impl Receptionist {
 }
 
 /// Notifies all subscribers of a key about the current registration set.
-///
-/// Returns the list of subscriber PIDs that failed to receive the listing.
 fn notify_subscribers(
   subscribers: &BTreeMap<RegistryKey, Vec<TypedActorRef<Listing>>>,
   key: &RegistryKey,
   registrations: &BTreeMap<RegistryKey, Vec<ActorRef>>,
-) -> Vec<crate::core::actor::Pid> {
-  let mut failed_pids = Vec::new();
+) {
   if let Some(subs) = subscribers.get(key) {
     let refs = registrations.get(key).cloned().unwrap_or_default();
     let listing = Listing::new(key.0.clone(), key.1, refs);
     for sub in subs {
       let mut s = sub.clone();
-      if s.tell(listing.clone()).is_err() {
-        failed_pids.push(sub.pid());
-      }
+      if let Err(_error) = s.try_tell(listing.clone()) {}
     }
   }
-  failed_pids
 }

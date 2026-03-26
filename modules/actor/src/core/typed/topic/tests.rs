@@ -27,7 +27,7 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
 
   let topic_props = TypedProps::<TopicCommand<u32>>::from_behavior_factory(|| Topic::behavior("numbers"));
   let topic = system.as_untyped().spawn(topic_props.to_untyped()).expect("spawn topic");
-  let mut topic = TypedActorRef::<TopicCommand<u32>>::from_untyped(topic.actor_ref().clone());
+  let mut topic = TypedActorRef::<TopicCommand<u32>>::from_untyped(topic.into_actor_ref());
 
   let received = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber_props = TypedProps::<u32>::from_behavior_factory({
@@ -41,21 +41,21 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
     }
   });
   let subscriber = system.as_untyped().spawn(subscriber_props.to_untyped()).expect("spawn subscriber");
-  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.actor_ref().clone());
+  let subscriber_ref = TypedActorRef::<u32>::from_untyped(subscriber.into_actor_ref());
 
-  topic.tell(Topic::subscribe(subscriber_ref.clone())).expect("subscribe");
-  topic.tell(Topic::publish(42_u32)).expect("publish");
+  topic.tell(Topic::subscribe(subscriber_ref.clone()));
+  topic.tell(Topic::publish(42_u32));
   wait_until(|| received.lock().as_slice() == [42_u32]);
 
-  let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats).expect("ask stats");
+  let stats = topic.ask::<TopicStats, _>(Topic::get_topic_stats);
   wait_until(|| stats.future().is_ready());
   let mut stats_future = stats.future().clone();
   let stats = stats_future.try_take().expect("stats ready").expect("stats ok");
   assert_eq!(stats.local_subscriber_count(), 1);
   assert!(stats.topic_instance_count() >= 1);
 
-  topic.tell(Topic::unsubscribe(subscriber_ref)).expect("unsubscribe");
-  topic.tell(Topic::publish(99_u32)).expect("publish after unsubscribe");
+  topic.tell(Topic::unsubscribe(subscriber_ref));
+  topic.tell(Topic::publish(99_u32));
   wait_until(|| received.lock().as_slice() == [42_u32]);
 
   system.terminate().expect("terminate");

@@ -131,7 +131,7 @@ fn actor_context_children() {
 fn actor_context_spawn_child_with_invalid_parent() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let props = Props::from_fn(|| TestActor);
 
   let result = context.spawn_child(&props);
@@ -170,7 +170,7 @@ fn actor_context_pipe_to_self_enqueues_message() {
     move || ProbeActor::new(log.clone())
   });
   register_cell(&system, pid, "self", &props);
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   context.pipe_to_self(async { 41_i32 }, AnyMessage::new).expect("pipe to self");
 
@@ -188,7 +188,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
     move || ProbeActor::new(log.clone())
   });
   register_cell(&system, pid, "self", &props);
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
   let signal = ActorFutureShared::<i32>::new();
   let future = {
@@ -211,7 +211,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
 fn actor_context_stash_requires_active_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let result = context.stash();
   assert!(result.is_err());
 }
@@ -264,7 +264,7 @@ fn actor_context_stash_with_limit_requires_active_message() {
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "self", &props);
 
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
   let error = context.stash_with_limit(10).expect_err("should fail without active message");
 
   assert!(matches!(error, ActorError::Recoverable(reason) if reason.as_str().contains("active user message")));
@@ -317,7 +317,7 @@ fn actor_context_forward_preserves_sender() {
   }
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let original_sender = ActorRef::new(Pid::new(800, 0), crate::core::actor::actor_ref::NullSender);
 
@@ -326,7 +326,7 @@ fn actor_context_forward_preserves_sender() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+  context.try_forward(&mut target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -350,13 +350,13 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   }
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let context = ActorContext::new(&system, pid);
+  let mut context = ActorContext::new(&system, pid);
 
-  context.forward(&target_ref, AnyMessage::new(42_u32)).expect("forward should succeed");
+  context.try_forward(&mut target_ref, AnyMessage::new(42_u32)).expect("forward");
 
   let captured = inbox.lock();
   assert_eq!(captured.len(), 1);
@@ -378,7 +378,7 @@ fn actor_context_watch_enqueues_system_message() {
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
 
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   let target_ref = target.actor_ref();
   assert!(context.watch(&target_ref).is_ok());
   assert!(target.watchers_snapshot().contains(&watcher_pid));
@@ -400,7 +400,7 @@ fn actor_context_watch_missing_actor_notifies_self() {
   let target_ref = target.actor_ref();
   system.state().remove_cell(&target_pid);
 
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   assert!(context.watch(&target_ref).is_ok());
   assert_eq!(watcher_log.lock().clone(), vec![target_pid]);
 }
@@ -413,7 +413,7 @@ fn actor_context_unwatch_enqueues_message() {
   let props = Props::from_fn(|| TestActor);
   let _watcher = register_cell(&system, watcher_pid, "watcher", &props);
   let target = register_cell(&system, target_pid, "target", &props);
-  let context = ActorContext::new(&system, watcher_pid);
+  let mut context = ActorContext::new(&system, watcher_pid);
   let target_ref = target.actor_ref();
 
   assert!(context.watch(&target_ref).is_ok());
@@ -427,7 +427,7 @@ fn spawn_child_watched_installs_watch() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child_watched(&child_props).expect("child spawn succeeds");
@@ -442,7 +442,7 @@ fn actor_context_child_by_name_returns_matching_child() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child(&child_props).expect("spawn child");
@@ -471,7 +471,7 @@ fn actor_context_stop_child_returns_ok() {
   let parent_pid = system.allocate_pid();
   let props = Props::from_fn(|| TestActor);
   let _parent = register_cell(&system, parent_pid, "parent", &props);
-  let context = ActorContext::new(&system, parent_pid);
+  let mut context = ActorContext::new(&system, parent_pid);
   let child_props = Props::from_fn(|| TestActor);
 
   let child = context.spawn_child(&child_props).expect("spawn child");
@@ -504,4 +504,83 @@ fn actor_context_tags_returns_empty_without_tags() {
   let context = ActorContext::new(&system, pid);
 
   assert!(context.tags().is_empty());
+}
+
+/// `reply` with a valid sender returns `Ok(())`.
+#[test]
+fn actor_context_reply_with_sender_returns_ok() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct CapturingSender {
+    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  }
+
+  impl ActorRefSender for CapturingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      self.inbox.lock().push(message);
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let sender_ref = ActorRef::new(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_sender(Some(sender_ref));
+
+  let result = context.reply(AnyMessage::new(42_u32));
+  assert!(result.is_ok());
+
+  let captured = inbox.lock();
+  assert_eq!(captured.len(), 1);
+}
+
+/// `reply` with a failing sender propagates the synchronous send failure.
+#[test]
+fn actor_context_reply_with_failing_sender_returns_err() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      Err(crate::core::error::SendError::closed(message))
+    }
+  }
+
+  let sender_ref = ActorRef::new(Pid::new(800, 0), FailingSender);
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_sender(Some(sender_ref));
+
+  // reply は内部で try_tell を使うため、同期配送失敗が返される。
+  let result = context.reply(AnyMessage::new(42_u32));
+  assert!(matches!(result, Err(crate::core::error::SendError::Closed(_))));
+}
+
+/// `forward` on a failing target does not propagate the error (fire-and-forget).
+#[test]
+fn actor_context_forward_on_failing_target_does_not_propagate_error() {
+  use crate::core::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
+
+  struct FailingSender;
+
+  impl ActorRefSender for FailingSender {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+      Err(crate::core::error::SendError::closed(message))
+    }
+  }
+
+  let mut target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  let result = context.try_forward(&mut target_ref, AnyMessage::new(42_u32));
+  assert!(result.is_err());
 }

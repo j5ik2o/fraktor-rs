@@ -3,14 +3,15 @@
 #[cfg(test)]
 mod tests;
 
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
   actor::{
     Pid,
     actor_ref::{ActorRef, AskReplySender},
   },
-  error::SendError,
   futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResponse, AskResult},
+  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, actor::TypedActorRef},
 };
 
@@ -33,18 +34,15 @@ where
   fn pid(&self) -> Pid;
 
   /// Delivers `message` to the recipient.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the message cannot be enqueued.
-  fn tell(&mut self, message: M) -> Result<(), SendError>;
+  #[cfg(not(fraktor_disable_tell))]
+  fn tell(&mut self, message: M);
 
   /// Sends a typed request and obtains the ask response.
   ///
   /// # Errors
   ///
   /// Returns an error if the request cannot be sent.
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M;
@@ -67,11 +65,12 @@ where
     TypedActorRef::pid(self)
   }
 
-  fn tell(&mut self, message: M) -> Result<(), SendError> {
+  #[cfg(not(fraktor_disable_tell))]
+  fn tell(&mut self, message: M) {
     TypedActorRef::tell(self, message)
   }
 
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M, {
@@ -96,25 +95,32 @@ where
     ActorRef::pid(self)
   }
 
-  fn tell(&mut self, message: M) -> Result<(), SendError> {
-    ActorRef::tell(self, AnyMessage::new(message))
+  #[cfg(not(fraktor_disable_tell))]
+  fn tell(&mut self, message: M) {
+    ActorRef::tell(self, AnyMessage::new(message));
   }
 
-  fn ask<R, F>(&mut self, build: F) -> Result<Self::AskResponse<R>, SendError>
+  fn ask<R, F>(&mut self, build: F) -> Self::AskResponse<R>
   where
     R: Send + Sync + 'static,
     F: FnOnce(Self::ReplyRef<R>) -> M, {
     let future = ActorFutureShared::<AskResult>::new();
     let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = if let Some(system) = self.system_state() {
-      let reply_ref = ActorRef::with_system(self.pid(), reply_sender, &system);
-      system.register_ask_future(future.clone());
-      reply_ref
+    let system = self.system_state();
+    let reply_ref = if let Some(system) = &system {
+      ActorRef::with_system(self.pid(), reply_sender, system)
     } else {
       ActorRef::new(self.pid(), reply_sender)
     };
     let message = build(reply_ref.clone());
-    ActorRef::tell(self, AnyMessage::new(message))?;
-    Ok(AskResponse::new(reply_ref, future))
+    if let Err(error) = self.try_tell(AnyMessage::new(message)) {
+      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
+      if let Some(waker) = waker {
+        waker.wake();
+      }
+    } else if let Some(system) = system {
+      system.register_ask_future(future.clone());
+    }
+    AskResponse::new(reply_ref, future)
   }
 }

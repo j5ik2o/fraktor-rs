@@ -42,7 +42,7 @@ fn responder() -> Behavior<ResponderMsg> {
   Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
     | ResponderMsg::GetValue { reply_to } => {
       let mut reply_to = reply_to.clone();
-      reply_to.tell(42).map_err(|e| ActorError::from_send_error(&e))?;
+      reply_to.tell(42);
       Ok(Behaviors::same())
     },
   })
@@ -51,13 +51,12 @@ fn responder() -> Behavior<ResponderMsg> {
 fn requester(done: Arc<AtomicBool>) -> Behavior<RequesterMsg> {
   Behaviors::setup(move |ctx| {
     // 子アクターとして responder を生成
-    let child = ctx.spawn_child(&TypedProps::from_behavior_factory(responder)).expect("spawn responder");
-    let responder_ref = child.actor_ref();
+    let responder = ctx.spawn_child(&TypedProps::from_behavior_factory(responder)).expect("spawn responder");
     let done = done.clone();
 
     Behaviors::receive_message(move |ctx, msg: &RequesterMsg| match msg {
       | RequesterMsg::Start => {
-        let mut target = responder_ref.clone();
+        let mut target = responder.actor_ref();
         ctx
           .ask(
             &mut target,
@@ -99,7 +98,8 @@ fn main() {
   let termination = system.when_terminated();
 
   // ask リクエストを開始
-  system.user_guardian_ref().tell(RequesterMsg::Start).expect("start");
+  let mut guardian = system.user_guardian_ref();
+  guardian.try_tell(RequesterMsg::Start).expect("enqueue RequesterMsg::Start");
 
   // ask の完了をフラグで待機
   while !done.load(Ordering::Acquire) {

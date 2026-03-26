@@ -144,7 +144,7 @@ where
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         match ctx.spawn_child_watched(&props) {
-          | Ok(child) => routee_vec.push(child.actor_ref().clone()),
+          | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("pool router failed to spawn child: {:?}", e);
             ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
@@ -214,7 +214,7 @@ where
                 let mut new_routees = Vec::new();
                 for _ in 0..delta {
                   match ctx.spawn_child_watched(resize_props) {
-                    | Ok(child) => new_routees.push(child.actor_ref().clone()),
+                    | Ok(child) => new_routees.push(child.into_actor_ref()),
                     | Err(e) => {
                       let msg = alloc::format!("pool router resize failed to spawn child: {:?}", e);
                       ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
@@ -275,10 +275,10 @@ where
           }
         };
         for mut target in targets {
-          if let Err(e) = target.tell(message.clone()) {
+          if let Err(error) = target.try_tell(message.clone()) {
             ctx.system().emit_log(
               LogLevel::Warn,
-              alloc::format!("pool router failed to send message to routee: {:?}", e),
+              alloc::format!("pool router failed to deliver message to routee: {:?}", error),
               Some(ctx.pid()),
             );
           }

@@ -54,7 +54,7 @@ impl Actor for RecordingGuardian {
         .spawn_child(&Props::from_fn(move || RecordingChild::new(log.clone())))
         .map_err(|_| ActorError::recoverable("spawn failed"))?;
       self.child_slot.lock().replace(child.clone());
-      child.tell(AnyMessage::new(Deliver(99))).map_err(|_| ActorError::recoverable("send failed"))?;
+      child.tell(AnyMessage::new(Deliver(99)));
     }
     Ok(())
   }
@@ -113,7 +113,7 @@ fn spawn_and_tell_delivers_message() {
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);
   while log.lock().is_empty() && std::time::Instant::now() < dead_line {
@@ -151,7 +151,7 @@ fn auto_naming_and_duplicate_detection() {
     fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  system.user_guardian_ref().tell(AnyMessage::new(Start)).expect("start");
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   let dead_line = std::time::Instant::now() + Duration::from_millis(20);
   while spawned.lock().len() < 3 && std::time::Instant::now() < dead_line {

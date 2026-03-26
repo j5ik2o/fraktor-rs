@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests;
 
-use core::fmt;
+use alloc::{borrow::Cow, format};
+use core::{any::TypeId, fmt};
+
+use fraktor_actor_rs::core::error::SendError;
 
 /// Errors returned by stream operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +39,13 @@ pub enum StreamError {
   WouldBlock,
   /// Indicates stream processing failed with a user error.
   Failed,
+  /// Indicates stream processing failed with a preserved error context.
+  FailedWithContext {
+    /// Human-readable failure message.
+    message:        Cow<'static, str>,
+    /// Type identity of the original error, if recorded.
+    source_type_id: Option<TypeId>,
+  },
   /// Indicates compression/decompression failed.
   CompressionError {
     /// Compression error kind identifier.
@@ -73,6 +83,46 @@ pub enum StreamError {
   },
 }
 
+impl StreamError {
+  /// Creates a failed stream error while preserving a human-readable context.
+  #[must_use]
+  pub fn failed_with_context(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::FailedWithContext { message: message.into(), source_type_id: None }
+  }
+
+  /// Creates a failed stream error tagged with the source error type.
+  #[must_use]
+  pub fn failed_typed<E: 'static>(message: impl Into<Cow<'static, str>>) -> Self {
+    Self::FailedWithContext { message: message.into(), source_type_id: Some(TypeId::of::<E>()) }
+  }
+
+  /// Returns the type identity of the original error when recorded.
+  #[must_use]
+  pub const fn source_type_id(&self) -> Option<TypeId> {
+    match self {
+      | Self::FailedWithContext { source_type_id, .. } => *source_type_id,
+      | _ => None,
+    }
+  }
+
+  /// Returns `true` when the stored source error matches the provided type.
+  #[must_use]
+  pub fn is_source_type<E: 'static>(&self) -> bool {
+    self.source_type_id() == Some(TypeId::of::<E>())
+  }
+
+  /// Creates a stream error from a send failure while preserving send context.
+  #[must_use]
+  pub fn from_send_error(error: &SendError) -> Self {
+    match error {
+      | SendError::Full(_) | SendError::Suspended(_) => Self::WouldBlock,
+      | SendError::Closed(_) | SendError::NoRecipient(_) | SendError::Timeout(_) => {
+        Self::failed_typed::<SendError>(format!("send failed: {error:?}"))
+      },
+    }
+  }
+}
+
 impl fmt::Display for StreamError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
@@ -89,6 +139,7 @@ impl fmt::Display for StreamError {
       | Self::TypeMismatch => write!(f, "stream type mismatch"),
       | Self::WouldBlock => write!(f, "stream would block"),
       | Self::Failed => write!(f, "stream failed"),
+      | Self::FailedWithContext { message, .. } => write!(f, "{message}"),
       | Self::CompressionError { kind } => write!(f, "compression error: {kind}"),
       | Self::InvalidRoute { route, partition_count } => {
         write!(f, "invalid partition route: route={route} partition_count={partition_count}")

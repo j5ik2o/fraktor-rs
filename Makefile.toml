@@ -182,3 +182,22 @@ script = '''
 set -euo pipefail
 ./scripts/ci-check.sh all
 '''
+
+[tasks.actor-tell-disabled-check]
+description = "Build fraktor-actor-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
+workspace = false
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+CHANNEL=$(awk -F'"' '/^\s*channel\s*=/ {print $2; exit}' rust-toolchain.toml)
+if [ -z "${CHANNEL}" ]; then
+  CHANNEL=nightly
+fi
+EXTRA_RUSTFLAGS="--cfg fraktor_disable_tell"
+if [ -n "${RUSTFLAGS:-}" ]; then
+  export RUSTFLAGS="${RUSTFLAGS} ${EXTRA_RUSTFLAGS}"
+else
+  export RUSTFLAGS="${EXTRA_RUSTFLAGS}"
+fi
+cargo +"${CHANNEL}" check -p fraktor-actor-rs --features test-support,std,tokio-executor
+'''

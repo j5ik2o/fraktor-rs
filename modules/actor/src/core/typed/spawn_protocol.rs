@@ -18,7 +18,7 @@ use crate::core::{
 };
 
 trait SpawnProtocolCommand: Send + Sync {
-  fn execute(&self, ctx: &TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError>;
+  fn execute(&self, ctx: &mut TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError>;
 }
 
 struct SpawnNamedCommand<M>
@@ -33,7 +33,7 @@ impl<M> SpawnProtocolCommand for SpawnNamedCommand<M>
 where
   M: Send + Sync + 'static,
 {
-  fn execute(&self, ctx: &TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
+  fn execute(&self, ctx: &mut TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
     if self.name.is_empty() {
       return Err(ActorError::recoverable("spawn name must not be empty"));
     }
@@ -41,7 +41,7 @@ where
       .spawn_child(&self.props.clone().map_props(|current| current.with_name(self.name.clone())))
       .map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
     let mut reply_to = self.reply_to.clone();
-    reply_to.tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
+    reply_to.try_tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
     Ok(())
   }
 }
@@ -57,12 +57,12 @@ impl<M> SpawnProtocolCommand for SpawnAnonymousCommand<M>
 where
   M: Send + Sync + 'static,
 {
-  fn execute(&self, ctx: &TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
+  fn execute(&self, ctx: &mut TypedActorContext<'_, SpawnProtocol>) -> Result<(), ActorError> {
     let anonymous_props = self.props.clone().map_props(|p| p.without_name());
     let child =
       ctx.spawn_child(&anonymous_props).map_err(|error| ActorError::recoverable(format!("spawn failed: {error:?}")))?;
     let mut reply_to = self.reply_to.clone();
-    reply_to.tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
+    reply_to.try_tell(child.actor_ref()).map_err(|error| ActorError::from_send_error(&error))?;
     Ok(())
   }
 }

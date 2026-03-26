@@ -80,11 +80,11 @@ fn future_resolves_with_send_failed_error() {
   let response = AskResponse::new(sender, future.clone());
 
   // SendFailed エラーで完了
-  future.with_write(|af| af.complete(Err(AskError::SendFailed)));
+  future.with_write(|af| af.complete(Err(AskError::send_failed("mailbox closed"))));
 
   let result = response.future().with_write(|af| af.try_take());
   assert!(result.is_some());
   let ask_result = result.unwrap();
   assert!(ask_result.is_err());
-  assert_eq!(ask_result.unwrap_err(), AskError::SendFailed);
+  assert!(matches!(ask_result.unwrap_err(), AskError::SendFailed(_)));
 }
