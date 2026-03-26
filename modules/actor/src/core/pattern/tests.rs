@@ -237,7 +237,7 @@ fn graceful_stop_succeeds_when_target_is_already_terminated() {
 }
 
 #[test]
-fn graceful_stop_enters_poll_loop_and_records_send_failure_when_stop_send_fails() {
+fn graceful_stop_returns_send_failed_when_stop_send_fails_and_target_stays_alive() {
   let system = ActorSystem::new_empty();
   let state = system.state();
   let pid = state.allocate_pid();
@@ -245,12 +245,12 @@ fn graceful_stop_enters_poll_loop_and_records_send_failure_when_stop_send_fails(
   let cell = ActorCell::create(state.clone(), pid, None, "send-failed".into(), &props).expect("create actor");
   state.register_cell(cell);
 
-  // stop message の同期送信が失敗した場合でも、失敗は dead letter に記録され、
-  // graceful_stop 自体は停止観測のための poll loop に入る。
+  // stop message の同期送信が失敗し、actor がまだ生存している場合は
+  // graceful_stop 自体も即座に SendFailed を返す。
   let mut actor_ref = ActorRef::with_system(pid, crate::core::actor::actor_ref::NullSender, &state);
   let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
-  assert!(matches!(poll_future(future.as_mut()), Poll::Pending));
+  assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
   assert!(state.dead_letters().iter().any(|entry| entry.recipient() == Some(pid)
     && entry.reason() == crate::core::dead_letter::DeadLetterReason::RecipientUnavailable));
 }
