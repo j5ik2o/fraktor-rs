@@ -15,9 +15,13 @@
 ## fraktor-rs 固有の検証
 
 - `implement` / `fix` のレポートに、`./scripts/ci-check.sh` 経由の **成功ログ** が記録されていること（タスクで指定されたスコープに合致すること）
+- `coder-decisions.md` に **構造健全性セルフチェック** と **実行結果** が記録されていること
 - `architect-review.md` / `qa-review.md` が **approved** であること
 - **Phase をまたいだ変更がない**こと（本ピースは 1 Phase 単位）
 - 削除・移動したモジュールパスが、grep で参照残りしていないこと（可能な範囲で）
+- `#[path = "..."]`、`include!`、旧パス互換 `pub use` / `pub type` / wrapper mod、旧パス / 新パスの二重維持がないこと
+
+「コンパイルを壊さないための暫定互換レイヤ」を理由に approve してはならない。no-shim で進められないなら、Phase 分割または設計見直しが必要である。
 
 supervisor は CI を自身で実行しない。レポート上の証跡で確認する。
 
