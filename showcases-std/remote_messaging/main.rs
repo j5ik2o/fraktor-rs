@@ -85,9 +85,7 @@ impl Actor for ReceiverGuardian {
       // reply_to アドレスに応答を送信
       let reply = format!("echo:{}", ping.text);
       let mut reply_to = ping.reply_to.clone();
-      reply_to
-        .try_tell(AnyMessage::new(reply))
-        .map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
+      reply_to.try_tell(AnyMessage::new(reply)).map_err(|e| ActorError::recoverable(format!("reply failed: {e:?}")))?;
     }
     Ok(())
   }
