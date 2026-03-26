@@ -3,6 +3,7 @@
 //! This module contains event publishing and subscription.
 
 mod actor_ref_subscriber;
+mod adapter_failure_event;
 mod backpressure_signal;
 mod base;
 mod correlation_id;
@@ -17,8 +18,10 @@ mod remote_authority_event;
 mod remoting_backpressure_event;
 mod remoting_lifecycle_event;
 mod tick_driver_snapshot;
+mod typed_unhandled_message_event;
 
 pub use actor_ref_subscriber::ActorRefEventStreamSubscriber;
+pub use adapter_failure_event::AdapterFailureEvent;
 pub use backpressure_signal::BackpressureSignal;
 pub use base::EventStream;
 pub use correlation_id::CorrelationId;
@@ -33,3 +36,4 @@ pub use remote_authority_event::RemoteAuthorityEvent;
 pub use remoting_backpressure_event::RemotingBackpressureEvent;
 pub use remoting_lifecycle_event::RemotingLifecycleEvent;
 pub use tick_driver_snapshot::TickDriverSnapshot;
+pub use typed_unhandled_message_event::TypedUnhandledMessageEvent;

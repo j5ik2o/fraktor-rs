@@ -6,11 +6,12 @@ mod tests;
 use alloc::string::String;
 
 use super::{
+  adapter_failure_event::AdapterFailureEvent,
   remote_authority_event::RemoteAuthorityEvent, remoting_backpressure_event::RemotingBackpressureEvent,
   remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
+  typed_unhandled_message_event::TypedUnhandledMessageEvent,
 };
 use crate::core::{
-  actor::Pid,
   dead_letter::DeadLetterEntry,
   dispatch::{
     dispatcher::DispatcherDumpEvent,
@@ -21,7 +22,6 @@ use crate::core::{
   messaging::AnyMessage,
   scheduler::tick_driver::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
-  typed::{UnhandledMessageEvent, message_adapter::AdapterError},
 };
 
 /// Event selected for publication on the event stream.
@@ -40,14 +40,9 @@ pub enum EventStreamEvent {
   /// Dispatcher diagnostic snapshot.
   DispatcherDump(DispatcherDumpEvent),
   /// Unhandled message notification from typed behaviors.
-  UnhandledMessage(UnhandledMessageEvent),
+  UnhandledMessage(TypedUnhandledMessageEvent),
   /// Message adapter failure notification.
-  AdapterFailure {
-    /// Actor pid that produced the failure.
-    pid:   Pid,
-    /// Adapter error describing the failure.
-    error: AdapterError,
-  },
+  AdapterFailure(AdapterFailureEvent),
   /// Serialization failure notification.
   Serialization(SerializationErrorEvent),
   /// Remote authority state transition notification.
@@ -79,7 +74,7 @@ impl Clone for EventStreamEvent {
       | Self::MailboxPressure(event) => Self::MailboxPressure(event.clone()),
       | Self::DispatcherDump(event) => Self::DispatcherDump(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
-      | Self::AdapterFailure { pid, error } => Self::AdapterFailure { pid: *pid, error: error.clone() },
+      | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),
       | Self::RemoteAuthority(event) => Self::RemoteAuthority(event.clone()),
       | Self::RemotingBackpressure(event) => Self::RemotingBackpressure(event.clone()),

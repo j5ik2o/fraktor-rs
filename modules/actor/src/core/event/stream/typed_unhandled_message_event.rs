@@ -11,7 +11,7 @@ use crate::core::actor::Pid;
 /// Unlike `DeadLetter`, unhandled messages indicate that the actor is alive but chose
 /// not to handle a particular message.
 #[derive(Clone, Debug)]
-pub struct UnhandledMessageEvent {
+pub struct TypedUnhandledMessageEvent {
   /// The actor that did not handle the message.
   actor:     Pid,
   /// A description of the message type (e.g., "TypeName").
@@ -20,7 +20,7 @@ pub struct UnhandledMessageEvent {
   timestamp: Duration,
 }
 
-impl UnhandledMessageEvent {
+impl TypedUnhandledMessageEvent {
   /// Creates a new unhandled message event.
   #[must_use]
   pub const fn new(actor: Pid, message: String, timestamp: Duration) -> Self {

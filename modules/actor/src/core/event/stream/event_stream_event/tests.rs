@@ -12,6 +12,7 @@ use crate::core::{
   dead_letter::DeadLetterEntry,
   dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   event::logging::{LogEvent, LogLevel},
+  event::stream::{AdapterFailureEvent, TypedUnhandledMessageEvent},
   lifecycle::{LifecycleEvent, LifecycleStage},
   messaging::AnyMessage,
   serialization::{SerializationErrorEvent, SerializerId},
@@ -86,6 +87,49 @@ fn event_stream_event_mailbox_clone() {
       assert_eq!(e1.user_len(), e2.user_len());
     },
     | _ => panic!("Expected Mailbox variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_unhandled_message_clone() {
+  let payload = TypedUnhandledMessageEvent::new(
+    Pid::new(1, 0),
+    String::from("probe::Command"),
+    Duration::from_secs(3),
+  );
+  let event = EventStreamEvent::UnhandledMessage(payload.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::UnhandledMessage(left), EventStreamEvent::UnhandledMessage(right)) => {
+      assert_eq!(left.actor(), right.actor());
+      assert_eq!(left.message(), right.message());
+      assert_eq!(left.timestamp(), right.timestamp());
+    },
+    | _ => panic!("Expected UnhandledMessage variants"),
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[test]
+fn event_stream_event_adapter_failure_clone() {
+  let payload = AdapterFailureEvent::custom(Pid::new(1, 0), String::from("boom"));
+  let event = EventStreamEvent::AdapterFailure(payload.clone());
+  let cloned = event.clone();
+  match (event, cloned) {
+    | (EventStreamEvent::AdapterFailure(left), EventStreamEvent::AdapterFailure(right)) => {
+      match (left, right) {
+        | (
+          AdapterFailureEvent::Custom { pid: left_pid, detail: left_detail },
+          AdapterFailureEvent::Custom { pid: right_pid, detail: right_detail },
+        ) => {
+          assert_eq!(left_pid, right_pid);
+          assert_eq!(left_detail, right_detail);
+        },
+        | _ => panic!("Expected custom adapter failure events"),
+      }
+    },
+    | _ => panic!("Expected AdapterFailure variants"),
   }
 }
 
