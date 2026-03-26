@@ -151,12 +151,12 @@ impl ActorContext<'_> {
 
   /// Sends a reply to the caller if a reply target is present.
   ///
-  /// The send itself is fire-and-forget; only the absence of a reply target
-  /// is treated as an error.
+  /// This forwards the result of `try_tell` on the current sender.
   ///
   /// # Errors
   ///
-  /// Returns an error if no reply target is set.
+  /// Returns an error if no reply target is set or if the reply message cannot
+  /// be enqueued.
   pub fn reply(&mut self, message: AnyMessage) -> Result<(), SendError> {
     match self.sender.as_mut() {
       | Some(target) => target.try_tell(message),
