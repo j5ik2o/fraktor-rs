@@ -55,8 +55,15 @@ where
     message: &M,
     target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
-    // best-effort: monitor send failure is non-fatal (recorded via dead-letter path).
-    if let Err(_error) = self.monitor_ref.try_tell(message.clone()) {}
+    // best-effort: monitor send failure is non-fatal. dead-letter 観測に加えて
+    // interceptor の診断性を保つため warning log を残す。
+    if let Err(error) = self.monitor_ref.try_tell(message.clone()) {
+      ctx.system().emit_log(
+        crate::core::event::logging::LogLevel::Warn,
+        alloc::format!("monitor interceptor failed to deliver message: {:?}", error),
+        Some(ctx.pid()),
+      );
+    }
     target(ctx, message)
   }
 }

@@ -110,12 +110,13 @@ fn noop_waker() -> Waker {
 }
 
 #[test]
-fn ask_with_timeout_completes_with_timeout_after_scheduler_tick() {
+fn ask_with_timeout_preserves_immediate_reply_without_installing_timeout() {
   let system = ActorSystem::new_empty().state();
   let replies = ArcShared::new(NoStdMutex::new(Vec::new()));
   let mut actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
 
   let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
   let result = response.future().with_write(|inner| inner.try_take()).expect("reply result");
   let reply = result.expect("successful reply");
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&7_u32));

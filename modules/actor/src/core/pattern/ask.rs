@@ -19,6 +19,9 @@ use crate::core::{
 #[must_use]
 pub fn ask_with_timeout(actor_ref: &mut ActorRef, message: AnyMessage, timeout: Duration) -> AskResponse {
   let ask_response = actor_ref.ask(message);
+  if ask_response.future().with_read(|inner| inner.is_ready()) {
+    return ask_response;
+  }
   if let Some(system) = actor_ref.system_state() {
     install_ask_timeout(ask_response.future(), &system, timeout);
   } else {
@@ -32,6 +35,9 @@ pub(crate) fn install_ask_timeout(
   system: &SystemStateShared,
   timeout: Duration,
 ) {
+  if future.with_read(|inner| inner.is_ready()) {
+    return;
+  }
   if timeout.is_zero() {
     complete_with_timeout(future);
     return;
@@ -48,6 +54,9 @@ pub(crate) fn install_ask_timeout(
 }
 
 fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
+  if future.with_read(|inner| inner.is_ready()) {
+    return;
+  }
   let waker = future.with_write(|inner| inner.complete(Err(AskError::Timeout)));
   if let Some(waker) = waker {
     waker.wake();

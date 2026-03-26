@@ -56,9 +56,8 @@ impl ChildRef {
 
   /// Sends a request to the child actor and returns the associated ask response.
   ///
-  /// # Errors
-  ///
-  /// Returns an error when the message cannot be enqueued.
+  /// Delivery failures and timeouts are observed through the returned ask
+  /// response future.
   #[must_use]
   pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
     self.actor.ask(message)
@@ -66,9 +65,8 @@ impl ChildRef {
 
   /// Sends a request to the child actor and arranges timeout completion on the response future.
   ///
-  /// # Errors
-  ///
-  /// Returns an error when the message cannot be enqueued.
+  /// Delivery failures and timeouts are observed through the returned ask
+  /// response future.
   #[must_use]
   pub fn ask_with_timeout(&mut self, message: AnyMessage, timeout: Duration) -> AskResponse {
     self.actor.ask_with_timeout(message, timeout)
