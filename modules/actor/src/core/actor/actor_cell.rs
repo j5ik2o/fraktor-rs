@@ -556,11 +556,9 @@ impl ActorCell {
     };
 
     if let Some(message) = message {
-      if let Err(send_error) = self.actor_ref().try_tell(message) {
-        // pipe_to_self の完了通知は actor 自身の mailbox への best-effort 送信であり、
-        // actor が停止済みなら結果は不要なので dead-letter 観測だけで十分。
-        self.system().record_send_error(Some(self.pid), &send_error);
-      }
+      // pipe_to_self の完了通知は actor 自身の mailbox への best-effort 送信であり、
+      // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
+      let _pipe_delivery = self.actor_ref().try_tell(message);
     }
   }
 
