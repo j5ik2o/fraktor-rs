@@ -1,3 +1,5 @@
+use fraktor_actor_rs::core::{error::SendError, messaging::AnyMessage};
+
 use crate::core::StreamError;
 
 // --- StreamDetached variant ---
@@ -43,4 +45,20 @@ fn stream_detached_clone_preserves_variant() {
 
   // Then: clone equals original
   assert_eq!(original, cloned);
+}
+
+#[test]
+fn stream_error_from_send_error_preserves_send_context() {
+  let error = StreamError::from_send_error(&SendError::closed(AnyMessage::new("payload")));
+
+  assert!(error.is_source_type::<SendError>());
+  assert!(matches!(error, StreamError::FailedWithContext { .. }));
+  assert!(alloc::format!("{error}").contains("send failed"));
+}
+
+#[test]
+fn stream_error_from_send_error_maps_backpressure_to_would_block() {
+  let error = StreamError::from_send_error(&SendError::full(AnyMessage::new("payload")));
+
+  assert_eq!(error, StreamError::WouldBlock);
 }
