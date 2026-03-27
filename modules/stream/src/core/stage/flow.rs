@@ -7,16 +7,16 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowSubFlow, MatCombine, MatCombineRule, OverflowStrategy,
-  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
+  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowSubFlow, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
+  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamBufferConfig, StreamCompletion,
+  StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
   flow_monitor_impl::FlowMonitorImpl,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   validate_positive_argument,
 };
 use crate::core::{
-  Attributes, DynValue, KeepRight, SourceLogic, StreamBufferConfig, StreamCompletion, SubstreamCancelStrategy,
+  Attributes, DynValue, SourceLogic, SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
 };
 
@@ -156,7 +156,7 @@ where
   pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> Flow<In, T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, super::keep_left::KeepLeft)
+    self.via_mat(flow, super::KeepLeft)
   }
 
   /// Composes this flow with a custom materialized value rule.
@@ -184,7 +184,7 @@ where
   /// Connects this flow to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat> {
-    self.to_mat(sink, super::keep_left::KeepLeft)
+    self.to_mat(sink, super::KeepLeft)
   }
 
   /// Connects this flow to a sink with a custom materialized value rule.
@@ -1561,7 +1561,7 @@ where
   pub fn as_flow_with_context(self) -> super::flow_with_context::FlowWithContext<(), In, Out, Mat> {
     let unwrap: Flow<((), In), In, StreamNotUsed> = Flow::from_function(|(_, value)| value);
     let rewrap: Flow<Out, ((), Out), StreamNotUsed> = Flow::from_function(|value| ((), value));
-    let inner = unwrap.via_mat(self, super::keep_right::KeepRight).via(rewrap);
+    let inner = unwrap.via_mat(self, super::KeepRight).via(rewrap);
     super::flow_with_context::FlowWithContext::from_flow(inner)
   }
 
@@ -2080,11 +2080,11 @@ where
   /// strategy.  Unlike [`delay`](Self::delay), the delay can vary
   /// per element depending on the strategy implementation.
   ///
-  /// [`DelayStrategy`]: crate::core::delay_strategy::DelayStrategy
+  /// [`DelayStrategy`]: crate::core::restart::DelayStrategy
   #[must_use]
   pub fn delay_with<S>(mut self, strategy: S) -> Flow<In, Out, Mat>
   where
-    S: crate::core::delay_strategy::DelayStrategy<Out> + 'static, {
+    S: crate::core::restart::DelayStrategy<Out> + 'static, {
     let definition = strategy_delay_definition::<Out, S>(strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -3122,7 +3122,7 @@ where
   pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     Out: Clone, {
-    self.also_to_mat(sink, super::keep_left::KeepLeft)
+    self.also_to_mat(sink, super::KeepLeft)
   }
 
   /// Adds an also-to stage and combines materialized values.
@@ -3175,7 +3175,7 @@ where
   pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    self.divert_to_mat(predicate, sink, super::keep_left::KeepLeft)
+    self.divert_to_mat(predicate, sink, super::KeepLeft)
   }
 
   /// Adds a divert-to stage and combines materialized values.
@@ -4533,7 +4533,7 @@ where
 fn strategy_delay_definition<In, S>(strategy: S) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  S: crate::core::delay_strategy::DelayStrategy<In> + 'static, {
+  S: crate::core::restart::DelayStrategy<In> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = StrategyDelayLogic::new(strategy);

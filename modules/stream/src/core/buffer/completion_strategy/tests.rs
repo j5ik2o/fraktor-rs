@@ -1,4 +1,4 @@
-use crate::core::CompletionStrategy;
+use crate::core::buffer::CompletionStrategy;
 
 // --- constructibility ---
 

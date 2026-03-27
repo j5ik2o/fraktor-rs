@@ -2,7 +2,9 @@
 
 // Bridge imports for children
 use super::{
-  DemandTracker, DynValue, SinkDecision, SinkLogic, SourceLogic, StreamError, StreamNotUsed, downcast_value,
+  DynValue, SinkDecision, SinkLogic, SourceLogic, StreamError, StreamNotUsed,
+  buffer::DemandTracker,
+  downcast_value,
   stage::{Sink, Source, StageKind},
 };
 

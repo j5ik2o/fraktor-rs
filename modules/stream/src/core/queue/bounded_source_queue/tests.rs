@@ -1,5 +1,6 @@
 use crate::core::{
-  OverflowStrategy, StreamError,
+  StreamError,
+  buffer::OverflowStrategy,
   queue::{BoundedSourceQueue, QueueOfferResult},
 };
 

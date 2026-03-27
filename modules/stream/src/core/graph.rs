@@ -14,9 +14,11 @@
 
 // Bridge imports from core level for children
 use super::{
-  DemandTracker, DynValue, MatCombine, RestartBackoff, SinkDecision, StageDefinition, StreamBuffer, StreamBufferConfig,
-  StreamError, StreamPlan, SupervisionStrategy,
+  DynValue, SinkDecision, StageDefinition, StreamError, StreamPlan, SupervisionStrategy,
+  buffer::{DemandTracker, StreamBuffer, StreamBufferConfig},
   lifecycle::{DriveOutcome, StreamState},
+  mat::MatCombine,
+  restart::RestartBackoff,
   shape,
   stage::{StageContext, StageKind},
 };

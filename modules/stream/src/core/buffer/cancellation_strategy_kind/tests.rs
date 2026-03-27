@@ -1,4 +1,4 @@
-use crate::core::CancellationStrategyKind;
+use crate::core::buffer::CancellationStrategyKind;
 
 // --- バリアント構築 ---
 

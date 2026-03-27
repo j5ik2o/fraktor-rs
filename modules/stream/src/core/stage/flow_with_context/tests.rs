@@ -7,7 +7,8 @@ use core::{
 use std::sync::{Arc, Mutex};
 
 use crate::core::{
-  KeepBoth, StreamError, StreamNotUsed, ThrottleMode,
+  StreamError, StreamNotUsed, ThrottleMode,
+  mat::KeepBoth,
   stage::{FlowWithContext, Sink, Source, flow::Flow},
 };
 

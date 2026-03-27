@@ -5,15 +5,15 @@ use alloc::vec::Vec;
 // Bridge submodules from core level
 // Bridge types from core level for children
 use super::{
-  DemandTracker, DynValue, FlowDefinition, FlowLogic, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff,
-  RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition,
-  StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy,
-  ThrottleMode, downcast_value, graph,
+  DynValue, FlowDefinition, FlowLogic, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
+  StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, ThrottleMode,
+  buffer::{DemandTracker, OverflowStrategy, StreamBufferConfig},
+  downcast_value, graph,
   graph::StreamGraph,
-  keep_left, keep_right,
   lifecycle::{self, DriveOutcome},
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion},
   queue::{BoundedSourceQueue, SourceQueue, SourceQueueWithComplete},
+  restart::{RestartBackoff, RestartSettings},
   shape, validate_positive_argument,
 };
 

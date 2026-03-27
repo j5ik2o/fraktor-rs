@@ -13,9 +13,9 @@ use fraktor_actor_rs::core::{
 };
 
 use crate::core::{
-  Completion, KeepRight, StreamError,
+  Completion, StreamError,
   lifecycle::StreamState,
-  mat::{ActorMaterializer, ActorMaterializerConfig, MaterializerLifecycleState},
+  mat::{ActorMaterializer, ActorMaterializerConfig, KeepRight, MaterializerLifecycleState},
   stage::{Sink, Source},
 };
 

@@ -2,7 +2,8 @@ use core::fmt;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::{StreamError, restart_log_settings::RestartLogSettings};
+use super::restart_log_settings::RestartLogSettings;
+use crate::core::StreamError;
 
 #[cfg(test)]
 mod tests;

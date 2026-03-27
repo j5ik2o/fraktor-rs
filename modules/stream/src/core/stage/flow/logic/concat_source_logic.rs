@@ -8,8 +8,10 @@ use super::super::{
   StageDefinition, map_definition,
 };
 use crate::core::{
-  Completion, DownstreamCancelAction, MatCombine, StreamBufferConfig, StreamCompletion, StreamDone,
+  Completion, DownstreamCancelAction, StreamDone,
+  buffer::StreamBufferConfig,
   lifecycle::{DriveOutcome, Stream},
+  mat::{MatCombine, StreamCompletion},
   queue::{QueueOfferResult, SourceQueue},
 };
 

@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::{
   sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
 };
 
-use super::{StreamBufferConfig, StreamError};
+use super::{StreamError, stream_buffer_config::StreamBufferConfig};
 
 #[cfg(test)]
 mod tests;

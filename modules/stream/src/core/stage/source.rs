@@ -707,7 +707,7 @@ where
   pub fn via<T, Mat2>(self, flow: super::flow::Flow<Out, T, Mat2>) -> Source<T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, super::keep_left::KeepLeft)
+    self.via_mat(flow, super::KeepLeft)
   }
 
   /// Composes this source with a flow using a custom materialized rule.
@@ -760,7 +760,7 @@ where
   /// Connects this source to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {
-    self.to_mat(sink, super::keep_left::KeepLeft)
+    self.to_mat(sink, super::KeepLeft)
   }
 
   /// Connects this source to a sink using a custom materialized rule.
@@ -795,7 +795,7 @@ where
   ) -> Result<Materialized<Mat2>, StreamError>
   where
     M: Materializer, {
-    self.to_mat(sink, super::keep_right::KeepRight).run(materializer)
+    self.to_mat(sink, super::KeepRight).run(materializer)
   }
 
   /// Runs this source with a folding sink shortcut.

@@ -1,4 +1,4 @@
-use super::{Demand, StreamError};
+use super::{StreamError, demand::Demand};
 
 #[cfg(test)]
 mod tests;

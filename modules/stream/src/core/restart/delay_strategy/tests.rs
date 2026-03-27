@@ -1,6 +1,4 @@
-use crate::core::{
-  delay_strategy::DelayStrategy, fixed_delay::FixedDelay, linear_increasing_delay::LinearIncreasingDelay,
-};
+use crate::core::restart::{DelayStrategy, FixedDelay, LinearIncreasingDelay};
 
 #[test]
 fn fixed_delay_returns_constant() {

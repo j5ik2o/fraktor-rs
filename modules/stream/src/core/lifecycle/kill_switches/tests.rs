@@ -1,6 +1,7 @@
 use crate::core::{
-  KeepBoth, KeepLeft, KeepRight, StreamBufferConfig,
+  buffer::StreamBufferConfig,
   lifecycle::{KillSwitches, Stream, StreamState},
+  mat::{KeepBoth, KeepLeft, KeepRight},
   stage::{Sink, Source},
 };
 

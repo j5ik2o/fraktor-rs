@@ -1,6 +1,6 @@
 use crate::core::{
-  KeepRight,
   graph::FlowFragment,
+  mat::KeepRight,
   stage::{Sink, Source},
 };
 
@@ -19,7 +19,8 @@ fn flow_fragment_via_and_to_compose_fragment() {
     .via(FlowFragment::from_flow(crate::core::stage::flow::Flow::new().map(|value: u32| value + 1)).build())
     .to_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = crate::core::graph::GraphInterpreter::new(plan, crate::core::StreamBufferConfig::default());
+  let mut interpreter =
+    crate::core::graph::GraphInterpreter::new(plan, crate::core::buffer::StreamBufferConfig::default());
   interpreter.start().expect("start");
   while interpreter.state() == crate::core::lifecycle::StreamState::Running {
     let _ = interpreter.drive();

@@ -1,4 +1,7 @@
-use crate::core::{RestartLogSettings, RestartSettings, StreamError};
+use crate::core::{
+  StreamError,
+  restart::{RestartLogLevel, RestartLogSettings, RestartSettings},
+};
 
 #[test]
 fn restart_settings_normalizes_max_backoff() {
@@ -74,15 +77,13 @@ fn restart_log_settings_default_values() {
   let log_settings = RestartLogSettings::default();
 
   // Then: defaults match Pekko convention
-  assert_eq!(log_settings.log_level(), crate::core::RestartLogLevel::Warning);
-  assert_eq!(log_settings.critical_log_level(), crate::core::RestartLogLevel::Error);
+  assert_eq!(log_settings.log_level(), RestartLogLevel::Warning);
+  assert_eq!(log_settings.critical_log_level(), RestartLogLevel::Error);
   assert_eq!(log_settings.critical_log_level_after(), usize::MAX);
 }
 
 #[test]
 fn restart_log_settings_with_custom_values() {
-  use crate::core::RestartLogLevel;
-
   // Given: custom log settings
   let log_settings = RestartLogSettings::new(RestartLogLevel::Debug, RestartLogLevel::Warning, 5);
 
@@ -99,14 +100,12 @@ fn restart_settings_default_log_settings() {
 
   // Then: log_settings uses default values
   let log_settings = settings.log_settings();
-  assert_eq!(log_settings.log_level(), crate::core::RestartLogLevel::Warning);
-  assert_eq!(log_settings.critical_log_level(), crate::core::RestartLogLevel::Error);
+  assert_eq!(log_settings.log_level(), RestartLogLevel::Warning);
+  assert_eq!(log_settings.critical_log_level(), RestartLogLevel::Error);
 }
 
 #[test]
 fn restart_settings_with_log_settings_replaces_defaults() {
-  use crate::core::RestartLogLevel;
-
   // Given: custom log settings
   let custom_log = RestartLogSettings::new(RestartLogLevel::Info, RestartLogLevel::Error, 10);
 
@@ -120,8 +119,6 @@ fn restart_settings_with_log_settings_replaces_defaults() {
 
 #[test]
 fn restart_log_level_equality() {
-  use crate::core::RestartLogLevel;
-
   // Given: RestartLogLevel variants
   // Then: equality works correctly
   assert_eq!(RestartLogLevel::Debug, RestartLogLevel::Debug);

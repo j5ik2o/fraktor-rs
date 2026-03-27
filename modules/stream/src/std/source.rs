@@ -4,7 +4,8 @@ use alloc::boxed::Box;
 use std::{panic, string::ToString, thread};
 
 use crate::core::{
-  DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  DynValue, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  buffer::OverflowStrategy,
   queue::BoundedSourceQueue,
   stage::{Source, StageKind},
   validate_positive_argument,

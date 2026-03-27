@@ -19,8 +19,9 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  Completion, KeepRight, OverflowStrategy, StreamCompletion, StreamDone, StreamNotUsed,
-  mat::{ActorMaterializer, ActorMaterializerConfig},
+  Completion, StreamDone, StreamNotUsed,
+  buffer::OverflowStrategy,
+  mat::{ActorMaterializer, ActorMaterializerConfig, KeepRight, StreamCompletion},
   stage::{Sink, Source, TopicPubSub},
 };
 

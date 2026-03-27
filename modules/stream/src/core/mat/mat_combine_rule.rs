@@ -1,4 +1,4 @@
-use super::MatCombine;
+use super::mat_combine::MatCombine;
 
 #[cfg(test)]
 mod tests;

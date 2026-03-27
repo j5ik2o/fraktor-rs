@@ -4,9 +4,10 @@ use tempfile::NamedTempFile;
 
 use crate::{
   core::{
-    Completion, KeepBoth, KeepRight, StreamBufferConfig, StreamCompletion, StreamError,
+    Completion, StreamError,
+    buffer::StreamBufferConfig,
     lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-    mat::{Materialized, Materializer, RunnableGraph},
+    mat::{KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
     stage::{Sink, Source},
   },
   std::FileIO,

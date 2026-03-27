@@ -1,4 +1,4 @@
-use crate::core::delay_strategy::DelayStrategy;
+use super::delay_strategy::DelayStrategy;
 
 /// Fixed delay strategy that always returns a constant delay.
 pub struct FixedDelay {

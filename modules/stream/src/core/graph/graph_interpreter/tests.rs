@@ -7,12 +7,14 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  Attributes, Completion, DemandTracker, DynValue, FailureAction, FlowDefinition, FlowLogic, KeepRight, MatCombine,
-  OverflowStrategy, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
-  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamError, StreamNotUsed,
-  StreamPlan, SubstreamCancelStrategy, SupervisionStrategy,
+  Attributes, Completion, DynValue, FailureAction, FlowDefinition, FlowLogic, SinkDecision, SinkDefinition, SinkLogic,
+  SourceDefinition, SourceLogic, StageDefinition, StreamDone, StreamError, StreamNotUsed, StreamPlan,
+  SubstreamCancelStrategy, SupervisionStrategy,
+  buffer::{DemandTracker, OverflowStrategy, StreamBufferConfig},
   graph::GraphInterpreter,
   lifecycle::{DriveOutcome, KillSwitchState, KillSwitchStateHandle, StreamState},
+  mat::{KeepRight, MatCombine, StreamCompletion},
+  restart::{RestartBackoff, RestartSettings},
   shape::{Inlet, Outlet, PortId},
   stage::{
     Sink, Source, StageKind,

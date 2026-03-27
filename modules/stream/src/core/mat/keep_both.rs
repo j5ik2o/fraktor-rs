@@ -1,4 +1,4 @@
-use super::{MatCombine, MatCombineRule};
+use super::{mat_combine::MatCombine, mat_combine_rule::MatCombineRule};
 
 /// Keeps both materialized values.
 pub struct KeepBoth;

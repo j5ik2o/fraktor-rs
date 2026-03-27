@@ -1,9 +1,10 @@
 use super::super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  Completion, KeepRight, StreamBufferConfig, StreamError,
+  Completion, StreamError,
+  buffer::StreamBufferConfig,
   hub::MergeHub,
   lifecycle::{StreamHandleId, StreamHandleImpl, StreamState},
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepRight, Materialized, Materializer, RunnableGraph},
   stage::Sink,
 };
 

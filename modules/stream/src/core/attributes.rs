@@ -6,7 +6,8 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 
 use super::{
-  AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+  AsyncBoundaryAttr, Attribute, DispatcherAttribute, LogLevel, LogLevels,
+  buffer::{CancellationStrategyKind, InputBuffer},
 };
 
 /// Immutable collection of stream attributes.

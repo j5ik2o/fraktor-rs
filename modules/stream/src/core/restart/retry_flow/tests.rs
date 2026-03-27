@@ -1,5 +1,6 @@
 use crate::core::{
-  RetryFlow, StreamNotUsed,
+  StreamNotUsed,
+  restart::RetryFlow,
   stage::{FlowWithContext, Source, flow::Flow},
 };
 

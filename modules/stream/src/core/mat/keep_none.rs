@@ -1,4 +1,4 @@
-use super::{MatCombine, MatCombineRule, StreamNotUsed};
+use super::{StreamNotUsed, mat_combine::MatCombine, mat_combine_rule::MatCombineRule};
 
 /// Drops both materialized values.
 pub struct KeepNone;

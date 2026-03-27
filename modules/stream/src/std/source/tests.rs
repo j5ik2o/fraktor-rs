@@ -4,9 +4,10 @@ use std::sync::{
 };
 
 use crate::core::{
-  Completion, KeepRight, StreamBufferConfig, StreamCompletion, StreamDslError, StreamError,
+  Completion, StreamDslError, StreamError,
+  buffer::StreamBufferConfig,
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
   queue::QueueOfferResult,
   stage::{Sink, Source},
 };
@@ -73,10 +74,7 @@ fn create_producer_sends_elements_and_completes() {
   drive_to_completion(&materialized);
 
   // 検証: 3 つの値が順序通りに collect される
-  assert_eq!(
-    materialized.materialized().poll(),
-    Completion::Ready(Ok(alloc::vec![1_u32, 2, 3]))
-  );
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(alloc::vec![1_u32, 2, 3])));
 }
 
 #[test]
@@ -90,10 +88,7 @@ fn create_producer_empty_completes_stream() {
   drive_to_completion(&materialized);
 
   // 検証: 空のコレクションで正常完了
-  assert_eq!(
-    materialized.materialized().poll(),
-    Completion::Ready(Ok(alloc::vec::Vec::<u32>::new()))
-  );
+  assert_eq!(materialized.materialized().poll(), Completion::Ready(Ok(alloc::vec::Vec::<u32>::new())));
 }
 
 #[test]
@@ -110,10 +105,7 @@ fn create_producer_panic_fails_stream() {
   drive_to_completion(&materialized);
 
   // 検証: StreamError::Failed でストリームが失敗する
-  assert!(matches!(
-    materialized.materialized().poll(),
-    Completion::Ready(Err(StreamError::Failed))
-  ));
+  assert!(matches!(materialized.materialized().poll(), Completion::Ready(Err(StreamError::Failed))));
 }
 
 #[test]

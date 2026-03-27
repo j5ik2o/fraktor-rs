@@ -3,9 +3,10 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, KeepBoth, OverflowStrategy, StreamBufferConfig, StreamError,
+  Completion, StreamError,
+  buffer::{OverflowStrategy, StreamBufferConfig},
   lifecycle::Stream,
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepBoth, Materialized, Materializer, RunnableGraph},
   queue::QueueOfferResult,
   stage::{ActorSource, Sink},
 };
@@ -46,7 +47,7 @@ fn drive_until_terminal<Mat>(materialized: &Materialized<Mat>) {
 fn actor_source_actor_ref_should_emit_told_values() {
   // Given: a source created with actor_ref
   let source = ActorSource::actor_ref::<u32>(4, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 
@@ -67,7 +68,7 @@ fn actor_source_actor_ref_should_emit_told_values() {
 fn actor_source_actor_ref_should_complete_with_empty_output_when_no_values_told() {
   // Given: a source created with actor_ref
   let source = ActorSource::actor_ref::<u32>(4, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 
@@ -85,7 +86,7 @@ fn actor_source_actor_ref_should_complete_with_empty_output_when_no_values_told(
 fn actor_source_actor_ref_should_respect_overflow_strategy() {
   // Given: a source with buffer size 2 and Fail overflow
   let source = ActorSource::actor_ref::<u32>(2, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 
@@ -103,7 +104,7 @@ fn actor_source_actor_ref_should_respect_overflow_strategy() {
 fn actor_source_actor_ref_should_use_drop_head_overflow() {
   // Given: a source with buffer size 2 and DropHead overflow
   let source = ActorSource::actor_ref::<u32>(2, OverflowStrategy::DropHead);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 
@@ -124,7 +125,7 @@ fn actor_source_actor_ref_should_use_drop_head_overflow() {
 fn actor_source_actor_ref_should_reject_tell_after_complete() {
   // Given: a completed source
   let source = ActorSource::actor_ref::<u32>(4, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   let mut source_ref = materialized.materialized().0.clone();
@@ -141,7 +142,7 @@ fn actor_source_actor_ref_should_reject_tell_after_complete() {
 fn actor_source_actor_ref_should_reject_tell_after_fail() {
   // Given: a failed source
   let source = ActorSource::actor_ref::<u32>(4, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   let mut source_ref = materialized.materialized().0.clone();
@@ -158,7 +159,7 @@ fn actor_source_actor_ref_should_reject_tell_after_fail() {
 fn actor_source_actor_ref_materialized_ref_is_clone() {
   // Given: a source's materialized ActorSourceRef
   let source = ActorSource::actor_ref::<u32>(4, OverflowStrategy::Fail);
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   let mut source_ref = materialized.materialized().0.clone();
@@ -192,7 +193,7 @@ fn actor_source_actor_ref_with_backpressure_should_emit_told_values() {
     let acks = acks.clone();
     move || acks.lock().pop_front()
   });
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 
@@ -219,7 +220,7 @@ fn actor_source_actor_ref_with_backpressure_should_complete_with_empty_output() 
     let acks = acks.clone();
     move || acks.lock().pop_front()
   });
-  let graph = source.to_mat(Sink::<u32, crate::core::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
+  let graph = source.to_mat(Sink::<u32, crate::core::mat::StreamCompletion<Vec<u32>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
 

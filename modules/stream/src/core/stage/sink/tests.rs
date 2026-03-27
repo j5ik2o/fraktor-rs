@@ -7,10 +7,10 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DemandTracker, DynValue, KeepBoth, KeepRight, SinkDecision, SinkLogic, StreamBufferConfig,
-  StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  Completion, DynValue, SinkDecision, SinkLogic, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  buffer::{DemandTracker, StreamBufferConfig},
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
   stage::{Sink, Source, StageKind},
 };
 
@@ -757,7 +757,7 @@ fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
 #[test]
 fn sink_combine_mat_keeps_both_materialized_values() {
   // 前提: 異なる materialized value を持つ 2 つの sink を KeepBoth で combine する
-  use crate::core::KeepBoth;
+  use crate::core::mat::KeepBoth;
 
   let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
   let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
@@ -775,7 +775,7 @@ fn sink_combine_mat_keeps_both_materialized_values() {
 #[test]
 fn sink_combine_mat_keeps_left_materialized_value() {
   // 前提: 2 つの sink を KeepLeft で combine する
-  use crate::core::KeepLeft;
+  use crate::core::mat::KeepLeft;
 
   let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
   let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();

@@ -9,7 +9,7 @@
 
 use fraktor_showcases_std::support;
 use fraktor_stream_rs::core::{
-  KeepRight,
+  mat::KeepRight,
   stage::{Sink, Source},
 };
 

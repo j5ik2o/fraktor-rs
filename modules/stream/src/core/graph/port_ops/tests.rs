@@ -97,7 +97,7 @@ fn port_ops_via_chained_produces_correct_result() {
   // Then: running the graph directly produces (3+1)*10 = 40
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan().unwrap();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, crate::core::buffer::StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
 }

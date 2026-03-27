@@ -1,6 +1,7 @@
 use fraktor_stream_rs::core::{
-  KeepBoth, KeepLeft, KeepRight, StreamNotUsed,
+  StreamNotUsed,
   graph::GraphDslBuilder,
+  mat::{KeepBoth, KeepLeft, KeepRight},
   shape::{FanInShape3, FanInShape4, FanInShape5, FanInShape8, Inlet, Outlet, UniformFanOutShape},
   stage::{Sink, Source, flow::Flow},
 };
