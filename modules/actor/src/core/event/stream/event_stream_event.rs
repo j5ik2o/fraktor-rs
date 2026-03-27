@@ -6,10 +6,9 @@ mod tests;
 use alloc::string::String;
 
 use super::{
-  adapter_failure_event::AdapterFailureEvent,
-  remote_authority_event::RemoteAuthorityEvent, remoting_backpressure_event::RemotingBackpressureEvent,
-  remoting_lifecycle_event::RemotingLifecycleEvent, tick_driver_snapshot::TickDriverSnapshot,
-  typed_unhandled_message_event::TypedUnhandledMessageEvent,
+  adapter_failure_event::AdapterFailureEvent, remote_authority_event::RemoteAuthorityEvent,
+  remoting_backpressure_event::RemotingBackpressureEvent, remoting_lifecycle_event::RemotingLifecycleEvent,
+  tick_driver_snapshot::TickDriverSnapshot, typed_unhandled_message_event::TypedUnhandledMessageEvent,
 };
 use crate::core::{
   dead_letter::DeadLetterEntry,

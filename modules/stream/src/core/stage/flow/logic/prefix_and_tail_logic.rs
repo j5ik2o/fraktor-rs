@@ -3,7 +3,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use super::super::super::{
   DynValue, FlowLogic, Source, SourceQueue, StreamError, StreamNotUsed, TailSource, downcast_value,
 };
-use crate::core::QueueOfferResult;
+use crate::core::queue::QueueOfferResult;
 
 pub(in crate::core::stage::flow) struct PrefixAndTailLogic<In> {
   pub(in crate::core::stage::flow) prefix_len:  usize,

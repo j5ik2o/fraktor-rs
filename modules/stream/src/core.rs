@@ -1,13 +1,9 @@
-/// Handle for sending elements into an actor-sourced stream.
-mod actor_source_ref;
 /// Marker attribute for async boundaries in stream graphs.
 mod async_boundary_attr;
 /// Type-safe attribute trait for stream stage metadata.
 mod attribute;
 /// Stream attributes for stage and graph metadata.
 mod attributes;
-/// Bounded queue materialized by source queue stages.
-mod bounded_source_queue;
 /// Cancellation strategy definitions for stream stages.
 mod cancellation_strategy_kind;
 /// Completion polling types.
@@ -67,8 +63,8 @@ mod mat_combine_rule;
 pub mod operator;
 /// Overflow strategy definitions compatible with Pekko terminology.
 mod overflow_strategy;
-/// Queue offer result definitions.
-mod queue_offer_result;
+/// Queue-based materialization handles and offer results.
+pub mod queue;
 /// Log level for restart event diagnostics.
 mod restart_log_level;
 /// Restart log settings for restart event diagnostics.
@@ -79,12 +75,6 @@ mod restart_settings;
 mod retry_flow;
 /// Stream topology shapes and connection points.
 pub mod shape;
-/// Shared pull handle for queue-based sink materialization.
-mod sink_queue;
-/// Source queue materialization handle.
-mod source_queue;
-/// Source queue materialization handle with completion notifications.
-mod source_queue_with_complete;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
 /// Stateful map-concat accumulator trait.
@@ -121,11 +111,9 @@ mod validate_positive_argument;
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
-pub use actor_source_ref::ActorSourceRef;
 pub use async_boundary_attr::AsyncBoundaryAttr;
 pub use attribute::Attribute;
 pub use attributes::Attributes;
-pub use bounded_source_queue::BoundedSourceQueue;
 pub use cancellation_strategy_kind::CancellationStrategyKind;
 pub use completion::Completion;
 pub use completion_strategy::CompletionStrategy;
@@ -152,15 +140,11 @@ pub use log_levels::LogLevels;
 pub use mat_combine::MatCombine;
 pub use mat_combine_rule::MatCombineRule;
 pub use overflow_strategy::OverflowStrategy;
-pub use queue_offer_result::QueueOfferResult;
 pub use restart_log_level::RestartLogLevel;
 pub use restart_log_settings::RestartLogSettings;
 pub use restart_settings::RestartSettings;
 pub use retry_flow::RetryFlow;
 use shape::PortId;
-pub use sink_queue::SinkQueue;
-pub use source_queue::SourceQueue;
-pub use source_queue_with_complete::SourceQueueWithComplete;
 use stage::StageKind;
 pub use stateful_map_concat_accumulator::StatefulMapConcatAccumulator;
 pub use stream_buffer::StreamBuffer;

@@ -1,4 +1,7 @@
-use crate::core::{QueueOfferResult, SourceQueue, StreamError};
+use crate::core::{
+  StreamError,
+  queue::{QueueOfferResult, SourceQueue},
+};
 
 #[test]
 fn source_queue_should_enqueue_and_poll_in_fifo_order() {

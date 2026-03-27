@@ -11,7 +11,10 @@ use std::{
   task::Wake,
 };
 
-use crate::core::{Completion, OverflowStrategy, QueueOfferResult, SourceQueueWithComplete, StreamDone, StreamError};
+use crate::core::{
+  Completion, OverflowStrategy, StreamDone, StreamError,
+  queue::{QueueOfferResult, SourceQueueWithComplete},
+};
 
 struct WakeCounter {
   count: AtomicUsize,

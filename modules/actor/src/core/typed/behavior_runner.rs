@@ -105,10 +105,7 @@ where
   ) -> Result<BehaviorDirective, ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
       let event = Self::adapter_failure_event(ctx, failure);
-      ctx
-        .system()
-        .event_stream()
-        .publish(&EventStreamEvent::AdapterFailure(event));
+      ctx.system().event_stream().publish(&EventStreamEvent::AdapterFailure(event));
     }
     let next = self.current.handle_signal(ctx, signal)?;
     let directive = next.directive();

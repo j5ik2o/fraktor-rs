@@ -123,14 +123,12 @@ fn behavior_runner_publishes_adapter_failure_event() {
   let recorded = events.lock();
   assert_eq!(recorded.len(), 1);
   match &recorded[0] {
-    | EventStreamEvent::AdapterFailure(event) => {
-      match event {
-        | crate::core::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
-          assert_eq!(*event_pid, pid);
-          assert_eq!(detail, "boom");
-        },
-        | _ => panic!("Expected custom adapter failure event"),
-      }
+    | EventStreamEvent::AdapterFailure(event) => match event {
+      | crate::core::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
+        assert_eq!(*event_pid, pid);
+        assert_eq!(detail, "boom");
+      },
+      | _ => panic!("Expected custom adapter failure event"),
     },
     | _ => panic!("Expected AdapterFailure event"),
   }

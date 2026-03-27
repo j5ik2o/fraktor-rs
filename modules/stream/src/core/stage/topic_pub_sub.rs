@@ -188,14 +188,18 @@ where
 }
 
 /// Creates the bridge actor behavior that forwards messages to the stream queue.
-fn bridge_behavior<T>(actor_source_ref: crate::core::ActorSourceRef<T>) -> Behavior<T>
+fn bridge_behavior<T>(actor_source_ref: crate::core::queue::ActorSourceRef<T>) -> Behavior<T>
 where
   T: Clone + Send + Sync + 'static, {
   let actor_source_ref = ArcShared::new(SpinSyncMutex::new(actor_source_ref));
   Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.lock().tell(msg.clone()) {
-    | crate::core::QueueOfferResult::Enqueued | crate::core::QueueOfferResult::Dropped => Ok(Behaviors::same()),
-    | crate::core::QueueOfferResult::QueueClosed => Err(ActorError::recoverable("TopicPubSub: stream queue is closed")),
-    | crate::core::QueueOfferResult::Failure(err) => {
+    | crate::core::queue::QueueOfferResult::Enqueued | crate::core::queue::QueueOfferResult::Dropped => {
+      Ok(Behaviors::same())
+    },
+    | crate::core::queue::QueueOfferResult::QueueClosed => {
+      Err(ActorError::recoverable("TopicPubSub: stream queue is closed"))
+    },
+    | crate::core::queue::QueueOfferResult::Failure(err) => {
       Err(ActorError::recoverable(alloc::format!("TopicPubSub: queue offer failed: {:?}", err)))
     },
   })

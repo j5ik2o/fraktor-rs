@@ -5,7 +5,7 @@ use super::{
   BoundedSourceQueue, DynValue, MatCombine, OverflowStrategy, SourceDefinition, SourceLogic, StageDefinition,
   StageKind, StreamError, SupervisionStrategy, graph::StreamGraph, shape::Outlet, source::Source,
 };
-use crate::core::{ActorSourceRef, Attributes};
+use crate::core::{Attributes, queue::ActorSourceRef};
 
 #[cfg(test)]
 mod tests;

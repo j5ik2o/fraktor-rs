@@ -17,7 +17,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
-use crate::core::{Attributes, SinkQueue};
+use crate::core::{Attributes, queue::SinkQueue};
 
 #[cfg(test)]
 mod tests;

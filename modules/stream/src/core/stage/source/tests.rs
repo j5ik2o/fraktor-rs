@@ -18,11 +18,12 @@ use std::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
-  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
-  StreamNotUsed, SubstreamCancelStrategy,
+  Completion, DynValue, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, RestartSettings, SourceLogic, StageDefinition,
+  StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  SubstreamCancelStrategy,
   lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   mat::{Materialized, Materializer},
+  queue::QueueOfferResult,
   stage::{Sink, Source, StageKind},
 };
 
@@ -761,7 +762,7 @@ fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
 
 #[test]
 fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::SourceQueue::new();
+  let mut queue = crate::core::queue::SourceQueue::new();
   let mut logic = super::UnboundedQueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
@@ -812,7 +813,7 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
 
 #[test]
 fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = crate::core::queue::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
   let mut logic = super::QueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
@@ -866,7 +867,7 @@ fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
 
 #[test]
 fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
-  let mut queue = crate::core::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = crate::core::queue::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);

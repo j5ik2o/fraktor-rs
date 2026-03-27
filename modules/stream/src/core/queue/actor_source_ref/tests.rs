@@ -1,4 +1,7 @@
-use crate::core::{ActorSourceRef, BoundedSourceQueue, OverflowStrategy, QueueOfferResult, StreamError};
+use crate::core::{
+  OverflowStrategy, StreamError,
+  queue::{ActorSourceRef, BoundedSourceQueue, QueueOfferResult},
+};
 
 // --- tell ---
 

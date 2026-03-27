@@ -93,11 +93,7 @@ fn event_stream_event_mailbox_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_unhandled_message_clone() {
-  let payload = TypedUnhandledMessageEvent::new(
-    Pid::new(1, 0),
-    String::from("probe::Command"),
-    Duration::from_secs(3),
-  );
+  let payload = TypedUnhandledMessageEvent::new(Pid::new(1, 0), String::from("probe::Command"), Duration::from_secs(3));
   let event = EventStreamEvent::UnhandledMessage(payload.clone());
   let cloned = event.clone();
   match (event, cloned) {
@@ -117,17 +113,15 @@ fn event_stream_event_adapter_failure_clone() {
   let event = EventStreamEvent::AdapterFailure(payload.clone());
   let cloned = event.clone();
   match (event, cloned) {
-    | (EventStreamEvent::AdapterFailure(left), EventStreamEvent::AdapterFailure(right)) => {
-      match (left, right) {
-        | (
-          AdapterFailureEvent::Custom { pid: left_pid, detail: left_detail },
-          AdapterFailureEvent::Custom { pid: right_pid, detail: right_detail },
-        ) => {
-          assert_eq!(left_pid, right_pid);
-          assert_eq!(left_detail, right_detail);
-        },
-        | _ => panic!("Expected custom adapter failure events"),
-      }
+    | (EventStreamEvent::AdapterFailure(left), EventStreamEvent::AdapterFailure(right)) => match (left, right) {
+      | (
+        AdapterFailureEvent::Custom { pid: left_pid, detail: left_detail },
+        AdapterFailureEvent::Custom { pid: right_pid, detail: right_detail },
+      ) => {
+        assert_eq!(left_pid, right_pid);
+        assert_eq!(left_detail, right_detail);
+      },
+      | _ => panic!("Expected custom adapter failure events"),
     },
     | _ => panic!("Expected AdapterFailure variants"),
   }

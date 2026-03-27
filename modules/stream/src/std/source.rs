@@ -4,10 +4,14 @@ use alloc::boxed::Box;
 use std::{panic, string::ToString, thread};
 
 use crate::core::{
-  BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, StreamNotUsed,
+  queue::BoundedSourceQueue,
   stage::{Source, StageKind},
   validate_positive_argument,
 };
+
+#[cfg(test)]
+mod tests;
 
 struct CreateSourceLogic<T, F> {
   queue:    BoundedSourceQueue<T>,

@@ -1,4 +1,7 @@
-use crate::core::{BoundedSourceQueue, OverflowStrategy, QueueOfferResult, StreamError};
+use crate::core::{
+  OverflowStrategy, StreamError,
+  queue::{BoundedSourceQueue, QueueOfferResult},
+};
 
 #[test]
 fn bounded_source_queue_should_enqueue_until_capacity() {
