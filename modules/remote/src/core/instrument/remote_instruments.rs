@@ -6,7 +6,8 @@ mod tests;
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::TryInto;
 
-use crate::core::{remote_instrument::RemoteInstrument, wire_error::WireError};
+use super::remote_instrument::RemoteInstrument;
+use crate::core::wire::WireError;
 
 /// Collection of remoting instruments used by transport pipelines.
 pub(crate) struct RemoteInstruments {

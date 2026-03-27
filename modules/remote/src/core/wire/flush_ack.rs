@@ -6,13 +6,13 @@ mod tests;
 use alloc::vec::Vec;
 use core::convert::TryInto;
 
-use crate::core::wire_error::WireError;
+use super::wire_error::WireError;
 
 /// Wire kind used for [`FlushAck`] frames.
 pub const FLUSH_ACK_FRAME_KIND: u8 = 0x21;
 const VERSION: u8 = 1;
 
-/// Acknowledges a [`crate::core::flush::Flush`] request with the number of pending ACKs.
+/// Acknowledges a [`super::flush::Flush`] request with the number of pending ACKs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FlushAck {
   expected_acks: u32,

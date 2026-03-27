@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use super::RemoteInstrument;
-use crate::core::wire_error::WireError;
+use crate::core::wire::WireError;
 
 struct ProbeInstrument;
 

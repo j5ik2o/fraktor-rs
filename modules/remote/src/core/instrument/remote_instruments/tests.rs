@@ -4,7 +4,7 @@ use alloc::{sync::Arc, vec::Vec};
 use std::sync::Mutex;
 
 use super::RemoteInstruments;
-use crate::core::{RemoteInstrument, WireError};
+use crate::core::{instrument::RemoteInstrument, wire::WireError};
 
 #[derive(Default)]
 struct InstrumentProbeState {

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::wire_error::WireError;
+use super::wire_error::WireError;
 
 /// Wire kind used for [`Flush`] control frames.
 pub const FLUSH_FRAME_KIND: u8 = 0x20;

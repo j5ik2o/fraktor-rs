@@ -9,7 +9,7 @@ use core::convert::TryInto;
 use fraktor_actor_rs::core::event::stream::CorrelationId;
 
 use super::system_message_envelope::{SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope};
-use crate::core::wire_error::WireError;
+use crate::core::wire::WireError;
 
 const VERSION: u8 = 1;
 /// Wire kind used for ACK frames.

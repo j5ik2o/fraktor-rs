@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
-use crate::core::wire_error::WireError;
+use super::wire_error::WireError;
 
 /// Writes a length-prefixed UTF-8 string into the buffer.
 pub(crate) fn write_string(buffer: &mut Vec<u8>, value: &str) {

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::wire_error::WireError;
+use crate::core::wire::WireError;
 
 /// Hook invoked by remoting encoders/decoders to observe wire metadata and timings.
 pub trait RemoteInstrument: Send + Sync + 'static {

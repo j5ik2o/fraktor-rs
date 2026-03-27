@@ -2,7 +2,7 @@ use alloc::{sync::Arc, vec::Vec};
 use core::time::Duration;
 
 use super::RemotingExtensionConfig;
-use crate::core::{RemoteInstrument, WireError};
+use crate::core::{instrument::RemoteInstrument, wire::WireError};
 
 struct NoopInstrument;
 

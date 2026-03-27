@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use core::convert::TryInto;
 
 #[cfg(feature = "tokio-transport")]
-use crate::core::wire_error::WireError;
+use crate::core::wire::WireError;
 
 #[cfg(feature = "tokio-transport")]
 const VERSION: u8 = 1;

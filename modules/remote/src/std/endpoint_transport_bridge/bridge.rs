@@ -27,7 +27,7 @@ use tokio::{
 
 use super::{EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
-  EventPublisher, FLUSH_ACK_FRAME_KIND, FLUSH_FRAME_KIND, Flush, FlushAck, RemoteInstruments, RemoteNodeId, WireError,
+  EventPublisher, RemoteNodeId,
   endpoint_association::{
     AssociationState, EndpointAssociationCommand, EndpointAssociationCoordinatorShared, EndpointAssociationEffect,
   },
@@ -38,12 +38,14 @@ use crate::core::{
     SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope,
   },
   handshake::{HandshakeFrame, HandshakeKind},
+  instrument::RemoteInstruments,
   remoting_extension::RemotingControlHandle,
   transport::{
     RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError, TransportHandle,
     inbound::{InboundFrame, TransportInbound, TransportInboundShared},
   },
   watcher::{HEARTBEAT_FRAME_KIND, HEARTBEAT_RSP_FRAME_KIND, Heartbeat, HeartbeatRsp, RemoteWatcherCommand},
+  wire::{FLUSH_ACK_FRAME_KIND, FLUSH_FRAME_KIND, Flush, FlushAck, WireError},
 };
 
 const HANDSHAKE_INIT_FRAME_KIND: u8 = 0x01;

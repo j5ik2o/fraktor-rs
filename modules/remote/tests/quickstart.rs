@@ -29,7 +29,7 @@ use fraktor_remote_rs::core::{
   RemotingExtensionId, RemotingExtensionInstaller,
   actor_ref_provider::loopback::{LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup},
   backpressure::FnRemotingBackpressureListener,
-  flight_recorder::remoting_flight_recorder::FlightMetricKind,
+  instrument::flight_recorder::remoting_flight_recorder::FlightMetricKind,
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
   transport::TransportBind,
 };

@@ -35,7 +35,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{EndpointTransportBridge, EndpointTransportBridgeConfig, EndpointTransportBridgeHandle};
 use crate::core::{
-  EventPublisher, FLUSH_ACK_FRAME_KIND, Flush, FlushAck, RemoteInstrument, RemoteNodeId, WireError,
+  EventPublisher, RemoteNodeId,
   endpoint_association::{AssociationState, EndpointAssociationCommand, QuarantineReason},
   endpoint_reader::EndpointReader,
   endpoint_writer::{EndpointWriter, EndpointWriterShared},
@@ -44,6 +44,7 @@ use crate::core::{
     SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope,
   },
   handshake::{HandshakeFrame, HandshakeKind},
+  instrument::RemoteInstrument,
   remoting_extension::{RemotingControlHandle, RemotingExtensionConfig},
   transport::{
     RemoteTransport, RemoteTransportShared, TransportBind, TransportChannel, TransportEndpoint, TransportError,
@@ -51,6 +52,7 @@ use crate::core::{
     inbound::{InboundFrame, TransportInboundShared},
   },
   watcher::{HEARTBEAT_RSP_FRAME_KIND, Heartbeat, HeartbeatRsp, RemoteWatcherCommand},
+  wire::{FLUSH_ACK_FRAME_KIND, Flush, FlushAck, WireError},
 };
 
 struct NoopActor;

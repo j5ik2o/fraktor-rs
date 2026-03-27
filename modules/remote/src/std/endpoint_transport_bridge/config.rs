@@ -5,7 +5,7 @@ use fraktor_actor_rs::core::system::ActorSystemWeak;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  EventPublisher, RemoteInstrument, endpoint_reader::EndpointReader, endpoint_writer::EndpointWriterShared,
+  EventPublisher, endpoint_reader::EndpointReader, endpoint_writer::EndpointWriterShared, instrument::RemoteInstrument,
   remoting_extension::RemotingControlHandle, transport::RemoteTransportShared,
 };
 
