@@ -2,10 +2,8 @@ use alloc::collections::VecDeque;
 use core::marker::PhantomData;
 
 use super::{
-  super::deterministic::{DeterministicEvent, DeterministicLog, DeterministicReplay},
-  SchedulerDiagnosticsEvent,
-  diagnostics_registry::DiagnosticsRegistry,
-  scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription,
+  DeterministicEvent, DeterministicLog, DeterministicReplay, SchedulerDiagnosticsEvent,
+  diagnostics_registry::DiagnosticsRegistry, scheduler_diagnostics_subscription::SchedulerDiagnosticsSubscription,
 };
 
 const DEFAULT_STREAM_CAPACITY: usize = 256;

@@ -21,7 +21,6 @@ mod tick_driver_metadata;
 mod tick_driver_provisioning_context;
 mod tick_driver_trait;
 mod tick_executor_signal;
-mod tick_executor_signal_future;
 mod tick_feed;
 mod tick_metrics;
 mod tick_metrics_probe;
