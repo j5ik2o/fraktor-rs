@@ -8,6 +8,7 @@ mod command;
 mod coordinator;
 mod coordinator_shared;
 mod effect;
+mod endpoint_registry;
 mod quarantine_reason;
 mod result;
 mod state;

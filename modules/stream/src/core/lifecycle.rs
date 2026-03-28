@@ -1,7 +1,7 @@
 //! Stream lifecycle and execution management.
 
 // Bridge imports from core level for children
-use super::{StreamBufferConfig, StreamError, StreamPlan, graph::GraphInterpreter};
+use super::{StreamError, StreamPlan, buffer::StreamBufferConfig, graph::GraphInterpreter};
 
 mod drive_outcome;
 mod kill_switch;

@@ -35,7 +35,7 @@ use super::{
   error::RemotingError, lifecycle_state::RemotingLifecycleState,
 };
 #[cfg(feature = "tokio-transport")]
-use crate::core::RemoteInstrument;
+use crate::core::instrument::RemoteInstrument;
 #[cfg(feature = "tokio-transport")]
 use crate::core::transport::{TransportChannel, TransportEndpoint};
 #[cfg(feature = "tokio-transport")]
@@ -47,7 +47,7 @@ use crate::core::{
   endpoint_reader::EndpointReader,
   endpoint_writer::EndpointWriterShared,
   event_publisher::EventPublisher,
-  flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
+  instrument::flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
 };

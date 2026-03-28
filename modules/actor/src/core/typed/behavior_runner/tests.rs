@@ -38,6 +38,24 @@ impl EventStreamSubscriber for RecordingUnhandledSubscriber {
   }
 }
 
+struct RecordingAdapterFailureSubscriber {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+}
+
+impl RecordingAdapterFailureSubscriber {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for RecordingAdapterFailureSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if matches!(event, EventStreamEvent::AdapterFailure(_)) {
+      self.events.lock().push(event.clone());
+    }
+  }
+}
+
 fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessage>) {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -83,6 +101,94 @@ fn behavior_runner_allows_handled_adapter_failure() {
   let result = runner.on_adapter_failure(&mut typed_ctx, AdapterError::Custom(String::from("oops")));
   assert!(result.is_ok());
   assert!(handled.load(Ordering::SeqCst));
+}
+
+#[test]
+fn behavior_runner_publishes_adapter_failure_event() {
+  let system = ActorSystem::new_empty();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingAdapterFailureSubscriber::new(events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let behavior = Behaviors::receive_message(|_, _msg: &ProbeMessage| Ok(Behaviors::same()));
+  let mut runner = BehaviorRunner::new(behavior);
+
+  let result = runner.on_adapter_failure(&mut typed_ctx, AdapterError::Custom(String::from("boom")));
+
+  assert!(result.is_err());
+  let recorded = events.lock();
+  assert_eq!(recorded.len(), 1);
+  match &recorded[0] {
+    | EventStreamEvent::AdapterFailure(event) => match event {
+      | crate::core::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
+        assert_eq!(*event_pid, pid);
+        assert_eq!(detail, "boom");
+      },
+      | _ => panic!("Expected custom adapter failure event"),
+    },
+    | _ => panic!("Expected AdapterFailure event"),
+  }
+}
+
+#[test]
+fn behavior_runner_publishes_unhandled_message_event_for_unhandled_behavior() {
+  let system = ActorSystem::new_empty();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let behavior = Behaviors::receive_message(|_, _msg: &ProbeMessage| Ok(Behaviors::unhandled()));
+  let mut runner = BehaviorRunner::new(behavior);
+
+  let result = runner.receive(&mut typed_ctx, &ProbeMessage);
+
+  assert!(result.is_ok());
+  let recorded = events.lock();
+  assert_eq!(recorded.len(), 1);
+  match &recorded[0] {
+    | EventStreamEvent::UnhandledMessage(event) => {
+      assert_eq!(event.actor(), pid);
+      assert_eq!(event.message(), core::any::type_name::<ProbeMessage>());
+      assert!(event.timestamp() <= system.state().monotonic_now());
+    },
+    | _ => panic!("Expected UnhandledMessage event"),
+  }
+}
+
+#[test]
+fn behavior_runner_publishes_unhandled_message_event_for_empty_behavior() {
+  let system = ActorSystem::new_empty();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let pid = system.allocate_pid();
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut registry = MessageAdapterRegistry::<ProbeMessage>::new();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let mut runner = BehaviorRunner::new(Behaviors::empty());
+
+  let result = runner.receive(&mut typed_ctx, &ProbeMessage);
+
+  assert!(result.is_ok());
+  let recorded = events.lock();
+  assert_eq!(recorded.len(), 1);
+  match &recorded[0] {
+    | EventStreamEvent::UnhandledMessage(event) => {
+      assert_eq!(event.actor(), pid);
+      assert_eq!(event.message(), core::any::type_name::<ProbeMessage>());
+      assert!(event.timestamp() <= system.state().monotonic_now());
+    },
+    | _ => panic!("Expected UnhandledMessage event"),
+  }
 }
 
 #[test]

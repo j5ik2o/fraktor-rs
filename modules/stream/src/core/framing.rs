@@ -2,9 +2,10 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::TypeId;
 
 use super::{
-  Attributes, DynValue, FlowDefinition, FlowLogic, MatCombine, StageDefinition, StreamError, StreamNotUsed,
-  SupervisionStrategy, downcast_value,
+  Attributes, DynValue, FlowDefinition, FlowLogic, StageDefinition, StreamError, StreamNotUsed, SupervisionStrategy,
+  downcast_value,
   graph::StreamGraph,
+  mat::MatCombine,
   shape::{Inlet, Outlet},
   stage::{BidiFlow, StageKind, flow::Flow},
 };

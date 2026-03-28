@@ -17,7 +17,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
-use crate::core::{Attributes, SinkQueue};
+use crate::core::{Attributes, queue::SinkQueue};
 
 #[cfg(test)]
 mod tests;
@@ -456,7 +456,7 @@ where
       return sinks.remove(0);
     }
     let first = sinks.remove(0);
-    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, super::keep_left::KeepLeft))
+    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, super::KeepLeft))
   }
 }
 
@@ -521,7 +521,7 @@ where
     In2: Send + Sync + 'static,
     F: Fn(In2) -> In + Send + Sync + 'static, {
     let flow = super::flow::Flow::<In2, In, StreamNotUsed>::from_function(func);
-    flow.to_mat(self, super::keep_right::KeepRight)
+    flow.to_mat(self, super::KeepRight)
   }
 
   /// Enables restart semantics with backoff for this sink.

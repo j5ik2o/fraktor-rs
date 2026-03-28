@@ -71,7 +71,7 @@ where
       Flow::from_function(move |(ctx2, value)| (reverse(ctx2), value));
     let remap_output: Flow<(Ctx, Out), (Ctx2, Out), StreamNotUsed> =
       Flow::from_function(move |(ctx, value)| (forward(ctx), value));
-    let inner = remap_input.via_mat(self.inner, super::keep_right::KeepRight).via(remap_output);
+    let inner = remap_input.via_mat(self.inner, super::KeepRight).via(remap_output);
     FlowWithContext { inner, _pd: PhantomData }
   }
 
@@ -206,7 +206,7 @@ where
   where
     Ctx: Clone,
     Out: Clone, {
-    let inner = self.inner.wire_tap_mat(sink.contramap(|(_, value): (Ctx, Out)| value), super::keep_left::KeepLeft);
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(_, value): (Ctx, Out)| value), super::KeepLeft);
     FlowWithContext { inner, _pd: PhantomData }
   }
 
@@ -216,7 +216,7 @@ where
   where
     Ctx: Clone,
     Out: Clone, {
-    let inner = self.inner.wire_tap_mat(sink.contramap(|(ctx, _): (Ctx, Out)| ctx), super::keep_left::KeepLeft);
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(ctx, _): (Ctx, Out)| ctx), super::KeepLeft);
     FlowWithContext { inner, _pd: PhantomData }
   }
 

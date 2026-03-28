@@ -8,7 +8,9 @@ use std::io::{BufReader, BufWriter, Read, Write};
 
 use super::io_error_to_stream_error;
 use crate::core::{
-  DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamCompletion, StreamError,
+  DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
+  buffer::DemandTracker,
+  mat::StreamCompletion,
   stage::{Sink, Source, StageKind},
 };
 

@@ -5,7 +5,8 @@ use super::{
   shape::{Inlet, Outlet},
 };
 use crate::core::{
-  MatCombineRule, StreamNotUsed,
+  StreamNotUsed,
+  mat::MatCombineRule,
   stage::{
     Sink, Source,
     flow::{Flow, combine_mat},
@@ -85,7 +86,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> GraphDslBuilder<In, T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, crate::core::KeepLeft)
+    self.via_mat(flow, crate::core::mat::KeepLeft)
   }
 
   /// Appends a flow with a custom materialized value rule.

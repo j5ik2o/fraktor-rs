@@ -1,9 +1,10 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
 use super::{
-  super::super::super::{DynValue, FlowLogic, StreamError, delay_strategy::DelayStrategy, downcast_value},
+  super::super::super::{DynValue, FlowLogic, StreamError, downcast_value},
   timed_delay_logic::TimedPendingEntry,
 };
+use crate::core::restart::DelayStrategy;
 
 /// Flow logic that delays each element using a [`DelayStrategy`].
 ///

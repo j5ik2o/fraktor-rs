@@ -10,10 +10,9 @@ use fraktor_actor_rs::core::event::stream::{CorrelationId, RemotingLifecycleEven
 use portable_atomic::AtomicU64;
 
 use super::{
-  command::EndpointAssociationCommand, effect::EndpointAssociationEffect, quarantine_reason::QuarantineReason,
-  result::EndpointAssociationResult, state::AssociationState,
+  command::EndpointAssociationCommand, effect::EndpointAssociationEffect, endpoint_registry::EndpointRegistry,
+  quarantine_reason::QuarantineReason, result::EndpointAssociationResult, state::AssociationState,
 };
-use crate::core::endpoint_registry::EndpointRegistry;
 
 /// Tracks per-authority association state.
 ///

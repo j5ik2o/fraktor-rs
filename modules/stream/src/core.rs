@@ -1,100 +1,50 @@
-/// Handle for sending elements into an actor-sourced stream.
-mod actor_source_ref;
 /// Marker attribute for async boundaries in stream graphs.
 mod async_boundary_attr;
 /// Type-safe attribute trait for stream stage metadata.
 mod attribute;
 /// Stream attributes for stage and graph metadata.
 mod attributes;
-/// Bounded queue materialized by source queue stages.
-mod bounded_source_queue;
-/// Cancellation strategy definitions for stream stages.
-mod cancellation_strategy_kind;
+/// Buffer, backpressure, and demand management.
+pub mod buffer;
 /// Completion polling types.
 mod completion;
-/// Completion strategy for actor-sourced streams.
-mod completion_strategy;
 /// Compression facade providing gzip and deflate utilities.
 #[cfg(feature = "compression")]
 mod compression;
 /// Supervision decider function type.
 mod decider;
-/// Per-element delay strategy trait.
-mod delay_strategy;
-/// Demand model types.
-mod demand;
-/// Demand tracking utilities.
-mod demand_tracker;
 /// Dispatcher attribute for stream graph island execution.
 mod dispatcher_attribute;
-/// Fixed delay strategy implementation.
-mod fixed_delay;
 /// Byte stream framing utilities.
 mod framing;
 /// Graph-related abstractions.
 pub mod graph;
 /// Dynamic fan-in/fan-out connectors.
 pub mod hub;
-/// Input buffer attribute for stream stage configuration.
-mod input_buffer;
 /// IO operation result type.
 mod io_result;
 /// JSON object framing utilities.
 mod json_framing;
-/// Keep-both materialization rule.
-mod keep_both;
-/// Keep-left materialization rule.
-mod keep_left;
-/// Keep-none materialization rule.
-mod keep_none;
-/// Keep-right materialization rule.
-mod keep_right;
 /// Stream lifecycle and execution management.
 pub mod lifecycle;
-/// Linear increasing delay strategy implementation.
-mod linear_increasing_delay;
 /// Log level definitions for stream attribute configuration.
 mod log_level;
 /// Log levels attribute for stream stage diagnostics configuration.
 mod log_levels;
 /// Materialization pipeline.
 pub mod mat;
-/// Materialization combination kinds.
-mod mat_combine;
-/// Materialization combination rules.
-mod mat_combine_rule;
 /// Operator compatibility catalog.
 pub mod operator;
-/// Overflow strategy definitions compatible with Pekko terminology.
-mod overflow_strategy;
-/// Queue offer result definitions.
-mod queue_offer_result;
-/// Log level for restart event diagnostics.
-mod restart_log_level;
-/// Restart log settings for restart event diagnostics.
-mod restart_log_settings;
-/// Restart/backoff configuration.
-mod restart_settings;
-/// Retry flow with exponential backoff for individual element failures.
-mod retry_flow;
+/// Queue-based materialization handles and offer results.
+pub mod queue;
+/// Restart and backoff strategies.
+pub mod restart;
 /// Stream topology shapes and connection points.
 pub mod shape;
-/// Shared pull handle for queue-based sink materialization.
-mod sink_queue;
-/// Source queue materialization handle.
-mod source_queue;
-/// Source queue materialization handle with completion notifications.
-mod source_queue_with_complete;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
 /// Stateful map-concat accumulator trait.
 mod stateful_map_concat_accumulator;
-/// Stream buffer implementation.
-mod stream_buffer;
-/// Stream buffer configuration.
-mod stream_buffer_config;
-/// Stream completion handle.
-mod stream_completion;
 /// Stream completion marker.
 mod stream_done;
 /// Stream DSL error definitions.
@@ -121,51 +71,26 @@ mod validate_positive_argument;
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
-pub use actor_source_ref::ActorSourceRef;
 pub use async_boundary_attr::AsyncBoundaryAttr;
 pub use attribute::Attribute;
 pub use attributes::Attributes;
-pub use bounded_source_queue::BoundedSourceQueue;
-pub use cancellation_strategy_kind::CancellationStrategyKind;
+use buffer::DemandTracker;
 pub use completion::Completion;
-pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use compression::Compression;
 pub use decider::Decider;
-pub use delay_strategy::DelayStrategy;
-pub use demand::Demand;
-pub use demand_tracker::DemandTracker;
 pub use dispatcher_attribute::DispatcherAttribute;
-pub use fixed_delay::FixedDelay;
 use fraktor_utils_rs::core::sync::ArcShared;
 pub use framing::Framing;
-pub use input_buffer::InputBuffer;
 pub use io_result::IOResult;
 pub use json_framing::JsonFraming;
-pub use keep_both::KeepBoth;
-pub use keep_left::KeepLeft;
-pub use keep_none::KeepNone;
-pub use keep_right::KeepRight;
-pub use linear_increasing_delay::LinearIncreasingDelay;
 pub use log_level::LogLevel;
 pub use log_levels::LogLevels;
-pub use mat_combine::MatCombine;
-pub use mat_combine_rule::MatCombineRule;
-pub use overflow_strategy::OverflowStrategy;
-pub use queue_offer_result::QueueOfferResult;
-pub use restart_log_level::RestartLogLevel;
-pub use restart_log_settings::RestartLogSettings;
-pub use restart_settings::RestartSettings;
-pub use retry_flow::RetryFlow;
+use mat::MatCombine;
+use restart::RestartBackoff;
 use shape::PortId;
-pub use sink_queue::SinkQueue;
-pub use source_queue::SourceQueue;
-pub use source_queue_with_complete::SourceQueueWithComplete;
 use stage::StageKind;
 pub use stateful_map_concat_accumulator::StatefulMapConcatAccumulator;
-pub use stream_buffer::StreamBuffer;
-pub use stream_buffer_config::StreamBufferConfig;
-pub use stream_completion::StreamCompletion;
 pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
@@ -290,99 +215,6 @@ pub(crate) struct SinkDefinition {
   pub(crate) restart:     Option<RestartBackoff>,
   pub(crate) logic:       Box<dyn SinkLogic>,
   pub(crate) attributes:  Attributes,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct RestartBackoff {
-  settings:              RestartSettings,
-  restart_count:         usize,
-  cooldown_ticks:        u32,
-  pending:               bool,
-  current_backoff_ticks: u32,
-  last_schedule_tick:    u64,
-  jitter_state:          u64,
-}
-
-impl RestartBackoff {
-  fn new(min_backoff_ticks: u32, max_restarts: usize) -> Self {
-    Self::from_settings(RestartSettings::new(min_backoff_ticks, min_backoff_ticks, max_restarts))
-  }
-
-  const fn from_settings(settings: RestartSettings) -> Self {
-    let min_backoff_ticks = settings.min_backoff_ticks();
-    let jitter_seed = settings.jitter_seed();
-    Self {
-      settings,
-      restart_count: 0,
-      cooldown_ticks: 0,
-      pending: false,
-      current_backoff_ticks: min_backoff_ticks,
-      last_schedule_tick: 0,
-      jitter_state: jitter_seed,
-    }
-  }
-
-  const fn is_waiting(&self) -> bool {
-    self.pending
-  }
-
-  const fn complete_on_max_restarts(&self) -> bool {
-    self.settings.complete_on_max_restarts()
-  }
-
-  fn schedule(&mut self, now_tick: u64) -> bool {
-    self.reset_backoff_if_window_elapsed(now_tick);
-    if self.restart_count >= self.settings.max_restarts() {
-      return false;
-    }
-    self.restart_count = self.restart_count.saturating_add(1);
-    self.last_schedule_tick = now_tick;
-    self.cooldown_ticks = self.next_cooldown_ticks();
-    self.pending = true;
-    true
-  }
-
-  fn tick(&mut self, now_tick: u64) -> bool {
-    self.reset_backoff_if_window_elapsed(now_tick);
-    if !self.pending {
-      return false;
-    }
-    if self.cooldown_ticks > 0 {
-      self.cooldown_ticks = self.cooldown_ticks.saturating_sub(1);
-      return false;
-    }
-    self.pending = false;
-    true
-  }
-
-  fn next_cooldown_ticks(&mut self) -> u32 {
-    let min_ticks = self.settings.min_backoff_ticks();
-    let max_ticks = self.settings.max_backoff_ticks();
-    let base = self.current_backoff_ticks.max(min_ticks).min(max_ticks);
-    let jitter_ticks = self.compute_jitter_ticks(base);
-    self.current_backoff_ticks = base.saturating_mul(2).min(max_ticks).max(min_ticks);
-    base.saturating_add(jitter_ticks).min(max_ticks)
-  }
-
-  fn reset_backoff_if_window_elapsed(&mut self, now_tick: u64) {
-    let window = u64::from(self.settings.max_restarts_within_ticks());
-    if window == 0 {
-      return;
-    }
-    if now_tick.saturating_sub(self.last_schedule_tick) > window {
-      self.current_backoff_ticks = self.settings.min_backoff_ticks();
-    }
-  }
-
-  fn compute_jitter_ticks(&mut self, base_ticks: u32) -> u32 {
-    let factor = u32::from(self.settings.random_factor_permille());
-    if factor == 0 || base_ticks == 0 {
-      return 0;
-    }
-    self.jitter_state = self.jitter_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-    let ratio_permille = (self.jitter_state >> 32) as u32 % 1001;
-    base_ticks.saturating_mul(factor).saturating_mul(ratio_permille) / 1_000_000
-  }
 }
 
 /// Materialization-ready immutable blueprint.

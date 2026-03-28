@@ -9,8 +9,8 @@ use core::any::TypeId;
 
 use super::{island_boundary::IslandBoundaryShared, shape::PortId};
 use crate::core::{
-  Attributes, DispatcherAttribute, InputBuffer, MatCombine, SinkDefinition, SourceDefinition, StageDefinition,
-  StreamPlan, StreamPlanEdge, SupervisionStrategy, stage::StageKind,
+  Attributes, DispatcherAttribute, SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge,
+  SupervisionStrategy, buffer::InputBuffer, mat::MatCombine, stage::StageKind,
 };
 
 #[cfg(test)]

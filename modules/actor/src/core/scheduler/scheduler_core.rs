@@ -18,8 +18,9 @@ use super::{
   cancellable::CancellableRegistry,
   command::SchedulerCommand,
   config::SchedulerConfig,
-  deterministic::DeterministicEvent,
-  diagnostics::{SchedulerDiagnostics, SchedulerDiagnosticsEvent, SchedulerDiagnosticsSubscription},
+  diagnostics::{
+    DeterministicEvent, SchedulerDiagnostics, SchedulerDiagnosticsEvent, SchedulerDiagnosticsSubscription,
+  },
   dump::SchedulerDump,
   dump_job::SchedulerDumpJob,
   error::SchedulerError,

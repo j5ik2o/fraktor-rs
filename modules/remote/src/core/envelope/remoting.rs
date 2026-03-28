@@ -10,7 +10,10 @@ use fraktor_actor_rs::core::{
 };
 
 use super::priority::OutboundPriority;
-use crate::core::{remote_node_id::RemoteNodeId, wire_error::WireError, wire_format};
+use crate::core::{
+  remote_node_id::RemoteNodeId,
+  wire::{WireError, read_bool, read_string, write_string},
+};
 
 /// Fully serialized outbound message ready for transport framing.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,15 +91,15 @@ impl RemotingEnvelope {
     buffer.push(VERSION);
     buffer.push(KIND_MESSAGE);
     buffer.push(self.priority.to_wire());
-    wire_format::write_string(&mut buffer, &self.recipient.to_canonical_uri());
+    write_string(&mut buffer, &self.recipient.to_canonical_uri());
     if let Some(sender) = self.sender.as_ref() {
       buffer.push(1);
-      wire_format::write_string(&mut buffer, &sender.to_canonical_uri());
+      write_string(&mut buffer, &sender.to_canonical_uri());
     } else {
       buffer.push(0);
     }
-    wire_format::write_string(&mut buffer, self.remote_node.system());
-    wire_format::write_string(&mut buffer, self.remote_node.host());
+    write_string(&mut buffer, self.remote_node.system());
+    write_string(&mut buffer, self.remote_node.host());
     if let Some(port) = self.remote_node.port() {
       buffer.push(1);
       buffer.extend_from_slice(&port.to_le_bytes());
@@ -126,17 +129,17 @@ impl RemotingEnvelope {
     }
     let priority = OutboundPriority::from_wire(bytes[2]).ok_or(WireError::InvalidFormat)?;
     let mut cursor = 3;
-    let recipient = ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?;
+    let recipient = ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?;
 
-    let sender = if wire_format::read_bool(bytes, &mut cursor)? {
-      Some(ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?)
+    let sender = if read_bool(bytes, &mut cursor)? {
+      Some(ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?)
     } else {
       None
     };
 
-    let system_name = wire_format::read_string(bytes, &mut cursor)?;
-    let host = wire_format::read_string(bytes, &mut cursor)?;
-    let port = if wire_format::read_bool(bytes, &mut cursor)? {
+    let system_name = read_string(bytes, &mut cursor)?;
+    let host = read_string(bytes, &mut cursor)?;
+    let port = if read_bool(bytes, &mut cursor)? {
       if bytes.len() < cursor + 2 {
         return Err(WireError::InvalidFormat);
       }

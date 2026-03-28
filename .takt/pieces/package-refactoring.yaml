@@ -20,12 +20,13 @@ instructions:
   design-package-structure: ../facets/instructions/design-package-structure.md
   plan-package-migration: ../facets/instructions/plan-package-migration.md
   pkg-implement: ../facets/instructions/pkg-implement.md
+  pkg-review-arch: ../facets/instructions/pkg-review-arch.md
   pkg-review-qa: ../facets/instructions/pkg-review-qa.md
   pkg-supervise: ../facets/instructions/pkg-supervise.md
-  ai-review: ../facets/instructions/ai-review.md
-  refactoring-ai-fix: ../facets/instructions/refactoring-ai-fix.md
+  pkg-ai-review: ../facets/instructions/pkg-ai-review.md
+  pkg-ai-fix: ../facets/instructions/pkg-ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
-  refactoring-fix: ../facets/instructions/refactoring-fix.md
+  pkg-fix: ../facets/instructions/pkg-fix.md
   loop-monitor-ai-review-fix-refactoring: ../facets/instructions/loop-monitor-ai-review-fix-refactoring.md
   loop-monitor-reviewers-fix-refactoring: ../facets/instructions/loop-monitor-reviewers-fix-refactoring.md
 
@@ -37,8 +38,10 @@ report_formats:
   structure-design: ../facets/output-contracts/structure-design.md
   ai-review: ../facets/output-contracts/ai-review.md
   coder-scope: ../facets/output-contracts/coder-scope.md
-  coder-decisions: ../facets/output-contracts/coder-decisions.md
-  summary: ../facets/output-contracts/summary.md
+  coder-decisions: ../facets/output-contracts/pkg-coder-decisions.md
+  pkg-architect-review: ../facets/output-contracts/pkg-architect-review.md
+  pkg-supervisor-validation: ../facets/output-contracts/pkg-supervisor-validation.md
+  pkg-summary: ../facets/output-contracts/pkg-summary.md
 
 loop_monitors:
   - cycle:
@@ -190,9 +193,9 @@ movements:
       - condition: 実装完了
         next: ai_review
       - condition: 実装未着手（レポートのみ）
-        next: ai_review
+        next: plan
       - condition: 判断できない、情報不足
-        next: ai_review
+        next: plan
       - condition: ユーザー入力が必要
         next: plan
 
@@ -212,7 +215,7 @@ movements:
           - Grep
           - WebSearch
           - WebFetch
-    instruction: ai-review
+    instruction: pkg-ai-review
     output_contracts:
       report:
         - name: ai-review.md
@@ -247,7 +250,7 @@ movements:
           - WebFetch
     required_permission_mode: full
     pass_previous_response: false
-    instruction: refactoring-ai-fix
+    instruction: pkg-ai-fix
     rules:
       - condition: AI問題の修正完了
         next: ai_review
@@ -295,11 +298,11 @@ movements:
         rules:
           - condition: approved
           - condition: needs_fix
-        instruction: review-arch
+        instruction: pkg-review-arch
         output_contracts:
           report:
             - name: architect-review.md
-              format: architecture-review
+              format: pkg-architect-review
       - name: qa-review
         edit: false
         persona: qa-reviewer
@@ -353,7 +356,7 @@ movements:
           - WebFetch
     required_permission_mode: full
     pass_previous_response: false
-    instruction: refactoring-fix
+    instruction: pkg-fix
     rules:
       - condition: 修正完了（ci-check.sh 通過済み）
         next: reviewers
@@ -380,9 +383,9 @@ movements:
     output_contracts:
       report:
         - name: supervisor-validation.md
-          format: supervisor-validation
+          format: pkg-supervisor-validation
         - name: summary.md
-          format: summary
+          format: pkg-summary
           use_judge: false
     rules:
       - condition: すべて問題なし

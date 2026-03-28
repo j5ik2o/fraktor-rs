@@ -8,9 +8,11 @@ use super::super::{
   StageDefinition, map_definition,
 };
 use crate::core::{
-  Completion, DownstreamCancelAction, MatCombine, QueueOfferResult, SourceQueue, StreamBufferConfig, StreamCompletion,
-  StreamDone,
+  Completion, DownstreamCancelAction, StreamDone,
+  buffer::StreamBufferConfig,
   lifecycle::{DriveOutcome, Stream},
+  mat::{MatCombine, StreamCompletion},
+  queue::{QueueOfferResult, SourceQueue},
 };
 
 const IDLE_BUDGET: usize = 32;

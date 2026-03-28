@@ -10,7 +10,7 @@ persona_providers:
     model: gpt-5.4-high
   coder:
     provider: cursor
-    model: composer-2-fast
+    model: gpt-5.4-high
   cc-sdd-requirements-analyst:
     provider: cursor
     model: gpt-5.4-high

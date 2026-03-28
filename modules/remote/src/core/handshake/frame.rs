@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::convert::TryInto;
 
 use super::kind::HandshakeKind;
-use crate::core::{wire_error::WireError, wire_format};
+use crate::core::wire::{WireError, read_bool, read_string, write_bool, write_string};
 
 /// Payload exchanged when establishing associations.
 pub struct HandshakeFrame {
@@ -65,9 +65,9 @@ impl HandshakeFrame {
     let mut buffer = Vec::new();
     buffer.push(VERSION);
     buffer.push(self.kind.to_wire());
-    wire_format::write_string(&mut buffer, &self.system_name);
-    wire_format::write_string(&mut buffer, &self.host);
-    wire_format::write_bool(&mut buffer, self.port.is_some());
+    write_string(&mut buffer, &self.system_name);
+    write_string(&mut buffer, &self.host);
+    write_bool(&mut buffer, self.port.is_some());
     if let Some(port) = self.port {
       buffer.extend_from_slice(&port.to_le_bytes());
     }
@@ -92,9 +92,9 @@ impl HandshakeFrame {
       return Err(WireError::InvalidFormat);
     };
     let mut cursor = 2;
-    let system_name = wire_format::read_string(bytes, &mut cursor)?;
-    let host = wire_format::read_string(bytes, &mut cursor)?;
-    let port = if wire_format::read_bool(bytes, &mut cursor)? {
+    let system_name = read_string(bytes, &mut cursor)?;
+    let host = read_string(bytes, &mut cursor)?;
+    let port = if read_bool(bytes, &mut cursor)? {
       if bytes.len() < cursor + 2 {
         return Err(WireError::InvalidFormat);
       }

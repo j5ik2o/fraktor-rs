@@ -13,7 +13,10 @@ use fraktor_actor_rs::core::{
 };
 
 use super::{priority::OutboundPriority, remoting::RemotingEnvelope};
-use crate::core::{remote_node_id::RemoteNodeId, wire_error::WireError, wire_format};
+use crate::core::{
+  remote_node_id::RemoteNodeId,
+  wire::{WireError, read_bool, read_string, write_bool, write_string},
+};
 
 const VERSION: u8 = 1;
 /// Wire kind used for system-message frames.
@@ -121,10 +124,10 @@ impl SystemMessageEnvelope {
     let mut buffer = Vec::new();
     buffer.push(VERSION);
     buffer.push(SYSTEM_MESSAGE_FRAME_KIND);
-    wire_format::write_string(&mut buffer, &self.recipient.to_canonical_uri());
-    wire_format::write_bool(&mut buffer, self.sender.is_some());
+    write_string(&mut buffer, &self.recipient.to_canonical_uri());
+    write_bool(&mut buffer, self.sender.is_some());
     if let Some(sender) = self.sender() {
-      wire_format::write_string(&mut buffer, &sender.to_canonical_uri());
+      write_string(&mut buffer, &sender.to_canonical_uri());
     }
     write_node(&mut buffer, &self.remote_node);
     buffer.extend_from_slice(&self.sequence_no.to_le_bytes());
@@ -146,9 +149,9 @@ impl SystemMessageEnvelope {
       return Err(WireError::InvalidFormat);
     }
     let mut cursor = 2;
-    let recipient = ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?;
-    let sender = if wire_format::read_bool(bytes, &mut cursor)? {
-      Some(ActorPathParser::parse(&wire_format::read_string(bytes, &mut cursor)?)?)
+    let recipient = ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?;
+    let sender = if read_bool(bytes, &mut cursor)? {
+      Some(ActorPathParser::parse(&read_string(bytes, &mut cursor)?)?)
     } else {
       None
     };
@@ -170,9 +173,9 @@ impl SystemMessageEnvelope {
 }
 
 fn write_node(buffer: &mut Vec<u8>, node: &RemoteNodeId) {
-  wire_format::write_string(buffer, node.system());
-  wire_format::write_string(buffer, node.host());
-  wire_format::write_bool(buffer, node.port().is_some());
+  write_string(buffer, node.system());
+  write_string(buffer, node.host());
+  write_bool(buffer, node.port().is_some());
   if let Some(port) = node.port() {
     buffer.extend_from_slice(&port.to_le_bytes());
   }
@@ -180,9 +183,9 @@ fn write_node(buffer: &mut Vec<u8>, node: &RemoteNodeId) {
 }
 
 fn read_node(bytes: &[u8], cursor: &mut usize) -> Result<RemoteNodeId, WireError> {
-  let system_name = wire_format::read_string(bytes, cursor)?;
-  let host = wire_format::read_string(bytes, cursor)?;
-  let port = if wire_format::read_bool(bytes, cursor)? {
+  let system_name = read_string(bytes, cursor)?;
+  let host = read_string(bytes, cursor)?;
+  let port = if read_bool(bytes, cursor)? {
     if bytes.len() < *cursor + 2 {
       return Err(WireError::InvalidFormat);
     }

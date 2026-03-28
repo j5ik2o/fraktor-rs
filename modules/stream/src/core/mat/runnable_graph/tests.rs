@@ -1,8 +1,9 @@
 use super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  KeepLeft, KeepRight, StreamBufferConfig, StreamError,
+  StreamError,
+  buffer::StreamBufferConfig,
   lifecycle::{SharedKillSwitch, StreamHandleId, StreamHandleImpl, StreamState},
-  mat::{Materialized, Materializer, RunnableGraph},
+  mat::{KeepLeft, KeepRight, Materialized, Materializer, RunnableGraph},
   stage::{Sink, Source},
 };
 

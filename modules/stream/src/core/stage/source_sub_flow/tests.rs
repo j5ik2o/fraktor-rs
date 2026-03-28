@@ -4,7 +4,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::SourceSubFlow;
 use crate::core::{
-  StreamBufferConfig,
+  buffer::StreamBufferConfig,
   lifecycle::{Stream, StreamState},
   stage::{DriveOutcome, Sink, Source},
 };

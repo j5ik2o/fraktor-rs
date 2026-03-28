@@ -1,5 +1,5 @@
 use super::RestartSource;
-use crate::core::RestartSettings;
+use crate::core::restart::RestartSettings;
 
 #[test]
 fn restart_source_with_backoff_keeps_data_path_behavior() {

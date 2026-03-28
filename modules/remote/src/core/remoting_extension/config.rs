@@ -11,8 +11,8 @@ use core::time::Duration;
 use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
 
 use crate::core::{
-  RemoteInstrument,
   backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener},
+  instrument::RemoteInstrument,
 };
 
 #[cfg(test)]

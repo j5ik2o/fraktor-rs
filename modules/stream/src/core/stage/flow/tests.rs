@@ -4,11 +4,14 @@ use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, FlowLogic, KeepBoth, KeepLeft, KeepRight, OverflowStrategy, QueueOfferResult, RestartSettings,
-  SourceLogic, StageDefinition, StreamBufferConfig, StreamCompletion, StreamDone, StreamDslError, StreamError,
+  Completion, DynValue, FlowLogic, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError,
   StreamNotUsed, SubstreamCancelStrategy,
+  buffer::{OverflowStrategy, StreamBufferConfig},
   lifecycle::{DriveOutcome, Stream},
+  mat::{KeepBoth, KeepLeft, KeepRight, StreamCompletion},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
+  queue::QueueOfferResult,
+  restart::RestartSettings,
   shape::UniformFanInShape,
   stage::{Sink, Source, StageKind, flow::Flow, flow_monitor_impl::FlowMonitorImpl},
 };
@@ -4456,7 +4459,7 @@ fn flow_as_flow_with_context_returns_wrapper() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::KeepBoth;
+  use crate::core::mat::KeepBoth;
 
   let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
@@ -4474,7 +4477,7 @@ fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::KeepLeft;
+  use crate::core::mat::KeepLeft;
 
   let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
@@ -4490,7 +4493,7 @@ fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::KeepRight;
+  use crate::core::mat::KeepRight;
 
   let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
@@ -4508,7 +4511,7 @@ fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
 #[test]
 fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::KeepBoth;
+  use crate::core::mat::KeepBoth;
 
   let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
   let source = Source::single(1_u64).map_materialized_value(|_| true);
@@ -4526,7 +4529,7 @@ fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
 #[test]
 fn flow_from_sink_and_source_coupled_mat_keeps_left_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::KeepLeft;
+  use crate::core::mat::KeepLeft;
 
   let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
   let source = Source::single(1_u64).map_materialized_value(|_| true);

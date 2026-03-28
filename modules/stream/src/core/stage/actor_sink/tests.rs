@@ -3,9 +3,10 @@ use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, KeepRight, SourceLogic, StageKind, StreamBufferConfig, StreamDone, StreamError,
+  Completion, DynValue, SourceLogic, StageKind, StreamDone, StreamError,
+  buffer::StreamBufferConfig,
   lifecycle::Stream,
-  mat::{Materialized, Materializer},
+  mat::{KeepRight, Materialized, Materializer},
   stage::{ActorSink, Source},
 };
 

@@ -3,12 +3,15 @@
 #[cfg(test)]
 mod tests;
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+  future::Future,
+  pin::Pin,
+  sync::atomic::{AtomicBool, Ordering},
+  task::{Context, Poll},
+};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 use futures::task::AtomicWaker;
-
-use super::tick_executor_signal_future::TickExecutorSignalFuture;
 
 /// Notifies scheduler executors when new ticks arrive.
 #[derive(Clone)]
@@ -35,7 +38,7 @@ impl TickExecutorSignal {
   }
 
   /// Returns a future that resolves once work is available.
-  pub fn wait_async(&self) -> impl core::future::Future<Output = ()> + '_ {
+  pub fn wait_async(&self) -> impl Future<Output = ()> + '_ {
     TickExecutorSignalFuture { signal: self }
   }
 
@@ -71,5 +74,22 @@ impl TickExecutorSignalState {
 
   fn register_waker(&self, waker: &core::task::Waker) {
     self.waker.register(waker);
+  }
+}
+
+/// Future waiting for a notification from [`TickExecutorSignal`].
+pub(crate) struct TickExecutorSignalFuture<'a> {
+  pub(crate) signal: &'a TickExecutorSignal,
+}
+
+impl Future for TickExecutorSignalFuture<'_> {
+  type Output = ();
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    if self.signal.arm() {
+      return Poll::Ready(());
+    }
+    self.signal.register_waker(cx.waker());
+    if self.signal.arm() { Poll::Ready(()) } else { Poll::Pending }
   }
 }

@@ -4,10 +4,10 @@ use alloc::string::ToString;
 
 use crate::core::{
   error::{ActorError, ActorErrorReason},
-  event::stream::EventStreamEvent,
+  event::stream::{AdapterFailureEvent, EventStreamEvent, TypedUnhandledMessageEvent},
   supervision::SupervisorStrategyConfig,
   typed::{
-    DeathPactException, UnhandledMessageEvent,
+    DeathPactException,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
     behavior_signal::BehaviorSignal,
@@ -43,6 +43,17 @@ where
     }
   }
 
+  fn adapter_failure_event(ctx: &TypedActorContext<'_, M>, failure: &AdapterError) -> AdapterFailureEvent {
+    match failure {
+      | AdapterError::RegistryFull => AdapterFailureEvent::registry_full(ctx.pid()),
+      | AdapterError::EnvelopeCorrupted => AdapterFailureEvent::envelope_corrupted(ctx.pid()),
+      | AdapterError::ActorUnavailable => AdapterFailureEvent::actor_unavailable(ctx.pid()),
+      | AdapterError::RegistryUnavailable => AdapterFailureEvent::registry_unavailable(ctx.pid()),
+      | AdapterError::TypeMismatch(type_id) => AdapterFailureEvent::type_mismatch(ctx.pid(), *type_id),
+      | AdapterError::Custom(detail) => AdapterFailureEvent::custom(ctx.pid(), detail.clone()),
+    }
+  }
+
   fn apply_transition(&mut self, ctx: &mut TypedActorContext<'_, M>, next: Behavior<M>) -> Result<(), ActorError> {
     let override_strategy = next.supervisor_override().cloned();
 
@@ -53,7 +64,7 @@ where
         let system = ctx.system();
         let timestamp = system.state().monotonic_now();
         let message_type = core::any::type_name::<M>().to_string();
-        let event = UnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
+        let event = TypedUnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
         system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
         Ok(())
       },
@@ -62,7 +73,7 @@ where
         let system = ctx.system();
         let timestamp = system.state().monotonic_now();
         let message_type = core::any::type_name::<M>().to_string();
-        let event = UnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
+        let event = TypedUnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
         system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
         self.current = Behavior::empty();
         Ok(())
@@ -93,10 +104,8 @@ where
     signal: &BehaviorSignal,
   ) -> Result<BehaviorDirective, ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
-      ctx
-        .system()
-        .event_stream()
-        .publish(&EventStreamEvent::AdapterFailure { pid: ctx.pid(), error: failure.clone() });
+      let event = Self::adapter_failure_event(ctx, failure);
+      ctx.system().event_stream().publish(&EventStreamEvent::AdapterFailure(event));
     }
     let next = self.current.handle_signal(ctx, signal)?;
     let directive = next.directive();

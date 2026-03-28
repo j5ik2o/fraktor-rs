@@ -1,5 +1,5 @@
 use super::Attributes;
-use crate::core::{InputBuffer, LogLevel, LogLevels};
+use crate::core::{LogLevel, LogLevels, buffer::InputBuffer};
 
 #[test]
 fn named_creates_single_name_attribute() {
@@ -401,7 +401,7 @@ mod pending_attributes_api {
   #[test]
   fn cancellation_strategy_factory_creates_non_empty_attributes() {
     // Given/When: creating attributes with cancellation_strategy factory
-    let attributes = Attributes::cancellation_strategy(crate::core::CancellationStrategyKind::CompleteStage);
+    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::CompleteStage);
 
     // Then: the attributes are not empty
     assert!(!attributes.is_empty());
@@ -410,26 +410,26 @@ mod pending_attributes_api {
   #[test]
   fn cancellation_strategy_factory_contains_strategy_attr() {
     // Given: attributes created with cancellation_strategy factory
-    let attributes = Attributes::cancellation_strategy(crate::core::CancellationStrategyKind::FailStage);
+    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::FailStage);
 
     // When: requesting the CancellationStrategyKind attribute
-    let result = attributes.get::<crate::core::CancellationStrategyKind>();
+    let result = attributes.get::<crate::core::buffer::CancellationStrategyKind>();
 
     // Then: the attribute is present with correct value
     assert!(result.is_some());
-    assert_eq!(*result.unwrap(), crate::core::CancellationStrategyKind::FailStage);
+    assert_eq!(*result.unwrap(), crate::core::buffer::CancellationStrategyKind::FailStage);
   }
 
   #[test]
   fn cancellation_strategy_propagate_failure_variant() {
     // Given: attributes with PropagateFailure strategy
-    let attributes = Attributes::cancellation_strategy(crate::core::CancellationStrategyKind::PropagateFailure);
+    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::PropagateFailure);
 
     // Then: contains the correct strategy
-    assert!(attributes.contains::<crate::core::CancellationStrategyKind>());
+    assert!(attributes.contains::<crate::core::buffer::CancellationStrategyKind>());
     assert_eq!(
-      *attributes.get::<crate::core::CancellationStrategyKind>().unwrap(),
-      crate::core::CancellationStrategyKind::PropagateFailure
+      *attributes.get::<crate::core::buffer::CancellationStrategyKind>().unwrap(),
+      crate::core::buffer::CancellationStrategyKind::PropagateFailure
     );
   }
 } // mod pending_attributes_api

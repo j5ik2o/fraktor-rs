@@ -96,8 +96,6 @@ mod typed_ask_error;
 mod typed_ask_future;
 /// Typed ask response handle.
 mod typed_ask_response;
-/// Unhandled message event for monitoring.
-mod unhandled_message_event;
 
 pub use actor_ref_resolver::ActorRefResolver;
 pub use actor_ref_resolver_id::ActorRefResolverId;
@@ -139,7 +137,5 @@ pub use topic_stats::TopicStats;
 pub use typed_ask_error::TypedAskError;
 pub use typed_ask_future::TypedAskFuture;
 pub use typed_ask_response::TypedAskResponse;
-pub use unhandled_message_event::UnhandledMessageEvent;
-
 #[cfg(test)]
 mod tests;
