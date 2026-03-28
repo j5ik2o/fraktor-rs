@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   event::stream::EventStreamShared,
   messaging::AnyMessage,
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
@@ -92,7 +92,7 @@ impl ClusterPubSubImpl {
 
   fn publish_pubsub_event(&self, event: PubSubEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event = fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension {
+    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
       name: String::from("cluster-pubsub"),
       payload,
     };
@@ -101,8 +101,10 @@ impl ClusterPubSubImpl {
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event =
-      fraktor_actor_rs::core::event::stream::EventStreamEvent::Extension { name: String::from("cluster"), payload };
+    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
+      name: String::from("cluster"),
+      payload,
+    };
     self.event_stream.publish(&stream_event);
   }
 

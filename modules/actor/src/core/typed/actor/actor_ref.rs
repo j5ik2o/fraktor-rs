@@ -5,12 +5,14 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRef, AskReplySender},
+  kernel::{
+    actor::{
+      Pid,
+      actor_ref::{ActorRef, AskReplySender},
+    },
+    futures::ActorFutureShared,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult},
   },
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, status_reply::StatusReply},
 };
 
@@ -68,7 +70,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the underlying mailbox rejects the message.
-  pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::error::SendError> {
+  pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::kernel::error::SendError> {
     self.inner.try_tell(AnyMessage::new(message))
   }
 

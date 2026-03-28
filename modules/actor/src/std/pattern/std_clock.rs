@@ -5,7 +5,7 @@ extern crate std;
 use core::time::Duration;
 use std::time::Instant;
 
-use crate::core::pattern::Clock;
+use crate::core::kernel::pattern::Clock;
 
 /// A [`Clock`] implementation backed by the standard library's monotonic clock.
 #[derive(Debug, Clone, Copy)]

@@ -5,13 +5,14 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::typed::{
-  Behaviors, Receptionist, ServiceKey, TypedActorSystem, TypedProps,
+  Behaviors, TypedActorSystem, TypedProps,
   actor::TypedActorRef,
   delivery::{
     ConsumerController, ConsumerControllerCommand, ConsumerControllerConfirmed, ConsumerControllerDelivery,
     ProducerController, ProducerControllerCommand, ProducerControllerRequestNext, WorkPullingProducerController,
     WorkPullingProducerControllerCommand, WorkPullingProducerControllerRequestNext, WorkerStats,
   },
+  receptionist::{Receptionist, ServiceKey},
 };
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -27,8 +28,8 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 /// Helper to create a test actor system.
 fn test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
 }

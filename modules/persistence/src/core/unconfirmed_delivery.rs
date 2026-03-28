@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::Any;
 
-use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
+use fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 /// Unconfirmed delivery tracked by at-least-once delivery.

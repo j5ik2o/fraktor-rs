@@ -3,8 +3,7 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  actor::ActorContext,
-  system::ActorSystem,
+  kernel::{actor::ActorContext, system::ActorSystem},
   typed::{
     Behaviors,
     actor::TypedActorContext,
@@ -32,7 +31,7 @@ enum Outer {
   Text(()),
 }
 
-fn make_ctx(system: &ActorSystem) -> (crate::core::actor::Pid, ActorContext<'_>) {
+fn make_ctx(system: &ActorSystem) -> (crate::core::kernel::actor::Pid, ActorContext<'_>) {
   let pid = system.allocate_pid();
   let context = ActorContext::new(system, pid);
   (pid, context)

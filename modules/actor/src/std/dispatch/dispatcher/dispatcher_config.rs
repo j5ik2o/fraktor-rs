@@ -8,7 +8,7 @@ use tokio::runtime::Handle;
 use super::StdScheduleAdapter;
 #[cfg(feature = "tokio-executor")]
 use super::dispatch_executor::TokioExecutor;
-use crate::core::{
+use crate::core::kernel::{
   dispatch::{
     dispatcher::{
       DispatchExecutor, DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, DispatcherShared,

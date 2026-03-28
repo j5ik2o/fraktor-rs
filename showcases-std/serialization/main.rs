@@ -14,7 +14,7 @@ use std::{
 };
 
 use fraktor_actor_rs::{
-  core::{
+  core::kernel::{
     actor::{Actor, ActorContext},
     error::ActorError,
     extension::ExtensionInstallers,
@@ -244,9 +244,9 @@ fn main() {
 
   let installers = ExtensionInstallers::default().with_extension_installer({
     let ext_id = serialization_id.clone();
-    move |system: &fraktor_actor_rs::core::system::ActorSystem| {
+    move |system: &fraktor_actor_rs::core::kernel::system::ActorSystem| {
       system.extended().register_extension(&ext_id).map(|_| ()).map_err(|error| {
-        fraktor_actor_rs::core::system::ActorSystemBuildError::Configuration(format!(
+        fraktor_actor_rs::core::kernel::system::ActorSystemBuildError::Configuration(format!(
           "serialization extension registration failed: {error:?}"
         ))
       })?;

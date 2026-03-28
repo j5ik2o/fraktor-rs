@@ -16,7 +16,7 @@ use tracing::{
 
 use super::TracingLoggerSubscriber;
 use crate::{
-  core::event::{
+  core::kernel::event::{
     logging::{LogEvent, LogLevel},
     stream::EventStreamEvent,
   },

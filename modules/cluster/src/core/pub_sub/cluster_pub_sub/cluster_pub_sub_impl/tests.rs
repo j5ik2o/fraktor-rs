@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event::stream::{
+use fraktor_actor_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
 use fraktor_utils_rs::core::{
@@ -106,9 +106,9 @@ fn make_pubsub(
   registry: &KindRegistry,
   failed: Vec<PubSubSubscriber>,
 ) -> ClusterPubSubImpl {
-  let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
+  let setup = fraktor_actor_rs::core::kernel::serialization::default_serialization_setup();
   let serialization_registry = ArcShared::new(
-    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
+    fraktor_actor_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
   );
   let endpoint = DeliveryEndpointShared::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
@@ -169,7 +169,7 @@ fn publish_accepts_and_emits_events() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -199,7 +199,7 @@ fn publish_rejects_when_no_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -227,7 +227,7 @@ fn topology_update_reactivates_suspended_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let _ = pubsub.publish(request).expect("publish");

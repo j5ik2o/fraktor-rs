@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
@@ -193,7 +193,7 @@ fn request_future_completes_with_timeout_payload() {
   let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
-  assert_eq!(ask_error, fraktor_actor_rs::core::messaging::AskError::Timeout);
+  assert_eq!(ask_error, fraktor_actor_rs::core::kernel::messaging::AskError::Timeout);
 }
 
 #[test]
@@ -556,9 +556,9 @@ struct TestGuardian;
 impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageView<'_>,
-  ) -> Result<(), fraktor_actor_rs::core::error::ActorError> {
+    _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
+    _message: fraktor_actor_rs::core::kernel::messaging::AnyMessageView<'_>,
+  ) -> Result<(), fraktor_actor_rs::core::kernel::error::ActorError> {
     Ok(())
   }
 }
@@ -774,7 +774,7 @@ impl ActorRefProvider for TestActorRefProvider {
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

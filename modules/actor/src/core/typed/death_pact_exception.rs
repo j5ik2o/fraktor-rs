@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::actor::Pid;
+use crate::core::kernel::actor::Pid;
 
 /// Exception thrown when a watched actor terminates and the watcher
 /// does not handle the [`BehaviorSignal::Terminated`] signal.

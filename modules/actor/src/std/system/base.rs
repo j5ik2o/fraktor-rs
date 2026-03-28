@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 
 use crate::{
-  core::{
+  core::kernel::{
     actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef},
     dead_letter::DeadLetterEntry,
     error::SendError,

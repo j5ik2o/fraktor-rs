@@ -5,14 +5,16 @@ use alloc::boxed::Box;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
-  actor::{Actor, ActorContext, actor_ref::ActorRef},
-  dead_letter::DeadLetterReason,
-  dispatch::mailbox::metrics_event::MailboxPressureEvent,
-  error::{ActorError, ActorErrorReason},
-  event::logging::LogLevel,
-  messaging::{AnyMessage, AnyMessageView},
-  scheduler::SchedulerCommand,
-  supervision::SupervisorStrategyConfig,
+  kernel::{
+    actor::{Actor, ActorContext, actor_ref::ActorRef},
+    dead_letter::DeadLetterReason,
+    dispatch::mailbox::metrics_event::MailboxPressureEvent,
+    error::{ActorError, ActorErrorReason},
+    event::logging::LogLevel,
+    messaging::{AnyMessage, AnyMessageView},
+    scheduler::SchedulerCommand,
+    supervision::SupervisorStrategyConfig,
+  },
   typed::{
     actor::{TypedActor, TypedActorContext},
     message_adapter::{
@@ -162,7 +164,7 @@ where
     }
   }
 
-  fn cancel_timer_handle(ctx: &ActorContext<'_>, handle: &mut Option<crate::core::scheduler::SchedulerHandle>) {
+  fn cancel_timer_handle(ctx: &ActorContext<'_>, handle: &mut Option<crate::core::kernel::scheduler::SchedulerHandle>) {
     if let Some(h) = handle.take() {
       let scheduler = ctx.system().scheduler();
       scheduler.with_write(|guard| {
@@ -224,7 +226,7 @@ where
   fn on_terminated(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    terminated: crate::core::actor::Pid,
+    terminated: crate::core::kernel::actor::Pid,
   ) -> Result<(), ActorError> {
     self.adapters.clear();
     let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
@@ -254,7 +256,7 @@ where
   fn on_child_failed(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    child: crate::core::actor::Pid,
+    child: crate::core::kernel::actor::Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContext::from_untyped(ctx, Some(&mut self.adapters));

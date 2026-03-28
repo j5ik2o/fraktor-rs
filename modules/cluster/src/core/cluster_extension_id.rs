@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_actor_rs::core::{extension::ExtensionId, system::ActorSystem};
+use fraktor_actor_rs::core::kernel::{extension::ExtensionId, system::ActorSystem};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{

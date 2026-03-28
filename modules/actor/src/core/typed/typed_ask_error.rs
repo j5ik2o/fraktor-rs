@@ -1,6 +1,6 @@
 //! Error returned by typed ask futures.
 
-use crate::core::{messaging::AskError, typed::status_reply_error::StatusReplyError};
+use crate::core::{kernel::messaging::AskError, typed::status_reply_error::StatusReplyError};
 
 /// Reports failures during typed ask resolution.
 #[derive(Clone, Debug)]

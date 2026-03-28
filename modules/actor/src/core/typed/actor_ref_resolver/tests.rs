@@ -2,13 +2,15 @@ use alloc::string::String;
 
 use super::ActorRefResolver;
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContext, Pid},
-  error::ActorError,
-  extension::ExtensionInstallers,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::ActorSystemConfig,
+  kernel::{
+    actor::{Actor, ActorCell, ActorContext, Pid},
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    system::ActorSystemConfig,
+  },
   typed::{ActorRefResolverId, Behaviors, ExtensionSetup, TypedActorSystem, TypedProps},
 };
 
@@ -22,7 +24,7 @@ impl Actor for NoopActor {
 
 #[test]
 fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
-  let system = crate::core::system::ActorSystem::new_empty();
+  let system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = Pid::new(200, 0);
   let props = Props::from_fn(|| NoopActor);
   let cell = ActorCell::create(system.state(), pid, None, String::from("worker"), &props).expect("create worker cell");
@@ -37,8 +39,8 @@ fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
 
 #[test]
 fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
-  let resolver_system = crate::core::system::ActorSystem::new_empty();
-  let foreign_system = crate::core::system::ActorSystem::new_empty();
+  let resolver_system = crate::core::kernel::system::ActorSystem::new_empty();
+  let foreign_system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = Pid::new(201, 0);
   let props = Props::from_fn(|| NoopActor);
   let cell =
@@ -53,7 +55,7 @@ fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
 #[test]
 fn actor_ref_resolver_setup_overrides_default_extension_factory() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let setup = ExtensionSetup::new(ActorRefResolverId::new(), |system: &crate::core::system::ActorSystem| {
+  let setup = ExtensionSetup::new(ActorRefResolverId::new(), |system: &crate::core::kernel::system::ActorSystem| {
     ActorRefResolver::new(system)
   });
   let config = ActorSystemConfig::default()

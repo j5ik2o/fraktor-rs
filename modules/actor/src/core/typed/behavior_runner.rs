@@ -3,9 +3,11 @@
 use alloc::string::ToString;
 
 use crate::core::{
-  error::{ActorError, ActorErrorReason},
-  event::stream::{AdapterFailureEvent, EventStreamEvent, TypedUnhandledMessageEvent},
-  supervision::SupervisorStrategyConfig,
+  kernel::{
+    error::{ActorError, ActorErrorReason},
+    event::stream::{AdapterFailureEvent, EventStreamEvent, TypedUnhandledMessageEvent},
+    supervision::SupervisorStrategyConfig,
+  },
   typed::{
     DeathPactException,
     actor::{TypedActor, TypedActorContext},
@@ -136,7 +138,7 @@ where
   fn on_terminated(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
-    terminated: crate::core::actor::Pid,
+    terminated: crate::core::kernel::actor::Pid,
   ) -> Result<(), ActorError> {
     // シグナルハンドラが Terminated を実際に処理したかを判定する。
     // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
@@ -158,7 +160,7 @@ where
   fn on_child_failed(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
-    child: crate::core::actor::Pid,
+    child: crate::core::kernel::actor::Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })?;

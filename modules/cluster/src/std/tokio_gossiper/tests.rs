@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_rs::core::event::stream::EventStreamShared;
+use fraktor_actor_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_remote_rs::core::failure_detector::{
   DefaultFailureDetectorRegistry,
   phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},

@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use fraktor_actor_rs::{
-  core::{
+  core::kernel::{
     actor::{Actor, ActorContext},
     error::ActorError,
     messaging::AnyMessageView,

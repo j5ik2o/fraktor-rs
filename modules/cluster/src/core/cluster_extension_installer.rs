@@ -2,7 +2,7 @@
 
 use alloc::{boxed::Box, format};
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   event::stream::EventStreamShared,
   extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},

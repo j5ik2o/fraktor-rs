@@ -1,6 +1,6 @@
 //! Error variants emitted when decoding inbound transport frames.
 
-use fraktor_actor_rs::core::serialization::SerializationError;
+use fraktor_actor_rs::core::kernel::serialization::SerializationError;
 
 /// Represents failures that can occur while decoding inbound envelopes.
 #[derive(Debug)]

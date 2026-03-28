@@ -1,0 +1,990 @@
+//! Runtime container responsible for executing an actor instance.
+
+#[cfg(test)]
+mod tests;
+
+use alloc::{
+  boxed::Box,
+  collections::{BTreeSet, VecDeque},
+  string::String,
+  vec,
+  vec::Vec,
+};
+use core::{mem, task::Poll, time::Duration};
+
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
+use portable_atomic::{AtomicBool, Ordering};
+
+use crate::core::{
+  kernel::{
+    actor::{
+      Actor, ActorContext, ActorShared, ContextPipeTaskId, Pid, STASH_OVERFLOW_REASON,
+      actor_ref::{ActorRef, ActorRefSenderShared},
+      context_pipe_task::{ContextPipeFuture, ContextPipeTask},
+      pipe_spawn_error::PipeSpawnError,
+    },
+    dispatch::{
+      dispatcher::{DispatcherConfig, DispatcherShared},
+      mailbox::{
+        BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
+        metrics_event::MailboxPressureEvent,
+      },
+    },
+    error::ActorError,
+    event::stream::EventStreamEvent,
+    lifecycle::{LifecycleEvent, LifecycleStage},
+    messaging::{
+      ActorIdentity, AnyMessage, Identify,
+      message_invoker::{MessageInvoker, MessageInvokerPipeline, MessageInvokerShared},
+      system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
+    },
+    props::{ActorFactoryShared, Props},
+    spawn::SpawnError,
+    supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
+    system::{
+      ActorSystem,
+      guardian::GuardianKind,
+      state::{SystemStateShared, SystemStateWeak, system_state::FailureOutcome},
+    },
+  },
+  typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
+};
+
+struct ActorCellState {
+  children:               Vec<Pid>,
+  child_stats:            Vec<(Pid, RestartStatistics)>,
+  watchers:               Vec<Pid>,
+  watch_with_messages:    Vec<(Pid, AnyMessage)>,
+  stashed_messages:       VecDeque<AnyMessage>,
+  pipe_tasks:             Vec<ContextPipeTask>,
+  adapter_handles:        Vec<AdapterRefHandle>,
+  adapter_handle_counter: u64,
+  pipe_task_counter:      u64,
+}
+
+impl ActorCellState {
+  const fn new() -> Self {
+    Self {
+      children:               Vec::new(),
+      child_stats:            Vec::new(),
+      watchers:               Vec::new(),
+      watch_with_messages:    Vec::new(),
+      stashed_messages:       VecDeque::new(),
+      pipe_tasks:             Vec::new(),
+      adapter_handles:        Vec::new(),
+      adapter_handle_counter: 0,
+      pipe_task_counter:      0,
+    }
+  }
+}
+
+/// Runtime container responsible for executing an actor instance.
+///
+/// ```compile_fail
+/// use fraktor_actor_rs::core::kernel::actor::ActorCell;
+///
+/// fn read_dispatcher_config(cell: &ActorCell) {
+///   let _ = cell.dispatcher_config();
+/// }
+/// ```
+pub struct ActorCell {
+  pid:               Pid,
+  parent:            Option<Pid>,
+  name:              String,
+  tags:              BTreeSet<String>,
+  system:            SystemStateWeak,
+  factory:           ActorFactoryShared,
+  actor:             ActorShared,
+  pipeline:          MessageInvokerPipeline,
+  mailbox:           ArcShared<Mailbox>,
+  dispatcher_config: DispatcherConfig,
+  dispatcher:        DispatcherShared,
+  sender:            ActorRefSenderShared,
+  state:             RuntimeMutex<ActorCellState>,
+  terminated:        AtomicBool,
+}
+
+unsafe impl Send for ActorCell {}
+unsafe impl Sync for ActorCell {}
+
+impl ActorCell {
+  /// Upgrades the weak system reference to a strong reference.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the system state has already been dropped.
+  #[allow(clippy::expect_used)]
+  fn system(&self) -> SystemStateShared {
+    self.system.upgrade().expect("system state has been dropped")
+  }
+
+  /// Creates a new actor cell using the provided runtime state and props.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
+  /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
+  #[allow(clippy::needless_pass_by_value)]
+  pub fn create(
+    system: SystemStateShared,
+    pid: Pid,
+    parent: Option<Pid>,
+    name: String,
+    props: &Props,
+  ) -> Result<ArcShared<Self>, SpawnError> {
+    let mailbox_id = props.mailbox_id();
+
+    let mailbox_config = if let Some(id) = mailbox_id {
+      system.resolve_mailbox(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?
+    } else {
+      props.mailbox_config().clone()
+    };
+
+    let mailbox = if let Some(id) = mailbox_id {
+      let queue =
+        system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
+      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
+    } else {
+      ArcShared::new(
+        Mailbox::new_from_config(&mailbox_config)
+          .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
+      )
+    };
+    {
+      let policy = mailbox_config.policy();
+      let capacity = match policy.capacity() {
+        | MailboxCapacity::Bounded { capacity } => Some(capacity.get()),
+        | MailboxCapacity::Unbounded => None,
+      };
+      let throughput = policy.throughput_limit().map(|limit| limit.get());
+      let warn_threshold = mailbox_config.warn_threshold().map(|threshold| threshold.get());
+      let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
+      mailbox.set_instrumentation(instrumentation);
+    }
+    let dispatcher_config = props.dispatcher_config().clone();
+    let dispatcher = dispatcher_config.build_dispatcher(mailbox.clone())?;
+    mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
+    let sender = dispatcher.into_sender();
+    let factory = props.factory().clone();
+    let actor = ActorShared::new(factory.with_write(|f| f.create()));
+    let state = RuntimeMutex::new(ActorCellState::new());
+
+    let tags = props.tags().clone();
+    let cell = ArcShared::new(Self {
+      pid,
+      parent,
+      name,
+      tags,
+      system: system.downgrade(),
+      factory,
+      actor,
+      pipeline: MessageInvokerPipeline::new(),
+      mailbox,
+      dispatcher_config,
+      dispatcher,
+      sender,
+      state,
+      terminated: AtomicBool::new(false),
+    });
+
+    {
+      // Dispatcher keeps a weak reference to the invoker for message delivery.
+      // Using weak reference avoids circular reference: ActorCell → Dispatcher → DispatcherCore → Invoker
+      // → ActorCell
+      let invoker: MessageInvokerShared =
+        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
+      cell.dispatcher.register_invoker(invoker);
+    }
+
+    Ok(cell)
+  }
+
+  /// Recreates the actor instance from the stored factory.
+  fn recreate_actor(&self) {
+    self.actor.with_write(|actor| {
+      *actor = self.factory.with_write(|f| f.create());
+    });
+  }
+
+  /// Returns the pid associated with the cell.
+  #[must_use]
+  pub const fn pid(&self) -> Pid {
+    self.pid
+  }
+
+  /// Returns the logical actor name.
+  #[must_use]
+  #[allow(clippy::missing_const_for_fn)] // String の Deref が const でないため const fn にできない
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
+  /// Returns the parent pid if registered.
+  #[must_use]
+  pub const fn parent(&self) -> Option<Pid> {
+    self.parent
+  }
+
+  /// Returns the metadata tags associated with this actor.
+  #[must_use]
+  pub const fn tags(&self) -> &BTreeSet<String> {
+    &self.tags
+  }
+
+  /// Returns a handle to the mailbox managed by this cell.
+  #[must_use]
+  pub fn mailbox(&self) -> ArcShared<Mailbox> {
+    self.mailbox.clone()
+  }
+
+  /// Returns the dispatcher associated with this cell.
+  #[must_use]
+  pub fn dispatcher(&self) -> DispatcherShared {
+    self.dispatcher.clone()
+  }
+
+  /// Returns the dispatcher configuration associated with this cell.
+  #[must_use]
+  pub(crate) fn dispatcher_config(&self) -> DispatcherConfig {
+    self.dispatcher_config.clone()
+  }
+
+  /// Returns a sender handle targeting this actor cell's mailbox.
+  #[must_use]
+  pub(crate) fn mailbox_sender(&self) -> ActorRefSenderShared {
+    self.sender.clone()
+  }
+
+  /// Produces an actor reference targeting this cell.
+  #[must_use]
+  pub fn actor_ref(&self) -> ActorRef {
+    ActorRef::from_shared(self.pid, self.sender.clone(), &self.system())
+  }
+
+  /// Registers a child pid for supervision.
+  pub fn register_child(&self, pid: Pid) {
+    let mut state = self.state.lock();
+    if !state.children.contains(&pid) {
+      state.children.push(pid);
+    }
+    find_or_insert_stats(&mut state.child_stats, pid);
+  }
+
+  /// Removes a child pid from supervision tracking.
+  pub fn unregister_child(&self, pid: &Pid) {
+    let mut state = self.state.lock();
+    state.children.retain(|child| child != pid);
+    state.child_stats.retain(|(child, _)| child != pid);
+  }
+
+  fn stop_child(&self, pid: Pid) {
+    let should_stop = { self.state.lock().children.contains(&pid) };
+    if should_stop && let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Stop) {
+      self.system().record_send_error(Some(pid), &send_error);
+    }
+  }
+
+  /// Returns the current child pids supervised by this cell.
+  #[must_use]
+  pub fn children(&self) -> Vec<Pid> {
+    self.state.lock().children.clone()
+  }
+
+  pub(crate) fn snapshot_child_restart_stats(&self, pid: Pid) -> Option<RestartStatistics> {
+    let state = self.state.lock();
+    state.child_stats.iter().find(|(child, _)| *child == pid).map(|(_, record)| record.clone())
+  }
+
+  fn mark_terminated(&self) {
+    self.terminated.store(true, Ordering::Release);
+    self.drop_adapter_refs();
+    self.drop_pipe_tasks();
+  }
+
+  fn is_terminated(&self) -> bool {
+    self.terminated.load(Ordering::Acquire)
+  }
+
+  pub(crate) fn handle_watch(&self, watcher: Pid) {
+    if self.is_terminated() {
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
+      return;
+    }
+
+    let mut state = self.state.lock();
+    // ロック内で再確認し、TOCTOU競合を防ぐ
+    if self.is_terminated() {
+      drop(state);
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
+      return;
+    }
+    if !state.watchers.contains(&watcher) {
+      state.watchers.push(watcher);
+    }
+  }
+
+  pub(crate) fn handle_unwatch(&self, watcher: Pid) {
+    self.state.lock().watchers.retain(|pid| *pid != watcher);
+  }
+
+  /// Stashes a user message with an explicit stash capacity limit.
+  ///
+  /// # Errors
+  ///
+  /// Returns an overflow error when the stash already reached `max_messages`.
+  pub(crate) fn stash_message_with_limit(&self, message: AnyMessage, max_messages: usize) -> Result<(), ActorError> {
+    let mut state = self.state.lock();
+    if state.stashed_messages.len() >= max_messages {
+      return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
+    }
+    state.stashed_messages.push_back(message);
+    Ok(())
+  }
+
+  /// Returns the number of messages currently held in the stash.
+  #[must_use]
+  pub(crate) fn stashed_message_len(&self) -> usize {
+    self.state.lock().stashed_messages.len()
+  }
+
+  /// Applies a read-only closure to the current stashed messages.
+  pub(crate) fn with_stashed_messages<R>(&self, f: impl FnOnce(&VecDeque<AnyMessage>) -> R) -> R {
+    let state = self.state.lock();
+    f(&state.stashed_messages)
+  }
+
+  /// Removes all currently stashed messages and returns how many were dropped.
+  #[must_use]
+  pub(crate) fn clear_stashed_messages(&self) -> usize {
+    let mut state = self.state.lock();
+    let count = state.stashed_messages.len();
+    state.stashed_messages.clear();
+    count
+  }
+
+  /// Re-enqueues the oldest stashed user message back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
+  pub(crate) fn unstash_message(&self) -> Result<usize, ActorError> {
+    let message = {
+      let mut state = self.state.lock();
+      state.stashed_messages.pop_front()
+    };
+
+    let Some(message) = message else {
+      return Ok(0);
+    };
+
+    let mut pending = VecDeque::new();
+    pending.push_back(message);
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      if let Some(message) = pending.pop_front() {
+        state.stashed_messages.push_front(message);
+      }
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(1)
+  }
+
+  /// Re-enqueues all stashed user messages back to this actor mailbox.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
+  pub(crate) fn unstash_messages(&self) -> Result<usize, ActorError> {
+    let pending = {
+      let mut state = self.state.lock();
+      mem::take(&mut state.stashed_messages)
+    };
+
+    if pending.is_empty() {
+      return Ok(0);
+    }
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+      let mut state = self.state.lock();
+      state.stashed_messages = pending;
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(pending.len())
+  }
+
+  /// Re-enqueues up to `limit` stashed messages after applying `wrap`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when message conversion or mailbox enqueue fails.
+  pub(crate) fn unstash_messages_with_limit<F>(&self, limit: usize, mut wrap: F) -> Result<usize, ActorError>
+  where
+    F: FnMut(AnyMessage) -> Result<AnyMessage, ActorError>, {
+    if limit == 0 {
+      return Ok(0);
+    }
+
+    let original_messages = {
+      let mut state = self.state.lock();
+      let take_count = limit.min(state.stashed_messages.len());
+      let mut messages = VecDeque::with_capacity(take_count);
+      for _ in 0..take_count {
+        if let Some(message) = state.stashed_messages.pop_front() {
+          messages.push_back(message);
+        }
+      }
+      messages
+    };
+
+    if original_messages.is_empty() {
+      return Ok(0);
+    }
+
+    let mut wrapped_messages = VecDeque::with_capacity(original_messages.len());
+    for message in original_messages.iter().cloned() {
+      match wrap(message) {
+        | Ok(wrapped) => wrapped_messages.push_back(wrapped),
+        | Err(error) => {
+          self.restore_stashed_messages(original_messages);
+          return Err(error);
+        },
+      }
+    }
+
+    if let Err(error) = self.mailbox.prepend_user_messages(&wrapped_messages) {
+      self.restore_stashed_messages(original_messages);
+      return Err(ActorError::from_send_error(&error));
+    }
+
+    self.dispatcher.register_for_execution(ScheduleHints {
+      has_system_messages: false,
+      has_user_messages:   true,
+      backpressure_active: false,
+    });
+
+    Ok(wrapped_messages.len())
+  }
+
+  fn restore_stashed_messages(&self, mut messages: VecDeque<AnyMessage>) {
+    let mut state = self.state.lock();
+    while let Some(message) = messages.pop_back() {
+      state.stashed_messages.push_front(message);
+    }
+  }
+
+  /// Allocates and tracks a new adapter handle for message adapters.
+  pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState>) {
+    let mut state = self.state.lock();
+    let id = state.adapter_handle_counter.wrapping_add(1);
+    state.adapter_handle_counter = id;
+    let handle_id = id;
+    let lifecycle = ArcShared::new(AdapterLifecycleState::new());
+    let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
+    state.adapter_handles.push(handle);
+    (handle_id, lifecycle)
+  }
+
+  /// Removes the specified adapter handle and marks it as stopped.
+  pub(crate) fn remove_adapter_handle(&self, handle_id: AdapterRefHandleId) {
+    let mut state = self.state.lock();
+    let handles = &mut state.adapter_handles;
+    if let Some(index) = handles.iter().position(|handle| handle.id() == handle_id) {
+      let handle = handles.remove(index);
+      handle.stop();
+    }
+  }
+
+  /// Drops every tracked adapter handle, notifying senders that the actor stopped.
+  pub(crate) fn drop_adapter_refs(&self) {
+    let mut state = self.state.lock();
+    for handle in state.adapter_handles.iter() {
+      handle.stop();
+    }
+    state.adapter_handles.clear();
+  }
+
+  /// Registers a new pipe task and schedules its first poll.
+  pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture) -> Result<(), PipeSpawnError> {
+    if self.is_terminated() {
+      return Err(PipeSpawnError::TargetStopped);
+    }
+    let mut state = self.state.lock();
+    // ロック内で再確認し、TOCTOU競合を防ぐ
+    if self.is_terminated() {
+      return Err(PipeSpawnError::TargetStopped);
+    }
+    let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
+    state.pipe_task_counter = id.get();
+    let task = ContextPipeTask::new(id, future, self.pid, self.system());
+    state.pipe_tasks.push(task);
+    drop(state);
+    self.poll_pipe_task(id);
+    Ok(())
+  }
+
+  fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
+    let message = {
+      let mut state = self.state.lock();
+      let tasks = &mut state.pipe_tasks;
+      let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
+        return;
+      };
+      match tasks[index].poll() {
+        | Poll::Ready(message) => {
+          tasks.swap_remove(index);
+          Some(message)
+        },
+        | Poll::Pending => None,
+      }
+    };
+
+    if let Some(message) = message {
+      // pipe_to_self の完了通知は actor 自身の mailbox への best-effort 送信であり、
+      // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
+      let _pipe_delivery = self.actor_ref().try_tell(message);
+    }
+  }
+
+  fn drop_pipe_tasks(&self) {
+    self.state.lock().pipe_tasks.clear();
+  }
+
+  fn drop_stash_messages(&self) {
+    self.state.lock().stashed_messages.clear();
+  }
+
+  fn drop_watch_with_messages(&self) {
+    self.state.lock().watch_with_messages.clear();
+  }
+
+  fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
+    self.poll_pipe_task(task_id)
+  }
+
+  fn notify_watchers_on_stop(&self) {
+    let mut state = self.state.lock();
+    if state.watchers.is_empty() {
+      return;
+    }
+    let recipients = mem::take(&mut state.watchers);
+    drop(state);
+
+    for watcher in recipients {
+      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
+        self.system().record_send_error(Some(watcher), &send_error);
+      }
+    }
+  }
+
+  /// Delivers a termination notification for the given pid.
+  ///
+  /// When a custom message was registered via [`register_watch_with`](Self::register_watch_with),
+  /// the message is enqueued into the actor mailbox (delivered asynchronously on a later turn).
+  /// Otherwise, [`Actor::on_terminated`] is invoked synchronously within this call.
+  pub(crate) fn handle_terminated(&self, terminated_pid: Pid) -> Result<(), ActorError> {
+    let custom_message = self.take_watch_with_message(terminated_pid);
+    if let Some(message) = custom_message {
+      self.actor_ref().try_tell(message).map_err(|error| ActorError::from_send_error(&error))?;
+      Ok(())
+    } else {
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
+      let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
+      ctx.clear_sender();
+      result
+    }
+  }
+
+  /// Registers a custom message to deliver when the watched target terminates.
+  pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessage) {
+    let mut state = self.state.lock();
+    state.watch_with_messages.retain(|(pid, _)| *pid != target);
+    state.watch_with_messages.push((target, message));
+  }
+
+  /// Removes any custom watch-with message for the given target.
+  pub(crate) fn remove_watch_with(&self, target: Pid) {
+    self.state.lock().watch_with_messages.retain(|(pid, _)| *pid != target);
+  }
+
+  fn take_watch_with_message(&self, target: Pid) -> Option<AnyMessage> {
+    let mut state = self.state.lock();
+    if let Some(index) = state.watch_with_messages.iter().position(|(pid, _)| *pid == target) {
+      let (_, message) = state.watch_with_messages.swap_remove(index);
+      Some(message)
+    } else {
+      None
+    }
+  }
+
+  fn handle_create(&self) -> Result<(), ActorError> {
+    let outcome = self.run_pre_start(LifecycleStage::Started);
+    if let Err(ref error) = outcome {
+      self.report_failure(error, None);
+    }
+    outcome
+  }
+
+  fn handle_recreate(&self) -> Result<(), ActorError> {
+    {
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
+      self.actor.with_write(|actor| actor.pre_restart(&mut ctx))?;
+      ctx.clear_sender();
+    }
+
+    self.drop_pipe_tasks();
+    self.drop_stash_messages();
+    self.drop_watch_with_messages();
+    self.publish_lifecycle(LifecycleStage::Stopped);
+    self.recreate_actor();
+    let outcome = self.run_pre_start(LifecycleStage::Restarted);
+    if outcome.is_ok() {
+      self.mailbox.resume();
+    }
+    outcome
+  }
+
+  #[cfg_attr(not(test), allow(dead_code))]
+  pub(crate) fn watchers_snapshot(&self) -> Vec<Pid> {
+    self.state.lock().watchers.clone()
+  }
+
+  fn handle_stop(&self) -> Result<(), ActorError> {
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
+    ctx.clear_sender();
+    if result.is_ok() {
+      self.publish_lifecycle(LifecycleStage::Stopped);
+    }
+
+    let children_snapshot = self.children();
+    for child in &children_snapshot {
+      if let Err(send_error) = self.system().send_system_message(*child, SystemMessage::Stop) {
+        self.system().record_send_error(Some(*child), &send_error);
+      }
+    }
+
+    self.clear_child_stats(&children_snapshot);
+    self.drop_stash_messages();
+    self.mark_terminated();
+    self.notify_watchers_on_stop();
+
+    if let Some(parent) = self.parent {
+      self.system().unregister_child(Some(parent), self.pid);
+    }
+
+    self.system().release_name(self.parent, &self.name);
+    self.system().remove_cell(&self.pid);
+
+    if let Some(kind) = self.system().guardian_kind_by_pid(self.pid) {
+      self.system().mark_guardian_stopped(kind);
+      match kind {
+        | GuardianKind::Root => {
+          self.system().mark_terminated();
+        },
+        | GuardianKind::User | GuardianKind::System => {
+          if !self.system().guardian_alive(GuardianKind::Root) {
+            self.system().mark_terminated();
+          }
+        },
+      }
+    }
+
+    result
+  }
+
+  fn handle_kill(&self, snapshot: Option<FailureMessageSnapshot>) -> Result<(), ActorError> {
+    let error = ActorError::fatal("Kill");
+    self.report_failure(&error, snapshot);
+    Err(error)
+  }
+
+  fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
+    self.mailbox.suspend();
+    let timestamp = self.system().monotonic_now();
+    let payload = FailurePayload::from_error(self.pid, error, snapshot, timestamp);
+    self.system().report_failure(payload);
+  }
+
+  fn handle_failure_message(&self, payload: &FailurePayload) {
+    let actor_error = payload.to_actor_error();
+    let now = self.system().monotonic_now();
+    let payload_ref = &payload;
+    let (directive, affected) = self.handle_child_failure(payload.child(), &actor_error, now);
+
+    {
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
+      if let Err(ref error) =
+        self.actor.with_write(|actor| actor.on_child_failed(&mut ctx, payload.child(), &actor_error))
+      {
+        self.report_failure(error, None);
+      }
+      ctx.clear_sender();
+    }
+
+    match directive {
+      | SupervisorDirective::Restart => {
+        let mut restart_failed = false;
+        for target in affected {
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Recreate) {
+            self.system().record_send_error(Some(target), &send_error);
+            restart_failed = true;
+          }
+        }
+
+        if restart_failed {
+          self.system().record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
+          let snapshot = payload.message().cloned();
+          let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system().monotonic_now());
+          self.system().report_failure(escalated);
+        } else {
+          self.system().record_failure_outcome(payload.child(), FailureOutcome::Restart, payload_ref);
+        }
+      },
+      | SupervisorDirective::Stop => {
+        for target in affected {
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Stop) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
+        }
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Stop, payload_ref);
+      },
+      | SupervisorDirective::Escalate => {
+        for target in affected {
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Stop) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
+        }
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Escalate, payload_ref);
+        let snapshot = payload.message().cloned();
+        let escalated = FailurePayload::from_error(self.pid, &actor_error, snapshot, self.system().monotonic_now());
+        self.system().report_failure(escalated);
+      },
+      | SupervisorDirective::Resume => {
+        for target in affected {
+          if let Err(send_error) = self.system().send_system_message(target, SystemMessage::Resume) {
+            self.system().record_send_error(Some(target), &send_error);
+          }
+        }
+        self.system().record_failure_outcome(payload.child(), FailureOutcome::Resume, payload_ref);
+      },
+    }
+  }
+
+  fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
+    ctx.clear_sender();
+    if outcome.is_ok() {
+      self.publish_lifecycle(stage);
+    }
+    outcome
+  }
+
+  fn publish_lifecycle(&self, stage: LifecycleStage) {
+    let timestamp = self.system().monotonic_now();
+    let event = LifecycleEvent::new(self.pid, self.parent, self.name.clone(), stage, timestamp);
+    self.system().publish_event(&EventStreamEvent::Lifecycle(event));
+  }
+}
+
+/// Internal invoker that bridges dispatcher message delivery to actor cell.
+///
+/// Uses a weak reference to avoid circular reference between ActorCell and DispatcherCore.
+struct ActorCellInvoker {
+  cell: WeakShared<ActorCell>,
+}
+
+impl ActorCellInvoker {
+  /// Upgrades the weak cell reference to a strong reference.
+  ///
+  /// Returns `None` if the actor cell has been dropped.
+  fn cell(&self) -> Option<ArcShared<ActorCell>> {
+    self.cell.upgrade()
+  }
+}
+
+impl MessageInvoker for ActorCellInvoker {
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the message
+      return Ok(());
+    };
+    if cell.is_terminated() {
+      return Ok(());
+    }
+    if let Some(system_message) = message.payload().downcast_ref::<SystemMessage>() {
+      match system_message {
+        | SystemMessage::PoisonPill => return cell.handle_stop(),
+        | SystemMessage::Kill => {
+          let snapshot = FailureMessageSnapshot::from_message(&message);
+          return cell.handle_kill(Some(snapshot));
+        },
+        | _ => {},
+      }
+    }
+    if let Some(identify) = message.payload().downcast_ref::<Identify>() {
+      if let Some(mut sender) = message.sender().cloned() {
+        let identity = ActorIdentity::found(identify.correlation_id().clone(), cell.actor_ref());
+        // Best-effort reply: the requester may have stopped before the reply arrives.
+        sender.try_tell(AnyMessage::new(identity)).map_err(|error| ActorError::from_send_error(&error))?;
+      }
+      // NOTE: No reply is sent if sender is None (no deadLetters in no_std).
+      // Use with_sender() to receive ActorIdentity replies.
+      return Ok(());
+    }
+    let system = ActorSystem::from_state(cell.system());
+    let mut ctx = ActorContext::new(&system, cell.pid);
+    let failure_candidate = message.clone();
+    let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
+    if let Err(ref error) = result {
+      let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
+      cell.report_failure(error, Some(snapshot));
+    }
+    result
+  }
+
+  fn invoke_system_message(&mut self, message: SystemMessage) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the message
+      return Ok(());
+    };
+    if cell.is_terminated() {
+      return Ok(());
+    }
+    match message {
+      | SystemMessage::PoisonPill => cell.handle_stop(),
+      | SystemMessage::Kill => {
+        let payload: ArcShared<dyn core::any::Any + Send + Sync + 'static> = ArcShared::new(SystemMessage::Kill);
+        let snapshot = FailureMessageSnapshot::new(payload, None);
+        cell.handle_kill(Some(snapshot))
+      },
+      | SystemMessage::Stop => cell.handle_stop(),
+      | SystemMessage::Create => cell.handle_create(),
+      | SystemMessage::Recreate => cell.handle_recreate(),
+      | SystemMessage::Failure(ref payload) => {
+        cell.handle_failure_message(payload);
+        Ok(())
+      },
+      | SystemMessage::Suspend => {
+        cell.mailbox.suspend();
+        Ok(())
+      },
+      | SystemMessage::Resume => {
+        cell.mailbox.resume();
+        Ok(())
+      },
+      | SystemMessage::Watch(pid) => {
+        cell.handle_watch(pid);
+        Ok(())
+      },
+      | SystemMessage::Unwatch(pid) => {
+        cell.handle_unwatch(pid);
+        Ok(())
+      },
+      | SystemMessage::StopChild(pid) => {
+        cell.stop_child(pid);
+        Ok(())
+      },
+      | SystemMessage::Terminated(pid) => cell.handle_terminated(pid),
+      | SystemMessage::PipeTask(task_id) => {
+        cell.handle_pipe_task_ready(task_id);
+        Ok(())
+      },
+    }
+  }
+
+  fn invoke_mailbox_pressure(&mut self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
+    let Some(cell) = self.cell() else {
+      // ActorCell has been dropped, silently ignore the notification
+      return Ok(());
+    };
+    let system = ActorSystem::from_state(cell.system());
+    let mut ctx = ActorContext::new(&system, cell.pid);
+    let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
+    if let Err(ref error) = result {
+      cell.report_failure(error, None);
+    }
+    result
+  }
+}
+
+impl ActorCell {
+  /// Returns the supervisor strategy configuration for this actor.
+  pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
+    let system = ActorSystem::from_state(self.system());
+    let mut ctx = ActorContext::new(&system, self.pid);
+    self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
+  }
+
+  pub(crate) fn handle_child_failure(
+    &self,
+    child: Pid,
+    error: &ActorError,
+    now: Duration,
+  ) -> (SupervisorDirective, Vec<Pid>) {
+    // Get supervisor strategy dynamically from actor instance
+    let strategy = {
+      let system = ActorSystem::from_state(self.system());
+      let mut ctx = ActorContext::new(&system, self.pid);
+      self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
+    };
+
+    let directive = {
+      let mut state = self.state.lock();
+      let entry = find_or_insert_stats(&mut state.child_stats, child);
+      strategy.handle_failure(entry, error, now)
+    };
+
+    let affected = match strategy.kind() {
+      | SupervisorStrategyKind::OneForOne => vec![child],
+      | SupervisorStrategyKind::AllForOne => self.state.lock().children.clone(),
+    };
+
+    if matches!(directive, SupervisorDirective::Stop) {
+      self.clear_child_stats(&affected);
+    }
+
+    (directive, affected)
+  }
+
+  fn clear_child_stats(&self, children: &[Pid]) {
+    if children.is_empty() {
+      return;
+    }
+    let mut state = self.state.lock();
+    state.child_stats.retain(|(pid, _)| !children.contains(pid));
+  }
+}
+
+fn find_or_insert_stats(entries: &mut Vec<(Pid, RestartStatistics)>, pid: Pid) -> &mut RestartStatistics {
+  if let Some(index) = entries.iter().position(|(child, _)| *child == pid) {
+    return &mut entries[index].1;
+  }
+  let new_index = entries.len();
+  entries.push((pid, RestartStatistics::new()));
+  &mut entries[new_index].1
+}

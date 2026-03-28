@@ -3,8 +3,10 @@
 use core::time::Duration;
 
 use crate::core::{
-  messaging::AnyMessage,
-  scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
+  kernel::{
+    messaging::AnyMessage,
+    scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
+  },
   typed::actor::TypedActorRef,
 };
 

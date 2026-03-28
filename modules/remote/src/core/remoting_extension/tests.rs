@@ -3,7 +3,7 @@
 use alloc::{format, sync::Arc, vec::Vec};
 use std::sync::Mutex;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext},
   error::ActorError,
   event::stream::{

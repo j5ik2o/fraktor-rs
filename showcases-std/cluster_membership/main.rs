@@ -14,7 +14,7 @@
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
-  core::{
+  core::kernel::{
     actor::{Actor, ActorContext},
     error::ActorError,
     event::stream::{EventStreamEvent, EventStreamSubscription},

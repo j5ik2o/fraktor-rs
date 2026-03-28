@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::convert::TryInto;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::actor_path::{ActorPath, ActorPathParser},
   event::stream::CorrelationId,
   serialization::SerializedMessage,

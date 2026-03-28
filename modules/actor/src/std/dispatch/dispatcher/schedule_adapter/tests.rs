@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
-use crate::core::dispatch::{
+use crate::core::kernel::dispatch::{
   dispatcher::DispatcherShared,
   mailbox::{Mailbox, MailboxPolicy},
 };

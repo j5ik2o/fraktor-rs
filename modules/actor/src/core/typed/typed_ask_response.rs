@@ -1,7 +1,7 @@
 //! Typed ask response handle returned by `TypedActorRef::ask`.
 
 use crate::core::{
-  messaging::AskResponse,
+  kernel::messaging::AskResponse,
   typed::{actor::TypedActorRef, typed_ask_future::TypedAskFuture},
 };
 

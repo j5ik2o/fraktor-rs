@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext, ChildRef},
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   error::ActorError,
@@ -77,8 +77,8 @@ fn dead_letter_event_is_published_when_send_fails() {
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

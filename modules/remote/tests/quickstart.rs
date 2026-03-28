@@ -6,7 +6,7 @@ use alloc::{format, vec::Vec};
 use std::net::TcpListener;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext, Pid, actor_path::ActorPathParts},
   error::ActorError,
   event::stream::{
@@ -89,8 +89,8 @@ fn alloc_port() -> u16 {
   TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("addr").port()
 }
 
-fn remote_path(port: u16) -> fraktor_actor_rs::core::actor::actor_path::ActorPath {
-  use fraktor_actor_rs::core::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
+fn remote_path(port: u16) -> fraktor_actor_rs::core::kernel::actor::actor_path::ActorPath {
+  use fraktor_actor_rs::core::kernel::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
   let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", port)));
   parts = parts.with_guardian(GuardianKind::User);
   let mut path = ActorPath::from_parts(parts);

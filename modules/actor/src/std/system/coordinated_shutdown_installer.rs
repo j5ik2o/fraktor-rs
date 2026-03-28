@@ -5,7 +5,7 @@ extern crate std;
 use alloc::format;
 
 use super::coordinated_shutdown_id::CoordinatedShutdownId;
-use crate::core::{
+use crate::core::kernel::{
   extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };

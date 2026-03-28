@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},

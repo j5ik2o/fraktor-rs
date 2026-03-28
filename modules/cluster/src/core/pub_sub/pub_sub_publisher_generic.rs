@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::String, vec, vec::Vec};
 use core::any::type_name_of_val;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   messaging::AnyMessage,
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };

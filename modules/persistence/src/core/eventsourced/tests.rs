@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{ActorContext, Pid},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},

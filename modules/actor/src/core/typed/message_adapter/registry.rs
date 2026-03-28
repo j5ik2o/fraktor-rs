@@ -7,8 +7,10 @@ use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
 use crate::core::{
-  actor::{ActorContext, Pid, actor_ref::ActorRef},
-  system::state::SystemStateShared,
+  kernel::{
+    actor::{ActorContext, Pid, actor_ref::ActorRef},
+    system::state::SystemStateShared,
+  },
   typed::message_adapter::{
     AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload, AdapterRefHandleId, AdapterRefSender,
   },

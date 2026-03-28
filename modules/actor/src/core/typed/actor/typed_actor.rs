@@ -1,10 +1,12 @@
 //! Typed actor lifecycle contract.
 
 use crate::core::{
-  actor::Pid,
-  dispatch::mailbox::metrics_event::MailboxPressureEvent,
-  error::{ActorError, ActorErrorReason},
-  supervision::SupervisorStrategyConfig,
+  kernel::{
+    actor::Pid,
+    dispatch::mailbox::metrics_event::MailboxPressureEvent,
+    error::{ActorError, ActorErrorReason},
+    supervision::SupervisorStrategyConfig,
+  },
   typed::{actor::actor_context::TypedActorContext, message_adapter::AdapterError},
 };
 

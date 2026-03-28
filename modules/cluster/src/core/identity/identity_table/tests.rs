@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use fraktor_actor_rs::core::actor::actor_path::ActorPathFormatter;
+use fraktor_actor_rs::core::kernel::actor::actor_path::ActorPathFormatter;
 
 use crate::core::{
   identity::{IdentityEvent, IdentityTable, ResolveError, ResolveResult},

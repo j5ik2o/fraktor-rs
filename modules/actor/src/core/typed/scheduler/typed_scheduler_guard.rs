@@ -1,7 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
 use crate::core::{
-  scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
+  kernel::scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
   typed::{actor::TypedActorRef, scheduler::TypedScheduler},
 };
 

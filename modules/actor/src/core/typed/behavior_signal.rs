@@ -1,6 +1,9 @@
 //! Signals forwarded to typed behaviors.
 
-use crate::core::{actor::Pid, error::ActorError, typed::message_adapter::AdapterError};
+use crate::core::{
+  kernel::{actor::Pid, error::ActorError},
+  typed::message_adapter::AdapterError,
+};
 
 /// Enumerates lifecycle notifications delivered to typed behaviors.
 #[derive(Clone, Debug, PartialEq, Eq)]

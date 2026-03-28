@@ -6,7 +6,7 @@ mod tests;
 use alloc::{string::ToString, vec, vec::Vec};
 use core::sync::atomic::Ordering;
 
-use fraktor_actor_rs::core::event::stream::{CorrelationId, RemotingLifecycleEvent};
+use fraktor_actor_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
 use portable_atomic::AtomicU64;
 
 use super::{

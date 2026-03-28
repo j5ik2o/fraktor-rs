@@ -7,7 +7,7 @@ use core::any::TypeId;
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
-use crate::core::{actor::actor_ref::ActorRef, typed::message_adapter::AdapterPayload};
+use crate::core::{kernel::actor::actor_ref::ActorRef, typed::message_adapter::AdapterPayload};
 
 /// Wraps adapted payloads alongside metadata for typed actors.
 pub(crate) struct AdapterEnvelope {

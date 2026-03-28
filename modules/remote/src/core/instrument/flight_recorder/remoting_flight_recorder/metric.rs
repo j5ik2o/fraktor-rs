@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::event::stream::CorrelationId;
+use fraktor_actor_rs::core::kernel::event::stream::CorrelationId;
 
 use super::metric_kind::FlightMetricKind;
 

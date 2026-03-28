@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
@@ -19,8 +19,8 @@ struct Start;
 #[test]
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
-  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
@@ -37,8 +37,8 @@ fn stop_self_propagates_to_children() {
     move || ParentGuardian::new(child_states.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));

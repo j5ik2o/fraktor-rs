@@ -5,10 +5,12 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::BehaviorRunner;
 use crate::core::{
-  actor::ActorContext,
-  error::ActorError,
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  system::ActorSystem,
+  kernel::{
+    actor::ActorContext,
+    error::ActorError,
+    event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    system::ActorSystem,
+  },
   typed::{
     Behaviors, DeathPactException,
     actor::{TypedActor, TypedActorContext},
@@ -63,7 +65,7 @@ fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessag
   (ctx, MessageAdapterRegistry::new())
 }
 
-fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<crate::core::actor::Pid>) {
+fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<crate::core::kernel::actor::Pid>) {
   let system = ActorSystem::new_empty();
   let pids: Vec<_> = (0..count).map(|_| system.allocate_pid()).collect();
   (system, pids)
@@ -124,7 +126,7 @@ fn behavior_runner_publishes_adapter_failure_event() {
   assert_eq!(recorded.len(), 1);
   match &recorded[0] {
     | EventStreamEvent::AdapterFailure(event) => match event {
-      | crate::core::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
+      | crate::core::kernel::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
         assert_eq!(*event_pid, pid);
         assert_eq!(detail, "boom");
       },

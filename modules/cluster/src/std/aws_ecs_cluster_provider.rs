@@ -44,7 +44,7 @@ use std::{
 };
 
 use aws_sdk_ecs::Client as EcsClient;
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamShared},
   messaging::AnyMessage,
 };

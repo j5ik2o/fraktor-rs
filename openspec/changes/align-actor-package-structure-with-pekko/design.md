@@ -21,6 +21,65 @@
 - 今回の変更だけで `std` 側に新しい façade を増やすこと
 - package 再編とは無関係な actor runtime の挙動変更を同時に行うこと
 
+## 確定済みアーティファクト
+
+- `proposal.md` は `core` の最上位を `kernel` / `typed` に再編し、typed root から receptionist / pubsub / routing 語彙を外す breaking change を宣言している
+- `specs/actor-package-structure/spec.md` は `kernel` / `typed` 境界と、`receptionist` / `pubsub` / `routing` への集約を MUST として固定している
+- 本 `design.md` は後方互換レイヤを持たずに package 構造を正す方針を採用しており、proposal / spec / design の間に矛盾はない
+
+## 現行構造の棚卸し
+
+### `core` 最上位 package の仕分け
+
+| 現行 package | 代表 import path | 仕分け | 根拠 |
+|--------------|------------------|--------|------|
+| `actor` | `crate::core::actor::*` | `kernel` | untyped actor runtime |
+| `dead_letter` | `crate::core::dead_letter::*` | `kernel` | untyped runtime の配送失敗処理 |
+| `dispatch` | `crate::core::dispatch::*` | `kernel` | dispatcher / mailbox |
+| `error` | `crate::core::error::*` | `kernel` | untyped runtime 共通エラー |
+| `event` | `crate::core::event::*` | `kernel` | event stream / logging |
+| `extension` | `crate::core::extension::*` | `kernel` | extension 基盤 |
+| `futures` | `crate::core::futures::*` | `kernel` | actor future 基盤 |
+| `lifecycle` | `crate::core::lifecycle::*` | `kernel` | lifecycle event |
+| `messaging` | `crate::core::messaging::*` | `kernel` | untyped message 基盤 |
+| `pattern` | `crate::core::pattern::*` | `kernel` | ask / retry / graceful stop |
+| `props` | `crate::core::props::*` | `kernel` | untyped props |
+| `scheduler` | `crate::core::scheduler::*` | `kernel` | scheduler 実装 |
+| `serialization` | `crate::core::serialization::*` | `kernel` | serializer / registry |
+| `spawn` | `crate::core::spawn::*` | `kernel` | spawn registry |
+| `supervision` | `crate::core::supervision::*` | `kernel` | supervisor strategy |
+| `system` | `crate::core::system::*` | `kernel` | actor system 基盤 |
+| `typed` | `crate::core::typed::*` | `typed` | typed API / typed runtime |
+
+### `typed` root 公開面の仕分け
+
+| 現行 root 公開型 | 現行 import path | 再配置先 | 扱い |
+|------------------|------------------|----------|------|
+| `Listing` | `crate::core::typed::Listing` | `crate::core::typed::receptionist::Listing` | root から外す |
+| `ServiceKey` | `crate::core::typed::ServiceKey` | `crate::core::typed::receptionist::ServiceKey` | root から外す |
+| `Receptionist` | `crate::core::typed::Receptionist` | `crate::core::typed::receptionist::Receptionist` | root から外す |
+| `ReceptionistCommand` | `crate::core::typed::ReceptionistCommand` | `crate::core::typed::receptionist::ReceptionistCommand` | root から外す |
+| `Topic` | `crate::core::typed::Topic` | `crate::core::typed::pubsub::Topic` | root から外す |
+| `TopicCommand` | `crate::core::typed::TopicCommand` | `crate::core::typed::pubsub::TopicCommand` | root から外す |
+| `TopicStats` | `crate::core::typed::TopicStats` | `crate::core::typed::pubsub::TopicStats` | root から外す |
+| `Routers` | `crate::core::typed::Routers` | `crate::core::typed::routing::Routers` | root から外す |
+| `Resizer` | `crate::core::typed::Resizer` | `crate::core::typed::routing::Resizer` | root から外す |
+| `DefaultResizer` | `crate::core::typed::DefaultResizer` | `crate::core::typed::routing::DefaultResizer` | root から外す |
+| `GroupRouterBuilder` | `crate::core::typed::GroupRouterBuilder` | `crate::core::typed::routing::GroupRouterBuilder` | root から外す |
+| `PoolRouterBuilder` | `crate::core::typed::PoolRouterBuilder` | `crate::core::typed::routing::PoolRouterBuilder` | root から外す |
+| `BalancingPoolRouterBuilder` | `crate::core::typed::BalancingPoolRouterBuilder` | `crate::core::typed::routing::BalancingPoolRouterBuilder` | root から外す |
+| `ScatterGatherFirstCompletedRouterBuilder` | `crate::core::typed::ScatterGatherFirstCompletedRouterBuilder` | `crate::core::typed::routing::ScatterGatherFirstCompletedRouterBuilder` | root から外す |
+| `TailChoppingRouterBuilder` | `crate::core::typed::TailChoppingRouterBuilder` | `crate::core::typed::routing::TailChoppingRouterBuilder` | root から外す |
+| `Behavior`、`Behaviors`、`TypedProps`、`SpawnProtocol` など | `crate::core::typed::*` | `crate::core::typed::*` | root に残す |
+
+## 実装手順への組み込み
+
+1. 1 回の編集対象を 1 ファイルに限定して更新する
+2. 編集直後に `./scripts/ci-check.sh ai dylint` を実行する
+3. 失敗した場合は次の編集へ進まず、その場で module wiring / import を修正する
+4. `./scripts/ci-check.sh` は内部で `cargo` を呼ぶため並行実行しない
+5. `./scripts/ci-check.sh ai all` は final-ci まで実行しない
+
 ## Decisions
 
 ### 1. `core` の最上位は `kernel` と `typed` に揃える

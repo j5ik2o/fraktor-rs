@@ -3,7 +3,9 @@ use core::hint::spin_loop;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::typed::{
-  Behaviors, Listing, Receptionist, ReceptionistCommand, ServiceKey, TypedActorSystem, TypedProps, actor::TypedActorRef,
+  Behaviors, TypedActorSystem, TypedProps,
+  actor::TypedActorRef,
+  receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
 };
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -18,8 +20,8 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
 }

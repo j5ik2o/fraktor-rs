@@ -3,7 +3,7 @@
 use alloc::{format, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   messaging::AnyMessage,
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };

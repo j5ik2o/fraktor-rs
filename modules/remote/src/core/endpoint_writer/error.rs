@@ -1,6 +1,6 @@
 //! Error variants produced by [`EndpointWriter`](crate::core::endpoint_writer::EndpointWriter).
 
-use fraktor_actor_rs::core::serialization::SerializationError;
+use fraktor_actor_rs::core::kernel::serialization::SerializationError;
 
 use crate::core::envelope::OutboundPriority;
 

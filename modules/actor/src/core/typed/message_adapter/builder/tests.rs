@@ -3,11 +3,13 @@ use alloc::string::ToString;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContext},
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  system::ActorSystem,
+  kernel::{
+    actor::{Actor, ActorCell, ActorContext},
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    system::ActorSystem,
+  },
   typed::{
     actor::TypedActorContext,
     message_adapter::{AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},

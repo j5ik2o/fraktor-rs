@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, vec::Vec};
 use core::convert::TryInto;
 
-use fraktor_actor_rs::core::event::stream::CorrelationId;
+use fraktor_actor_rs::core::kernel::event::stream::CorrelationId;
 
 use super::system_message_envelope::{SYSTEM_MESSAGE_FRAME_KIND, SystemMessageEnvelope};
 use crate::core::wire::WireError;

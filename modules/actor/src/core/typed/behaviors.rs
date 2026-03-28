@@ -10,8 +10,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::supervise::Supervise;
 use crate::core::{
-  error::ActorError,
-  messaging::AnyMessage,
+  kernel::{error::ActorError, messaging::AnyMessage},
   typed::{
     actor::{TypedActorContext, TypedActorRef},
     behavior::{Behavior, BehaviorDirective},
@@ -59,7 +58,7 @@ where
     // interceptor の診断性を保つため warning log を残す。
     if let Err(error) = self.monitor_ref.try_tell(message.clone()) {
       ctx.system().emit_log(
-        crate::core::event::logging::LogLevel::Warn,
+        crate::core::kernel::event::logging::LogLevel::Warn,
         alloc::format!("monitor interceptor failed to deliver message: {:?}", error),
         Some(ctx.pid()),
       );
@@ -245,7 +244,7 @@ impl Behaviors {
   }
 
   /// Wraps a behavior so that spawned children inherit a declarative
-  /// [`SupervisorStrategy`](crate::core::supervision::SupervisorStrategy).
+  /// [`SupervisorStrategy`](crate::core::kernel::supervision::SupervisorStrategy).
   #[must_use]
   pub const fn supervise<M>(behavior: Behavior<M>) -> Supervise<M>
   where

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{format, string::String};
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   messaging::AnyMessage,
   serialization::{SerializationCallScope, SerializationError, SerializationExtensionShared, SerializedMessage},
   system::ActorSystem,

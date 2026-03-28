@@ -4,21 +4,22 @@ use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
 
 use crate::core::{
-  dead_letter::DeadLetterEntry,
-  error::SendError,
-  event::{
-    logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
+  kernel::{
+    dead_letter::DeadLetterEntry,
+    error::SendError,
+    event::{
+      logging::LogLevel,
+      stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
+    },
+    futures::ActorFutureShared,
+    messaging::AskResult,
+    spawn::SpawnError,
+    system::{ActorSystem, ActorSystemConfig, state::SystemStateShared},
   },
-  futures::ActorFutureShared,
-  messaging::AskResult,
-  spawn::SpawnError,
-  system::{ActorSystem, ActorSystemConfig, state::SystemStateShared},
   typed::{
-    SYSTEM_RECEPTIONIST_TOP_LEVEL,
     actor::{TypedActorRef, TypedChildRef},
     props::TypedProps,
-    receptionist_command::ReceptionistCommand,
+    receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
     scheduler::TypedSchedulerShared,
   },
 };
@@ -54,7 +55,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
   pub fn new(
     guardian: &TypedProps<M>,
-    tick_driver_config: crate::core::scheduler::tick_driver::TickDriverConfig,
+    tick_driver_config: crate::core::kernel::scheduler::tick_driver::TickDriverConfig,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystem::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }
@@ -105,7 +106,7 @@ where
 
   /// Allocates a new pid (testing helper).
   #[must_use]
-  pub fn allocate_pid(&self) -> crate::core::actor::Pid {
+  pub fn allocate_pid(&self) -> crate::core::kernel::actor::Pid {
     self.inner.allocate_pid()
   }
 
@@ -128,7 +129,7 @@ where
   }
 
   /// Emits a log event with the specified severity.
-  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::core::actor::Pid>) {
+  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::core::kernel::actor::Pid>) {
     self.inner.emit_log(level, message, origin)
   }
 
@@ -181,7 +182,7 @@ where
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> crate::core::scheduler::SchedulerBackedDelayProvider {
+  pub fn delay_provider(&self) -> crate::core::kernel::scheduler::SchedulerBackedDelayProvider {
     self.inner.delay_provider()
   }
 }

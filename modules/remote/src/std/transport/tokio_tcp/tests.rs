@@ -3,7 +3,7 @@
 use core::time::Duration;
 use std::thread;
 
-use fraktor_actor_rs::core::event::stream::CorrelationId;
+use fraktor_actor_rs::core::kernel::event::stream::CorrelationId;
 
 use super::super::TokioTcpTransport;
 use crate::core::transport::{RemoteTransport, TransportBind, TransportEndpoint};

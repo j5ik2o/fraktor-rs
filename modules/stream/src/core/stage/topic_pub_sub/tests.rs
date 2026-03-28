@@ -5,16 +5,22 @@ use std::{
 };
 
 use fraktor_actor_rs::core::{
-  actor::{Actor, ActorContext},
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::{
+    actor::{Actor, ActorContext},
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    system::{ActorSystem, ActorSystemConfig},
   },
-  system::{ActorSystem, ActorSystemConfig},
-  typed::{Behaviors, Topic, TopicCommand, TopicStats, TypedProps, actor::TypedActorRef},
+  typed::{
+    Behaviors, TypedProps,
+    actor::TypedActorRef,
+    pubsub::{Topic, TopicCommand, TopicStats},
+  },
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 

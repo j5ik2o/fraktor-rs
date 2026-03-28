@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_actor_rs::core::actor::Pid;
+use fraktor_actor_rs::core::kernel::actor::Pid;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{event_adapters::EventAdapters, persistent_repr::PersistentRepr};

@@ -14,8 +14,10 @@ use std::sync::Arc;
 
 use fraktor_actor_rs::{
   core::{
-    error::ActorError,
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    kernel::{
+      error::ActorError,
+      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    },
     typed::{Behavior, BehaviorSignal, TypedActorSystem, TypedProps},
   },
   std::typed::Behaviors,

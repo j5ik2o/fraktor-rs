@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Instant};
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::{
-  core::pattern::{CircuitBreakerCallError, CircuitBreakerState, Clock},
+  core::kernel::pattern::{CircuitBreakerCallError, CircuitBreakerState, Clock},
   std::pattern::circuit_breaker_shared,
 };
 
@@ -101,7 +101,8 @@ async fn call_trips_after_max_failures() {
 #[tokio::test]
 async fn call_recovers_after_reset_timeout() {
   let clock = FakeClock::new();
-  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb =
+    crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
@@ -119,7 +120,8 @@ async fn call_recovers_after_reset_timeout() {
 #[tokio::test]
 async fn half_open_failure_reopens() {
   let clock = FakeClock::new();
-  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb =
+    crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -133,7 +135,8 @@ async fn half_open_failure_reopens() {
 #[tokio::test]
 async fn open_error_contains_remaining_duration() {
   let clock = FakeClock::new();
-  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock.clone());
+  let cb =
+    crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -150,7 +153,8 @@ async fn open_error_contains_remaining_duration() {
 #[tokio::test(start_paused = true)]
 async fn cancel_during_half_open_records_failure() {
   let clock = FakeClock::new();
-  let cb = crate::core::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb =
+    crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);

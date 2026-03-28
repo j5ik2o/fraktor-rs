@@ -8,9 +8,9 @@ fn interceptor_trait_has_default_around_start() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = crate::core::system::ActorSystem::new_empty();
+  let system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = crate::core::actor::ActorContext::new(&system, pid);
+  let mut context = crate::core::kernel::actor::ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let result = interceptor.around_start(&mut typed_ctx, &mut |_ctx| Ok(Behaviors::same()));
@@ -23,9 +23,9 @@ fn interceptor_trait_has_default_around_receive() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = crate::core::system::ActorSystem::new_empty();
+  let system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = crate::core::actor::ActorContext::new(&system, pid);
+  let mut context = crate::core::kernel::actor::ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let result = interceptor.around_receive(&mut typed_ctx, &42u32, &mut |_ctx, _msg| Ok(Behaviors::same()));
@@ -38,9 +38,9 @@ fn interceptor_trait_has_default_around_signal() {
   impl BehaviorInterceptor<u32> for NoopInterceptor {}
 
   let mut interceptor = NoopInterceptor;
-  let system = crate::core::system::ActorSystem::new_empty();
+  let system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut context = crate::core::actor::ActorContext::new(&system, pid);
+  let mut context = crate::core::kernel::actor::ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let result =

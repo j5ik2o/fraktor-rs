@@ -4,8 +4,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::BehaviorSignalInterceptor;
 use crate::core::{
-  actor::ActorContext,
-  system::ActorSystem,
+  kernel::{actor::ActorContext, system::ActorSystem},
   typed::{BehaviorSignal, Behaviors, actor::TypedActorContext},
 };
 
@@ -21,10 +20,10 @@ impl BehaviorSignalInterceptor<u32> for SignalProbe {
     start: &mut (
            dyn FnMut(
       &mut TypedActorContext<'_, u32>,
-    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError>
+    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::kernel::error::ActorError>
              + '_
          ),
-  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError> {
+  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::kernel::error::ActorError> {
     *self.start_count.lock() += 1;
     start(ctx)
   }
@@ -37,10 +36,10 @@ impl BehaviorSignalInterceptor<u32> for SignalProbe {
            dyn FnMut(
       &mut TypedActorContext<'_, u32>,
       &BehaviorSignal,
-    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError>
+    ) -> Result<crate::core::typed::Behavior<u32>, crate::core::kernel::error::ActorError>
              + '_
          ),
-  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::error::ActorError> {
+  ) -> Result<crate::core::typed::Behavior<u32>, crate::core::kernel::error::ActorError> {
     *self.signal_count.lock() += 1;
     target(ctx, signal)
   }

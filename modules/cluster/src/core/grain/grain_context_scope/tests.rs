@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
@@ -79,8 +79,8 @@ struct TestGuardian;
 impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::messaging::AnyMessageView<'_>,
+    _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
+    _message: fraktor_actor_rs::core::kernel::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -140,7 +140,7 @@ impl ActorRefProvider for TestActorRefProvider {
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

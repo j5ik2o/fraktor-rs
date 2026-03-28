@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::actor::actor_ref::ActorRef;
+use fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{

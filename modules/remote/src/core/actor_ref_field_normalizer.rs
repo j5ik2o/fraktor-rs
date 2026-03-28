@@ -2,7 +2,7 @@
 
 use alloc::string::{String, ToString};
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::actor_path::ActorPath,
   event::stream::{EventStreamEvent, RemoteAuthorityEvent},
   messaging::AnyMessage,

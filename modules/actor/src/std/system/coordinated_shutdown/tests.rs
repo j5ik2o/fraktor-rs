@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::{
-  core::system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
+  core::kernel::system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
   std::system::CoordinatedShutdownError,
 };
 

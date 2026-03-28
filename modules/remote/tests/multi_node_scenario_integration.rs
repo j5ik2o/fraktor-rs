@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::format;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},

@@ -1,5 +1,5 @@
 use crate::core::{
-  actor::actor_ref::ActorRef,
+  kernel::actor::actor_ref::ActorRef,
   typed::message_adapter::{AdapterEnvelope, AdapterPayload},
 };
 

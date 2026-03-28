@@ -8,9 +8,11 @@ use alloc::string::String;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
-  extension::Extension,
-  system::{ActorSystem, ActorSystemWeak, provider::ActorRefResolveError},
+  kernel::{
+    actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
+    extension::Extension,
+    system::{ActorSystem, ActorSystemWeak, provider::ActorRefResolveError},
+  },
   typed::{ActorRefResolverId, TypedActorSystem, actor::TypedActorRef},
 };
 

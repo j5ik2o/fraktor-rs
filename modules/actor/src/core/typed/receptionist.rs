@@ -1,5 +1,8 @@
 //! Receptionist actor providing service discovery within an actor system.
 
+mod listing;
+mod receptionist_command;
+mod service_key;
 #[cfg(test)]
 mod tests;
 
@@ -7,14 +10,13 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+pub use listing::Listing;
+pub use receptionist_command::ReceptionistCommand;
+pub use service_key::ServiceKey;
 
 use crate::core::{
-  actor::actor_ref::ActorRef,
-  error::ActorError,
-  typed::{
-    actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors, listing::Listing,
-    receptionist_command::ReceptionistCommand, service_key::ServiceKey,
-  },
+  kernel::{actor::actor_ref::ActorRef, error::ActorError},
+  typed::{actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors},
 };
 
 /// Composite key for internal registry lookups.
@@ -56,7 +58,7 @@ impl Receptionist {
             entry.push(actor_ref.clone());
             if let Err(e) = ctx.as_untyped_mut().watch(actor_ref) {
               ctx.system().emit_log(
-                crate::core::event::logging::LogLevel::Warn,
+                crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to watch registered actor: {:?}", e),
                 Some(ctx.pid()),
               );
@@ -84,7 +86,7 @@ impl Receptionist {
           if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
             if let Err(e) = ctx.watch(subscriber) {
               ctx.system().emit_log(
-                crate::core::event::logging::LogLevel::Warn,
+                crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to watch subscriber: {:?}", e),
                 Some(ctx.pid()),
               );

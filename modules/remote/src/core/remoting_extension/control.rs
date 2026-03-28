@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::actor::actor_path::ActorPathParts;
+use fraktor_actor_rs::core::kernel::actor::actor_path::ActorPathParts;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{control_handle::RemotingControlHandle, error::RemotingError};

@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 
 use crate::core::{
-  supervision::SupervisorStrategyConfig,
+  kernel::supervision::SupervisorStrategyConfig,
   typed::{behavior::Behavior, failure_handler::FailureHandler},
 };
 
@@ -29,8 +29,8 @@ where
   /// Applies the provided supervisor strategy to the wrapped behavior so that any children
   /// spawned from it inherit the declared supervision policy.
   ///
-  /// Accepts [`SupervisorStrategy`](crate::core::supervision::SupervisorStrategy),
-  /// [`BackoffSupervisorStrategy`](crate::core::supervision::BackoffSupervisorStrategy),
+  /// Accepts [`SupervisorStrategy`](crate::core::kernel::supervision::SupervisorStrategy),
+  /// [`BackoffSupervisorStrategy`](crate::core::kernel::supervision::BackoffSupervisorStrategy),
   /// or [`SupervisorStrategyConfig`] directly.
   #[must_use]
   pub fn on_failure(self, strategy: impl Into<SupervisorStrategyConfig>) -> Behavior<M> {
@@ -57,7 +57,7 @@ where
     handlers: Vec<FailureHandler>,
     fallback: SupervisorStrategyConfig,
   ) -> SupervisorStrategyConfig {
-    let composed = crate::core::supervision::SupervisorStrategy::with_decider(move |error| {
+    let composed = crate::core::kernel::supervision::SupervisorStrategy::with_decider(move |error| {
       for handler in &handlers {
         if error.reason().source_type_id() == Some(handler.type_id()) {
           return handler.strategy().decide(error);

@@ -7,7 +7,7 @@ use core::{
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-  core::pattern::{CircuitBreakerState, Clock},
+  core::kernel::pattern::{CircuitBreakerState, Clock},
   std::pattern::circuit_breaker,
 };
 
@@ -103,7 +103,7 @@ fn resets_failure_count_on_success_in_closed() {
 #[test]
 fn open_rejects_calls() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_secs(10), clock);
+  let mut cb = crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_secs(10), clock);
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -117,7 +117,8 @@ fn open_rejects_calls() {
 #[test]
 fn open_transitions_to_half_open_after_reset_timeout() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -130,7 +131,8 @@ fn open_transitions_to_half_open_after_reset_timeout() {
 #[test]
 fn open_remains_open_before_reset_timeout() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
   cb.record_failure();
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 
@@ -143,7 +145,8 @@ fn open_remains_open_before_reset_timeout() {
 #[test]
 fn half_open_rejects_second_call() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
 
@@ -156,7 +159,8 @@ fn half_open_rejects_second_call() {
 #[test]
 fn half_open_success_transitions_to_closed() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
   assert!(cb.is_call_permitted().is_ok());
@@ -170,7 +174,8 @@ fn half_open_success_transitions_to_closed() {
 #[test]
 fn half_open_failure_transitions_to_open() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(10), clock.clone());
   cb.record_failure();
   clock.advance(Duration::from_millis(20));
   assert!(cb.is_call_permitted().is_ok());
@@ -200,7 +205,8 @@ fn max_failures_one_trips_on_first_failure() {
 #[test]
 fn recovery_cycle_closed_open_half_open_closed() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(2, Duration::from_millis(10), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(2, Duration::from_millis(10), clock.clone());
 
   // Closed → Open
   cb.record_failure();
@@ -226,7 +232,8 @@ fn recovery_cycle_closed_open_half_open_closed() {
 #[test]
 fn open_error_reports_correct_remaining_duration() {
   let clock = FakeClock::new();
-  let mut cb = crate::core::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
+  let mut cb =
+    crate::core::kernel::pattern::CircuitBreaker::new_with_clock(1, Duration::from_millis(100), clock.clone());
   cb.record_failure();
 
   clock.advance(Duration::from_millis(30));

@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use super::DeadLetterLogSubscriber;
 use crate::{
-  core::{
+  core::kernel::{
     dead_letter::{DeadLetterEntry, DeadLetterReason},
     event::stream::EventStreamEvent,
     messaging::AnyMessage,
@@ -22,8 +22,8 @@ fn listener_handles_dead_letter_event_without_panic() {
 #[test]
 fn listener_ignores_non_dead_letter_events() {
   let mut listener = DeadLetterLogSubscriber::new();
-  let event = EventStreamEvent::Log(crate::core::event::logging::LogEvent::new(
-    crate::core::event::logging::LogLevel::Info,
+  let event = EventStreamEvent::Log(crate::core::kernel::event::logging::LogEvent::new(
+    crate::core::kernel::event::logging::LogLevel::Info,
     "test".into(),
     Duration::from_secs(0),
     None,
