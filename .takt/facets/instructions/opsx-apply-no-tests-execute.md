@@ -9,20 +9,24 @@ Piece ContextのReport Directory内のファイルのみ参照すること。
 2. 00-plan.md の「今回のバッチ」のタスク一覧を確認する
 3. `{tasks_path}` を読み、対象タスクの詳細とチェック状態を確認する
 4. バッチ内の各タスクを順に実装する
-5. 実装完了後、ビルドが通ることを確認する（`cargo build` 等）
-6. `{tasks_path}` の完了タスクのチェックボックスを更新する
+5. **ファイルを編集するたびに** `./scripts/ci-check.sh ai dylint` を実行し、module wiring / dylint の破綻をその場で解消する
+6. バッチ完了時点で、直近の `./scripts/ci-check.sh ai dylint` が成功していることを確認する
+7. `{tasks_path}` の完了タスクのチェックボックスを更新する
    - `- [ ]` → `- [x]`
 
 **注意: テストについて**
-- このピースはテスト先行が不要なタスク（examples作成、ドキュメント更新等）向け
+- このピースはテスト先行が不要なタスク（package/module構造変更、examples作成、ドキュメント更新等）向け
 - 単体テストの追加・更新は不要
-- ただし既存テストを壊していないことの確認（`cargo build`）は必須
+- ただし構造変更や module 配線の破綻を早期に検出するため、`cargo build` ではなく `./scripts/ci-check.sh ai dylint` を必須とする
 
 **重要:**
 - `session: refresh` のため、変更名は必ず 00-plan.md から取得する
 - バッチ外のタスクは実装しない
 - tasks.md のチェック更新は実装完了したタスクのみ
 - 情報が競合する場合は、Report Directory内のレポートと実際のファイル内容を優先
+- `./scripts/ci-check.sh` は内部で `cargo` を呼び出すため並行実行してはならない
+- `final-ci` ムーブメント以外では `./scripts/ci-check.sh ai all` を実行してはならない
+- 単なるファイル移動や import 更新でも、**編集のたびに** `./scripts/ci-check.sh ai dylint` を実行する
 
 **Scope出力契約（実装開始時に作成）:**
 ```markdown
@@ -61,5 +65,5 @@ Small / Medium / Large
 - {変更内容の要約}
 ## 完了タスク
 - {チェック更新したタスクID一覧}
-## ビルド結果
+## Dylint結果
 - {実行コマンドと結果}
