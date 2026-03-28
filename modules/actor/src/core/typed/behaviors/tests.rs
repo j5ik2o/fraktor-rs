@@ -5,13 +5,15 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::Behaviors;
 use crate::core::{
-  actor::{
-    ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  kernel::{
+    actor::{
+      ActorContext, Pid,
+      actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    },
+    error::{ActorError, SendError},
+    messaging::AnyMessage,
+    system::ActorSystem,
   },
-  error::{ActorError, SendError},
-  messaging::AnyMessage,
-  system::ActorSystem,
   typed::{
     actor::{TypedActorContext, TypedActorRef},
     behavior::Behavior,

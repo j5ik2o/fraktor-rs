@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  event::logging::LogLevel,
+  kernel::event::logging::LogLevel,
   typed::{
     Behaviors,
     actor::TypedActorRef,

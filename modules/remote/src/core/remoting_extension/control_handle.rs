@@ -17,8 +17,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
 
 #[cfg(feature = "tokio-transport")]
-use fraktor_actor_rs::core::messaging::AnyMessage;
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::messaging::AnyMessage;
+use fraktor_actor_rs::core::kernel::{
   actor::{actor_path::ActorPathParts, actor_ref::ActorRef},
   event::{
     logging::LogLevel,

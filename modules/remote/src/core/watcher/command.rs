@@ -3,7 +3,7 @@
 #[cfg(feature = "tokio-transport")]
 use alloc::string::String;
 
-use fraktor_actor_rs::core::actor::{Pid, actor_path::ActorPathParts};
+use fraktor_actor_rs::core::kernel::actor::{Pid, actor_path::ActorPathParts};
 
 use super::{heartbeat::Heartbeat, heartbeat_rsp::HeartbeatRsp};
 

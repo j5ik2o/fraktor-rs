@@ -12,10 +12,9 @@ use alloc::{
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  actor::actor_ref::ActorRef,
-  event::logging::LogLevel,
+  kernel::{actor::actor_ref::ActorRef, event::logging::LogLevel},
   typed::{
-    Behaviors, Listing, Receptionist, ServiceKey,
+    Behaviors,
     actor::TypedActorRef,
     behavior::Behavior,
     delivery::{
@@ -24,6 +23,7 @@ use crate::core::{
       WorkPullingProducerControllerSettings, WorkerStats,
       work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
+    receptionist::{Listing, Receptionist, ServiceKey},
   },
 };
 
@@ -142,8 +142,8 @@ where
 /// The `WorkPullingProducerController` implements the work-pulling pattern
 /// where multiple worker actors (consumers) pull tasks at their own pace.
 /// Workers register dynamically via a
-/// [`ServiceKey`](crate::core::typed::ServiceKey) and the
-/// [`Receptionist`](crate::core::typed::Receptionist).
+/// [`ServiceKey`](crate::core::typed::receptionist::ServiceKey) and the
+/// [`Receptionist`](crate::core::typed::receptionist::Receptionist).
 ///
 /// Each registered worker gets its own internal `ProducerController` for
 /// flow-controlled, sequence-numbered delivery.
@@ -491,8 +491,8 @@ where
   A: Clone + Send + Sync + 'static, {
   pc_ref
     .as_untyped_mut()
-    .try_tell(crate::core::messaging::AnyMessage::new(
-      crate::core::messaging::system_message::SystemMessage::PoisonPill,
+    .try_tell(crate::core::kernel::messaging::AnyMessage::new(
+      crate::core::kernel::messaging::system_message::SystemMessage::PoisonPill,
     ))
     .ok();
 }

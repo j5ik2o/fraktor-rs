@@ -5,11 +5,13 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::StashBuffer;
 use crate::core::{
-  actor::{Actor, ActorCell, ActorContext, Pid},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  system::ActorSystem,
+  kernel::{
+    actor::{Actor, ActorCell, ActorContext, Pid},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    system::ActorSystem,
+  },
   typed::actor::TypedActorContext,
 };
 

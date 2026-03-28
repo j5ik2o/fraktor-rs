@@ -62,8 +62,8 @@ fn wait_until(predicate: impl Fn() -> bool) {
 fn spawn_protocol_spawns_named_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -85,8 +85,8 @@ fn spawn_protocol_spawns_named_children() {
 fn spawn_protocol_spawns_anonymous_children() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -109,8 +109,8 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
   let first_start_count = Arc::new(AtomicUsize::new(0));
   let second_start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -139,8 +139,8 @@ fn spawn_protocol_spawns_children_with_different_message_types() {
 fn spawn_protocol_survives_duplicate_named_spawn_failure() {
   let start_count = Arc::new(AtomicUsize::new(0));
   let props = TypedProps::<SpawnProtocol>::from_behavior_factory(SpawnProtocol::behavior);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SpawnProtocol>::new(&props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();

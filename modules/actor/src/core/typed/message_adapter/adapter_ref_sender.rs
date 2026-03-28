@@ -8,14 +8,16 @@ use alloc::format;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRefSender, ActorRefSenderShared, SendOutcome},
+  kernel::{
+    actor::{
+      Pid,
+      actor_ref::{ActorRefSender, ActorRefSenderShared, SendOutcome},
+    },
+    error::SendError,
+    event::logging::LogLevel,
+    messaging::AnyMessage,
+    system::state::SystemStateShared,
   },
-  error::SendError,
-  event::logging::LogLevel,
-  messaging::AnyMessage,
-  system::state::SystemStateShared,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterPayload, AdapterRefHandleId},
 };
 

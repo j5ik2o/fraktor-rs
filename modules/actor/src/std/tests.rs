@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::core::event::stream::EventStreamEvent;
+use crate::core::kernel::event::stream::EventStreamEvent;
 
 const REMOVED_STD_ALIAS_FILES: &[&str] = &[
   "src/std/dead_letter.rs",

@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::{
-    error::ActorError,
+    kernel::error::ActorError,
     typed::{
       Behavior, BehaviorInterceptor, BehaviorSignal, Behaviors as CoreBehaviors, StashBuffer, Supervise,
       actor::TypedActorContext as CoreTypedActorContext,
@@ -255,7 +255,7 @@ impl Behaviors {
   }
 }
 
-fn log_received_message<M>(options: &LogOptions, pid: crate::core::actor::Pid, message: &M)
+fn log_received_message<M>(options: &LogOptions, pid: crate::core::kernel::actor::Pid, message: &M)
 where
   M: core::fmt::Debug, {
   if !options.enabled() {

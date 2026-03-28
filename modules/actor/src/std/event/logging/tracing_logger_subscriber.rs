@@ -11,7 +11,7 @@ use core::time::Duration;
 use tracing::{Level, event};
 
 use crate::{
-  core::event::{
+  core::kernel::event::{
     logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
     stream::{EventStreamEvent, EventStreamSubscriber as CoreEventStreamSubscriber},
   },

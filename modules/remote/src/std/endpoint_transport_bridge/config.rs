@@ -1,7 +1,7 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::system::ActorSystemWeak;
+use fraktor_actor_rs::core::kernel::system::ActorSystemWeak;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{

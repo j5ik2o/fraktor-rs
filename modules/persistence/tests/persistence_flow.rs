@@ -10,7 +10,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext, actor_ref::ActorRef},
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
@@ -175,7 +175,7 @@ fn recovery_flow_snapshot_then_replay() {
 
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
   let installers =
-    fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
+    fraktor_actor_rs::core::kernel::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -226,7 +226,7 @@ fn persist_flow_keeps_values_independent() {
 
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
   let installers =
-    fraktor_actor_rs::core::extension::ExtensionInstallers::default().with_extension_installer(installer);
+    fraktor_actor_rs::core::kernel::extension::ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()

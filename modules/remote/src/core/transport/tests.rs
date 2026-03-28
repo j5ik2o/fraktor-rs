@@ -1,7 +1,7 @@
 #![cfg(any(test, feature = "test-support"))]
 #![cfg(feature = "std")]
 
-use fraktor_actor_rs::core::event::stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
 
 use super::{
   backpressure_hook::TransportBackpressureHook, backpressure_hook_shared::TransportBackpressureHookShared,

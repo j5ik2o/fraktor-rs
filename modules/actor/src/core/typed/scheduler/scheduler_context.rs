@@ -2,7 +2,7 @@ use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::TypedSchedulerShared;
 use crate::core::{
-  scheduler::{
+  kernel::scheduler::{
     SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared, task_run::TaskRunSummary,
   },
   typed::scheduler::TypedScheduler,

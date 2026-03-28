@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use ahash::RandomState;
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   event::logging::LogLevel,
   system::{ActorSystem, ActorSystemWeak},
 };

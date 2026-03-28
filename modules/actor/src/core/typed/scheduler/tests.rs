@@ -1,8 +1,10 @@
 use core::time::Duration;
 
 use crate::core::{
-  actor::actor_ref::ActorRef,
-  scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
+  kernel::{
+    actor::actor_ref::ActorRef,
+    scheduler::{Scheduler, SchedulerCommand, SchedulerConfig},
+  },
   typed::{
     actor::TypedActorRef,
     scheduler::{TypedScheduler, TypedSchedulerContext},

@@ -3,8 +3,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use super::FsmBuilder;
 use crate::core::{
-  actor::ActorContext,
-  system::ActorSystem,
+  kernel::{actor::ActorContext, system::ActorSystem},
   typed::{
     actor::{TypedActor, TypedActorContext},
     behavior_runner::BehaviorRunner,

@@ -3,8 +3,10 @@ use core::time::Duration;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock};
 
 use crate::core::{
-  actor::actor_ref::ActorRef,
-  scheduler::{Scheduler, SchedulerConfig, SchedulerShared},
+  kernel::{
+    actor::actor_ref::ActorRef,
+    scheduler::{Scheduler, SchedulerConfig, SchedulerShared},
+  },
   typed::{
     actor::TypedActorRef, scheduler::TypedSchedulerShared, timer_key::TimerKey, timer_scheduler::TimerScheduler,
   },

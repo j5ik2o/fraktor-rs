@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use super::coordinated_shutdown_error::CoordinatedShutdownError;
-use crate::core::{
+use crate::core::kernel::{
   extension::Extension,
   system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };

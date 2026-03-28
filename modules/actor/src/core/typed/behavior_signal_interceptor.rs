@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::core::{
-  error::ActorError,
+  kernel::error::ActorError,
   typed::{Behavior, BehaviorSignal, actor::TypedActorContext},
 };
 

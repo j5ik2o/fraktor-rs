@@ -9,7 +9,7 @@ use core::{
   sync::atomic::{AtomicU32, Ordering},
 };
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Pid, actor_ref::ActorRef},
   messaging::AnyMessage,
 };

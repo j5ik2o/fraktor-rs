@@ -1,0 +1,54 @@
+//! Internal system messages exchanged within the actor runtime.
+
+#[cfg(test)]
+mod tests;
+
+use crate::core::kernel::{
+  actor::{ContextPipeTaskId, Pid},
+  messaging::AnyMessage,
+};
+
+mod failure_classification;
+mod failure_message_snapshot;
+mod failure_payload;
+
+pub use failure_classification::FailureClassification;
+pub use failure_message_snapshot::FailureMessageSnapshot;
+pub use failure_payload::FailurePayload;
+
+/// Lightweight enum describing system-level mailbox traffic.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SystemMessage {
+  /// Requests immediate actor termination using PoisonPill semantics.
+  PoisonPill,
+  /// Requests immediate actor termination using Kill semantics.
+  Kill,
+  /// Signals that the associated actor should stop.
+  Stop,
+  /// Requests actor initialization via the mailbox pipeline.
+  Create,
+  /// Recreates the actor instance after a recoverable failure.
+  Recreate,
+  /// Requests the mailbox to suspend user message processing.
+  Suspend,
+  /// Requests the mailbox to resume user message processing.
+  Resume,
+  /// Registers the specified watcher for termination notifications.
+  Watch(Pid),
+  /// Removes the specified watcher and stops sending notifications.
+  Unwatch(Pid),
+  /// Requests the guardian to stop a specific child actor.
+  StopChild(Pid),
+  /// Notifies watchers that the referenced actor has terminated.
+  Terminated(Pid),
+  /// Reports that a child actor failed and requires supervisor handling.
+  Failure(FailurePayload),
+  /// Resumes a pending pipe task once its future has been woken.
+  PipeTask(ContextPipeTaskId),
+}
+
+impl From<SystemMessage> for AnyMessage {
+  fn from(value: SystemMessage) -> Self {
+    AnyMessage::new(value)
+  }
+}

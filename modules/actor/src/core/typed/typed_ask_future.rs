@@ -4,7 +4,10 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::sync::{SharedAccess, shared::Shared};
 
-use crate::core::{futures::ActorFutureShared, messaging::AskResult, typed::typed_ask_error::TypedAskError};
+use crate::core::{
+  kernel::{futures::ActorFutureShared, messaging::AskResult},
+  typed::typed_ask_error::TypedAskError,
+};
 
 /// Exposes typed helpers around an ask future that resolves with `R`.
 pub struct TypedAskFuture<R>
@@ -57,7 +60,7 @@ where
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  fn map_message(message: crate::core::messaging::AnyMessage) -> Result<R, TypedAskError> {
+  fn map_message(message: crate::core::kernel::messaging::AnyMessage) -> Result<R, TypedAskError> {
     let payload = message.payload_arc();
     drop(message);
     match payload.downcast::<R>() {

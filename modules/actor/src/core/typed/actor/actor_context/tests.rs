@@ -4,8 +4,10 @@ use core::{hint::spin_loop, time::Duration};
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  error::ActorError,
-  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  kernel::{
+    error::ActorError,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
   typed::{Behaviors, TypedActorSystem, TypedAskError, TypedProps, actor::TypedActorRef, status_reply::StatusReply},
 };
 
@@ -391,7 +393,7 @@ fn ask_concurrent_same_response_type_delivers_both() {
 fn forward_preserves_sender_through_typed_context() {
   use alloc::vec::Vec;
 
-  use crate::core::{
+  use crate::core::kernel::{
     actor::{
       ActorContext, Pid,
       actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
@@ -405,7 +407,7 @@ fn forward_preserves_sender_through_typed_context() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }
@@ -449,7 +451,7 @@ fn schedule_once_registers_command_in_scheduler() {
 
   // Create a typed actor context with the system and call schedule_once.
   let pid = system.as_untyped().allocate_pid();
-  let mut context = crate::core::actor::ActorContext::new(system.as_untyped(), pid);
+  let mut context = crate::core::kernel::actor::ActorContext::new(system.as_untyped(), pid);
   let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
 
   let target = system.user_guardian_ref();
@@ -547,7 +549,7 @@ fn ask_with_status_error_preserves_failure_reason() {
 fn typed_props_with_tags_are_readable_via_typed_context() {
   use alloc::string::String;
 
-  use crate::core::{
+  use crate::core::kernel::{
     actor::{ActorCell, ActorContext},
     system::ActorSystem,
   };
@@ -572,7 +574,7 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
 fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
   use alloc::string::String;
 
-  use crate::core::{
+  use crate::core::kernel::{
     actor::{ActorCell, ActorContext},
     system::ActorSystem,
   };
@@ -597,7 +599,7 @@ fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
 fn typed_props_without_tags_returns_empty_via_typed_context() {
   use alloc::string::String;
 
-  use crate::core::{
+  use crate::core::kernel::{
     actor::{ActorCell, ActorContext},
     system::ActorSystem,
   };

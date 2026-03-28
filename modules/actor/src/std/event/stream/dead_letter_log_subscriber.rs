@@ -7,7 +7,7 @@ mod tests;
 
 use tracing::{Level, event};
 
-use crate::{core::event::stream::EventStreamEvent, std::event::stream::EventStreamSubscriber};
+use crate::{core::kernel::event::stream::EventStreamEvent, std::event::stream::EventStreamSubscriber};
 
 /// Default target name used in emitted dead letter events.
 const DEAD_LETTER_TARGET: &str = "fraktor::event::stream::dead_letter";

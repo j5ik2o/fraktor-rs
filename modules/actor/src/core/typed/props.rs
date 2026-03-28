@@ -4,7 +4,7 @@ use alloc::string::String;
 use core::marker::PhantomData;
 
 use crate::core::{
-  props::Props,
+  kernel::props::Props,
   typed::{
     actor::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, dispatcher_selector::DispatcherSelector,
     mailbox_selector::MailboxSelector, typed_actor_adapter::TypedActorAdapter,
@@ -85,9 +85,8 @@ where
       | DispatcherSelector::Default => self,
       | DispatcherSelector::FromConfig(id) => self.map_props(|p| p.with_dispatcher_id(id)),
       | DispatcherSelector::SameAsParent => self.map_props(|p| p.with_dispatcher_same_as_parent()),
-      | DispatcherSelector::Blocking => {
-        self.map_props(|p| p.with_dispatcher_id(crate::core::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID))
-      },
+      | DispatcherSelector::Blocking => self
+        .map_props(|p| p.with_dispatcher_id(crate::core::kernel::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID)),
     }
   }
 
@@ -97,12 +96,12 @@ where
     match selector {
       | MailboxSelector::Default => self,
       | MailboxSelector::Bounded(capacity) => {
-        let policy = crate::core::dispatch::mailbox::MailboxPolicy::bounded(
+        let policy = crate::core::kernel::dispatch::mailbox::MailboxPolicy::bounded(
           capacity,
-          crate::core::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
+          crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
           None,
         );
-        let config = crate::core::props::MailboxConfig::new(policy);
+        let config = crate::core::kernel::props::MailboxConfig::new(policy);
         self.map_props(|p| p.with_mailbox_config(config))
       },
       | MailboxSelector::FromConfig(id) => self.map_props(|p| p.with_mailbox_id(id)),

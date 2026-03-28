@@ -13,12 +13,14 @@ use core::{
 use fraktor_utils_rs::core::sync::NoStdMutex;
 
 use crate::core::{
-  dead_letter::DeadLetterReason,
-  error::ActorError,
-  messaging::AnyMessage,
-  supervision::{
-    BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
-    SupervisorStrategyKind,
+  kernel::{
+    dead_letter::DeadLetterReason,
+    error::ActorError,
+    messaging::AnyMessage,
+    supervision::{
+      BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
+      SupervisorStrategyKind,
+    },
   },
   typed::{
     Behavior, BehaviorSignal, Behaviors, StashBuffer, TypedAskError,
@@ -97,8 +99,8 @@ impl TypedActor<CounterMessage> for CounterActor {
 #[test]
 fn typed_actor_system_handles_basic_flow() {
   let props = TypedProps::<CounterMessage>::new(CounterActor::new);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
@@ -120,8 +122,8 @@ fn typed_actor_system_handles_basic_flow() {
 fn typed_props_with_blocking_dispatcher_selector_should_spawn() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0))
     .with_dispatcher_selector(crate::core::typed::DispatcherSelector::Blocking);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
 
@@ -139,8 +141,8 @@ fn typed_props_with_same_as_parent_dispatcher_selector_marks_parent_inheritance(
 #[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<CounterMessage>::new(&props, tick_driver).expect("system");
   let mut counter = system.user_guardian_ref();
@@ -161,8 +163,8 @@ fn typed_behaviors_handle_recursive_state() {
 #[test]
 fn typed_behaviors_ignore_keeps_current_state() {
   let props = TypedProps::<IgnoreCommand>::from_behavior_factory(|| ignore_gate(0));
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<IgnoreCommand>::new(&props, tick_driver).expect("system");
   let mut gate = system.user_guardian_ref();
@@ -184,8 +186,8 @@ fn typed_behaviors_ignore_keeps_current_state() {
 #[test]
 fn typed_behaviors_stash_buffered_messages_across_transition() {
   let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0));
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -207,8 +209,8 @@ fn typed_behaviors_with_stash_limits_capacity() {
   let props = TypedProps::<StashCommand>::from_behavior_factory(move || {
     stash_behavior_with_capacity_limit(0, Arc::clone(&overflow_probe))
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -231,8 +233,8 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
     let slot = adapter_slot.clone();
     move || adapter_stash_behavior(0, &slot)
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<StashCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -253,8 +255,8 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
 #[test]
 fn typed_behaviors_unstash_replays_before_already_queued_messages() {
   let props = TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new()));
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<StashOrderCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -281,8 +283,8 @@ fn typed_behaviors_receive_signal_notifications() {
 
   let props =
     TypedProps::<LifecycleCommand>::from_behavior_factory(move || signal_probe_behavior(&start_probe, &stop_probe));
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<LifecycleCommand>::new(&props, tick_driver).expect("system");
   system.terminate().expect("terminate");
@@ -351,8 +353,8 @@ impl TypedActor<SchedulerProbeCommand> for SchedulerProbeActor {
 #[test]
 fn typed_ask_reports_type_mismatch() {
   let props = TypedProps::<MismatchCommand>::new(|| MismatchActor);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<MismatchCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -370,8 +372,8 @@ fn typed_ask_reports_type_mismatch() {
 #[test]
 fn typed_context_exposes_scheduler() {
   let props = TypedProps::<SchedulerProbeCommand>::new(|| SchedulerProbeActor);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SchedulerProbeCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -657,8 +659,8 @@ fn behaviors_supervise_restarts_children() {
     SupervisorDirective::Restart
   });
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -681,8 +683,8 @@ fn intercepted_behavior_survives_supervised_restart() {
     SupervisorDirective::Restart
   });
   let parent_props = supervised_parent_props(restart_strategy, child);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -709,8 +711,8 @@ fn behaviors_supervise_stops_children() {
     SupervisorDirective::Stop
   });
   let parent_props = supervised_parent_props(stop_strategy, child);
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -737,8 +739,8 @@ fn backoff_strategy_via_supervise_on_failure() {
     let behavior = supervised_parent_behavior(child.clone());
     Behaviors::supervise(behavior).on_failure(backoff.clone())
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<SupervisorCommand>::new(&parent_props, tick_driver).expect("system");
   let mut parent = system.user_guardian_ref();
@@ -795,8 +797,8 @@ fn message_adapter_converts_external_messages() {
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();
@@ -826,8 +828,8 @@ fn adapter_not_found_routes_to_dead_letter() {
       counter_behavior(0)
     })
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let actor = system.user_guardian_ref();
@@ -860,8 +862,8 @@ fn pipe_to_self_converts_messages_via_adapter() {
       counter_behavior(0)
     })
   });
-  let tick_driver = crate::core::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = TypedActorSystem::<AdapterCounterCommand>::new(&props, tick_driver).expect("system");
   let mut actor = system.user_guardian_ref();

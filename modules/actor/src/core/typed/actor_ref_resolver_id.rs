@@ -1,6 +1,9 @@
 //! Identifier used to register the typed actor-ref resolver extension.
 
-use crate::core::{extension::ExtensionId, system::ActorSystem, typed::ActorRefResolver};
+use crate::core::{
+  kernel::{extension::ExtensionId, system::ActorSystem},
+  typed::ActorRefResolver,
+};
 
 /// Identifier for the built-in [`ActorRefResolver`] extension.
 #[derive(Clone, Copy, Debug, Default)]

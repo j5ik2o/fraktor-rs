@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_actor_rs::core::messaging::AnyMessage;
+use fraktor_actor_rs::core::kernel::messaging::AnyMessage;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::BatchingProducer;
@@ -55,12 +55,13 @@ impl ClusterPubSub for RecordingPubSub {
   fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
 
-fn make_registry() -> ArcShared<fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry> {
-  let setup = fraktor_actor_rs::core::serialization::default_serialization_setup();
+fn make_registry()
+-> ArcShared<fraktor_actor_rs::core::kernel::serialization::serialization_registry::SerializationRegistry> {
+  let setup = fraktor_actor_rs::core::kernel::serialization::default_serialization_setup();
   let registry = ArcShared::new(
-    fraktor_actor_rs::core::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
+    fraktor_actor_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
   );
-  let _ = fraktor_actor_rs::core::serialization::builtin::register_defaults(&registry, |_name, _id| {});
+  let _ = fraktor_actor_rs::core::kernel::serialization::builtin::register_defaults(&registry, |_name, _id| {});
   registry
 }
 
@@ -71,7 +72,7 @@ fn flushes_when_batch_size_reached() {
   let shared = ClusterPubSubShared::new(Box::new(pubsub.clone()));
   let publisher = PubSubPublisher::new(shared, registry);
 
-  let system = fraktor_actor_rs::core::system::ActorSystem::new_empty();
+  let system = fraktor_actor_rs::core::kernel::system::ActorSystem::new_empty();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(2, 8, Duration::from_secs(60));
@@ -93,7 +94,7 @@ fn rejects_when_queue_full() {
   let shared = ClusterPubSubShared::new(Box::new(pubsub));
   let publisher = PubSubPublisher::new(shared, registry);
 
-  let system = fraktor_actor_rs::core::system::ActorSystem::new_empty();
+  let system = fraktor_actor_rs::core::kernel::system::ActorSystem::new_empty();
   let scheduler = system.state().scheduler();
 
   let config = BatchingProducerConfig::new(10, 1, Duration::from_secs(60));

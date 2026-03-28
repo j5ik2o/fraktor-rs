@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use hashbrown::HashMap;
 
 use crate::core::{
-  scheduler::{SchedulerError, SchedulerHandle},
+  kernel::scheduler::{SchedulerError, SchedulerHandle},
   typed::{actor::TypedActorRef, scheduler::TypedSchedulerShared, timer_key::TimerKey},
 };
 

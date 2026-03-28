@@ -1,8 +1,10 @@
 use core::time::Duration;
 
 use crate::core::{
-  error::ActorError,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  kernel::{
+    error::ActorError,
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  },
   typed::{behaviors::Behaviors, supervise::Supervise},
 };
 

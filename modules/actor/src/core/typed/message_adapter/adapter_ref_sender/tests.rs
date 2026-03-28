@@ -3,13 +3,15 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRefSender, ActorRefSenderShared},
+  kernel::{
+    actor::{
+      Pid,
+      actor_ref::{ActorRefSender, ActorRefSenderShared},
+    },
+    error::SendError,
+    messaging::AnyMessage,
+    system::ActorSystem,
   },
-  error::SendError,
-  messaging::AnyMessage,
-  system::ActorSystem,
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender},
 };
 
@@ -24,9 +26,9 @@ impl ProbeSender {
 }
 
 impl ActorRefSender for ProbeSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
     self.messages.lock().push(message);
-    Ok(crate::core::actor::actor_ref::SendOutcome::Delivered)
+    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
   }
 }
 

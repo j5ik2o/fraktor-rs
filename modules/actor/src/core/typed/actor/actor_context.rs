@@ -9,12 +9,14 @@ use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
 
 use crate::core::{
-  actor::{ActorContext, ChildRef, Pid, PipeSpawnError},
-  error::{ActorError, SendError},
-  futures::ActorFutureListener,
-  messaging::{AnyMessage, AskError},
-  pattern::install_ask_timeout,
-  spawn::SpawnError,
+  kernel::{
+    actor::{ActorContext, ChildRef, Pid, PipeSpawnError},
+    error::{ActorError, SendError},
+    futures::ActorFutureListener,
+    messaging::{AnyMessage, AskError},
+    pattern::install_ask_timeout,
+    spawn::SpawnError,
+  },
   typed::{
     TypedActorSystem,
     actor::{actor_ref::TypedActorRef, ask_on_context_error::AskOnContextError, child_ref::TypedChildRef},
@@ -281,7 +283,7 @@ where
     &mut self,
     target: &mut TypedActorRef<C>,
     message: C,
-  ) -> Result<(), crate::core::error::SendError>
+  ) -> Result<(), crate::core::kernel::error::SendError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
@@ -300,7 +302,7 @@ where
     delay: Duration,
     target: TypedActorRef<C>,
     message: C,
-  ) -> Result<crate::core::scheduler::SchedulerHandle, crate::core::scheduler::SchedulerError>
+  ) -> Result<crate::core::kernel::scheduler::SchedulerHandle, crate::core::kernel::scheduler::SchedulerError>
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();

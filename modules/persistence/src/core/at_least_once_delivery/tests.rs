@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
@@ -38,12 +38,13 @@ impl ActorRefSender for FailingSender {
 
 fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender = ActorRef::new(fraktor_actor_rs::core::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender =
+    ActorRef::new(fraktor_actor_rs::core::kernel::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
 fn create_failing_sender() -> ActorRef {
-  ActorRef::new(fraktor_actor_rs::core::actor::Pid::new(1, 2), FailingSender)
+  ActorRef::new(fraktor_actor_rs::core::kernel::actor::Pid::new(1, 2), FailingSender)
 }
 
 #[test]

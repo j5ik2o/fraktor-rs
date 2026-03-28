@@ -6,7 +6,10 @@ mod tests;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::core::{error::ActorError, messaging::AnyMessage, typed::actor::TypedActorContext};
+use crate::core::{
+  kernel::{error::ActorError, messaging::AnyMessage},
+  typed::actor::TypedActorContext,
+};
 
 /// Bounded stash helper inspired by Pekko's `StashBuffer`.
 pub struct StashBuffer<M>
@@ -186,7 +189,7 @@ where
 
   fn with_cell<R>(
     ctx: &TypedActorContext<'_, M>,
-    f: impl FnOnce(&crate::core::actor::ActorCell) -> R,
+    f: impl FnOnce(&crate::core::kernel::actor::ActorCell) -> R,
   ) -> Result<R, ActorError> {
     let cell = ctx
       .system()

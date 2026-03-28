@@ -11,7 +11,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
   event::stream::{
     EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
@@ -129,7 +129,7 @@ impl ClusterApi {
     identity: &ClusterIdentity,
     message: AnyMessage,
     timeout: Option<Duration>,
-  ) -> Result<fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
+  ) -> Result<fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -276,7 +276,7 @@ impl ClusterApi {
   fn schedule_timeout(
     &self,
     timeout: Duration,
-    future: fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>,
+    future: fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>,
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
@@ -325,14 +325,17 @@ fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
   Ok((authority, path))
 }
 
-fn publish_grain_event(event_stream: &fraktor_actor_rs::core::event::stream::EventStreamShared, event: GrainEvent) {
+fn publish_grain_event(
+  event_stream: &fraktor_actor_rs::core::kernel::event::stream::EventStreamShared,
+  event: GrainEvent,
+) {
   let payload = AnyMessage::new(event);
   let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
   event_stream.publish(&extension_event);
 }
 
 struct TimeoutRunnable {
-  future: fraktor_actor_rs::core::futures::ActorFutureShared<AskResult>,
+  future: fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>,
 }
 
 impl SchedulerRunnable for TimeoutRunnable {

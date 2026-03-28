@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::hint::spin_loop;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext},
   error::ActorError,
   event::{
@@ -51,8 +51,8 @@ impl Actor for Guardian {
 #[test]
 fn lifecycle_and_log_events_are_published() {
   let props = Props::from_fn(|| Guardian);
-  let tick_driver = fraktor_actor_rs::core::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

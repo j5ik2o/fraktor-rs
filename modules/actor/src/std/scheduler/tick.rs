@@ -7,7 +7,7 @@ use std::time::Duration;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 use tokio::runtime::Handle;
 
-use crate::core::scheduler::tick_driver::TickDriverConfig as CoreTickDriverConfig;
+use crate::core::kernel::scheduler::tick_driver::TickDriverConfig as CoreTickDriverConfig;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +40,7 @@ impl TickDriverConfig {
 
     use tokio::time::{MissedTickBehavior, interval};
 
-    use crate::core::scheduler::{
+    use crate::core::kernel::scheduler::{
       SchedulerShared,
       tick_driver::{
         AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriverBundle, TickDriverControl,

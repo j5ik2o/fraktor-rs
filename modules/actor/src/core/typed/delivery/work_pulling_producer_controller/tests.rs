@@ -1,11 +1,11 @@
 use alloc::string::String;
 
 use crate::core::typed::{
-  ServiceKey,
   delivery::{
     ConsumerControllerCommand, WorkPullingProducerController, WorkPullingProducerControllerCommand,
     WorkPullingProducerControllerSettings,
   },
+  receptionist::ServiceKey,
 };
 
 #[test]

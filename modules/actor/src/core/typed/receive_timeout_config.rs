@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use crate::core::scheduler::SchedulerHandle;
+use crate::core::kernel::scheduler::SchedulerHandle;
 
 /// Stores the receive timeout configuration for a single actor.
 ///

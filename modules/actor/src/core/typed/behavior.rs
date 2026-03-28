@@ -8,8 +8,7 @@ use alloc::boxed::Box;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  error::ActorError,
-  supervision::SupervisorStrategyConfig,
+  kernel::{error::ActorError, supervision::SupervisorStrategyConfig},
   typed::{actor::TypedActorContext, behavior_signal::BehaviorSignal},
 };
 

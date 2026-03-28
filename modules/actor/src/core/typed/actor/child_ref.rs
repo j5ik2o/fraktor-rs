@@ -3,9 +3,11 @@
 use core::marker::PhantomData;
 
 use crate::core::{
-  actor::{ChildRef, Pid},
-  error::SendError,
-  messaging::AnyMessage,
+  kernel::{
+    actor::{ChildRef, Pid},
+    error::SendError,
+    messaging::AnyMessage,
+  },
   typed::{TypedAskResponse, actor::actor_ref::TypedActorRef},
 };
 

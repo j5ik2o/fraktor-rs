@@ -6,12 +6,14 @@ mod tests;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRef, AskReplySender},
+  kernel::{
+    actor::{
+      Pid,
+      actor_ref::{ActorRef, AskReplySender},
+    },
+    futures::ActorFutureShared,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult},
   },
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskError, AskResponse, AskResult},
   typed::{TypedAskResponse, actor::TypedActorRef},
 };
 

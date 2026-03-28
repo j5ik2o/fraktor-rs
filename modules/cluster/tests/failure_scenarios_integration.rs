@@ -6,7 +6,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use fraktor_actor_rs::core::event::stream::EventStreamShared;
+use fraktor_actor_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_rs::{
   core::{
     ClusterExtensionConfig,

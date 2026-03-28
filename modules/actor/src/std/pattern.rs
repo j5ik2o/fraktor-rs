@@ -16,10 +16,10 @@ use fraktor_utils_rs::core::timing::delay::DelayProvider;
 pub use std_clock::StdClock;
 
 /// Inner circuit breaker state machine using the standard clock.
-pub type CircuitBreaker = crate::core::pattern::CircuitBreaker<StdClock>;
+pub type CircuitBreaker = crate::core::kernel::pattern::CircuitBreaker<StdClock>;
 
 /// Thread-safe shared circuit breaker using the standard clock.
-pub type CircuitBreakerShared = crate::core::pattern::CircuitBreakerShared<StdClock>;
+pub type CircuitBreakerShared = crate::core::kernel::pattern::CircuitBreakerShared<StdClock>;
 
 /// Creates a new [`CircuitBreaker`] in the **Closed** state using the real
 /// system clock.
@@ -33,7 +33,7 @@ pub type CircuitBreakerShared = crate::core::pattern::CircuitBreakerShared<StdCl
 /// Panics if `max_failures` is zero.
 #[must_use]
 pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBreaker {
-  crate::core::pattern::CircuitBreaker::new_with_clock(max_failures, reset_timeout, StdClock)
+  crate::core::kernel::pattern::CircuitBreaker::new_with_clock(max_failures, reset_timeout, StdClock)
 }
 
 /// Creates a new [`CircuitBreakerShared`] in the **Closed** state using the
@@ -48,7 +48,7 @@ pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBre
 /// Panics if `max_failures` is zero.
 #[must_use]
 pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> CircuitBreakerShared {
-  crate::core::pattern::CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)
+  crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)
 }
 
 /// Sends a request and arranges timeout completion on the returned ask future.
@@ -57,25 +57,25 @@ pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> Cir
 /// observed before the deadline.
 #[must_use]
 pub fn ask_with_timeout(
-  actor_ref: &mut crate::core::actor::actor_ref::ActorRef,
-  message: crate::core::messaging::AnyMessage,
+  actor_ref: &mut crate::core::kernel::actor::actor_ref::ActorRef,
+  message: crate::core::kernel::messaging::AnyMessage,
   timeout: Duration,
-) -> crate::core::messaging::AskResponse {
-  crate::core::pattern::ask_with_timeout(actor_ref, message, timeout)
+) -> crate::core::kernel::messaging::AskResponse {
+  crate::core::kernel::pattern::ask_with_timeout(actor_ref, message, timeout)
 }
 
 /// Sends `PoisonPill` and waits until the target actor disappears from the system registry.
 ///
 /// # Errors
 ///
-/// Returns [`crate::core::messaging::AskError::SendFailed`] when the stop message cannot be
-/// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
+/// Returns [`crate::core::kernel::messaging::AskError::SendFailed`] when the stop message cannot be
+/// delivered, or [`crate::core::kernel::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop(
-  target: &mut crate::core::actor::actor_ref::ActorRef,
+  target: &mut crate::core::kernel::actor::actor_ref::ActorRef,
   timeout: Duration,
-) -> Result<(), crate::core::messaging::AskError> {
-  crate::core::pattern::graceful_stop(target, timeout).await
+) -> Result<(), crate::core::kernel::messaging::AskError> {
+  crate::core::kernel::pattern::graceful_stop(target, timeout).await
 }
 
 /// Sends the supplied stop message and waits until the target actor disappears from the system
@@ -83,15 +83,15 @@ pub async fn graceful_stop(
 ///
 /// # Errors
 ///
-/// Returns [`crate::core::messaging::AskError::SendFailed`] when the stop message cannot be
-/// delivered, or [`crate::core::messaging::AskError::Timeout`] when the actor does not stop
+/// Returns [`crate::core::kernel::messaging::AskError::SendFailed`] when the stop message cannot be
+/// delivered, or [`crate::core::kernel::messaging::AskError::Timeout`] when the actor does not stop
 /// before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &mut crate::core::actor::actor_ref::ActorRef,
-  stop_message: crate::core::messaging::AnyMessage,
+  target: &mut crate::core::kernel::actor::actor_ref::ActorRef,
+  stop_message: crate::core::kernel::messaging::AnyMessage,
   timeout: Duration,
-) -> Result<(), crate::core::messaging::AskError> {
-  crate::core::pattern::graceful_stop_with_message(target, stop_message, timeout).await
+) -> Result<(), crate::core::kernel::messaging::AskError> {
+  crate::core::kernel::pattern::graceful_stop_with_message(target, stop_message, timeout).await
 }
 
 /// Retries an async operation up to `attempts` times with caller-provided delays.
@@ -113,5 +113,5 @@ where
   F: FnMut() -> Fut,
   Fut: Future<Output = Result<T, E>>,
   D: FnMut(usize) -> Duration, {
-  crate::core::pattern::retry(attempts, delay_provider, delay_for, operation).await
+  crate::core::kernel::pattern::retry(attempts, delay_provider, delay_for, operation).await
 }

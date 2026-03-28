@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::TypeId;
 
-use crate::core::supervision::SupervisorStrategyConfig;
+use crate::core::kernel::supervision::SupervisorStrategyConfig;
 
 /// Associates a specific error type with a supervisor strategy.
 ///

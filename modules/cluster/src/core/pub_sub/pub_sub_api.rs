@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::{serialization::SerializationExtension, system::ActorSystem};
+use fraktor_actor_rs::core::kernel::{serialization::SerializationExtension, system::ActorSystem};
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{
