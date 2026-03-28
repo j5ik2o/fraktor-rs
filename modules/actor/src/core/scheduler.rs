@@ -5,9 +5,7 @@ pub mod cancellable;
 mod command;
 mod config;
 mod delay_provider;
-/// Deterministic event logging and replay types.
-pub mod deterministic;
-/// Scheduler diagnostics subsystem types.
+/// Scheduler diagnostics subsystem types, including deterministic event logging and replay.
 pub mod diagnostics;
 mod dispatcher_sender_shared;
 mod dump;
