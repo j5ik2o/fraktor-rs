@@ -1,5 +1,5 @@
 use crate::{
-  core::{
+  core::kernel::{
     actor::{Actor, ActorContext},
     error::ActorError,
     futures::ActorFutureListener,

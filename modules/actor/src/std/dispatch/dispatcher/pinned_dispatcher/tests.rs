@@ -6,7 +6,7 @@ use alloc::string::String;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
-  core::dispatch::mailbox::{Mailbox, MailboxPolicy},
+  core::kernel::dispatch::mailbox::{Mailbox, MailboxPolicy},
   std::dispatch::dispatcher::PinnedDispatcher,
 };
 

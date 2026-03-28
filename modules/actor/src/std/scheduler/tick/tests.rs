@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::{
 use tokio::time::{MissedTickBehavior, interval};
 
 use crate::{
-  core::{
+  core::kernel::{
     event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
     scheduler::{
       SchedulerConfig, SchedulerContext, SchedulerShared,
@@ -25,13 +25,13 @@ fn tokio_quickstart_with_event_stream(
   resolution: Duration,
   event_stream: EventStreamShared,
   metrics_interval: Duration,
-) -> crate::core::scheduler::tick_driver::TickDriverConfig {
-  use crate::core::scheduler::tick_driver::{
+) -> crate::core::kernel::scheduler::tick_driver::TickDriverConfig {
+  use crate::core::kernel::scheduler::tick_driver::{
     AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriverBundle,
     TickDriverControl, TickDriverHandle, TickExecutorSignal, TickFeed, next_tick_driver_id,
   };
 
-  crate::core::scheduler::tick_driver::TickDriverConfig::new(move |ctx| {
+  crate::core::kernel::scheduler::tick_driver::TickDriverConfig::new(move |ctx| {
     let handle = tokio::runtime::Handle::try_current().expect("Tokio runtime handle unavailable");
 
     let scheduler: SchedulerShared = ctx.scheduler();

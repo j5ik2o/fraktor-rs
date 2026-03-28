@@ -6,7 +6,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_rs::core::kernel::{
   actor::{Actor, ActorContext},
   error::ActorError,
   extension::ExtensionInstallers,
