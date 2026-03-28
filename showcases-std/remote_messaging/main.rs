@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
-  core::{
+  core::kernel::{
     actor::{Actor, ActorContext, actor_ref::ActorRef},
     error::ActorError,
     extension::ExtensionInstallers,
