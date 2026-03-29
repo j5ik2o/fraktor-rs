@@ -59,6 +59,7 @@ fn flow_definition_by_kind<In, Out, Mat>(flow: Flow<In, Out, Mat>, kind: StageKi
     .expect("flow should contain requested definition")
 }
 
+#[allow(deprecated)]
 fn async_boundary_definition<Out>() -> FlowDefinition
 where
   Out: Send + Sync + 'static, {
