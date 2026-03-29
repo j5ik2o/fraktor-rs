@@ -5,7 +5,7 @@ use super::{
   BoundedSourceQueue, DynValue, MatCombine, OverflowStrategy, SourceDefinition, SourceLogic, StageDefinition,
   StageKind, StreamError, SupervisionStrategy, graph::StreamGraph, shape::Outlet, source::Source,
 };
-use crate::core::{Attributes, queue::ActorSourceRef};
+use crate::core::{attributes::Attributes, queue::ActorSourceRef};
 
 #[cfg(test)]
 mod tests;
@@ -48,7 +48,7 @@ impl ActorSource {
       kind:        StageKind::Custom,
       outlet:      Outlet::<T>::next_id(),
       output_type: TypeId::of::<T>(),
-      mat_combine: MatCombine::KeepRight,
+      mat_combine: MatCombine::Right,
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
@@ -91,7 +91,7 @@ impl ActorSource {
       kind:        StageKind::Custom,
       outlet:      Outlet::<T>::next_id(),
       output_type: TypeId::of::<T>(),
-      mat_combine: MatCombine::KeepRight,
+      mat_combine: MatCombine::Right,
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),

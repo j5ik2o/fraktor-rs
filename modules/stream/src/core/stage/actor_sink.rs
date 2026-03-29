@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use super::{
-  DemandTracker, DynValue, Sink, SinkDecision, SinkLogic, StageKind, StreamCompletion, StreamDone, StreamError,
-  downcast_value,
+  DemandTracker, DynValue, SinkDecision, SinkLogic, StageKind, StreamCompletion, StreamDone, StreamError,
+  downcast_value, sink::Sink,
 };
 
 #[cfg(test)]

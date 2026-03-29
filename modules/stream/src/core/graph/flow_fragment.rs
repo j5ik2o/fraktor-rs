@@ -1,6 +1,6 @@
 use crate::core::{
   StreamDslError,
-  stage::{Sink, flow::Flow},
+  dsl::{Flow, Sink},
 };
 
 #[cfg(test)]
@@ -14,7 +14,7 @@ mod tests;
 /// use fraktor_stream_rs::core::{
 ///   StreamNotUsed,
 ///   graph::FlowFragment,
-///   stage::flow::Flow,
+///   dsl::Flow,
 /// };
 ///
 /// let _ = FlowFragment::create(Flow::<u32, u32, StreamNotUsed>::new());

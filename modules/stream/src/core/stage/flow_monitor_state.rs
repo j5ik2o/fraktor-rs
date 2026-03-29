@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::StreamError;
+use crate::core::stream_error::StreamError;
 
 /// Observable state of a monitored flow.
 ///

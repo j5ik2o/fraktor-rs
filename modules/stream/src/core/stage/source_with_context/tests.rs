@@ -8,8 +8,10 @@ use std::sync::{Arc, Mutex};
 
 use crate::core::{
   StreamError, StreamNotUsed, ThrottleMode,
-  mat::{KeepBoth, KeepRight},
-  stage::{FlowWithContext, Sink, Source, SourceWithContext, flow::Flow},
+  materialization::{KeepBoth, KeepRight},
+  stage::{
+    flow::Flow, flow_with_context::FlowWithContext, sink::Sink, source::Source, source_with_context::SourceWithContext,
+  },
 };
 
 #[derive(Default)]
@@ -44,7 +46,7 @@ impl<T: Unpin> Future for YieldThenOutputFuture<T> {
 fn should_create_from_source() {
   let source = Source::from(vec![(1_i32, "a"), (2, "b")]);
   let swc = SourceWithContext::from_source(source);
-  let inner = swc.as_source();
+  let inner = swc.into_source();
   let values = inner.collect_values().unwrap();
   assert_eq!(values, vec![(1, "a"), (2, "b")]);
 }
@@ -54,7 +56,7 @@ fn should_map_output_preserving_context() {
   let source = Source::from(vec![(1_i32, "hello"), (2, "world")]);
   let swc = SourceWithContext::from_source(source);
   let mapped = swc.map(|s: &str| s.len());
-  let values = mapped.as_source().collect_values().unwrap();
+  let values = mapped.into_source().collect_values().unwrap();
   assert_eq!(values, vec![(1, 5), (2, 5)]);
 }
 
@@ -63,7 +65,7 @@ fn should_filter_by_value_preserving_context() {
   let source = Source::from(vec![(1_i32, 10), (2, -5), (3, 20)]);
   let swc = SourceWithContext::from_source(source);
   let filtered = swc.filter(|v: &i32| *v > 0);
-  let values = filtered.as_source().collect_values().unwrap();
+  let values = filtered.into_source().collect_values().unwrap();
   assert_eq!(values, vec![(1, 10), (3, 20)]);
 }
 
@@ -72,7 +74,7 @@ fn should_map_context() {
   let source = Source::from(vec![(1_i32, "a"), (2, "b")]);
   let swc = SourceWithContext::from_source(source);
   let mapped = swc.map_context(|ctx: i32| ctx * 10);
-  let values = mapped.as_source().collect_values().unwrap();
+  let values = mapped.into_source().collect_values().unwrap();
   assert_eq!(values, vec![(10, "a"), (20, "b")]);
 }
 
@@ -82,7 +84,7 @@ fn should_compose_via() {
     FlowWithContext::from_flow(Flow::new().map(|(ctx, s): (i32, &str)| (ctx, s.len())));
   let swc = SourceWithContext::from_source(Source::from(vec![(1_i32, "hello"), (2, "hi")]));
   let composed = swc.via(fwc);
-  let values = composed.as_source().collect_values().unwrap();
+  let values = composed.into_source().collect_values().unwrap();
   assert_eq!(values, vec![(1, 5), (2, 2)]);
 }
 
@@ -96,7 +98,7 @@ fn should_map_concat_expanding_elements_with_same_context() {
   let expanded = swc.map_concat(|s: &str| s.chars().map(|c| c as u32).collect::<Vec<_>>());
 
   // 実行: 要素を収集する
-  let values = expanded.as_source().collect_values().unwrap();
+  let values = expanded.into_source().collect_values().unwrap();
 
   // 検証: 展開後の各要素は元のコンテキストを引き継ぐ
   assert_eq!(values, vec![(1, 97), (1, 98), (2, 99)]);
@@ -110,7 +112,7 @@ fn should_map_concat_dropping_empty_expansions() {
   let expanded = swc.map_concat(|v: i32| if v > 0 { vec![v, v * 10] } else { vec![] });
 
   // 実行: 要素を収集する
-  let values = expanded.as_source().collect_values().unwrap();
+  let values = expanded.into_source().collect_values().unwrap();
 
   // 検証: 空展開された要素は出力されない
   assert_eq!(values, vec![(1, 5), (1, 50), (3, 3), (3, 30)]);
@@ -126,7 +128,7 @@ fn should_filter_not_passing_false_predicate_elements() {
   let filtered = swc.filter_not(|v: &i32| *v > 0);
 
   // 実行: 要素を収集する
-  let values = filtered.as_source().collect_values().unwrap();
+  let values = filtered.into_source().collect_values().unwrap();
 
   // 検証: 述語が false の要素だけが通過する
   assert_eq!(values, vec![(2, -5), (3, 0)]);
@@ -140,7 +142,7 @@ fn should_filter_not_passing_all_when_predicate_always_false() {
   let filtered = swc.filter_not(|_: &i32| false);
 
   // 実行: 要素を収集する
-  let values = filtered.as_source().collect_values().unwrap();
+  let values = filtered.into_source().collect_values().unwrap();
 
   // 検証: 全要素がそのまま通過する
   assert_eq!(values, vec![(1, 10), (2, 20)]);
@@ -156,7 +158,7 @@ fn should_collect_filtering_and_mapping_with_context() {
   let collected = swc.collect(|v: i32| if v > 0 { Some(v * 2) } else { None });
 
   // 実行: 要素を収集する
-  let values = collected.as_source().collect_values().unwrap();
+  let values = collected.into_source().collect_values().unwrap();
 
   // 検証: Some を返した要素だけが変換されて通過する
   assert_eq!(values, vec![(1, 10), (3, 20)]);
@@ -170,7 +172,7 @@ fn should_collect_dropping_all_when_all_none() {
   let collected = swc.collect(|_: i32| -> Option<i32> { None });
 
   // 実行: 要素を収集する
-  let values = collected.as_source().collect_values().unwrap();
+  let values = collected.into_source().collect_values().unwrap();
 
   // 検証: 要素は 1 件も通過しない
   assert!(values.is_empty());
@@ -186,7 +188,7 @@ fn should_map_async_transforming_with_context() {
   let mapped = swc.map_async(1, |v: u32| async move { v * 2 }).expect("map_async");
 
   // 実行: 要素を収集する
-  let values = mapped.as_source().collect_values().unwrap();
+  let values = mapped.into_source().collect_values().unwrap();
 
   // 検証: 値は変換され、コンテキストは保持される
   assert_eq!(values, vec![(1, 10_u32), (2, 6)]);
@@ -202,7 +204,7 @@ fn should_grouped_collecting_elements_with_last_context() {
   let grouped = swc.grouped(2).expect("grouped");
 
   // 実行: 要素を収集する
-  let values = grouped.as_source().collect_values().unwrap();
+  let values = grouped.into_source().collect_values().unwrap();
 
   // 検証: グループ化され、各グループのコンテキストは末尾要素のものになる
   assert_eq!(values, vec![(20, vec![1_u32, 2]), (40, vec![3, 4]), (50, vec![5])]);
@@ -216,7 +218,7 @@ fn should_grouped_single_element_per_group() {
   let grouped = swc.grouped(1).expect("grouped");
 
   // 実行: 要素を収集する
-  let values = grouped.as_source().collect_values().unwrap();
+  let values = grouped.into_source().collect_values().unwrap();
 
   // 検証: 各要素が独立グループになり、コンテキストも保持される
   assert_eq!(values, vec![(1, vec![10_u32]), (2, vec![20])]);
@@ -232,7 +234,7 @@ fn should_sliding_creating_windows_with_last_context() {
   let sliding = swc.sliding(3).expect("sliding");
 
   // 実行: 要素を収集する
-  let values = sliding.as_source().collect_values().unwrap();
+  let values = sliding.into_source().collect_values().unwrap();
 
   // 検証: 各ウィンドウのコンテキストは末尾要素のものになる
   assert_eq!(values, vec![(30, vec![1_u32, 2, 3]), (40, vec![2, 3, 4]),]);
@@ -246,7 +248,7 @@ fn should_sliding_window_size_2() {
   let sliding = swc.sliding(2).expect("sliding");
 
   // 実行: 要素を収集する
-  let values = sliding.as_source().collect_values().unwrap();
+  let values = sliding.into_source().collect_values().unwrap();
 
   // 検証: 2 つのウィンドウができ、各コンテキストは末尾要素に対応する
   assert_eq!(values, vec![(2, vec![10_u32, 20]), (3, vec![20, 30])]);
@@ -262,7 +264,7 @@ fn should_via_mat_combine_source_and_flow_materialized_values() {
   );
 
   // 実行: KeepBoth で source と flow を合成する
-  let (_graph, materialized) = swc.via_mat(flow, KeepBoth).as_source().into_parts();
+  let (_graph, materialized) = swc.via_mat(flow, KeepBoth).into_source().into_parts();
 
   // 検証: 両方のマテリアライズド値が保持される
   assert_eq!(materialized, (5_u32, 9_u32));
@@ -278,7 +280,7 @@ fn should_via_mat_keep_flow_materialized_value_when_requested() {
   );
 
   // 実行: KeepRight で source と flow を合成する
-  let (_graph, materialized) = swc.via_mat(flow, KeepRight).as_source().into_parts();
+  let (_graph, materialized) = swc.via_mat(flow, KeepRight).into_source().into_parts();
 
   // 検証: flow 側のマテリアライズド値が選ばれる
   assert_eq!(materialized, 9_u32);
@@ -293,7 +295,7 @@ fn should_also_to_send_values_to_side_sink_and_preserve_main_path() {
     seen_for_sink.lock().expect("side sink lock").push(value);
   }));
 
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
@@ -308,7 +310,7 @@ fn should_also_to_context_send_only_contexts_to_side_sink() {
     seen_for_sink.lock().expect("context sink lock").push(ctx);
   }));
 
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
@@ -323,7 +325,7 @@ fn should_wire_tap_preserve_main_path_and_emit_values() {
     seen_for_sink.lock().expect("tap sink lock").push(value);
   }));
 
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![1_u32, 2]);
@@ -338,7 +340,7 @@ fn should_wire_tap_context_preserve_main_path_and_emit_contexts() {
     seen_for_sink.lock().expect("context tap lock").push(ctx);
   }));
 
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   assert_eq!(values, vec![(10_i32, 1_u32), (20, 2)]);
   assert_eq!(*seen.lock().expect("seen lock"), vec![10_i32, 20]);
@@ -361,7 +363,7 @@ fn should_map_async_partitioned_preserving_context_and_input_order() {
     .expect("map_async_partitioned");
 
   // 実行: 要素を収集する
-  let values = mapped.as_source().collect_values().unwrap();
+  let values = mapped.into_source().collect_values().unwrap();
 
   // 検証: 入力順が保たれ、各出力は対応するコンテキストを保持する
   assert_eq!(values, vec![(100_i32, 11_u32), (200, 12)]);
@@ -384,7 +386,7 @@ fn should_map_async_partitioned_unordered_emitting_completion_order_with_context
     .expect("map_async_partitioned_unordered");
 
   // 実行: 要素を収集する
-  let values = mapped.as_source().collect_values().unwrap();
+  let values = mapped.into_source().collect_values().unwrap();
 
   // 検証: 完了順は変わりうるが、各結果は元のコンテキストを保持する
   assert_eq!(values, vec![(200_i32, 12_u32), (100, 11)]);
@@ -399,7 +401,7 @@ fn should_map_error_passing_normal_elements_with_context() {
   let swc = SourceWithContext::from_source(source).map_error(|_| StreamError::WouldBlock);
 
   // 実行: 要素を収集する
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   // 検証: 正常な要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
@@ -412,7 +414,7 @@ fn should_map_error_transforming_upstream_failure() {
   let swc = SourceWithContext::from_source(source).map_error(|_| StreamError::WouldBlock);
 
   // 実行: 要素を収集する
-  let result = swc.as_source().collect_values();
+  let result = swc.into_source().collect_values();
 
   // 検証: エラーが変換される
   assert_eq!(result, Err(StreamError::WouldBlock));
@@ -427,7 +429,7 @@ fn should_throttle_passing_elements_with_context() {
   let swc = SourceWithContext::from_source(source).throttle(2, ThrottleMode::Shaping).expect("throttle");
 
   // 実行: 要素を収集する
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   // 検証: 要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32), (2, 20)]);
@@ -440,7 +442,7 @@ fn should_throttle_enforcing_mode_preserving_context() {
   let swc = SourceWithContext::from_source(source).throttle(2, ThrottleMode::Enforcing).expect("throttle");
 
   // 実行: 要素を収集する
-  let values = swc.as_source().collect_values().unwrap();
+  let values = swc.into_source().collect_values().unwrap();
 
   // 検証: 要素はコンテキスト付きでそのまま通過する
   assert_eq!(values, vec![(1, 10_u32)]);

@@ -1,11 +1,11 @@
-//! Extension ID for [`SystemMaterializer`](super::SystemMaterializer).
+//! Extension ID for [`SystemMaterializer`](crate::std::materializer::SystemMaterializer).
 
 extern crate std;
 
 use fraktor_actor_rs::core::kernel::{extension::ExtensionId, system::ActorSystem};
 
-use super::SystemMaterializer;
-use crate::core::mat::{ActorMaterializer, ActorMaterializerConfig};
+use super::system_materializer::SystemMaterializer;
+use crate::core::materialization::{ActorMaterializer, ActorMaterializerConfig};
 
 /// Extension ID for [`SystemMaterializer`].
 ///

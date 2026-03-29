@@ -1,5 +1,5 @@
 use super::GraphStageFlowContext;
-use crate::core::{StreamError, stage::StageContext};
+use crate::core::{stage::StageContext, stream_error::StreamError};
 
 // ---------------------------------------------------------------------------
 // Construction

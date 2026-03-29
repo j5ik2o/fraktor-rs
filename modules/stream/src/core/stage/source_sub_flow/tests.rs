@@ -6,7 +6,8 @@ use super::SourceSubFlow;
 use crate::core::{
   buffer::StreamBufferConfig,
   lifecycle::{Stream, StreamState},
-  stage::{DriveOutcome, Sink, Source},
+  materialization::RunnableGraph,
+  stage::{DriveOutcome, sink::Sink, source::Source},
 };
 
 impl<Out, Mat> SourceSubFlow<Out, Mat> {
@@ -15,7 +16,7 @@ impl<Out, Mat> SourceSubFlow<Out, Mat> {
   }
 }
 
-fn run_to_completion<Mat>(graph: crate::core::mat::RunnableGraph<Mat>) {
+fn run_to_completion<Mat>(graph: RunnableGraph<Mat>) {
   let (plan, _materialized) = graph.into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");

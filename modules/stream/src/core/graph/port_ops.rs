@@ -2,8 +2,8 @@ use core::marker::PhantomData;
 
 use super::{GraphDslBuilder, StreamError, shape::Outlet};
 use crate::core::{
+  dsl::{Flow, Sink},
   shape::PortId,
-  stage::{Sink, flow::Flow},
 };
 
 #[cfg(test)]

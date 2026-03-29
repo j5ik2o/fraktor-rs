@@ -3,28 +3,32 @@ use core::{
   any::TypeId,
   future::Future,
   marker::PhantomData,
-  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+  task::{Context, Poll},
 };
 
 use super::{
-  FlowDefinition, FlowGroupBySubFlow, FlowLogic, FlowSubFlow, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
-  RestartBackoff, RestartSettings, Source, StageDefinition, StageKind, StreamBufferConfig, StreamCompletion,
-  StreamDslError, StreamError, StreamGraph, StreamNotUsed, StreamStage, SupervisionStrategy, TailSource,
+  FlowDefinition, FlowLogic, KeepRight, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff, RestartSettings,
+  StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDslError, StreamError, StreamGraph,
+  StreamNotUsed, StreamStage, SupervisionStrategy,
+  flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
+  flow_sub_flow::FlowSubFlow,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
+  source::Source,
+  tail_source::TailSource,
   validate_positive_argument,
 };
 use crate::core::{
-  Attributes, DynValue, SourceLogic, SubstreamCancelStrategy,
+  DynValue, SourceLogic, SubstreamCancelStrategy,
+  attributes::Attributes,
   lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
 };
 
 #[cfg(test)]
 mod tests;
 
-mod logic;
-use logic::*;
+use crate::core::r#impl::fusing::*;
 
 #[cfg(feature = "compression")]
 const FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT: usize = 1024 * 1024;
@@ -119,7 +123,7 @@ where
   pub fn from_graph_stage<S>(stage: S) -> Self
   where
     S: crate::core::graph::GraphStage<In, Out, Mat> + Send + 'static, {
-    use crate::core::graph::GraphStageFlowAdapter;
+    use crate::core::r#impl::GraphStageFlowAdapter;
 
     let mut logic = stage.create_logic();
     let mat = logic.materialized();
@@ -133,7 +137,7 @@ where
       outlet:      outlet.id(),
       input_type:  TypeId::of::<In>(),
       output_type: TypeId::of::<Out>(),
-      mat_combine: MatCombine::KeepRight,
+      mat_combine: MatCombine::Right,
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(adapter),
@@ -184,12 +188,12 @@ where
   /// Connects this flow to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat> {
-    self.to_mat(sink, super::KeepLeft)
+    self.into_mat(sink, super::KeepLeft)
   }
 
   /// Connects this flow to a sink with a custom materialized value rule.
   #[must_use]
-  pub fn to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Sink<In, C::Out>
+  pub fn into_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, _combine: C) -> Sink<In, C::Out>
   where
     C: MatCombineRule<Mat, Mat2>, {
     let (mut graph, left_mat) = self.into_parts();
@@ -213,11 +217,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -241,11 +241,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -262,11 +258,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -284,11 +276,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -318,11 +306,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -334,23 +318,19 @@ where
   /// called when the upstream completes, allowing trailing elements to be
   /// emitted.
   ///
-  /// [`StatefulMapConcatAccumulator`]: crate::core::StatefulMapConcatAccumulator
+  /// [`StatefulMapConcatAccumulator`]: crate::core::dsl::StatefulMapConcatAccumulator
   #[must_use]
   pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Flow<In, T, Mat>
   where
     T: Send + Sync + 'static,
     Factory: FnMut() -> Acc + Send + Sync + 'static,
-    Acc: crate::core::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    Acc: crate::core::dsl::StatefulMapConcatAccumulator<Out, T> + 'static, {
     let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -367,11 +347,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -387,11 +363,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -406,11 +378,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -431,11 +399,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -448,11 +412,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -467,11 +427,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -486,11 +442,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -505,11 +457,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -526,11 +474,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -549,11 +493,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -569,11 +509,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -588,11 +524,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -609,11 +541,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -634,11 +562,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -659,11 +583,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -702,11 +622,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -723,11 +639,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -744,11 +656,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -765,11 +673,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -786,11 +690,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -807,11 +707,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -828,11 +724,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -849,11 +741,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -922,7 +810,7 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, stage::flow::Flow};
+  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, dsl::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
   ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())
@@ -948,11 +836,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let grouped = Flow::<In, (K, Out), Mat> { graph: self.graph, mat: self.mat, _pd: PhantomData };
     Ok(FlowGroupBySubFlow::from_flow(grouped))
@@ -968,11 +852,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -992,11 +872,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1011,11 +887,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1035,11 +907,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     FlowSubFlow::from_flow(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1054,11 +922,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1075,11 +939,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1098,11 +958,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1119,11 +975,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1140,11 +992,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1161,11 +1009,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1182,11 +1026,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1203,11 +1043,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1226,11 +1062,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1243,11 +1075,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1264,11 +1092,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1303,7 +1127,7 @@ where
       self.graph.connect_or_panic(
         &Outlet::<Vec<Out>>::from_id(from),
         &Inlet::<Vec<Out>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
@@ -1324,7 +1148,7 @@ where
       self.graph.connect_or_panic(
         &Outlet::<Vec<Out>>::from_id(from),
         &Inlet::<Vec<Out>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
@@ -1341,7 +1165,7 @@ where
       self.graph.connect_or_panic(
         &Outlet::<Vec<Out>>::from_id(from),
         &Inlet::<Vec<Out>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
@@ -1364,7 +1188,7 @@ where
       self.graph.connect_or_panic(
         &Outlet::<(Out, Out)>::from_id(from),
         &Inlet::<(Out, Out)>::from_id(inlet_id),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
@@ -1400,7 +1224,7 @@ where
       self.graph.connect_or_panic(
         &Outlet::<Source<Out, Mat2>>::from_id(from),
         &Inlet::<Source<Out, Mat2>>::from_id(inlet_id),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
@@ -1422,11 +1246,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1464,11 +1284,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1495,11 +1311,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1514,11 +1326,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1533,11 +1341,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1558,7 +1362,7 @@ where
 {
   /// Wraps this flow with unit context propagation.
   #[must_use]
-  pub fn as_flow_with_context(self) -> super::flow_with_context::FlowWithContext<(), In, Out, Mat> {
+  pub fn into_flow_with_context(self) -> super::flow_with_context::FlowWithContext<(), In, Out, Mat> {
     let unwrap: Flow<((), In), In, StreamNotUsed> = Flow::from_function(|(_, value)| value);
     let rewrap: Flow<Out, ((), Out), StreamNotUsed> = Flow::from_function(|value| ((), value));
     let inner = unwrap.via_mat(self, super::KeepRight).via(rewrap);
@@ -1779,11 +1583,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -1826,7 +1626,7 @@ where
       outlet:      outlet.id(),
       input_type:  TypeId::of::<In>(),
       output_type: TypeId::of::<Out>(),
-      mat_combine: MatCombine::KeepLeft,
+      mat_combine: MatCombine::Left,
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(logic),
@@ -1864,11 +1664,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -1881,11 +1677,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named(name))
   }
@@ -1925,7 +1717,7 @@ where
     Mat2: Send + Sync + 'static, {
     let logic = MaterializeIntoSourceLogic::<Mat2, _> {
       factory:    Some(move || {
-        let graph = source.via(self).to_mat(sink, KeepRight);
+        let graph = source.via(self).into_mat(sink, KeepRight);
         let (plan, materialized) = graph.into_parts();
         let mut stream = Stream::new(plan, StreamBufferConfig::default());
         stream.start()?;
@@ -2006,11 +1798,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2039,11 +1827,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2080,21 +1864,17 @@ where
   /// strategy.  Unlike [`delay`](Self::delay), the delay can vary
   /// per element depending on the strategy implementation.
   ///
-  /// [`DelayStrategy`]: crate::core::restart::DelayStrategy
+  /// [`DelayStrategy`]: crate::core::dsl::DelayStrategy
   #[must_use]
   pub fn delay_with<S>(mut self, strategy: S) -> Flow<In, Out, Mat>
   where
-    S: crate::core::restart::DelayStrategy<Out> + 'static, {
+    S: crate::core::dsl::DelayStrategy<Out> + 'static, {
     let definition = strategy_delay_definition::<Out, S>(strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -2129,11 +1909,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2151,11 +1927,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2187,11 +1959,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2218,11 +1986,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -2239,11 +2003,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -2279,11 +2039,7 @@ where
   }
 
   /// Buffers a prefix before materializing a tail-processing flow.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`StreamDslError`] when the stage graph cannot be attached to this flow.
-  pub fn flat_map_prefix<T, Mat2, F>(mut self, prefix: usize, factory: F) -> Result<Flow<In, T, Mat>, StreamDslError>
+  pub fn flat_map_prefix<T, Mat2, F>(mut self, prefix: usize, factory: F) -> Flow<In, T, Mat>
   where
     Out: Send + Sync + 'static,
     T: Send + Sync + 'static,
@@ -2294,13 +2050,9 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
-    Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
+    Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
 
   /// Adds a flatten-merge compatibility stage.
@@ -2324,11 +2076,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -2361,11 +2109,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2386,11 +2130,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2412,11 +2152,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2437,11 +2173,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2486,11 +2218,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -2509,11 +2237,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2533,17 +2257,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2570,17 +2290,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2639,17 +2355,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2671,17 +2383,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2702,17 +2410,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2734,17 +2438,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2764,11 +2464,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2787,11 +2483,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2816,17 +2508,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -2855,11 +2543,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -2901,11 +2585,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2922,11 +2602,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2944,11 +2620,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -2986,11 +2658,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -3005,11 +2673,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -3028,11 +2692,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -3048,11 +2708,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
   }
@@ -3071,11 +2727,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -3142,7 +2794,7 @@ where
       graph.connect_or_panic(
         &Outlet::<Out>::from_id(upstream_outlet),
         &Inlet::<Out>::from_id(broadcast_inlet),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     let passthrough = map_definition::<Out, Out, _>(|value| value);
@@ -3152,7 +2804,7 @@ where
     graph.connect_or_panic(
       &Outlet::<Out>::from_id(broadcast_outlet),
       &Inlet::<Out>::from_id(passthrough_inlet),
-      MatCombine::KeepLeft,
+      MatCombine::Left,
     );
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow::from_graph(graph, mat)
@@ -3198,7 +2850,7 @@ where
       graph.connect_or_panic(
         &Outlet::<Out>::from_id(upstream_outlet),
         &Inlet::<Out>::from_id(partition_inlet),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     let passthrough = map_definition::<Out, Out, _>(|value| value);
@@ -3208,7 +2860,7 @@ where
     graph.connect_or_panic(
       &Outlet::<Out>::from_id(partition_outlet),
       &Inlet::<Out>::from_id(passthrough_inlet),
-      MatCombine::KeepLeft,
+      MatCombine::Left,
     );
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow::from_graph(graph, mat)
@@ -3247,7 +2899,7 @@ where
       graph.connect_or_panic(
         &Outlet::<Out>::from_id(upstream_outlet),
         &Inlet::<Out>::from_id(wire_tap_inlet),
-        MatCombine::KeepLeft,
+        MatCombine::Left,
       );
     }
     let passthrough = map_definition::<Out, Out, _>(|value| value);
@@ -3257,7 +2909,7 @@ where
     graph.connect_or_panic(
       &Outlet::<Out>::from_id(wire_tap_outlet),
       &Inlet::<Out>::from_id(passthrough_inlet),
-      MatCombine::KeepLeft,
+      MatCombine::Left,
     );
     let mat = combine_mat::<Mat, Mat2, C>(left_mat, right_mat);
     Flow::from_graph(graph, mat)
@@ -3300,11 +2952,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     let mat = combine_mat::<Mat, super::StreamCompletion<()>, C>(self.mat, completion);
     Flow { graph: self.graph, mat, _pd: PhantomData }
@@ -3316,18 +2964,14 @@ where
   pub fn deflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::Compression;
+    use crate::core::dsl::Compression;
     let definition =
       try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::deflate_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:deflate"))
   }
@@ -3338,18 +2982,14 @@ where
   pub fn gzip(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::Compression;
+    use crate::core::dsl::Compression;
     let definition =
       try_map_concat_definition::<Out, Out, _>(|value| Ok(vec![Out::from(Compression::gzip_bytes(value.as_ref()))]));
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:gzip"))
   }
@@ -3360,7 +3000,7 @@ where
   pub fn gzip_decompress(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::Compression;
+    use crate::core::dsl::Compression;
     let definition = try_map_concat_definition::<Out, Out, _>(|value| {
       Ok(vec![Out::from(Compression::gunzip_bytes_with_options(value.as_ref(), FLOW_DECOMPRESSION_MAX_BYTES_DEFAULT)?)])
     });
@@ -3368,11 +3008,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }
       .add_attributes(Attributes::named("compression:gzip_decompress"))
@@ -3384,7 +3020,7 @@ where
   pub fn inflate(mut self) -> Flow<In, Out, Mat>
   where
     Out: AsRef<[u8]> + From<Vec<u8>>, {
-    use crate::core::Compression;
+    use crate::core::dsl::Compression;
     let definition = try_map_concat_definition::<Out, Out, _>(|value| {
       Ok(vec![Out::from(Compression::inflate_bytes_with_options(
         value.as_ref(),
@@ -3396,11 +3032,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Flow { graph: self.graph, mat: self.mat, _pd: PhantomData }.add_attributes(Attributes::named("compression:inflate"))
   }
@@ -3541,11 +3173,7 @@ where
     let from = self.graph.tail_outlet();
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     Ok(Flow { graph: self.graph, mat: self.mat, _pd: PhantomData })
   }
@@ -3564,17 +3192,13 @@ where
     let inlet_id = definition.inlet;
     self.graph.push_stage(StageDefinition::Flow(definition));
     if let Some(from) = from {
-      self.graph.connect_or_panic(
-        &Outlet::<Out>::from_id(from),
-        &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepLeft,
-      );
+      self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
     if let Some(src_out) = source_tail {
       self.graph.connect_or_panic(
         &Outlet::<Out>::from_id(src_out),
         &Inlet::<Out>::from_id(inlet_id),
-        MatCombine::KeepRight,
+        MatCombine::Right,
       );
     }
     let mat = combine_mat::<Mat, Mat2, C>(self.mat, right_mat);
@@ -3663,28 +3287,6 @@ impl<In, Out, Mat> StreamStage for Flow<In, Out, Mat> {
   }
 }
 
-pub(in crate::core) fn map_definition<In, Out, F>(func: F) -> FlowDefinition
-where
-  In: Send + Sync + 'static,
-  Out: Send + 'static,
-  F: FnMut(In) -> Out + Send + Sync + 'static, {
-  let inlet: Inlet<In> = Inlet::new();
-  let outlet: Outlet<Out> = Outlet::new();
-  let logic = MapLogic { func, _pd: PhantomData };
-  FlowDefinition {
-    kind:        StageKind::FlowMap,
-    inlet:       inlet.id(),
-    outlet:      outlet.id(),
-    input_type:  TypeId::of::<In>(),
-    output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
-    supervision: SupervisionStrategy::Stop,
-    restart:     None,
-    logic:       Box::new(logic),
-    attributes:  Attributes::new(),
-  }
-}
-
 pub(in crate::core) fn map_async_definition<In, Out, F, Fut>(parallelism: usize, func: F) -> FlowDefinition
 where
   In: Send + Sync + 'static,
@@ -3700,7 +3302,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3730,7 +3332,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3750,7 +3352,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3775,7 +3377,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3801,7 +3403,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3839,7 +3441,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3854,7 +3456,7 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Factory: FnMut() -> Acc + Send + Sync + 'static,
-  Acc: crate::core::StatefulMapConcatAccumulator<In, Out> + 'static, {
+  Acc: crate::core::dsl::StatefulMapConcatAccumulator<In, Out> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Out> = Outlet::new();
   let accumulator = factory();
@@ -3871,7 +3473,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3894,7 +3496,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3916,7 +3518,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3939,7 +3541,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3960,7 +3562,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -3980,7 +3582,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4000,7 +3602,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4022,7 +3624,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4043,7 +3645,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4064,7 +3666,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4085,7 +3687,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4105,7 +3707,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4132,7 +3734,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4162,7 +3764,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4196,7 +3798,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4225,7 +3827,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<T>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4256,7 +3858,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4276,7 +3878,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4305,7 +3907,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Acc>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4334,7 +3936,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4357,7 +3959,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4386,7 +3988,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4417,7 +4019,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4437,7 +4039,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<(Vec<In>, TailSource<In>)>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4457,7 +4059,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4477,7 +4079,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4498,7 +4100,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4522,7 +4124,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4533,7 +4135,7 @@ where
 fn strategy_delay_definition<In, S>(strategy: S) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  S: crate::core::restart::DelayStrategy<In> + 'static, {
+  S: crate::core::dsl::DelayStrategy<In> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = StrategyDelayLogic::new(strategy);
@@ -4543,7 +4145,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4567,7 +4169,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4593,7 +4195,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4613,7 +4215,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4633,7 +4235,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4659,7 +4261,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4679,7 +4281,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4699,7 +4301,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4720,7 +4322,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4740,7 +4342,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4774,7 +4376,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<(Key, In)>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4795,7 +4397,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4817,7 +4419,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4838,7 +4440,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4859,7 +4461,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4882,7 +4484,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4919,7 +4521,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4956,7 +4558,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -4982,7 +4584,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<Vec<In>>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5008,7 +4610,7 @@ where
     outlet: outlet.id(),
     input_type: TypeId::of::<Vec<In>>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart: None,
     logic: Box::new(logic),
@@ -5028,7 +4630,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5048,7 +4650,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5069,7 +4671,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5089,7 +4691,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5109,7 +4711,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5134,7 +4736,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5162,7 +4764,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5187,7 +4789,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5213,7 +4815,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5239,7 +4841,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5265,7 +4867,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5285,7 +4887,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5311,7 +4913,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5336,7 +4938,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Vec<In>>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5356,7 +4958,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5380,7 +4982,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5404,7 +5006,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5424,7 +5026,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<(In, In)>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5446,7 +5048,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5466,7 +5068,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<(In, u64)>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5492,7 +5094,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5518,7 +5120,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5545,7 +5147,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<In>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),
@@ -5649,26 +5251,6 @@ where
   }
 }
 
-pub(in crate::core::stage::flow) const fn noop_waker() -> Waker {
-  unsafe { Waker::from_raw(noop_raw_waker()) }
-}
-
-const fn noop_raw_waker() -> RawWaker {
-  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
-}
-
-const fn noop_clone(_: *const ()) -> RawWaker {
-  noop_raw_waker()
-}
-
-const fn noop_wake(_: *const ()) {}
-
-const fn noop_wake_by_ref(_: *const ()) {}
-
-const fn noop_drop(_: *const ()) {}
-
-const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
-
 pub(in crate::core) fn combine_mat<Left, Right, C>(left: Left, right: Right) -> C::Out
 where
   C: MatCombineRule<Left, Right>, {
@@ -5705,7 +5287,7 @@ where
     outlet:      outlet.id(),
     input_type:  TypeId::of::<In>(),
     output_type: TypeId::of::<Out>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(logic),

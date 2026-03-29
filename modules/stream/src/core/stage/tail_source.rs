@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use fraktor_utils_rs::core::sync::sync_mutex_like::SpinSyncMutex;
 
-use super::{Source, StreamError, StreamNotUsed};
+use super::{StreamError, StreamNotUsed, source::Source};
 
 #[cfg(test)]
 mod tests;

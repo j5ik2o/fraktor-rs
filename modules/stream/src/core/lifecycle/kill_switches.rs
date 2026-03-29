@@ -1,7 +1,7 @@
 use super::{SharedKillSwitch, unique_kill_switch::UniqueKillSwitch};
 use crate::core::{
   StreamNotUsed,
-  stage::{BidiFlow, flow::Flow},
+  dsl::{BidiFlow, Flow},
 };
 
 #[cfg(test)]

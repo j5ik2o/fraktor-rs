@@ -4,12 +4,12 @@ use std::sync::{
 };
 
 use crate::core::{
-  Completion, StreamDslError, StreamError,
+  StreamDslError, StreamError,
   buffer::StreamBufferConfig,
+  dsl::{Sink, Source},
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-  mat::{KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
   queue::QueueOfferResult,
-  stage::{Sink, Source},
 };
 
 struct TestMaterializer;
@@ -68,7 +68,7 @@ fn create_producer_sends_elements_and_completes() {
   })
   .expect("create");
 
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -82,7 +82,7 @@ fn create_producer_empty_completes_stream() {
   // 準備: 何も送信しないプロデューサー
   let source = Source::<u32, _>::create(8, |_queue| {}).expect("create");
 
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -99,7 +99,7 @@ fn create_producer_panic_fails_stream() {
   })
   .expect("create");
 
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -123,7 +123,7 @@ fn create_producer_starts_lazily() {
   // create 直後はプロデューサーが呼ばれていない
   assert!(!called.load(Ordering::SeqCst));
 
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect(), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);

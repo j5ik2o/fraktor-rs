@@ -2,11 +2,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatCombine {
   /// Keeps the left materialized value.
-  KeepLeft,
+  Left,
   /// Keeps the right materialized value.
-  KeepRight,
+  Right,
   /// Keeps both materialized values.
-  KeepBoth,
+  Both,
   /// Drops both materialized values.
-  KeepNone,
+  Neither,
 }

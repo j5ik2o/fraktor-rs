@@ -1,12 +1,12 @@
-use super::{Source, sink::Sink};
-use crate::core::mat::RunnableGraph;
+use super::{sink::Sink, source::Source};
+use crate::core::materialization::RunnableGraph;
 
 #[cfg(test)]
 mod tests;
 
 /// Substream surface returned by `group_by`.
 pub struct SourceGroupBySubFlow<Key, Out, Mat> {
-  source: super::Source<(Key, Out), Mat>,
+  source: Source<(Key, Out), Mat>,
 }
 
 impl<Key, Out, Mat> SourceGroupBySubFlow<Key, Out, Mat>

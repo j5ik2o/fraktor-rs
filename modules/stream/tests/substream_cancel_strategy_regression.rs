@@ -1,6 +1,6 @@
 use fraktor_stream_rs::core::{
   StreamNotUsed, SubstreamCancelStrategy,
-  stage::{Source, flow::Flow},
+  dsl::{Flow, Source},
 };
 
 #[test]

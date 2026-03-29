@@ -1,5 +1,7 @@
 use super::Attributes;
-use crate::core::{LogLevel, LogLevels, buffer::InputBuffer};
+use crate::core::attributes::{
+  AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+};
 
 #[test]
 fn named_creates_single_name_attribute() {
@@ -56,12 +58,12 @@ fn get_returns_none_for_unrelated_type() {
   // When: requesting a different attribute type
   #[derive(Debug, Clone)]
   struct UnrelatedAttr;
-  impl crate::core::Attribute for UnrelatedAttr {
+  impl Attribute for UnrelatedAttr {
     fn as_any(&self) -> &dyn core::any::Any {
       self
     }
 
-    fn clone_box(&self) -> alloc::boxed::Box<dyn crate::core::Attribute> {
+    fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
       alloc::boxed::Box::new(self.clone())
     }
 
@@ -189,7 +191,7 @@ fn async_boundary_factory_contains_async_boundary_attr() {
   let attributes = Attributes::async_boundary();
 
   // When: requesting the AsyncBoundaryAttr
-  let result = attributes.get::<crate::core::AsyncBoundaryAttr>();
+  let result = attributes.get::<AsyncBoundaryAttr>();
 
   // Then: the attribute is present
   assert!(result.is_some());
@@ -268,7 +270,7 @@ fn dispatcher_factory_contains_dispatcher_attr() {
   let attributes = Attributes::dispatcher("my-dispatcher");
 
   // When: requesting the DispatcherAttribute
-  let result = attributes.get::<crate::core::DispatcherAttribute>();
+  let result = attributes.get::<DispatcherAttribute>();
 
   // Then: the attribute is present with correct name
   assert!(result.is_some());
@@ -284,9 +286,9 @@ fn async_boundary_composes_with_dispatcher_and_input_buffer() {
     Attributes::async_boundary().and(Attributes::dispatcher("custom-dispatcher")).and(Attributes::input_buffer(32, 32));
 
   // Then: all three attributes are retrievable
-  assert!(attributes.get::<crate::core::AsyncBoundaryAttr>().is_some());
-  assert!(attributes.get::<crate::core::DispatcherAttribute>().is_some());
-  assert_eq!(attributes.get::<crate::core::DispatcherAttribute>().unwrap().name(), "custom-dispatcher");
+  assert!(attributes.get::<AsyncBoundaryAttr>().is_some());
+  assert!(attributes.get::<DispatcherAttribute>().is_some());
+  assert_eq!(attributes.get::<DispatcherAttribute>().unwrap().name(), "custom-dispatcher");
   let buffer = attributes.get::<InputBuffer>();
   assert!(buffer.is_some());
   assert_eq!(buffer.unwrap().initial, 32);
@@ -308,7 +310,7 @@ fn clone_preserves_async_boundary_attr() {
 
   // Then: async boundary attribute is preserved
   assert!(cloned.is_async());
-  assert!(cloned.get::<crate::core::AsyncBoundaryAttr>().is_some());
+  assert!(cloned.get::<AsyncBoundaryAttr>().is_some());
 }
 
 #[test]
@@ -320,7 +322,7 @@ fn clone_preserves_dispatcher_attr() {
   let cloned = original.clone();
 
   // Then: dispatcher attribute is preserved
-  let dispatcher = cloned.get::<crate::core::DispatcherAttribute>();
+  let dispatcher = cloned.get::<DispatcherAttribute>();
   assert!(dispatcher.is_some());
   assert_eq!(dispatcher.unwrap().name(), "my-dispatcher");
 }
@@ -401,7 +403,7 @@ mod pending_attributes_api {
   #[test]
   fn cancellation_strategy_factory_creates_non_empty_attributes() {
     // Given/When: creating attributes with cancellation_strategy factory
-    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::CompleteStage);
+    let attributes = Attributes::cancellation_strategy(CancellationStrategyKind::CompleteStage);
 
     // Then: the attributes are not empty
     assert!(!attributes.is_empty());
@@ -410,26 +412,23 @@ mod pending_attributes_api {
   #[test]
   fn cancellation_strategy_factory_contains_strategy_attr() {
     // Given: attributes created with cancellation_strategy factory
-    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::FailStage);
+    let attributes = Attributes::cancellation_strategy(CancellationStrategyKind::FailStage);
 
     // When: requesting the CancellationStrategyKind attribute
-    let result = attributes.get::<crate::core::buffer::CancellationStrategyKind>();
+    let result = attributes.get::<CancellationStrategyKind>();
 
     // Then: the attribute is present with correct value
     assert!(result.is_some());
-    assert_eq!(*result.unwrap(), crate::core::buffer::CancellationStrategyKind::FailStage);
+    assert_eq!(*result.unwrap(), CancellationStrategyKind::FailStage);
   }
 
   #[test]
   fn cancellation_strategy_propagate_failure_variant() {
     // Given: attributes with PropagateFailure strategy
-    let attributes = Attributes::cancellation_strategy(crate::core::buffer::CancellationStrategyKind::PropagateFailure);
+    let attributes = Attributes::cancellation_strategy(CancellationStrategyKind::PropagateFailure);
 
     // Then: contains the correct strategy
-    assert!(attributes.contains::<crate::core::buffer::CancellationStrategyKind>());
-    assert_eq!(
-      *attributes.get::<crate::core::buffer::CancellationStrategyKind>().unwrap(),
-      crate::core::buffer::CancellationStrategyKind::PropagateFailure
-    );
+    assert!(attributes.contains::<CancellationStrategyKind>());
+    assert_eq!(*attributes.get::<CancellationStrategyKind>().unwrap(), CancellationStrategyKind::PropagateFailure);
   }
 } // mod pending_attributes_api

@@ -1,4 +1,7 @@
-use crate::core::stage::{BidiFlow, Source, StreamNotUsed, flow::Flow};
+use crate::core::{
+  StreamNotUsed,
+  stage::{bidi_flow::BidiFlow, flow::Flow, source::Source},
+};
 
 fn collect_single(flow: Flow<u32, u32, StreamNotUsed>, value: u32) -> Vec<u32> {
   Source::single(value).via(flow).collect_values().expect("collect_values")

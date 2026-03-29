@@ -1,11 +1,13 @@
 use core::any::TypeId;
 
 use crate::core::{
-  AsyncBoundaryAttr, Attributes, DemandTracker, DispatcherAttribute, DynValue, MatCombine, SinkDecision,
-  SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamError,
+  DemandTracker, DynValue, MatCombine, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
+  StageDefinition, StreamError,
+  attributes::{AsyncBoundaryAttr, Attributes, DispatcherAttribute},
+  dsl::Source,
   graph::StreamGraph,
   shape::{Inlet, Outlet, PortId},
-  stage::{Source, StageKind},
+  stage::StageKind,
 };
 
 impl StreamGraph {
@@ -37,7 +39,7 @@ impl StreamGraph {
 #[test]
 fn connect_rejects_unknown_ports() {
   let mut graph = StreamGraph::new();
-  let result = graph.connect(&Outlet::<u32>::new(), &Inlet::<u32>::new(), MatCombine::KeepLeft);
+  let result = graph.connect(&Outlet::<u32>::new(), &Inlet::<u32>::new(), MatCombine::Left);
   assert!(result.is_err());
 }
 
@@ -46,7 +48,7 @@ fn graph_tracks_stage_metadata() {
   let source = Source::single(1_u32).map(|value| value + 1);
   let (graph, _mat) = source.into_parts();
   assert_eq!(graph.stage_kinds(), vec![StageKind::SourceSingle, StageKind::FlowMap]);
-  assert_eq!(graph.stage_mat_combines(), vec![MatCombine::KeepRight, MatCombine::KeepLeft]);
+  assert_eq!(graph.stage_mat_combines(), vec![MatCombine::Right, MatCombine::Left]);
   assert_eq!(graph.connection_count(), 1);
   assert_eq!(graph.connections().len(), 1);
 }
@@ -89,7 +91,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     kind:        StageKind::SourceSingle,
     outlet:      source1_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -99,7 +101,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     kind:        StageKind::SourceSingle,
     outlet:      source2_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -109,7 +111,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     kind:        StageKind::SinkIgnore,
     inlet:       sink1_inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -119,7 +121,7 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
     kind:        StageKind::SinkIgnore,
     inlet:       sink2_inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -132,8 +134,8 @@ fn into_plan_allows_multiple_source_and_sink_nodes() {
   graph.push_stage(StageDefinition::Sink(sink1));
   graph.push_stage(StageDefinition::Sink(sink2));
 
-  assert!(graph.connect(&source1_outlet, &sink1_inlet, MatCombine::KeepLeft).is_ok());
-  assert!(graph.connect(&source2_outlet, &sink2_inlet, MatCombine::KeepRight).is_ok());
+  assert!(graph.connect(&source1_outlet, &sink1_inlet, MatCombine::Left).is_ok());
+  assert!(graph.connect(&source2_outlet, &sink2_inlet, MatCombine::Right).is_ok());
 
   assert!(graph.into_plan().is_ok());
 }
@@ -159,7 +161,7 @@ fn mark_last_node_async_sets_async_boundary_on_last_node() {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -169,7 +171,7 @@ fn mark_last_node_async_sets_async_boundary_on_last_node() {
     kind:        StageKind::SinkIgnore,
     inlet:       sink_inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -184,7 +186,7 @@ fn mark_last_node_async_sets_async_boundary_on_last_node() {
   graph.mark_last_node_async();
 
   // Then: connect and build plan; the sink stage (last node) should have async attribute
-  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::Left).is_ok());
   let plan = graph.into_plan().expect("into_plan");
   let last_stage_attrs = plan.stages[1].attributes();
   assert!(last_stage_attrs.is_async());
@@ -213,7 +215,7 @@ fn mark_last_node_dispatcher_sets_both_async_and_dispatcher() {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -223,7 +225,7 @@ fn mark_last_node_dispatcher_sets_both_async_and_dispatcher() {
     kind:        StageKind::SinkIgnore,
     inlet:       sink_inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -238,7 +240,7 @@ fn mark_last_node_dispatcher_sets_both_async_and_dispatcher() {
   graph.mark_last_node_dispatcher("my-dispatcher");
 
   // Then: the sink stage has both AsyncBoundaryAttr and DispatcherAttribute
-  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::Left).is_ok());
   let plan = graph.into_plan().expect("into_plan");
   let attrs = plan.stages[1].attributes();
   assert!(attrs.is_async());
@@ -256,7 +258,7 @@ fn into_plan_transfers_node_attributes_to_stage_definitions() {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -266,7 +268,7 @@ fn into_plan_transfers_node_attributes_to_stage_definitions() {
     kind:        StageKind::SinkIgnore,
     inlet:       sink_inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -280,7 +282,7 @@ fn into_plan_transfers_node_attributes_to_stage_definitions() {
   graph.mark_last_node_async();
 
   graph.push_stage(StageDefinition::Sink(sink));
-  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::KeepLeft).is_ok());
+  assert!(graph.connect(&source_outlet, &sink_inlet, MatCombine::Left).is_ok());
   let plan = graph.into_plan().expect("into_plan");
 
   // Then: the source stage has async attribute, sink does not
@@ -292,7 +294,7 @@ fn into_plan_transfers_node_attributes_to_stage_definitions() {
 fn node_attributes_survive_graph_append() {
   // Given: source.async() → map, then append a sink to make a complete pipeline
   let (mut combined_graph, _) = Source::single(1_u32).r#async().map(|x: u32| x + 1).into_parts();
-  let (sink_graph, _) = crate::core::stage::Sink::<u32, _>::ignore().into_parts();
+  let (sink_graph, _) = crate::core::dsl::Sink::<u32, _>::ignore().into_parts();
   combined_graph.append(sink_graph);
 
   // When: converting to plan
@@ -313,7 +315,7 @@ fn stage_definition_attributes_returns_empty_by_default() {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -334,7 +336,7 @@ fn stage_definition_with_attributes_sets_attributes() {
     kind:        StageKind::SourceSingle,
     outlet:      source_outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: crate::core::SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),

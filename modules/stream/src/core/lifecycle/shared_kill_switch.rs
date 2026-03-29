@@ -6,7 +6,7 @@ use super::{
   KillSwitch, StreamError,
   unique_kill_switch::{KillSwitchState, KillSwitchStateHandle},
 };
-use crate::core::{Attributes, StreamNotUsed, stage::flow::Flow};
+use crate::core::{attributes::Attributes, dsl::Flow, stream_not_used::StreamNotUsed};
 
 #[cfg(test)]
 mod tests;

@@ -5,7 +5,7 @@
 //! has completed or failed, the corresponding signal is propagated.
 
 use super::island_boundary::{BoundaryState, IslandBoundaryShared};
-use crate::core::{DynValue, SourceLogic, StreamError};
+use crate::core::{DynValue, SourceLogic, stream_error::StreamError};
 
 #[cfg(test)]
 mod tests;

@@ -25,10 +25,10 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  Completion, StreamDone, StreamNotUsed,
+  StreamDone, StreamNotUsed,
   buffer::OverflowStrategy,
-  mat::{ActorMaterializer, ActorMaterializerConfig, KeepRight, StreamCompletion},
-  stage::{Sink, Source, TopicPubSub},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamCompletion},
+  stage::{sink::Sink, source::Source, topic_pub_sub::TopicPubSub},
 };
 
 // --- test helpers ---
@@ -79,7 +79,7 @@ fn topic_pub_sub_source_should_materialize_without_error_after_publish() {
   let mut topic = spawn_topic::<u32>(&system, "test-source");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -106,7 +106,7 @@ fn topic_pub_sub_source_should_be_constructible_and_connectable_to_sink() {
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 8, OverflowStrategy::Fail, &system);
 
   // When: source を Sink に接続してグラフを構築
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
 
   // Then: グラフが materialize できること
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
@@ -123,7 +123,7 @@ fn topic_pub_sub_source_unsubscribes_bridge_after_downstream_cancel() {
   let mut topic = spawn_topic::<u32>(&system, "test-cleanup");
 
   let graph =
-    TopicPubSub::source(topic.clone(), 8, OverflowStrategy::DropHead, &system).to_mat(Sink::head(), KeepRight);
+    TopicPubSub::source(topic.clone(), 8, OverflowStrategy::DropHead, &system).into_mat(Sink::head(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let _materialized = graph.run(&mut materializer).expect("run");
@@ -174,7 +174,7 @@ fn topic_pub_sub_source_should_materialize_with_small_buffer_and_fail_overflow()
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 2, OverflowStrategy::Fail, &system);
 
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -208,7 +208,7 @@ fn topic_pub_sub_source_should_accept_messages_from_multiple_publishers() {
   let mut topic = spawn_topic::<u32>(&system, "test-multi-pub");
 
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -260,7 +260,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
 
   // When: running a stream that publishes elements through PubSub.sink
   let sink = TopicPubSub::sink(topic.clone());
-  let graph = Source::from_array([10_u32, 20_u32, 30_u32]).to_mat(sink, KeepRight);
+  let graph = Source::from_array([10_u32, 20_u32, 30_u32]).into_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -287,7 +287,7 @@ fn topic_pub_sub_sink_should_complete_normally_when_source_finishes() {
   let topic = spawn_topic::<u32>(&system, "test-sink-complete");
 
   let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(sink, KeepRight);
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -311,7 +311,7 @@ fn topic_pub_sub_sink_should_handle_empty_source() {
   let topic = spawn_topic::<u32>(&system, "test-sink-empty");
 
   let sink: Sink<u32, StreamCompletion<StreamDone>> = TopicPubSub::sink(topic.clone());
-  let graph = Source::<u32, _>::empty().to_mat(sink, KeepRight);
+  let graph = Source::<u32, _>::empty().into_mat(sink, KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let materialized = graph.run(&mut materializer).expect("run");
@@ -338,7 +338,7 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
 
   // PubSub source（subscriber）をセットアップ
   let source: Source<u32, StreamNotUsed> = TopicPubSub::source(topic.clone(), 16, OverflowStrategy::DropHead, &system);
-  let graph = source.to_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
+  let graph = source.into_mat(Sink::<u32, StreamCompletion<Vec<u32>>>::collect(), KeepRight);
   let mut materializer = ActorMaterializer::new(system.clone(), ActorMaterializerConfig::default());
   materializer.start().expect("start materializer");
   let source_materialized = graph.run(&mut materializer).expect("run source");
@@ -350,7 +350,7 @@ fn topic_pub_sub_source_and_sink_should_materialize_pipeline_without_error() {
 
   // When: PubSub sink 経由で publish
   let sink = TopicPubSub::sink(topic.clone());
-  let graph = Source::from_array([42_u32, 43_u32]).to_mat(sink, KeepRight);
+  let graph = Source::from_array([42_u32, 43_u32]).into_mat(sink, KeepRight);
   let sink_materialized = graph.run(&mut materializer).expect("run sink");
 
   for _ in 0..30 {

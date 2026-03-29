@@ -1,10 +1,15 @@
 use super::RestartSink;
-use crate::core::{Completion, StreamDone, mat::KeepRight, restart::RestartSettings};
+use crate::core::{
+  materialization::{Completion, KeepRight},
+  restart::RestartSettings,
+  stage::{sink::Sink, source::Source},
+  stream_done::StreamDone,
+};
 
 #[test]
 fn restart_sink_with_backoff_keeps_data_path_behavior() {
-  let sink = RestartSink::with_backoff(crate::core::stage::Sink::<u32, _>::ignore(), 1, 3);
-  let graph = crate::core::stage::Source::single(1_u32).to_mat(sink, KeepRight);
+  let sink = RestartSink::with_backoff(Sink::<u32, _>::ignore(), 1, 3);
+  let graph = Source::single(1_u32).into_mat(sink, KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter =
     crate::core::graph::GraphInterpreter::new(plan, crate::core::buffer::StreamBufferConfig::default());
@@ -18,8 +23,8 @@ fn restart_sink_with_backoff_keeps_data_path_behavior() {
 #[test]
 fn restart_sink_with_settings_keeps_data_path_behavior() {
   let settings = RestartSettings::new(1, 2, 3);
-  let sink = RestartSink::with_settings(crate::core::stage::Sink::<u32, _>::ignore(), settings);
-  let graph = crate::core::stage::Source::single(2_u32).to_mat(sink, KeepRight);
+  let sink = RestartSink::with_settings(Sink::<u32, _>::ignore(), settings);
+  let graph = Source::single(2_u32).into_mat(sink, KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter =
     crate::core::graph::GraphInterpreter::new(plan, crate::core::buffer::StreamBufferConfig::default());

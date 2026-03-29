@@ -1,11 +1,11 @@
 use super::super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  Completion, StreamError,
+  StreamError,
   buffer::StreamBufferConfig,
+  dsl::Sink,
   hub::MergeHub,
   lifecycle::{StreamHandleId, StreamHandleImpl, StreamState},
-  mat::{KeepRight, Materialized, Materializer, RunnableGraph},
-  stage::Sink,
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
 };
 
 struct TestMaterializer {
@@ -66,7 +66,7 @@ fn merge_hub_source_drains_as_stream_source() {
   hub.offer(20_u32).expect("offer 20");
   let mut materializer = TestMaterializer::default();
 
-  let first_graph = hub.source().to_mat(Sink::head(), KeepRight);
+  let first_graph = hub.source().into_mat(Sink::head(), KeepRight);
   let first = first_graph.run(&mut materializer).expect("first materialize");
   for _ in 0..4 {
     let _ = first.handle().drive();
@@ -76,7 +76,7 @@ fn merge_hub_source_drains_as_stream_source() {
   }
   assert_eq!(first.materialized().poll(), Completion::Ready(Ok(10_u32)));
 
-  let second_graph = hub.source().to_mat(Sink::head(), KeepRight);
+  let second_graph = hub.source().into_mat(Sink::head(), KeepRight);
   let second = second_graph.run(&mut materializer).expect("second materialize");
   for _ in 0..4 {
     let _ = second.handle().drive();
@@ -90,7 +90,7 @@ fn merge_hub_source_drains_as_stream_source() {
 #[test]
 fn merge_hub_source_waits_for_later_offer_without_completing() {
   let hub = MergeHub::new();
-  let graph = hub.source().to_mat(Sink::head(), KeepRight);
+  let graph = hub.source().into_mat(Sink::head(), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -141,7 +141,7 @@ fn merge_hub_rejects_offer_after_drain_started() {
 #[test]
 fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
   let hub = MergeHub::new();
-  let graph = hub.source().to_mat(Sink::last(), KeepRight);
+  let graph = hub.source().into_mat(Sink::last(), KeepRight);
   hub.offer(1_u32).expect("offer 1");
   hub.offer(2_u32).expect("offer 2");
 
@@ -175,7 +175,7 @@ fn merge_hub_drain_and_complete_flushes_buffer_and_completes_source() {
 fn merge_hub_source_completes_after_drain_when_queue_is_empty() {
   let hub = MergeHub::<u32>::new();
   let control = hub.draining_control();
-  let graph = hub.source().to_mat(Sink::ignore(), KeepRight);
+  let graph = hub.source().into_mat(Sink::ignore(), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 

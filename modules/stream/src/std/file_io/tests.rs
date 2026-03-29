@@ -4,13 +4,13 @@ use tempfile::NamedTempFile;
 
 use crate::{
   core::{
-    Completion, StreamError,
+    StreamError,
     buffer::StreamBufferConfig,
+    dsl::{Sink, Source},
     lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-    mat::{KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
-    stage::{Sink, Source},
+    materialization::{Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
   },
-  std::FileIO,
+  std::io::FileIO,
 };
 
 struct TestMaterializer;
@@ -53,7 +53,7 @@ fn from_path_reads_file_contents() {
   tmp.flush().unwrap();
 
   let source = FileIO::from_path(tmp.path());
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -67,7 +67,7 @@ fn from_path_reads_file_contents() {
 #[test]
 fn from_path_nonexistent_returns_failed_io_result() {
   let source = FileIO::from_path("/nonexistent/path/to/file.txt");
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -82,7 +82,7 @@ fn from_path_empty_file_returns_zero_count() {
   let tmp = NamedTempFile::new().unwrap();
 
   let source = FileIO::from_path(tmp.path());
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -102,7 +102,7 @@ fn to_path_writes_file_contents() {
 
   let source = Source::from_iterator(vec![b'w', b'o', b'r', b'l', b'd']);
   let sink = FileIO::to_path(&path);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -127,7 +127,7 @@ fn to_path_empty_stream_writes_empty_file() {
 
   let source = Source::<u8, _>::empty();
   let sink = FileIO::to_path(&path);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -149,7 +149,7 @@ fn to_path_empty_stream_writes_empty_file() {
 fn to_path_invalid_directory_returns_failed_io_result() {
   let source = Source::from_iterator(vec![1_u8, 2, 3]);
   let sink = FileIO::to_path("/nonexistent/directory/file.txt");
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let result = graph.run(&mut materializer);
   assert!(matches!(result, Err(StreamError::IoError { .. })));
@@ -166,7 +166,7 @@ fn from_path_with_options_reads_partial_file_with_start_position() {
 
   // 実行: start_position=3, chunk_size=4 で読み込み
   let source = FileIO::from_path_with_options(tmp.path(), 4, 3);
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -187,7 +187,7 @@ fn from_path_with_options_reads_from_start_when_position_is_zero() {
 
   // 実行: position=0, ファイルより大きい chunk_size で読み込み
   let source = FileIO::from_path_with_options(tmp.path(), 8192, 0);
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -208,7 +208,7 @@ fn from_path_with_options_returns_empty_when_position_past_end() {
 
   // 実行: ファイル末尾を超える位置から読み込み
   let source = FileIO::from_path_with_options(tmp.path(), 100, 999);
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -229,7 +229,7 @@ fn from_path_with_options_rejects_zero_chunk_size() {
 
   // 実行: chunk_size=0 を指定
   let source = FileIO::from_path_with_options(tmp.path(), 0, 0);
-  let graph = source.to_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
+  let graph = source.into_mat(Sink::<u8, StreamCompletion<alloc::vec::Vec<u8>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -257,7 +257,7 @@ fn to_path_with_options_appends_to_existing_file() {
   options.write(true).append(true);
   let source = Source::from_iterator(vec![b' ', b'w', b'o', b'r', b'l', b'd']);
   let sink = FileIO::to_path_with_options(&path, options);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -286,7 +286,7 @@ fn to_path_with_options_creates_new_file() {
   options.write(true).create(true).truncate(true);
   let source = Source::from_iterator(vec![1_u8, 2, 3]);
   let sink = FileIO::to_path_with_options(&path, options);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -319,7 +319,7 @@ fn to_path_with_position_writes_at_offset() {
   options.write(true);
   let source = Source::from_iterator(vec![b'B', b'B']);
   let sink = FileIO::to_path_with_position(&path, options, 3);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).unwrap();
   drive_to_completion(&materialized);
@@ -346,7 +346,7 @@ fn to_path_with_position_invalid_path_returns_failed_io_result() {
   // 実行: 存在しないパスに position 指定で書き込み
   let source = Source::from_iterator(vec![1_u8, 2]);
   let sink = FileIO::to_path_with_position("/nonexistent/dir/file.bin", options, 0);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let result = graph.run(&mut materializer);
 

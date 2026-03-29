@@ -9,7 +9,7 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use crate::core::{DynValue, StreamError};
+use crate::core::{DynValue, stream_error::StreamError};
 
 #[cfg(test)]
 mod tests;

@@ -9,8 +9,10 @@ use core::any::TypeId;
 
 use super::{island_boundary::IslandBoundaryShared, shape::PortId};
 use crate::core::{
-  Attributes, DispatcherAttribute, SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge,
-  SupervisionStrategy, buffer::InputBuffer, mat::MatCombine, stage::StageKind,
+  SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge, SupervisionStrategy,
+  attributes::{Attributes, DispatcherAttribute, InputBuffer},
+  mat::MatCombine,
+  stage::StageKind,
 };
 
 #[cfg(test)]
@@ -100,14 +102,14 @@ impl SingleIslandPlan {
       kind: StageKind::Custom,
       inlet,
       input_type: element_type,
-      mat_combine: MatCombine::KeepLeft,
+      mat_combine: MatCombine::Left,
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(BoundarySinkLogic::new(boundary)),
       attributes: Attributes::new(),
     }));
     self.sink_indices.push(idx);
-    self.edges.push(StreamPlanEdge { from_port: upstream_outlet, to_port: inlet, mat: MatCombine::KeepLeft });
+    self.edges.push(StreamPlanEdge { from_port: upstream_outlet, to_port: inlet, mat: MatCombine::Left });
   }
 
   /// Adds a boundary source stage that pulls from the shared boundary buffer
@@ -126,14 +128,14 @@ impl SingleIslandPlan {
       kind: StageKind::Custom,
       outlet,
       output_type: element_type,
-      mat_combine: MatCombine::KeepLeft,
+      mat_combine: MatCombine::Left,
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(BoundarySourceLogic::new(boundary)),
       attributes: Attributes::new(),
     }));
     self.source_indices.push(idx);
-    self.edges.push(StreamPlanEdge { from_port: outlet, to_port: downstream_inlet, mat: MatCombine::KeepLeft });
+    self.edges.push(StreamPlanEdge { from_port: outlet, to_port: downstream_inlet, mat: MatCombine::Left });
   }
 
   /// Converts this island into a `StreamPlan`.

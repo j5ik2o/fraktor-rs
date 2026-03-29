@@ -1,6 +1,6 @@
 use crate::core::{
   SubstreamCancelStrategy,
-  stage::{Source, sink::Sink},
+  stage::{sink::Sink, source::Source},
 };
 
 #[test]

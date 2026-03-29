@@ -18,14 +18,14 @@ use std::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  DynValue, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   SubstreamCancelStrategy,
   buffer::{OverflowStrategy, StreamBufferConfig},
   lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
-  mat::{KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion},
+  materialization::{Completion, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion},
   queue::QueueOfferResult,
   restart::RestartSettings,
-  stage::{Sink, Source, StageKind},
+  stage::{StageKind, sink::Sink, source::Source},
 };
 
 struct RecordingMaterializer {
@@ -347,7 +347,7 @@ fn source_map_materialized_value_transforms_materialized_value_and_keeps_data_pa
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 
-  let graph = Source::single(7_u32).map_materialized_value(|_| 55_u32).to_mat(Sink::ignore(), KeepLeft);
+  let graph = Source::single(7_u32).map_materialized_value(|_| 55_u32).into_mat(Sink::ignore(), KeepLeft);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   assert_eq!(*materialized.materialized(), 55_u32);
@@ -356,7 +356,7 @@ fn source_map_materialized_value_transforms_materialized_value_and_keeps_data_pa
 #[test]
 fn materialized_unique_kill_switch_abort_fails_stream() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.unique_kill_switch();
@@ -370,7 +370,7 @@ fn materialized_unique_kill_switch_abort_fails_stream() {
 #[test]
 fn materialized_unique_kill_switch_abort_stops_reporting_progress_after_failure() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.unique_kill_switch();
@@ -384,7 +384,7 @@ fn materialized_unique_kill_switch_abort_stops_reporting_progress_after_failure(
 #[test]
 fn materialized_shared_kill_switch_shutdown_completes_stream() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.shared_kill_switch();
@@ -403,7 +403,7 @@ fn materialized_shared_kill_switch_shutdown_completes_stream() {
 #[test]
 fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
   let source = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new());
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.unique_kill_switch();
@@ -424,7 +424,7 @@ fn materialized_unique_kill_switch_ignores_later_abort_after_shutdown() {
 fn materialized_shared_kill_switch_shutdown_cancels_upstream_once() {
   let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
   let source = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSourceLogic::new(cancel_count.clone()));
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.shared_kill_switch();
@@ -445,7 +445,7 @@ fn materialized_shared_kill_switch_shutdown_cancels_upstream_once() {
 fn materialized_unique_kill_switch_abort_cancels_upstream_once() {
   let cancel_count = ArcShared::new(SpinSyncMutex::new(0_u32));
   let source = Source::<u32, _>::from_logic(StageKind::Custom, CancelAwareSourceLogic::new(cancel_count.clone()));
-  let graph = source.to_mat(Sink::ignore(), KeepRight);
+  let graph = source.into_mat(Sink::ignore(), KeepRight);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let kill_switch = materialized.unique_kill_switch();
@@ -461,10 +461,10 @@ fn materialized_unique_kill_switch_abort_cancels_upstream_once() {
 fn shared_kill_switch_created_before_materialization_controls_multiple_streams() {
   let shared_kill_switch = SharedKillSwitch::new();
   let graph_left = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
-    .to_mat(Sink::ignore(), KeepRight)
+    .into_mat(Sink::ignore(), KeepRight)
     .with_shared_kill_switch(&shared_kill_switch);
   let graph_right = Source::<u32, _>::from_logic(StageKind::Custom, EndlessSourceLogic::new())
-    .to_mat(Sink::ignore(), KeepRight)
+    .into_mat(Sink::ignore(), KeepRight)
     .with_shared_kill_switch(&shared_kill_switch);
   let mut materializer = RecordingMaterializer::default();
 
@@ -610,14 +610,17 @@ fn source_iterate_emits_progressive_values() {
 
 #[test]
 fn source_as_source_with_context_attaches_unit_context() {
-  let values =
-    Source::from_array([1_u32, 2_u32]).as_source_with_context().as_source().collect_values().expect("collect_values");
+  let values = Source::from_array([1_u32, 2_u32])
+    .into_source_with_context()
+    .into_source()
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![((), 1_u32), ((), 2_u32)]);
 }
 
 #[test]
 fn source_sink_alias_exposes_sink_endpoint() {
-  let values = Source::<u32, _>::sink().as_publisher().collect_values().expect("collect_values");
+  let values = Source::<u32, _>::sink().into_publisher().collect_values().expect("collect_values");
   assert_eq!(values, Vec::<u32>::new());
 }
 
@@ -900,7 +903,7 @@ fn source_create_defers_producer_until_source_is_materialized() {
   .expect("create");
 
   assert!(!*called.lock());
-  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let graph = source.into_mat(Sink::queue(), KeepBoth);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let sink_queue = &materialized.materialized().1;
@@ -944,7 +947,7 @@ fn source_create_auto_completes_queue_when_producer_returns_without_termination(
   })
   .expect("create");
 
-  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let graph = source.into_mat(Sink::queue(), KeepBoth);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let sink_queue = &materialized.materialized().1;
@@ -1000,7 +1003,7 @@ fn source_create_tolerates_producer_delay_without_std_sleep() {
   })
   .expect("create");
 
-  let graph = source.to_mat(Sink::queue(), KeepBoth);
+  let graph = source.into_mat(Sink::queue(), KeepBoth);
   let mut materializer = RecordingMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   let sink_queue = &materialized.materialized().1;
@@ -1141,19 +1144,19 @@ fn source_from_output_stream_alias_emits_values() {
 
 #[test]
 fn source_as_input_stream_collects_values() {
-  let values = Source::from_array([21_u32, 22_u32]).as_input_stream().expect("as_input_stream");
+  let values = Source::from_array([21_u32, 22_u32]).into_input_stream().expect("as_input_stream");
   assert_eq!(values, vec![21_u32, 22_u32]);
 }
 
 #[test]
 fn source_as_java_stream_collects_values() {
-  let values = Source::from_array([23_u32, 24_u32]).as_java_stream().expect("as_java_stream");
+  let values = Source::from_array([23_u32, 24_u32]).into_java_stream().expect("as_java_stream");
   assert_eq!(values, vec![23_u32, 24_u32]);
 }
 
 #[test]
 fn source_as_output_stream_collects_values() {
-  let values = Source::from_array([25_u32, 26_u32]).as_output_stream().expect("as_output_stream");
+  let values = Source::from_array([25_u32, 26_u32]).into_output_stream().expect("as_output_stream");
   assert_eq!(values, vec![25_u32, 26_u32]);
 }
 
@@ -1648,7 +1651,7 @@ fn source_stateful_map_on_complete_none_emits_nothing_extra() {
 #[test]
 fn source_stateful_map_concat_with_accumulator_processes_elements() {
   // 準備: StatefulMapConcatAccumulator を使用した stateful_map_concat
-  use crate::core::StatefulMapConcatAccumulator;
+  use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct DoublingAccumulator;
 
@@ -1670,7 +1673,7 @@ fn source_stateful_map_concat_with_accumulator_processes_elements() {
 #[test]
 fn source_stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
   // 準備: on_complete で残りのバッファを排出する accumulator
-  use crate::core::StatefulMapConcatAccumulator;
+  use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct BufferingAccumulator {
     buffer: alloc::vec::Vec<u32>,
@@ -2290,16 +2293,17 @@ fn source_named_keeps_elements_and_sets_attributes() {
   let values = Source::from_array([1_u32, 2, 3]).named("test-source").collect_values().expect("collect_values");
   assert_eq!(values, vec![1_u32, 2, 3]);
 
-  let (graph, _mat) =
-    Source::<u32, crate::core::StreamNotUsed>::from_array([1_u32, 2]).named("test-source").into_parts();
+  let (graph, _mat) = Source::<u32, crate::core::stream_not_used::StreamNotUsed>::from_array([1_u32, 2])
+    .named("test-source")
+    .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-source")]);
 }
 
 #[test]
 fn source_with_and_add_attributes_merge_names() {
-  let (graph, _mat) = Source::<u32, crate::core::StreamNotUsed>::from_array([1_u32, 2])
-    .with_attributes(crate::core::Attributes::named("base"))
-    .add_attributes(crate::core::Attributes::named("extra"))
+  let (graph, _mat) = Source::<u32, crate::core::stream_not_used::StreamNotUsed>::from_array([1_u32, 2])
+    .with_attributes(crate::core::attributes::Attributes::named("base"))
+    .add_attributes(crate::core::attributes::Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
@@ -2866,7 +2870,7 @@ fn source_interleave_mat_preserves_data_path_behavior() {
 
 #[test]
 fn source_flat_map_prefix_mat_combines_materialized_values() {
-  use crate::core::stage::flow::Flow;
+  use crate::core::dsl::Flow;
 
   let source: Source<u32, u32> = Source::from_array([1_u32, 2, 3]).map_materialized_value(|_| 10_u32);
 
@@ -2884,7 +2888,7 @@ fn source_flat_map_prefix_mat_combines_materialized_values() {
 
 #[test]
 fn source_flat_map_prefix_mat_preserves_data_path_behavior() {
-  use crate::core::stage::flow::Flow;
+  use crate::core::dsl::Flow;
 
   let source: Source<u32, u32> = Source::from_array([1_u32, 2, 3]).map_materialized_value(|_| 10_u32);
 
@@ -2929,7 +2933,7 @@ fn source_async_handles_empty_source() {
 
 #[test]
 fn source_async_composes_with_via() {
-  use crate::core::stage::flow::Flow;
+  use crate::core::dsl::Flow;
 
   // Given: a source with async boundary, then via a map flow
   let values = Source::from_array([10_u32, 20, 30])
@@ -2998,7 +3002,7 @@ fn source_async_with_dispatcher_marks_node_with_dispatcher_attribute() {
   // Then: the source stage has both async and dispatcher attributes
   let attrs = plan.stages[0].attributes();
   assert!(attrs.is_async());
-  let dispatcher = attrs.get::<crate::core::DispatcherAttribute>();
+  let dispatcher = attrs.get::<crate::core::attributes::DispatcherAttribute>();
   assert!(dispatcher.is_some());
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
 }

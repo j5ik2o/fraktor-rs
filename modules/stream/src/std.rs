@@ -2,6 +2,10 @@ extern crate std;
 
 /// File IO utilities for reading and writing byte streams.
 mod file_io;
+/// Public std-backed I/O adapter surface.
+pub mod io;
+/// Public std-backed materializer adapter surface.
+pub mod materializer;
 /// Std-backed source adapters.
 mod source;
 /// Adapters for converting between Rust IO types and stream stages.
@@ -10,11 +14,6 @@ mod stream_converters;
 mod system_materializer;
 /// Extension ID for SystemMaterializer.
 mod system_materializer_id;
-
-pub use file_io::FileIO;
-pub use stream_converters::StreamConverters;
-pub use system_materializer::SystemMaterializer;
-pub use system_materializer_id::SystemMaterializerId;
 
 use crate::core::StreamError;
 

@@ -3,24 +3,24 @@ use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, SourceLogic, StageKind, StreamDone, StreamError,
+  DynValue, SourceLogic, StageKind, StreamDone, StreamError,
   buffer::StreamBufferConfig,
   lifecycle::Stream,
-  mat::{KeepRight, Materialized, Materializer},
-  stage::{ActorSink, Source},
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
+  stage::{actor_sink::ActorSink, source::Source},
 };
 
 struct TestMaterializer;
 
 impl Materializer for TestMaterializer {
-  fn start(&mut self) -> Result<(), crate::core::StreamError> {
+  fn start(&mut self) -> Result<(), crate::core::stream_error::StreamError> {
     Ok(())
   }
 
   fn materialize<Mat>(
     &mut self,
-    graph: crate::core::mat::RunnableGraph<Mat>,
-  ) -> Result<Materialized<Mat>, crate::core::StreamError> {
+    graph: RunnableGraph<Mat>,
+  ) -> Result<Materialized<Mat>, crate::core::stream_error::StreamError> {
     let (plan, materialized) = graph.into_parts();
     let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
@@ -29,7 +29,7 @@ impl Materializer for TestMaterializer {
     Ok(Materialized::new(handle, materialized))
   }
 
-  fn shutdown(&mut self) -> Result<(), crate::core::StreamError> {
+  fn shutdown(&mut self) -> Result<(), crate::core::stream_error::StreamError> {
     Ok(())
   }
 }
@@ -84,7 +84,7 @@ enum BackpressureMessage {
 #[test]
 fn actor_sink_actor_ref_should_complete_stream() {
   let forwarded = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref({
       let forwarded = forwarded.clone();
       move |value| {
@@ -110,7 +110,7 @@ fn actor_sink_actor_ref_should_not_cancel_upstream() {
     StageKind::Custom,
     CancelTrackingSourceLogic::new([1_u32, 2_u32, 3_u32], pull_count.clone(), cancel_count.clone()),
   );
-  let graph = source.to_mat(
+  let graph = source.into_mat(
     ActorSink::actor_ref({
       let forwarded = forwarded.clone();
       move |value| {
@@ -130,7 +130,7 @@ fn actor_sink_actor_ref_should_not_cancel_upstream() {
 
 #[test]
 fn actor_sink_actor_ref_with_result_should_fail_stream_when_callback_fails() {
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_result(|value| if value == 2 { Err(StreamError::Failed) } else { Ok(()) }),
     KeepRight,
   );
@@ -143,7 +143,7 @@ fn actor_sink_actor_ref_with_result_should_fail_stream_when_callback_fails() {
 
 #[test]
 fn actor_sink_actor_ref_with_result_should_complete_stream_when_callback_succeeds() {
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(ActorSink::actor_ref_with_result(|_value| Ok(())), KeepRight);
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(ActorSink::actor_ref_with_result(|_value| Ok(())), KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_until_terminal(&materialized);
@@ -156,7 +156,7 @@ fn actor_sink_actor_ref_with_backpressure_should_complete_stream() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8, 1_u8, 1_u8])));
 
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -194,7 +194,7 @@ fn actor_sink_actor_ref_with_backpressure_should_pause_without_ack() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8])));
 
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();
@@ -231,7 +231,7 @@ fn actor_sink_actor_ref_with_backpressure_should_resume_after_delayed_ack() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::<BackpressureMessage>::new()));
   let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::from([1_u8])));
 
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(
     ActorSink::actor_ref_with_backpressure(
       {
         let messages = messages.clone();

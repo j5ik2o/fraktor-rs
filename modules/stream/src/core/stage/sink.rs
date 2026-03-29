@@ -17,7 +17,7 @@ use super::{
   stage_context::StageContext,
   validate_positive_argument,
 };
-use crate::core::{Attributes, queue::SinkQueue};
+use crate::core::{attributes::Attributes, queue::SinkQueue};
 
 #[cfg(test)]
 mod tests;
@@ -196,7 +196,7 @@ where
 
   /// Creates a source placeholder corresponding to publisher conversion APIs.
   #[must_use]
-  pub fn as_publisher(self) -> Source<In, StreamNotUsed> {
+  pub fn into_publisher(self) -> Source<In, StreamNotUsed> {
     let _ = self;
     Source::empty()
   }
@@ -443,7 +443,7 @@ where
         kind:        StageKind::Custom,
         inlet:       inlet.id(),
         input_type:  TypeId::of::<In>(),
-        mat_combine: MatCombine::KeepRight,
+        mat_combine: MatCombine::Right,
         supervision: SupervisionStrategy::Stop,
         restart:     None,
         logic:       Box::new(logic),
@@ -485,10 +485,10 @@ where
     graph.append_unwired(second_graph);
 
     if let Some(to) = first_inlet {
-      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::Left);
     }
     if let Some(to) = second_inlet {
-      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::KeepLeft);
+      graph.connect_or_panic(&Outlet::<In>::from_id(broadcast_outlet), &Inlet::<In>::from_id(to), MatCombine::Left);
     }
 
     let mat = C::combine(left_mat, right_mat);
@@ -521,7 +521,7 @@ where
     In2: Send + Sync + 'static,
     F: Fn(In2) -> In + Send + Sync + 'static, {
     let flow = super::flow::Flow::<In2, In, StreamNotUsed>::from_function(func);
-    flow.to_mat(self, super::KeepRight)
+    flow.into_mat(self, super::KeepRight)
   }
 
   /// Enables restart semantics with backoff for this sink.
@@ -587,7 +587,7 @@ where
       kind,
       inlet: inlet.id(),
       input_type: TypeId::of::<In>(),
-      mat_combine: MatCombine::KeepRight,
+      mat_combine: MatCombine::Right,
       supervision: SupervisionStrategy::Stop,
       restart: None,
       logic: Box::new(logic),

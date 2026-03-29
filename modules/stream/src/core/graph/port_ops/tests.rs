@@ -1,9 +1,10 @@
 use crate::core::{
-  Completion, StreamNotUsed,
+  StreamNotUsed,
+  dsl::{Flow, Sink, Source},
   graph::{GraphDslBuilder, GraphInterpreter, PortOps},
   lifecycle::{DriveOutcome, StreamState},
+  materialization::Completion,
   shape::Outlet,
-  stage::{Sink, Source, flow::Flow},
 };
 
 fn drive_to_terminal(interpreter: &mut GraphInterpreter) {

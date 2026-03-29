@@ -4,7 +4,7 @@ use super::{
   GraphDslBuilder, StreamError,
   shape::{Inlet, Outlet},
 };
-use crate::core::{shape::PortId, stage::Source};
+use crate::core::{dsl::Source, shape::PortId};
 
 #[cfg(test)]
 mod tests;

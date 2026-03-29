@@ -1,6 +1,6 @@
 use fraktor_actor_rs::core::kernel::{error::SendError, messaging::AnyMessage};
 
-use crate::core::StreamError;
+use crate::core::stream_error::StreamError;
 
 // --- StreamDetached variant ---
 

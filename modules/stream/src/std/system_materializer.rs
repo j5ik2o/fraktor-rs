@@ -7,12 +7,13 @@ mod tests;
 
 use fraktor_actor_rs::core::kernel::extension::Extension;
 
-use crate::core::mat::ActorMaterializer;
+use crate::core::materialization::ActorMaterializer;
 
 /// Per-ActorSystem shared materializer (Pekko `SystemMaterializer` equivalent).
 ///
 /// Registered as an [`Extension`] on the actor system to provide a single
-/// shared [`ActorMaterializer`] instance. Use [`SystemMaterializerId`](super::SystemMaterializerId)
+/// shared [`ActorMaterializer`] instance. Use
+/// [`SystemMaterializerId`](crate::std::materializer::SystemMaterializerId)
 /// to register and retrieve this extension.
 pub struct SystemMaterializer {
   materializer: ActorMaterializer,

@@ -1,9 +1,9 @@
 use fraktor_stream_rs::core::{
   StreamNotUsed,
+  dsl::{Flow, Sink, Source},
   graph::GraphDslBuilder,
-  mat::{KeepBoth, KeepLeft, KeepRight},
+  materialization::{KeepBoth, KeepLeft, KeepRight},
   shape::{FanInShape3, FanInShape4, FanInShape5, FanInShape8, Inlet, Outlet, UniformFanOutShape},
-  stage::{Sink, Source, flow::Flow},
 };
 
 #[test]
@@ -132,7 +132,7 @@ fn flow_from_sink_and_source_mat_is_public_and_combines_materialized_values() {
     Source::single(99_u32).map_materialized_value(|_| 8_u32),
     KeepBoth,
   );
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(5_u32, 8_u32));
 }
@@ -158,7 +158,7 @@ fn flow_from_sink_and_source_coupled_mat_is_public_and_keeps_requested_materiali
     Source::single(99_u32).map_materialized_value(|_| 21_u32),
     KeepRight,
   );
-  let graph = Source::single(2_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(2_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &21_u32);
 }
@@ -181,7 +181,7 @@ fn flow_from_sink_and_source_coupled_mat_is_public_and_preserves_existing_data_p
 fn flow_concat_lazy_mat_is_public_and_combines_materialized_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .concat_lazy_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
@@ -203,7 +203,7 @@ fn flow_concat_lazy_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_prepend_lazy_mat_is_public_and_keeps_requested_materialized_value() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .prepend_lazy_mat(Source::single(1_u32).map_materialized_value(|_| 21_u32), KeepRight);
-  let graph = Source::single(2_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(2_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &21_u32);
 }
@@ -225,7 +225,7 @@ fn flow_prepend_lazy_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_or_else_mat_is_public_and_combines_materialized_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .or_else_mat(Source::single(5_u32).map_materialized_value(|_| 34_u32), KeepBoth);
-  let graph = Source::<u32, _>::empty().via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::<u32, _>::empty().via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 34_u32));
 }
@@ -250,7 +250,7 @@ fn flow_divert_to_mat_is_public_and_keeps_requested_materialized_value() {
     Sink::<u32, _>::ignore().map_materialized_value(|_| 55_u32),
     KeepRight,
   );
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &55_u32);
 }
@@ -277,7 +277,7 @@ fn flow_divert_to_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_concat_mat_is_public_and_combines_materialized_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .concat_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
@@ -303,7 +303,7 @@ fn flow_concat_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_prepend_mat_is_public_and_keeps_requested_materialized_value() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .prepend_mat(Source::single(1_u32).map_materialized_value(|_| 21_u32), KeepRight);
-  let graph = Source::single(2_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(2_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &21_u32);
 }
@@ -326,7 +326,7 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
 // ---------------------------------------------------------------------------
 
 // Flow::new().merge_mat() はソースノードが最初のノード（head_inlet
-// なし）となるグラフを作成するため、 .via()/.to_mat() で上流を正しく接続できない。
+// なし）となるグラフを作成するため、 .via()/.into_mat() で上流を正しく接続できない。
 // マテリアライズ値の結合ロジックはユニットテスト merge_mat_combines_materialized_values
 // で検証済み。
 #[test]
@@ -334,7 +334,7 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_merge_mat_is_public_and_combines_materialized_values() {
   let flow =
     Flow::<u32, u32, StreamNotUsed>::new().merge_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
@@ -369,7 +369,7 @@ fn flow_merge_mat_is_public_and_preserves_existing_data_path_contract() {
 fn flow_merge_preferred_mat_is_public_and_combines_materialized_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .merge_preferred_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }
@@ -403,7 +403,7 @@ fn flow_merge_preferred_mat_is_public_and_preserves_existing_data_path_contract(
 fn flow_merge_sorted_mat_is_public_and_combines_materialized_values() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new()
     .merge_sorted_mat(Source::single(9_u32).map_materialized_value(|_| 8_u32), KeepBoth);
-  let graph = Source::single(1_u32).via_mat(flow, KeepRight).to_mat(Sink::<u32, _>::ignore(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(flow, KeepRight).into_mat(Sink::<u32, _>::ignore(), KeepLeft);
 
   assert_eq!(graph.materialized(), &(StreamNotUsed::new(), 8_u32));
 }

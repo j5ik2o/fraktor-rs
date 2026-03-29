@@ -1,8 +1,8 @@
 use crate::core::{
   StreamError,
+  dsl::{Sink, Source},
   lifecycle::UniqueKillSwitch,
-  mat::{KeepLeft, KeepRight},
-  stage::{Sink, Source},
+  materialization::{KeepLeft, KeepRight},
 };
 
 #[test]
@@ -36,7 +36,7 @@ fn unique_kill_switch_keeps_first_control_signal() {
 #[test]
 fn unique_kill_switch_flow_binds_state_to_graph() {
   let switch = UniqueKillSwitch::new();
-  let graph = Source::single(1_u32).via_mat(switch.flow::<u32>(), KeepRight).to_mat(Sink::head(), KeepLeft);
+  let graph = Source::single(1_u32).via_mat(switch.flow::<u32>(), KeepRight).into_mat(Sink::head(), KeepLeft);
   let (plan, materialized) = graph.into_parts();
 
   assert!(plan.shared_kill_switch_states().is_empty());

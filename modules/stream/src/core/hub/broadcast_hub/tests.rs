@@ -1,11 +1,11 @@
 use super::super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  Completion, StreamError,
+  StreamError,
   buffer::StreamBufferConfig,
+  dsl::Sink,
   hub::BroadcastHub,
   lifecycle::{StreamHandleId, StreamHandleImpl, StreamState},
-  mat::{KeepRight, Materialized, Materializer, RunnableGraph},
-  stage::Sink,
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
 };
 
 struct TestMaterializer {
@@ -68,7 +68,7 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
   hub.publish(2_u32).expect("publish 2");
   let mut materializer = TestMaterializer::default();
 
-  let first_graph = hub.source_for(left).to_mat(Sink::head(), KeepRight);
+  let first_graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
   let first = first_graph.run(&mut materializer).expect("first materialize");
   for _ in 0..4 {
     let _ = first.handle().drive();
@@ -78,7 +78,7 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
   }
   assert_eq!(first.materialized().poll(), Completion::Ready(Ok(1_u32)));
 
-  let second_graph = hub.source_for(left).to_mat(Sink::head(), KeepRight);
+  let second_graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
   let second = second_graph.run(&mut materializer).expect("second materialize");
   for _ in 0..4 {
     let _ = second.handle().drive();
@@ -93,7 +93,7 @@ fn broadcast_hub_source_for_drains_subscriber_queue() {
 fn broadcast_hub_source_waits_for_later_publish_without_completing() {
   let hub = BroadcastHub::new();
   let left = hub.subscribe();
-  let graph = hub.source_for(left).to_mat(Sink::head(), KeepRight);
+  let graph = hub.source_for(left).into_mat(Sink::head(), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 

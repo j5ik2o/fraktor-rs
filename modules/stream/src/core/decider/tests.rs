@@ -1,4 +1,4 @@
-use crate::core::{Decider, StreamError, SupervisionStrategy};
+use crate::core::{Decider, SupervisionStrategy, stream_error::StreamError};
 
 #[test]
 fn decider_type_alias_is_callable() {

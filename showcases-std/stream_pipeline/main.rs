@@ -9,8 +9,8 @@
 
 use fraktor_showcases_std::support;
 use fraktor_stream_rs::core::{
-  mat::KeepRight,
-  stage::{Sink, Source},
+  dsl::{Sink, Source},
+  materialization::KeepRight,
 };
 
 #[allow(clippy::print_stdout)]
@@ -19,7 +19,7 @@ fn main() {
 
   // Part 1: Source → Map → Sink::head
   println!("=== Part 1: minimal pipeline (map + head) ===");
-  let graph = Source::single(41_u32).map(|v| v + 1).to_mat(Sink::head(), KeepRight);
+  let graph = Source::single(41_u32).map(|v| v + 1).into_mat(Sink::head(), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
   let result = support::drive_until_ready(&driver, materialized.materialized(), 8);
   match result {
@@ -32,7 +32,7 @@ fn main() {
   println!("\n=== Part 2: flat_map_concat + fold (aggregation) ===");
   let graph = Source::single(5_u32)
     .flat_map_concat(|v| Source::single(v + 3))
-    .to_mat(Sink::fold(10_u32, |acc, v| acc + v), KeepRight);
+    .into_mat(Sink::fold(10_u32, |acc, v| acc + v), KeepRight);
   let materialized = graph.run(&mut mat).expect("run");
   let result = support::drive_until_ready(&driver, materialized.materialized(), 8);
   match result {
@@ -43,7 +43,7 @@ fn main() {
 
   // Part 3: Source → Map → filter via Option → Fold
   println!("\n=== Part 3: map + filter + fold ===");
-  let graph = Source::single(9_u32).map(|v| v * 2).map(|v| if v >= 10 { Some(v) } else { None }).to_mat(
+  let graph = Source::single(9_u32).map(|v| v * 2).map(|v| if v >= 10 { Some(v) } else { None }).into_mat(
     Sink::fold(Vec::<u32>::new(), |mut acc, v| {
       if let Some(value) = v {
         acc.push(value);

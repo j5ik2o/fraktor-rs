@@ -1,7 +1,7 @@
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use super::{KillSwitch, StreamError};
-use crate::core::{StreamNotUsed, stage::flow::Flow};
+use crate::core::{dsl::Flow, stream_not_used::StreamNotUsed};
 
 #[cfg(test)]
 mod tests;

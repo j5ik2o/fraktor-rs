@@ -1,8 +1,8 @@
 use crate::core::{
   StreamError, StreamNotUsed,
+  dsl::{Flow, Sink, Source},
   graph::{GraphDslBuilder, ReversePortOps},
   shape::Inlet,
-  stage::{Sink, Source, flow::Flow},
 };
 
 // --- ReversePortOps の構築 ---

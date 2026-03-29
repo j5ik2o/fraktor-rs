@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
-use super::{Source, StreamDslError, sink::Sink};
-use crate::core::mat::RunnableGraph;
+use super::{StreamDslError, sink::Sink, source::Source};
+use crate::core::materialization::RunnableGraph;
 
 #[cfg(test)]
 mod tests;

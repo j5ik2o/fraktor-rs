@@ -1,7 +1,7 @@
 use super::GraphDslBuilder;
 use crate::core::{
   StreamNotUsed,
-  stage::{Sink, Source, flow::Flow},
+  dsl::{Flow, Sink, Source},
 };
 
 /// Minimal namespace facade compatible with Pekko-style `GraphDSL`.

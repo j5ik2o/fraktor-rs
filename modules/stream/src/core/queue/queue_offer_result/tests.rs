@@ -1,4 +1,4 @@
-use crate::core::{StreamError, queue::QueueOfferResult};
+use crate::core::{queue::QueueOfferResult, stream_error::StreamError};
 
 #[test]
 fn queue_offer_result_distinguishes_variants() {

@@ -50,7 +50,7 @@ fn make_source(outlet: &Outlet<u32>, attrs: Attributes) -> StageDefinition {
     kind:        StageKind::SourceSingle,
     outlet:      outlet.id(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(EmptySourceLogic),
@@ -65,7 +65,7 @@ fn make_flow(inlet: &Inlet<u32>, outlet: &Outlet<u32>, attrs: Attributes) -> Sta
     outlet:      outlet.id(),
     input_type:  TypeId::of::<u32>(),
     output_type: TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepLeft,
+    mat_combine: MatCombine::Left,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(PassthroughFlowLogic),
@@ -78,7 +78,7 @@ fn make_sink(inlet: &Inlet<u32>, attrs: Attributes) -> StageDefinition {
     kind:        StageKind::SinkIgnore,
     inlet:       inlet.id(),
     input_type:  TypeId::of::<u32>(),
-    mat_combine: MatCombine::KeepRight,
+    mat_combine: MatCombine::Right,
     supervision: SupervisionStrategy::Stop,
     restart:     None,
     logic:       Box::new(IgnoreSinkLogic),
@@ -108,8 +108,7 @@ fn split_no_async_boundary_returns_single_island() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   // When: splitting
@@ -137,8 +136,7 @@ fn split_one_async_at_source_creates_two_islands() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   // When: splitting
@@ -167,8 +165,7 @@ fn split_one_async_at_flow_creates_two_islands() {
     make_flow(&f_in, &f_out, Attributes::async_boundary()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   // When: splitting
@@ -198,8 +195,7 @@ fn split_two_async_boundaries_creates_three_islands() {
     make_flow(&f_in, &f_out, Attributes::async_boundary()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   // When: splitting
@@ -230,8 +226,7 @@ fn split_assigns_sequential_island_ids() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   let island_plan = IslandSplitter::split(plan);
@@ -256,8 +251,7 @@ fn split_crossing_identifies_upstream_and_downstream_islands() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   let island_plan = IslandSplitter::split(plan);
@@ -288,8 +282,7 @@ fn split_transfers_dispatcher_attribute_to_island() {
     make_flow(&f_in, &f_out, dispatcher_attrs),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   let island_plan = IslandSplitter::split(plan);
@@ -319,7 +312,7 @@ fn split_async_cut_preserves_unrelated_branch_in_downstream_island() {
       outlet:      merge_out.id(),
       input_type:  TypeId::of::<u32>(),
       output_type: TypeId::of::<u32>(),
-      mat_combine: MatCombine::KeepLeft,
+      mat_combine: MatCombine::Left,
       supervision: SupervisionStrategy::Stop,
       restart:     None,
       logic:       Box::new(PassthroughFlowLogic),
@@ -328,10 +321,10 @@ fn split_async_cut_preserves_unrelated_branch_in_downstream_island() {
     make_sink(&sink_in, Attributes::new()),
   ];
   let edges = alloc::vec![
-    (source_a_out.id(), async_in.id(), MatCombine::KeepLeft),
-    (async_out.id(), merge_in.id(), MatCombine::KeepLeft),
-    (source_b_out.id(), merge_in.id(), MatCombine::KeepLeft),
-    (merge_out.id(), sink_in.id(), MatCombine::KeepLeft),
+    (source_a_out.id(), async_in.id(), MatCombine::Left),
+    (async_out.id(), merge_in.id(), MatCombine::Left),
+    (source_b_out.id(), merge_in.id(), MatCombine::Left),
+    (merge_out.id(), sink_in.id(), MatCombine::Left),
   ];
   let plan = build_plan(stages, edges);
 
@@ -365,9 +358,9 @@ fn split_four_stage_pipeline_with_middle_async() {
     make_sink(&k_in, Attributes::new()),
   ];
   let edges = alloc::vec![
-    (s_out.id(), f1_in.id(), MatCombine::KeepLeft),
-    (f1_out.id(), f2_in.id(), MatCombine::KeepLeft),
-    (f2_out.id(), k_in.id(), MatCombine::KeepLeft),
+    (s_out.id(), f1_in.id(), MatCombine::Left),
+    (f1_out.id(), f2_in.id(), MatCombine::Left),
+    (f2_out.id(), k_in.id(), MatCombine::Left),
   ];
   let plan = build_plan(stages, edges);
 
@@ -395,8 +388,7 @@ fn split_each_island_has_valid_topological_order() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
 
   let island_plan = IslandSplitter::split(plan);
@@ -425,8 +417,7 @@ fn single_island_plan_into_stream_plan_preserves_stages() {
     make_flow(&f_in, &f_out, Attributes::new()),
     make_sink(&k_in, Attributes::new()),
   ];
-  let edges =
-    alloc::vec![(s_out.id(), f_in.id(), MatCombine::KeepLeft), (f_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), f_in.id(), MatCombine::Left), (f_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
   let island_plan = IslandSplitter::split(plan);
 
@@ -446,7 +437,7 @@ fn single_island_plan_into_stream_plan_preserves_source_and_sink_indices() {
   let k_in: Inlet<u32> = Inlet::new();
 
   let stages = alloc::vec![make_source(&s_out, Attributes::new()), make_sink(&k_in, Attributes::new()),];
-  let edges = alloc::vec![(s_out.id(), k_in.id(), MatCombine::KeepLeft),];
+  let edges = alloc::vec![(s_out.id(), k_in.id(), MatCombine::Left),];
   let plan = build_plan(stages, edges);
   let island_plan = IslandSplitter::split(plan);
 
@@ -467,7 +458,7 @@ fn island_crossing_mat_is_preserved() {
   let k_in: Inlet<u32> = Inlet::new();
 
   let stages = alloc::vec![make_source(&s_out, Attributes::async_boundary()), make_sink(&k_in, Attributes::new()),];
-  let edges = alloc::vec![(s_out.id(), k_in.id(), MatCombine::KeepRight),];
+  let edges = alloc::vec![(s_out.id(), k_in.id(), MatCombine::Right),];
   let plan = build_plan(stages, edges);
 
   // When: splitting
@@ -476,5 +467,5 @@ fn island_crossing_mat_is_preserved() {
   // Then: crossing preserves the original mat combine
   assert_eq!(island_plan.crossings().len(), 1);
   let crossing = &island_plan.crossings()[0];
-  assert_eq!(crossing.mat(), MatCombine::KeepRight);
+  assert_eq!(crossing.mat(), MatCombine::Right);
 }

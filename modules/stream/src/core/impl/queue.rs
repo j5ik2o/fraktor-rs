@@ -1,0 +1,1 @@
+//! Internal queue implementation namespace.

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{RestartSettings, Source};
+use super::{RestartSettings, source::Source};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartSource` entry points.
 pub struct RestartSource;

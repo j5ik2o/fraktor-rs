@@ -10,8 +10,9 @@ use super::io_error_to_stream_error;
 use crate::core::{
   DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
   buffer::DemandTracker,
-  mat::StreamCompletion,
-  stage::{Sink, Source, StageKind},
+  dsl::{Sink, Source},
+  materialization::StreamCompletion,
+  stage::StageKind,
 };
 
 /// Adapters for converting between Rust IO types and stream stages.

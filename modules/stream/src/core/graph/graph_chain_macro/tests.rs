@@ -2,10 +2,11 @@ use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::{
   core::{
-    Completion, StreamError, StreamNotUsed,
+    StreamError, StreamNotUsed,
+    dsl::{Flow, Sink, Source},
     graph::{GraphDslBuilder, GraphInterpreter},
     lifecycle::{DriveOutcome, StreamState},
-    stage::{Sink, Source, flow::Flow},
+    materialization::Completion,
   },
   graph_chain,
 };

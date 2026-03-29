@@ -1,38 +1,29 @@
-/// Marker attribute for async boundaries in stream graphs.
-mod async_boundary_attr;
-/// Type-safe attribute trait for stream stage metadata.
-mod attribute;
 /// Stream attributes for stage and graph metadata.
-mod attributes;
+pub mod attributes;
 /// Buffer, backpressure, and demand management.
 pub mod buffer;
-/// Completion polling types.
-mod completion;
-/// Compression facade providing gzip and deflate utilities.
-#[cfg(feature = "compression")]
-mod compression;
 /// Supervision decider function type.
 mod decider;
-/// Dispatcher attribute for stream graph island execution.
-mod dispatcher_attribute;
-/// Byte stream framing utilities.
-mod framing;
+/// Public stream DSL surface.
+pub mod dsl;
+/// Crate-private aliases backing the public DSL surface.
+mod dsl_contract;
+/// Internal implementation packages mirroring Pekko's `impl` boundary.
+pub(in crate::core) mod r#impl;
+// framing moved to dsl/framing
 /// Graph-related abstractions.
 pub mod graph;
 /// Dynamic fan-in/fan-out connectors.
-pub mod hub;
+pub(in crate::core) mod hub;
 /// IO operation result type.
 mod io_result;
-/// JSON object framing utilities.
-mod json_framing;
+// json_framing moved to dsl/json_framing
 /// Stream lifecycle and execution management.
 pub mod lifecycle;
-/// Log level definitions for stream attribute configuration.
-mod log_level;
-/// Log levels attribute for stream stage diagnostics configuration.
-mod log_levels;
 /// Materialization pipeline.
-pub mod mat;
+mod mat;
+/// Materialization contracts and lifecycle types.
+pub mod materialization;
 /// Operator compatibility catalog.
 pub mod operator;
 /// Queue-based materialization handles and offer results.
@@ -43,8 +34,7 @@ pub mod restart;
 pub mod shape;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
-/// Stateful map-concat accumulator trait.
-mod stateful_map_concat_accumulator;
+// stateful_map_concat_accumulator moved to dsl/stateful_map_concat_accumulator
 /// Stream completion marker.
 mod stream_done;
 /// Stream DSL error definitions.
@@ -53,10 +43,6 @@ mod stream_dsl_error;
 mod stream_error;
 /// Stream not-used marker.
 mod stream_not_used;
-/// Action taken when a subscription times out.
-mod subscription_timeout_mode;
-/// Subscription timeout settings for stream materializers.
-mod subscription_timeout_settings;
 /// `split_when` / `split_after` substream cancellation strategy.
 mod substream_cancel_strategy;
 /// Supervision strategy definitions.
@@ -71,36 +57,27 @@ mod validate_positive_argument;
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
-pub use async_boundary_attr::AsyncBoundaryAttr;
-pub use attribute::Attribute;
-pub use attributes::Attributes;
 use buffer::DemandTracker;
-pub use completion::Completion;
-#[cfg(feature = "compression")]
-pub use compression::Compression;
 pub use decider::Decider;
-pub use dispatcher_attribute::DispatcherAttribute;
+#[cfg(feature = "compression")]
+pub use dsl::Compression;
 use fraktor_utils_rs::core::sync::ArcShared;
-pub use framing::Framing;
 pub use io_result::IOResult;
-pub use json_framing::JsonFraming;
-pub use log_level::LogLevel;
-pub use log_levels::LogLevels;
 use mat::MatCombine;
 use restart::RestartBackoff;
 use shape::PortId;
 use stage::StageKind;
-pub use stateful_map_concat_accumulator::StatefulMapConcatAccumulator;
+// StatefulMapConcatAccumulator re-exported via dsl::StatefulMapConcatAccumulator
 pub use stream_done::StreamDone;
 pub use stream_dsl_error::StreamDslError;
 pub use stream_error::StreamError;
 pub use stream_not_used::StreamNotUsed;
-pub use subscription_timeout_mode::SubscriptionTimeoutMode;
-pub use subscription_timeout_settings::SubscriptionTimeoutSettings;
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
 pub use validate_positive_argument::validate_positive_argument;
+
+use self::attributes::Attributes;
 pub(crate) type DynValue = Box<dyn Any + Send + 'static>;
 
 pub(crate) enum StageDefinition {

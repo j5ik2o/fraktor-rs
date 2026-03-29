@@ -1,6 +1,10 @@
 //! Queue-based materialization handles and offer results.
 
-use super::{Completion, StreamDone, StreamError, buffer::OverflowStrategy, mat::StreamCompletion};
+use super::{
+  StreamDone, StreamError,
+  buffer::OverflowStrategy,
+  materialization::{Completion, StreamCompletion},
+};
 
 mod actor_source_ref;
 mod bounded_source_queue;

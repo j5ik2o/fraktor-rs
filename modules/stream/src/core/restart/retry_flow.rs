@@ -3,11 +3,9 @@ mod tests;
 
 use crate::core::{
   StageDefinition,
+  dsl::{Flow, FlowWithContext},
   graph::StreamGraph,
-  stage::{
-    FlowWithContext,
-    flow::{Flow, retry_flow_definition},
-  },
+  stage::retry_flow_definition,
 };
 
 /// Retry flow factory for individual element retries with exponential backoff.
@@ -110,7 +108,7 @@ impl RetryFlow {
     Out: Send + Sync + 'static,
     Mat: Default + Send + 'static,
     R: Fn(&(Ctx, In), &(Ctx, Out)) -> Option<(Ctx, In)> + Send + 'static, {
-    let inner_flow = flow.as_flow();
+    let inner_flow = flow.into_flow();
     let retry_flow = Self::with_backoff(
       min_backoff_ticks,
       max_backoff_ticks,

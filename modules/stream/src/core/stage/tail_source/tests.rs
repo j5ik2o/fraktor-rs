@@ -1,4 +1,4 @@
-use crate::core::stage::{Source, TailSource};
+use crate::core::stage::{source::Source, tail_source::TailSource};
 
 #[test]
 fn tail_source_collects_wrapped_values() {

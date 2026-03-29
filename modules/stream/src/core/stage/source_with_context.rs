@@ -5,7 +5,7 @@ use super::{
   MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow,
   flow_with_context::FlowWithContext, sink::Sink, source::Source,
 };
-use crate::core::StreamError;
+use crate::core::stream_error::StreamError;
 
 #[cfg(test)]
 mod tests;
@@ -32,7 +32,7 @@ where
 
   /// Returns the inner tuple source.
   #[must_use]
-  pub fn as_source(self) -> Source<(Ctx, Out), Mat> {
+  pub fn into_source(self) -> Source<(Ctx, Out), Mat> {
     self.inner
   }
 
@@ -152,7 +152,7 @@ where
   pub fn via<T, Mat2>(self, flow: FlowWithContext<Ctx, Out, T, Mat2>) -> SourceWithContext<Ctx, T, Mat>
   where
     T: Send + Sync + 'static, {
-    let composed = self.inner.via(flow.as_flow());
+    let composed = self.inner.via(flow.into_flow());
     SourceWithContext { inner: composed, _pd: PhantomData }
   }
 
@@ -166,7 +166,7 @@ where
   where
     T: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
-    let composed = self.inner.via_mat(flow.as_flow(), combine);
+    let composed = self.inner.via_mat(flow.into_flow(), combine);
     SourceWithContext { inner: composed, _pd: PhantomData }
   }
 

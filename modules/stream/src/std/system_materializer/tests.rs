@@ -15,8 +15,8 @@ use fraktor_actor_rs::core::kernel::{
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
-  core::mat::ActorMaterializer,
-  std::{SystemMaterializer, SystemMaterializerId},
+  core::materialization::ActorMaterializer,
+  std::{materializer::SystemMaterializer, system_materializer_id::SystemMaterializerId},
 };
 
 // --- test helpers ---

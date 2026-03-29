@@ -1,7 +1,7 @@
 use super::FlowMonitor;
 use crate::core::{
   StreamError,
-  stage::{FlowMonitorImpl, FlowMonitorState},
+  stage::{FlowMonitorState, flow_monitor_impl::FlowMonitorImpl},
 };
 
 // --- FlowMonitorImpl: 初期状態 ---

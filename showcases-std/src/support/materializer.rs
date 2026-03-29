@@ -19,9 +19,8 @@ use fraktor_actor_rs::{
   },
   std::system::ActorSystem,
 };
-use fraktor_stream_rs::core::{
-  Completion,
-  mat::{ActorMaterializer, ActorMaterializerConfig, StreamCompletion},
+use fraktor_stream_rs::core::materialization::{
+  ActorMaterializer, ActorMaterializerConfig, Completion, StreamCompletion,
 };
 
 struct GuardianActor;

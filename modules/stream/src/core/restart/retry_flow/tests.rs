@@ -1,7 +1,7 @@
 use crate::core::{
   StreamNotUsed,
+  dsl::{Flow, FlowWithContext, Source},
   restart::RetryFlow,
-  stage::{FlowWithContext, Source, flow::Flow},
 };
 
 #[test]
@@ -120,7 +120,7 @@ fn retry_flow_with_context_passes_through_when_no_retry_needed() {
 
   let values =
     Source::from_iterator(vec![("a".to_string(), 1_u32), ("b".to_string(), 2_u32), ("c".to_string(), 3_u32)])
-      .via(retry_fwc.as_flow())
+      .via(retry_fwc.into_flow())
       .collect_values()
       .expect("collect_values");
   assert_eq!(values, vec![("a".to_string(), 2_u32), ("b".to_string(), 4_u32), ("c".to_string(), 6_u32),]);
@@ -149,8 +149,10 @@ fn retry_flow_with_context_retries_preserving_context() {
     },
   );
 
-  let values =
-    Source::single(("ctx-val".to_string(), 42_u32)).via(retry_fwc.as_flow()).collect_values().expect("collect_values");
+  let values = Source::single(("ctx-val".to_string(), 42_u32))
+    .via(retry_fwc.into_flow())
+    .collect_values()
+    .expect("collect_values");
   assert_eq!(values, vec![("ctx-val".to_string(), 420_u32)]);
 }
 
@@ -171,6 +173,6 @@ fn retry_flow_with_context_exhausts_retries() {
     },
   );
 
-  let values = Source::single((99_i32, 5_u32)).via(retry_fwc.as_flow()).collect_values().expect("collect_values");
+  let values = Source::single((99_i32, 5_u32)).via(retry_fwc.into_flow()).collect_values().expect("collect_values");
   assert_eq!(values, vec![(99_i32, 0_u32)]);
 }

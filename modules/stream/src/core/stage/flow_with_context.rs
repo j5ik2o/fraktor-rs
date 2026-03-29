@@ -4,7 +4,7 @@ use core::{future::Future, marker::PhantomData};
 use super::{
   MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow, sink::Sink,
 };
-use crate::core::StreamError;
+use crate::core::stream_error::StreamError;
 
 #[cfg(test)]
 mod tests;
@@ -32,7 +32,7 @@ where
 
   /// Returns the inner tuple flow.
   #[must_use]
-  pub fn as_flow(self) -> Flow<(Ctx, In), (Ctx, Out), Mat> {
+  pub fn into_flow(self) -> Flow<(Ctx, In), (Ctx, Out), Mat> {
     self.inner
   }
 

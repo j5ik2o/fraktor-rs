@@ -4,16 +4,18 @@ use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, FlowLogic, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError,
-  StreamNotUsed, SubstreamCancelStrategy,
+  DynValue, FlowLogic, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  SubstreamCancelStrategy,
   buffer::{OverflowStrategy, StreamBufferConfig},
   lifecycle::{DriveOutcome, Stream},
-  mat::{KeepBoth, KeepLeft, KeepRight, StreamCompletion},
+  materialization::{Completion, KeepBoth, KeepLeft, KeepRight, StreamCompletion},
   operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
   queue::QueueOfferResult,
   restart::RestartSettings,
   shape::UniformFanInShape,
-  stage::{Sink, Source, StageKind, flow::Flow, flow_monitor_impl::FlowMonitorImpl},
+  stage::{
+    StageKind, flow::Flow, flow_monitor_impl::FlowMonitorImpl, sink::Sink, source::Source, tail_source::TailSource,
+  },
 };
 
 #[cfg(feature = "compression")]
@@ -256,7 +258,7 @@ fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion()
   assert_eq!(secondary_queue.offer(10_u32), QueueOfferResult::Enqueued);
 
   let graph = Source::single(1_u32).via(Flow::new().concat_lazy(secondary).drop(1));
-  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
@@ -281,7 +283,7 @@ fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion(
   assert_eq!(secondary_queue.offer(1_u32), QueueOfferResult::Enqueued);
 
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
-  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
@@ -315,7 +317,7 @@ fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
   assert_eq!(secondary_queue.offer(5_u32), QueueOfferResult::Enqueued);
 
   let graph = Source::<u32, _>::empty().via(Flow::new().or_else(secondary));
-  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
@@ -354,7 +356,7 @@ fn prepend_lazy_materializes_secondary_on_first_demand() {
     }
   });
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
-  let (plan, completion) = graph.to_mat(Sink::head(), KeepRight).into_parts();
+  let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
   let mut stream = Stream::new(plan, StreamBufferConfig::default());
   assert_eq!(*materialize_calls.lock(), 0_u32);
 
@@ -1202,7 +1204,7 @@ fn flat_map_concat_emits_head_without_waiting_for_inner_completion() {
         Source::<u32, _>::from_logic(StageKind::Custom, CountingSequenceSourceLogic::new(&[42, 43, 44], pulls.clone()))
       }
     }))
-    .to_mat(Sink::head(), KeepRight);
+    .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
   let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
@@ -1230,7 +1232,7 @@ fn flat_map_merge_emits_head_without_waiting_for_inner_completion() {
         })
         .expect("flat_map_merge"),
     )
-    .to_mat(Sink::head(), KeepRight);
+    .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
   let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
@@ -1704,7 +1706,7 @@ fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
         })
         .flatten(),
     )
-    .to_mat(Sink::head(), KeepRight);
+    .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
   let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
@@ -1823,7 +1825,7 @@ fn stateful_map_on_complete_receives_accumulated_state() {
 #[test]
 fn stateful_map_concat_with_accumulator_processes_elements() {
   // 準備: StatefulMapConcatAccumulator を使用した stateful_map_concat
-  use crate::core::StatefulMapConcatAccumulator;
+  use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct DoublingAccumulator;
 
@@ -1845,7 +1847,7 @@ fn stateful_map_concat_with_accumulator_processes_elements() {
 #[test]
 fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
   // 準備: on_complete で残りのバッファを排出する accumulator
-  use crate::core::StatefulMapConcatAccumulator;
+  use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct BufferingAccumulator {
     buffer: alloc::vec::Vec<u32>,
@@ -2017,7 +2019,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
           .expect("group_by")
           .merge_substreams(),
       )
-      .to_mat(Sink::head(), KeepRight);
+      .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
   let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
@@ -2672,7 +2674,7 @@ fn log_passes_elements_through_unchanged_and_inserts_logging_stage() {
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);
 
   let (plan, completion) =
-    Source::single(7_u32).via(Flow::new().log("log-stage")).to_mat(Sink::head(), KeepRight).into_parts();
+    Source::single(7_u32).via(Flow::new().log("log-stage")).into_mat(Sink::head(), KeepRight).into_parts();
   assert_eq!(completion.poll(), Completion::Pending);
   assert_eq!(plan.flow_order.len(), 1);
   assert!(matches!(
@@ -2704,7 +2706,7 @@ fn log_with_marker_passes_elements_through_unchanged_and_inserts_logging_stage()
 
   let (plan, completion) = Source::single(7_u32)
     .via(Flow::new().log_with_marker("log-stage", "marker"))
-    .to_mat(Sink::head(), KeepRight)
+    .into_mat(Sink::head(), KeepRight)
     .into_parts();
   assert_eq!(completion.poll(), Completion::Pending);
   assert_eq!(plan.flow_order.len(), 1);
@@ -2869,7 +2871,7 @@ fn gzip_decompress_rejects_payload_exceeding_decompression_limit_with_spoofed_is
 #[test]
 #[cfg(feature = "compression")]
 fn inflate_accepts_payload_larger_than_compression_chunk_default() {
-  let payload = vec![0x6a_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
+  let payload = vec![0x6a_u8; crate::core::dsl::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = miniz_oxide::deflate::compress_to_vec(&payload, 6);
 
   let result = Source::single(encoded).via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().inflate()).collect_values();
@@ -2880,7 +2882,7 @@ fn inflate_accepts_payload_larger_than_compression_chunk_default() {
 #[test]
 #[cfg(feature = "compression")]
 fn gzip_decompress_accepts_payload_larger_than_compression_chunk_default() {
-  let payload = vec![0x7b_u8; crate::core::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
+  let payload = vec![0x7b_u8; crate::core::dsl::Compression::MAX_BYTES_PER_CHUNK_DEFAULT.saturating_add(1)];
   let encoded = Source::single(payload.clone())
     .via(Flow::<Vec<u8>, Vec<u8>, StreamNotUsed>::new().gzip())
     .collect_values()
@@ -2958,14 +2960,10 @@ fn map_async_partitioned_rejects_zero_parallelism() {
 #[test]
 fn flat_map_prefix_uses_prefix_to_build_tail_flow() {
   let values = Source::from_array([1_u32, 2, 3, 4])
-    .via(
-      Flow::new()
-        .flat_map_prefix(2, |prefix| {
-          let prefix_sum = prefix.into_iter().sum::<u32>();
-          Flow::new().map(move |value: u32| value.saturating_add(prefix_sum))
-        })
-        .expect("flat_map_prefix"),
-    )
+    .via(Flow::new().flat_map_prefix(2, |prefix| {
+      let prefix_sum = prefix.into_iter().sum::<u32>();
+      Flow::new().map(move |value: u32| value.saturating_add(prefix_sum))
+    }))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![6_u32, 7_u32]);
@@ -2974,11 +2972,7 @@ fn flat_map_prefix_uses_prefix_to_build_tail_flow() {
 #[test]
 fn flat_map_prefix_accepts_zero_prefix() {
   let values = Source::from_array([1_u32, 2])
-    .via(
-      Flow::new()
-        .flat_map_prefix(0, |_prefix| Flow::new().map(|value: u32| value.saturating_add(5)))
-        .expect("flat_map_prefix"),
-    )
+    .via(Flow::new().flat_map_prefix(0, |_prefix| Flow::new().map(|value: u32| value.saturating_add(5))))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![6_u32, 7_u32]);
@@ -2989,8 +2983,7 @@ fn prefix_and_tail_emits_prefix_and_remaining_tail() {
   let values =
     Source::from_array([1_u32, 2, 3, 4]).via(Flow::new().prefix_and_tail(2)).collect_values().expect("collect_values");
   assert_eq!(values.len(), 1);
-  let (prefix, tail): (Vec<u32>, crate::core::stage::TailSource<u32>) =
-    values.into_iter().next().expect("prefix and tail");
+  let (prefix, tail): (Vec<u32>, TailSource<u32>) = values.into_iter().next().expect("prefix and tail");
   assert_eq!(prefix, vec![1_u32, 2_u32]);
   assert_eq!(tail.collect_values().expect("tail values"), vec![3_u32, 4_u32]);
 }
@@ -3000,8 +2993,7 @@ fn prefix_and_tail_accepts_zero_prefix() {
   let values =
     Source::from_array([7_u32, 8]).via(Flow::new().prefix_and_tail(0)).collect_values().expect("collect_values");
   assert_eq!(values.len(), 1);
-  let (prefix, tail): (Vec<u32>, crate::core::stage::TailSource<u32>) =
-    values.into_iter().next().expect("prefix and tail");
+  let (prefix, tail): (Vec<u32>, TailSource<u32>) = values.into_iter().next().expect("prefix and tail");
   assert_eq!(prefix, vec![]);
   assert_eq!(tail.collect_values().expect("tail values"), vec![7_u32, 8_u32]);
 }
@@ -4434,8 +4426,8 @@ fn flow_named_keeps_elements_and_sets_attributes() {
 #[test]
 fn flow_with_and_add_attributes_merge_names() {
   let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new()
-    .with_attributes(crate::core::Attributes::named("base"))
-    .add_attributes(crate::core::Attributes::named("extra"))
+    .with_attributes(crate::core::attributes::Attributes::named("base"))
+    .add_attributes(crate::core::attributes::Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
@@ -4450,8 +4442,8 @@ fn flow_from_materializer_creates_flow() {
 #[test]
 fn flow_as_flow_with_context_returns_wrapper() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let fwc = flow.as_flow_with_context();
-  let _ = fwc.as_flow();
+  let fwc = flow.into_flow_with_context();
+  let _ = fwc.into_flow();
 }
 
 // --- B5: Flow.fromSinkAndSourceMat ---
@@ -4459,9 +4451,9 @@ fn flow_as_flow_with_context_returns_wrapper() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::mat::KeepBoth;
+  use crate::core::materialization::KeepBoth;
 
-  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
 
   // When: creating a flow with KeepBoth
@@ -4477,9 +4469,9 @@ fn flow_from_sink_and_source_mat_keeps_both_materialized_values() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::mat::KeepLeft;
+  use crate::core::materialization::KeepLeft;
 
-  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
 
   // When: creating a flow with KeepLeft
@@ -4493,9 +4485,9 @@ fn flow_from_sink_and_source_mat_keeps_left_materialized_value() {
 #[test]
 fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::mat::KeepRight;
+  use crate::core::materialization::KeepRight;
 
-  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 42_u32);
   let source = Source::single(1_u64).map_materialized_value(|_| "hello");
 
   // When: creating a flow with KeepRight
@@ -4511,9 +4503,9 @@ fn flow_from_sink_and_source_mat_keeps_right_materialized_value() {
 #[test]
 fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::mat::KeepBoth;
+  use crate::core::materialization::KeepBoth;
 
-  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
   let source = Source::single(1_u64).map_materialized_value(|_| true);
 
   // When: creating a coupled flow with KeepBoth
@@ -4529,9 +4521,9 @@ fn flow_from_sink_and_source_coupled_mat_keeps_both_materialized_values() {
 #[test]
 fn flow_from_sink_and_source_coupled_mat_keeps_left_materialized_value() {
   // Given: a sink and source with distinct materialized values
-  use crate::core::mat::KeepLeft;
+  use crate::core::materialization::KeepLeft;
 
-  let sink = crate::core::stage::Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
+  let sink = Sink::<u32, _>::ignore().map_materialized_value(|_| 99_i32);
   let source = Source::single(1_u64).map_materialized_value(|_| true);
 
   // When: creating a coupled flow with KeepLeft
@@ -4777,7 +4769,7 @@ fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
   assert_eq!(async_indices.len(), 1, "async 属性は 1 つの stage のみに付くべき");
 
   let async_stage = &plan.stages[async_indices[0]];
-  let dispatcher = async_stage.attributes().get::<crate::core::DispatcherAttribute>();
+  let dispatcher = async_stage.attributes().get::<crate::core::attributes::DispatcherAttribute>();
   assert!(dispatcher.is_some(), "async stage に DispatcherAttribute がない");
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
 

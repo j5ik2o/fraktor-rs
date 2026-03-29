@@ -8,13 +8,13 @@ use std::{
 
 use crate::{
   core::{
-    Completion, StreamError,
+    StreamError,
     buffer::StreamBufferConfig,
+    dsl::{Sink, Source},
     lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-    mat::{KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
-    stage::{Sink, Source},
+    materialization::{Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
   },
-  std::StreamConverters,
+  std::io::StreamConverters,
 };
 
 struct TestMaterializer;
@@ -57,7 +57,7 @@ fn from_reader_reads_all_bytes_as_chunks() {
   // 準備: "hello world" (11 bytes) を返す reader と chunk_size=4
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"hello world".to_vec())), 4);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -86,7 +86,7 @@ fn from_reader_empty_reader_returns_zero_count() {
   // 準備: 空の reader
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(alloc::vec::Vec::<u8>::new())), 8192);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -107,7 +107,7 @@ fn from_reader_single_chunk_when_data_fits() {
   // 準備: 5 バイトだけ返す reader と大きめの chunk_size
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcde".to_vec())), 8192);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -134,7 +134,7 @@ fn from_reader_exact_chunk_boundary() {
   // 準備: 8 バイトを返す reader と chunk_size=4
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcdefgh".to_vec())), 4);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -169,7 +169,7 @@ fn from_reader_io_error_returns_failed_io_result() {
 
   let source = StreamConverters::from_reader(|| Box::new(FailingReader), 4096);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -190,7 +190,7 @@ fn from_reader_rejects_zero_chunk_size() {
   // 準備: 読み込み元は有効だが chunk_size=0
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"hello".to_vec())), 0);
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -224,7 +224,7 @@ fn from_reader_defers_factory_until_stream_runs() {
   assert!(!called.load(Ordering::SeqCst));
 
   let graph = source
-    .to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
+    .into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<alloc::vec::Vec<u8>>>>::collect(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -235,7 +235,7 @@ fn from_reader_defers_factory_until_stream_runs() {
 #[test]
 fn from_reader_completes_io_result_when_downstream_cancels() {
   let source = StreamConverters::from_reader(|| Box::new(io::Cursor::new(b"abcdefgh".to_vec())), 4);
-  let graph = source.to_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<u8>>>::head(), KeepBoth);
+  let graph = source.into_mat(Sink::<alloc::vec::Vec<u8>, StreamCompletion<alloc::vec::Vec<u8>>>::head(), KeepBoth);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -266,7 +266,7 @@ fn to_writer_writes_all_bytes() {
   );
 
   let source = Source::from_iterator(vec![b'h', b'e', b'l', b'l', b'o']);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -300,7 +300,7 @@ fn to_writer_empty_stream_writes_nothing() {
   );
 
   let source = Source::<u8, _>::empty();
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -333,7 +333,7 @@ fn to_writer_with_auto_flush_flushes_after_each_element() {
   );
 
   let source = Source::from_iterator(vec![1_u8, 2, 3]);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);
@@ -357,7 +357,7 @@ fn to_writer_io_error_returns_failed_io_result() {
   let sink = StreamConverters::to_writer(|| Box::new(FailingWriter) as Box<dyn std::io::Write + Send>, false);
 
   let source = Source::from_iterator(vec![1_u8, 2, 3]);
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer;
   let materialized = graph.run(&mut materializer).expect("run");
   drive_to_completion(&materialized);

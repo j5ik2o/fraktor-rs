@@ -9,7 +9,7 @@ use super::{
   MatCombine, RestartBackoff, StageDefinition, StageKind, StreamError, StreamPlan, SupervisionStrategy,
   shape::{Inlet, Outlet, PortId},
 };
-use crate::core::{Attributes, lifecycle::KillSwitchStateHandle};
+use crate::core::{attributes::Attributes, lifecycle::KillSwitchStateHandle};
 
 /// Immutable blueprint that stores stage connectivity.
 ///
@@ -171,10 +171,7 @@ impl StreamGraph {
     if let Some((from, to)) = connection {
       let upstream = Outlet::<()>::from_id(from);
       let downstream = Inlet::<()>::from_id(to);
-      assert!(
-        self.connect(&upstream, &downstream, MatCombine::KeepLeft).is_ok(),
-        "stream graph appends only known ports"
-      );
+      assert!(self.connect(&upstream, &downstream, MatCombine::Left).is_ok(), "stream graph appends only known ports");
     }
   }
 

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::{RestartSettings, Sink};
+use super::{RestartSettings, sink::Sink};
 
 /// Thin DSL wrapper mirroring Pekko-style `RestartSink` entry points.
 pub struct RestartSink;

@@ -1,4 +1,4 @@
-use super::delay_strategy::DelayStrategy;
+use crate::core::dsl::DelayStrategy;
 
 /// Linear increasing delay strategy.
 ///

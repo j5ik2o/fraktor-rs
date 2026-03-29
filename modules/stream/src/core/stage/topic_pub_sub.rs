@@ -19,11 +19,15 @@ use fraktor_actor_rs::core::{
 };
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
-use super::{ActorSink, ActorSource, Sink, Source, StageContext, StreamCompletion, StreamDone, flow::Flow};
+use super::{
+  StageContext, StreamCompletion, StreamDone, actor_sink::ActorSink, actor_source::ActorSource, flow::Flow, sink::Sink,
+  source::Source,
+};
 use crate::core::{
   StreamError, StreamNotUsed,
   buffer::OverflowStrategy,
   graph::{GraphStage, GraphStageLogic},
+  materialization::KeepLeft,
   shape::{Inlet, Outlet, StreamShape},
 };
 
@@ -150,10 +154,8 @@ impl TopicPubSub {
     T: Clone + Send + Sync + 'static, {
     let cleanup = TopicSourceCleanup::new();
     let source_ref = ActorSource::actor_ref::<T>(buffer_size, overflow_strategy);
-    let source = source_ref.via_mat(
-      Flow::from_graph_stage(TopicSourceCleanupStage { cleanup: cleanup.clone() }),
-      crate::core::mat::KeepLeft,
-    );
+    let source =
+      source_ref.via_mat(Flow::from_graph_stage(TopicSourceCleanupStage { cleanup: cleanup.clone() }), KeepLeft);
     let extended = system.extended();
 
     source.map_materialized_value(move |actor_source_ref| {

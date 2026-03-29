@@ -7,11 +7,11 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  Completion, DynValue, SinkDecision, SinkLogic, StreamDone, StreamDslError, StreamError, StreamNotUsed,
+  DynValue, SinkDecision, SinkLogic, StreamDone, StreamDslError, StreamError, StreamNotUsed,
   buffer::{DemandTracker, StreamBufferConfig},
   lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-  mat::{KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
-  stage::{Sink, Source, StageKind},
+  materialization::{Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
+  stage::{StageKind, sink::Sink, source::Source},
 };
 
 struct TestMaterializer {
@@ -84,7 +84,7 @@ fn run_source_with_sink<In, Mat>(
 where
   In: Send + Sync + 'static,
   Mat: Send + Sync + Clone + 'static, {
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -113,7 +113,7 @@ fn sink_map_materialized_value_transforms_materialized_value_and_keeps_data_path
   assert_eq!(materialized, 7_u32);
 
   let graph = Source::from_array([1_u32, 2_u32, 3_u32])
-    .to_mat(Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32), KeepRight);
+    .into_mat(Sink::<u32, StreamCompletion<StreamDone>>::ignore().map_materialized_value(|_| 7_u32), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -224,7 +224,7 @@ fn sink_none_alias_completes_with_done() {
 
 #[test]
 fn sink_never_keeps_completion_pending_after_upstream_finishes() {
-  let graph = Source::from_array([1_u32, 2, 3]).to_mat(Sink::never(), KeepRight);
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(Sink::never(), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -288,7 +288,7 @@ fn sink_combine_routes_elements_to_all_combined_sinks() {
 #[test]
 fn sink_combine_mat_combines_materialized_values_with_keep_both() {
   let sink = Sink::combine_mat(Sink::collect(), Sink::collect(), KeepBoth);
-  let graph = Source::from_array([1_u32, 2, 3]).to_mat(sink, KeepRight);
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -328,7 +328,7 @@ fn sink_fold_async_propagates_upstream_failure() {
 #[test]
 fn sink_fold_async_waits_for_pending_future_before_completion() {
   let graph = Source::single(7_u32)
-    .to_mat(Sink::fold_async(0_u32, |acc, value| YieldThenOutputFuture::new(acc + value)), KeepRight);
+    .into_mat(Sink::fold_async(0_u32, |acc, value| YieldThenOutputFuture::new(acc + value)), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -452,7 +452,7 @@ fn sink_source_alias_returns_empty_source() {
 #[test]
 fn sink_as_publisher_alias_returns_empty_source() {
   let values =
-    Sink::<u32, StreamCompletion<StreamDone>>::ignore().as_publisher().collect_values().expect("collect_values");
+    Sink::<u32, StreamCompletion<StreamDone>>::ignore().into_publisher().collect_values().expect("collect_values");
   assert_eq!(values, Vec::<u32>::new());
 }
 
@@ -601,7 +601,7 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
     inner_completion,
   );
 
-  let graph = Source::from_array([1_u32, 2_u32]).to_mat(Sink::lazy_sink(move || inner_sink), KeepRight);
+  let graph = Source::from_array([1_u32, 2_u32]).into_mat(Sink::lazy_sink(move || inner_sink), KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
 
@@ -650,8 +650,8 @@ fn sink_named_keeps_behavior_and_sets_attributes() {
 #[test]
 fn sink_with_and_add_attributes_merge_names() {
   let (graph, _mat) = Sink::<u32, _>::ignore()
-    .with_attributes(crate::core::Attributes::named("base"))
-    .add_attributes(crate::core::Attributes::named("extra"))
+    .with_attributes(crate::core::attributes::Attributes::named("base"))
+    .add_attributes(crate::core::attributes::Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
@@ -659,7 +659,7 @@ fn sink_with_and_add_attributes_merge_names() {
 #[test]
 fn sink_queue_collects_elements() {
   let queue_sink = Sink::<u32, _>::queue();
-  let graph = Source::from_array([1_u32, 2, 3]).to_mat(queue_sink, KeepRight);
+  let graph = Source::from_array([1_u32, 2, 3]).into_mat(queue_sink, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -684,7 +684,7 @@ fn sink_never_does_not_complete_without_elements() {
   let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
 
   // 操作: ストリームを実行する
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -703,7 +703,7 @@ fn sink_never_accepts_elements_without_completing() {
   let sink = Sink::<u32, StreamCompletion<StreamDone>>::never();
 
   // 操作: ストリームを実行する
-  let graph = source.to_mat(sink, KeepRight);
+  let graph = source.into_mat(sink, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -740,7 +740,7 @@ fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
 
   // 操作: source と接続して実行する
   let source = Source::from_array([1_u32, 2, 3]);
-  let graph = source.to_mat(combined, KeepRight);
+  let graph = source.into_mat(combined, KeepRight);
   let mut materializer = TestMaterializer::default();
   let materialized = graph.run(&mut materializer).expect("materialize");
   for _ in 0..64 {
@@ -757,7 +757,7 @@ fn sink_combine_with_empty_iterator_creates_cancelled_sink() {
 #[test]
 fn sink_combine_mat_keeps_both_materialized_values() {
   // 前提: 異なる materialized value を持つ 2 つの sink を KeepBoth で combine する
-  use crate::core::mat::KeepBoth;
+  use crate::core::materialization::KeepBoth;
 
   let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
   let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
@@ -775,7 +775,7 @@ fn sink_combine_mat_keeps_both_materialized_values() {
 #[test]
 fn sink_combine_mat_keeps_left_materialized_value() {
   // 前提: 2 つの sink を KeepLeft で combine する
-  use crate::core::mat::KeepLeft;
+  use crate::core::materialization::KeepLeft;
 
   let sink1 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();
   let sink2 = Sink::<u32, StreamCompletion<StreamDone>>::ignore();

@@ -13,8 +13,9 @@ use super::io_error_to_stream_error;
 use crate::core::{
   DynValue, IOResult, SinkDecision, SinkLogic, StreamError,
   buffer::DemandTracker,
-  mat::StreamCompletion,
-  stage::{Sink, Source, StageKind},
+  dsl::{Sink, Source},
+  materialization::StreamCompletion,
+  stage::StageKind,
 };
 
 /// File IO utilities for reading and writing byte streams from/to files.

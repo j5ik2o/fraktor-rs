@@ -1,4 +1,4 @@
-use crate::core::{StreamError, stage::FlowMonitorState};
+use crate::core::{stage::FlowMonitorState, stream_error::StreamError};
 
 // --- variant construction ---
 

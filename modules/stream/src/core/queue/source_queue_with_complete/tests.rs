@@ -12,8 +12,9 @@ use std::{
 };
 
 use crate::core::{
-  Completion, StreamDone, StreamError,
+  StreamDone, StreamError,
   buffer::OverflowStrategy,
+  materialization::Completion,
   queue::{QueueOfferResult, SourceQueueWithComplete},
 };
 

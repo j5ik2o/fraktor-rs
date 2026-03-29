@@ -6,11 +6,9 @@ use super::{
 };
 use crate::core::{
   StreamNotUsed,
-  mat::MatCombineRule,
-  stage::{
-    Sink, Source,
-    flow::{Flow, combine_mat},
-  },
+  dsl::{Flow, Sink, Source},
+  materialization::{KeepLeft, MatCombineRule},
+  stage::combine_mat,
 };
 
 #[cfg(test)]
@@ -86,7 +84,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> GraphDslBuilder<In, T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, crate::core::mat::KeepLeft)
+    self.via_mat(flow, KeepLeft)
   }
 
   /// Appends a flow with a custom materialized value rule.
@@ -113,12 +111,12 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
 
   /// Connects the builder to a sink with a custom materialized value rule.
   #[must_use]
-  pub fn to_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Sink<In, C::Out>
+  pub fn into_mat<Mat2, C>(self, sink: Sink<Out, Mat2>, combine: C) -> Sink<In, C::Out>
   where
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
-    self.build().to_mat(sink, combine)
+    self.build().into_mat(sink, combine)
   }
 
   /// Imports a source graph and returns its outlet port.
@@ -241,7 +239,7 @@ impl<In, Out, Mat> GraphDslBuilder<In, Out, Mat> {
   ///
   /// Returns [`StreamError::InvalidConnection`] when a port is unknown.
   pub fn connect<T>(&mut self, from: &Outlet<T>, to: &Inlet<T>) -> Result<(), StreamError> {
-    self.graph.connect(from, to, MatCombine::KeepLeft)
+    self.graph.connect(from, to, MatCombine::Left)
   }
 
   /// Connects an outlet through a flow to an inlet in one step.
