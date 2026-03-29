@@ -14,11 +14,15 @@ impl IslandBoundary {
   fn is_empty(&self) -> bool {
     self.buffer.is_empty()
   }
+
+  fn state(&self) -> &BoundaryState {
+    &self.state
+  }
 }
 
 impl IslandBoundaryShared {
   pub(crate) fn state(&self) -> BoundaryState {
-    self.inner.lock().state().clone()
+    self.inner.lock().state.clone()
   }
 }
 

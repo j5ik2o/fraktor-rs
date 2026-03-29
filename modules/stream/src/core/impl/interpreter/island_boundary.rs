@@ -36,9 +36,9 @@ pub(crate) enum BoundaryState {
 /// pulled by a `BoundarySourceLogic` (downstream island). The buffer
 /// enforces a maximum capacity for backpressure.
 pub(crate) struct IslandBoundary {
-  buffer:   VecDeque<DynValue>,
-  capacity: usize,
-  state:    BoundaryState,
+  buffer:           VecDeque<DynValue>,
+  capacity:         usize,
+  pub(crate) state: BoundaryState,
 }
 
 impl IslandBoundary {
@@ -52,12 +52,6 @@ impl IslandBoundary {
   #[must_use]
   pub(crate) fn is_full(&self) -> bool {
     self.buffer.len() >= self.capacity
-  }
-
-  /// Returns the current lifecycle state.
-  #[must_use]
-  pub(crate) const fn state(&self) -> &BoundaryState {
-    &self.state
   }
 
   /// Attempts to push a value into the buffer.
@@ -130,7 +124,7 @@ impl IslandBoundaryShared {
 
   pub(crate) fn try_push_with_state(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {
     let mut guard = self.inner.lock();
-    let state = guard.state().clone();
+    let state = guard.state.clone();
     match guard.try_push(value) {
       | Ok(()) => Ok(()),
       | Err(rejected) => Err((rejected, state)),
@@ -141,7 +135,7 @@ impl IslandBoundaryShared {
   pub(crate) fn try_pull_with_state(&self) -> (Option<DynValue>, BoundaryState) {
     let mut guard = self.inner.lock();
     let value = guard.try_pull();
-    let state = guard.state().clone();
+    let state = guard.state.clone();
     (value, state)
   }
 
@@ -155,7 +149,7 @@ impl IslandBoundaryShared {
 
   pub(crate) fn try_push_then_complete(&self, value: DynValue) -> Result<(), (DynValue, BoundaryState)> {
     let mut guard = self.inner.lock();
-    let state = guard.state().clone();
+    let state = guard.state.clone();
     match guard.try_push(value) {
       | Ok(()) => {},
       | Err(rejected) => return Err((rejected, state)),
@@ -170,7 +164,7 @@ impl IslandBoundaryShared {
     error: StreamError,
   ) -> Result<(), (DynValue, BoundaryState)> {
     let mut guard = self.inner.lock();
-    let state = guard.state().clone();
+    let state = guard.state.clone();
     match guard.try_push(value) {
       | Ok(()) => {},
       | Err(rejected) => return Err((rejected, state)),
