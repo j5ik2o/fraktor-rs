@@ -47,6 +47,20 @@
 - [ ] 5.3 queue / hub / materialization の内部実装と `stream_dsl_error` / `stream_error` / `validate_positive_argument` を新構造へ移し、internal implementation 型が root 公開面へ漏れていないことを `./scripts/ci-check.sh ai dylint` で確認する
   - 未完了: `core/stream_dsl_error.rs`、`core/stream_error.rs`、`core/validate_positive_argument.rs` が `core/impl/` へ未移動
   - 未完了: `core/impl/hub/`、`core/impl/queue/`、`core/impl/materialization/`、`core/impl/io/`、`core/impl/streamref/` が空スタブのまま（実装未配置）
+  - 未完了: `core/buffer/{demand, demand_tracker, stream_buffer, stream_buffer_config}.rs` が `core/impl/fusing/` へ未移動（`core/buffer/` に残存）
+  - 未完了: `core/buffer/{completion_strategy, overflow_strategy}.rs` が to-be 配置先（各々 `core/materialization/`・`core/` root）へ未移動
+  - 未完了: `core/hub/{broadcast_hub, merge_hub, partition_hub, draining_control}.rs` が `core/impl/hub/` へ未移動（`core/hub/` に残存。DSL side の `core/dsl/` への移動は完了済み）
+  - 未完了: `core/queue/{actor_source_ref, bounded_source_queue}.rs` が `core/impl/queue/` へ未移動（`core/queue/` に残存）
+  - 未完了: `core/queue/queue_offer_result.rs` が `core/` root へ未移動
+  - 未完了: `core/queue/{sink_queue, source_queue, source_queue_with_complete}.rs` の旧ファイルが未削除（`core/dsl/` への移動は完了済み）
+  - 未完了: `core/lifecycle/` 内の kill switch 群（`kill_switch, kill_switches, shared_kill_switch, unique_kill_switch`）が `core/` root へ未移動
+  - 未完了: `core/lifecycle/` 内の stream internal 群（`stream, stream_drive_actor, stream_drive_command, stream_handle*, stream_shared, stream_state, drive_outcome`）が `core/impl/materialization/` へ未移動
+  - 未完了: `core/mat/mat_combine.rs` が `core/materialization/` へ未移動（`core/mat/` に残存）
+  - 未完了: `core/restart/{restart_log_level, restart_log_settings, restart_settings}.rs` が `core/` root へ未移動（`core/restart/` に残存）
+  - 未完了: `core/restart/{fixed_delay, linear_increasing_delay, restart_backoff}.rs` の to-be 配置先（`core/impl/` 相当）への移動未実施
+  - 未完了: `core/restart/retry_flow.rs` の旧ファイルが未削除（`core/dsl/` への移動は完了済み）
+  - 未完了: `core/operator/` 全体（`default_operator_catalog, operator_catalog, operator_contract, operator_coverage, operator_key`）の to-be 配置先（`core/impl/` 相当）への移動未実施
+  - 未完了: `core/decider.rs`、`core/dsl_contract.rs` の to-be 配置先（`core/impl/` 相当）への移動未実施
 
 ## 6. std adapter の再編
 
@@ -62,7 +76,8 @@
 ## 7. root 公開面と最終検証
 
 - [ ] 7.1 `modules/stream/src/core.rs` の `pub use` と `mod` 配線を見直し、root abstractions だけを残す
-  - 未完了: `core.rs` が `pub mod graph`、`pub mod buffer`、`pub mod hub`、`pub mod lifecycle`、`mod mat`、`pub mod operator`、`pub mod queue`、`pub mod restart` 等、to-be に存在しないモジュールを依然として宣言中
+  - 未完了: `core.rs` が `pub mod graph`、`pub mod buffer`、`pub mod hub`、`pub mod lifecycle`、`mod mat`、`pub mod operator`、`pub mod queue`、`pub mod restart`、`mod decider`、`mod dsl_contract` 等、to-be に存在しないモジュールを依然として宣言中
+  - 未完了: to-be で `core/` root に置くべき型（`CompletionStrategy`、`OverflowStrategy`、`QueueOfferResult`、`RestartLogLevel`、`RestartLogSettings`、`RestartSettings`、`kill_switch` 群）が root の `mod` 宣言として存在しない
 - [ ] 7.2 旧 import path 参照をワークスペース全体で更新し、`stream` 関連 tests を新 package 構造へ合わせる。import 更新と mod wiring の直後に `./scripts/ci-check.sh ai dylint` を実行する
   - 未完了: 7.1 が未完了のため未着手
 - [ ] 7.3 TAKT のループ運用を前提に差分レビューと段階検証を完了し、最終確認として `./scripts/ci-check.sh ai all` を実行する
