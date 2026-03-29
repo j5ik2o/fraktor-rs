@@ -28,15 +28,15 @@
 
 ## 4. stage package の責務縮小
 
-- [ ] 4.1 `modules/stream/src/core/stage/` を `GraphStage`、`GraphStageLogic`、timer / async callback helper、stage context、stage kind だけを持つ構造へ絞る
-- [ ] 4.2 `stage` から DSL surface への依存を除去し、GraphStage 基盤の import path を新構造に合わせて更新する。依存除去と mod wiring の各直後に `./scripts/ci-check.sh ai dylint` を実行する
+- [x] 4.1 `modules/stream/src/core/stage/` を `GraphStage`、`GraphStageLogic`、timer / async callback helper、stage context、stage kind だけを持つ構造へ絞る
+- [x] 4.2 `stage` から DSL surface への依存を除去し、GraphStage 基盤の import path を新構造に合わせて更新する。依存除去と mod wiring の各直後に `./scripts/ci-check.sh ai dylint` を実行する
 - [x] 4.3 `stage` package が DSL の主要参照経路でなくなっていることを tests と `./scripts/ci-check.sh ai dylint` で確認する
 
 ## 5. impl / impl-fusing / impl-queue / impl-hub / impl-materialization の再編
 
 - [x] 5.1 `modules/stream/src/core/impl/`、`impl/interpreter/`、`impl/fusing/`、`impl/io/`、`impl/queue/`、`impl/hub/`、`impl/materialization/`、`impl/streamref/` を新設する
-- [ ] 5.2 interpreter / boundary / traversal / graph wiring を `impl/interpreter` と `impl/*` へ移し、`stage/flow/logic/*` の fused operator logic を `impl/fusing` へ再配置する。各 file move と mod wiring の直後に `./scripts/ci-check.sh ai dylint` を実行する
-- [ ] 5.3 queue / hub / materialization の内部実装と `stream_dsl_error` / `stream_error` / `validate_positive_argument` を新構造へ移し、internal implementation 型が root 公開面へ漏れていないことを `./scripts/ci-check.sh ai dylint` で確認する
+- [x] 5.2 interpreter / boundary / traversal / graph wiring を `impl/interpreter` と `impl/*` へ移し、`stage/flow/logic/*` の fused operator logic を `impl/fusing` へ再配置する。各 file move と mod wiring の直後に `./scripts/ci-check.sh ai dylint` を実行する
+- [x] 5.3 queue / hub / materialization の内部実装と `stream_dsl_error` / `stream_error` / `validate_positive_argument` を新構造へ移し、internal implementation 型が root 公開面へ漏れていないことを `./scripts/ci-check.sh ai dylint` で確認する
 
 ## 6. std adapter の再編
 

@@ -11,7 +11,7 @@ use super::{
   StreamError, StreamHandleId, StreamHandleImpl,
   lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
 };
-use crate::core::r#impl::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter};
+use crate::core::r#impl::interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter};
 
 #[cfg(test)]
 mod tests;

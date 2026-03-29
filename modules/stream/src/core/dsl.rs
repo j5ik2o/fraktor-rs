@@ -14,6 +14,23 @@
 //! let _ = Sink::<u32, StreamNotUsed>::ignore();
 //! ```
 
+// Bridge imports from core level for children
+use super::{
+  DynValue, FlowDefinition, FlowLogic, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
+  StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, ThrottleMode,
+  buffer::{DemandTracker, OverflowStrategy, StreamBufferConfig},
+  downcast_value, graph,
+  graph::StreamGraph,
+  lifecycle::{self, DriveOutcome},
+  mat::MatCombine,
+  materialization::{KeepLeft, KeepRight, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion},
+  queue::BoundedSourceQueue,
+  restart::{RestartBackoff, RestartSettings},
+  shape,
+  stage::{StageContext, StageKind, StreamStage, extract_last_ctx_and_values},
+  validate_positive_argument::validate_positive_argument,
+};
+
 mod actor_sink;
 mod actor_source;
 mod bidi_flow;
@@ -24,7 +41,9 @@ mod delay_strategy;
 mod draining_control;
 mod flow;
 mod flow_group_by_sub_flow;
+mod flow_monitor;
 mod flow_monitor_impl;
+mod flow_monitor_state;
 mod flow_sub_flow;
 mod flow_with_context;
 mod framing;
@@ -56,8 +75,11 @@ pub use compression::Compression;
 pub use delay_strategy::DelayStrategy;
 pub use draining_control::DrainingControl;
 pub use flow::Flow;
+pub(in crate::core) use flow::{combine_mat, retry_flow_definition};
 pub use flow_group_by_sub_flow::FlowGroupBySubFlow;
+pub use flow_monitor::FlowMonitor;
 pub use flow_monitor_impl::FlowMonitorImpl;
+pub use flow_monitor_state::FlowMonitorState;
 pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;
 pub use framing::Framing;

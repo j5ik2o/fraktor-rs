@@ -1,4 +1,4 @@
-use super::shape::StreamShape;
+use crate::core::shape::StreamShape;
 
 /// Trait implemented by stream stages.
 pub trait StreamStage {

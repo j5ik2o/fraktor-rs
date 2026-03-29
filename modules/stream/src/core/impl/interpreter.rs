@@ -1,13 +1,9 @@
 //! Internal graph interpreter and boundary wiring.
 
-use crate::core::graph::{
-  DEFAULT_BOUNDARY_CAPACITY as GRAPH_DEFAULT_BOUNDARY_CAPACITY, GraphInterpreter as GraphInterpreterInner,
-  GraphStageFlowAdapter as GraphStageFlowAdapterInner, IslandBoundaryShared as IslandBoundarySharedInner,
-  IslandSplitter as IslandSplitterInner,
-};
+mod boundary_sink_logic;
+mod boundary_source_logic;
+mod island_boundary;
+mod island_splitter;
 
-pub(in crate::core) const DEFAULT_BOUNDARY_CAPACITY: usize = GRAPH_DEFAULT_BOUNDARY_CAPACITY;
-pub(in crate::core) type GraphInterpreter = GraphInterpreterInner;
-pub(in crate::core) type GraphStageFlowAdapter<In, Out, Mat> = GraphStageFlowAdapterInner<In, Out, Mat>;
-pub(in crate::core) type IslandBoundaryShared = IslandBoundarySharedInner;
-pub(in crate::core) type IslandSplitter = IslandSplitterInner;
+pub(in crate::core) use island_boundary::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared};
+pub(in crate::core) use island_splitter::IslandSplitter;
