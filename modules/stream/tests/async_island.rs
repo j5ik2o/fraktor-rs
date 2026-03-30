@@ -7,8 +7,9 @@
 //! They define the expected behavioral contract for Gate 0.
 
 use fraktor_stream_rs::core::{
-  Attributes, StreamNotUsed,
-  stage::{Source, flow::Flow},
+  attributes::Attributes,
+  dsl::{Flow, Source},
+  materialization::StreamNotUsed,
 };
 
 // --- アイランド境界を越える基本的な要素通過 ---

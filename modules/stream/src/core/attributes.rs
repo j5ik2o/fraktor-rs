@@ -3,149 +3,168 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+mod async_boundary_attr;
+mod attribute;
+mod cancellation_strategy_kind;
+mod dispatcher_attribute;
+mod input_buffer;
+mod log_level;
+mod log_levels;
 
-use super::{
-  AsyncBoundaryAttr, Attribute, DispatcherAttribute, LogLevel, LogLevels,
-  buffer::{CancellationStrategyKind, InputBuffer},
-};
+pub use async_boundary_attr::AsyncBoundaryAttr;
+pub use attribute::Attribute;
+pub use cancellation_strategy_kind::CancellationStrategyKind;
+pub use dispatcher_attribute::DispatcherAttribute;
+pub use input_buffer::InputBuffer;
+pub use log_level::LogLevel;
+pub use log_levels::LogLevels;
 
-/// Immutable collection of stream attributes.
-///
-/// Supports both named string attributes (legacy) and typed
-/// [`Attribute`] trait objects with downcast-based retrieval.
-#[derive(Debug)]
-pub struct Attributes {
-  names: Vec<String>,
-  attrs: Vec<Box<dyn Attribute>>,
-}
+mod collection {
+  use alloc::{boxed::Box, string::String, vec::Vec};
 
-impl Attributes {
-  /// Creates an empty attributes collection.
-  #[must_use]
-  pub const fn new() -> Self {
-    Self { names: Vec::new(), attrs: Vec::new() }
+  use super::{
+    AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
+  };
+
+  /// Immutable collection of stream attributes.
+  ///
+  /// Supports both named string attributes (legacy) and typed
+  /// [`Attribute`] trait objects with downcast-based retrieval.
+  #[derive(Debug)]
+  pub struct Attributes {
+    names: Vec<String>,
+    attrs: Vec<Box<dyn Attribute>>,
   }
 
-  /// Creates attributes containing a single stage name.
-  #[must_use]
-  pub fn named(name: impl Into<String>) -> Self {
-    Self { names: alloc::vec![name.into()], attrs: Vec::new() }
-  }
+  impl Attributes {
+    /// Creates an empty attributes collection.
+    #[must_use]
+    pub const fn new() -> Self {
+      Self { names: Vec::new(), attrs: Vec::new() }
+    }
 
-  /// Creates attributes with an [`InputBuffer`] configuration.
-  #[must_use]
-  pub fn input_buffer(initial: usize, max: usize) -> Self {
-    Self {
-      names: alloc::vec![String::from("input-buffer")],
-      attrs: alloc::vec![Box::new(InputBuffer::new(initial, max))],
+    /// Creates attributes containing a single stage name.
+    #[must_use]
+    pub fn named(name: impl Into<String>) -> Self {
+      Self { names: alloc::vec![name.into()], attrs: Vec::new() }
+    }
+
+    /// Creates attributes with an [`InputBuffer`] configuration.
+    #[must_use]
+    pub fn input_buffer(initial: usize, max: usize) -> Self {
+      Self {
+        names: alloc::vec![String::from("input-buffer")],
+        attrs: alloc::vec![Box::new(InputBuffer::new(initial, max))],
+      }
+    }
+
+    /// Creates attributes with a [`LogLevels`] configuration.
+    #[must_use]
+    pub fn log_levels(on_element: LogLevel, on_finish: LogLevel, on_failure: LogLevel) -> Self {
+      Self {
+        names: alloc::vec![String::from("log-levels")],
+        attrs: alloc::vec![Box::new(LogLevels::new(on_element, on_finish, on_failure))],
+      }
+    }
+
+    /// Creates attributes containing an [`AsyncBoundaryAttr`] marker.
+    ///
+    /// Mirrors Pekko's `Attributes.asyncBoundary`.
+    #[must_use]
+    pub fn async_boundary() -> Self {
+      Self { names: alloc::vec![String::from("async-boundary")], attrs: alloc::vec![Box::new(AsyncBoundaryAttr)] }
+    }
+
+    /// Creates attributes containing a [`DispatcherAttribute`].
+    ///
+    /// A dispatcher attribute implies an async boundary; the materializer
+    /// uses the named dispatcher for the resulting island.
+    #[must_use]
+    pub fn dispatcher(name: impl Into<String>) -> Self {
+      Self {
+        names: alloc::vec![String::from("dispatcher")],
+        attrs: alloc::vec![Box::new(DispatcherAttribute::new(name))],
+      }
+    }
+
+    /// Appends names and typed attributes from another collection.
+    #[must_use]
+    pub fn and(mut self, other: Self) -> Self {
+      self.names.extend(other.names);
+      self.attrs.extend(other.attrs);
+      self
+    }
+
+    /// Retrieves a typed attribute by its concrete type.
+    ///
+    /// Returns `None` if no attribute of type `T` is stored.
+    #[must_use]
+    pub fn get<T: Attribute + 'static>(&self) -> Option<&T> {
+      self.attrs.iter().find_map(|attr| attr.as_any().downcast_ref::<T>())
+    }
+
+    /// Returns `true` if an attribute of type `T` is stored.
+    #[must_use]
+    pub fn contains<T: Attribute + 'static>(&self) -> bool {
+      self.get::<T>().is_some()
+    }
+
+    /// Returns all stored attributes of type `T`.
+    #[must_use]
+    pub fn get_all<T: Attribute + 'static>(&self) -> Vec<&T> {
+      self.attrs.iter().filter_map(|attr| attr.as_any().downcast_ref::<T>()).collect()
+    }
+
+    /// Creates attributes containing a [`CancellationStrategyKind`].
+    #[must_use]
+    pub fn cancellation_strategy(strategy: CancellationStrategyKind) -> Self {
+      Self { names: alloc::vec![String::from("cancellation-strategy")], attrs: alloc::vec![Box::new(strategy)] }
+    }
+
+    /// Returns all configured stage names.
+    #[must_use]
+    pub fn names(&self) -> &[String] {
+      &self.names
+    }
+
+    /// Returns `true` when no attributes have been configured.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+      self.names.is_empty() && self.attrs.is_empty()
+    }
+
+    /// Returns `true` when these attributes indicate an async boundary.
+    ///
+    /// An async boundary is indicated by either an [`AsyncBoundaryAttr`]
+    /// or a [`DispatcherAttribute`] (which implies an async boundary).
+    /// This mirrors Pekko's `Attributes.isAsync` logic.
+    #[must_use]
+    pub fn is_async(&self) -> bool {
+      self.get::<AsyncBoundaryAttr>().is_some() || self.get::<DispatcherAttribute>().is_some()
     }
   }
 
-  /// Creates attributes with a [`LogLevels`] configuration.
-  #[must_use]
-  pub fn log_levels(on_element: LogLevel, on_finish: LogLevel, on_failure: LogLevel) -> Self {
-    Self {
-      names: alloc::vec![String::from("log-levels")],
-      attrs: alloc::vec![Box::new(LogLevels::new(on_element, on_finish, on_failure))],
+  impl Default for Attributes {
+    fn default() -> Self {
+      Self::new()
     }
   }
 
-  /// Creates attributes containing an [`AsyncBoundaryAttr`] marker.
-  ///
-  /// Mirrors Pekko's `Attributes.asyncBoundary`.
-  #[must_use]
-  pub fn async_boundary() -> Self {
-    Self { names: alloc::vec![String::from("async-boundary")], attrs: alloc::vec![Box::new(AsyncBoundaryAttr)] }
-  }
-
-  /// Creates attributes containing a [`DispatcherAttribute`].
-  ///
-  /// A dispatcher attribute implies an async boundary; the materializer
-  /// uses the named dispatcher for the resulting island.
-  #[must_use]
-  pub fn dispatcher(name: impl Into<String>) -> Self {
-    Self {
-      names: alloc::vec![String::from("dispatcher")],
-      attrs: alloc::vec![Box::new(DispatcherAttribute::new(name))],
+  impl Clone for Attributes {
+    fn clone(&self) -> Self {
+      Self { names: self.names.clone(), attrs: self.attrs.iter().map(|attr| attr.clone_box()).collect() }
     }
   }
 
-  /// Appends names and typed attributes from another collection.
-  #[must_use]
-  pub fn and(mut self, other: Self) -> Self {
-    self.names.extend(other.names);
-    self.attrs.extend(other.attrs);
-    self
+  impl PartialEq for Attributes {
+    fn eq(&self, other: &Self) -> bool {
+      self.names == other.names
+        && self.attrs.len() == other.attrs.len()
+        && self.attrs.iter().zip(other.attrs.iter()).all(|(a, b)| a.eq_attr(b.as_any()))
+    }
   }
 
-  /// Retrieves a typed attribute by its concrete type.
-  ///
-  /// Returns `None` if no attribute of type `T` is stored.
-  #[must_use]
-  pub fn get<T: Attribute + 'static>(&self) -> Option<&T> {
-    self.attrs.iter().find_map(|attr| attr.as_any().downcast_ref::<T>())
-  }
-
-  /// Returns `true` if an attribute of type `T` is stored.
-  #[must_use]
-  pub fn contains<T: Attribute + 'static>(&self) -> bool {
-    self.get::<T>().is_some()
-  }
-
-  /// Returns all stored attributes of type `T`.
-  #[must_use]
-  pub fn get_all<T: Attribute + 'static>(&self) -> Vec<&T> {
-    self.attrs.iter().filter_map(|attr| attr.as_any().downcast_ref::<T>()).collect()
-  }
-
-  /// Creates attributes containing a [`CancellationStrategyKind`].
-  #[must_use]
-  pub fn cancellation_strategy(strategy: CancellationStrategyKind) -> Self {
-    Self { names: alloc::vec![String::from("cancellation-strategy")], attrs: alloc::vec![Box::new(strategy)] }
-  }
-
-  /// Returns all configured stage names.
-  #[must_use]
-  pub fn names(&self) -> &[String] {
-    &self.names
-  }
-
-  /// Returns `true` when no attributes have been configured.
-  #[must_use]
-  pub fn is_empty(&self) -> bool {
-    self.names.is_empty() && self.attrs.is_empty()
-  }
-
-  /// Returns `true` when these attributes indicate an async boundary.
-  ///
-  /// An async boundary is indicated by either an [`AsyncBoundaryAttr`]
-  /// or a [`DispatcherAttribute`] (which implies an async boundary).
-  /// This mirrors Pekko's `Attributes.isAsync` logic.
-  #[must_use]
-  pub fn is_async(&self) -> bool {
-    self.get::<AsyncBoundaryAttr>().is_some() || self.get::<DispatcherAttribute>().is_some()
-  }
+  impl Eq for Attributes {}
 }
 
-impl Default for Attributes {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-impl Clone for Attributes {
-  fn clone(&self) -> Self {
-    Self { names: self.names.clone(), attrs: self.attrs.iter().map(|attr| attr.clone_box()).collect() }
-  }
-}
-
-impl PartialEq for Attributes {
-  fn eq(&self, other: &Self) -> bool {
-    self.names == other.names
-      && self.attrs.len() == other.attrs.len()
-      && self.attrs.iter().zip(other.attrs.iter()).all(|(a, b)| a.eq_attr(b.as_any()))
-  }
-}
-
-impl Eq for Attributes {}
+pub use collection::Attributes;

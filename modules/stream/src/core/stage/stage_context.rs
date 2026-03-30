@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
-use super::{AsyncCallback, StreamError, TimerGraphStageLogic};
+use super::{AsyncCallback, TimerGraphStageLogic};
+use crate::core::r#impl::StreamError;
 
 /// Context passed to stage logic.
 pub trait StageContext<In, Out> {

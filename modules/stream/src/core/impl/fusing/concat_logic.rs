@@ -1,0 +1,100 @@
+use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
+
+use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
+
+pub(in crate::core) struct ConcatLogic<In> {
+  pub(in crate::core) fan_in:      usize,
+  pub(in crate::core) edge_slots:  Vec<usize>,
+  pub(in crate::core) pending:     Vec<VecDeque<In>>,
+  pub(in crate::core) active_slot: usize,
+  pub(in crate::core) source_done: bool,
+}
+
+impl<In> ConcatLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn slot_for_edge(&mut self, edge_index: usize) -> Result<usize, StreamError> {
+    if let Some(position) = self.edge_slots.iter().position(|index| *index == edge_index) {
+      return Ok(position);
+    }
+    if self.edge_slots.len() >= self.fan_in {
+      return Err(StreamError::InvalidConnection);
+    }
+    let insert_at = self.edge_slots.partition_point(|index| *index < edge_index);
+    self.edge_slots.insert(insert_at, edge_index);
+    self.pending.insert(insert_at, VecDeque::new());
+    if insert_at <= self.active_slot && self.edge_slots.len() > 1 {
+      self.active_slot = self.active_slot.saturating_add(1);
+    }
+    Ok(insert_at)
+  }
+
+  fn pop_active_if_ready(&mut self) -> Option<In> {
+    if self.active_slot >= self.pending.len() {
+      return None;
+    }
+    if let Some(value) = self.pending[self.active_slot].pop_front() {
+      return Some(value);
+    }
+
+    if !self.source_done {
+      return None;
+    }
+
+    while self.active_slot < self.pending.len() && self.pending[self.active_slot].is_empty() {
+      self.active_slot = self.active_slot.saturating_add(1);
+    }
+    if self.active_slot >= self.pending.len() {
+      return None;
+    }
+    self.pending[self.active_slot].pop_front()
+  }
+}
+
+impl<In> FlowLogic for ConcatLogic<In>
+where
+  In: Send + Sync + 'static,
+{
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    self.apply_with_edge(0, input)
+  }
+
+  fn apply_with_edge(&mut self, edge_index: usize, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
+    if self.fan_in == 0 {
+      return Err(StreamError::InvalidConnection);
+    }
+    let value = downcast_value::<In>(input)?;
+    let slot = self.slot_for_edge(edge_index)?;
+    self.pending[slot].push_back(value);
+
+    if let Some(output) = self.pop_active_if_ready() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn expected_fan_in(&self) -> Option<usize> {
+    Some(self.fan_in)
+  }
+
+  fn on_source_done(&mut self) -> Result<(), StreamError> {
+    self.source_done = true;
+    Ok(())
+  }
+
+  fn drain_pending(&mut self) -> Result<Vec<DynValue>, StreamError> {
+    if let Some(output) = self.pop_active_if_ready() {
+      return Ok(vec![Box::new(output) as DynValue]);
+    }
+    Ok(Vec::new())
+  }
+
+  fn on_restart(&mut self) -> Result<(), StreamError> {
+    self.edge_slots.clear();
+    self.pending.clear();
+    self.active_slot = 0;
+    self.source_done = false;
+    Ok(())
+  }
+}

@@ -1,5 +1,7 @@
 use fraktor_stream_rs::core::{
-  StreamError, SubstreamCancelStrategy, hub::BroadcastHub, operator::OperatorKey, stage::Source,
+  SubstreamCancelStrategy,
+  dsl::{BroadcastHub, Source},
+  r#impl::{OperatorKey, StreamError},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

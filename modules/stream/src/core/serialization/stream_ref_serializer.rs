@@ -1,0 +1,1 @@
+//! Stream reference serialization support.

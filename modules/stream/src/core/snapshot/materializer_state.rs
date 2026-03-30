@@ -1,0 +1,1 @@
+//! Materializer state snapshot support.

@@ -1,98 +1,36 @@
-//! Stage definitions for source, flow, and sink.
+//! GraphStage primitives and stage helpers.
+//!
+//! ```compile_fail
+//! use fraktor_stream_rs::core::stage::{flow::Flow, sink::Sink, source::Source};
+//! ```
 
 use alloc::vec::Vec;
 
-// Bridge submodules from core level
-// Bridge types from core level for children
-use super::{
-  DynValue, FlowDefinition, FlowLogic, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
-  StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, ThrottleMode,
-  buffer::{DemandTracker, OverflowStrategy, StreamBufferConfig},
-  downcast_value, graph,
-  graph::StreamGraph,
-  lifecycle::{self, DriveOutcome},
-  mat::{KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion},
-  queue::{BoundedSourceQueue, SourceQueue, SourceQueueWithComplete},
-  restart::{RestartBackoff, RestartSettings},
-  shape, validate_positive_argument,
-};
+// Bridge imports from core level for children
+use super::StreamError;
 
-/// Actor sink factory utilities.
-mod actor_sink;
-/// Actor source factory utilities.
-mod actor_source;
 /// Async callback queue for stage logic.
 mod async_callback;
-/// Bidirectional flow definition.
-mod bidi_flow;
-/// Flow stage definitions.
-pub mod flow;
-/// `group_by`-specific substream surface for flows.
-mod flow_group_by_sub_flow;
-/// Flow monitor handle.
-mod flow_monitor;
-/// Default flow monitor implementation.
-mod flow_monitor_impl;
-/// Stream state tracked by a flow monitor.
-mod flow_monitor_state;
-/// Flow-oriented substream surface.
-mod flow_sub_flow;
-/// Context-preserving flow wrapper.
-mod flow_with_context;
-/// Restart DSL facade for flow stages.
-mod restart_flow;
-/// Restart DSL facade for sink stages.
-mod restart_sink;
-/// Restart DSL facade for source stages.
-mod restart_source;
-/// Sink stage definitions.
-mod sink;
-/// Source stage definitions.
-mod source;
-/// `group_by`-specific substream surface for sources.
-mod source_group_by_sub_flow;
-/// Source-oriented substream surface.
-mod source_sub_flow;
-/// Context-preserving source wrapper.
-mod source_with_context;
+/// Graph stage definition.
+mod graph_stage;
+/// Graph stage processing logic.
+mod graph_stage_logic;
 /// Stage execution context.
 mod stage_context;
 /// Built-in stage kinds.
 mod stage_kind;
 /// Stream stage trait.
 mod stream_stage;
-/// Lazy tail source wrapper.
-mod tail_source;
 /// Timer helper for stage logic.
 mod timer_graph_stage_logic;
-/// Topic-based pub/sub stream integration.
-mod topic_pub_sub;
 
-// Internal re-exports for graph_interpreter tests
-pub use actor_sink::ActorSink;
-pub use actor_source::ActorSource;
 pub use async_callback::AsyncCallback;
-pub use bidi_flow::BidiFlow;
-pub use flow_group_by_sub_flow::FlowGroupBySubFlow;
-pub use flow_monitor::FlowMonitor;
-pub use flow_monitor_impl::FlowMonitorImpl;
-pub use flow_monitor_state::FlowMonitorState;
-pub use flow_sub_flow::FlowSubFlow;
-pub use flow_with_context::FlowWithContext;
-pub use restart_flow::RestartFlow;
-pub use restart_sink::RestartSink;
-pub use restart_source::RestartSource;
-pub use sink::Sink;
-pub use source::Source;
-pub use source_group_by_sub_flow::SourceGroupBySubFlow;
-pub use source_sub_flow::SourceSubFlow;
-pub use source_with_context::SourceWithContext;
+pub use graph_stage::GraphStage;
+pub use graph_stage_logic::GraphStageLogic;
 pub use stage_context::StageContext;
 pub use stage_kind::StageKind;
 pub use stream_stage::StreamStage;
-pub use tail_source::TailSource;
 pub use timer_graph_stage_logic::TimerGraphStageLogic;
-pub use topic_pub_sub::TopicPubSub;
 
 /// Extracts the last context and collects values from a context-value pair sequence.
 ///

@@ -19,6 +19,16 @@
 - **BREAKING** `crate::core::*`、`crate::core::stage::*`、`crate::std::*` の一部 import path を新しい package 経由へ変更する
 - 実装時は file move / mod wiring 単位で `./scripts/ci-check.sh ai dylint` を実行し、最終的に `./scripts/ci-check.sh ai all` で全体確認する
 
+## Target Package Boundaries
+
+- `root`: root abstractions だけを残す。`QueueOfferResult`、`BoundedSourceQueue`、restart settings、completion / overflow strategy、shape の公開入口が対象であり、DSL と internal implementation は置かない
+- `attributes`: `Attributes.scala` 相当の責務を集約する。`async_boundary_attr`、`attribute`、`dispatcher_attribute`、`input_buffer`、`log_level`、`log_levels`、`cancellation_strategy_kind` をここに寄せる
+- `materialization`: materializer と completion lifecycle の公開 contract を集約する。`completion`、keep 系、`materializer`、`runnable_graph`、subscription timeout 系をここに寄せる
+- `dsl`: Rust 向けの単一 DSL package とし、`Source`、`Flow`、`Sink`、`BidiFlow`、`*WithContext`、subflow 群、restart DSL、framing / queue / hub DSL を集約する
+- `stage`: `GraphStage` 基盤だけを残す。`GraphStage`、`GraphStageLogic`、timer / async callback helper、stage context、stage kind のみを置き、DSL surface と fused operator logic は含めない
+- `impl`: interpreter、boundary、graph wiring、fused operator logic、queue / hub / materialization の内部実装を集約する。Pekko の `impl` / `impl/fusing` / `impl/io` / `impl/streamref` に対応する
+- `std`: adapter 層は `io` と materializer に分ける。`file_io`、`stream_converters`、std-backed source adapter は `std/io`、`SystemMaterializer` 系は `std/materializer` へ分離する
+
 ## Capabilities
 
 ### New Capabilities

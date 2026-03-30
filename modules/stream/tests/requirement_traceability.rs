@@ -12,13 +12,10 @@ use fraktor_actor_rs::core::kernel::{
   system::{ActorSystem, ActorSystemConfig},
 };
 use fraktor_stream_rs::core::{
-  Completion, StreamDslError, StreamError, StreamNotUsed, SubstreamCancelStrategy,
-  hub::{BroadcastHub, MergeHub, PartitionHub},
-  lifecycle::{SharedKillSwitch, UniqueKillSwitch},
-  mat::{ActorMaterializer, ActorMaterializerConfig},
-  operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
-  restart::RestartSettings,
-  stage::{Sink, Source, flow::Flow},
+  RestartSettings, SharedKillSwitch, SubstreamCancelStrategy, UniqueKillSwitch,
+  dsl::{BroadcastHub, Flow, MergeHub, PartitionHub, Sink, Source},
+  r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError, StreamError},
+  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamNotUsed},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 

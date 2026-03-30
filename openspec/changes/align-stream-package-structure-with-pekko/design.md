@@ -422,42 +422,46 @@ modules/stream/src/
         └── system_materializer_id.rs
 ```
 
-### 既存 `core/*` 再配置方針
+### 目標 package 境界の固定
 
-| 現行 package | To-Be | ルール |
-|--------------|-------|--------|
-| `core/mat` | `core/materialization` + `core/impl/materialization/*` | 公開 contract は materialization、materializer 実装詳細は impl/materialization package に分離する |
-| `core/shape` | `core/shape` | shape 系型は `shape/` package に集約し、関連抽象を同じ責務境界で管理する |
-| `core/queue` | `core/dsl/queue` + `core/impl/queue` + root queue/result types | `SourceQueue` / `SinkQueue` 系 API は DSL、内部キュー実装は impl/queue、`QueueOfferResult` と `BoundedSourceQueue` は root に置く |
-| `core/buffer` | root completion/overflow types + `core/attributes/input_buffer.rs` + `core/impl/fusing/*` | `core/buffer.rs` は残さず、`CompletionStrategy` と `OverflowStrategy` は root、`InputBuffer` は attributes、`DemandTracker` と `StreamBuffer` などの内部 buffer 実装は impl/fusing に置く |
-| `core/hub` | `core/dsl/hub` + `core/impl/hub` | `MergeHub` / `BroadcastHub` / `PartitionHub` の利用 API は DSL、内部実装は impl に置く |
-| `core/{async_boundary_attr,attribute,cancellation_strategy_kind,dispatcher_attribute,input_buffer,log_level,log_levels}` | `core/attributes/*` | Pekko では `Attributes.scala` の責務なので attributes package に集約する |
-| `core/{framing,json_framing,stateful_map_concat_accumulator}` | `core/dsl/*` | Pekko では `scaladsl` / `javadsl` の DSL API として露出するため dsl に置く |
-| `core/{compression,delay_strategy,retry_flow}` | `core/dsl/*` | 利用側 DSL から参照される stream API として扱い、impl/io や impl/fusing とは分離する |
-| `core/{completion,stream_done,stream_not_used,subscription_timeout_mode,subscription_timeout_settings}` | `core/materialization/*` | completion と materialization lifecycle に属するため materialization に集約する |
-| `core/{restart_settings,restart_log_level,restart_log_settings}` | root | Pekko の `RestartSettings.scala` と同様に root 側設定型として置く |
-| `core/{stream_dsl_error,stream_error,validate_positive_argument}` | `core/impl/*` | fraktor 内部の補助・検証・失敗表現であり root の公開 API に置かない |
+| target package | 含む責務 | 含めない責務 | Pekko 対応先 |
+|----------------|----------|--------------|--------------|
+| `core` root | root abstractions、restart settings、queue/result の基礎型、completion / overflow strategy、shape の公開入口、kill switch / flow monitor の契約面 | DSL surface、GraphStage helper、interpreter、fused operator logic、std adapter | `org.apache.pekko.stream` root |
+| `core/attributes` | `Attributes.scala` 相当の属性・buffer 属性・log 属性 | materializer contract、DSL、internal runtime helper | `org.apache.pekko.stream.Attributes` |
+| `core/materialization` | materializer contract、keep 系、completion lifecycle、subscription timeout、runtime completion の公開 contract | Graph interpreter、queue / hub の内部実装、std materializer adapter | `org.apache.pekko.stream.Materializer` と root materialization 語彙 |
+| `core/dsl` | `Source`、`Flow`、`Sink`、`BidiFlow`、`*WithContext`、subflow 群、restart DSL、framing / json / compression / queue / hub DSL | GraphStage primitive、internal traversal / interpreter、std IO adapter | `org.apache.pekko.stream.scaladsl` / `javadsl` |
+| `core/stage` | `GraphStage`、`GraphStageLogic`、timer / async callback helper、stage context、stage kind | DSL surface、fusing logic、graph interpreter、queue / hub runtime | `org.apache.pekko.stream.stage` |
+| `core/impl` | graph wiring、interpreter、boundary、fusing logic、queue / hub / materialization / streamref の内部実装、内部エラー・検証 helper | root abstractions、利用者向け DSL、std adapter 公開面 | `org.apache.pekko.stream.impl` / `impl/fusing` / `impl/io` / `impl/streamref` |
+| `std` | `io` adapter と materializer adapter。`file_io`、`stream_converters`、std-backed source adapter、`SystemMaterializer` 系 | core の domain logic、DSL、GraphStage primitive | `FileIO` / `StreamConverters` / `SystemMaterializer` などの std 依存実装 |
 
-上記の通り、`shape` を除く現行 package はそのまま残さない。`shape` は例外として package にまとめ、関連型どうしの凝集を優先する。
+`javadsl` / `scaladsl` は Rust では二重化せず、`dsl` に一本化する。これは Pekko の package 名を厳密に複製するのではなく、Rust に必要な最小構造で責務境界を揃えるための意図的な差異である。`shape` は例外として package にまとめ、Pekko root 直下よりも型凝集を優先する。
 
-### Pekko 対応方針
+### `modules/stream/src/core` → To-Be → Pekko 対応表
 
-| Pekko 側 | fraktor 側 To-Be |
-|----------|------------------|
-| `org.apache.pekko.stream` root | `modules/stream/src/core` root abstractions + `attributes` + `materialization` + `shape` + root queue/result types + root restart settings + root completion/overflow types |
-| `scaladsl` / `javadsl` | `modules/stream/src/core/dsl` |
-| `stage` | `modules/stream/src/core/stage` |
-| `impl` | `modules/stream/src/core/impl` |
-| `impl/fusing` | `modules/stream/src/core/impl/fusing` |
-| `impl/io` | `modules/stream/src/core/impl/io` と `modules/stream/src/std/io` |
-| `impl/streamref` | `modules/stream/src/core/impl/streamref` |
-| `scaladsl/Queue` / `javadsl/Queue` | `modules/stream/src/core/dsl/queue` |
-| `scaladsl/Hub` / `javadsl/Hub` | `modules/stream/src/core/dsl/hub` |
-| `impl/Buffers` / `impl/BoundedSourceQueue` | `modules/stream/src/core/impl/fusing/*` / `modules/stream/src/core/impl/queue` |
-| `serialization` | `modules/stream/src/core/serialization` |
-| `snapshot` | `modules/stream/src/core/snapshot` |
+| 現行 package / ファイル群 | target package | Pekko counterpart | 仕分け |
+|---------------------------|----------------|-------------------|--------|
+| `core/{async_boundary_attr,attribute,dispatcher_attribute,log_level,log_levels}` と `core/buffer/{cancellation_strategy_kind,input_buffer}` | `core/attributes/*` | `org.apache.pekko.stream.Attributes` | 属性と buffer 設定は `Attributes.scala` 相当の責務として 1 箇所へ集約する |
+| `core/{completion,stream_done,stream_not_used,subscription_timeout_mode,subscription_timeout_settings}` | `core/materialization/*` | `org.apache.pekko.stream.Materializer`, `impl/StreamSubscriptionTimeout` | completion と materialization lifecycle の公開 contract として扱う |
+| `core/mat/*` | `core/materialization/*` + `core/impl/materialization/*` | `ActorMaterializer.scala`, `Materializer.scala`, `impl/ActorMaterializerImpl.scala`, `impl/MaterializerGuardian.scala` | 公開 materializer 語彙と runtime 実装を分離する |
+| `core/lifecycle/{kill_switch,kill_switches,shared_kill_switch,unique_kill_switch,stream*,stream_handle*,stream_drive_*}` | `core` root + `core/materialization/*` + `core/impl/materialization/*` | `KillSwitch.scala`, `FlowMonitor.scala`, `SystemMaterializer.scala`, `impl/MaterializerGuardian.scala` | root 契約、materialization contract、runtime 実装を同居させずに分ける |
+| `core/stage/{source,flow,sink,bidi_flow,flow_with_context,source_with_context,flow_sub_flow,source_sub_flow,flow_group_by_sub_flow,source_group_by_sub_flow,restart_*,tail_source,actor_sink,actor_source,topic_pub_sub}` | `core/dsl/*` | `org.apache.pekko.stream.scaladsl/*`, `org.apache.pekko.stream.javadsl/*` | 利用者向け stream 操作型は `stage` から外し、単一 DSL package に寄せる |
+| `core/{framing,json_framing,stateful_map_concat_accumulator}` と `core/{compression}`、`core/restart/{delay_strategy,retry_flow}` | `core/dsl/*` | `Framing.scala`, `JsonFraming.scala`, `Compression.scala`, `DelayStrategy.scala`, `RetryFlow.scala` | 利用者が直接参照する DSL API として扱う |
+| `core/stage/{async_callback,stage_context,stage_kind,stream_stage,timer_graph_stage_logic}` と `core/graph/{graph_stage,graph_stage_logic}` | `core/stage/*` | `org.apache.pekko.stream.stage.GraphStage`, `StageLogging` | GraphStage primitive だけを `stage` に残し、DSL と internal runtime を追い出す |
+| `core/graph/{graph_interpreter,boundary_sink_logic,boundary_source_logic,island_boundary,island_splitter}` | `core/impl/interpreter/*` | `org.apache.pekko.stream.impl.fusing.GraphInterpreter`, `impl/*Boundary*` | interpreter と boundary は internal runtime として `impl/interpreter` に集約する |
+| `core/graph/{graph_dsl,graph_dsl_builder,graph_chain_macro,flow_fragment,stream_graph,graph_stage_flow_adapter,graph_stage_flow_context,port_ops,reverse_port_ops}` | `core/impl/*` | `Graph.scala`, `GraphDSL`, `impl/TraversalBuilder.scala`, `impl/Modules.scala` | graph wiring と traversal helper は公開 DSL 本体ではなく内部実装境界に置く |
+| `core/buffer/{demand,demand_tracker,stream_buffer,stream_buffer_config}` と `core/stage/flow/logic/*` | `core/impl/fusing/*` | `org.apache.pekko.stream.impl.fusing/*`, `impl/Buffers.scala` | fused operator logic と内部 buffer 実装を同じ internal package にまとめる |
+| `core/queue/{source_queue,source_queue_with_complete,sink_queue}` | `core/dsl/queue/*` | `org.apache.pekko.stream.scaladsl.Queue`, `javadsl.Queue` | queue DSL は利用側 API として `dsl` へ出す |
+| `core/queue/{actor_source_ref,bounded_source_queue,queue_offer_result}` | `core/impl/queue/*` + `core` root | `impl/BoundedSourceQueue.scala`, `QueueOfferResult.scala`, `BoundedSourceQueue.scala` | runtime 実装と root abstractions を分け、`QueueOfferResult` と `BoundedSourceQueue` は root に残す |
+| `core/hub/*` | `core/dsl/hub/*` + `core/impl/hub/*` | `Hub.scala`, `impl/*Hub*` | Hub API は DSL、runtime は impl に二分する |
+| `core/{stream_dsl_error,stream_error,validate_positive_argument}` | `core/impl/*` | `impl/package.scala`, `impl/ReactiveStreamsCompliance.scala` などの内部 helper | 内部補助・検証・失敗表現は root 公開面へ漏らさない |
+| `core/shape/*` | `core/shape/*` | `Shape.scala`, `FanInShape.scala`, `FanOutShape.scala` | Pekko root 直下ではなく `shape` package に保ち、型凝集を優先する |
 
-`javadsl` / `scaladsl` は Rust では二重化せず、`dsl` に一本化する。これは Pekko の package 名を厳密に複製するのではなく、Rust に必要な最小構造で責務境界を揃えるための意図的な差異である。したがって、Pekko の `javadsl` にある `Queue`、`Hub`、`Framing`、`JsonFraming`、`StatefulMapConcatAccumulator` も、このプロジェクトでは `core/dsl/*` へ寄せる。内部 operator 実装は `impl/fusing`、内部 I/O 実装は `impl/io` に分離する。
+### `modules/stream/src/std` → To-Be → Pekko 対応表
+
+| 現行 package / ファイル群 | target package | Pekko counterpart | 仕分け |
+|---------------------------|----------------|-------------------|--------|
+| `std/{file_io,source,stream_converters}` | `std/io/*` | `FileIO.scala`, `StreamConverters.scala`, `impl/io/*` | std 依存の I/O adapter を 1 境界に集約する |
+| `std/{system_materializer,system_materializer_id}` | `std/materializer/*` | `SystemMaterializer.scala` | materializer adapter を IO adapter から分離する |
 
 root に裸で置く型は、Pekko の `org.apache.pekko.stream` root に相当する抽象だけに絞る。`Attributes.scala` に属する概念、DSL API、internal helper は root に露出させない。
 
