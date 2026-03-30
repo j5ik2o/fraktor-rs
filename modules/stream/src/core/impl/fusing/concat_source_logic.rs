@@ -2,15 +2,11 @@ use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
 use super::map_definition;
 use crate::core::{
-  DownstreamCancelAction, DynValue, FlowLogic, StageDefinition, StreamDone, StreamError,
-  buffer::StreamBufferConfig,
-  downcast_value,
-  lifecycle::{DriveOutcome, Stream},
-  mat::MatCombine,
-  materialization::{Completion, StreamCompletion},
-  queue::{QueueOfferResult, SourceQueue},
+  DownstreamCancelAction, DynValue, FlowLogic, QueueOfferResult, StageDefinition, StreamError, downcast_value,
+  dsl::{Sink, Source},
+  r#impl::{fusing::StreamBufferConfig, materialization::Stream, queue::SourceQueue},
+  materialization::{Completion, DriveOutcome, MatCombine, StreamCompletion, StreamDone},
   shape::{Inlet, Outlet},
-  stage::{Sink, Source},
 };
 
 const IDLE_BUDGET: usize = 32;

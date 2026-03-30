@@ -1,9 +1,10 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use crate::core::{
-  DynValue, FlowLogic, StreamError, StreamNotUsed, downcast_value,
-  queue::{QueueOfferResult, SourceQueue},
-  stage::{Source, TailSource},
+  DynValue, FlowLogic, QueueOfferResult, StreamError, downcast_value,
+  dsl::{Source, TailSource},
+  r#impl::queue::SourceQueue,
+  materialization::StreamNotUsed,
 };
 
 pub(in crate::core) struct PrefixAndTailLogic<In> {

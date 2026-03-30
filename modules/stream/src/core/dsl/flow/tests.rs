@@ -4,15 +4,13 @@ use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  DynValue, FlowLogic, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  SubstreamCancelStrategy,
-  buffer::{OverflowStrategy, StreamBufferConfig},
+  DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartSettings, SourceLogic, StageDefinition,
+  StreamDslError, StreamError, SubstreamCancelStrategy,
   dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource},
-  lifecycle::{DriveOutcome, Stream},
-  materialization::{Completion, KeepBoth, KeepLeft, KeepRight, StreamCompletion},
-  operator::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey},
-  queue::QueueOfferResult,
-  restart::RestartSettings,
+  r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, materialization::Stream},
+  materialization::{
+    Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
+  },
   shape::UniformFanInShape,
   stage::StageKind,
 };
@@ -258,7 +256,7 @@ fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion()
 
   let graph = Source::single(1_u32).via(Flow::new().concat_lazy(secondary).drop(1));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -283,7 +281,7 @@ fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion(
 
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -317,7 +315,7 @@ fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
 
   let graph = Source::<u32, _>::empty().via(Flow::new().or_else(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -356,7 +354,7 @@ fn prepend_lazy_materializes_secondary_on_first_demand() {
   });
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   assert_eq!(*materialize_calls.lock(), 0_u32);
 
   stream.start().expect("start");
@@ -1206,7 +1204,7 @@ fn flat_map_concat_emits_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -1234,7 +1232,7 @@ fn flat_map_merge_emits_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -1708,7 +1706,7 @@ fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -2021,7 +2019,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
       .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -3317,7 +3315,7 @@ fn also_to_mat_routes_elements_to_side_sink() {
   let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -3353,7 +3351,7 @@ fn wire_tap_mat_routes_elements_to_side_sink() {
   let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -3409,7 +3407,7 @@ fn wire_tap_mat_side_sink_receives_elements() {
   let (sink_graph, _downstream) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -4986,9 +4984,8 @@ fn inflate_with_options_nowrap_false_decompresses_zlib_wrapped() {
 // ---------------------------------------------------------------------------
 
 use crate::core::{
-  graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
-  stage::StageContext,
+  stage::{GraphStage, GraphStageLogic, StageContext},
 };
 
 /// A simple map-like GraphStageLogic that adds 100 to each input.

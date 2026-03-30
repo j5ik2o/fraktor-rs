@@ -7,7 +7,7 @@
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::island_boundary::{BoundaryState, IslandBoundaryShared};
-use crate::core::{DemandTracker, DynValue, SinkDecision, SinkLogic, stream_error::StreamError};
+use crate::core::{DynValue, SinkDecision, SinkLogic, StreamError, r#impl::fusing::DemandTracker};
 
 #[cfg(test)]
 mod tests;

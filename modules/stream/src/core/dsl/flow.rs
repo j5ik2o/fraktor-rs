@@ -9,7 +9,7 @@ use core::{
 use super::{
   FlowDefinition, FlowLogic, KeepRight, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff, RestartSettings,
   StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy,
+  StreamNotUsed, SupervisionStrategy,
   flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
   flow_sub_flow::FlowSubFlow,
@@ -20,9 +20,8 @@ use super::{
   validate_positive_argument,
 };
 use crate::core::{
-  DynValue, SourceLogic, SubstreamCancelStrategy,
-  attributes::Attributes,
-  lifecycle::{DriveOutcome, KillSwitchStateHandle, Stream},
+  DynValue, KillSwitchStateHandle, SourceLogic, SubstreamCancelStrategy, attributes::Attributes,
+  r#impl::materialization::Stream, materialization::DriveOutcome, stage::StreamStage,
 };
 
 #[cfg(test)]
@@ -43,11 +42,11 @@ pub struct Flow<In, Out, Mat> {
 impl<In, Out, Mat> Flow<In, Out, Mat> {
   /// Creates a flow from a pre-built stream graph and materialized value.
   #[must_use]
-  pub(crate) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  pub(in crate::core) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+  pub(in crate::core) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
 }
@@ -122,8 +121,8 @@ where
   #[allow(clippy::needless_pass_by_value)] // API consistency: Pekko's fromGraph consumes the stage
   pub fn from_graph_stage<S>(stage: S) -> Self
   where
-    S: crate::core::graph::GraphStage<In, Out, Mat> + Send + 'static, {
-    use crate::core::graph::GraphStageFlowAdapter;
+    S: crate::core::stage::GraphStage<In, Out, Mat> + Send + 'static, {
+    use crate::core::r#impl::GraphStageFlowAdapter;
 
     let mut logic = stage.create_logic();
     let mat = logic.materialized();
@@ -3244,10 +3243,10 @@ where
   /// Both sides share a [`SharedKillSwitch`] so that termination of one side
   /// can be propagated to the other via `shutdown()` or `abort()`.
   ///
-  /// [`SharedKillSwitch`]: crate::core::lifecycle::SharedKillSwitch
+  /// [`SharedKillSwitch`]: crate::core::SharedKillSwitch
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
-    let ks = crate::core::lifecycle::SharedKillSwitch::new();
+    let ks = crate::core::SharedKillSwitch::new();
     let state = ks.state_handle();
     let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source(sink, wrapped_source);
@@ -3259,7 +3258,7 @@ where
   /// Both sides share a [`SharedKillSwitch`] so that termination of one side
   /// can be propagated to the other via `shutdown()` or `abort()`.
   ///
-  /// [`SharedKillSwitch`]: crate::core::lifecycle::SharedKillSwitch
+  /// [`SharedKillSwitch`]: crate::core::SharedKillSwitch
   #[must_use]
   pub fn from_sink_and_source_coupled_mat<Mat1, Mat2, C>(
     sink: Sink<In, Mat1>,
@@ -3268,7 +3267,7 @@ where
   ) -> Flow<In, Out, C::Out>
   where
     C: MatCombineRule<Mat1, Mat2>, {
-    let ks = crate::core::lifecycle::SharedKillSwitch::new();
+    let ks = crate::core::SharedKillSwitch::new();
     let state = ks.state_handle();
     let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source_mat(sink, wrapped_source, combine);

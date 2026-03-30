@@ -1,7 +1,7 @@
 use core::time::Duration;
 
-use super::{StreamBufferConfig, SubscriptionTimeoutSettings};
-use crate::core::SupervisionStrategy;
+use super::SubscriptionTimeoutSettings;
+use crate::core::{SupervisionStrategy, r#impl::fusing::StreamBufferConfig};
 
 #[cfg(test)]
 mod tests;

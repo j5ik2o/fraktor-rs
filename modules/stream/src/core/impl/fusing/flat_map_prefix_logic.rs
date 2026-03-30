@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::core::{DynValue, FlowLogic, StageDefinition, StreamError, downcast_value, stage::Flow};
+use crate::core::{DynValue, FlowLogic, StageDefinition, StreamError, downcast_value, dsl::Flow};
 
 pub(in crate::core) struct FlatMapPrefixLogic<In, Out, Mat, F> {
   pub(in crate::core) prefix_len:    usize,

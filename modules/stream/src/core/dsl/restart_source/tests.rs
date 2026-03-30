@@ -1,5 +1,5 @@
 use super::RestartSource;
-use crate::core::{dsl::Source, restart::RestartSettings};
+use crate::core::{RestartSettings, dsl::Source};
 
 #[test]
 fn restart_source_with_backoff_keeps_data_path_behavior() {

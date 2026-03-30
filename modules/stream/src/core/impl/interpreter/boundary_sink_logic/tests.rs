@@ -22,7 +22,7 @@ fn on_start_requests_demand() {
   logic.on_start(&mut demand).expect("on_start");
 
   // Then: demand is requested (at least 1)
-  assert!(demand.pending() > 0);
+  assert!(demand.has_demand());
 }
 
 // --- on_push forwards element to boundary ---
@@ -54,14 +54,12 @@ fn on_push_requests_more_demand_after_success() {
   let mut logic = BoundarySinkLogic::new(boundary);
   let mut demand = DemandTracker::new();
   logic.on_start(&mut demand).expect("on_start");
-  let initial_pending = demand.pending();
-
   // When: pushing an element (consumes 1 demand, requests 1 more)
   let value: DynValue = Box::new(1_u32);
   logic.on_push(value, &mut demand).expect("on_push");
 
   // Then: demand is still available (refilled after push)
-  assert!(demand.pending() >= initial_pending);
+  assert!(demand.has_demand());
 }
 
 // --- Backpressure: boundary full → pending ---

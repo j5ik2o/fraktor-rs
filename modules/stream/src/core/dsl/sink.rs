@@ -10,13 +10,16 @@ use core::{
 use super::{
   DynValue, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic,
   StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy, downcast_value,
-  graph::{GraphStage, GraphStageLogic},
+  StreamNotUsed, SupervisionStrategy, downcast_value,
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
   validate_positive_argument,
 };
-use crate::core::{attributes::Attributes, queue::SinkQueue};
+use crate::core::{
+  attributes::Attributes,
+  r#impl::queue::SinkQueue,
+  stage::{GraphStage, GraphStageLogic, StreamStage},
+};
 
 #[cfg(test)]
 mod tests;
@@ -496,11 +499,11 @@ where
 
   /// Creates a sink from a pre-built stream graph and materialized value.
   #[must_use]
-  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  pub(in crate::core) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+  pub(in crate::core) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
 

@@ -1,48 +1,46 @@
 /// Stream attributes for stage and graph metadata.
 pub mod attributes;
-/// Buffer, backpressure, and demand management.
-pub mod buffer;
-/// Supervision decider function type.
-mod decider;
+/// Bounded queue materialized by `Source::queue`.
+mod bounded_source_queue;
+/// Completion strategy for stream termination.
+mod completion_strategy;
 /// Public stream DSL surface.
 pub mod dsl;
-/// Crate-private aliases backing the public DSL surface.
-mod dsl_contract;
 /// Internal implementation packages mirroring Pekko's `impl` boundary.
-pub(in crate::core) mod r#impl;
+pub mod r#impl;
+/// Kill switch shared contract trait.
+mod kill_switch;
+/// Kill switch factory functions.
+mod kill_switches;
+/// Overflow strategy for bounded queues.
+mod overflow_strategy;
 // framing moved to dsl/framing
-/// Graph-related abstractions.
-pub mod graph;
-/// Dynamic fan-in/fan-out connectors.
-pub(in crate::core) mod hub;
 /// IO operation result type.
 mod io_result;
 // json_framing moved to dsl/json_framing
-/// Stream lifecycle and execution management.
-pub mod lifecycle;
-/// Materialization pipeline.
-mod mat;
 /// Materialization contracts and lifecycle types.
 pub mod materialization;
-/// Operator compatibility catalog.
-pub mod operator;
-/// Queue-based materialization handles and offer results.
-pub mod queue;
-/// Restart and backoff strategies.
-pub mod restart;
+/// Result of offering an element into a source queue.
+mod queue_offer_result;
+/// Restart log level enum.
+mod restart_log_level;
+/// Restart log settings.
+mod restart_log_settings;
+/// Restart and backoff configuration settings.
+mod restart_settings;
+/// Stream reference serialization support.
+mod serialization;
 /// Stream topology shapes and connection points.
 pub mod shape;
+/// Shared kill switch for multi-stream control.
+mod shared_kill_switch;
+/// Materializer state snapshot support.
+pub mod snapshot;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
+/// Unique kill switch for single-stream control.
+mod unique_kill_switch;
 // stateful_map_concat_accumulator moved to dsl/stateful_map_concat_accumulator
-/// Stream completion marker.
-mod stream_done;
-/// Stream DSL error definitions.
-mod stream_dsl_error;
-/// Stream error definitions.
-mod stream_error;
-/// Stream not-used marker.
-mod stream_not_used;
 /// `split_when` / `split_after` substream cancellation strategy.
 mod substream_cancel_strategy;
 /// Supervision strategy definitions.
@@ -51,31 +49,36 @@ mod supervision_strategy;
 pub mod testing;
 /// Throttle behavior mode.
 mod throttle_mode;
-/// Positive argument validator.
-mod validate_positive_argument;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::any::{Any, TypeId};
 
-use buffer::DemandTracker;
-pub use decider::Decider;
+pub use bounded_source_queue::BoundedSourceQueue;
+pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use dsl::Compression;
 use fraktor_utils_rs::core::sync::ArcShared;
+use r#impl::{RestartBackoff, fusing::DemandTracker, validate_positive_argument};
 pub use io_result::IOResult;
-use mat::MatCombine;
-use restart::RestartBackoff;
+pub use kill_switch::KillSwitch;
+pub use kill_switches::KillSwitches;
+use materialization::MatCombine;
+pub use overflow_strategy::OverflowStrategy;
+pub use queue_offer_result::QueueOfferResult;
+pub use restart_log_level::RestartLogLevel;
+pub use restart_log_settings::RestartLogSettings;
+pub use restart_settings::RestartSettings;
 use shape::PortId;
+pub use shared_kill_switch::SharedKillSwitch;
 use stage::StageKind;
+pub(crate) type StreamDslError = r#impl::StreamDslError;
+pub(crate) type StreamError = r#impl::StreamError;
 // StatefulMapConcatAccumulator re-exported via dsl::StatefulMapConcatAccumulator
-pub use stream_done::StreamDone;
-pub use stream_dsl_error::StreamDslError;
-pub use stream_error::StreamError;
-pub use stream_not_used::StreamNotUsed;
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
 pub use throttle_mode::ThrottleMode;
-pub use validate_positive_argument::validate_positive_argument;
+pub use unique_kill_switch::UniqueKillSwitch;
+pub(in crate::core) use unique_kill_switch::{KillSwitchState, KillSwitchStateHandle};
 
 use self::attributes::Attributes;
 pub(crate) type DynValue = Box<dyn Any + Send + 'static>;
@@ -204,7 +207,7 @@ pub(crate) struct StreamPlan {
   pub(crate) source_indices: Vec<usize>,
   pub(crate) sink_indices:   Vec<usize>,
   pub(crate) flow_order:     Vec<usize>,
-  kill_switch_states:        Vec<lifecycle::KillSwitchStateHandle>,
+  kill_switch_states:        Vec<KillSwitchStateHandle>,
 }
 
 impl StreamPlan {
@@ -361,7 +364,7 @@ impl StreamPlan {
     Self { stages, edges, source_indices, sink_indices, flow_order, kill_switch_states: Vec::new() }
   }
 
-  fn with_shared_kill_switch_state(mut self, kill_switch_state: lifecycle::KillSwitchStateHandle) -> Self {
+  fn with_shared_kill_switch_state(mut self, kill_switch_state: KillSwitchStateHandle) -> Self {
     if self.kill_switch_states.iter().any(|existing| ArcShared::ptr_eq(existing, &kill_switch_state)) {
       return self;
     }
@@ -369,7 +372,7 @@ impl StreamPlan {
     self
   }
 
-  fn shared_kill_switch_states(&self) -> &[lifecycle::KillSwitchStateHandle] {
+  fn shared_kill_switch_states(&self) -> &[KillSwitchStateHandle] {
     &self.kill_switch_states
   }
 }

@@ -1,5 +1,4 @@
-use super::MatCombineRule;
-use crate::core::mat::MatCombine;
+use super::{MatCombine, MatCombineRule};
 
 /// Keeps both materialized values.
 pub struct KeepBoth;

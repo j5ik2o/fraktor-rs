@@ -7,7 +7,7 @@ use std::{
 };
 
 use super::StreamCompletion;
-use crate::core::{materialization::Completion, stream_error::StreamError};
+use crate::core::{r#impl::StreamError, materialization::Completion};
 
 struct WakeCounter {
   count: AtomicUsize,

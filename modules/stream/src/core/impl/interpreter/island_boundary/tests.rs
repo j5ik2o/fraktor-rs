@@ -4,7 +4,7 @@
 //! They define the expected behavioral contract for Gate 0, step C-1.
 
 use super::{BoundaryState, IslandBoundary, IslandBoundaryShared};
-use crate::core::StreamError;
+use crate::core::r#impl::StreamError;
 
 impl IslandBoundary {
   fn len(&self) -> usize {

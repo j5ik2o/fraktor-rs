@@ -16,19 +16,20 @@
 
 // Bridge imports from core level for children
 use super::{
-  DynValue, FlowDefinition, FlowLogic, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
-  StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed, SupervisionStrategy, ThrottleMode,
-  buffer::{DemandTracker, OverflowStrategy, StreamBufferConfig},
-  downcast_value, graph,
-  graph::StreamGraph,
-  lifecycle::{self, DriveOutcome},
-  mat::MatCombine,
-  materialization::{KeepLeft, KeepRight, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion},
-  queue::BoundedSourceQueue,
-  restart::{RestartBackoff, RestartSettings},
+  BoundedSourceQueue, DynValue, FlowDefinition, FlowLogic, OverflowStrategy, RestartSettings, SinkDecision,
+  SinkDefinition, SinkLogic, SourceDefinition, SourceLogic, StageDefinition, StreamDslError, StreamError,
+  SupervisionStrategy, ThrottleMode, downcast_value,
+  r#impl::{
+    RestartBackoff, StreamGraph,
+    fusing::{DemandTracker, StreamBufferConfig},
+  },
+  materialization::{
+    KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer, RunnableGraph, StreamCompletion,
+    StreamDone, StreamNotUsed,
+  },
   shape,
-  stage::{StageContext, StageKind, StreamStage, extract_last_ctx_and_values},
-  validate_positive_argument::validate_positive_argument,
+  stage::{StageContext, StageKind, extract_last_ctx_and_values},
+  validate_positive_argument,
 };
 
 mod actor_sink;
@@ -39,6 +40,7 @@ mod broadcast_hub;
 mod compression;
 mod delay_strategy;
 mod draining_control;
+mod fixed_delay;
 mod flow;
 mod flow_group_by_sub_flow;
 mod flow_monitor;
@@ -47,9 +49,12 @@ mod flow_monitor_state;
 mod flow_sub_flow;
 mod flow_with_context;
 mod framing;
+mod hub;
 mod json_framing;
+mod linear_increasing_delay;
 mod merge_hub;
 mod partition_hub;
+mod queue;
 mod restart_flow;
 mod restart_sink;
 mod restart_source;
@@ -74,6 +79,7 @@ pub use broadcast_hub::BroadcastHub;
 pub use compression::Compression;
 pub use delay_strategy::DelayStrategy;
 pub use draining_control::DrainingControl;
+pub use fixed_delay::FixedDelay;
 pub use flow::Flow;
 pub(in crate::core) use flow::{combine_mat, retry_flow_definition};
 pub use flow_group_by_sub_flow::FlowGroupBySubFlow;
@@ -84,6 +90,7 @@ pub use flow_sub_flow::FlowSubFlow;
 pub use flow_with_context::FlowWithContext;
 pub use framing::Framing;
 pub use json_framing::JsonFraming;
+pub use linear_increasing_delay::LinearIncreasingDelay;
 pub use merge_hub::MergeHub;
 pub use partition_hub::PartitionHub;
 pub use restart_flow::RestartFlow;

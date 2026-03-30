@@ -1,4 +1,4 @@
-use crate::core::{dsl::FlowMonitorState, stream_error::StreamError};
+use crate::core::{dsl::FlowMonitorState, r#impl::StreamError};
 
 // --- variant construction ---
 

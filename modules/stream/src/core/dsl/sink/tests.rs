@@ -7,11 +7,16 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  DynValue, SinkDecision, SinkLogic, StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  buffer::{DemandTracker, StreamBufferConfig},
+  DynValue, SinkDecision, SinkLogic, StreamDslError, StreamError,
   dsl::{Sink, Source},
-  lifecycle::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
-  materialization::{Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion},
+  r#impl::{
+    fusing::DemandTracker,
+    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+  },
+  materialization::{
+    Completion, KeepBoth, KeepRight, Materialized, Materializer, RunnableGraph, StreamCompletion, StreamDone,
+    StreamNotUsed,
+  },
   stage::StageKind,
 };
 
@@ -39,7 +44,7 @@ impl Materializer for TestMaterializer {
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls = self.calls.saturating_add(1);
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
@@ -334,7 +339,7 @@ fn sink_fold_async_waits_for_pending_future_before_completion() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(materializer.calls, 1);
-  assert_eq!(materialized.handle().drive(), crate::core::lifecycle::DriveOutcome::Progressed);
+  assert_eq!(materialized.handle().drive(), crate::core::materialization::DriveOutcome::Progressed);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
   for _ in 0..64 {
@@ -607,7 +612,7 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
   let materialized = graph.run(&mut materializer).expect("materialize");
 
   assert_eq!(materializer.calls, 1);
-  assert_eq!(materialized.handle().drive(), crate::core::lifecycle::DriveOutcome::Progressed);
+  assert_eq!(materialized.handle().drive(), crate::core::materialization::DriveOutcome::Progressed);
   assert_eq!(materialized.materialized().poll(), Completion::Pending);
 
   for _ in 0..64 {

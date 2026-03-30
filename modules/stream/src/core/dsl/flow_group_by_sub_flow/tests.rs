@@ -1,6 +1,7 @@
 use crate::core::{
-  StreamNotUsed, SubstreamCancelStrategy,
+  SubstreamCancelStrategy,
   dsl::{Flow, Sink, Source},
+  materialization::StreamNotUsed,
 };
 
 #[test]

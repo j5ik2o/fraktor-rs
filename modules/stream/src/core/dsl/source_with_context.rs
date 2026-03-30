@@ -5,7 +5,7 @@ use super::{
   MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow,
   flow_with_context::FlowWithContext, sink::Sink, source::Source,
 };
-use crate::core::stream_error::StreamError;
+use crate::core::r#impl::StreamError;
 
 #[cfg(test)]
 mod tests;

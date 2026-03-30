@@ -46,7 +46,7 @@ fn should_read_big_endian_u32_framing() {
 
 #[test]
 fn should_error_when_frame_length_addition_overflows() {
-  use crate::core::stream_error::StreamError;
+  use crate::core::r#impl::StreamError;
 
   let result = checked_frame_length(usize::MAX, 1);
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
@@ -87,7 +87,7 @@ fn should_discard_trailing_bytes_when_allow_truncation_is_false() {
 
 #[test]
 fn should_error_when_frame_exceeds_max_frame_length() {
-  use crate::core::{dsl::Source, stream_error::StreamError};
+  use crate::core::{dsl::Source, r#impl::StreamError};
 
   let framing = super::Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"toolong\nok".to_vec()]);
@@ -97,7 +97,7 @@ fn should_error_when_frame_exceeds_max_frame_length() {
 
 #[test]
 fn should_error_when_buffer_exceeds_max_frame_length_without_delimiter() {
-  use crate::core::{dsl::Source, stream_error::StreamError};
+  use crate::core::{dsl::Source, r#impl::StreamError};
 
   let framing = super::Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"abcdef".to_vec()]);
@@ -182,7 +182,7 @@ fn should_round_trip_payloads_through_simple_framing_protocol() {
 
 #[test]
 fn should_error_when_payload_exceeds_maximum_message_length() {
-  use crate::core::{dsl::Source, stream_error::StreamError};
+  use crate::core::{dsl::Source, r#impl::StreamError};
 
   let protocol = super::Framing::simple_framing_protocol(3);
   let (encoder, _decoder, _mat) = protocol.split();
@@ -193,7 +193,7 @@ fn should_error_when_payload_exceeds_maximum_message_length() {
 
 #[test]
 fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
-  use crate::core::{dsl::Source, stream_error::StreamError};
+  use crate::core::{dsl::Source, r#impl::StreamError};
 
   let protocol = super::Framing::simple_framing_protocol(3);
   let (_encoder, decoder, _mat) = protocol.split();
@@ -205,7 +205,7 @@ fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
 
 #[test]
 fn should_error_when_source_ends_with_truncated_decoded_frame() {
-  use crate::core::{dsl::Source, stream_error::StreamError};
+  use crate::core::{dsl::Source, r#impl::StreamError};
 
   let protocol = super::Framing::simple_framing_protocol(16);
   let (_encoder, decoder, _mat) = protocol.split();
@@ -217,7 +217,7 @@ fn should_error_when_source_ends_with_truncated_decoded_frame() {
 
 #[test]
 fn should_fail_decoder_when_length_exceeds_maximum() {
-  use crate::core::{FlowLogic, stream_error::StreamError};
+  use crate::core::{FlowLogic, r#impl::StreamError};
 
   // 0x80000000 = 2147483648 は適切な maximum_message_length を超える
   let mut logic = SimpleFramingDecoderLogic { maximum_message_length: 1024, buffer: Vec::new() };

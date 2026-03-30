@@ -1,9 +1,7 @@
-use super::super::lifecycle::{Stream, StreamShared};
 use crate::core::{
-  StreamError,
-  buffer::StreamBufferConfig,
+  SharedKillSwitch, StreamError,
   dsl::{Sink, Source},
-  lifecycle::{SharedKillSwitch, StreamHandleId, StreamHandleImpl, StreamState},
+  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
   materialization::{KeepLeft, KeepRight, Materialized, Materializer, RunnableGraph},
 };
 
@@ -31,7 +29,7 @@ impl Materializer for RecordingMaterializer {
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls += 1;
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
@@ -75,7 +73,7 @@ fn with_shared_kill_switch_allows_conflicting_flow_switch() {
 
   assert_eq!(plan.shared_kill_switch_states().len(), 1);
 
-  let mut stream = Stream::new(plan, StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
   stream.start().expect("start");
 
   for _ in 0..3 {

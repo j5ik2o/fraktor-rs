@@ -1,6 +1,6 @@
 use crate::core::{
-  StreamNotUsed,
   dsl::{BidiFlow, Flow, Source},
+  materialization::StreamNotUsed,
 };
 
 fn collect_single(flow: Flow<u32, u32, StreamNotUsed>, value: u32) -> Vec<u32> {

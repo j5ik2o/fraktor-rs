@@ -1,5 +1,4 @@
-use super::MatCombineRule;
-use crate::core::mat::MatCombine;
+use super::{MatCombine, MatCombineRule};
 
 /// Keeps the left materialized value.
 pub struct KeepLeft;

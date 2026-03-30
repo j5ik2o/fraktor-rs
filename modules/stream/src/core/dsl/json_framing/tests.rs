@@ -1,7 +1,7 @@
 use alloc::{vec, vec::Vec};
 
 use super::JsonFraming;
-use crate::core::{dsl::Source, stream_error::StreamError};
+use crate::core::{dsl::Source, r#impl::StreamError};
 
 #[test]
 fn should_extract_single_json_object() {

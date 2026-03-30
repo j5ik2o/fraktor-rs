@@ -1,8 +1,6 @@
 use fraktor_stream_rs::core::{
-  StreamNotUsed,
   dsl::{Flow, Sink, Source},
-  graph::GraphDslBuilder,
-  materialization::{KeepBoth, KeepLeft, KeepRight},
+  materialization::{KeepBoth, KeepLeft, KeepRight, StreamNotUsed},
   shape::{FanInShape3, FanInShape4, FanInShape5, FanInShape8, Inlet, Outlet, UniformFanOutShape},
 };
 
@@ -117,12 +115,6 @@ fn fan_in_shape8_new_returns_ports_passed_at_construction() {
   assert_eq!(shape.in6().id(), in6_id);
   assert_eq!(shape.in7().id(), in7_id);
   assert_eq!(shape.out().id(), out_id);
-}
-
-#[test]
-fn graph_dsl_builder_type_is_publicly_available() {
-  let builder: Option<GraphDslBuilder<u32, u32, StreamNotUsed>> = None;
-  assert!(builder.is_none());
 }
 
 #[test]

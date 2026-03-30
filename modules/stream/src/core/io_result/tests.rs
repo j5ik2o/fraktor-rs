@@ -1,4 +1,4 @@
-use crate::core::{io_result::IOResult, stream_error::StreamError};
+use crate::core::{IOResult, r#impl::StreamError};
 
 #[test]
 fn successful_io_result() {

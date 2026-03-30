@@ -1,7 +1,7 @@
 use fraktor_stream_rs::core::{
-  StreamError,
+  SharedKillSwitch, UniqueKillSwitch,
   dsl::{BroadcastHub, MergeHub, PartitionHub},
-  lifecycle::{SharedKillSwitch, UniqueKillSwitch},
+  r#impl::StreamError,
 };
 
 #[test]

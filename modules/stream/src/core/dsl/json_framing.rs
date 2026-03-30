@@ -6,11 +6,11 @@ use core::any::TypeId;
 
 use super::Flow;
 use crate::core::{
-  DynValue, FlowDefinition, FlowLogic, StageDefinition, StreamError, StreamNotUsed, SupervisionStrategy,
+  DynValue, FlowDefinition, FlowLogic, StageDefinition, StreamError, SupervisionStrategy,
   attributes::Attributes,
   downcast_value,
-  graph::StreamGraph,
-  mat::MatCombine,
+  r#impl::StreamGraph,
+  materialization::{MatCombine, StreamNotUsed},
   shape::{Inlet, Outlet},
   stage::StageKind,
 };
@@ -33,9 +33,9 @@ impl JsonFraming {
   /// do not affect the depth count.
   ///
   /// Objects exceeding `maximum_object_length` cause a
-  /// [`StreamError::BufferOverflow`](crate::core::StreamError::BufferOverflow).
+  /// [`StreamError::BufferOverflow`](crate::core::r#impl::StreamError::BufferOverflow).
   /// If the source completes with an incomplete object in the buffer,
-  /// a [`StreamError::Failed`](crate::core::StreamError::Failed) is returned.
+  /// a [`StreamError::Failed`](crate::core::r#impl::StreamError::Failed) is returned.
   #[must_use]
   pub fn object_scanner(maximum_object_length: usize) -> Flow<Vec<u8>, Vec<u8>, StreamNotUsed> {
     let definition = json_framing_definition(maximum_object_length);
@@ -52,7 +52,7 @@ impl JsonFraming {
   /// String literals and escape sequences are handled correctly.
   ///
   /// Elements exceeding `maximum_element_length` cause a
-  /// [`StreamError::BufferOverflow`](crate::core::StreamError::BufferOverflow).
+  /// [`StreamError::BufferOverflow`](crate::core::r#impl::StreamError::BufferOverflow).
   #[must_use]
   pub fn array_scanner(maximum_element_length: usize) -> Flow<Vec<u8>, Vec<u8>, StreamNotUsed> {
     let definition = json_array_framing_definition(maximum_element_length);

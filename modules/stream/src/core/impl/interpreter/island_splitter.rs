@@ -11,7 +11,7 @@ use super::island_boundary::IslandBoundaryShared;
 use crate::core::{
   SinkDefinition, SourceDefinition, StageDefinition, StreamPlan, StreamPlanEdge, SupervisionStrategy,
   attributes::{Attributes, DispatcherAttribute, InputBuffer},
-  mat::MatCombine,
+  materialization::MatCombine,
   shape::PortId,
   stage::StageKind,
 };

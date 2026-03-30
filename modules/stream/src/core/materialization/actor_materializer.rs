@@ -6,12 +6,15 @@ use fraktor_actor_rs::core::kernel::{
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
-use super::{
-  ActorMaterializerConfig, Materialized, Materializer, MaterializerLifecycleState, MaterializerSnapshot, RunnableGraph,
-  StreamError, StreamHandleId, StreamHandleImpl,
-  lifecycle::{Stream, StreamDriveActor, StreamDriveCommand, StreamShared},
+use super::{ActorMaterializerConfig, Materialized, Materializer, MaterializerLifecycleState, RunnableGraph};
+use crate::core::{
+  StreamError,
+  r#impl::{
+    interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter},
+    materialization::{Stream, StreamDriveActor, StreamDriveCommand, StreamHandleId, StreamHandleImpl, StreamShared},
+  },
+  snapshot::MaterializerSnapshot,
 };
-use crate::core::r#impl::interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter};
 
 #[cfg(test)]
 mod tests;

@@ -7,9 +7,9 @@ use core::{
 use std::sync::{Arc, Mutex};
 
 use crate::core::{
-  StreamError, StreamNotUsed, ThrottleMode,
+  StreamError, ThrottleMode,
   dsl::{Flow, FlowWithContext, Sink, Source},
-  materialization::KeepBoth,
+  materialization::{KeepBoth, StreamNotUsed},
 };
 
 #[derive(Default)]

@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use super::SecondarySourceBridge;
-use crate::core::{DynValue, FailureAction, FlowLogic, StreamError, StreamNotUsed, stage::Source};
+use crate::core::{DynValue, FailureAction, FlowLogic, StreamError, dsl::Source, materialization::StreamNotUsed};
 
 pub(in crate::core) struct RecoverWithRetriesLogic<Out, F> {
   pub(in crate::core) max_retries:     Option<usize>,

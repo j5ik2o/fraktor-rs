@@ -11,7 +11,7 @@ use super::{
   BoundedSourceQueue, DynValue, MatCombine, MatCombineRule, Materialized, Materializer, OverflowStrategy,
   RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue, SourceQueueWithComplete,
   StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, StreamStage, SupervisionStrategy,
+  StreamNotUsed, SupervisionStrategy,
   flow::{
     async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_lazy_definition, concat_substreams_definition, debounce_definition, delay_definition,
@@ -27,14 +27,22 @@ use super::{
     take_until_definition, take_while_definition, take_within_definition, throttle_definition, unzip_definition,
     unzip_with_definition, watch_termination_definition, zip_all_definition, zip_definition, zip_with_index_definition,
   },
-  graph::{GraphStage, GraphStageLogic},
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   source_group_by_sub_flow::SourceGroupBySubFlow,
   source_sub_flow::SourceSubFlow,
   validate_positive_argument,
 };
-use crate::core::{SubstreamCancelStrategy, attributes::Attributes, r#impl::fusing::map_definition};
+use crate::core::{
+  SubstreamCancelStrategy,
+  attributes::Attributes,
+  r#impl::{
+    fusing::{StreamBufferConfig, map_definition},
+    materialization::Stream,
+  },
+  materialization::DriveOutcome,
+  stage::{GraphStage, GraphStageLogic, StreamStage},
+};
 
 #[cfg(test)]
 mod tests;
@@ -2158,13 +2166,13 @@ where
     if island_plan.islands().len() <= 1 {
       // Single island: existing path
       let single_plan = island_plan.into_single_plan();
-      let mut stream = super::lifecycle::Stream::new(single_plan, super::StreamBufferConfig::default());
+      let mut stream = Stream::new(single_plan, StreamBufferConfig::default());
       stream.start()?;
       let mut idle_budget = 1024_usize;
       while !stream.state().is_terminal() {
         match stream.drive() {
-          | super::DriveOutcome::Progressed => idle_budget = 1024,
-          | super::DriveOutcome::Idle => {
+          | DriveOutcome::Progressed => idle_budget = 1024,
+          | DriveOutcome::Idle => {
             if idle_budget == 0 {
               return Err(StreamError::WouldBlock);
             }
@@ -2188,10 +2196,10 @@ where
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);
       }
-      let mut streams: Vec<super::lifecycle::Stream> = Vec::with_capacity(islands.len());
+      let mut streams: Vec<Stream> = Vec::with_capacity(islands.len());
       for island in islands {
         let stream_plan = island.into_stream_plan();
-        let mut stream = super::lifecycle::Stream::new(stream_plan, super::StreamBufferConfig::default());
+        let mut stream = Stream::new(stream_plan, StreamBufferConfig::default());
         stream.start()?;
         streams.push(stream);
       }
@@ -2199,7 +2207,7 @@ where
       while streams.iter().any(|s| !s.state().is_terminal()) {
         let mut any_progress = false;
         for stream in &mut streams {
-          if !stream.state().is_terminal() && matches!(stream.drive(), super::DriveOutcome::Progressed) {
+          if !stream.state().is_terminal() && matches!(stream.drive(), DriveOutcome::Progressed) {
             any_progress = true;
           }
         }
@@ -2254,11 +2262,11 @@ where
 
   /// Creates a source from a pre-built stream graph and materialized value.
   #[must_use]
-  pub fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
+  pub(in crate::core) fn from_graph(graph: StreamGraph, mat: Mat) -> Self {
     Self { graph, mat, _pd: PhantomData }
   }
 
-  pub(crate) fn into_parts(self) -> (StreamGraph, Mat) {
+  pub(in crate::core) fn into_parts(self) -> (StreamGraph, Mat) {
     (self.graph, self.mat)
   }
 }

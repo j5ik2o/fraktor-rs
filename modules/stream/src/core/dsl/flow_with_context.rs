@@ -4,7 +4,7 @@ use core::{future::Future, marker::PhantomData};
 use super::{
   MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow, sink::Sink,
 };
-use crate::core::stream_error::StreamError;
+use crate::core::r#impl::StreamError;
 
 #[cfg(test)]
 mod tests;

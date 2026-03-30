@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use super::stream_error::StreamError;
+use super::StreamError;
 
 /// Result of an IO operation, holding byte count and completion status.
 ///

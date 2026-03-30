@@ -15,7 +15,7 @@ use fraktor_actor_rs::core::kernel::{
 use crate::core::{
   StreamError,
   dsl::{Sink, Source},
-  lifecycle::StreamState,
+  r#impl::materialization::StreamState,
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, MaterializerLifecycleState},
 };
 

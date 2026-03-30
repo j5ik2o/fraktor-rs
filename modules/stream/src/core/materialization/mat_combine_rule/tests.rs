@@ -1,7 +1,4 @@
-use crate::core::{
-  StreamNotUsed,
-  materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, MatCombineRule},
-};
+use crate::core::materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, MatCombineRule, StreamNotUsed};
 
 fn combine<Left, Right, C>(left: Left, right: Right) -> C::Out
 where

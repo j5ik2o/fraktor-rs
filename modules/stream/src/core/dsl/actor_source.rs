@@ -3,9 +3,9 @@ use core::{any::TypeId, marker::PhantomData};
 
 use super::{
   BoundedSourceQueue, DynValue, MatCombine, OverflowStrategy, SourceDefinition, SourceLogic, StageDefinition,
-  StageKind, StreamError, SupervisionStrategy, graph::StreamGraph, shape::Outlet, source::Source,
+  StageKind, StreamError, StreamGraph, SupervisionStrategy, shape::Outlet, source::Source,
 };
-use crate::core::{attributes::Attributes, queue::ActorSourceRef};
+use crate::core::{attributes::Attributes, r#impl::queue::ActorSourceRef};
 
 #[cfg(test)]
 mod tests;

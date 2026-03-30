@@ -1,6 +1,5 @@
 model = "gpt-5.4"
-model_reasoning_effort = "high"
-service_tier = "fast"
+model_reasoning_effort = "xhigh"
 hide_agent_reasoning = true
 network_access = true
 web_search = "live"

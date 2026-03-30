@@ -24,11 +24,10 @@ use super::{
   source::Source,
 };
 use crate::core::{
-  StreamError, StreamNotUsed,
-  buffer::OverflowStrategy,
-  graph::{GraphStage, GraphStageLogic},
-  materialization::KeepLeft,
+  OverflowStrategy, StreamError,
+  materialization::{KeepLeft, StreamNotUsed},
   shape::{Inlet, Outlet, StreamShape},
+  stage::{GraphStage, GraphStageLogic},
 };
 
 /// Topic-based pub/sub stream integration (Pekko `PubSub` equivalent).
@@ -158,7 +157,7 @@ impl TopicPubSub {
       source_ref.via_mat(Flow::from_graph_stage(TopicSourceCleanupStage { cleanup: cleanup.clone() }), KeepLeft);
     let extended = system.extended();
 
-    source.map_materialized_value(move |actor_source_ref| {
+    source.map_materialized_value(move |actor_source_ref: crate::core::r#impl::queue::ActorSourceRef<T>| {
       let bridge_props = TypedProps::<T>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
       #[allow(clippy::expect_used)]
       let child =
@@ -199,18 +198,14 @@ where
 }
 
 /// Creates the bridge actor behavior that forwards messages to the stream queue.
-fn bridge_behavior<T>(actor_source_ref: crate::core::queue::ActorSourceRef<T>) -> Behavior<T>
+fn bridge_behavior<T>(actor_source_ref: crate::core::r#impl::queue::ActorSourceRef<T>) -> Behavior<T>
 where
   T: Clone + Send + Sync + 'static, {
   let actor_source_ref = ArcShared::new(SpinSyncMutex::new(actor_source_ref));
   Behaviors::receive_message(move |_ctx, msg: &T| match actor_source_ref.lock().tell(msg.clone()) {
-    | crate::core::queue::QueueOfferResult::Enqueued | crate::core::queue::QueueOfferResult::Dropped => {
-      Ok(Behaviors::same())
-    },
-    | crate::core::queue::QueueOfferResult::QueueClosed => {
-      Err(ActorError::recoverable("TopicPubSub: stream queue is closed"))
-    },
-    | crate::core::queue::QueueOfferResult::Failure(err) => {
+    | crate::core::QueueOfferResult::Enqueued | crate::core::QueueOfferResult::Dropped => Ok(Behaviors::same()),
+    | crate::core::QueueOfferResult::QueueClosed => Err(ActorError::recoverable("TopicPubSub: stream queue is closed")),
+    | crate::core::QueueOfferResult::Failure(err) => {
       Err(ActorError::recoverable(alloc::format!("TopicPubSub: queue offer failed: {:?}", err)))
     },
   })

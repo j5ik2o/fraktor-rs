@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 
 use super::LogLogic;
-use crate::core::{FailureAction, FlowLogic, stream_error::StreamError};
+use crate::core::{FailureAction, FlowLogic, r#impl::StreamError};
 
 #[test]
 fn log_logic_passes_elements_through_unchanged() {

@@ -3,11 +3,11 @@ use core::any::TypeId;
 
 use super::{BidiFlow, Flow};
 use crate::core::{
-  DynValue, FlowDefinition, FlowLogic, StageDefinition, StreamError, StreamNotUsed, SupervisionStrategy,
+  DynValue, FlowDefinition, FlowLogic, StageDefinition, StreamError, SupervisionStrategy,
   attributes::Attributes,
   downcast_value,
-  graph::StreamGraph,
-  mat::MatCombine,
+  r#impl::StreamGraph,
+  materialization::{MatCombine, StreamNotUsed},
   shape::{Inlet, Outlet},
   stage::StageKind,
 };
@@ -28,7 +28,7 @@ impl Framing {
   ///
   /// Each input `Vec<u8>` chunk is accumulated into an internal buffer.
   /// Complete frames (terminated by `delimiter`) are emitted downstream.
-  /// Frames exceeding `max_frame_length` cause a [`StreamError`](crate::core::StreamError).
+  /// Frames exceeding `max_frame_length` cause a [`StreamError`](crate::core::r#impl::StreamError).
   /// When `allow_truncation` is true, remaining bytes without a trailing
   /// delimiter are emitted on source completion.
   #[must_use]

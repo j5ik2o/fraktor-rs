@@ -55,7 +55,7 @@ pub fn drive_until_ready<T: Clone>(
   driver: &ManualTestDriver,
   completion: &StreamCompletion<T>,
   max_ticks: usize,
-) -> Option<Result<T, fraktor_stream_rs::core::StreamError>> {
+) -> Option<Result<T, fraktor_stream_rs::core::r#impl::StreamError>> {
   let controller = driver.controller();
   for _ in 0..max_ticks {
     controller.inject_and_drive(1);

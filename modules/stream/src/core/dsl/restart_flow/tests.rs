@@ -1,8 +1,8 @@
 use super::RestartFlow;
 use crate::core::{
+  RestartSettings,
   dsl::{Flow, Sink, Source},
   materialization::{Completion, KeepRight},
-  restart::RestartSettings,
 };
 
 #[test]
@@ -10,10 +10,12 @@ fn restart_flow_with_backoff_keeps_data_path_behavior() {
   let flow = RestartFlow::with_backoff(Flow::new().map(|value: u32| value + 1), 1, 3);
   let graph = Source::single(1_u32).via(flow).into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter =
-    crate::core::graph::GraphInterpreter::new(plan, crate::core::buffer::StreamBufferConfig::default());
+  let mut interpreter = crate::core::r#impl::interpreter::GraphInterpreter::new(
+    plan,
+    crate::core::r#impl::fusing::StreamBufferConfig::default(),
+  );
   interpreter.start().expect("start");
-  while interpreter.state() == crate::core::lifecycle::StreamState::Running {
+  while interpreter.state() == crate::core::r#impl::materialization::StreamState::Running {
     let _ = interpreter.drive();
   }
   assert_eq!(completion.poll(), Completion::Ready(Ok(2_u32)));

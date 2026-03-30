@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::mat::MatCombine;
+use super::MatCombine;
 
 /// Type-level rule for combining materialized values.
 pub trait MatCombineRule<Left, Right> {

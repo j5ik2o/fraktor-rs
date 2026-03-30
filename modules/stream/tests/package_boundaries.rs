@@ -2,12 +2,11 @@
 use core::any::TypeId;
 
 use fraktor_stream_rs::core::{
-  StreamNotUsed,
   attributes::{
     AsyncBoundaryAttr, Attributes, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
   },
   dsl::{Flow, Sink, Source},
-  materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, RunnableGraph, StreamCompletion},
+  materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, RunnableGraph, StreamCompletion, StreamNotUsed},
 };
 #[cfg(feature = "std")]
 use fraktor_stream_rs::std::{

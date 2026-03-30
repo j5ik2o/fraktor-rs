@@ -25,10 +25,11 @@ use fraktor_actor_rs::core::{
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  StreamDone, StreamNotUsed,
-  buffer::OverflowStrategy,
+  OverflowStrategy,
   dsl::{Sink, Source, TopicPubSub},
-  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamCompletion},
+  materialization::{
+    ActorMaterializer, ActorMaterializerConfig, Completion, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
+  },
 };
 
 // --- test helpers ---

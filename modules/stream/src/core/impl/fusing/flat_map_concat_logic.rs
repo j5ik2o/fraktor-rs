@@ -3,10 +3,11 @@ use core::marker::PhantomData;
 
 use super::SecondarySourceBridge;
 use crate::core::{
-  DownstreamCancelAction, DynValue, FlowLogic, StreamError, StreamNotUsed, downcast_value,
-  graph::{GraphStage, GraphStageLogic},
+  DownstreamCancelAction, DynValue, FlowLogic, StreamError, downcast_value,
+  dsl::Source,
+  materialization::StreamNotUsed,
   shape::{Inlet, Outlet, StreamShape},
-  stage::{Source, StageContext},
+  stage::{GraphStage, GraphStageLogic, StageContext},
 };
 
 pub(in crate::core) struct FlatMapConcatLogic<In, Out, Mat2, F> {

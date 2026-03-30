@@ -8,9 +8,9 @@ use core::{
 };
 
 use crate::core::{
-  FlowDefinition, SupervisionStrategy,
+  FlowDefinition, StreamError, SupervisionStrategy,
   attributes::Attributes,
-  mat::MatCombine,
+  materialization::MatCombine,
   shape::{Inlet, Outlet},
   stage::StageKind,
 };
@@ -37,6 +37,10 @@ mod conflate_with_seed_logic;
 mod coupled_termination_logic;
 /// Debounce logic.
 mod debounce_logic;
+/// Internal demand accounting primitive.
+mod demand;
+/// Internal demand tracker.
+mod demand_tracker;
 /// Drop (skip first N) logic.
 mod drop_logic;
 /// Drop-while logic.
@@ -135,6 +139,10 @@ mod stateful_map_logic;
 mod stateful_map_with_on_complete_logic;
 /// Strategy-based per-element delay logic.
 mod strategy_delay_logic;
+/// Internal stream buffer runtime.
+mod stream_buffer;
+/// Internal stream buffer configuration.
+mod stream_buffer_config;
 /// Take (first N) logic.
 mod take_logic;
 /// Take-until logic.
@@ -174,6 +182,7 @@ pub(in crate::core) use concat_source_logic::*;
 pub(in crate::core) use conflate_with_seed_logic::*;
 pub(in crate::core) use coupled_termination_logic::*;
 pub(in crate::core) use debounce_logic::*;
+pub(crate) use demand_tracker::DemandTracker;
 pub(in crate::core) use drop_logic::*;
 pub(in crate::core) use drop_while_logic::*;
 pub(in crate::core) use expand_logic::*;
@@ -223,6 +232,8 @@ pub(in crate::core) use stateful_map_concat_logic::*;
 pub(in crate::core) use stateful_map_logic::*;
 pub(in crate::core) use stateful_map_with_on_complete_logic::*;
 pub(in crate::core) use strategy_delay_logic::*;
+pub(in crate::core) use stream_buffer::StreamBuffer;
+pub(crate) use stream_buffer_config::StreamBufferConfig;
 pub(in crate::core) use take_logic::*;
 pub(in crate::core) use take_until_logic::*;
 pub(in crate::core) use take_while_logic::*;

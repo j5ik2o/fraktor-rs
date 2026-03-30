@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
-use crate::core::buffer::OverflowStrategy;
+use crate::core::OverflowStrategy;
 
 pub(in crate::core) struct BufferLogic<In> {
   pub(in crate::core) capacity:          usize,

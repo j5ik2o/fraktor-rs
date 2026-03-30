@@ -18,14 +18,14 @@ use std::{
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  DynValue, SourceLogic, StageDefinition, StreamDone, StreamDslError, StreamError, StreamNotUsed,
-  SubstreamCancelStrategy,
-  buffer::{OverflowStrategy, StreamBufferConfig},
+  DynValue, OverflowStrategy, QueueOfferResult, RestartSettings, SharedKillSwitch, SourceLogic, StageDefinition,
+  StreamDslError, StreamError, SubstreamCancelStrategy,
   dsl::{Sink, Source},
-  lifecycle::{DriveOutcome, SharedKillSwitch, Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
-  materialization::{Completion, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion},
-  queue::QueueOfferResult,
-  restart::RestartSettings,
+  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
+  materialization::{
+    Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion, StreamDone,
+    StreamNotUsed,
+  },
   stage::StageKind,
 };
 
@@ -53,7 +53,7 @@ impl Materializer for RecordingMaterializer {
   fn materialize<Mat>(&mut self, graph: super::super::RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls += 1;
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
@@ -767,7 +767,7 @@ fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
 
 #[test]
 fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::queue::SourceQueue::new();
+  let mut queue = crate::core::r#impl::queue::SourceQueue::new();
   let mut logic = super::UnboundedQueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
@@ -818,7 +818,7 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
 
 #[test]
 fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::queue::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
   let mut logic = super::QueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
@@ -872,7 +872,7 @@ fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
 
 #[test]
 fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
-  let mut queue = crate::core::queue::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = crate::core::r#impl::queue::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -2294,7 +2294,7 @@ fn source_named_keeps_elements_and_sets_attributes() {
   let values = Source::from_array([1_u32, 2, 3]).named("test-source").collect_values().expect("collect_values");
   assert_eq!(values, vec![1_u32, 2, 3]);
 
-  let (graph, _mat) = Source::<u32, crate::core::stream_not_used::StreamNotUsed>::from_array([1_u32, 2])
+  let (graph, _mat) = Source::<u32, crate::core::materialization::StreamNotUsed>::from_array([1_u32, 2])
     .named("test-source")
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-source")]);
@@ -2302,7 +2302,7 @@ fn source_named_keeps_elements_and_sets_attributes() {
 
 #[test]
 fn source_with_and_add_attributes_merge_names() {
-  let (graph, _mat) = Source::<u32, crate::core::stream_not_used::StreamNotUsed>::from_array([1_u32, 2])
+  let (graph, _mat) = Source::<u32, crate::core::materialization::StreamNotUsed>::from_array([1_u32, 2])
     .with_attributes(crate::core::attributes::Attributes::named("base"))
     .add_attributes(crate::core::attributes::Attributes::named("extra"))
     .into_parts();

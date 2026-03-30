@@ -3,33 +3,32 @@ use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  DynValue, SourceLogic, StageKind, StreamDone, StreamError,
-  buffer::StreamBufferConfig,
+  DynValue, SourceLogic, StageKind, StreamError,
   dsl::{ActorSink, Source},
-  lifecycle::Stream,
-  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph},
+  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+  materialization::{Completion, KeepRight, Materialized, Materializer, RunnableGraph, StreamDone},
 };
 
 struct TestMaterializer;
 
 impl Materializer for TestMaterializer {
-  fn start(&mut self) -> Result<(), crate::core::stream_error::StreamError> {
+  fn start(&mut self) -> Result<(), crate::core::r#impl::StreamError> {
     Ok(())
   }
 
   fn materialize<Mat>(
     &mut self,
     graph: RunnableGraph<Mat>,
-  ) -> Result<Materialized<Mat>, crate::core::stream_error::StreamError> {
+  ) -> Result<Materialized<Mat>, crate::core::r#impl::StreamError> {
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
     stream.start()?;
-    let shared = crate::core::lifecycle::StreamShared::new(stream);
-    let handle = crate::core::lifecycle::StreamHandleImpl::new(crate::core::lifecycle::StreamHandleId::next(), shared);
+    let shared = StreamShared::new(stream);
+    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
     Ok(Materialized::new(handle, materialized))
   }
 
-  fn shutdown(&mut self) -> Result<(), crate::core::stream_error::StreamError> {
+  fn shutdown(&mut self) -> Result<(), crate::core::r#impl::StreamError> {
     Ok(())
   }
 }

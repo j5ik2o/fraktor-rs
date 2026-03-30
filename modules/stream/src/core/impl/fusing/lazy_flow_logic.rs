@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
-use crate::core::{DynValue, FlowLogic, StageDefinition, StreamError, stage::Flow};
+use crate::core::{DynValue, FlowLogic, StageDefinition, StreamError, dsl::Flow};
 
 pub(in crate::core) struct LazyFlowLogic<In, Out, Mat, F> {
   pub(in crate::core) factory:      Option<F>,

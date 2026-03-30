@@ -1,4 +1,5 @@
-use super::{SharedKillSwitch, StreamHandleImpl, UniqueKillSwitch};
+use super::{SharedKillSwitch, UniqueKillSwitch};
+use crate::core::r#impl::materialization::StreamHandleImpl;
 
 /// Result of materializing a stream graph.
 pub struct Materialized<Mat> {

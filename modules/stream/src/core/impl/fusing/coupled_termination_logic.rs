@@ -2,10 +2,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
-use crate::core::{
-  DownstreamCancelAction,
-  lifecycle::{KillSwitchState, KillSwitchStateHandle},
-};
+use crate::core::{DownstreamCancelAction, KillSwitchState, KillSwitchStateHandle};
 
 pub(in crate::core) struct CoupledTerminationLogic<In> {
   pub(in crate::core) state:              KillSwitchStateHandle,

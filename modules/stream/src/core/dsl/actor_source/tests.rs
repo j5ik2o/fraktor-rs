@@ -3,12 +3,10 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
 
 use crate::core::{
-  StreamError,
-  buffer::{OverflowStrategy, StreamBufferConfig},
+  OverflowStrategy, QueueOfferResult, StreamError,
   dsl::{ActorSource, Sink},
-  lifecycle::Stream,
+  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   materialization::{Completion, KeepBoth, Materialized, Materializer, RunnableGraph, StreamCompletion},
-  queue::QueueOfferResult,
 };
 
 struct TestMaterializer;
@@ -20,10 +18,10 @@ impl Materializer for TestMaterializer {
 
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
     stream.start()?;
-    let shared = crate::core::lifecycle::StreamShared::new(stream);
-    let handle = crate::core::lifecycle::StreamHandleImpl::new(crate::core::lifecycle::StreamHandleId::next(), shared);
+    let shared = StreamShared::new(stream);
+    let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
     Ok(Materialized::new(handle, materialized))
   }
 

@@ -1,7 +1,4 @@
-use crate::core::{
-  dsl::DelayStrategy,
-  restart::{FixedDelay, LinearIncreasingDelay},
-};
+use crate::core::dsl::{DelayStrategy, FixedDelay, LinearIncreasingDelay};
 
 #[test]
 fn fixed_delay_returns_constant() {

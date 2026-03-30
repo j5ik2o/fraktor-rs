@@ -2,10 +2,10 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::marker::PhantomData;
 
 use crate::core::{
-  DynValue, FlowLogic, StreamError, StreamNotUsed, downcast_value,
-  graph::{GraphStage, GraphStageLogic},
+  DynValue, FlowLogic, StreamError, downcast_value,
+  materialization::StreamNotUsed,
   shape::{Inlet, Outlet, StreamShape},
-  stage::StageContext,
+  stage::{GraphStage, GraphStageLogic, StageContext},
 };
 
 pub(in crate::core) struct MapLogic<In, Out, F> {
