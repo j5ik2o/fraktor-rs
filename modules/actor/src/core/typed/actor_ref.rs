@@ -8,6 +8,7 @@ use crate::core::{
   kernel::{
     actor::{
       Pid,
+      actor_path::ActorPath,
       actor_ref::{ActorRef, AskReplySender},
       messaging::{AnyMessage, AskError, AskResponse, AskResult},
     },
@@ -15,6 +16,9 @@ use crate::core::{
   },
   typed::dsl::{StatusReply, TypedAskResponse},
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Provides a typed facade over [`ActorRef`].
 pub struct TypedActorRef<M>
@@ -126,6 +130,38 @@ where
   /// Maps this reference to a different message type without runtime cost.
   #[must_use]
   pub fn map<N>(self) -> TypedActorRef<N>
+  where
+    N: Send + Sync + 'static, {
+    TypedActorRef::from_untyped(self.inner)
+  }
+
+  /// Returns the logical path of the actor if the system is still available.
+  ///
+  /// Corresponds to Pekko's `ActorRef.path`.
+  #[must_use]
+  pub fn path(&self) -> Option<ActorPath> {
+    self.inner.path()
+  }
+
+  /// Narrows this reference to accept a subtype of messages.
+  ///
+  /// In Rust this is a type-level cast via `PhantomData` since Rust lacks
+  /// subtyping on user types. Corresponds to Pekko's `ActorRef.narrow`.
+  #[must_use]
+  pub fn narrow<N>(self) -> TypedActorRef<N>
+  where
+    N: Send + Sync + 'static, {
+    TypedActorRef::from_untyped(self.inner)
+  }
+
+  /// Widens this reference to a supertype.
+  ///
+  /// # Safety (logical)
+  ///
+  /// The caller must ensure that the target actor can handle all messages
+  /// of type `N`. Corresponds to Pekko's `ActorRef.unsafeUpcast`.
+  #[must_use]
+  pub fn unsafe_upcast<N>(self) -> TypedActorRef<N>
   where
     N: Send + Sync + 'static, {
     TypedActorRef::from_untyped(self.inner)

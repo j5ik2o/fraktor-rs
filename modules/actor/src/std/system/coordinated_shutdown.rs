@@ -16,12 +16,12 @@ use core::{
 };
 use std::collections::{HashMap, HashSet};
 
-use fraktor_utils_rs::core::sync::RuntimeMutex;
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::coordinated_shutdown_error::CoordinatedShutdownError;
+use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
 use crate::core::kernel::{
   actor::extension::Extension,
-  system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
+  system::{ActorSystem, CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };
 
 #[cfg(all(test, feature = "tokio-executor"))]
@@ -86,6 +86,17 @@ impl CoordinatedShutdown {
   pub const PHASE_SERVICE_STOP: &'static str = "service-stop";
   /// Phase to stop accepting new incoming requests.
   pub const PHASE_SERVICE_UNBIND: &'static str = "service-unbind";
+
+  /// Returns the coordinated shutdown extension from the actor system.
+  ///
+  /// This is the primary entry point corresponding to Pekko's
+  /// `CoordinatedShutdown.get(system)`.
+  ///
+  /// Returns `None` if the extension has not been registered.
+  #[must_use]
+  pub fn get(system: &ActorSystem) -> Option<ArcShared<CoordinatedShutdown>> {
+    system.extended().extension(&CoordinatedShutdownId)
+  }
 
   /// Creates a new coordinated shutdown with the default phase graph.
   ///

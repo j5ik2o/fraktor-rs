@@ -1,5 +1,8 @@
 //! Handle returned when scheduling jobs.
 
+#[cfg(test)]
+mod tests;
+
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::cancellable::CancellableEntry;
@@ -34,6 +37,19 @@ impl SchedulerHandle {
   #[must_use]
   pub fn is_completed(&self) -> bool {
     self.entry.is_completed()
+  }
+
+  /// Attempts to cancel the scheduled job.
+  ///
+  /// Returns `true` if cancellation succeeded, `false` if the job was
+  /// already cancelled or completed. Corresponds to Pekko's `Cancellable.cancel`.
+  ///
+  /// Note: this marks the entry as cancelled but does not remove it from the
+  /// scheduler's job queue. The scheduler will skip cancelled entries on the
+  /// next tick.
+  #[must_use]
+  pub fn cancel(&self) -> bool {
+    self.entry.try_cancel()
   }
 
   pub(crate) fn entry(&self) -> ArcShared<CancellableEntry> {

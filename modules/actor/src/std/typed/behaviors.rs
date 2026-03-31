@@ -252,6 +252,41 @@ impl Behaviors {
       behavior,
     )
   }
+
+  /// Creates a behavior that handles messages without changing state.
+  ///
+  /// Delegates to [`CoreBehaviors::receive_message_with_same`].
+  #[must_use]
+  pub fn receive_message_with_same<M, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut CoreTypedActorContext<'a, M>, &M) + Send + Sync + 'static, {
+    CoreBehaviors::receive_message_with_same(handler)
+  }
+
+  /// Returns a behavior that stops the actor after running a cleanup callback.
+  ///
+  /// Delegates to [`CoreBehaviors::stopped_with_post_stop`].
+  #[must_use]
+  pub fn stopped_with_post_stop<M, F>(post_stop: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn() + Send + Sync + 'static, {
+    CoreBehaviors::stopped_with_post_stop(post_stop)
+  }
+
+  /// Wraps a behavior with per-message MDC entries only.
+  ///
+  /// This is a convenience shorthand for [`with_mdc`](Self::with_mdc)
+  /// without static MDC entries. Corresponds to Pekko's
+  /// `Behaviors.withMdc(mdcForMessage)(behavior)`.
+  #[must_use]
+  pub fn with_message_mdc<M, F>(mdc_for_message: F, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn(&M) -> BTreeMap<String, String> + Send + Sync + 'static, {
+    Self::with_mdc(BTreeMap::new(), mdc_for_message, behavior)
+  }
 }
 
 fn log_received_message<M>(options: &LogOptions, pid: crate::core::kernel::actor::Pid, message: &M)

@@ -6,6 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
+use super::service_key::ServiceKey;
 use crate::core::{kernel::actor::error::ActorError, typed::TypedActorRef};
 
 /// A snapshot of actor references registered under a service key.
@@ -63,5 +64,31 @@ impl Listing {
   #[must_use]
   pub const fn is_empty(&self) -> bool {
     self.refs.is_empty()
+  }
+
+  /// Returns whether this listing was produced for the given service key.
+  ///
+  /// Corresponds to Pekko's `Listing.isForKey`.
+  #[must_use]
+  pub fn is_for_key<M>(&self, key: &ServiceKey<M>) -> bool
+  where
+    M: Send + Sync + 'static, {
+    self.service_id == key.id() && self.type_id == key.type_id()
+  }
+
+  /// Returns typed actor references for the given service key.
+  ///
+  /// Corresponds to Pekko's `Listing.serviceInstances`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the key does not match this listing.
+  pub fn service_instances<M>(&self, key: &ServiceKey<M>) -> Result<Vec<TypedActorRef<M>>, ActorError>
+  where
+    M: Send + Sync + 'static, {
+    if !self.is_for_key(key) {
+      return Err(ActorError::recoverable("listing key mismatch"));
+    }
+    self.typed_refs::<M>()
   }
 }

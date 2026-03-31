@@ -223,3 +223,42 @@ fn error_display() {
   let err = CoordinatedShutdownError::CyclicDependency("a".to_string());
   assert!(err.to_string().contains("cycle detected"));
 }
+
+// --- Phase 1 タスク8: CoordinatedShutdown::get extension-style entrypoint ---
+
+/// `get` returns `None` when the extension has not been registered.
+#[test]
+fn get_returns_none_when_extension_not_registered() {
+  use crate::core::kernel::system::ActorSystem;
+
+  let system = ActorSystem::new_empty();
+  let result = CoordinatedShutdown::get(&system);
+  assert!(result.is_none(), "should return None when extension is not registered");
+}
+
+/// `get` returns `Some` after the extension has been registered via `ExtendedActorSystem`.
+#[test]
+fn get_returns_some_after_extension_registered() {
+  use crate::{core::kernel::system::ActorSystem, std::system::CoordinatedShutdownId};
+
+  let system = ActorSystem::new_empty();
+  let extended = system.extended();
+  extended.register_extension(&CoordinatedShutdownId).expect("should register");
+
+  let result = CoordinatedShutdown::get(&system);
+  assert!(result.is_some(), "should return Some after extension is registered");
+}
+
+/// `get` returns a functional `CoordinatedShutdown` instance that supports adding tasks.
+#[test]
+fn get_returns_functional_instance() {
+  use crate::{core::kernel::system::ActorSystem, std::system::CoordinatedShutdownId};
+
+  let system = ActorSystem::new_empty();
+  let extended = system.extended();
+  extended.register_extension(&CoordinatedShutdownId).expect("should register");
+
+  let cs = CoordinatedShutdown::get(&system).expect("extension should be available");
+  let result = cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "test-task", || async {});
+  assert!(result.is_ok(), "should be able to add tasks to the retrieved instance");
+}
