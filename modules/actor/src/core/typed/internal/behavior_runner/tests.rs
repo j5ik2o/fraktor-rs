@@ -293,7 +293,10 @@ fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_ha
   // Simulate the post_stop lifecycle callback.
   runner.post_stop(&mut typed_ctx).expect("post_stop");
 
-  assert!(called.load(Ordering::SeqCst), "post_stop callback must run after stopped_with_post_stop is returned from message handler");
+  assert!(
+    called.load(Ordering::SeqCst),
+    "post_stop callback must run after stopped_with_post_stop is returned from message handler"
+  );
 }
 
 #[test]
