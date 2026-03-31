@@ -4,18 +4,21 @@ use alloc::string::String;
 use core::time::Duration;
 
 #[cfg(feature = "alloc")]
-#[cfg(feature = "alloc")]
 use super::EventStreamEvent;
 #[cfg(feature = "alloc")]
-use crate::core::{
-  kernel::actor::Pid,
-  kernel::actor::actor_ref::dead_letter::DeadLetterEntry,
-  kernel::actor::lifecycle::{LifecycleEvent, LifecycleStage},
-  kernel::actor::messaging::AnyMessage,
-  kernel::dispatch::mailbox::metrics_event::MailboxMetricsEvent,
-  kernel::event::logging::{LogEvent, LogLevel},
-  kernel::event::stream::{AdapterFailureEvent, TypedUnhandledMessageEvent},
-  kernel::serialization::{SerializationErrorEvent, SerializerId},
+use crate::core::kernel::{
+  actor::{
+    Pid,
+    actor_ref::dead_letter::DeadLetterEntry,
+    lifecycle::{LifecycleEvent, LifecycleStage},
+    messaging::AnyMessage,
+  },
+  dispatch::mailbox::metrics_event::MailboxMetricsEvent,
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::{AdapterFailureEvent, TypedUnhandledMessageEvent},
+  },
+  serialization::{SerializationErrorEvent, SerializerId},
 };
 
 #[cfg(feature = "alloc")]
