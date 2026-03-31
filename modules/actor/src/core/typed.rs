@@ -24,6 +24,8 @@ pub mod dsl;
 pub mod eventstream;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
 mod extension_setup;
+/// Logging options for typed behavior helpers.
+mod log_options;
 /// Internal implementation types (BehaviorRunner, TypedActorAdapter, scheduler internals).
 pub(crate) mod internal;
 /// Mailbox selection strategy for typed props.
@@ -48,6 +50,7 @@ pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use dispatcher_selector::DispatcherSelector;
 pub use extension_setup::ExtensionSetup;
+pub use log_options::LogOptions;
 pub use mailbox_selector::MailboxSelector;
 pub use props::TypedProps;
 pub use recipient_ref::RecipientRef;

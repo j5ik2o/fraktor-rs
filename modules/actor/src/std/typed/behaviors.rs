@@ -7,17 +7,14 @@ use alloc::{boxed::Box, collections::BTreeMap, string::String};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::{
-  core::{
-    kernel::actor::error::ActorError,
-    typed::{
-      Behavior, BehaviorInterceptor,
-      message_and_signals::BehaviorSignal,
-      actor::TypedActorContext as CoreTypedActorContext,
-      dsl::{Behaviors as CoreBehaviors, StashBuffer, Supervise},
-    },
+use crate::core::{
+  kernel::{actor::error::ActorError, event::logging::LogLevel},
+  typed::{
+    Behavior, BehaviorInterceptor, LogOptions,
+    message_and_signals::BehaviorSignal,
+    actor::TypedActorContext as CoreTypedActorContext,
+    dsl::{Behaviors as CoreBehaviors, StashBuffer, Supervise},
   },
-  std::typed::LogOptions,
 };
 
 /// Interceptor that logs every received message through `tracing`.
@@ -266,18 +263,18 @@ where
 
   match options.logger_name() {
     | Some(logger_name) => match options.level() {
-      | tracing::Level::TRACE => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
-      | tracing::Level::DEBUG => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
-      | tracing::Level::INFO => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
-      | tracing::Level::WARN => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
-      | tracing::Level::ERROR => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Trace => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Debug => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Info => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Warn => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Error => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
     },
     | None => match options.level() {
-      | tracing::Level::TRACE => tracing::trace!(actor = %pid, ?message, "received message"),
-      | tracing::Level::DEBUG => tracing::debug!(actor = %pid, ?message, "received message"),
-      | tracing::Level::INFO => tracing::info!(actor = %pid, ?message, "received message"),
-      | tracing::Level::WARN => tracing::warn!(actor = %pid, ?message, "received message"),
-      | tracing::Level::ERROR => tracing::error!(actor = %pid, ?message, "received message"),
+      | LogLevel::Trace => tracing::trace!(actor = %pid, ?message, "received message"),
+      | LogLevel::Debug => tracing::debug!(actor = %pid, ?message, "received message"),
+      | LogLevel::Info => tracing::info!(actor = %pid, ?message, "received message"),
+      | LogLevel::Warn => tracing::warn!(actor = %pid, ?message, "received message"),
+      | LogLevel::Error => tracing::error!(actor = %pid, ?message, "received message"),
     },
   }
 }

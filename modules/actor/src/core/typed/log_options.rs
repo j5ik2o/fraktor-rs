@@ -1,15 +1,17 @@
-//! Logging options for std typed behavior helpers.
+//! Logging options for typed behavior helpers.
 
 #[cfg(test)]
 mod tests;
 
 use alloc::string::String;
 
+use crate::core::kernel::event::logging::LogLevel;
+
 /// Logging options used by `Behaviors::log_messages_with_opts`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LogOptions {
   enabled:     bool,
-  level:       tracing::Level,
+  level:       LogLevel,
   logger_name: Option<String>,
 }
 
@@ -29,7 +31,7 @@ impl LogOptions {
 
   /// Replaces the configured log level.
   #[must_use]
-  pub const fn with_level(mut self, level: tracing::Level) -> Self {
+  pub const fn with_level(mut self, level: LogLevel) -> Self {
     self.level = level;
     self
   }
@@ -49,7 +51,7 @@ impl LogOptions {
 
   /// Returns the configured log level.
   #[must_use]
-  pub const fn level(&self) -> tracing::Level {
+  pub const fn level(&self) -> LogLevel {
     self.level
   }
 
@@ -62,6 +64,6 @@ impl LogOptions {
 
 impl Default for LogOptions {
   fn default() -> Self {
-    Self { enabled: true, level: tracing::Level::DEBUG, logger_name: None }
+    Self { enabled: true, level: LogLevel::Debug, logger_name: None }
   }
 }

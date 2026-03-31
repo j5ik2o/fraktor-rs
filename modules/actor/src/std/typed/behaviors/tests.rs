@@ -17,7 +17,7 @@ use crate::{
     kernel::{actor::ActorContext, system::ActorSystem},
     typed::{actor::TypedActorContext, dsl::Behaviors as CoreBehaviors, message_and_signals::BehaviorSignal},
   },
-  std::typed::{Behaviors, LogOptions},
+  std::typed::Behaviors, core::typed::LogOptions, core::kernel::event::logging::LogLevel,
 };
 
 /// Ensures that tracing's global callsite interest cache does not permanently
@@ -86,7 +86,7 @@ fn log_messages_with_opts_delegates_to_inner_behavior() {
   let inner_received_clone = inner_received.clone();
 
   let options =
-    LogOptions::default().with_enabled(false).with_level(tracing::Level::INFO).with_logger_name("typed.test");
+    LogOptions::default().with_enabled(false).with_level(LogLevel::Info).with_logger_name("typed.test");
   let mut behavior = Behaviors::log_messages_with_opts(
     options,
     CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
@@ -138,7 +138,7 @@ fn log_messages_with_opts_records_level_and_logger_name() {
   let shared = collector.clone();
 
   with_default(shared, || {
-    let options = LogOptions::new().with_level(tracing::Level::INFO).with_logger_name("typed.behaviors.test");
+    let options = LogOptions::new().with_level(LogLevel::Info).with_logger_name("typed.behaviors.test");
     let mut behavior = Behaviors::log_messages_with_opts(
       options,
       CoreBehaviors::receive_message(|_ctx, _msg: &u32| Ok(CoreBehaviors::same())),
