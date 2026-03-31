@@ -423,7 +423,7 @@ fn with_message_mdc_delegates_to_inner_behavior() {
       mdc
     },
     CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
-      inner_received_clone.clone().lock().push(*msg);
+      inner_received_clone.lock().push(*msg);
       Ok(CoreBehaviors::same())
     }),
   );
