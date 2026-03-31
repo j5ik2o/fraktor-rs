@@ -32,7 +32,7 @@ members = [
     "modules/remote",
     "modules/cluster",
     "modules/stream",
-    "showcases-std",
+    "showcases/std",
 ]
 
 [workspace.package]
