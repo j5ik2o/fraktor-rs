@@ -18,7 +18,7 @@ use fraktor_actor_rs::{
       error::ActorError,
       supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },
-    typed::{Behavior, BehaviorSignal, TypedActorSystem, TypedProps},
+    typed::{Behavior, TypedActorSystem, TypedProps, message_and_signals::BehaviorSignal},
   },
   std::typed::Behaviors,
 };

@@ -15,7 +15,7 @@ use tracing::{
 use crate::{
   core::{
     kernel::{actor::ActorContext, system::ActorSystem},
-    typed::{BehaviorSignal, actor::TypedActorContext, dsl::Behaviors as CoreBehaviors},
+    typed::{actor::TypedActorContext, dsl::Behaviors as CoreBehaviors, message_and_signals::BehaviorSignal},
   },
   std::typed::{Behaviors, LogOptions},
 };
