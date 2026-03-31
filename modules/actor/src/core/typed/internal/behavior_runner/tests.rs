@@ -205,6 +205,21 @@ fn behavior_runner_dispatches_pre_restart_signal() {
 }
 
 #[test]
+fn behavior_runner_pre_start_does_not_mark_stopping_when_stop_self_fails() {
+  let mut runner = BehaviorRunner::new(Behaviors::stopped::<ProbeMessage>());
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  let first = runner.pre_start(&mut typed_ctx);
+  assert!(first.is_err());
+  assert!(!runner.stopping, "stop_self 失敗時に stopping を保持してはならない");
+
+  let second = runner.pre_start(&mut typed_ctx);
+  assert!(second.is_err());
+  assert!(!runner.stopping, "再試行可能性を維持するため stopping は false のままであるべき");
+}
+
+#[test]
 fn behavior_runner_dispatches_child_failed_signal() {
   let received = Arc::new(AtomicBool::new(false));
   let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::ChildFailed { .. }), received.clone());
@@ -261,6 +276,44 @@ fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   let error = result.unwrap_err();
   assert!(error.is_source_type::<DeathPactError>(), "handler が Unhandled を返した場合も DeathPactError になるべき");
   assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
+}
+
+/// Regression: `stopped_with_post_stop` returned from a message handler must
+/// still invoke the callback when `post_stop` dispatches `BehaviorSignal::Stopped`.
+///
+/// Previously `apply_transition` unconditionally replaced `self.current` with
+/// a plain `Behavior::stopped()` (no signal handler), silently discarding the
+/// callback before `post_stop` could run it.
+#[test]
+fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_handler() {
+  let called = Arc::new(AtomicBool::new(false));
+  let called_for_post_stop = called.clone();
+
+  let behavior = Behaviors::receive_message(move |_, _msg: &ProbeMessage| {
+    let cb_ref = called_for_post_stop.clone();
+    Ok(Behaviors::stopped_with_post_stop(move || {
+      cb_ref.store(true, Ordering::SeqCst);
+    }))
+  });
+
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let mut runner = BehaviorRunner::new(behavior);
+
+  // stopped_with_post_stop への遷移を模倣するメッセージ配信。
+  // 最小テスト環境（アクターセル未登録）では stop_self() が失敗する場合があるが、
+  // post_stop がハンドラを呼び出せるようシグナルハンドラは必ず保持されなければならない。
+  if let Err(_stop_err) = runner.receive(&mut typed_ctx, &ProbeMessage) {
+    // stop_self の失敗のみ許容。シグナルハンドラは保持されているはず。
+  }
+
+  // post_stop ライフサイクルコールバックを模倣する。
+  runner.post_stop(&mut typed_ctx).expect("post_stop");
+
+  assert!(
+    called.load(Ordering::SeqCst),
+    "post_stop callback must run after stopped_with_post_stop is returned from message handler"
+  );
 }
 
 #[test]

@@ -1,6 +1,6 @@
 extern crate std;
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, vec::Vec};
 use std::sync::{Arc, Mutex, Once};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -406,4 +406,66 @@ impl Subscriber for SpanRecordingSubscriber {
   fn enter(&self, _: &Id) {}
 
   fn exit(&self, _: &Id) {}
+}
+
+// --- Phase 1 タスク7: with_message_mdc ---
+
+/// `with_message_mdc` delegates messages to the inner behavior.
+#[test]
+fn with_message_mdc_delegates_to_inner_behavior() {
+  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received_clone = inner_received.clone();
+
+  let mut behavior = Behaviors::with_message_mdc(
+    |msg: &u32| {
+      let mut mdc = BTreeMap::new();
+      mdc.insert("value".into(), alloc::format!("{msg}"));
+      mdc
+    },
+    CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
+      inner_received_clone.lock().push(*msg);
+      Ok(CoreBehaviors::same())
+    }),
+  );
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  inner.handle_message(&mut typed_ctx, &88_u32).expect("message");
+
+  assert_eq!(inner_received.lock().as_slice(), &[88]);
+}
+
+/// `with_message_mdc` creates a tracing span named `actor_mdc` when a message is processed.
+#[test]
+fn with_message_mdc_creates_actor_mdc_span() {
+  ensure_tracing_interest_cache_permissive();
+  let collector = SpanRecordingSubscriber::default();
+  let shared = collector.clone();
+
+  with_default(shared, || {
+    let mut behavior = Behaviors::with_message_mdc(
+      |msg: &u32| {
+        let mut mdc = BTreeMap::new();
+        mdc.insert("msg_id".into(), alloc::format!("{msg}"));
+        mdc
+      },
+      CoreBehaviors::receive_message(|_ctx, _msg: &u32| Ok(CoreBehaviors::same())),
+    );
+
+    let system = ActorSystem::new_empty();
+    let pid = system.allocate_pid();
+    let mut context = ActorContext::new(&system, pid);
+    let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
+
+    let spans = collector.spans();
+    assert!(!spans.is_empty(), "at least one span should be created");
+    assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
+  });
 }

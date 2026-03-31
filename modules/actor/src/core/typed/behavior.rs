@@ -197,7 +197,10 @@ where
   ) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
-      | BehaviorDirective::Stopped => Ok(Self::stopped()),
+      | BehaviorDirective::Stopped => match &mut self.signal_handler {
+        | Some(handler) => handler(ctx, signal),
+        | None => Ok(Self::stopped()),
+      },
       | BehaviorDirective::Ignore => Ok(Self::same()),
       | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
       | BehaviorDirective::Empty => Ok(Self::same()),

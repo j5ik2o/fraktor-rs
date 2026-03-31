@@ -345,6 +345,39 @@ impl Behaviors {
     let monitor = monitor_ref;
     Self::intercept(move || Box::new(MonitorInterceptor { monitor_ref: monitor.clone() }), behavior_factory)
   }
+
+  /// Creates a behavior that handles messages without changing state.
+  ///
+  /// The handler processes the message but always keeps the current behavior.
+  /// This is a convenience wrapper around [`receive_message`](Self::receive_message)
+  /// for stateless message processing. Corresponds to Pekko's
+  /// `Behaviors.receiveMessageWithSame`.
+  pub fn receive_message_with_same<M, F>(handler: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) + Send + Sync + 'static, {
+    Behavior::from_message_handler(move |ctx, msg| {
+      handler(ctx, msg);
+      Ok(Behavior::same())
+    })
+  }
+
+  /// Returns a behavior that stops the actor after running a cleanup callback.
+  ///
+  /// The `post_stop` callback is invoked when the `Stopped` signal is received,
+  /// before the actor terminates. Corresponds to Pekko's `Behaviors.stopped(postStop)`.
+  pub fn stopped_with_post_stop<M, F>(post_stop: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn() + Send + Sync + 'static, {
+    Behavior::stopped().receive_signal(move |_ctx, signal| match signal {
+      | BehaviorSignal::Stopped => {
+        post_stop();
+        Ok(Behavior::stopped())
+      },
+      | _ => Ok(Behavior::same()),
+    })
+  }
 }
 
 fn intercept_inner<M, I, F>(interceptor_factory: I, behavior_factory: F) -> Behavior<M>

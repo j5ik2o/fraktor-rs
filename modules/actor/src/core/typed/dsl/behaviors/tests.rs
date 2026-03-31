@@ -394,3 +394,141 @@ fn monitor_passes_message_to_inner_behavior() {
   assert_eq!(captured.len(), 1, "inner behavior should have received the message");
   assert_eq!(captured[0], 99);
 }
+
+// --- Phase 1 タスク1: receive_message_with_same ---
+
+/// `receive_message_with_same` invokes the handler and returns `Same` directive.
+#[test]
+fn receive_message_with_same_invokes_handler_and_returns_same() {
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received_clone = received.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message_with_same(move |_ctx, message: &u32| {
+    received_clone.lock().push(*message);
+  });
+
+  let result = behavior.handle_message(&mut typed_ctx, &42u32).expect("should handle message");
+  assert!(
+    matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same),
+    "should return Same directive"
+  );
+  assert_eq!(received.lock().as_slice(), &[42], "handler should have received the message");
+}
+
+/// `receive_message_with_same` handles multiple messages with the same behavior.
+#[test]
+fn receive_message_with_same_handles_multiple_messages() {
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received_clone = received.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message_with_same(move |_ctx, message: &u32| {
+    received_clone.lock().push(*message);
+  });
+
+  behavior.handle_message(&mut typed_ctx, &1u32).expect("first message");
+  behavior.handle_message(&mut typed_ctx, &2u32).expect("second message");
+  behavior.handle_message(&mut typed_ctx, &3u32).expect("third message");
+
+  assert_eq!(received.lock().as_slice(), &[1, 2, 3]);
+}
+
+/// `receive_message_with_same` provides context access to the handler.
+#[test]
+fn receive_message_with_same_provides_context() {
+  let captured_pid = ArcShared::new(NoStdMutex::new(0u64));
+  let captured_pid_clone = captured_pid.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::receive_message_with_same(move |ctx, _message: &u32| {
+    *captured_pid_clone.lock() = ctx.pid().value();
+  });
+
+  behavior.handle_message(&mut typed_ctx, &1u32).expect("should handle");
+  assert_eq!(*captured_pid.lock(), typed_ctx.pid().value());
+}
+
+// --- Phase 1 タスク2: stopped_with_post_stop ---
+
+/// `stopped_with_post_stop` has `Stopped` directive so the runner stops the actor immediately.
+#[test]
+fn stopped_with_post_stop_has_stopped_directive() {
+  let behavior = Behaviors::stopped_with_post_stop::<u32, _>(|| {});
+  assert!(
+    matches!(behavior.directive(), crate::core::typed::behavior::BehaviorDirective::Stopped),
+    "stopped_with_post_stop must have Stopped directive so the behavior runner stops the actor"
+  );
+}
+
+/// `stopped_with_post_stop` executes the callback when `Stopped` signal is received.
+#[test]
+fn stopped_with_post_stop_executes_callback_on_stopped_signal() {
+  let called = ArcShared::new(NoStdMutex::new(false));
+  let called_clone = called.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(move || {
+    *called_clone.lock() = true;
+  });
+
+  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("should handle Stopped signal");
+
+  assert!(*called.lock(), "post_stop callback should have been invoked");
+}
+
+/// `stopped_with_post_stop` returns `Stopped` directive after callback execution.
+#[test]
+fn stopped_with_post_stop_returns_stopped_directive() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(|| {});
+
+  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("should handle");
+  assert!(
+    matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Stopped),
+    "should return Stopped directive"
+  );
+}
+
+/// `stopped_with_post_stop` does not invoke callback for non-Stopped signals.
+#[test]
+fn stopped_with_post_stop_ignores_non_stopped_signals() {
+  let called = ArcShared::new(NoStdMutex::new(false));
+  let called_clone = called.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(move || {
+    *called_clone.lock() = true;
+  });
+
+  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("should handle Started");
+  assert!(
+    matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same),
+    "non-Stopped signals should return Same"
+  );
+  assert!(!*called.lock(), "callback should not be invoked for Started signal");
+}

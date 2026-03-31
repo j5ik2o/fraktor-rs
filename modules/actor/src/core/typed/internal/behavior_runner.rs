@@ -83,10 +83,15 @@ where
       },
       | BehaviorDirective::Stopped => {
         if !self.stopping {
+          // stop_self 呼び出し前に next を保存してシグナルハンドラを保持する。
+          // stop_self が失敗した場合は stopping を立てず、次回の呼び出しで再試行できるようにする。
+          self.current = next;
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
           self.stopping = true;
+        } else if next.has_signal_handler() {
+          // 既に停止処理中だが、新たにシグナルハンドラが付与された場合は上書きして保持する。
+          self.current = next;
         }
-        self.current = Behavior::stopped();
         Ok(())
       },
       | BehaviorDirective::Active => {
@@ -122,6 +127,10 @@ where
   M: Send + Sync + 'static,
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    if matches!(self.current.directive(), BehaviorDirective::Stopped) && !self.stopping {
+      ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
+      self.stopping = true;
+    }
     self.dispatch_signal(ctx, &BehaviorSignal::Started)?;
     Ok(())
   }
@@ -132,6 +141,9 @@ where
   }
 
   fn post_stop(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    // post_stop に到達した時点で停止は確定しているため、
+    // Stopped シグナル処理中に stop_self を再送しないようにする。
+    self.stopping = true;
     self.dispatch_signal(ctx, &BehaviorSignal::Stopped)?;
     Ok(())
   }
