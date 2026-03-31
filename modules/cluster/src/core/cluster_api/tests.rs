@@ -3,19 +3,19 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
   actor::{
-      Actor, Pid,
-      actor_path::{ActorPath, ActorPathScheme},
-      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-      error::ActorError,
-      extension::ExtensionInstallers,
-      messaging::AnyMessage,
-      props::Props,
-      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
-      scheduler::{
+    Actor, Pid,
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::AnyMessage,
+    props::Props,
+    scheduler::{
       SchedulerConfig, SchedulerShared,
       tick_driver::{ManualTestDriver, TickDriverConfig},
     },
-      setup::ActorSystemConfig,
+    setup::ActorSystemConfig,
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,

@@ -8,6 +8,8 @@ mod actor_context;
 mod actor_lifecycle;
 pub mod actor_path;
 pub mod actor_ref;
+/// Actor reference provider related types.
+pub mod actor_ref_provider;
 pub mod actor_selection;
 mod actor_shared;
 mod address;
@@ -19,8 +21,6 @@ pub mod lifecycle;
 pub mod messaging;
 mod pid;
 pub mod props;
-/// Actor reference provider related types.
-pub mod actor_ref_provider;
 mod receive_state;
 pub mod scheduler;
 pub mod setup;

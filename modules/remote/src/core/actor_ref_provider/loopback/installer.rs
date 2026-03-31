@@ -4,8 +4,8 @@ use alloc::format;
 
 use fraktor_actor_rs::core::kernel::{
   actor::{
-      actor_path::ActorPathScheme,
-      actor_ref_provider::{ActorRefProviderInstaller, ActorRefProviderShared},
+    actor_path::ActorPathScheme,
+    actor_ref_provider::{ActorRefProviderInstaller, ActorRefProviderShared},
   },
   serialization::SerializationExtensionShared,
   system::{ActorSystem, ActorSystemBuildError, remote::RemoteWatchHookShared},

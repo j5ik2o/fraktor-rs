@@ -16,15 +16,15 @@ use super::ActorSystem;
 use crate::core::{
   kernel::{
     actor::{
-        Actor, ActorCell, Pid,
-        actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-        actor_ref::ActorRef,
-        error::ActorError,
-        lifecycle::LifecycleStage,
-        messaging::system_message::SystemMessage,
-        props::{MailboxConfig, MailboxRequirement, Props},
-        actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
-        scheduler::{
+      Actor, ActorCell, Pid,
+      actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+      actor_ref::ActorRef,
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
+      error::ActorError,
+      lifecycle::LifecycleStage,
+      messaging::system_message::SystemMessage,
+      props::{MailboxConfig, MailboxRequirement, Props},
+      scheduler::{
         SchedulerConfig,
         tick_driver::{
           AutoDriverMetadata, AutoProfileKind, ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl,
@@ -32,8 +32,8 @@ use crate::core::{
           TickExecutorSignal, TickFeed,
         },
       },
-        setup::ActorSystemConfig,
-        spawn::SpawnError,
+      setup::ActorSystemConfig,
+      spawn::SpawnError,
     },
     dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},

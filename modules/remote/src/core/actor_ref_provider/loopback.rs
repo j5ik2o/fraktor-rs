@@ -12,12 +12,12 @@ use alloc::{
 use ahash::RandomState;
 use fraktor_actor_rs::core::kernel::{
   actor::{
-      Pid,
-      actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-      actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-      error::{ActorError, SendError},
-      messaging::{AnyMessage, system_message::SystemMessage},
-      actor_ref_provider::ActorRefProvider,
+    Pid,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::ActorRefProvider,
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, system_message::SystemMessage},
   },
   system::{
     ActorSystem, ActorSystemWeak,

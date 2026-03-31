@@ -312,4 +312,3 @@ fn flow_prepend_mat_is_public_and_preserves_existing_data_path_contract() {
 
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32, 4_u32]);
 }
-

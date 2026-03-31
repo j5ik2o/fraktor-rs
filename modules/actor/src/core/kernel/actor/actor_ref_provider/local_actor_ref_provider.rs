@@ -3,8 +3,8 @@
 use crate::core::kernel::actor::{
   actor_path::{ActorPath, ActorPathScheme},
   actor_ref::ActorRef,
-  error::ActorError,
   actor_ref_provider::ActorRefProvider,
+  error::ActorError,
 };
 
 /// Provider for local-only actor systems.
