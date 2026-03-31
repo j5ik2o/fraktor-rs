@@ -126,8 +126,11 @@ where
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     if matches!(self.current.directive(), BehaviorDirective::Stopped) && !self.stopping {
-      ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
+      // Set stopping before the call so repeated pre_start invocations after a
+      // stop_self failure cannot trigger another stop attempt, consistent with
+      // the same defensive pattern in apply_transition.
       self.stopping = true;
+      ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
     }
     self.dispatch_signal(ctx, &BehaviorSignal::Started)?;
     Ok(())
