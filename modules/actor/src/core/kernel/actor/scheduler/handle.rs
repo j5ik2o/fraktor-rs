@@ -41,8 +41,12 @@ impl SchedulerHandle {
 
   /// Attempts to cancel the scheduled job.
   ///
-  /// Returns `true` if cancellation succeeded, `false` if the job was
-  /// already cancelled or completed. Corresponds to Pekko's `Cancellable.cancel`.
+  /// Returns `true` only when the entry is in the `Scheduled` state and the
+  /// cancellation transition succeeds. Returns `false` in all other cases:
+  /// `Pending` (not yet scheduled), `Executing` (already running), or when
+  /// already in a terminal state (`Cancelled` or `Completed`).
+  ///
+  /// Corresponds to Pekko's `Cancellable.cancel`.
   ///
   /// Note: this marks the entry as cancelled but does not remove it from the
   /// scheduler's job queue. The scheduler will skip cancelled entries on the

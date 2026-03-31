@@ -151,7 +151,7 @@ where
   pub fn narrow<N>(self) -> TypedActorRef<N>
   where
     N: Send + Sync + 'static, {
-    TypedActorRef::from_untyped(self.inner)
+    self.map()
   }
 
   /// Widens this reference to a supertype.
@@ -164,7 +164,7 @@ where
   pub fn unsafe_upcast<N>(self) -> TypedActorRef<N>
   where
     N: Send + Sync + 'static, {
-    TypedActorRef::from_untyped(self.inner)
+    self.map()
   }
 }
 
