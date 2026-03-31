@@ -4,7 +4,7 @@ use crate::core::kernel::actor::{
   actor_path::{ActorPath, ActorPathScheme},
   actor_ref::ActorRef,
   error::ActorError,
-  provider::ActorRefProvider,
+  actor_ref_provider::ActorRefProvider,
 };
 
 /// Provider for local-only actor systems.

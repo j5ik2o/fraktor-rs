@@ -10,7 +10,7 @@ use crate::{
       error::SendError,
       messaging::AskResult,
       props::Props,
-      provider::ActorRefResolveError,
+      actor_ref_provider::ActorRefResolveError,
       scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
       setup::ActorSystemConfig,
       spawn::SpawnError,

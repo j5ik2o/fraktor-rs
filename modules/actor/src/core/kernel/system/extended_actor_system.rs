@@ -10,12 +10,12 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    ChildRef,
-    actor_ref::ActorRef,
-    extension::{Extension, ExtensionId},
-    props::{MailboxConfig, Props},
-    provider::{ActorRefProvider, ActorRefProviderShared},
-    spawn::SpawnError,
+      ChildRef,
+      actor_ref::ActorRef,
+      extension::{Extension, ExtensionId},
+      props::{MailboxConfig, Props},
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+      spawn::SpawnError,
   },
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError},

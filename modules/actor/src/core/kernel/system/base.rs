@@ -29,7 +29,7 @@ use crate::core::{
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
-      provider::ActorRefResolveError,
+      actor_ref_provider::ActorRefResolveError,
       scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
       setup::ActorSystemConfig,
       spawn::SpawnError,

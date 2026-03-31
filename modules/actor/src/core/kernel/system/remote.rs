@@ -1,6 +1,6 @@
 //! Remote watch hook and authority related types.
 
-use crate::core::kernel::actor::provider::ActorRefProvider;
+use crate::core::kernel::actor::actor_ref_provider::ActorRefProvider;
 
 mod noop_remote_watch_hook;
 mod remote_authority_error;

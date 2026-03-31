@@ -2,19 +2,19 @@ use alloc::string::String;
 
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    Actor, Pid,
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    messaging::AnyMessage,
-    props::Props,
-    provider::{ActorRefProvider, ActorRefProviderShared},
-    scheduler::{
+      Actor, Pid,
+      actor_path::{ActorPath, ActorPathScheme},
+      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+      error::ActorError,
+      extension::ExtensionInstallers,
+      messaging::AnyMessage,
+      props::Props,
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+      scheduler::{
       SchedulerConfig,
       tick_driver::{ManualTestDriver, TickDriverConfig},
     },
-    setup::ActorSystemConfig,
+      setup::ActorSystemConfig,
   },
   system::ActorSystem,
 };

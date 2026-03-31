@@ -20,7 +20,7 @@ pub mod messaging;
 mod pid;
 pub mod props;
 /// Actor reference provider related types.
-pub mod provider;
+pub mod actor_ref_provider;
 mod receive_state;
 pub mod scheduler;
 pub mod setup;

@@ -7,15 +7,15 @@ use alloc::format;
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    Actor, ActorContext,
-    actor_path::{ActorPath, ActorPathParts, GuardianKind},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
-    provider::ActorRefProvider,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-    setup::ActorSystemConfig,
+      Actor, ActorContext,
+      actor_path::{ActorPath, ActorPathParts, GuardianKind},
+      error::ActorError,
+      extension::ExtensionInstallers,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+      actor_ref_provider::ActorRefProvider,
+      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      setup::ActorSystemConfig,
   },
   serialization::SerializationExtensionInstaller,
   system::{
