@@ -370,7 +370,7 @@ impl Behaviors {
   where
     M: Send + Sync + 'static,
     F: Fn() + Send + Sync + 'static, {
-    Behavior::from_signal_handler(move |_ctx, signal| match signal {
+    Behavior::stopped().receive_signal(move |_ctx, signal| match signal {
       | BehaviorSignal::Stopped => {
         post_stop();
         Ok(Behavior::stopped())

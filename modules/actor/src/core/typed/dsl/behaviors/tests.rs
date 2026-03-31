@@ -463,6 +463,16 @@ fn receive_message_with_same_provides_context() {
 
 // --- Phase 1 タスク2: stopped_with_post_stop ---
 
+/// `stopped_with_post_stop` has `Stopped` directive so the runner stops the actor immediately.
+#[test]
+fn stopped_with_post_stop_has_stopped_directive() {
+  let behavior = Behaviors::stopped_with_post_stop::<u32, _>(|| {});
+  assert!(
+    matches!(behavior.directive(), crate::core::typed::behavior::BehaviorDirective::Stopped),
+    "stopped_with_post_stop must have Stopped directive so the behavior runner stops the actor"
+  );
+}
+
 /// `stopped_with_post_stop` executes the callback when `Stopped` signal is received.
 #[test]
 fn stopped_with_post_stop_executes_callback_on_stopped_signal() {

@@ -122,6 +122,10 @@ where
   M: Send + Sync + 'static,
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
+    if matches!(self.current.directive(), BehaviorDirective::Stopped) && !self.stopping {
+      ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
+      self.stopping = true;
+    }
     self.dispatch_signal(ctx, &BehaviorSignal::Started)?;
     Ok(())
   }
