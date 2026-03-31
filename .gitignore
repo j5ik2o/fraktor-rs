@@ -51,6 +51,10 @@ Cargo.lock
 # AI agent intermediate artifacts (should be in .takt/ only)
 /reports/
 
+# AI agent tool directories (managed by configure.sh / okite-ai)
+/.agent/
+/.agents/
+
 /.claude/settings.local.json
 
 /.codex*/cache/
