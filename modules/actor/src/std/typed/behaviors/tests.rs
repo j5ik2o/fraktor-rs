@@ -1,7 +1,6 @@
 extern crate std;
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use alloc::borrow::ToOwned;
+use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, vec::Vec};
 use std::sync::{Arc, Mutex, Once};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
