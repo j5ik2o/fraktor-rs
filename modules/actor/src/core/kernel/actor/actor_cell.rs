@@ -18,9 +18,9 @@ use portable_atomic::{AtomicBool, Ordering};
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorContext, ActorShared, ContextPipeTaskId, Pid, STASH_OVERFLOW_REASON,
+      Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON,
       actor_ref::{ActorRef, ActorRefSenderShared},
-      context_pipe_task::{ContextPipeFuture, ContextPipeTask},
+      context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::ActorError,
       lifecycle::{LifecycleEvent, LifecycleStage},
       messaging::{

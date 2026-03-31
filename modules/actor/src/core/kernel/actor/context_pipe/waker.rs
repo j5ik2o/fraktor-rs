@@ -8,7 +8,7 @@ use core::{
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::kernel::{
-  actor::{ContextPipeTaskId, Pid, messaging::system_message::SystemMessage},
+  actor::{Pid, context_pipe::ContextPipeTaskId, messaging::system_message::SystemMessage},
   system::state::SystemStateShared,
 };
 

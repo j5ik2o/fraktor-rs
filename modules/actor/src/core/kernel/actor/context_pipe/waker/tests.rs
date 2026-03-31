@@ -1,5 +1,5 @@
 use crate::core::kernel::{
-  actor::{ContextPipeTaskId, context_pipe_waker::ContextPipeWaker},
+  actor::context_pipe::{ContextPipeTaskId, ContextPipeWaker},
   system::state::{SystemStateShared, system_state::SystemState},
 };
 

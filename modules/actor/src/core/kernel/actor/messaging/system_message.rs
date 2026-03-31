@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::actor::{ContextPipeTaskId, Pid, messaging::AnyMessage};
+use crate::core::kernel::actor::{Pid, context_pipe::ContextPipeTaskId, messaging::AnyMessage};
 
 mod failure_classification;
 mod failure_message_snapshot;
