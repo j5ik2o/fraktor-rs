@@ -285,12 +285,14 @@ fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_ha
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
   let mut runner = BehaviorRunner::new(behavior);
 
-  // Simulate message delivery that transitions to stopped_with_post_stop.
-  // stop_self() may fail in the minimal test context (no registered actor cell),
-  // but the signal_handler must be preserved regardless so post_stop can invoke it.
-  let _ = runner.receive(&mut typed_ctx, &ProbeMessage);
+  // stopped_with_post_stop への遷移を模倣するメッセージ配信。
+  // 最小テスト環境（アクターセル未登録）では stop_self() が失敗する場合があるが、
+  // post_stop がハンドラを呼び出せるようシグナルハンドラは必ず保持されなければならない。
+  if let Err(_stop_err) = runner.receive(&mut typed_ctx, &ProbeMessage) {
+    // stop_self の失敗のみ許容。シグナルハンドラは保持されているはず。
+  }
 
-  // Simulate the post_stop lifecycle callback.
+  // post_stop ライフサイクルコールバックを模倣する。
   runner.post_stop(&mut typed_ctx).expect("post_stop");
 
   assert!(

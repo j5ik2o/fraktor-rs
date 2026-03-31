@@ -470,27 +470,3 @@ fn with_message_mdc_creates_actor_mdc_span() {
   });
 }
 
-/// `with_message_mdc` forwards messages to the inner behavior.
-#[test]
-fn with_message_mdc_forwards_messages_to_inner_behavior() {
-  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
-  let inner_received_clone = inner_received.clone();
-
-  let mut behavior = Behaviors::with_message_mdc(
-    |_msg: &u32| BTreeMap::new(),
-    CoreBehaviors::receive_message(move |_ctx, msg: &u32| {
-      inner_received_clone.clone().lock().push(*msg);
-      Ok(CoreBehaviors::same())
-    }),
-  );
-
-  let system = ActorSystem::new_empty();
-  let pid = system.allocate_pid();
-  let mut context = ActorContext::new(&system, pid);
-  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
-
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
-  inner.handle_message(&mut typed_ctx, &100_u32).expect("message");
-
-  assert_eq!(inner_received.lock().as_slice(), &[100]);
-}

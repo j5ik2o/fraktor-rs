@@ -83,13 +83,15 @@ where
       },
       | BehaviorDirective::Stopped => {
         if !self.stopping {
-          // Preserve `next` (and any attached signal_handler) before calling stop_self so
-          // the handler remains reachable even when stop_self returns an error.
+          // stop_self 呼び出し前に next（シグナルハンドラを含む）を保存しておく。
+          // stop_self がエラーを返した場合でも post_stop でハンドラを呼び出せるようにするため。
           self.stopping = true;
           self.current = next;
           ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
+        } else if next.has_signal_handler() {
+          // 既に停止処理中だが、新たにシグナルハンドラが付与された場合は上書きして保持する。
+          self.current = next;
         }
-        // If already stopping, leave self.current intact to preserve the signal_handler.
         Ok(())
       },
       | BehaviorDirective::Active => {
@@ -126,9 +128,9 @@ where
 {
   fn pre_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     if matches!(self.current.directive(), BehaviorDirective::Stopped) && !self.stopping {
-      // Set stopping before the call so repeated pre_start invocations after a
-      // stop_self failure cannot trigger another stop attempt, consistent with
-      // the same defensive pattern in apply_transition.
+      // stop_self 呼び出し前に stopping を立てる。
+      // stop_self が失敗した後に再度 pre_start が呼ばれても二重 stop を防ぐためであり、
+      // apply_transition と同じ防御的パターンに揃えている。
       self.stopping = true;
       ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
     }

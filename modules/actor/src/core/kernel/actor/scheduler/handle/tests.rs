@@ -1,6 +1,6 @@
 use super::SchedulerHandle;
 
-// --- Phase 1 タスク6: cancel method on SchedulerHandle ---
+// --- フェーズ1 タスク6: SchedulerHandle の cancel メソッド ---
 
 /// A new handle starts in non-cancelled, non-completed state.
 #[test]
