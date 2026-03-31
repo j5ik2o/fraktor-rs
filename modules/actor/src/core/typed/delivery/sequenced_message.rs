@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 
 use super::ProducerControllerCommand;
-use crate::core::typed::{actor::TypedActorRef, delivery::SeqNr};
+use crate::core::typed::{TypedActorRef, delivery::SeqNr};
 
 /// A message with a sequence number, sent from `ProducerController` to
 /// `ConsumerController`.

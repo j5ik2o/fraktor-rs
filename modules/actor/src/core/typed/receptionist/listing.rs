@@ -6,7 +6,7 @@ mod tests;
 use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
-use crate::core::{kernel::error::ActorError, typed::actor::TypedActorRef};
+use crate::core::{kernel::actor::error::ActorError, typed::TypedActorRef};
 
 /// A snapshot of actor references registered under a service key.
 #[derive(Clone, Debug)]

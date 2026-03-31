@@ -1,0 +1,241 @@
+//! Builder for configuring and constructing balancing pool routers.
+//!
+//! Implements Pekko's BalancingPool semantics using a shared work queue
+//! and BehaviorInterceptor-based work-pull pattern, without modifying
+//! the core/dispatch layer.
+
+#[cfg(test)]
+mod tests;
+
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
+
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+
+use crate::core::{
+  kernel::{actor::error::ActorError, event::logging::LogLevel},
+  typed::{
+    TypedActorRef,
+    behavior::{Behavior, BehaviorDirective},
+    behavior_interceptor::BehaviorInterceptor,
+    behavior_signal::BehaviorSignal,
+    dsl::Behaviors,
+    props::TypedProps,
+  },
+};
+
+/// Shared work queue that the router enqueues messages into and idle
+/// routees pull from.
+///
+/// Invariant: `!idle_workers.is_empty()` implies `pending.is_empty()`.
+struct SharedWorkQueue<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  pending:      VecDeque<M>,
+  idle_workers: Vec<TypedActorRef<M>>,
+}
+
+impl<M> SharedWorkQueue<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  const fn new() -> Self {
+    Self { pending: VecDeque::new(), idle_workers: Vec::new() }
+  }
+
+  /// Enqueue a message. If an idle worker exists, dispatch immediately.
+  fn enqueue(&mut self, message: M) {
+    if let Some(mut worker) = self.idle_workers.pop() {
+      if worker.try_tell(message.clone()).is_err() {
+        self.pending.push_front(message);
+      }
+    } else {
+      self.pending.push_back(message);
+    }
+  }
+
+  /// Register a worker as idle. If pending work exists, dispatch it.
+  fn register_idle(&mut self, worker: TypedActorRef<M>) {
+    if let Some(msg) = self.pending.pop_front() {
+      let mut w = worker;
+      if w.try_tell(msg.clone()).is_err() {
+        self.pending.push_front(msg);
+      }
+    } else {
+      self.idle_workers.push(worker);
+    }
+  }
+
+  /// Remove a worker from the idle list (e.g. on termination).
+  fn remove_worker(&mut self, pid: &crate::core::kernel::actor::Pid) {
+    if let Some(pos) = self.idle_workers.iter().position(|w| w.pid() == *pid) {
+      self.idle_workers.remove(pos);
+    }
+  }
+}
+
+/// BehaviorInterceptor that implements work-pull for balancing pool routees.
+///
+/// After each message is processed by the inner behavior, the interceptor
+/// checks the shared work queue for pending work and self-dispatches it.
+/// On start, the routee registers itself as idle.
+struct WorkPullInterceptor<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  queue: ArcShared<RuntimeMutex<SharedWorkQueue<M>>>,
+}
+
+impl<M> BehaviorInterceptor<M> for WorkPullInterceptor<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  fn around_start(
+    &mut self,
+    ctx: &mut crate::core::typed::actor::TypedActorContext<'_, M>,
+    start: &mut dyn FnMut(&mut crate::core::typed::actor::TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let result = start(ctx)?;
+    // Only register as idle if the inner behavior did NOT return Stopped.
+    // A routee that returns Stopped on start must not appear in the idle queue.
+    if result.directive() != BehaviorDirective::Stopped {
+      self.queue.lock().register_idle(ctx.self_ref());
+    }
+    Ok(result)
+  }
+
+  fn around_receive(
+    &mut self,
+    ctx: &mut crate::core::typed::actor::TypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(
+      &mut crate::core::typed::actor::TypedActorContext<'_, M>,
+      &M,
+    ) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let result = target(ctx, message)?;
+    // Only re-register as idle if the routee is NOT stopping.
+    // A routee that returned Stopped must not receive further work.
+    if result.directive() != BehaviorDirective::Stopped {
+      self.queue.lock().register_idle(ctx.self_ref());
+    } else {
+      // Remove from idle list in case it was previously registered.
+      self.queue.lock().remove_worker(&ctx.self_ref().pid());
+    }
+    Ok(result)
+  }
+}
+
+/// Configures and builds a balancing pool router behavior.
+///
+/// The resulting behavior spawns `pool_size` child actors that share a
+/// single work queue. Messages sent to the router are enqueued into the
+/// shared queue and dispatched to whichever routee becomes idle first.
+///
+/// This mirrors Pekko's `BalancingPool` semantics where all routees share
+/// a mailbox and work is distributed via "work donating" (idle workers
+/// pull from the shared queue).
+///
+/// Resizer is intentionally not supported, matching Pekko's constraint
+/// (`resizer = None`).
+pub struct BalancingPoolRouterBuilder<M>
+where
+  M: Send + Sync + Clone + 'static, {
+  pool_size:        usize,
+  behavior_factory: ArcShared<dyn Fn() -> Behavior<M> + Send + Sync>,
+}
+
+impl<M> BalancingPoolRouterBuilder<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  /// Creates a new balancing pool router builder.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `pool_size` is zero.
+  pub(crate) fn new<F>(pool_size: usize, behavior_factory: F) -> Self
+  where
+    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    assert!(pool_size > 0, "pool size must be positive");
+    Self { pool_size, behavior_factory: ArcShared::new(behavior_factory) }
+  }
+
+  /// Overrides the pool size.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `pool_size` is zero.
+  #[must_use]
+  pub const fn with_pool_size(mut self, pool_size: usize) -> Self {
+    assert!(pool_size > 0, "pool size must be positive");
+    self.pool_size = pool_size;
+    self
+  }
+
+  /// Builds the balancing pool router as a [`Behavior`].
+  #[must_use]
+  pub fn build(self) -> Behavior<M> {
+    let pool_size = self.pool_size;
+    let behavior_factory = self.behavior_factory;
+
+    Behaviors::setup(move |ctx| {
+      let queue = ArcShared::new(RuntimeMutex::new(SharedWorkQueue::new()));
+
+      let mut routee_pids: Vec<crate::core::kernel::actor::Pid> = Vec::with_capacity(pool_size);
+      for _ in 0..pool_size {
+        let q = queue.clone();
+        let bf = behavior_factory.clone();
+        let props = TypedProps::<M>::from_behavior_factory(move || {
+          let q2 = q.clone();
+          let bf2 = bf.clone();
+          Behaviors::intercept(
+            move || Box::new(WorkPullInterceptor { queue: q2.clone() }),
+            move || {
+              let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf2;
+              factory()
+            },
+          )
+        });
+        match ctx.spawn_child_watched(&props) {
+          | Ok(child) => {
+            routee_pids.push(child.actor_ref().pid());
+          },
+          | Err(e) => {
+            let msg = alloc::format!("balancing pool router failed to spawn child: {:?}", e);
+            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+            break;
+          },
+        }
+      }
+
+      // routee が1体も起動できなかった場合はルーターを停止する
+      if routee_pids.is_empty() {
+        ctx.system().emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()));
+        return Behaviors::stopped();
+      }
+
+      let queue_for_msg = queue.clone();
+      let queue_for_sig = queue;
+      let routee_pids = ArcShared::new(RuntimeMutex::new(routee_pids));
+      let routee_pids_for_sig = routee_pids;
+
+      Behaviors::receive_message(move |_ctx, message: &M| {
+        queue_for_msg.lock().enqueue(message.clone());
+        Ok(Behaviors::same())
+      })
+      .receive_signal(move |_ctx, signal| match signal {
+        | BehaviorSignal::Terminated(pid) => {
+          queue_for_sig.lock().remove_worker(pid);
+          let mut pids = routee_pids_for_sig.lock();
+          if let Some(pos) = pids.iter().position(|p| p == pid) {
+            pids.remove(pos);
+          }
+          if pids.is_empty() {
+            return Ok(Behaviors::stopped());
+          }
+          Ok(Behaviors::same())
+        },
+        | _ => Ok(Behaviors::same()),
+      })
+    })
+  }
+}

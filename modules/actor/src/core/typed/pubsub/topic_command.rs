@@ -6,7 +6,7 @@ mod tests;
 use super::topic_stats::TopicStats;
 use crate::core::{
   kernel::actor::Pid,
-  typed::{actor::TypedActorRef, receptionist::Listing},
+  typed::{TypedActorRef, receptionist::Listing},
 };
 
 /// Commands handled by [`Topic`](crate::core::typed::pubsub::Topic).

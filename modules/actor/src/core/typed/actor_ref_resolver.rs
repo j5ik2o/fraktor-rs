@@ -9,11 +9,10 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{
-    actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
-    extension::Extension,
+    actor::{actor_path::ActorPathParser, actor_ref::ActorRef, extension::Extension},
     system::{ActorSystem, ActorSystemWeak, provider::ActorRefResolveError},
   },
-  typed::{ActorRefResolverId, TypedActorSystem, actor::TypedActorRef},
+  typed::{TypedActorRef, TypedActorSystem, internal::ActorRefResolverId},
 };
 
 /// Resolves typed actor references to and from canonical string representations.

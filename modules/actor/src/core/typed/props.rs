@@ -4,10 +4,13 @@ use alloc::string::String;
 use core::marker::PhantomData;
 
 use crate::core::{
-  kernel::props::Props,
+  kernel::actor::props::Props,
   typed::{
-    actor::TypedActor, behavior::Behavior, behavior_runner::BehaviorRunner, dispatcher_selector::DispatcherSelector,
-    mailbox_selector::MailboxSelector, typed_actor_adapter::TypedActorAdapter,
+    actor::TypedActor,
+    behavior::Behavior,
+    dispatcher_selector::DispatcherSelector,
+    internal::{BehaviorRunner, TypedActorAdapter},
+    mailbox_selector::MailboxSelector,
   },
 };
 
@@ -101,7 +104,7 @@ where
           crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
           None,
         );
-        let config = crate::core::kernel::props::MailboxConfig::new(policy);
+        let config = crate::core::kernel::actor::props::MailboxConfig::new(policy);
         self.map_props(|p| p.with_mailbox_config(config))
       },
       | MailboxSelector::FromConfig(id) => self.map_props(|p| p.with_mailbox_id(id)),

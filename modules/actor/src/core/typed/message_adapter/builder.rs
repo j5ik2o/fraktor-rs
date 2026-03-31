@@ -5,10 +5,7 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use crate::core::typed::{
-  actor::{TypedActorContext, TypedActorRef},
-  message_adapter::AdapterError,
-};
+use crate::core::typed::{TypedActorRef, actor::TypedActorContext, message_adapter::AdapterError};
 
 /// Fluent builder for registering an adapter from external payload `U` to actor message `M`.
 pub struct MessageAdapterBuilder<'ctx, 'a, M, U>

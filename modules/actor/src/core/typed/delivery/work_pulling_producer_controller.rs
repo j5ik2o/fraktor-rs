@@ -14,8 +14,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use crate::core::{
   kernel::{actor::actor_ref::ActorRef, event::logging::LogLevel},
   typed::{
-    Behaviors,
-    actor::TypedActorRef,
+    TypedActorRef,
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, ProducerController, ProducerControllerCommand, ProducerControllerRequestNext,
@@ -23,6 +22,7 @@ use crate::core::{
       WorkPullingProducerControllerSettings, WorkerStats,
       work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
+    dsl::Behaviors,
     receptionist::{Listing, Receptionist, ServiceKey},
   },
 };
@@ -491,8 +491,8 @@ where
   A: Clone + Send + Sync + 'static, {
   pc_ref
     .as_untyped_mut()
-    .try_tell(crate::core::kernel::messaging::AnyMessage::new(
-      crate::core::kernel::messaging::system_message::SystemMessage::PoisonPill,
+    .try_tell(crate::core::kernel::actor::messaging::AnyMessage::new(
+      crate::core::kernel::actor::messaging::system_message::SystemMessage::PoisonPill,
     ))
     .ok();
 }

@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 
 use super::ConsumerControllerConfirmed;
-use crate::core::typed::{actor::TypedActorRef, delivery::SeqNr};
+use crate::core::typed::{TypedActorRef, delivery::SeqNr};
 
 /// A message wrapped with delivery metadata, sent from `ConsumerController`
 /// to the destination consumer actor.

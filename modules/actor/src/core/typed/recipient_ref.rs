@@ -10,11 +10,11 @@ use crate::core::{
     actor::{
       Pid,
       actor_ref::{ActorRef, AskReplySender},
+      messaging::{AnyMessage, AskError, AskResponse, AskResult},
     },
-    futures::ActorFutureShared,
-    messaging::{AnyMessage, AskError, AskResponse, AskResult},
+    util::futures::ActorFutureShared,
   },
-  typed::{TypedAskResponse, actor::TypedActorRef},
+  typed::{TypedActorRef, dsl::TypedAskResponse},
 };
 
 /// Common abstraction over references that can receive typed messages.
