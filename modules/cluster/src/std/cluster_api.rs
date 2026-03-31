@@ -4,9 +4,11 @@ use core::time::Duration;
 
 use fraktor_actor_rs::{
   core::kernel::{
-    actor::actor_ref::ActorRef,
-    futures::ActorFutureShared,
-    messaging::{AnyMessage, AskResponse, AskResult},
+    actor::{
+      actor_ref::ActorRef,
+      messaging::{AnyMessage, AskResponse, AskResult},
+    },
+    util::futures::ActorFutureShared,
   },
   std::system::ActorSystem,
 };

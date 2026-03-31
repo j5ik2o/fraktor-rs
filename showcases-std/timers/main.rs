@@ -14,7 +14,10 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_rs::core::typed::{Behavior, Behaviors, TimerKey, TypedActorSystem, TypedProps};
+use fraktor_actor_rs::core::typed::{
+  Behavior, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, TimerKey},
+};
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::SharedAccess;
 

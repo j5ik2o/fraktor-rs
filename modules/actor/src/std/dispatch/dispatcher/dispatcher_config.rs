@@ -9,6 +9,7 @@ use super::StdScheduleAdapter;
 #[cfg(feature = "tokio-executor")]
 use super::dispatch_executor::TokioExecutor;
 use crate::core::kernel::{
+  actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{
       DispatchExecutor, DispatchExecutorRunner, DispatcherConfig as CoreDispatcherConfig, DispatcherShared,
@@ -16,7 +17,6 @@ use crate::core::kernel::{
     },
     mailbox::Mailbox,
   },
-  spawn::SpawnError,
 };
 
 #[cfg(all(test, feature = "tokio-executor"))]

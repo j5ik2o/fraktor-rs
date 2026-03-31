@@ -5,13 +5,15 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::DispatcherCore;
 use crate::core::kernel::{
-  actor::Pid,
+  actor::{
+    Pid,
+    error::ActorError,
+    messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
+  },
   dispatch::{
     dispatcher::{DispatchExecutorRunner, InlineExecutor, InlineScheduleAdapter},
     mailbox::{Mailbox, metrics_event::MailboxPressureEvent},
   },
-  error::ActorError,
-  messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
 };
 
 fn inline_runner() -> ArcShared<DispatchExecutorRunner> {
@@ -84,13 +86,16 @@ fn dispatcher_core_register_invoker() {
   struct MockInvoker;
 
   impl MessageInvoker for MockInvoker {
-    fn invoke_user_message(&mut self, _message: crate::core::kernel::messaging::AnyMessage) -> Result<(), ActorError> {
+    fn invoke_user_message(
+      &mut self,
+      _message: crate::core::kernel::actor::messaging::AnyMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::kernel::messaging::system_message::SystemMessage,
+      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
     ) -> Result<(), ActorError> {
       Ok(())
     }
@@ -112,13 +117,16 @@ fn dispatcher_core_invokes_mailbox_pressure_hook_when_full() {
   }
 
   impl MessageInvoker for PressureInvoker {
-    fn invoke_user_message(&mut self, _message: crate::core::kernel::messaging::AnyMessage) -> Result<(), ActorError> {
+    fn invoke_user_message(
+      &mut self,
+      _message: crate::core::kernel::actor::messaging::AnyMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::kernel::messaging::system_message::SystemMessage,
+      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
     ) -> Result<(), ActorError> {
       Ok(())
     }
@@ -154,13 +162,16 @@ fn dispatcher_core_invokes_mailbox_pressure_hook_when_threshold_is_reached() {
   }
 
   impl MessageInvoker for PressureInvoker {
-    fn invoke_user_message(&mut self, _message: crate::core::kernel::messaging::AnyMessage) -> Result<(), ActorError> {
+    fn invoke_user_message(
+      &mut self,
+      _message: crate::core::kernel::actor::messaging::AnyMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::kernel::messaging::system_message::SystemMessage,
+      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
     ) -> Result<(), ActorError> {
       Ok(())
     }
@@ -205,13 +216,16 @@ fn dispatcher_core_prioritizes_system_messages_over_mailbox_pressure() {
   }
 
   impl MessageInvoker for PriorityInvoker {
-    fn invoke_user_message(&mut self, _message: crate::core::kernel::messaging::AnyMessage) -> Result<(), ActorError> {
+    fn invoke_user_message(
+      &mut self,
+      _message: crate::core::kernel::actor::messaging::AnyMessage,
+    ) -> Result<(), ActorError> {
       Ok(())
     }
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::kernel::messaging::system_message::SystemMessage,
+      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
     ) -> Result<(), ActorError> {
       self.calls.lock().push(DispatchCall::System);
       Ok(())
@@ -236,7 +250,7 @@ fn dispatcher_core_prioritizes_system_messages_over_mailbox_pressure() {
     MessageInvokerShared::new(Box::new(PriorityInvoker { calls: calls.clone() }) as Box<dyn MessageInvoker>);
   core.register_invoker(invoker);
 
-  mailbox.enqueue_system(crate::core::kernel::messaging::system_message::SystemMessage::Stop).unwrap();
+  mailbox.enqueue_system(crate::core::kernel::actor::messaging::system_message::SystemMessage::Stop).unwrap();
   let event = MailboxPressureEvent::new(Pid::new(13, 0), 4, 4, 100, Duration::from_millis(1), Some(3));
   DispatcherCore::handle_backpressure(&core, &event);
   DispatcherCore::drive(&core);

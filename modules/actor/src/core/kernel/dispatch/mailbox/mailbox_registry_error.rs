@@ -1,7 +1,7 @@
 use alloc::string::String;
 use core::fmt;
 
-use crate::core::kernel::props::MailboxConfigError;
+use crate::core::kernel::actor::props::MailboxConfigError;
 
 /// Error raised when registering or resolving mailbox identifiers fails.
 #[derive(Clone, Debug, PartialEq, Eq)]

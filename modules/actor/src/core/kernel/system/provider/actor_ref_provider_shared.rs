@@ -5,11 +5,9 @@ use core::{any::TypeId, marker::PhantomData};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{ActorRefProvider, ActorRefProviderHandle};
-use crate::core::kernel::{
-  actor::{
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRef,
-  },
+use crate::core::kernel::actor::{
+  actor_path::{ActorPath, ActorPathScheme},
+  actor_ref::ActorRef,
   error::ActorError,
 };
 

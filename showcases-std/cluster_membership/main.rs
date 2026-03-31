@@ -15,15 +15,14 @@
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::kernel::{
-    actor::{Actor, ActorContext},
-    error::ActorError,
+    actor::{
+      Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
+      setup::ActorSystemConfig,
+    },
     event::stream::{EventStreamEvent, EventStreamSubscription},
-    extension::ExtensionInstallers,
-    futures::ActorFutureListener,
-    messaging::AnyMessageView,
-    props::Props,
     serialization::SerializationExtensionInstaller,
-    system::{ActorSystemConfig, remote::RemotingConfig},
+    system::remote::RemotingConfig,
+    util::futures::ActorFutureListener,
   },
   std::{
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},

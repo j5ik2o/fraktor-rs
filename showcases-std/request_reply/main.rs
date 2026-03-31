@@ -14,8 +14,8 @@ use std::sync::Arc;
 
 use fraktor_actor_rs::{
   core::{
-    kernel::error::ActorError,
-    typed::{Behavior, TypedActorSystem, TypedProps, actor::TypedActorRef},
+    kernel::actor::error::ActorError,
+    typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps},
   },
   std::typed::Behaviors,
 };

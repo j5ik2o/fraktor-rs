@@ -10,13 +10,15 @@ use std::{
 };
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, ChildRef},
-  error::{ActorError, ActorErrorReason},
+  actor::{
+    Actor, ActorContext, ChildRef,
+    error::{ActorError, ActorErrorReason},
+    lifecycle::LifecycleStage,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+  },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  lifecycle::LifecycleStage,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -46,8 +48,8 @@ fn recoverable_failure_restarts_child() {
     move || RestartGuardian::new(log.clone(), child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -69,8 +71,8 @@ fn fatal_failure_stops_child() {
     move || FatalGuardian::new(child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -110,8 +112,8 @@ fn escalate_failure_restarts_supervisor() {
     move || RootGuardian::new(supervisor_slot.clone(), child_slot.clone(), supervisor_log.clone(), child_log.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -148,8 +150,8 @@ fn panic_propagates_without_intervention() {
     move || PanicGuardian::new(child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -174,8 +176,8 @@ fn resume_directive_continues_child_without_restart() {
     move || ResumeGuardian::new(log.clone(), child_slot.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));

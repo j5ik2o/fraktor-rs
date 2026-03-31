@@ -15,7 +15,7 @@ pub use config::RemotingExtensionConfig;
 pub use control::{RemotingControl, RemotingControlShared};
 pub use control_handle::RemotingControlHandle;
 pub use error::RemotingError;
-use fraktor_actor_rs::core::kernel::extension::Extension;
+use fraktor_actor_rs::core::kernel::actor::extension::Extension;
 
 use crate::core::transport::RemoteTransportShared;
 

@@ -1,16 +1,19 @@
 use core::any::TypeId;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
-  error::ActorError,
-  extension::{ExtensionId, ExtensionInstallers},
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    extension::{ExtensionId, ExtensionInstallers},
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemBuildError, ActorSystemConfig},
+  system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 

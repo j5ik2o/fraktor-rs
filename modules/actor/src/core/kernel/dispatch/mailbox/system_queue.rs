@@ -6,7 +6,7 @@ use core::{
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::kernel::messaging::system_message::SystemMessage;
+use crate::core::kernel::actor::messaging::system_message::SystemMessage;
 
 #[cfg(test)]
 mod tests;

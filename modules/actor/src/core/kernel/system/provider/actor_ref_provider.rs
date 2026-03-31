@@ -1,10 +1,8 @@
 //! Core trait for actor reference providers.
 
-use crate::core::kernel::{
-  actor::{
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRef,
-  },
+use crate::core::kernel::actor::{
+  actor_path::{ActorPath, ActorPathScheme},
+  actor_ref::ActorRef,
   error::ActorError,
 };
 

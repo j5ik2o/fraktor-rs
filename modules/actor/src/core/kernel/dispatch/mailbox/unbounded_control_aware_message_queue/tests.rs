@@ -1,8 +1,8 @@
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{
     message_queue::MessageQueue, unbounded_control_aware_message_queue::UnboundedControlAwareMessageQueue,
   },
-  messaging::AnyMessage,
 };
 
 #[test]

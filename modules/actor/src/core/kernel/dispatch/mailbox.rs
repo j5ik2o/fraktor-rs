@@ -7,7 +7,7 @@ use fraktor_utils_rs::core::{
   sync::RuntimeMutex,
 };
 
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 mod backpressure_publisher;
 mod base;

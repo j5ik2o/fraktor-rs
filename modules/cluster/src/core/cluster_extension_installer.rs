@@ -3,8 +3,8 @@
 use alloc::{boxed::Box, format};
 
 use fraktor_actor_rs::core::kernel::{
+  actor::extension::ExtensionInstaller,
   event::stream::EventStreamShared,
-  extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
 use fraktor_remote_rs::core::BlockListProvider;

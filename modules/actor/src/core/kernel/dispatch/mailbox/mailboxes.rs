@@ -6,6 +6,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use crate::core::kernel::{
+  actor::props::{MailboxConfig, MailboxConfigError},
   dispatch::mailbox::{
     MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
     bounded_priority_mailbox_type::BoundedPriorityMailboxType,
@@ -17,7 +18,6 @@ use crate::core::kernel::{
     unbounded_priority_mailbox_type::UnboundedPriorityMailboxType,
     unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType,
   },
-  props::{MailboxConfig, MailboxConfigError},
 };
 
 #[cfg(test)]

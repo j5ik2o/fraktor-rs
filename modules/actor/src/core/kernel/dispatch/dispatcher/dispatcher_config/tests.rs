@@ -4,11 +4,11 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
+  actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{DispatcherConfig, InlineExecutor},
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
-  spawn::SpawnError,
 };
 
 #[test]

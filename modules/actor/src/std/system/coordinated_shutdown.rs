@@ -20,7 +20,7 @@ use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use super::coordinated_shutdown_error::CoordinatedShutdownError;
 use crate::core::kernel::{
-  extension::Extension,
+  actor::extension::Extension,
   system::{CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };
 

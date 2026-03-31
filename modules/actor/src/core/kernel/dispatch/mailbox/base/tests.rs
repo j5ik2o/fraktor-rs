@@ -9,13 +9,15 @@ use std::sync::mpsc::{Receiver, Sender};
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use crate::core::kernel::{
-  actor::Pid,
+  actor::{
+    Pid,
+    error::SendError,
+    messaging::{AnyMessage, system_message::SystemMessage},
+  },
   dispatch::mailbox::{
     EnqueueOutcome, Mailbox, MailboxInstrumentation, MailboxOfferFuture, MailboxOverflowStrategy, MailboxPolicy,
     MessageQueue, QueueStateHandle,
   },
-  error::SendError,
-  messaging::{AnyMessage, system_message::SystemMessage},
   system::ActorSystem,
 };
 

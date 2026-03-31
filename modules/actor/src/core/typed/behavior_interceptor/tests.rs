@@ -1,5 +1,5 @@
 use crate::core::typed::{
-  Behaviors, actor::TypedActorContext, behavior_interceptor::BehaviorInterceptor, behavior_signal::BehaviorSignal,
+  actor::TypedActorContext, behavior_interceptor::BehaviorInterceptor, behavior_signal::BehaviorSignal, dsl::Behaviors,
 };
 
 #[test]

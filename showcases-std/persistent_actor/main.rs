@@ -6,13 +6,13 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
-use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
+use fraktor_actor_rs::core::kernel::actor::{
+  Actor, ActorContext,
   error::ActorError,
   extension::ExtensionInstallers,
   messaging::{AnyMessage, AnyMessageView},
   props::Props,
-  system::ActorSystemConfig,
+  setup::ActorSystemConfig,
 };
 use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,

@@ -1,7 +1,7 @@
 //! Extension identifier for the serialization subsystem.
 
 use crate::core::kernel::{
-  extension::ExtensionId,
+  actor::extension::ExtensionId,
   serialization::{
     extension::SerializationExtension, extension_shared::SerializationExtensionShared,
     serialization_setup::SerializationSetup,

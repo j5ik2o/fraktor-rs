@@ -25,29 +25,30 @@ use crate::core::{
       ActorCell, ChildRef, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
       actor_ref::ActorRef,
+      dead_letter::{DeadLetterEntry, DeadLetterReason},
+      error::SendError,
+      messaging::{AnyMessage, AskResult, system_message::SystemMessage},
+      props::Props,
+      scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
+      setup::ActorSystemConfig,
+      spawn::SpawnError,
     },
-    dead_letter::{DeadLetterEntry, DeadLetterReason},
-    error::SendError,
     event::{
       logging::LogLevel,
       stream::{
         EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription, TickDriverSnapshot,
       },
     },
-    futures::ActorFutureShared,
-    messaging::{AnyMessage, AskResult, system_message::SystemMessage},
-    props::Props,
-    scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
     serialization::default_serialization_extension_id,
-    spawn::SpawnError,
     system::{
-      actor_system_config::ActorSystemConfig,
       provider::ActorRefResolveError,
       state::{SystemStateShared, system_state::SystemState},
     },
+    util::futures::ActorFutureShared,
   },
   typed::{
-    ActorRefResolverId, TypedProps,
+    TypedProps,
+    internal::ActorRefResolverId,
     receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   },
 };
@@ -82,10 +83,11 @@ impl ActorSystem {
   pub fn new_empty_with<F>(configure: F) -> Self
   where
     F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-    let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+    let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
     );
-    let scheduler_config = crate::core::kernel::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
+    let scheduler_config =
+      crate::core::kernel::actor::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
     let config = ActorSystemConfig::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
     let config = configure(config);
     let state = match SystemState::build_from_config(&config) {
@@ -314,13 +316,13 @@ impl ActorSystem {
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> crate::core::kernel::scheduler::SchedulerShared {
+  pub fn scheduler(&self) -> crate::core::kernel::actor::scheduler::SchedulerShared {
     self.state.scheduler()
   }
 
   /// Returns the tick driver bundle when initialized.
   #[must_use]
-  pub fn tick_driver_bundle(&self) -> crate::core::kernel::scheduler::tick_driver::TickDriverBundle {
+  pub fn tick_driver_bundle(&self) -> crate::core::kernel::actor::scheduler::tick_driver::TickDriverBundle {
     self.state.tick_driver_bundle()
   }
 

@@ -1,7 +1,7 @@
 //! Opt-in deque capability for message queue implementations.
 
 use super::mailbox_enqueue_outcome::EnqueueOutcome;
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Extension trait for message queues that support front-of-queue insertion.
 ///

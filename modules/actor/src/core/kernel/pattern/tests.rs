@@ -14,11 +14,11 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender},
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView, AskError},
+    props::Props,
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
-  error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageView, AskError},
-  props::Props,
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystem,
 };
 
@@ -253,7 +253,7 @@ fn graceful_stop_returns_send_failed_when_stop_send_fails_and_target_stays_alive
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
   assert!(state.dead_letters().iter().any(|entry| entry.recipient() == Some(pid)
-    && entry.reason() == crate::core::kernel::dead_letter::DeadLetterReason::RecipientUnavailable));
+    && entry.reason() == crate::core::kernel::actor::dead_letter::DeadLetterReason::RecipientUnavailable));
 }
 
 #[test]

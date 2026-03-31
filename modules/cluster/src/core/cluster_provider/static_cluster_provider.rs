@@ -56,7 +56,7 @@ impl StaticClusterProvider {
 
   /// Publishes the static topology to EventStream.
   fn publish_topology(&self) {
-    use fraktor_actor_rs::core::kernel::{event::stream::EventStreamEvent, messaging::AnyMessage};
+    use fraktor_actor_rs::core::kernel::{actor::messaging::AnyMessage, event::stream::EventStreamEvent};
 
     use crate::core::ClusterEvent;
 

@@ -9,13 +9,13 @@ use crate::core::{
     actor::{
       Actor, ActorCell, ActorContext, Pid,
       actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+      error::{ActorError, SendError},
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
     },
-    error::{ActorError, SendError},
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
     system::ActorSystem,
   },
-  typed::actor::TypedActorRef,
+  typed::TypedActorRef,
 };
 
 struct ProbeActor {

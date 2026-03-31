@@ -1,6 +1,6 @@
 //! Describes an outbound message queued for serialization.
 
-use fraktor_actor_rs::core::kernel::{actor::actor_path::ActorPath, messaging::AnyMessage};
+use fraktor_actor_rs::core::kernel::actor::{actor_path::ActorPath, messaging::AnyMessage};
 
 use super::priority::OutboundPriority;
 use crate::core::remote_node_id::RemoteNodeId;

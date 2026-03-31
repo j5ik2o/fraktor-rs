@@ -1,6 +1,6 @@
 //! Priority generator for priority-based message queues.
 
-use crate::core::kernel::messaging::AnyMessage;
+use crate::core::kernel::actor::messaging::AnyMessage;
 
 /// Determines the priority of a user message for priority-based mailboxes.
 ///

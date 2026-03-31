@@ -1,11 +1,13 @@
 use crate::{
   core::kernel::{
-    actor::{Actor, ActorContext},
-    error::ActorError,
-    futures::ActorFutureListener,
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
-    system::ActorSystemConfig,
+    actor::{
+      Actor, ActorContext,
+      error::ActorError,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+      setup::ActorSystemConfig,
+    },
+    util::futures::ActorFutureListener,
   },
   std::system::ActorSystem,
 };

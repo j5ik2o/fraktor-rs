@@ -37,7 +37,7 @@ pub const STRING_ID: SerializerId = SerializerId::from_raw(4);
 /// Serializer ID for byte array type.
 pub const BYTES_ID: SerializerId = SerializerId::from_raw(5);
 
-/// Serializer ID for [`ByteString`](crate::core::kernel::messaging::ByteString) type.
+/// Serializer ID for [`ByteString`](crate::core::kernel::util::ByteString) type.
 pub const BYTE_STRING_ID: SerializerId = SerializerId::from_raw(6);
 
 /// Registers built-in serializers required by the runtime.
@@ -93,7 +93,7 @@ where
     BYTE_STRING_ID,
     ByteStringSerializer::new(BYTE_STRING_ID),
     "byte_string",
-    Some((core::any::TypeId::of::<crate::core::kernel::messaging::ByteString>(), "ByteString".into())),
+    Some((core::any::TypeId::of::<crate::core::kernel::util::ByteString>(), "ByteString".into())),
     &mut on_collision,
   )?;
   Ok(())

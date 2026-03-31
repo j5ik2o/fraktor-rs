@@ -11,15 +11,15 @@ use super::{
   tick_driver_snapshot::TickDriverSnapshot, typed_unhandled_message_event::TypedUnhandledMessageEvent,
 };
 use crate::core::kernel::{
-  dead_letter::DeadLetterEntry,
+  actor::{
+    dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage,
+    scheduler::tick_driver::SchedulerTickMetrics,
+  },
   dispatch::{
     dispatcher::DispatcherDumpEvent,
     mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   },
   event::logging::LogEvent,
-  lifecycle::LifecycleEvent,
-  messaging::AnyMessage,
-  scheduler::tick_driver::SchedulerTickMetrics,
   serialization::SerializationErrorEvent,
 };
 

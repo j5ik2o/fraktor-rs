@@ -23,27 +23,29 @@ use crate::core::kernel::{
     ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRef,
+    dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
+    error::{ActorError, SendError},
+    messaging::{
+      AnyMessage, AskResult,
+      system_message::{FailurePayload, SystemMessage},
+    },
+    props::MailboxConfig,
+    scheduler::{
+      SchedulerBackedDelayProvider, SchedulerShared, task_run::TaskRunSummary, tick_driver::TickDriverBundle,
+    },
+    spawn::SpawnError,
+    supervision::SupervisorDirective,
   },
-  dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError},
     mailbox::{MailboxRegistryError, MessageQueue},
   },
-  error::{ActorError, SendError},
   event::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  futures::ActorFutureShared,
-  messaging::{
-    AnyMessage, AskResult,
-    system_message::{FailurePayload, SystemMessage},
-  },
-  props::MailboxConfig,
-  scheduler::{SchedulerBackedDelayProvider, SchedulerShared, task_run::TaskRunSummary, tick_driver::TickDriverBundle},
-  spawn::SpawnError,
-  supervision::SupervisorDirective,
   system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
+  util::futures::ActorFutureShared,
 };
 
 /// Shared wrapper for [`SystemState`] providing thread-safe access.

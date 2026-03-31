@@ -6,8 +6,8 @@ mod tests;
 use alloc::{format, string::ToString};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
+use fraktor_actor_rs::core::kernel::actor::{
+  Actor, ActorContext,
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
   scheduler::{SchedulerCommand, SchedulerHandle},

@@ -12,8 +12,8 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
+  actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
-  messaging::AnyMessage,
 };
 use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};

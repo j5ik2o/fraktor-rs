@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use fraktor_actor_rs::{
   core::{
-    kernel::{
+    kernel::actor::{
       error::ActorError,
       supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },

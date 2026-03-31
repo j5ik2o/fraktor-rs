@@ -8,7 +8,7 @@
 use std::time::{Duration, Instant};
 
 use fraktor_actor_rs::{
-  core::typed::{TypedActorSystem, TypedProps, actor::TypedActorRef, routing::Routers},
+  core::typed::{TypedActorRef, TypedActorSystem, TypedProps, dsl::routing::Routers},
   std::typed::Behaviors,
 };
 use fraktor_showcases_std::support;

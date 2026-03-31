@@ -5,13 +5,16 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::ActorCell;
 use crate::core::kernel::{
-  actor::{Actor, ActorContext, Pid},
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
-  error::ActorError,
-  messaging::{
-    ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker, system_message::SystemMessage,
+  actor::{
+    Actor, ActorContext, Pid,
+    error::ActorError,
+    messaging::{
+      ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker,
+      system_message::SystemMessage,
+    },
+    props::{MailboxConfig, Props},
   },
-  props::{MailboxConfig, Props},
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   system::ActorSystem,
 };
 

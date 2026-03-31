@@ -8,7 +8,7 @@ use alloc::collections::VecDeque;
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use super::{mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Initial capacity hint for each backing deque.
 const DEFAULT_CAPACITY: usize = 16;

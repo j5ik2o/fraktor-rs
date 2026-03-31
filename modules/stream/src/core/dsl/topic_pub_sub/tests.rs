@@ -6,19 +6,22 @@ use std::{
 
 use fraktor_actor_rs::core::{
   kernel::{
-    actor::{Actor, ActorContext},
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
+    actor::{
+      Actor, ActorContext,
+      error::ActorError,
+      messaging::AnyMessageView,
+      props::Props,
+      scheduler::{
+        SchedulerConfig,
+        tick_driver::{ManualTestDriver, TickDriverConfig},
+      },
+      setup::ActorSystemConfig,
     },
-    system::{ActorSystem, ActorSystemConfig},
+    system::ActorSystem,
   },
   typed::{
-    Behaviors, TypedProps,
-    actor::TypedActorRef,
+    TypedActorRef, TypedProps,
+    dsl::Behaviors,
     pubsub::{Topic, TopicCommand, TopicStats},
   },
 };

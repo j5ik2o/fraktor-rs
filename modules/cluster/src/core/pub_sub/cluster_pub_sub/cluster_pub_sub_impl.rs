@@ -7,8 +7,8 @@ use alloc::{format, string::String, vec, vec::Vec};
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
+  actor::messaging::AnyMessage,
   event::stream::EventStreamShared,
-  messaging::AnyMessage,
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{

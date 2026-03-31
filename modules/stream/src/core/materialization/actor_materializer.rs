@@ -2,7 +2,8 @@ use alloc::vec::Vec;
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::ChildRef, messaging::AnyMessage, props::Props, scheduler::SchedulerCommand, system::ActorSystem,
+  actor::{ChildRef, messaging::AnyMessage, props::Props, scheduler::SchedulerCommand},
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -25,7 +26,7 @@ pub struct ActorMaterializer {
   config:             ActorMaterializerConfig,
   state:              MaterializerLifecycleState,
   drive_actor:        Option<ChildRef>,
-  tick_handle:        Option<fraktor_actor_rs::core::kernel::scheduler::SchedulerHandle>,
+  tick_handle:        Option<fraktor_actor_rs::core::kernel::actor::scheduler::SchedulerHandle>,
   total_materialized: u64,
 }
 
@@ -74,7 +75,7 @@ impl ActorMaterializer {
     system: &ActorSystem,
     actor: &ChildRef,
     interval: Duration,
-  ) -> Result<fraktor_actor_rs::core::kernel::scheduler::SchedulerHandle, StreamError> {
+  ) -> Result<fraktor_actor_rs::core::kernel::actor::scheduler::SchedulerHandle, StreamError> {
     let receiver = actor.clone().into_actor_ref();
     let command = SchedulerCommand::SendMessage {
       receiver,

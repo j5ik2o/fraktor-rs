@@ -6,7 +6,7 @@ mod tests;
 use alloc::format;
 
 use fraktor_actor_rs::core::kernel::{
-  extension::ExtensionInstaller,
+  actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
 

@@ -18,10 +18,10 @@ use std::{
 };
 
 #[cfg(feature = "advanced")]
-use fraktor_actor_rs::core::kernel::scheduler::tick_driver::{
+use fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, TickDriverControl, TickDriverHandle, TickDriverKind, next_tick_driver_id,
 };
-use fraktor_actor_rs::core::kernel::scheduler::{
+use fraktor_actor_rs::core::kernel::actor::scheduler::{
   SchedulerShared,
   tick_driver::{
     HardwareKind, HardwareTickDriver, SchedulerTickExecutor, TickDriver, TickDriverBundle, TickDriverConfig,

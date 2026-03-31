@@ -9,10 +9,11 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::{
   core::{
-    kernel::error::ActorError,
+    kernel::actor::error::ActorError,
     typed::{
-      Behavior, BehaviorInterceptor, BehaviorSignal, Behaviors as CoreBehaviors, StashBuffer, Supervise,
+      Behavior, BehaviorInterceptor, BehaviorSignal,
       actor::TypedActorContext as CoreTypedActorContext,
+      dsl::{Behaviors as CoreBehaviors, StashBuffer, Supervise},
     },
   },
   std::typed::LogOptions,

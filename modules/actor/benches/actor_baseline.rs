@@ -7,12 +7,15 @@ use std::{
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use fraktor_actor_rs::{
   core::kernel::{
-    actor::{Actor, ActorContext, actor_ref::ActorRef},
+    actor::{
+      Actor, ActorContext,
+      actor_ref::ActorRef,
+      error::ActorError,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+    },
     dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
-    error::ActorError,
-    futures::ActorFutureListener,
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
+    util::futures::ActorFutureListener,
   },
   std::system::ActorSystem,
 };

@@ -7,13 +7,15 @@ use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::{
   kernel::{
-    actor::ChildRef,
-    error::{ActorError, SendError},
+    actor::{
+      ChildRef,
+      error::{ActorError, SendError},
+    },
     system::ActorSystem,
   },
   typed::{
-    Behavior, Behaviors, TypedProps,
-    actor::TypedActorRef,
+    Behavior, TypedActorRef, TypedProps,
+    dsl::Behaviors,
     pubsub::{Topic, TopicCommand},
   },
 };

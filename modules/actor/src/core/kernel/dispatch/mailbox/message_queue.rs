@@ -1,7 +1,7 @@
 //! Abstraction over user message queue implementations.
 
 use super::{deque_message_queue::DequeMessageQueue, mailbox_enqueue_outcome::EnqueueOutcome};
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
 ///

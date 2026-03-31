@@ -6,8 +6,8 @@ use crate::core::kernel::{
   actor::{
     actor_path::{ActorPath, ActorPathError, ActorPathParts, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
+    messaging::AnyMessage,
   },
-  messaging::AnyMessage,
   system::remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
 };
 

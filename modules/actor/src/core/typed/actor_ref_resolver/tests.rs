@@ -2,16 +2,16 @@ use alloc::string::String;
 
 use super::ActorRefResolver;
 use crate::core::{
-  kernel::{
-    actor::{Actor, ActorCell, ActorContext, Pid},
+  kernel::actor::{
+    Actor, ActorCell, ActorContext, Pid,
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::AnyMessageView,
     props::Props,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-    system::ActorSystemConfig,
+    setup::ActorSystemConfig,
   },
-  typed::{ActorRefResolverId, Behaviors, ExtensionSetup, TypedActorSystem, TypedProps},
+  typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, internal::ActorRefResolverId},
 };
 
 struct NoopActor;

@@ -3,7 +3,7 @@
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::extension::SerializationExtension;
-use crate::core::kernel::extension::Extension;
+use crate::core::kernel::actor::extension::Extension;
 
 /// Shared wrapper for a serialization extension instance.
 ///

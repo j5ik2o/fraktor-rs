@@ -6,13 +6,13 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
-  error::SendError,
   event::stream::{EventStreamEvent, EventStreamShared},
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskError, AskResponse, AskResult},
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::{ActorSystem, state::SystemStateShared},
+  util::futures::ActorFutureShared,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 

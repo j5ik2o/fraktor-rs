@@ -3,8 +3,8 @@
 use alloc::string::String;
 
 use fraktor_actor_rs::core::kernel::{
+  actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
-  messaging::AnyMessage,
 };
 use fraktor_utils_rs::core::{sync::SharedAccess, time::TimerInstant};
 

@@ -6,20 +6,21 @@ use fraktor_actor_rs::core::kernel::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::AnyMessage,
+    props::Props,
+    scheduler::{
+      SchedulerConfig, SchedulerShared,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  error::ActorError,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  extension::ExtensionInstallers,
-  messaging::AnyMessage,
-  props::Props,
-  scheduler::{
-    SchedulerConfig, SchedulerShared,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
-  },
   system::{
-    ActorSystem, ActorSystemConfig,
+    ActorSystem,
     provider::{ActorRefProvider, ActorRefProviderShared},
   },
 };
@@ -193,7 +194,7 @@ fn request_future_completes_with_timeout_payload() {
   let result = future.with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
-  assert_eq!(ask_error, fraktor_actor_rs::core::kernel::messaging::AskError::Timeout);
+  assert_eq!(ask_error, fraktor_actor_rs::core::kernel::actor::messaging::AskError::Timeout);
 }
 
 #[test]
@@ -557,8 +558,8 @@ impl Actor for TestGuardian {
   fn receive(
     &mut self,
     _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::kernel::messaging::AnyMessageView<'_>,
-  ) -> Result<(), fraktor_actor_rs::core::kernel::error::ActorError> {
+    _message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
+  ) -> Result<(), fraktor_actor_rs::core::kernel::actor::error::ActorError> {
     Ok(())
   }
 }
@@ -774,7 +775,10 @@ impl ActorRefProvider for TestActorRefProvider {
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::error::SendError> {
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

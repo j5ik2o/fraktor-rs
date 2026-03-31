@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::kernel::messaging::AnyMessage;
+use fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::PubSubPublisher;

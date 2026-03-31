@@ -3,10 +3,10 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
+  actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessage,
   serialization::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },

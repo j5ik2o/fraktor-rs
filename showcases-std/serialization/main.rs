@@ -15,17 +15,15 @@ use std::{
 
 use fraktor_actor_rs::{
   core::kernel::{
-    actor::{Actor, ActorContext},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    messaging::AnyMessageView,
-    props::Props,
+    actor::{
+      Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
+      setup::ActorSystemConfig,
+    },
     serialization::{
       NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
       SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
       SerializerId, SerializerWithStringManifest, TransportInformation,
     },
-    system::ActorSystemConfig,
   },
   std::system::ActorSystem,
 };

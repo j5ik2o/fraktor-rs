@@ -11,14 +11,17 @@ use super::{
   remote::RemoteWatchHook,
 };
 use crate::core::kernel::{
-  actor::{ChildRef, actor_ref::ActorRef},
+  actor::{
+    ChildRef,
+    actor_ref::ActorRef,
+    extension::{Extension, ExtensionId},
+    props::{MailboxConfig, Props},
+    spawn::SpawnError,
+  },
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError},
     mailbox::MailboxRegistryError,
   },
-  extension::{Extension, ExtensionId},
-  props::{MailboxConfig, Props},
-  spawn::SpawnError,
 };
 
 /// Provides privileged operations required by extensions and system daemons.

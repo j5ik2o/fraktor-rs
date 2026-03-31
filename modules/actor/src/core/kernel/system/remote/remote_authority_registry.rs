@@ -14,7 +14,7 @@ use ahash::RandomState;
 use hashbrown::HashMap;
 
 use crate::core::kernel::{
-  messaging::AnyMessage,
+  actor::messaging::AnyMessage,
   system::{remote::RemoteAuthorityError, state::AuthorityState},
 };
 

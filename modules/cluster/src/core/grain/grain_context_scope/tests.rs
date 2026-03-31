@@ -5,17 +5,18 @@ use fraktor_actor_rs::core::kernel::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-  },
-  error::ActorError,
-  extension::ExtensionInstallers,
-  messaging::AnyMessage,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::AnyMessage,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
   system::{
-    ActorSystem, ActorSystemConfig,
+    ActorSystem,
     provider::{ActorRefProvider, ActorRefProviderShared},
   },
 };
@@ -80,7 +81,7 @@ impl Actor for TestGuardian {
   fn receive(
     &mut self,
     _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::kernel::messaging::AnyMessageView<'_>,
+    _message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -140,7 +141,10 @@ impl ActorRefProvider for TestActorRefProvider {
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::error::SendError> {
+  fn send(
+    &mut self,
+    _message: AnyMessage,
+  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

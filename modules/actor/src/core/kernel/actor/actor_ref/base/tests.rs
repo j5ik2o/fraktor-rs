@@ -7,9 +7,9 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_ref::{ActorRefSender, NullSender},
+    error::SendError,
+    messaging::AnyMessage,
   },
-  error::SendError,
-  messaging::AnyMessage,
   system::ActorSystem,
 };
 
@@ -81,11 +81,7 @@ fn actor_ref_with_system() {
 
 #[test]
 fn actor_ref_path_resolves_segments() {
-  use crate::core::kernel::{
-    actor::{Actor, ActorCell, ActorContext},
-    messaging::AnyMessageView,
-    props::Props,
-  };
+  use crate::core::kernel::actor::{Actor, ActorCell, ActorContext, messaging::AnyMessageView, props::Props};
 
   struct PathActor;
   impl Actor for PathActor {
@@ -93,7 +89,7 @@ fn actor_ref_path_resolves_segments() {
       &mut self,
       _ctx: &mut ActorContext<'_>,
       _message: AnyMessageView<'_>,
-    ) -> Result<(), crate::core::kernel::error::ActorError> {
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
       Ok(())
     }
   }
@@ -131,7 +127,7 @@ fn actor_ref_ask_completes_send_failed_when_delivery_fails() {
   let response = actor.ask(AnyMessage::new(42_u32));
   assert_eq!(response.sender().pid(), actor.pid());
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
-  assert!(matches!(result, Err(crate::core::kernel::messaging::AskError::SendFailed(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::messaging::AskError::SendFailed(_))));
 }
 
 #[test]
@@ -202,11 +198,7 @@ fn actor_ref_kill_without_system_uses_user_channel() {
 
 #[test]
 fn actor_ref_poison_pill_with_system_enqueues_user_message() {
-  use crate::core::kernel::{
-    actor::{Actor, ActorCell, ActorContext},
-    messaging::AnyMessageView,
-    props::Props,
-  };
+  use crate::core::kernel::actor::{Actor, ActorCell, ActorContext, messaging::AnyMessageView, props::Props};
 
   struct ProbeActor;
   impl Actor for ProbeActor {
@@ -214,7 +206,7 @@ fn actor_ref_poison_pill_with_system_enqueues_user_message() {
       &mut self,
       _ctx: &mut ActorContext<'_>,
       _message: AnyMessageView<'_>,
-    ) -> Result<(), crate::core::kernel::error::ActorError> {
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
       Ok(())
     }
   }

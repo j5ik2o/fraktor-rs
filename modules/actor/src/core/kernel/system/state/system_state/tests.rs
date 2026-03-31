@@ -14,27 +14,28 @@ use crate::core::kernel::{
       ActorPath, ActorPathParser, ActorPathScheme, ActorUid, GuardianKind as PathGuardianKind, PathResolutionError,
     },
     actor_ref::ActorRef,
+    error::ActorError,
+    messaging::{
+      AnyMessage, AnyMessageView,
+      system_message::{FailurePayload, SystemMessage},
+    },
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{
+        ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
+        TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+      },
+    },
+    setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
     mailbox::MailboxMessage,
   },
-  error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  messaging::{
-    AnyMessage, AnyMessageView,
-    system_message::{FailurePayload, SystemMessage},
-  },
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{
-      ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
-      TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
-    },
-  },
   system::{
-    ActorSystemConfig, RegisterExtraTopLevelError,
+    RegisterExtraTopLevelError,
     guardian::GuardianKind,
     remote::RemotingConfig,
     state::{AuthorityState, SystemStateShared},
@@ -105,7 +106,7 @@ fn system_state_drop_shuts_down_executor_once() {
 
   let executor_calls = ArcShared::new(AtomicUsize::new(0));
   let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::new(move |_ctx| {
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::new(move |_ctx| {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(RuntimeMutex::new(control));
     let resolution = Duration::from_millis(1);
@@ -381,7 +382,7 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::kernel::{futures::ActorFutureShared, messaging::AskResult};
+  use crate::core::kernel::{actor::messaging::AskResult, util::futures::ActorFutureShared};
 
   type TestAskResult = AskResult;
   let mut state = build_state();
@@ -496,7 +497,7 @@ fn system_state_remote_authority_events() {
 
 #[test]
 fn system_state_send_system_message_to_nonexistent_actor() {
-  use crate::core::kernel::messaging::system_message::SystemMessage;
+  use crate::core::kernel::actor::messaging::system_message::SystemMessage;
 
   let state = build_state();
   let pid = state.allocate_pid();
@@ -507,7 +508,7 @@ fn system_state_send_system_message_to_nonexistent_actor() {
 
 #[test]
 fn system_state_record_send_error() {
-  use crate::core::kernel::error::SendError;
+  use crate::core::kernel::actor::error::SendError;
 
   let state = build_state();
   let error = SendError::closed(AnyMessage::new(42_u32));
@@ -569,7 +570,7 @@ fn booting_into_running_fails_when_guardian_missing() {
   booting.register_guardian(GuardianKind::System, system_pid);
 
   let result = booting.into_running();
-  assert!(matches!(result, Err(crate::core::kernel::spawn::SpawnError::SystemNotBootstrapped)));
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::SystemNotBootstrapped)));
 }
 
 #[test]

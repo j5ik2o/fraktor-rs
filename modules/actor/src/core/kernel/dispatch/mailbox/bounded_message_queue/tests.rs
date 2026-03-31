@@ -1,10 +1,10 @@
 use core::num::NonZeroUsize;
 
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{
     bounded_message_queue::BoundedMessageQueue, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   },
-  messaging::AnyMessage,
 };
 
 #[test]

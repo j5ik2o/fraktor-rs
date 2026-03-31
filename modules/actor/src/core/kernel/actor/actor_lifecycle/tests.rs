@@ -2,10 +2,8 @@ use alloc::boxed::Box;
 
 use super::Actor;
 use crate::core::kernel::{
-  actor::{ActorContext, Pid},
+  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
-  error::ActorError,
-  messaging::AnyMessageView,
   system::ActorSystem,
 };
 

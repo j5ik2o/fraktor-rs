@@ -8,13 +8,15 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::dispatcher_shared::DispatcherShared;
 use crate::core::kernel::{
-  actor::actor_ref::{ActorRefSender, SendOutcome},
+  actor::{
+    actor_ref::{ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::AnyMessage,
+  },
   dispatch::{
     dispatcher::schedule_adapter_shared::ScheduleAdapterShared,
     mailbox::{EnqueueOutcome, Mailbox, MailboxOfferFuture, ScheduleHints},
   },
-  error::SendError,
-  messaging::AnyMessage,
 };
 
 /// Sender that enqueues messages via actor handle.

@@ -7,8 +7,8 @@ use alloc::{boxed::Box, vec::Vec};
 use core::any::Any;
 
 use crate::core::kernel::{
-  messaging::ByteString,
   serialization::{error::SerializationError, serializer::Serializer, serializer_id::SerializerId},
+  util::ByteString,
 };
 
 /// Serializes [`ByteString`] values by copying the underlying byte payload.

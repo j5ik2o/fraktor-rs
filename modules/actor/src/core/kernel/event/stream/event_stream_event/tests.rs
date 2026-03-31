@@ -9,12 +9,12 @@ use super::EventStreamEvent;
 #[cfg(feature = "alloc")]
 use crate::core::{
   kernel::actor::Pid,
-  kernel::dead_letter::DeadLetterEntry,
+  kernel::actor::dead_letter::DeadLetterEntry,
+  kernel::actor::lifecycle::{LifecycleEvent, LifecycleStage},
+  kernel::actor::messaging::AnyMessage,
   kernel::dispatch::mailbox::metrics_event::MailboxMetricsEvent,
   kernel::event::logging::{LogEvent, LogLevel},
   kernel::event::stream::{AdapterFailureEvent, TypedUnhandledMessageEvent},
-  kernel::lifecycle::{LifecycleEvent, LifecycleStage},
-  kernel::messaging::AnyMessage,
   kernel::serialization::{SerializationErrorEvent, SerializerId},
 };
 
@@ -42,7 +42,7 @@ fn event_stream_event_lifecycle_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_dead_letter_clone() {
-  use crate::core::kernel::dead_letter::DeadLetterReason;
+  use crate::core::kernel::actor::dead_letter::DeadLetterReason;
 
   let entry = DeadLetterEntry::new(
     AnyMessage::new(42u8),

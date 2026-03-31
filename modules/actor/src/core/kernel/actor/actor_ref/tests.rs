@@ -7,16 +7,16 @@ use crate::core::kernel::{
     Actor, ActorCell, ActorContext, Pid,
     actor_path::ActorPathScheme,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-  },
-  error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
   system::{
-    ActorSystemConfig,
     remote::RemotingConfig,
     state::{SystemStateShared, system_state::SystemState},
   },
@@ -110,7 +110,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_eq!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
-  assert!(matches!(result, Err(crate::core::kernel::messaging::AskError::SendFailed(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::messaging::AskError::SendFailed(_))));
 }
 
 struct NoopActor;

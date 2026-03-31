@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::{
-  actor::actor_ref::{ActorRefSender, SendOutcome},
+use crate::core::kernel::actor::{
+  actor_ref::{ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
 };

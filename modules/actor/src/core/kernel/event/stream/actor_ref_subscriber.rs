@@ -6,9 +6,8 @@ mod tests;
 use portable_atomic::{AtomicU64, Ordering};
 
 use crate::core::kernel::{
-  actor::actor_ref::ActorRef,
+  actor::{actor_ref::ActorRef, messaging::AnyMessage},
   event::stream::{EventStreamEvent, EventStreamSubscriber},
-  messaging::AnyMessage,
 };
 
 /// Event stream subscriber that forwards events to an ActorRef.

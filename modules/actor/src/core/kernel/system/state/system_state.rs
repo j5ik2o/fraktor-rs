@@ -33,41 +33,41 @@ use crate::core::kernel::{
     ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::ActorRef,
+    dead_letter::{DeadLetterEntry, DeadLetterShared},
+    error::{ActorError, SendError},
+    messaging::{
+      AnyMessage, AskResult,
+      system_message::{FailurePayload, SystemMessage},
+    },
+    props::MailboxConfig,
+    scheduler::{
+      SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared,
+      task_run::TaskRunSummary,
+      tick_driver::{
+        TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverProvisioningContext,
+        TickExecutorSignal, TickFeed, next_tick_driver_id,
+      },
+    },
+    spawn::{NameRegistryError, SpawnError},
+    supervision::SupervisorDirective,
   },
-  dead_letter::{DeadLetterEntry, DeadLetterShared},
   dispatch::{
     dispatcher::{DispatcherConfig, DispatcherRegistryError, Dispatchers},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
-  error::{ActorError, SendError},
   event::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
-  futures::ActorFutureShared,
-  messaging::{
-    AnyMessage, AskResult,
-    system_message::{FailurePayload, SystemMessage},
-  },
-  props::MailboxConfig,
-  scheduler::{
-    SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared,
-    task_run::TaskRunSummary,
-    tick_driver::{
-      TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverProvisioningContext,
-      TickExecutorSignal, TickFeed, next_tick_driver_id,
-    },
-  },
-  spawn::{NameRegistryError, SpawnError},
-  supervision::SupervisorDirective,
   system::{RegisterExtraTopLevelError, ReservationPolicy},
+  util::futures::ActorFutureShared,
 };
 
 mod failure_outcome;
 
 pub(crate) use failure_outcome::FailureOutcome;
 
-use crate::core::kernel::system::actor_system_config::ActorSystemConfig;
+use crate::core::kernel::actor::setup::ActorSystemConfig;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 
@@ -166,7 +166,7 @@ impl SystemState {
   }
 
   pub(crate) fn build_from_config(config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    use crate::core::kernel::scheduler::tick_driver::TickDriverBootstrap;
+    use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
 
     let mut state = Self::new();
     state.apply_actor_system_config(config);
@@ -175,7 +175,10 @@ impl SystemState {
     let scheduler_config = *config.scheduler_config();
     #[cfg(any(test, feature = "test-support"))]
     let scheduler_config = if let Some(tick_driver_config) = config.tick_driver_config()
-      && matches!(tick_driver_config, crate::core::kernel::scheduler::tick_driver::TickDriverConfig::ManualTest(_))
+      && matches!(
+        tick_driver_config,
+        crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::ManualTest(_)
+      )
       && !scheduler_config.runner_api_enabled()
     {
       scheduler_config.with_runner_api_enabled(true)

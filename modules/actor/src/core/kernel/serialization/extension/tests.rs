@@ -17,19 +17,20 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, NullSender},
+    dead_letter::DeadLetterReason,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
-  dead_letter::DeadLetterReason,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
     not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,
     serialized_message::SerializedMessage, serializer::Serializer, serializer_id::SerializerId,
     string_manifest_serializer::SerializerWithStringManifest, transport_information::TransportInformation,
   },
-  system::{ActorSystem, ActorSystemConfig, remote::RemotingConfig, state::SystemStateShared},
+  system::{ActorSystem, remote::RemotingConfig, state::SystemStateShared},
 };
 
 #[derive(Debug, PartialEq)]
@@ -146,7 +147,7 @@ impl Actor for NoopActor {
     &mut self,
     _ctx: &mut ActorContext<'_>,
     _message: AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     Ok(())
   }
 }
@@ -796,12 +797,12 @@ fn builtin_serializers_support_primitives() {
   assert_eq!(*bytes_value.downcast::<Vec<u8>>().unwrap(), bytes);
 
   // ByteString 往復検証（F-011 回帰）
-  let byte_string = crate::core::kernel::messaging::ByteString::from_slice(&[10, 20, 30]);
+  let byte_string = crate::core::kernel::util::ByteString::from_slice(&[10, 20, 30]);
   let bs_msg = extension.serialize(&byte_string, SerializationCallScope::Local).expect("ByteString encode");
   let bs_value = extension
-    .deserialize(&bs_msg, Some(TypeId::of::<crate::core::kernel::messaging::ByteString>()))
+    .deserialize(&bs_msg, Some(TypeId::of::<crate::core::kernel::util::ByteString>()))
     .expect("ByteString decode");
-  let decoded = bs_value.downcast::<crate::core::kernel::messaging::ByteString>().expect("ByteString downcast");
+  let decoded = bs_value.downcast::<crate::core::kernel::util::ByteString>().expect("ByteString downcast");
   assert_eq!(decoded.as_slice(), &[10, 20, 30]);
 }
 

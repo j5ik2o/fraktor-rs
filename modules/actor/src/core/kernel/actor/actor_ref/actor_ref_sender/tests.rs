@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 struct TestSender;
 

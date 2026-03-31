@@ -7,15 +7,19 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, actor_ref::ActorRef},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  actor::{
+    Actor, ActorContext,
+    actor_ref::ActorRef,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemConfig},
+  system::ActorSystem,
 };
 use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
@@ -119,8 +123,8 @@ fn batch_flow_applies_all_events() {
   let value = shared_mutex(0);
   let child_refs = shared_mutex(Vec::new());
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
-  let installers =
-    fraktor_actor_rs::core::kernel::extension::ExtensionInstallers::default().with_extension_installer(installer);
+  let installers = fraktor_actor_rs::core::kernel::actor::extension::ExtensionInstallers::default()
+    .with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()

@@ -2,8 +2,8 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{MessagePriorityGenerator, mailbox_type::MailboxType},
-  messaging::AnyMessage,
 };
 
 #[test]

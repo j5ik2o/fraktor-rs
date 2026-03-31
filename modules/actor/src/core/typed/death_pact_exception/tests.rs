@@ -1,8 +1,8 @@
 use alloc::{format, string::ToString};
 
 use crate::core::{
-  kernel::{
-    actor::Pid,
+  kernel::actor::{
+    Pid,
     error::{ActorError, ActorErrorReason},
   },
   typed::DeathPactException,

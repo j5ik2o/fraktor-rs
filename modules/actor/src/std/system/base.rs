@@ -2,9 +2,18 @@ use alloc::{string::String, vec::Vec};
 
 use crate::{
   core::kernel::{
-    actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef},
-    dead_letter::DeadLetterEntry,
-    error::SendError,
+    actor::{
+      Pid,
+      actor_path::ActorPath,
+      actor_ref::ActorRef,
+      dead_letter::DeadLetterEntry,
+      error::SendError,
+      messaging::AskResult,
+      props::Props,
+      scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
+      setup::ActorSystemConfig,
+      spawn::SpawnError,
+    },
     event::{
       logging::LogLevel,
       stream::{
@@ -12,15 +21,11 @@ use crate::{
         subscriber_handle as core_subscriber_handle,
       },
     },
-    futures::ActorFutureShared,
-    messaging::AskResult,
-    props::Props,
-    scheduler::{SchedulerBackedDelayProvider, SchedulerShared, tick_driver::TickDriverConfig},
-    spawn::SpawnError,
     system::{
-      ActorSystem as CoreActorSystem, ActorSystemConfig, ExtendedActorSystem, provider::ActorRefResolveError,
+      ActorSystem as CoreActorSystem, ExtendedActorSystem, provider::ActorRefResolveError,
       state::SystemStateShared as CoreSystemStateShared,
     },
+    util::futures::ActorFutureShared,
   },
   std::event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared},
 };

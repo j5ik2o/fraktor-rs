@@ -5,7 +5,7 @@ mod tests;
 
 use core::cmp::Ordering;
 
-use crate::core::kernel::messaging::AnyMessage;
+use crate::core::kernel::actor::messaging::AnyMessage;
 
 /// Monotonic sequence counter used to break priority ties in FIFO order.
 ///

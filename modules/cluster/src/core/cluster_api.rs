@@ -12,12 +12,15 @@ use alloc::{
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{actor_path::ActorPathParser, actor_ref::ActorRef},
+  actor::{
+    actor_path::ActorPathParser,
+    actor_ref::ActorRef,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
+  },
   event::stream::{
     EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
   },
-  messaging::{AnyMessage, AskError, AskResponse, AskResult},
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
@@ -129,7 +132,7 @@ impl ClusterApi {
     identity: &ClusterIdentity,
     message: AnyMessage,
     timeout: Option<Duration>,
-  ) -> Result<fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
+  ) -> Result<fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -276,7 +279,7 @@ impl ClusterApi {
   fn schedule_timeout(
     &self,
     timeout: Duration,
-    future: fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>,
+    future: fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>,
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
@@ -335,7 +338,7 @@ fn publish_grain_event(
 }
 
 struct TimeoutRunnable {
-  future: fraktor_actor_rs::core::kernel::futures::ActorFutureShared<AskResult>,
+  future: fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>,
 }
 
 impl SchedulerRunnable for TimeoutRunnable {

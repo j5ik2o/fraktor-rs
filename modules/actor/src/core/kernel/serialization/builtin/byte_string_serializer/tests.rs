@@ -1,7 +1,7 @@
 use super::ByteStringSerializer;
 use crate::core::kernel::{
-  messaging::ByteString,
   serialization::{builtin::BYTE_STRING_ID, error::SerializationError, serializer::Serializer},
+  util::ByteString,
 };
 
 #[test]

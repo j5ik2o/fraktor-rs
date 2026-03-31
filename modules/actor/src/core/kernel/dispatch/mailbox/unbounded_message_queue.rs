@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::collections::queue::QueueError;
 use super::{
   QueueStateHandle, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, policy::MailboxPolicy,
 };
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Unbounded message queue that grows as needed.
 pub struct UnboundedMessageQueue {

@@ -58,9 +58,9 @@ pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> Cir
 #[must_use]
 pub fn ask_with_timeout(
   actor_ref: &mut crate::core::kernel::actor::actor_ref::ActorRef,
-  message: crate::core::kernel::messaging::AnyMessage,
+  message: crate::core::kernel::actor::messaging::AnyMessage,
   timeout: Duration,
-) -> crate::core::kernel::messaging::AskResponse {
+) -> crate::core::kernel::actor::messaging::AskResponse {
   crate::core::kernel::pattern::ask_with_timeout(actor_ref, message, timeout)
 }
 
@@ -68,13 +68,13 @@ pub fn ask_with_timeout(
 ///
 /// # Errors
 ///
-/// Returns [`crate::core::kernel::messaging::AskError::SendFailed`] when the stop message cannot be
-/// delivered, or [`crate::core::kernel::messaging::AskError::Timeout`] when the actor does not stop
-/// before `timeout`.
+/// Returns [`crate::core::kernel::actor::messaging::AskError::SendFailed`] when the stop message
+/// cannot be delivered, or [`crate::core::kernel::actor::messaging::AskError::Timeout`] when the
+/// actor does not stop before `timeout`.
 pub async fn graceful_stop(
   target: &mut crate::core::kernel::actor::actor_ref::ActorRef,
   timeout: Duration,
-) -> Result<(), crate::core::kernel::messaging::AskError> {
+) -> Result<(), crate::core::kernel::actor::messaging::AskError> {
   crate::core::kernel::pattern::graceful_stop(target, timeout).await
 }
 
@@ -83,14 +83,14 @@ pub async fn graceful_stop(
 ///
 /// # Errors
 ///
-/// Returns [`crate::core::kernel::messaging::AskError::SendFailed`] when the stop message cannot be
-/// delivered, or [`crate::core::kernel::messaging::AskError::Timeout`] when the actor does not stop
-/// before `timeout`.
+/// Returns [`crate::core::kernel::actor::messaging::AskError::SendFailed`] when the stop message
+/// cannot be delivered, or [`crate::core::kernel::actor::messaging::AskError::Timeout`] when the
+/// actor does not stop before `timeout`.
 pub async fn graceful_stop_with_message(
   target: &mut crate::core::kernel::actor::actor_ref::ActorRef,
-  stop_message: crate::core::kernel::messaging::AnyMessage,
+  stop_message: crate::core::kernel::actor::messaging::AnyMessage,
   timeout: Duration,
-) -> Result<(), crate::core::kernel::messaging::AskError> {
+) -> Result<(), crate::core::kernel::actor::messaging::AskError> {
   crate::core::kernel::pattern::graceful_stop_with_message(target, stop_message, timeout).await
 }
 

@@ -1,6 +1,8 @@
 use alloc::collections::BinaryHeap;
 
-use crate::core::kernel::{dispatch::mailbox::stable_priority_entry::StablePriorityEntry, messaging::AnyMessage};
+use crate::core::kernel::{
+  actor::messaging::AnyMessage, dispatch::mailbox::stable_priority_entry::StablePriorityEntry,
+};
 
 #[test]
 fn lower_priority_dequeued_first() {

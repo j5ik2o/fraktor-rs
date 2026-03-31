@@ -3,9 +3,11 @@ use alloc::string::ToString;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::{
-  actor::actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender},
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResult},
+  actor::{
+    actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender},
+    messaging::{AnyMessage, AskResult},
+  },
+  util::futures::ActorFutureShared,
 };
 
 type TestAskResult = AskResult;

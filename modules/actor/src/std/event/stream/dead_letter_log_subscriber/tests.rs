@@ -3,9 +3,11 @@ use core::time::Duration;
 use super::DeadLetterLogSubscriber;
 use crate::{
   core::kernel::{
-    dead_letter::{DeadLetterEntry, DeadLetterReason},
+    actor::{
+      dead_letter::{DeadLetterEntry, DeadLetterReason},
+      messaging::AnyMessage,
+    },
     event::stream::EventStreamEvent,
-    messaging::AnyMessage,
   },
   std::event::stream::EventStreamSubscriber,
 };
