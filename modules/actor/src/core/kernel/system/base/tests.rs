@@ -19,11 +19,11 @@ use crate::core::{
       Actor, ActorCell, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
       actor_ref::ActorRef,
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
       error::ActorError,
       lifecycle::LifecycleStage,
       messaging::system_message::SystemMessage,
       props::{MailboxConfig, MailboxRequirement, Props},
-      provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
       scheduler::{
         SchedulerConfig,
         tick_driver::{

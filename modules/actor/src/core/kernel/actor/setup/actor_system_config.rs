@@ -7,9 +7,9 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use crate::core::kernel::{
   actor::{
     actor_path::GuardianKind as PathGuardianKind,
+    actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
     props::MailboxConfig,
-    provider::ActorRefProviderInstaller,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{

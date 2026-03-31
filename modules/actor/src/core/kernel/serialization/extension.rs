@@ -19,7 +19,12 @@ use core::{
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
-  actor::{Pid, actor_ref::ActorRef, dead_letter::DeadLetterReason, extension::Extension, messaging::AnyMessage},
+  actor::{
+    Pid,
+    actor_ref::{ActorRef, dead_letter::DeadLetterReason},
+    extension::Extension,
+    messaging::AnyMessage,
+  },
   event::{logging::LogLevel, stream::EventStreamEvent},
   serialization::{
     builtin,

@@ -15,7 +15,7 @@ use super::{
 use crate::core::kernel::{
   actor::{
     Pid,
-    dead_letter::DeadLetterReason,
+    actor_ref::dead_letter::DeadLetterReason,
     error::SendError,
     messaging::{AnyMessage, system_message::SystemMessage},
     props::MailboxConfig,

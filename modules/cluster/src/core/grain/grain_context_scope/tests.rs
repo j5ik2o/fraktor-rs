@@ -5,11 +5,11 @@ use fraktor_actor_rs::core::kernel::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::AnyMessage,
     props::Props,
-    provider::{ActorRefProvider, ActorRefProviderShared},
     scheduler::{
       SchedulerConfig,
       tick_driver::{ManualTestDriver, TickDriverConfig},

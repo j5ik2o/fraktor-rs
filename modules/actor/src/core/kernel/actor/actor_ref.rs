@@ -4,6 +4,7 @@ mod actor_ref_sender;
 mod actor_ref_sender_shared;
 mod ask_reply_sender;
 mod base;
+pub mod dead_letter;
 mod null_sender;
 mod send_outcome;
 

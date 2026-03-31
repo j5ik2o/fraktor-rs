@@ -5,7 +5,7 @@ use core::time::Duration;
 
 use crate::core::kernel::actor::{
   Pid,
-  dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
+  actor_ref::dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
   error::SendError,
   messaging::AnyMessage,
 };

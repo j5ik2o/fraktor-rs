@@ -13,7 +13,7 @@ use super::{
   remote::{RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig},
   temp_actors::TempActors,
 };
-use crate::core::kernel::actor::provider::{
+use crate::core::kernel::actor::actor_ref_provider::{
   ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared,
   ActorRefProviders,
 };

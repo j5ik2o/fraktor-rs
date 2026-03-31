@@ -13,9 +13,9 @@ use fraktor_actor_rs::core::kernel::{
     Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::ActorRefProvider,
     error::{ActorError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
-    provider::ActorRefProvider,
   },
   system::{
     ActorSystem, ActorSystemWeak,

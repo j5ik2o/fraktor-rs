@@ -10,11 +10,11 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::ActorPathParts,
+    actor_ref_provider::ActorRefProvider,
     error::ActorError,
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
-    provider::ActorRefProvider,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },

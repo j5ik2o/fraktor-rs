@@ -24,12 +24,14 @@ use crate::core::{
     actor::{
       ActorCell, ChildRef, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
-      actor_ref::ActorRef,
-      dead_letter::{DeadLetterEntry, DeadLetterReason},
+      actor_ref::{
+        ActorRef,
+        dead_letter::{DeadLetterEntry, DeadLetterReason},
+      },
+      actor_ref_provider::ActorRefResolveError,
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
-      provider::ActorRefResolveError,
       scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
       setup::ActorSystemConfig,
       spawn::SpawnError,

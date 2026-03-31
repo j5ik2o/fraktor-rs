@@ -32,8 +32,10 @@ use crate::core::kernel::{
   actor::{
     ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme, GuardianKind as PathGuardianKind},
-    actor_ref::ActorRef,
-    dead_letter::{DeadLetterEntry, DeadLetterShared},
+    actor_ref::{
+      ActorRef,
+      dead_letter::{DeadLetterEntry, DeadLetterShared},
+    },
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AskResult,

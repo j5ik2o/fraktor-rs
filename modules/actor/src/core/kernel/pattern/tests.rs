@@ -253,7 +253,7 @@ fn graceful_stop_returns_send_failed_when_stop_send_fails_and_target_stays_alive
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));
   assert!(state.dead_letters().iter().any(|entry| entry.recipient() == Some(pid)
-    && entry.reason() == crate::core::kernel::actor::dead_letter::DeadLetterReason::RecipientUnavailable));
+    && entry.reason() == crate::core::kernel::actor::actor_ref::dead_letter::DeadLetterReason::RecipientUnavailable));
 }
 
 #[test]

@@ -12,7 +12,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage,
+    actor_ref::dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage,
     scheduler::tick_driver::SchedulerTickMetrics,
   },
   dispatch::{
