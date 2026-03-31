@@ -9,7 +9,7 @@ use crate::core::{
     actor::{
       Actor, ActorContext,
       actor_ref::ActorRef,
-      dead_letter::DeadLetterReason,
+      actor_ref::dead_letter::DeadLetterReason,
       error::{ActorError, ActorErrorReason},
       messaging::{AnyMessage, AnyMessageView},
       scheduler::SchedulerCommand,

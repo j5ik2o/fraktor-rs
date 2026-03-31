@@ -14,7 +14,7 @@ use fraktor_utils_rs::core::sync::NoStdMutex;
 
 use crate::core::{
   kernel::actor::{
-    dead_letter::DeadLetterReason,
+    actor_ref::dead_letter::DeadLetterReason,
     error::ActorError,
     messaging::AnyMessage,
     supervision::{

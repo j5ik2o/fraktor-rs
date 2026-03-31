@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use crate::core::kernel::actor::{Pid, dead_letter::dead_letter_reason::DeadLetterReason, messaging::AnyMessage};
+use crate::core::kernel::actor::{Pid, actor_ref::dead_letter::dead_letter_reason::DeadLetterReason, messaging::AnyMessage};
 
 /// Captures a single deadletter occurrence.
 #[derive(Debug)]

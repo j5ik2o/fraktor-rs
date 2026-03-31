@@ -13,7 +13,6 @@ mod actor_shared;
 mod address;
 mod child_ref;
 pub mod context_pipe;
-pub mod dead_letter;
 pub mod error;
 pub mod extension;
 pub mod lifecycle;

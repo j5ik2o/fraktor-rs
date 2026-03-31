@@ -7,7 +7,7 @@ use fraktor_actor_rs::core::kernel::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    dead_letter::DeadLetterReason,
+    actor_ref::dead_letter::DeadLetterReason,
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,

@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use crate::core::{
   kernel::{
     actor::{
-      dead_letter::DeadLetterEntry, error::SendError, messaging::AskResult, setup::ActorSystemConfig, spawn::SpawnError,
+      actor_ref::dead_letter::DeadLetterEntry, error::SendError, messaging::AskResult, setup::ActorSystemConfig, spawn::SpawnError,
     },
     event::{
       logging::LogLevel,

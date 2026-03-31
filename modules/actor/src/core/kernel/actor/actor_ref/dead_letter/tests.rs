@@ -8,7 +8,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use crate::core::kernel::{
   actor::{
     Pid,
-    dead_letter::{DeadLetterReason, DeadLetterShared},
+    actor_ref::dead_letter::{DeadLetterReason, DeadLetterShared},
     error::SendError,
     messaging::AnyMessage,
   },

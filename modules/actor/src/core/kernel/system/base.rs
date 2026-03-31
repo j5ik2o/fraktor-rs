@@ -25,7 +25,7 @@ use crate::core::{
       ActorCell, ChildRef, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
       actor_ref::ActorRef,
-      dead_letter::{DeadLetterEntry, DeadLetterReason},
+      actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,

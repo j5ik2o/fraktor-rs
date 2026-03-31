@@ -12,7 +12,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess, sync_
 use crate::core::kernel::{
   actor::{
     Pid,
-    dead_letter::{DeadLetter, DeadLetterEntry, DeadLetterReason},
+    actor_ref::dead_letter::{DeadLetter, DeadLetterEntry, DeadLetterReason},
     error::SendError,
     messaging::AnyMessage,
   },

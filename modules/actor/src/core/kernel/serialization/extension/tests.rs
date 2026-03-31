@@ -16,8 +16,7 @@ use super::*;
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
-    actor_ref::{ActorRef, NullSender},
-    dead_letter::DeadLetterReason,
+    actor_ref::{ActorRef, NullSender, dead_letter::DeadLetterReason},
     messaging::AnyMessageView,
     props::Props,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},

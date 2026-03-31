@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 pub use error::EndpointReaderError;
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    actor_path::ActorPath, actor_ref::ActorRef, dead_letter::DeadLetterReason, error::SendError, messaging::AnyMessage,
+    actor_path::ActorPath, actor_ref::{ActorRef, dead_letter::DeadLetterReason}, error::SendError, messaging::AnyMessage,
   },
   serialization::{SerializationError, SerializationExtensionShared, SerializedMessage},
   system::{ActorSystem, ActorSystemWeak, remote::RemoteWatchHookShared},

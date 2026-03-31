@@ -4,7 +4,7 @@ use super::DeadLetterLogSubscriber;
 use crate::{
   core::kernel::{
     actor::{
-      dead_letter::{DeadLetterEntry, DeadLetterReason},
+      actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
       messaging::AnyMessage,
     },
     event::stream::EventStreamEvent,

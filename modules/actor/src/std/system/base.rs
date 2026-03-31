@@ -6,7 +6,7 @@ use crate::{
       Pid,
       actor_path::ActorPath,
       actor_ref::ActorRef,
-      dead_letter::DeadLetterEntry,
+      actor_ref::dead_letter::DeadLetterEntry,
       error::SendError,
       messaging::AskResult,
       props::Props,
