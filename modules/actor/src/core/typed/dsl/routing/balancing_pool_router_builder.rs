@@ -17,7 +17,7 @@ use crate::core::{
     TypedActorRef,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
-    behavior_signal::BehaviorSignal,
+    message_and_signals::BehaviorSignal,
     dsl::Behaviors,
     props::TypedProps,
   },

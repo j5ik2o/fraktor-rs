@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use super::BehaviorSignalInterceptor;
 use crate::core::{
   kernel::{actor::ActorContext, system::ActorSystem},
-  typed::{BehaviorSignal, actor::TypedActorContext, dsl::Behaviors},
+  typed::{actor::TypedActorContext, dsl::Behaviors, message_and_signals::BehaviorSignal},
 };
 
 struct SignalProbe {

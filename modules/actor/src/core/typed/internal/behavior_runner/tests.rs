@@ -11,12 +11,11 @@ use crate::core::{
     system::ActorSystem,
   },
   typed::{
-    DeathPactException,
     actor::{TypedActor, TypedActorContext},
     behavior::Behavior,
-    behavior_signal::BehaviorSignal,
     dsl::Behaviors,
     message_adapter::{AdapterError, MessageAdapterRegistry},
+    message_and_signals::{BehaviorSignal, DeathPactError},
   },
 };
 
@@ -230,7 +229,7 @@ fn behavior_runner_death_pact_errors_without_signal_handler() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
   let error = result.unwrap_err();
-  assert!(error.is_source_type::<DeathPactException>(), "error should be typed as DeathPactException");
+  assert!(error.is_source_type::<DeathPactError>(), "error should be typed as DeathPactError");
   assert!(error.reason().as_str().contains("death pact"), "message should describe death pact");
 }
 
@@ -249,7 +248,7 @@ fn behavior_runner_death_pact_succeeds_with_signal_handler() {
 }
 
 /// Regression test: when a signal handler returns `Behaviors::unhandled()`,
-/// `DeathPactException` must be emitted.
+/// `DeathPactError` must be emitted.
 #[test]
 fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   let behavior = Behaviors::receive_signal(|_, _signal| Ok(Behaviors::unhandled()));
@@ -261,8 +260,8 @@ fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   let result = runner.on_terminated(&mut typed_ctx, pids[1]);
   let error = result.unwrap_err();
   assert!(
-    error.is_source_type::<DeathPactException>(),
-    "handler が Unhandled を返した場合も DeathPactException になるべき"
+    error.is_source_type::<DeathPactError>(),
+    "handler が Unhandled を返した場合も DeathPactError になるべき"
   );
   assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
 }

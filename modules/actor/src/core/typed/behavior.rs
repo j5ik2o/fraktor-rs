@@ -9,7 +9,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   kernel::actor::{error::ActorError, supervision::SupervisorStrategyConfig},
-  typed::{actor::TypedActorContext, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContext, message_and_signals::BehaviorSignal},
 };
 
 /// Captures message and signal handlers that can evolve into new behaviors after each invocation.

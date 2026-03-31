@@ -16,7 +16,7 @@ pub use service_key::ServiceKey;
 
 use crate::core::{
   kernel::actor::{actor_ref::ActorRef, error::ActorError},
-  typed::{TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, dsl::Behaviors},
+  typed::{TypedActorRef, behavior::Behavior, message_and_signals::BehaviorSignal, dsl::Behaviors},
 };
 
 /// Composite key for internal registry lookups.

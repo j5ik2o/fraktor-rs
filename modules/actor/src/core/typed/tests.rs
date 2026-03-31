@@ -23,11 +23,12 @@ use crate::core::{
     },
   },
   typed::{
-    Behavior, BehaviorSignal, TypedActorRef,
+    Behavior, TypedActorRef,
     actor::{TypedActor, TypedActorContext},
     behavior_interceptor::BehaviorInterceptor,
     dsl::{Behaviors, StashBuffer, TypedAskError},
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
+    message_and_signals::BehaviorSignal,
     props::TypedProps,
     system::TypedActorSystem,
   },

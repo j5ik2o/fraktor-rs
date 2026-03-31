@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
-  typed::{TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, dsl::Behaviors, props::TypedProps},
+  typed::{TypedActorRef, behavior::Behavior, message_and_signals::BehaviorSignal, dsl::Behaviors, props::TypedProps},
 };
 
 /// Shared closure that rewrites an incoming message with a new reply target.

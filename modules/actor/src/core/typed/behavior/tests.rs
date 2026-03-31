@@ -7,8 +7,8 @@ use crate::core::{
   typed::{
     actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
-    behavior_signal::BehaviorSignal,
     dsl::Behaviors,
+    message_and_signals::BehaviorSignal,
   },
 };
 

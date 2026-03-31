@@ -5,7 +5,7 @@ mod tests;
 
 use crate::core::{
   kernel::actor::error::ActorError,
-  typed::{Behavior, BehaviorSignal, actor::TypedActorContext},
+  typed::{Behavior, actor::TypedActorContext, message_and_signals::BehaviorSignal},
 };
 
 type StartTarget<'a, M> = dyn FnMut(&mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> + 'a;

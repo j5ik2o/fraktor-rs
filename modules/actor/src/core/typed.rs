@@ -10,14 +10,12 @@ mod actor_ref_resolver;
 mod behavior;
 /// Cross-cutting concern interceptor for typed behaviors.
 mod behavior_interceptor;
-/// Typed behavior signals forwarded from the runtime.
-mod behavior_signal;
-/// Pekko-compatible death pact exception for typed actors.
-mod death_pact_exception;
+/// Messages and signals delivered to typed behaviors (Pekko MessageAndSignals).
+pub mod message_and_signals;
 /// Point-to-point reliable delivery between a producer and consumer actor.
 pub mod delivery;
 /// Dispatcher registry — resolves thread-pool executors from a selector (placeholder).
-pub mod dispatchers;
+mod dispatchers;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
 /// DSL package for typed actor development (Behaviors, stash, timers, ask patterns).
@@ -48,8 +46,6 @@ pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
 pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
-pub use behavior_signal::BehaviorSignal;
-pub use death_pact_exception::DeathPactException;
 pub use dispatcher_selector::DispatcherSelector;
 pub use extension_setup::ExtensionSetup;
 pub use mailbox_selector::MailboxSelector;

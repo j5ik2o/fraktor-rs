@@ -11,7 +11,8 @@ use crate::{
   core::{
     kernel::actor::error::ActorError,
     typed::{
-      Behavior, BehaviorInterceptor, BehaviorSignal,
+      Behavior, BehaviorInterceptor,
+      message_and_signals::BehaviorSignal,
       actor::TypedActorContext as CoreTypedActorContext,
       dsl::{Behaviors as CoreBehaviors, StashBuffer, Supervise},
     },

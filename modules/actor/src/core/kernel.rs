@@ -3,9 +3,9 @@
 pub mod actor;
 pub mod dispatch;
 pub mod event;
-pub mod io;
+mod io;
 pub mod pattern;
-pub mod routing;
+mod routing;
 pub mod serialization;
 pub mod system;
 pub mod util;

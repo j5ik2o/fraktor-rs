@@ -16,7 +16,7 @@ use crate::core::{
   },
   typed::{
     TypedActorRef, actor::TypedActorContext, behavior::Behavior, behavior_interceptor::BehaviorInterceptor,
-    behavior_signal::BehaviorSignal, internal::ReceiveTimeoutConfig,
+    internal::ReceiveTimeoutConfig, message_and_signals::BehaviorSignal,
   },
 };
 

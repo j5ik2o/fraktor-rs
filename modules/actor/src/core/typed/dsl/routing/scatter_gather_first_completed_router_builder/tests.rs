@@ -324,7 +324,7 @@ fn scatter_gather_stops_when_all_routees_terminate() {
       let rs2 = rs.clone();
       Behaviors::receive_message(move |_ctx, _msg: &TestReq| Ok(Behaviors::same())).receive_signal(
         move |_ctx, signal| {
-          use crate::core::typed::behavior_signal::BehaviorSignal;
+          use crate::core::typed::message_and_signals::BehaviorSignal;
           match signal {
             | BehaviorSignal::Terminated(_) => {
               *rs2.lock() = true;
@@ -386,7 +386,7 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
       let rs2 = rs.clone();
       Behaviors::receive_message(move |_ctx, _msg: &TestReq| Ok(Behaviors::same())).receive_signal(
         move |_ctx, signal| {
-          use crate::core::typed::behavior_signal::BehaviorSignal;
+          use crate::core::typed::message_and_signals::BehaviorSignal;
           match signal {
             | BehaviorSignal::Terminated(_) => {
               *rs2.lock() = true;

@@ -11,10 +11,9 @@ use crate::core::{
     event::stream::{AdapterFailureEvent, EventStreamEvent, TypedUnhandledMessageEvent},
   },
   typed::{
-    DeathPactException,
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
-    behavior_signal::BehaviorSignal,
+    message_and_signals::{BehaviorSignal, DeathPactError},
     message_adapter::AdapterError,
   },
 };
@@ -144,11 +143,11 @@ where
   ) -> Result<(), ActorError> {
     // シグナルハンドラが Terminated を実際に処理したかを判定する。
     // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
-    // DeathPactException を発行する必要がある (Pekko 互換)。
+    // DeathPactError を発行する必要がある (Pekko 互換)。
     let directive = self.dispatch_signal(ctx, &BehaviorSignal::Terminated(terminated))?;
     if matches!(directive, BehaviorDirective::Unhandled) || !self.current.has_signal_handler() {
-      let ex = DeathPactException::new(terminated);
-      Err(ActorError::recoverable_typed::<DeathPactException>(ex.to_string()))
+      let ex = DeathPactError::new(terminated);
+      Err(ActorError::recoverable_typed::<DeathPactError>(ex.to_string()))
     } else {
       Ok(())
     }

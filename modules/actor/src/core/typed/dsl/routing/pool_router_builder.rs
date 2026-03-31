@@ -12,7 +12,7 @@ use portable_atomic::{AtomicU64, Ordering};
 use super::resizer::Resizer;
 use crate::core::{
   kernel::event::logging::LogLevel,
-  typed::{TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, dsl::Behaviors, props::TypedProps},
+  typed::{TypedActorRef, behavior::Behavior, message_and_signals::BehaviorSignal, dsl::Behaviors, props::TypedProps},
 };
 
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;

@@ -5,7 +5,7 @@ mod tests;
 
 use crate::core::{
   kernel::actor::error::ActorError,
-  typed::{actor::TypedActorContext, behavior::Behavior, behavior_signal::BehaviorSignal},
+  typed::{actor::TypedActorContext, behavior::Behavior, message_and_signals::BehaviorSignal},
 };
 
 /// Intercepts messages and signals before they reach the wrapped behavior.
