@@ -46,8 +46,7 @@ fn path_returns_some_with_system() {
   let state = system.state();
   let pid = state.allocate_pid();
   let props = Props::from_fn(|| NoOpActor);
-  let cell =
-    ActorCell::create(state.clone(), pid, None, "test-path-actor".into(), &props).expect("create actor");
+  let cell = ActorCell::create(state.clone(), pid, None, "test-path-actor".into(), &props).expect("create actor");
   state.register_cell(cell.clone());
   let actor_ref = ActorRef::with_system(pid, NoOpSender, &state);
   let typed_ref = TypedActorRef::<u32>::from_untyped(actor_ref);
