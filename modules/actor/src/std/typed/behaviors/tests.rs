@@ -1,6 +1,7 @@
 extern crate std;
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::borrow::ToOwned;
 use std::sync::{Arc, Mutex, Once};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -469,4 +470,3 @@ fn with_message_mdc_creates_actor_mdc_span() {
     assert!(spans.iter().any(|s| s.name == "actor_mdc"), "span should be named actor_mdc");
   });
 }
-
