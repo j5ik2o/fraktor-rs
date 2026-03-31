@@ -18,10 +18,8 @@ use fraktor_actor_rs::core::kernel::{
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  system::{
-    ActorSystem,
-    provider::{ActorRefProvider, ActorRefProviderShared},
-  },
+  actor::provider::{ActorRefProvider, ActorRefProviderShared},
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess},

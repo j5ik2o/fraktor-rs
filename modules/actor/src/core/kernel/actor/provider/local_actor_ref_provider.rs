@@ -1,12 +1,10 @@
 //! Local-only actor reference provider.
 
-use crate::core::kernel::{
-  actor::{
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRef,
-    error::ActorError,
-  },
-  system::provider::ActorRefProvider,
+use crate::core::kernel::actor::{
+  actor_path::{ActorPath, ActorPathScheme},
+  actor_ref::ActorRef,
+  error::ActorError,
+  provider::ActorRefProvider,
 };
 
 /// Provider for local-only actor systems.

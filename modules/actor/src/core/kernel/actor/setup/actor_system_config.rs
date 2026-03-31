@@ -9,13 +9,14 @@ use crate::core::kernel::{
     actor_path::GuardianKind as PathGuardianKind,
     extension::ExtensionInstallers,
     props::MailboxConfig,
+    provider::ActorRefProviderInstaller,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
     dispatcher::{DispatcherConfig, Dispatchers},
     mailbox::Mailboxes,
   },
-  system::{provider::ActorRefProviderInstaller, remote::RemotingConfig},
+  system::remote::RemotingConfig,
 };
 
 #[cfg(test)]

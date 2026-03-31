@@ -15,8 +15,6 @@ mod extensions;
 mod extra_top_levels;
 /// Guardian actor related types.
 pub mod guardian;
-/// Actor reference provider related types.
-pub mod provider;
 mod register_extension_error;
 mod register_extra_top_level_error;
 mod registries;

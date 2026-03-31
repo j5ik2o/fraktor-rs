@@ -29,6 +29,7 @@ use crate::core::{
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
+      provider::ActorRefResolveError,
       scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
       setup::ActorSystemConfig,
       spawn::SpawnError,
@@ -40,10 +41,7 @@ use crate::core::{
       },
     },
     serialization::default_serialization_extension_id,
-    system::{
-      provider::ActorRefResolveError,
-      state::{SystemStateShared, system_state::SystemState},
-    },
+    system::state::{SystemStateShared, system_state::SystemState},
     util::futures::ActorFutureShared,
   },
   typed::{

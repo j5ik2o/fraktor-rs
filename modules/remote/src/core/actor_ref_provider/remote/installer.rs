@@ -3,11 +3,10 @@
 use alloc::format;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::actor_path::ActorPathScheme,
+  actor::{actor_path::ActorPathScheme, provider::{ActorRefProviderInstaller, ActorRefProviderShared}},
   serialization::SerializationExtensionShared,
   system::{
     ActorSystem, ActorSystemBuildError,
-    provider::{ActorRefProviderInstaller, ActorRefProviderShared},
     remote::RemoteWatchHookShared,
   },
 };

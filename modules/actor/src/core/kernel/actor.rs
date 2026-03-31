@@ -23,6 +23,8 @@ pub mod messaging;
 mod pid;
 mod pipe_spawn_error;
 pub mod props;
+/// Actor reference provider related types.
+pub mod provider;
 mod receive_state;
 pub mod scheduler;
 pub mod setup;

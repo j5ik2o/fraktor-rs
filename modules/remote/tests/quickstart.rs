@@ -22,9 +22,9 @@ use fraktor_actor_rs::core::kernel::{
     subscriber_handle,
   },
   serialization::SerializationExtensionInstaller,
+  actor::provider::ActorRefProvider,
   system::{
     ActorSystem,
-    provider::ActorRefProvider,
     remote::{RemoteWatchHook, RemoteWatchHookShared, RemotingConfig},
     state::AuthorityState,
   },

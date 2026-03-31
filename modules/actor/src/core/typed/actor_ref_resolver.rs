@@ -10,7 +10,8 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use crate::core::{
   kernel::{
     actor::{actor_path::ActorPathParser, actor_ref::ActorRef, extension::Extension},
-    system::{ActorSystem, ActorSystemWeak, provider::ActorRefResolveError},
+    actor::provider::ActorRefResolveError,
+    system::{ActorSystem, ActorSystemWeak},
   },
   typed::{TypedActorRef, TypedActorSystem, internal::ActorRefResolverId},
 };

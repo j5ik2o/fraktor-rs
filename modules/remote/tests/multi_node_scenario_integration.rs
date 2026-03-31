@@ -17,9 +17,9 @@ use fraktor_actor_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   serialization::SerializationExtensionInstaller,
+  actor::provider::ActorRefProvider,
   system::{
     ActorSystem,
-    provider::ActorRefProvider,
     remote::{RemoteWatchHookShared, RemotingConfig},
     state::AuthorityState,
   },

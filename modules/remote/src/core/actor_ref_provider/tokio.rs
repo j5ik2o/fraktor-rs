@@ -15,10 +15,10 @@ use fraktor_actor_rs::core::kernel::{
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::{ActorError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
+    provider::ActorRefProvider,
   },
   system::{
     ActorSystem, ActorSystemWeak,
-    provider::ActorRefProvider,
     remote::{RemoteAuthorityError, RemoteWatchHook},
   },
 };

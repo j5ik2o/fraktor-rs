@@ -5,9 +5,9 @@ use core::any::Any;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
+use crate::core::kernel::actor::provider::{ActorRefProvider, ActorRefProviderShared};
 use super::{
   ActorSystem, ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError,
-  provider::{ActorRefProvider, ActorRefProviderShared},
   remote::RemoteWatchHook,
 };
 use crate::core::kernel::{

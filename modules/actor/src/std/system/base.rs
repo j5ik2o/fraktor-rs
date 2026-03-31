@@ -21,8 +21,9 @@ use crate::{
         subscriber_handle as core_subscriber_handle,
       },
     },
+    actor::provider::ActorRefResolveError,
     system::{
-      ActorSystem as CoreActorSystem, ExtendedActorSystem, provider::ActorRefResolveError,
+      ActorSystem as CoreActorSystem, ExtendedActorSystem,
       state::SystemStateShared as CoreSystemStateShared,
     },
     util::futures::ActorFutureShared,

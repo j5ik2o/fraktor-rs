@@ -36,8 +36,8 @@ use crate::core::{
     },
     dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    actor::provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
     system::{
-      provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
       remote::RemotingConfig,
       state::{SystemStateShared, system_state::SystemState},
     },

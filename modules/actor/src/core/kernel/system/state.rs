@@ -2,6 +2,10 @@
 
 // Bridge imports from parent (system) module, so that child modules can
 // reference these via `super::TypeName`.
+use crate::core::kernel::actor::provider::{
+  ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared,
+  ActorRefProviders,
+};
 use super::{
   actor_path_registry::ActorPathRegistry,
   ask_futures::AskFutures,
@@ -9,10 +13,6 @@ use super::{
   extensions::Extensions,
   extra_top_levels::ExtraTopLevels,
   guardian::{GuardianKind, GuardiansState},
-  provider::{
-    ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared,
-    ActorRefProviders,
-  },
   registries::Registries,
   remote::{RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHook, RemoteWatchHookDynShared, RemotingConfig},
   temp_actors::TempActors,

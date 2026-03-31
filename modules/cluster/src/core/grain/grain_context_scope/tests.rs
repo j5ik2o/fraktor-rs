@@ -15,10 +15,8 @@ use fraktor_actor_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  system::{
-    ActorSystem,
-    provider::{ActorRefProvider, ActorRefProviderShared},
-  },
+  actor::provider::{ActorRefProvider, ActorRefProviderShared},
+  system::ActorSystem,
 };
 
 use crate::core::{
