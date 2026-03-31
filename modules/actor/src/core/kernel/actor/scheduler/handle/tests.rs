@@ -38,7 +38,7 @@ fn cancel_on_scheduled_handle_succeeds() {
 fn cancel_on_already_cancelled_handle_returns_false() {
   let handle = SchedulerHandle::new(3);
   handle.entry().mark_scheduled();
-  let _ = handle.cancel();
+  assert!(handle.cancel(), "first cancel should succeed on scheduled handle");
 
   let result = handle.cancel();
   assert!(!result, "second cancel should return false");
@@ -50,7 +50,7 @@ fn cancel_on_already_cancelled_handle_returns_false() {
 fn cancel_on_completed_handle_returns_false() {
   let handle = SchedulerHandle::new(4);
   handle.entry().mark_scheduled();
-  handle.entry().try_begin_execute();
+  assert!(handle.entry().try_begin_execute(), "try_begin_execute should succeed from Scheduled state");
   handle.entry().mark_completed();
 
   let result = handle.cancel();
@@ -64,7 +64,7 @@ fn cancel_on_completed_handle_returns_false() {
 fn cancel_on_executing_handle_returns_false() {
   let handle = SchedulerHandle::new(5);
   handle.entry().mark_scheduled();
-  handle.entry().try_begin_execute();
+  assert!(handle.entry().try_begin_execute(), "try_begin_execute should succeed from Scheduled state");
 
   let result = handle.cancel();
   assert!(!result, "cancel should fail on executing handle");
@@ -80,6 +80,6 @@ fn is_cancelled_reflects_cancel_state() {
   handle.entry().mark_scheduled();
   assert!(!handle.is_cancelled());
 
-  let _ = handle.cancel();
+  assert!(handle.cancel(), "cancel should succeed on scheduled handle");
   assert!(handle.is_cancelled());
 }

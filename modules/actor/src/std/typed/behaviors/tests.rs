@@ -439,9 +439,9 @@ fn with_message_mdc_delegates_to_inner_behavior() {
   assert_eq!(inner_received.lock().as_slice(), &[88]);
 }
 
-/// `with_message_mdc` creates a tracing span with per-message MDC entries.
+/// `with_message_mdc` creates a tracing span named `actor_mdc` when a message is processed.
 #[test]
-fn with_message_mdc_creates_span_with_per_message_entries() {
+fn with_message_mdc_creates_actor_mdc_span() {
   ensure_tracing_interest_cache_permissive();
   let collector = SpanRecordingSubscriber::default();
   let shared = collector.clone();
@@ -470,9 +470,9 @@ fn with_message_mdc_creates_span_with_per_message_entries() {
   });
 }
 
-/// `with_message_mdc` does not include static MDC entries (empty static MDC).
+/// `with_message_mdc` forwards messages to the inner behavior.
 #[test]
-fn with_message_mdc_uses_empty_static_mdc() {
+fn with_message_mdc_forwards_messages_to_inner_behavior() {
   let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 

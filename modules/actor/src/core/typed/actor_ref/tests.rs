@@ -1,9 +1,13 @@
 use crate::core::{
-  kernel::actor::{
-    Pid,
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    error::SendError,
-    messaging::AnyMessage,
+  kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext, Pid,
+      actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+      error::{ActorError, SendError},
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+    },
+    system::ActorSystem,
   },
   typed::TypedActorRef,
 };
@@ -25,6 +29,30 @@ fn path_returns_none_without_system() {
   let typed_ref = TypedActorRef::<u32>::from_untyped(actor_ref);
 
   assert!(typed_ref.path().is_none(), "path should be None without system");
+}
+
+struct NoOpActor;
+
+impl Actor for NoOpActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+/// `path` returns `Some` when the actor is registered in the system.
+#[test]
+fn path_returns_some_with_system() {
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let pid = state.allocate_pid();
+  let props = Props::from_fn(|| NoOpActor);
+  let cell =
+    ActorCell::create(state.clone(), pid, None, "test-path-actor".into(), &props).expect("create actor");
+  state.register_cell(cell.clone());
+  let actor_ref = ActorRef::with_system(pid, NoOpSender, &state);
+  let typed_ref = TypedActorRef::<u32>::from_untyped(actor_ref);
+
+  assert!(typed_ref.path().is_some(), "path should be Some when actor is registered");
 }
 
 /// `narrow` converts the reference to a different message type.
@@ -64,14 +92,13 @@ fn narrow_and_unsafe_upcast_round_trip() {
   assert_eq!(restored.pid(), original_pid, "round-trip should preserve pid");
 }
 
-/// `map` (existing) and `narrow` produce the same result.
+/// `map` (existing) and `narrow` produce the same result from identical input.
 #[test]
 fn narrow_is_consistent_with_map() {
-  let actor_ref_1 = ActorRef::new(Pid::new(5, 0), NoOpSender);
-  let actor_ref_2 = ActorRef::new(Pid::new(5, 0), NoOpSender);
+  let actor_ref = ActorRef::new(Pid::new(5, 0), NoOpSender);
 
-  let via_map: TypedActorRef<u64> = TypedActorRef::<u32>::from_untyped(actor_ref_1).map();
-  let via_narrow: TypedActorRef<u64> = TypedActorRef::<u32>::from_untyped(actor_ref_2).narrow();
+  let via_map: TypedActorRef<u64> = TypedActorRef::<u32>::from_untyped(actor_ref.clone()).map();
+  let via_narrow: TypedActorRef<u64> = TypedActorRef::<u32>::from_untyped(actor_ref).narrow();
 
   assert_eq!(via_map.pid(), via_narrow.pid(), "map and narrow should produce same pid");
 }

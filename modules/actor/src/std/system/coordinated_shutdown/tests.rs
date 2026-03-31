@@ -224,8 +224,6 @@ fn error_display() {
   assert!(err.to_string().contains("cycle detected"));
 }
 
-// --- Phase 1 タスク8: CoordinatedShutdown::get extension-style entrypoint ---
-
 /// `get` returns `None` when the extension has not been registered.
 #[test]
 fn get_returns_none_when_extension_not_registered() {
