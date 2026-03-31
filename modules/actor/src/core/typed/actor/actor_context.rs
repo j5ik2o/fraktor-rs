@@ -11,8 +11,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
 use crate::core::{
   kernel::{
     actor::{
-      ActorContext, ChildRef, Pid, PipeSpawnError,
-      error::{ActorError, SendError},
+      ActorContext, ChildRef, Pid,
+      error::{ActorError, PipeSpawnError, SendError},
       messaging::{AnyMessage, AskError},
       spawn::SpawnError,
     },

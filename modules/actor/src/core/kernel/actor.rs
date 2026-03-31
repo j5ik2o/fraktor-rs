@@ -19,7 +19,6 @@ pub mod extension;
 pub mod lifecycle;
 pub mod messaging;
 mod pid;
-mod pipe_spawn_error;
 pub mod props;
 /// Actor reference provider related types.
 pub mod provider;
@@ -37,5 +36,4 @@ pub(crate) use actor_shared::ActorShared;
 pub use address::Address;
 pub use child_ref::ChildRef;
 pub use pid::Pid;
-pub use pipe_spawn_error::PipeSpawnError;
 pub use receive_state::ReceiveState;

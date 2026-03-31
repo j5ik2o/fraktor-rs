@@ -10,9 +10,8 @@ use crate::core::kernel::{
   actor::{
     ChildRef, Pid,
     actor_ref::ActorRef,
-    error::{ActorError, SendError},
+    error::{ActorError, PipeSpawnError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
-    pipe_spawn_error::PipeSpawnError,
     props::Props,
     spawn::SpawnError,
   },
