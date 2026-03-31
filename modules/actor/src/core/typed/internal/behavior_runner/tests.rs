@@ -205,6 +205,21 @@ fn behavior_runner_dispatches_pre_restart_signal() {
 }
 
 #[test]
+fn behavior_runner_pre_start_does_not_mark_stopping_when_stop_self_fails() {
+  let mut runner = BehaviorRunner::new(Behaviors::stopped::<ProbeMessage>());
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  let first = runner.pre_start(&mut typed_ctx);
+  assert!(first.is_err());
+  assert!(!runner.stopping, "stop_self 失敗時に stopping を保持してはならない");
+
+  let second = runner.pre_start(&mut typed_ctx);
+  assert!(second.is_err());
+  assert!(!runner.stopping, "再試行可能性を維持するため stopping は false のままであるべき");
+}
+
+#[test]
 fn behavior_runner_dispatches_child_failed_signal() {
   let received = Arc::new(AtomicBool::new(false));
   let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::ChildFailed { .. }), received.clone());
