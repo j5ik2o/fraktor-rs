@@ -16,6 +16,8 @@ mod behavior_signal;
 mod death_pact_exception;
 /// Point-to-point reliable delivery between a producer and consumer actor.
 pub mod delivery;
+/// Dispatcher registry — resolves thread-pool executors from a selector (placeholder).
+pub mod dispatchers;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
 /// DSL package for typed actor development (Behaviors, stash, timers, ask patterns).
