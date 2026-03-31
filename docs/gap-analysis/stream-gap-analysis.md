@@ -1,110 +1,101 @@
 # stream モジュール ギャップ分析
 
-## サマリー
+## 前提と集計範囲
 
-主要な比較対象は `references/pekko/stream/src/main/scala/org/apache/pekko/stream/` と
-`references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/` の public API とし、
-`javadsl` 重複、`impl`、例外専用型は型カバレッジ集計から除外した。
+- 比較対象:
+  - fraktor-rs: `modules/stream/src/core`, `modules/stream/src/std`
+  - Pekko: `references/pekko/stream/src/main/scala/org/apache/pekko/stream`, `.../scaladsl`, `.../stage`
+- 集計対象は parity に直接効く公開 DSL・主要型・materialization 入口に限定した。
+- `javadsl` 重複、内部実装、例外専用型、テスト専用型は型カバレッジの主集計から除外した。
+- `stream` モジュールには `core/typed` 相当の層がないため、typed ラッパー層は `0/0` 扱いとする。
+
+## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数 | 57 |
-| fraktor-rs 公開型数 | 43（core: 39, std: 4） |
-| カバレッジ（型単位） | 43/57 (75%) |
-| ギャップ数 | 18（core: 13, std: 5） |
+| Pekko 公開型数 | 約 57 |
+| fraktor-rs 公開型数 | 約 45（core: 41, std: 4） |
+| カバレッジ（型単位） | 約 45/57 (79%) |
+| ギャップ数 | 24（core: 18, std: 6） |
 
 補足:
-- `Source` の主要 public API は、`scaladsl/Source.scala` の固有メソッド 44 個に対して、正規化比較で fraktor 側 35 個相当を確認した
-- `Flow` の主要 public API は、`scaladsl/Flow.scala` の固有メソッド 135 個に対して、正規化比較で fraktor 側 117 個相当を確認した
-- ただし名前一致だけでは十分ではないため、下表ではセマンティクス差分と placeholder 実装を別途ギャップとして計上した
+- `Source` / `Flow` / `Sink` の主経路 DSL はかなり揃っている。
+- 一方で materializer-aware API、bridge API、GraphStage authoring API、network/remote 系はまだ薄い。
+- placeholder 実装が残るため、現段階では API ギャップが構造ギャップより支配的である。
 
 ## 層別カバレッジ
 
-`stream` モジュールには `core/typed` 相当の層が存在しないため、typed ラッパー層は `0/0` とした。
-
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
 |----|-------------|------------------|-----------|
-| core / untyped kernel | 51 | 39 | 76% |
+| core / untyped kernel | 52 | 41 | 79% |
 | core / typed ラッパー | 0 | 0 | - |
-| std / アダプタ | 6 | 4 | 67% |
+| std / アダプタ | 5 | 4 | 80% |
 
 ## カテゴリ別ギャップ
 
-### 型・トレイト ✅ 実装済み 22/31 (71%)
+### 型・トレイト ✅ 実装済み 23/27 (85%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `StreamRefs` / `SinkRef` / `SourceRef` / `StreamRefResolver` | `scaladsl/StreamRefs.scala:L34,L45`, `StreamRefs.scala:L55,L89,L146` | 未対応 | std | hard | リモート越しの back-pressured stream reference が存在しない |
-| `Tcp` | `scaladsl/Tcp.scala:L47` | 未対応 | std | hard | TCP ストリーム DSL と transport 実装がない |
-| `TLS` / `SslTlsOptions` | `scaladsl/TLS.scala:L62`, `SslTlsOptions.scala:L29` | 未対応 | std | hard | TLS bidi stage と TLS 設定型がない |
-| `MaterializerLoggingProvider` | `MaterializerLoggingProvider.scala:L24` | 未対応 | std | medium | materializer とロギングの統合フックがない |
-| `GraphStage` 実行 API 一式 | `stage/GraphStage.scala:L52,L321,L1451,L1532,L1642,L1700,L1863,L1888` | 部分実装 | core | hard | fraktor 側は `GraphStage` / `GraphStageLogic` / `AsyncCallback` / `TimerGraphStageLogic` の最小集合に留まり、`StageActor`、`SubSinkInlet`、`SubSourceOutlet`、`InHandler`、`OutHandler` などの stage authoring API が不足している（`modules/stream/src/core/graph/graph_stage.rs:6`, `modules/stream/src/core/graph/graph_stage_logic.rs:4`, `modules/stream/src/core/stage/async_callback.rs:9`, `modules/stream/src/core/stage/timer_graph_stage_logic.rs:7`） |
+| `StreamRefs` / `SinkRef` / `SourceRef` / `StreamRefResolver` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/StreamRefs.scala:33,55,67,89,133` | 未対応 | std | hard | リモート越しの back-pressured stream reference 群が存在しない |
+| `Tcp` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Tcp.scala:47` | 未対応 | std | hard | TCP stream DSL と transport 拡張がない |
+| `TLS` / `SslTlsOptions` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/TLS.scala:62`, `references/pekko/stream/src/main/scala/org/apache/pekko/stream/SslTlsOptions.scala:29` | 未対応 | std | hard | TLS bidi stage と TLS 設定型がない |
+| `GraphStageLogic` rich API | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/stage/GraphStage.scala:321,1855` | 部分実装 | core | hard | fraktor は `modules/stream/src/core/stage/graph_stage.rs:7`, `.../graph_stage_logic.rs:4`, `.../async_callback.rs:9`, `.../timer_graph_stage_logic.rs:7` の最小集合に留まり、`StageActor`、`SubSinkInlet`、`SubSourceOutlet`、handler 群がない |
 
-### オペレーター ✅ 実装済み 35/44 (80%)
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `Source.mapAsyncUnordered` | `Flow.scala:L1363` | 未対応 | core | medium | `Flow` には `map_async_unordered` があるが、`Source` 側には `map_async` までしかない（`modules/stream/src/core/stage/source.rs:899`） |
-| `Source.groupedWithin` / `Source.groupedWeightedWithin` / `Source.batchWeighted` | `Flow.scala:L2191,L2214,L2490` | 未対応 | core | medium | `Flow` 側には実装がある一方で、`Source` 側には同等 API がない（`modules/stream/src/core/stage/flow.rs:2117`, `modules/stream/src/core/stage/flow.rs:2146`, `modules/stream/src/core/stage/flow.rs:2177`） |
-| `Source.flatMapPrefix` | `Flow.scala:L2622` | 部分実装 | core | easy | `flat_map_prefix_mat` のみ公開されており、非 `*_mat` の parity API がない（`modules/stream/src/core/stage/source.rs:2322`） |
-| `Source.mergeLatest` / `Source.zipLatest` / `Source.mergeSorted` | `javadsl/Source.scala:L1703,L1800,L1895` | 部分実装 | core | easy | `merge_latest_mat` / `zip_latest_mat` / `merge_sorted_mat` のみで、直接 API が不足している（`modules/stream/src/core/stage/source.rs:2145`, `modules/stream/src/core/stage/source.rs:2092`, `modules/stream/src/core/stage/source.rs:2496`） |
-| `Flow.join` / `Flow.joinMat` | `Flow.scala:L236,L253,L277,L298` | 未対応 | core | medium | `BidiFlow::join` はあるが、`Flow` 自身の join API がない |
-| `Flow.toProcessor` / processor interop | `Flow.scala:L381` | 未対応 | std | hard | Reactive Streams `Processor` との相互運用がない |
-| `Source.optionalVia` | `Source.scala:L339` | 未対応 | core | medium | `Flow` には `optional_via` があるが、`Source` には対応する escape hatch がない |
-
-### マテリアライゼーション ✅ 実装済み 6/12 (50%)
+### オペレーター ✅ 実装済み 39/44 (89%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `Source.materializeIntoSource` | `Source.scala:L122` | 未対応 | core | medium | `Flow::materialize_into_source` はあるが、`Source` 固有 API がない |
-| `Source.run` | `Source.scala:L133` | 未対応 | core | easy | `run_with` / `run_fold` / `run_foreach` はあるが、`Sink.ignore` に接続する省略 API がない（`modules/stream/src/core/stage/source.rs:791`） |
-| `Flow.preMaterialize` | `Flow.scala:L169` | 未対応 | core | medium | `Flow` 側は pre-materialize parity がない |
-| `Flow.run` / `Flow.runWith` | `Flow.scala:L370,L804` | 未対応 | core | easy | materializer に直接流し込む shorthand がない |
-| `Sink.preMaterialize` | `Sink.scala:L77` | 部分実装 | core | medium | `fraktor` は新しい `StreamCompletion` を返すだけで、実行中 sink との接続を作っていない（`modules/stream/src/core/stage/sink.rs:187`） |
-| `Source.preMaterialize` | `Source.scala:L107` | 部分実装 | core | medium | `fraktor` は graph/mat を clone して返すだけで、Pekko の先行 materialization 契約を満たしていない（`modules/stream/src/core/stage/source.rs:2785`） |
+| `Source.mapAsyncUnordered` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:1363` | 未対応 | core | medium | `Flow` 側には `modules/stream/src/core/dsl/flow.rs:1768` があるが `Source` 表層には露出していない |
+| `Source.groupedWithin` / `groupedWeightedWithin` / `batchWeighted` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:2191,2214,2490` | 未対応 | core | medium | `Flow` 側では `modules/stream/src/core/dsl/flow.rs:1896,1921,1948` にあるが `Source` 側には対応 API がない |
+| `Source.flatMapPrefix` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:2622` | 部分実装 | core | easy | `modules/stream/src/core/dsl/source.rs:2110` に `flat_map_prefix_mat` はあるが、非 `*_mat` API がない |
+| `Source.mergeLatest` / `zipLatest` / `mergeSorted` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:3381,3634,3713` | 部分実装 | core | easy | `modules/stream/src/core/dsl/source.rs:1908,1957,2280` の `*_mat` 系のみ。直接 API が不足 |
+| `Flow.join` / `joinMat` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:236,253,277,298` | 未対応 | core | medium | `BidiFlow` はあるが `Flow` 自身の join surface がない |
+| `Source.optionalVia` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Source.scala:339` | 未対応 | core | medium | `Flow` 側には `optionalVia` があるが `Source` 側の escape hatch がない |
 
-### グラフDSL ✅ 実装済み 6/10 (60%)
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `GraphDSL.Builder` + `Implicits.PortOps` / `ReversePortOps` | `Graph.scala:L1577,L1596,L1827,L1861` | 部分実装 | core | medium | `GraphDsl` / `GraphDslBuilder` / `PortOps` / `ReversePortOps` はあるが、generic `add`、`createGraph`、暗黙配線 DSL は縮退している（`modules/stream/src/core/graph/graph_dsl.rs:8`, `modules/stream/src/core/graph/graph_dsl_builder.rs:24`, `modules/stream/src/core/graph/port_ops.rs:17`, `modules/stream/src/core/graph/reverse_port_ops.rs:18`） |
-| `Merge` / `Broadcast` / `Balance` / `Partition` reusable graph stages | `Graph.scala:L75,L595,L775,L907` | 未対応 | core | medium | 現状はメソッドベースの DSL で表現しており、公開 reusable stage 型がない |
-| `ZipN` / `ZipWithN` / `Concat` / `OrElse` / `MergeSequence` reusable graph stages | `Graph.scala:L1166,L1213,L1269,L1361,L1446` | 未対応 | core | medium | 互換 API の一部はメソッドであるが、Pekko のような graph stage 型としては公開されていない |
-
-### ライフサイクル ✅ 実装済み 5/8 (63%)
+### マテリアライゼーション ✅ 実装済み 8/12 (67%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `watchTermination` | `Flow.scala:L4536` | 部分実装 | core | medium | `watch_termination_mat` はあるが、Pekko の `Future[Done]` 契約ではなく独自 `StreamCompletion<()>` である（`modules/stream/src/core/stage/flow.rs:3294`, `modules/stream/src/core/stage/source.rs:741`） |
-| `monitor` / `monitorMat` | `Flow.scala:L4551` | 部分実装 | core | medium | `monitor()` は `zip_with_index` ベース、`monitor_mat()` は `FlowMonitorImpl` を合成するだけで live monitor 契約とは異なる（`modules/stream/src/core/stage/flow.rs:3274`, `modules/stream/src/core/stage/flow.rs:3280`） |
-| `watch(ref)` | `Flow.scala:L1546` | 部分実装 | core | easy | `watch()` が no-op で actor 終了監視を行わない（`modules/stream/src/core/stage/flow.rs:3268`） |
+| `Source.run` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Source.scala:133` | 未対応 | core | easy | `modules/stream/src/core/dsl/source.rs:795` に `run_with` はあるが `Sink::ignore()` へ接続する shorthand がない |
+| `Flow.preMaterialize` / `runWith` / `run` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:169,370,804` | 未対応 | core | medium | `Flow` は DSL 合成に寄っており、materializer 直結の shorthand がない |
+| `Source.preMaterialize` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Source.scala:107` | 部分実装 | core | medium | `modules/stream/src/core/dsl/source.rs:2565` は graph と mat をそのまま複製して返すだけで、先行 materialization 契約を満たしていない |
+| `Sink.preMaterialize` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Sink.scala:77` | 部分実装 | core | medium | `modules/stream/src/core/dsl/sink.rs:189` は `(self, StreamCompletion::new())` を返すだけで、Pekko の materialized sink bridge になっていない |
 
-### エラー処理 ✅ 実装済み 4/7 (57%)
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `Flow.contramap` | `Flow.scala:L204` | 部分実装 | core | medium | `fraktor` は入力変換を行わず `self` を返すだけ（`modules/stream/src/core/stage/flow.rs:1610`） |
-| `Flow.fold` | `Flow.scala:L2035` | 部分実装 | core | medium | Pekko は最終値のみを emit するが、`fraktor` は running accumulation を流すため `scan` 寄りの意味になっている（`modules/stream/src/core/stage/flow.rs:1662`） |
-| `Flow.doOnCancel` | `Flow.scala:L1623` | 部分実装 | core | easy | callback を保持せず no-op で返す（`modules/stream/src/core/stage/flow.rs:1637`） |
-| `Flow.alsoToAll` | `Flow.scala:L3996` | 部分実装 | core | easy | sink 群を数えるだけで配線せず `self` を返す（`modules/stream/src/core/stage/flow.rs:3163`） |
-
-### その他・統合 ✅ 実装済み 4/10 (40%)
+### グラフDSL ✅ 実装済み 6/8 (75%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `Sink.fromMaterializer` / `fromSubscriber` / `futureSink` | `Sink.scala` 系 API 群 | 部分実装 | core | medium | いずれも `Sink::ignore()` へフォールバックする placeholder 実装（`modules/stream/src/core/stage/sink.rs:130`, `modules/stream/src/core/stage/sink.rs:136`, `modules/stream/src/core/stage/sink.rs:142`） |
-| `Sink.source` / `Sink.asPublisher` | `Sink.scala` 系 bridge API | 部分実装 | core | medium | どちらも `Source::empty()` を返すだけで bridge を構築していない（`modules/stream/src/core/stage/sink.rs:193`, `modules/stream/src/core/stage/sink.rs:199`） |
-| `Sink.combine` | `Sink.combine` | 部分実装 | core | medium | 先頭 sink のみ使う stub と明記されている（`modules/stream/src/core/stage/sink.rs:428`） |
-| `StreamConverters` の blocking IO 相互運用 | `StreamConverters.scala:L35` | 部分実装 | std | medium | `from_input_stream` / `from_output_stream` は単なる iterator 化、`as_input_stream` / `as_output_stream` は `Vec` 収集であり、Pekko の blocking IO bridge ではない（`modules/stream/src/core/stage/source.rs:324`, `modules/stream/src/core/stage/source.rs:333`, `modules/stream/src/core/stage/source.rs:2457`, `modules/stream/src/core/stage/source.rs:2475`） |
+| `GraphDSL.Builder` / `Implicits.PortOps` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Graph.scala:1577,1596,1721,1827` | 部分実装 | core | medium | fraktor 側の `GraphDsl` / `GraphDslBuilder` / `PortOps` は `modules/stream/src/core/impl/graph_dsl.rs:10`, `.../graph_dsl_builder.rs:22`, `.../port_ops.rs:20` に internal 実装としてあるが public DSL になっていない |
+| reusable graph stage 型 (`Merge`, `Broadcast`, `Balance`, `Partition`, `ZipN`, `Concat`, `OrElse`) | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Graph.scala:75,595,907,1166,1269,1361` | 未対応 | core | medium | ロジック自体は `modules/stream/src/core/impl/fusing/*.rs` にあるが、Pekko のような reusable public graph stage 型としては出ていない |
+
+### ライフサイクル・互換 ✅ 実装済み 4/9 (44%)
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `Flow.contramap` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:204` | 部分実装 | core | medium | `modules/stream/src/core/dsl/flow.rs:1413` は入力変換を行わず `self` を返す |
+| `Flow.doOnCancel` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:1623` | 部分実装 | core | easy | `modules/stream/src/core/dsl/flow.rs:1440` は callback を保持せず `self` を返す |
+| `Flow.alsoToAll` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:3996` | 部分実装 | core | easy | `modules/stream/src/core/dsl/flow.rs:2814` は sink 数を数えるだけで配線しない |
+| `Flow.watch(ref)` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:1546` | 部分実装 | core | easy | `modules/stream/src/core/dsl/flow.rs:2919` は no-op |
+| `watchTermination` / `monitorMat` / `monitor` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Flow.scala:4536,4551,4564` | 部分実装 | core | medium | `modules/stream/src/core/dsl/flow.rs:2925-2945` は `FlowMonitor` / `Future[Done]` 契約ではなく `(u64, Out)` と独自 `StreamCompletion<()>` ベース |
+
+### その他・統合 ✅ 実装済み 5/9 (56%)
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| materializer-aware factory APIs (`Source.fromMaterializer`, `Flow.fromMaterializer`, `Sink.fromMaterializer`) | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Source.scala:393`, `.../Flow.scala:524`, `.../Sink.scala:170` | 部分実装 | core | medium | `modules/stream/src/core/dsl/source.rs:168` は `lazy_source` 相当、`modules/stream/src/core/dsl/flow.rs:102` は即時 factory 実行、`modules/stream/src/core/dsl/sink.rs:132` は `ignore()` へフォールバック |
+| `Sink.fromSubscriber` / `futureSink` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Sink.scala:182` | 部分実装 | core | medium | `modules/stream/src/core/dsl/sink.rs:138,144` はともに `ignore()` へフォールバック |
+| `Sink.source` / `Sink.asPublisher` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Sink.scala:310,326` | 部分実装 | core | medium | `modules/stream/src/core/dsl/sink.rs:195,201` は `Source::empty()` を返すだけ |
+| `Source.asSubscriber` | `references/pekko/stream/src/main/scala/org/apache/pekko/stream/scaladsl/Source.scala:637` | 部分実装 | core | medium | `modules/stream/src/core/dsl/source.rs:186` は `Sink::ignore()` を返すだけで subscriber bridge を作らない |
 
 ## 内部モジュール構造ギャップ
 
 今回は API ギャップが支配的なため省略する。
 
 判定根拠:
-- 型単位カバレッジが 75% で、内部構造分析へ進む基準の 80% に届いていない
-- `hard` / `medium` の主要未実装ギャップが `StreamRefs`, `Tcp`, `TLS`, `GraphStage` rich API, `Flow.join`, `Flow.toProcessor`, `Source.materializeIntoSource` など 5 件を大きく超える
-- placeholder 実装が複数あり、公開契約の parity が未充足な段階である
+- 型単位カバレッジが約 79% で、内部構造分析へ進む基準の 80% に届いていない
+- `hard` / `medium` の主要未実装ギャップが `StreamRefs`, `Tcp`, `TLS`, `GraphStage` rich API, `Flow.join`, materializer-aware API など 5 件を大きく超える
+- placeholder 実装がまだ複数残っており、公開契約 parity の穴埋めが先行課題
 
 ## 実装優先度
 
@@ -112,29 +103,26 @@
 
 - `Source.run` を追加する。実装先層: `core`
 - `Source.flatMapPrefix` を `flat_map_prefix_mat` の薄いラッパーとして追加する。実装先層: `core`
-- `Source.mergeLatest` / `Source.zipLatest` / `Source.mergeSorted` の非 `*_mat` API を追加する。実装先層: `core`
-- `Flow.alsoToAll` の no-op をやめ、少なくとも既存 `also_to_mat` の繰り返し合成で意味を持つ実装へ置き換える。実装先層: `core`
-- `Flow.doOnCancel` の no-op をやめ、最低限 callback 発火契約を満たす。実装先層: `core`
+- `Source.mergeLatest` / `zipLatest` / `mergeSorted` の非 `*_mat` API を追加する。実装先層: `core`
+- `Flow.also_to_all` の no-op をやめ、既存 `also_to_mat` 合成で少なくとも意味を持つ実装にする。実装先層: `core`
+- `Flow.do_on_cancel` の no-op をやめ、cancel callback を観測可能にする。実装先層: `core`
 
 ### Phase 2
 
-- `Source.materializeIntoSource` を追加する。実装先層: `core`
-- `Flow.preMaterialize` を追加する。実装先層: `core`
-- `Flow.run` / `Flow.runWith` を追加する。実装先層: `core`
 - `Source.mapAsyncUnordered` を追加する。実装先層: `core`
 - `Source.groupedWithin` / `groupedWeightedWithin` / `batchWeighted` を追加する。実装先層: `core`
-- `Flow.join` / `Flow.joinMat` を追加する。実装先層: `core`
-- `watchTermination` / `monitor` の materialized contract を Pekko 寄りに揃える。実装先層: `core`
-- `Sink.combine` / `Sink.fromMaterializer` / `Sink.fromSubscriber` / `Sink.asPublisher` の placeholder を排除する。実装先層: `core`
-- `StreamConverters` の blocking IO bridge を実装し直す。実装先層: `std`
+- `Flow.join` / `joinMat` を追加する。実装先層: `core`
+- `Source.preMaterialize` / `Sink.preMaterialize` / `Flow.preMaterialize` を Pekko 寄りの契約に揃える。実装先層: `core`
+- `watchTermination` / `monitor` / `monitorMat` の materialized contract を Pekko 寄りに揃える。実装先層: `core`
+- `Flow.contramap` を実入力変換として実装する。実装先層: `core`
+- `Sink.fromMaterializer` / `fromSubscriber` / `futureSink` / `source` / `into_publisher` / `Source.as_subscriber` の placeholder を排除する。実装先層: `core`
 
 ### Phase 3
 
 - `StreamRefs` / `SinkRef` / `SourceRef` / `StreamRefResolver` を実装する。実装先層: `std`
 - `Tcp` を実装する。実装先層: `std`
 - `TLS` / `SslTlsOptions` を実装する。実装先層: `std`
-- `GraphStage` rich API（`StageActor`, `SubSinkInlet`, `SubSourceOutlet`, `InHandler`, `OutHandler`）を実装する。実装先層: `core`
-- `Flow.toProcessor` と Reactive Streams processor 相互運用を実装する。実装先層: `std`
+- `GraphStage` rich API（`StageActor`, `SubSinkInlet`, `SubSourceOutlet`, handler 群）を実装する。実装先層: `core`
 
 ### 対象外（n/a）
 
@@ -142,7 +130,7 @@
 
 ## まとめ
 
-- 全体評価: 主要 DSL と基本演算子はかなり揃っているが、Pekko parity の観点では materialization 契約、graph stage authoring、network/remote 系の基盤がまだ手薄である
-- 低コストで parity を前進できる項目: `Source.run`、`Source.flatMapPrefix`、`Source.mergeLatest`/`zipLatest`/`mergeSorted`、`Flow.alsoToAll` の実装化
-- parity 上の主要ギャップ: `StreamRefs`、`Tcp`、`TLS`、`GraphStage` rich API、`Flow.toProcessor`
-- 次のボトルネック評価: まだ API ギャップが支配的であり、内部構造差分より先に公開契約の穴と placeholder 実装の解消を優先すべき段階である
+- 全体評価: 基本 DSL、shape、kill switch、restart、主要な fusing stage はかなり揃っているが、Pekko parity の観点では bridge API と materialization 契約がまだ弱い
+- 低コストで前進できる項目: `Source.run`、`Source.flatMapPrefix`、`Source.mergeLatest` / `zipLatest` / `mergeSorted`、`Flow.also_to_all`、`Flow.do_on_cancel`
+- parity 上の主要ギャップ: `StreamRefs`、`Tcp`、`TLS`、`GraphStage` rich API、materializer-aware factory API
+- 次のボトルネック評価: まだ API ギャップが支配的であり、内部責務分割より先に公開契約と placeholder 実装の解消を優先すべき段階である

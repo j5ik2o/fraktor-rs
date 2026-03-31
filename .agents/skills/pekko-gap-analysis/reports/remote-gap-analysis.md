@@ -7,10 +7,12 @@
 | Pekko 公開型数 | 78（JFRイベント40型・private[remote]内部型を除外） |
 | fraktor-rs 公開型数 | 72（core: 66, std: 6） |
 | カバレッジ（型単位） | 52/78 (67%) |
-| ギャップ数 | 26（core: 15, std: 8, n/a: 3） |
+| ギャップ表の行数 | 61（core: 38, std: 6, core+std: 1, n/a: 16） |
 
 > **注記**: Pekkoの Classic Transport（deprecated）12型と Aeron UDP 4型は対象外（n/a）として計上。
 > 実質的な比較対象は62型であり、その基準では 52/62 = **84%** のカバレッジ。
+> また、ギャップ表は `RemotingLifecycleEvent` などの sealed hierarchy を個別行へ分解しているため、
+> 上記の「ギャップ表の行数」は型単位カバレッジの差分と 1:1 では対応しない。
 
 ## 層別カバレッジ
 
@@ -39,7 +41,7 @@ fraktor-rs 対応:
 | `RemoteDaemon` | `RemoteDaemon.scala` | 未対応 | core | medium | リモートアクター生成を受け付けるデーモンアクター。remote deploy機能に必要 |
 | `RemoteDeployer` | `RemoteDeployer.scala` | 未対応 | core | medium | リモートノードへの Props デプロイ。RemoteDaemon と対 |
 | `RemoteScope` | `RemoteDeployer.scala:L28` | 未対応 | core | easy | デプロイ先ノードを指定する case class。`Address` のラッパー |
-| `AddressUidExtension` | `AddressUidExtension.scala` | 未対応 | std | easy | ActorSystem に UID を付与する Extension |
+| `AddressUidExtension` | `AddressUidExtension.scala` | 未対応 | core | easy | `RemoteNodeId` と同じく、Address + UID の識別責務自体は adapter ではなく core に属する |
 
 ---
 
@@ -122,10 +124,10 @@ fraktor-rs 対応:
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `MessageSerializer` | `MessageSerializer.scala` | 未対応 | core | medium | メッセージの汎用シリアライズ/デシリアライズ |
-| `ProtobufSerializer` | `serialization/ProtobufSerializer.scala` | 未対応 | std | medium | Protocol Buffers ベースのシリアライザ |
-| `SystemMessageSerializer` | `serialization/SystemMessageSerializer.scala` | 未対応 | std | medium | システムメッセージ専用シリアライザ |
-| `MiscMessageSerializer` | `serialization/MiscMessageSerializer.scala` | 未対応 | std | easy | Identify, ActorIdentity 等の汎用メッセージ |
-| `MessageContainerSerializer` | `serialization/MessageContainerSerializer.scala` | 未対応 | std | easy | ActorSelectionMessage のシリアライザ |
+| `ProtobufSerializer` | `serialization/ProtobufSerializer.scala` | 未対応 | core | medium | ワイヤフォーマット / envelope 変換の責務であり、`std` transport adapter ではなく core に置くべき |
+| `SystemMessageSerializer` | `serialization/SystemMessageSerializer.scala` | 未対応 | core | medium | システムメッセージの wire 変換であり adapter 依存ではない |
+| `MiscMessageSerializer` | `serialization/MiscMessageSerializer.scala` | 未対応 | core | easy | 汎用メッセージの wire 変換。`modules/remote/src/std` の責務ではない |
+| `MessageContainerSerializer` | `serialization/MessageContainerSerializer.scala` | 未対応 | core | easy | ActorSelectionMessage の wire 変換であり core 配置が妥当 |
 | `ThrowableNotSerializableException` | `serialization/ThrowableNotSerializableException.scala` | 未対応 | core | trivial | シリアライズ不可例外のラッパー |
 | `ActorRefResolveCache` | `serialization/ActorRefResolveCache.scala` | 未対応 | core | easy | ActorRef パス解決のLRUキャッシュ |
 
@@ -267,7 +269,7 @@ fraktor-rs 対応:
 
 ### Phase 2: easy（単純な新規実装）
 
-- `AddressUidExtension` — std。ActorSystem UID管理
+- `AddressUidExtension` — core。Address + UID の識別責務
 - `BoundAddressesExtension` — std。バインドアドレス公開
 - `InboundQuarantineCheck` — core。quarantine チェックロジック
 - `FlushBeforeDeathWatchNotification` — core。DeathWatch前フラッシュ
@@ -276,8 +278,8 @@ fraktor-rs 対応:
 - `SessionVerifier` — core。TLSセッション検証trait
 - `ActorRefResolveCache` — core。LRUキャッシュでActorRefパス解決を高速化
 - `SSLEngineProviderSetup` — std。SSL設定のプログラマティック提供
-- `MiscMessageSerializer` — std
-- `MessageContainerSerializer` — std
+- `MiscMessageSerializer` — core
+- `MessageContainerSerializer` — core
 
 ### Phase 3: medium（中程度の実装工数）
 
@@ -288,8 +290,8 @@ fraktor-rs 対応:
 - `EnvelopeBufferPool` / `ObjectPool` — core。パフォーマンス最適化のオブジェクトプール
 - `LruBoundedCache` — core。汎用LRUキャッシュ
 - `MessageSerializer` — core。汎用メッセージシリアライズ
-- `ProtobufSerializer` — std。Protocol Buffers 連携
-- `SystemMessageSerializer` — std。システムメッセージシリアライズ
+- `ProtobufSerializer` — core。Protocol Buffers ベースの wire 変換
+- `SystemMessageSerializer` — core。システムメッセージの wire 変換
 - `SSLEngineProvider` — core (trait) + std (impl)。TLS接続のSPI
 - `ConfigSSLEngineProvider` — std。設定ベースSSL実装
 - `CompressionTable` / `DecompressionTable` — core。圧縮テーブルデータ構造
