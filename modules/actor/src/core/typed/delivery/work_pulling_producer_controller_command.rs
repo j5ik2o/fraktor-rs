@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::core::typed::{
-  actor::TypedActorRef,
+  TypedActorRef,
   delivery::{ProducerControllerRequestNext, WorkPullingProducerControllerRequestNext, WorkerStats},
   receptionist::Listing,
 };

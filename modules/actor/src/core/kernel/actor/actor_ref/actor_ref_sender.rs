@@ -4,7 +4,7 @@
 mod tests;
 
 use super::send_outcome::SendOutcome;
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Abstraction over mailbox-backed senders.
 pub trait ActorRefSender: Send + Sync {

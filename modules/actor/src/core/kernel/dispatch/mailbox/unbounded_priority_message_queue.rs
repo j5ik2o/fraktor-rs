@@ -10,7 +10,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
 use crate::core::kernel::{
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator, error::SendError, messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
+  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Initial capacity hint for the backing binary heap.

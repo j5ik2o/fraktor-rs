@@ -6,7 +6,7 @@ use alloc::format;
 
 use super::coordinated_shutdown_id::CoordinatedShutdownId;
 use crate::core::kernel::{
-  extension::ExtensionInstaller,
+  actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
 

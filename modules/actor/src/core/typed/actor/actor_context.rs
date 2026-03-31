@@ -10,22 +10,23 @@ use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
 
 use crate::core::{
   kernel::{
-    actor::{ActorContext, ChildRef, Pid, PipeSpawnError},
-    error::{ActorError, SendError},
-    futures::ActorFutureListener,
-    messaging::{AnyMessage, AskError},
+    actor::{
+      ActorContext, ChildRef, Pid, PipeSpawnError,
+      error::{ActorError, SendError},
+      messaging::{AnyMessage, AskError},
+      spawn::SpawnError,
+    },
     pattern::install_ask_timeout,
-    spawn::SpawnError,
+    util::futures::ActorFutureListener,
   },
   typed::{
-    TypedActorSystem,
-    actor::{actor_ref::TypedActorRef, ask_on_context_error::AskOnContextError, child_ref::TypedChildRef},
+    TypedActorRef, TypedActorSystem,
+    actor::{ask_on_context_error::AskOnContextError, child_ref::TypedChildRef},
     behavior::{Behavior, BehaviorDirective},
+    dsl::{StatusReply, TypedAskError},
+    internal::ReceiveTimeoutConfig,
     message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilder, MessageAdapterRegistry},
     props::TypedProps,
-    receive_timeout_config::ReceiveTimeoutConfig,
-    status_reply::StatusReply,
-    typed_ask_error::TypedAskError,
   },
 };
 
@@ -244,8 +245,8 @@ where
 
   /// Delegates the provided message to another behavior and returns the resulting next behavior.
   ///
-  /// When the delegated behavior returns [`crate::core::typed::Behaviors::same`] or
-  /// [`crate::core::typed::Behaviors::unhandled`], the delegated behavior itself becomes
+  /// When the delegated behavior returns [`crate::core::typed::dsl::Behaviors::same`] or
+  /// [`crate::core::typed::dsl::Behaviors::unhandled`], the delegated behavior itself becomes
   /// the next active behavior, matching Pekko's `ActorContext.delegate` contract.
   ///
   /// # Errors
@@ -283,7 +284,7 @@ where
     &mut self,
     target: &mut TypedActorRef<C>,
     message: C,
-  ) -> Result<(), crate::core::kernel::error::SendError>
+  ) -> Result<(), crate::core::kernel::actor::error::SendError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
@@ -302,12 +303,15 @@ where
     delay: Duration,
     target: TypedActorRef<C>,
     message: C,
-  ) -> Result<crate::core::kernel::scheduler::SchedulerHandle, crate::core::kernel::scheduler::SchedulerError>
+  ) -> Result<
+    crate::core::kernel::actor::scheduler::SchedulerHandle,
+    crate::core::kernel::actor::scheduler::SchedulerError,
+  >
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();
     scheduler.with_write(|guard| {
-      crate::core::typed::scheduler::TypedScheduler::new(guard).schedule_once(delay, target, message, None, None)
+      crate::core::typed::internal::TypedSchedulerGuard::new(guard).schedule_once(delay, target, message, None, None)
     })
   }
 

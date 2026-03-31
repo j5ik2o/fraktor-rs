@@ -10,8 +10,9 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
-use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, actor_ref::ActorRef},
+use fraktor_actor_rs::core::kernel::actor::{
+  Actor, ActorContext,
+  actor_ref::ActorRef,
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
 };

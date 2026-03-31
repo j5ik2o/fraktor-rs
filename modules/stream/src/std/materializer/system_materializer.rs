@@ -5,7 +5,7 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_rs::core::kernel::extension::Extension;
+use fraktor_actor_rs::core::kernel::actor::extension::Extension;
 
 use crate::core::materialization::ActorMaterializer;
 

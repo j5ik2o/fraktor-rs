@@ -1,15 +1,18 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemConfig, remote::RemotingConfig},
+  system::{ActorSystem, remote::RemotingConfig},
 };
 
 use crate::core::{

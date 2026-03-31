@@ -1,7 +1,7 @@
 //! Signals forwarded to typed behaviors.
 
 use crate::core::{
-  kernel::{actor::Pid, error::ActorError},
+  kernel::actor::{Pid, error::ActorError},
   typed::message_adapter::AdapterError,
 };
 

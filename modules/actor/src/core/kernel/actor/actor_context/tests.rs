@@ -5,13 +5,15 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use super::ActorContext;
 use crate::core::kernel::{
-  actor::{Actor, ActorCell, Pid},
-  error::ActorError,
+  actor::{
+    Actor, ActorCell, Pid,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+  },
   event::logging::LogLevel,
-  futures::{ActorFutureListener, ActorFutureShared},
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
   system::ActorSystem,
+  util::futures::{ActorFutureListener, ActorFutureShared},
 };
 
 struct TestActor;
@@ -310,7 +312,7 @@ fn actor_context_forward_preserves_sender() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }
@@ -343,7 +345,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }
@@ -516,7 +518,7 @@ fn actor_context_reply_with_sender_returns_ok() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }
@@ -545,8 +547,8 @@ fn actor_context_reply_with_failing_sender_returns_err() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
-      Err(crate::core::kernel::error::SendError::closed(message))
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
+      Err(crate::core::kernel::actor::error::SendError::closed(message))
     }
   }
 
@@ -559,7 +561,7 @@ fn actor_context_reply_with_failing_sender_returns_err() {
 
   // reply は内部で try_tell を使うため、同期配送失敗が返される。
   let result = context.reply(AnyMessage::new(42_u32));
-  assert!(matches!(result, Err(crate::core::kernel::error::SendError::Closed(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::error::SendError::Closed(_))));
 }
 
 /// `forward` on a failing target does not propagate the error (fire-and-forget).
@@ -570,8 +572,8 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
   struct FailingSender;
 
   impl ActorRefSender for FailingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
-      Err(crate::core::kernel::error::SendError::closed(message))
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
+      Err(crate::core::kernel::actor::error::SendError::closed(message))
     }
   }
 

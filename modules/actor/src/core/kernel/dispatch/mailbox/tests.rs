@@ -6,15 +6,17 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::kernel::{
-  actor::{Actor, ActorContext},
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
+    props::{MailboxConfig, Props},
+  },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
-  error::ActorError,
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
-  messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
-  props::{MailboxConfig, Props},
   system::ActorSystem,
 };
 
@@ -43,8 +45,8 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
   let props = Props::from_fn(|| PassiveActor).with_mailbox_config(mailbox_config);
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

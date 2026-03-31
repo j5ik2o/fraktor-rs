@@ -3,12 +3,8 @@
 use core::marker::PhantomData;
 
 use crate::core::{
-  kernel::{
-    actor::{ChildRef, Pid},
-    error::SendError,
-    messaging::AnyMessage,
-  },
-  typed::{TypedAskResponse, actor::actor_ref::TypedActorRef},
+  kernel::actor::{ChildRef, Pid, error::SendError, messaging::AnyMessage},
+  typed::{TypedActorRef, dsl::TypedAskResponse},
 };
 
 /// Wraps [`ChildRef`] and enforces message type `M`.

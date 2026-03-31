@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
-use crate::core::kernel::{
-  actor::actor_ref::{ActorRefSender, SendOutcome},
+use crate::core::kernel::actor::{
+  actor_ref::{ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
 };

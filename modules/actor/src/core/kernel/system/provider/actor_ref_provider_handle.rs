@@ -1,11 +1,9 @@
 //! Handle wrapper for ActorRefProvider implementations.
 
 use super::ActorRefProvider;
-use crate::core::kernel::{
-  actor::{
-    actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::ActorRef,
-  },
+use crate::core::kernel::actor::{
+  actor_path::{ActorPath, ActorPathScheme},
+  actor_ref::ActorRef,
   error::ActorError,
 };
 

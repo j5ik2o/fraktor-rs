@@ -3,12 +3,12 @@ use alloc::string::String;
 use fraktor_utils_rs::core::sync::shared::Shared;
 
 use crate::core::{
-  kernel::{
+  kernel::actor::{
     extension::{Extension, ExtensionInstallers},
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-    system::ActorSystemConfig,
+    setup::ActorSystemConfig,
   },
-  typed::{Behaviors, ExtensionSetup, TypedActorSystem, TypedProps},
+  typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
 
 #[derive(Clone)]
@@ -27,7 +27,7 @@ impl ProbeExtension {
 
 impl Extension for ProbeExtension {}
 
-impl crate::core::kernel::extension::ExtensionId for ProbeExtensionId {
+impl crate::core::kernel::actor::extension::ExtensionId for ProbeExtensionId {
   type Ext = ProbeExtension;
 
   fn create_extension(&self, _system: &crate::core::kernel::system::ActorSystem) -> Self::Ext {

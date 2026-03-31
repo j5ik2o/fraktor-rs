@@ -6,12 +6,14 @@ use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, ChildRef},
+  actor::{
+    Actor, ActorContext, ChildRef,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::{MailboxConfig, Props},
+  },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  error::ActorError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  messaging::{AnyMessage, AnyMessageView},
-  props::{MailboxConfig, Props},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -77,8 +79,8 @@ fn dead_letter_event_is_published_when_send_fails() {
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

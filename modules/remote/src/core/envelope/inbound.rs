@@ -1,7 +1,8 @@
 //! Deserialized envelope waiting for delivery to the actor system.
 
 use fraktor_actor_rs::core::kernel::{
-  actor::actor_path::ActorPath, event::stream::CorrelationId, messaging::AnyMessage,
+  actor::{actor_path::ActorPath, messaging::AnyMessage},
+  event::stream::CorrelationId,
 };
 
 use super::priority::OutboundPriority;

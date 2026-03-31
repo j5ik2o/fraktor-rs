@@ -1,6 +1,6 @@
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{message_queue::MessageQueue, unbounded_deque_message_queue::UnboundedDequeMessageQueue},
-  messaging::AnyMessage,
 };
 
 #[test]

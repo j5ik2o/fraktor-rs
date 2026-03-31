@@ -16,10 +16,12 @@ use super::{
   schedule_adapter_shared::ScheduleAdapterShared,
 };
 use crate::core::kernel::{
-  actor::actor_ref::ActorRefSenderShared,
+  actor::{
+    actor_ref::ActorRefSenderShared,
+    error::SendError,
+    messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
+  },
   dispatch::mailbox::{Mailbox, ScheduleHints, metrics_event::MailboxPressureEvent},
-  error::SendError,
-  messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
 };
 
 /// Dispatcher shared handle that manages mailbox processing.

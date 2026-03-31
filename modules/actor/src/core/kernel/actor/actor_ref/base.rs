@@ -16,12 +16,12 @@ use crate::core::kernel::{
     Pid,
     actor_path::ActorPath,
     actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
+    error::SendError,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   },
-  error::SendError,
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   pattern,
   system::state::{SystemStateShared, SystemStateWeak},
+  util::futures::ActorFutureShared,
 };
 
 /// Handle used to communicate with an actor instance.

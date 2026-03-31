@@ -1,14 +1,17 @@
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
-  error::ActorError,
-  extension::ExtensionInstallers,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemConfig},
+  system::ActorSystem,
 };
 
 use crate::core::{

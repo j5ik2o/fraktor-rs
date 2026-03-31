@@ -15,8 +15,8 @@ pub use receptionist_command::ReceptionistCommand;
 pub use service_key::ServiceKey;
 
 use crate::core::{
-  kernel::{actor::actor_ref::ActorRef, error::ActorError},
-  typed::{actor::TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, behaviors::Behaviors},
+  kernel::actor::{actor_ref::ActorRef, error::ActorError},
+  typed::{TypedActorRef, behavior::Behavior, behavior_signal::BehaviorSignal, dsl::Behaviors},
 };
 
 /// Composite key for internal registry lookups.

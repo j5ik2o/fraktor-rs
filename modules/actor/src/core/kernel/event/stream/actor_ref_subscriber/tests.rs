@@ -6,13 +6,13 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_ref::{ActorRef, ActorRefSender},
+    error::SendError,
+    messaging::AnyMessage,
   },
-  error::SendError,
   event::{
     logging::{LogEvent, LogLevel},
     stream::{ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamSubscriber},
   },
-  messaging::AnyMessage,
 };
 
 // Test sender that collects messages

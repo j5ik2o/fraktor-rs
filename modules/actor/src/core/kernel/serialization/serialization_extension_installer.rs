@@ -3,7 +3,7 @@
 use alloc::format;
 
 use crate::core::kernel::{
-  extension::ExtensionInstaller,
+  actor::extension::ExtensionInstaller,
   serialization::{SerializationExtensionId, SerializationSetup},
   system::{ActorSystem, ActorSystemBuildError},
 };

@@ -19,24 +19,24 @@ use crate::core::{
       Actor, ActorCell, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
       actor_ref::ActorRef,
+      error::ActorError,
+      lifecycle::LifecycleStage,
+      messaging::system_message::SystemMessage,
+      props::{MailboxConfig, MailboxRequirement, Props},
+      scheduler::{
+        SchedulerConfig,
+        tick_driver::{
+          AutoDriverMetadata, AutoProfileKind, ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl,
+          TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
+          TickExecutorSignal, TickFeed,
+        },
+      },
+      setup::ActorSystemConfig,
+      spawn::SpawnError,
     },
     dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
-    error::ActorError,
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-    lifecycle::LifecycleStage,
-    messaging::system_message::SystemMessage,
-    props::{MailboxConfig, MailboxRequirement, Props},
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{
-        AutoDriverMetadata, AutoProfileKind, ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl,
-        TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
-        TickExecutorSignal, TickFeed,
-      },
-    },
-    spawn::SpawnError,
     system::{
-      ActorSystemConfig,
       provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
       remote::RemotingConfig,
       state::{SystemStateShared, system_state::SystemState},
@@ -51,8 +51,8 @@ impl Actor for TestActor {
   fn receive(
     &mut self,
     _context: &mut crate::core::kernel::actor::ActorContext<'_>,
-    _message: crate::core::kernel::messaging::AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+    _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     Ok(())
   }
 }
@@ -71,7 +71,7 @@ impl Actor for SpawnRecorderActor {
   fn pre_start(
     &mut self,
     _ctx: &mut crate::core::kernel::actor::ActorContext<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     self.log.lock().push("pre_start");
     Ok(())
   }
@@ -79,8 +79,8 @@ impl Actor for SpawnRecorderActor {
   fn receive(
     &mut self,
     _context: &mut crate::core::kernel::actor::ActorContext<'_>,
-    _message: crate::core::kernel::messaging::AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+    _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     self.log.lock().push("receive");
     Ok(())
   }
@@ -92,16 +92,16 @@ impl Actor for FailingStartActor {
   fn receive(
     &mut self,
     _context: &mut crate::core::kernel::actor::ActorContext<'_>,
-    _message: crate::core::kernel::messaging::AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+    _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     Ok(())
   }
 
   fn pre_start(
     &mut self,
     _ctx: &mut crate::core::kernel::actor::ActorContext<'_>,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
-    Err(crate::core::kernel::error::ActorError::recoverable("boom"))
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+    Err(crate::core::kernel::actor::error::ActorError::recoverable("boom"))
   }
 }
 
@@ -404,7 +404,7 @@ fn spawn_child_fails_when_deque_requirement_missing() {
   let props = Props::from_fn(|| TestActor).with_mailbox_config(mailbox);
 
   let result = system.spawn_child(parent_pid, &props);
-  assert!(matches!(result, Err(crate::core::kernel::spawn::SpawnError::InvalidProps(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
 }
 
 #[test]
@@ -433,7 +433,7 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
 
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("custom-dispatcher");
   let result = system.spawn_child(parent_pid, &props);
-  assert!(matches!(result, Err(crate::core::kernel::spawn::SpawnError::InvalidProps(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
 }
 
 #[test]
@@ -456,7 +456,7 @@ fn spawn_child_resolves_mailbox_id_with_requirements() {
     .with_mailbox_requirement(MailboxRequirement::for_stash());
 
   let result = system.spawn_child(parent_pid, &props);
-  assert!(matches!(result, Err(crate::core::kernel::spawn::SpawnError::InvalidProps(_))));
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
 }
 
 #[test]
@@ -550,7 +550,7 @@ fn create_send_failure_triggers_rollback() {
   let result = system.perform_create_handshake(None, pid, &cell);
 
   match result {
-    | Err(crate::core::kernel::spawn::SpawnError::InvalidProps(reason)) => {
+    | Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(reason)) => {
       assert_eq!(reason, super::CREATE_SEND_FAILED);
     },
     | other => panic!("unexpected handshake result: {:?}", other),
@@ -590,8 +590,8 @@ fn poll_delay(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_scheduler_handles_delays() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let mut provider = system.delay_provider();
@@ -607,8 +607,8 @@ fn actor_system_scheduler_handles_delays() {
 #[test]
 fn actor_system_terminate_runs_scheduler_tasks() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -616,7 +616,8 @@ fn actor_system_terminate_runs_scheduler_tasks() {
     let scheduler = system.scheduler();
     scheduler.with_write(|s| {
       let task = RecordingShutdownTask { log: log.clone() };
-      s.register_on_close(task, crate::core::kernel::scheduler::task_run::TaskRunPriority::User).expect("register");
+      s.register_on_close(task, crate::core::kernel::actor::scheduler::task_run::TaskRunPriority::User)
+        .expect("register");
     });
   }
 
@@ -629,8 +630,8 @@ struct RecordingShutdownTask {
   log: ArcShared<NoStdMutex<Vec<&'static str>>>,
 }
 
-impl crate::core::kernel::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
-  fn run(&mut self) -> Result<(), crate::core::kernel::scheduler::task_run::TaskRunError> {
+impl crate::core::kernel::actor::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
+  fn run(&mut self) -> Result<(), crate::core::kernel::actor::scheduler::task_run::TaskRunError> {
     self.log.lock().push("shutdown");
     Ok(())
   }
@@ -655,8 +656,8 @@ fn poll_delay_future(future: &mut DelayFuture) -> Poll<()> {
 #[test]
 fn actor_system_installs_scheduler() {
   let props = Props::from_fn(|| TestActor);
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("actor system");
   let mut provider = system.delay_provider();
@@ -757,8 +758,8 @@ fn resolve_actor_ref_fails_when_provider_missing() {
 #[test]
 fn guardian_refs_preserve_canonical_authority() {
   let user_props = Props::from_fn(|| TestActor).with_name("user-guardian");
-  let tick_driver = crate::core::kernel::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let remoting = RemotingConfig::default().with_canonical_host("guardian.example.com").with_canonical_port(4101);
   let config = ActorSystemConfig::default()

@@ -1,9 +1,11 @@
 use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{ActorContext, Pid},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
+  actor::{
+    ActorContext, Pid,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+  },
   system::{
     ActorSystem,
     state::{SystemStateShared, system_state::SystemState},

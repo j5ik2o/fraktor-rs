@@ -12,11 +12,12 @@ use super::{
   topic_stats::TopicStats,
 };
 use crate::core::{
-  kernel::{error::ActorError, event::logging::LogLevel},
+  kernel::{actor::error::ActorError, event::logging::LogLevel},
   typed::{
-    Behaviors,
-    actor::{TypedActorContext, TypedActorRef},
+    TypedActorRef,
+    actor::TypedActorContext,
     behavior::Behavior,
+    dsl::Behaviors,
     receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
   },
 };

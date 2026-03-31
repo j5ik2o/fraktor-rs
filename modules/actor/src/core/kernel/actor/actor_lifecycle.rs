@@ -6,11 +6,8 @@ mod tests;
 use alloc::boxed::Box;
 
 use crate::core::kernel::{
-  actor::{ActorContext, Pid},
+  actor::{ActorContext, Pid, error::ActorError, messaging::AnyMessageView, supervision::SupervisorStrategyConfig},
   dispatch::mailbox::metrics_event::MailboxPressureEvent,
-  error::ActorError,
-  messaging::AnyMessageView,
-  supervision::SupervisorStrategyConfig,
 };
 
 /// Defines the lifecycle hooks that every actor must implement.
@@ -99,8 +96,8 @@ pub trait Actor: Send {
   /// ```
   /// use core::time::Duration;
   ///
-  /// use fraktor_actor_rs::core::kernel::{
-  ///   actor::{Actor, ActorContext},
+  /// use fraktor_actor_rs::core::kernel::actor::{
+  ///   Actor, ActorContext,
   ///   error::ActorError,
   ///   messaging::AnyMessageView,
   ///   supervision::{
@@ -152,8 +149,8 @@ pub trait Actor: Send {
   /// # See Also
   ///
   /// - [`SupervisorStrategyConfig`] for available strategies
-  /// - [`SupervisorDirective`](crate::core::kernel::supervision::SupervisorDirective) for failure
-  ///   handling options
+  /// - [`SupervisorDirective`](crate::core::kernel::actor::supervision::SupervisorDirective) for
+  ///   failure handling options
   #[must_use]
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
     SupervisorStrategyConfig::default()

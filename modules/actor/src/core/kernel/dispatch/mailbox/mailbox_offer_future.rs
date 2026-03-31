@@ -19,7 +19,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{mailbox_instrumentation::MailboxInstrumentation, mailbox_queue_state::QueueState, map_user_queue_error};
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 #[cfg(test)]
 mod tests;

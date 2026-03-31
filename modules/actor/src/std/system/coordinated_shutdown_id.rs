@@ -3,7 +3,7 @@
 extern crate std;
 
 use super::coordinated_shutdown::CoordinatedShutdown;
-use crate::core::kernel::{extension::ExtensionId, system::ActorSystem};
+use crate::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
 
 /// Identifier used to register the coordinated shutdown extension.
 pub struct CoordinatedShutdownId;

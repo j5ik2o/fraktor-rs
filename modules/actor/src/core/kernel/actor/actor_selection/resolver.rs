@@ -4,8 +4,10 @@ use alloc::{string::ToString, vec::Vec};
 
 use super::actor_selection_error::ActorSelectionError;
 use crate::core::kernel::{
-  actor::actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
-  messaging::AnyMessage,
+  actor::{
+    actor_path::{ActorPath, ActorPathError, PathResolutionError, PathSegment},
+    messaging::AnyMessage,
+  },
   system::{remote::RemoteAuthorityRegistry, state::AuthorityState},
 };
 

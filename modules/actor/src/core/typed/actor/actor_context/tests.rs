@@ -4,11 +4,14 @@ use core::{hint::spin_loop, time::Duration};
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  kernel::{
+  kernel::actor::{
     error::ActorError,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  typed::{Behaviors, TypedActorSystem, TypedAskError, TypedProps, actor::TypedActorRef, status_reply::StatusReply},
+  typed::{
+    TypedActorRef, TypedActorSystem, TypedProps,
+    dsl::{Behaviors, StatusReply, TypedAskError},
+  },
 };
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -49,7 +52,7 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
     }
   });
   let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn actor");
-  let mut actor = crate::core::typed::actor::TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
+  let mut actor = crate::core::typed::TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
 
   actor.tell(1);
   actor.tell(1);
@@ -397,8 +400,8 @@ fn forward_preserves_sender_through_typed_context() {
     actor::{
       ActorContext, Pid,
       actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
+      messaging::AnyMessage,
     },
-    messaging::AnyMessage,
     system::ActorSystem,
   };
 
@@ -407,7 +410,7 @@ fn forward_preserves_sender_through_typed_context() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }

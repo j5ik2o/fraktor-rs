@@ -6,11 +6,10 @@ mod tests;
 use alloc::format;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, actor_ref::ActorRef},
-  error::ActorError,
-  extension::Extension,
-  messaging::AnyMessageView,
-  props::Props,
+  actor::{
+    Actor, ActorContext, actor_ref::ActorRef, error::ActorError, extension::Extension, messaging::AnyMessageView,
+    props::Props,
+  },
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::RuntimeMutex;

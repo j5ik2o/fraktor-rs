@@ -3,9 +3,8 @@
 use alloc::string::{String, ToString};
 
 use fraktor_actor_rs::core::kernel::{
-  actor::actor_path::ActorPath,
+  actor::{actor_path::ActorPath, messaging::AnyMessage},
   event::stream::{EventStreamEvent, RemoteAuthorityEvent},
-  messaging::AnyMessage,
   system::{
     remote::RemoteAuthorityError,
     state::{AuthorityState, SystemStateShared},

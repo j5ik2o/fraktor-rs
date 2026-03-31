@@ -2,7 +2,7 @@ use alloc::{borrow::Cow, string::String, vec::Vec};
 use core::any::{Any, TypeId};
 
 use fraktor_actor_rs::core::kernel::{
-  messaging::AnyMessage,
+  actor::messaging::AnyMessage,
   serialization::{
     NotSerializableError, SerializationCallScope, SerializationError, SerializationExtensionId,
     SerializationSetupBuilder, SerializedMessage, Serializer, SerializerId, SerializerWithStringManifest,

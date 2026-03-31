@@ -2,10 +2,10 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
   },
-  error::{ActorError, SendError},
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
   system::{
     ActorSystem,
     state::{SystemStateShared, system_state::SystemState},

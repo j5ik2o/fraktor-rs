@@ -7,12 +7,16 @@ use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData};
 
 use crate::core::kernel::{
-  actor::{ChildRef, Pid, actor_ref::ActorRef, pipe_spawn_error::PipeSpawnError},
-  error::{ActorError, SendError},
+  actor::{
+    ChildRef, Pid,
+    actor_ref::ActorRef,
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, system_message::SystemMessage},
+    pipe_spawn_error::PipeSpawnError,
+    props::Props,
+    spawn::SpawnError,
+  },
   event::logging::LogLevel,
-  messaging::{AnyMessage, system_message::SystemMessage},
-  props::Props,
-  spawn::SpawnError,
   system::ActorSystem,
 };
 

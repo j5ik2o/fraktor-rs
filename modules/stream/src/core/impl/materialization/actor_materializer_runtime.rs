@@ -1,10 +1,6 @@
 use alloc::{collections::BTreeMap, format, vec::Vec};
 
-use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext},
-  error::ActorError,
-  messaging::AnyMessageView,
-};
+use fraktor_actor_rs::core::kernel::actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView};
 
 use super::{StreamHandleId, StreamHandleImpl, stream_runtime_completion::StreamDriveCommand};
 

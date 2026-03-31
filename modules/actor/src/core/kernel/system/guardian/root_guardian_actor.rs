@@ -1,10 +1,13 @@
 //! Internal root guardian that supervises `/user` and `/system`.
 
 use crate::core::kernel::{
-  actor::{Actor, ActorContext, Pid, actor_ref::ActorRef},
-  error::ActorError,
-  messaging::AnyMessageView,
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+  actor::{
+    Actor, ActorContext, Pid,
+    actor_ref::ActorRef,
+    error::ActorError,
+    messaging::AnyMessageView,
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+  },
   system::state::SystemStateShared,
 };
 

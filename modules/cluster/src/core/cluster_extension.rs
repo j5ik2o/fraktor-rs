@@ -6,10 +6,10 @@ mod tests;
 use alloc::{format, string::String, vec::Vec};
 
 use fraktor_actor_rs::core::kernel::{
+  actor::messaging::AnyMessage,
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  messaging::AnyMessage,
   system::{ActorSystem, ActorSystemWeak},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
@@ -464,4 +464,4 @@ impl ClusterExtension {
   }
 }
 
-impl fraktor_actor_rs::core::kernel::extension::Extension for ClusterExtension {}
+impl fraktor_actor_rs::core::kernel::actor::extension::Extension for ClusterExtension {}

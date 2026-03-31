@@ -8,13 +8,8 @@ use alloc::{format, string::String};
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  kernel::error::ActorError,
-  typed::{
-    Behaviors,
-    actor::{TypedActorContext, TypedActorRef},
-    behavior::Behavior,
-    props::TypedProps,
-  },
+  kernel::actor::error::ActorError,
+  typed::{TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, props::TypedProps},
 };
 
 trait SpawnProtocolCommand: Send + Sync {

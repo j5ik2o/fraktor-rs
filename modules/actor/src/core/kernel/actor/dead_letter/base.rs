@@ -1,0 +1,88 @@
+//! Deadletter repository for undeliverable messages.
+
+use alloc::vec::Vec;
+use core::time::Duration;
+
+use crate::core::kernel::actor::{
+  Pid,
+  dead_letter::{DeadLetterEntry, dead_letter_reason::DeadLetterReason},
+  error::SendError,
+  messaging::AnyMessage,
+};
+
+const DEFAULT_CAPACITY: usize = 256;
+
+/// Collects undeliverable messages.
+///
+/// This type uses `&mut self` methods for state modification.
+/// For shared access, use [`DeadLetterShared`].
+///
+/// [`DeadLetterShared`]: super::DeadLetterShared
+pub struct DeadLetter {
+  entries:  Vec<DeadLetterEntry>,
+  capacity: usize,
+}
+
+impl DeadLetter {
+  /// Creates a new deadletter store with the provided buffer capacity.
+  #[must_use]
+  pub const fn with_capacity(capacity: usize) -> Self {
+    Self { entries: Vec::new(), capacity }
+  }
+
+  /// Records a send error and returns the created entry for notification.
+  ///
+  /// The caller is responsible for publishing the entry to the event stream
+  /// after releasing any locks.
+  #[must_use]
+  pub fn record_send_error(&mut self, target: Option<Pid>, error: &SendError, timestamp: Duration) -> DeadLetterEntry {
+    let reason = match error {
+      | SendError::Full(_) => DeadLetterReason::MailboxFull,
+      | SendError::Suspended(_) => DeadLetterReason::MailboxSuspended,
+      | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
+      | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
+      | SendError::Timeout(_) => DeadLetterReason::MailboxTimeout,
+    };
+    let message = error.message().clone();
+    self.record_entry(message, reason, target, timestamp)
+  }
+
+  /// Records an explicit deadletter entry and returns it for notification.
+  ///
+  /// The caller is responsible for publishing the entry to the event stream
+  /// after releasing any locks.
+  #[must_use]
+  pub fn record_entry(
+    &mut self,
+    message: AnyMessage,
+    reason: DeadLetterReason,
+    target: Option<Pid>,
+    timestamp: Duration,
+  ) -> DeadLetterEntry {
+    let entry = DeadLetterEntry::new(message, reason, target, timestamp);
+    self.entries.push(entry.clone());
+    if self.entries.len() > self.capacity {
+      let overflow = self.entries.len() - self.capacity;
+      self.entries.drain(0..overflow);
+    }
+    entry
+  }
+
+  /// Returns a snapshot of stored deadletters.
+  #[must_use]
+  pub fn snapshot(&self) -> Vec<DeadLetterEntry> {
+    self.entries.clone()
+  }
+
+  /// Returns the buffer capacity.
+  #[must_use]
+  pub const fn capacity(&self) -> usize {
+    self.capacity
+  }
+}
+
+impl Default for DeadLetter {
+  fn default() -> Self {
+    Self::with_capacity(DEFAULT_CAPACITY)
+  }
+}

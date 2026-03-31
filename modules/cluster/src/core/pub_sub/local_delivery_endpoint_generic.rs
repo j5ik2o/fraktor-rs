@@ -4,7 +4,7 @@ use alloc::{format, vec::Vec};
 use core::any::TypeId;
 
 use fraktor_actor_rs::core::kernel::{
-  messaging::AnyMessage,
+  actor::messaging::AnyMessage,
   serialization::{SerializationError, SerializerId, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::sync::ArcShared;

@@ -7,6 +7,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 mod tests;
 
 use crate::core::kernel::{
+  actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{
       DispatchExecutor, DispatchExecutorRunner, DispatcherShared, InlineExecutor, InlineScheduleAdapter,
@@ -14,10 +15,9 @@ use crate::core::kernel::{
     },
     mailbox::{Mailbox, MailboxOverflowStrategy},
   },
-  spawn::SpawnError,
 };
 
-/// Dispatcher configuration attached to [`Props`](crate::core::kernel::props::Props).
+/// Dispatcher configuration attached to [`Props`](crate::core::kernel::actor::props::Props).
 pub struct DispatcherConfig {
   executor:            ArcShared<DispatchExecutorRunner>,
   throughput_deadline: Option<Duration>,

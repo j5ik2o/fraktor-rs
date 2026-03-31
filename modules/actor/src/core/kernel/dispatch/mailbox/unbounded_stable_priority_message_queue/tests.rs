@@ -2,8 +2,8 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::*;
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{MessagePriorityGenerator, message_queue::MessageQueue},
-  messaging::AnyMessage,
 };
 
 /// Priority generator that assigns priority based on the i32 payload value.

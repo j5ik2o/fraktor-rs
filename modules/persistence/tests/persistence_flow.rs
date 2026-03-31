@@ -11,15 +11,19 @@ use core::{
 };
 
 use fraktor_actor_rs::core::kernel::{
-  actor::{Actor, ActorContext, actor_ref::ActorRef},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+  actor::{
+    Actor, ActorContext,
+    actor_ref::ActorRef,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  system::{ActorSystem, ActorSystemConfig},
+  system::ActorSystem,
 };
 use fraktor_persistence_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
@@ -174,8 +178,8 @@ fn recovery_flow_snapshot_then_replay() {
   let _ = drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload));
 
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers =
-    fraktor_actor_rs::core::kernel::extension::ExtensionInstallers::default().with_extension_installer(installer);
+  let installers = fraktor_actor_rs::core::kernel::actor::extension::ExtensionInstallers::default()
+    .with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -225,8 +229,8 @@ fn persist_flow_keeps_values_independent() {
   ];
 
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
-  let installers =
-    fraktor_actor_rs::core::kernel::extension::ExtensionInstallers::default().with_extension_installer(installer);
+  let installers = fraktor_actor_rs::core::kernel::actor::extension::ExtensionInstallers::default()
+    .with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()

@@ -6,10 +6,12 @@ mod tests;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::{
-  actor::actor_ref::{ActorRefSender, SendOutcome},
-  error::SendError,
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskResult},
+  actor::{
+    actor_ref::{ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::{AnyMessage, AskResult},
+  },
+  util::futures::ActorFutureShared,
 };
 
 /// Sender that completes the associated `ActorFuture` when a reply arrives.

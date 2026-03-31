@@ -1,0 +1,169 @@
+extern crate alloc;
+
+use alloc::{format, string::String, vec, vec::Vec};
+
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorContext, Pid,
+    actor_ref::{ActorRef, ActorRefSender},
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, AnyMessageView},
+  },
+  system::ActorSystem,
+};
+
+struct RecordingSender;
+
+impl ActorRefSender for RecordingSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+  }
+}
+
+struct CaptureActor {
+  payloads: NoStdMutex<Vec<u32>>,
+  replies:  NoStdMutex<Vec<Option<ActorRef>>>,
+}
+
+impl CaptureActor {
+  fn new() -> Self {
+    Self { payloads: NoStdMutex::new(Vec::new()), replies: NoStdMutex::new(Vec::new()) }
+  }
+
+  fn payloads(&self) -> Vec<u32> {
+    self.payloads.lock().clone()
+  }
+
+  fn replies(&self) -> Vec<Option<ActorRef>> {
+    self.replies.lock().clone()
+  }
+}
+
+impl Actor for CaptureActor {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(value) = message.downcast_ref::<u32>() {
+      self.payloads.lock().push(*value);
+    }
+    self.replies.lock().push(ctx.sender().cloned());
+    Ok(())
+  }
+}
+
+struct LoggingActor {
+  log: ArcShared<NoStdMutex<Vec<String>>>,
+}
+
+impl LoggingActor {
+  fn new(log: ArcShared<NoStdMutex<Vec<String>>>) -> Self {
+    Self { log }
+  }
+
+  fn record(&self, entry: &str) {
+    self.log.lock().push(String::from(entry));
+  }
+}
+
+impl Actor for LoggingActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    self.record("actor");
+    Ok(())
+  }
+}
+
+struct RecordingMiddleware {
+  name: String,
+  log:  ArcShared<NoStdMutex<Vec<String>>>,
+}
+
+impl RecordingMiddleware {
+  fn new(name: &str, log: ArcShared<NoStdMutex<Vec<String>>>) -> Self {
+    Self { name: String::from(name), log }
+  }
+
+  fn record(&self, suffix: &str) {
+    self.log.lock().push(format!("{}:{}", self.name, suffix));
+  }
+}
+
+impl MessageInvokerMiddleware for RecordingMiddleware {
+  fn before_user(&mut self, _ctx: &mut ActorContext<'_>, _message: &AnyMessageView<'_>) -> Result<(), ActorError> {
+    self.record("before");
+    Ok(())
+  }
+
+  fn after_user(
+    &mut self,
+    _ctx: &mut ActorContext<'_>,
+    _message: &AnyMessageView<'_>,
+    result: Result<(), ActorError>,
+  ) -> Result<(), ActorError> {
+    self.record("after");
+    result
+  }
+}
+
+#[test]
+fn pipeline_sets_and_clears_sender() {
+  let system = ActorSystem::new_empty();
+  let pid = Pid::new(1, 0);
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = CaptureActor::new();
+  let pipeline = MessageInvokerPipeline::new();
+
+  let reply_sender = RecordingSender;
+  let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
+
+  let message = AnyMessage::new(123_u32).with_sender(reply_ref.clone());
+  pipeline.invoke_user(&mut actor, &mut ctx, message).expect("invoke user message");
+
+  assert_eq!(actor.payloads(), vec![123_u32]);
+  assert_eq!(actor.replies(), vec![Some(reply_ref)]);
+  assert!(ctx.sender().is_none());
+}
+
+#[test]
+fn pipeline_restores_previous_sender() {
+  let system = ActorSystem::new_empty();
+  let pid = Pid::new(10, 0);
+  let mut ctx = ActorContext::new(&system, pid);
+  let mut actor = CaptureActor::new();
+  let pipeline = MessageInvokerPipeline::new();
+
+  let previous_sender = RecordingSender;
+  let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
+  ctx.set_sender(Some(previous_ref.clone()));
+
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(7_u32)).expect("invoke");
+
+  assert_eq!(actor.payloads(), vec![7_u32]);
+  assert_eq!(actor.replies(), vec![None]);
+  assert_eq!(ctx.sender(), Some(&previous_ref));
+}
+
+#[test]
+fn middleware_executes_in_expected_order() {
+  let system = ActorSystem::new_empty();
+  let pid = Pid::new(42, 0);
+  let mut ctx = ActorContext::new(&system, pid);
+  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let mut actor = LoggingActor::new(log.clone());
+
+  let middleware_a =
+    MiddlewareShared::new(Box::new(RecordingMiddleware::new("a", log.clone())) as Box<dyn MessageInvokerMiddleware>);
+  let middleware_b =
+    MiddlewareShared::new(Box::new(RecordingMiddleware::new("b", log.clone())) as Box<dyn MessageInvokerMiddleware>);
+  let pipeline = MessageInvokerPipeline::from_middlewares(vec![middleware_a, middleware_b]);
+
+  pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(1_u8)).expect("invoke");
+
+  assert_eq!(log.lock().clone(), vec![
+    String::from("a:before"),
+    String::from("b:before"),
+    String::from("actor"),
+    String::from("b:after"),
+    String::from("a:after"),
+  ]);
+}

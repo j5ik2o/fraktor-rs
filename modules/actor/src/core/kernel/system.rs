@@ -5,7 +5,6 @@
 mod actor_path_handle;
 mod actor_path_registry;
 mod actor_system_build_error;
-mod actor_system_config;
 mod actor_system_weak;
 mod ask_futures;
 mod base;
@@ -34,7 +33,6 @@ mod coordinated_shutdown_reason;
 pub use actor_path_handle::ActorPathHandle;
 pub use actor_path_registry::ActorPathRegistry;
 pub use actor_system_build_error::ActorSystemBuildError;
-pub use actor_system_config::ActorSystemConfig;
 pub use actor_system_weak::ActorSystemWeak;
 pub use base::ActorSystem;
 pub use coordinated_shutdown_phase::CoordinatedShutdownPhase;

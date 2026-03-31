@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use crate::core::typed::{actor::TypedActorRef, delivery::SeqNr};
+use crate::core::typed::{TypedActorRef, delivery::SeqNr};
 
 /// Sent from `ProducerController` to the producer to signal that it may send
 /// one message.

@@ -12,7 +12,8 @@ use super::{
   mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
 };
 use crate::core::kernel::{
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator, error::SendError, messaging::AnyMessage,
+  actor::{error::SendError, messaging::AnyMessage},
+  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Internal mutable state guarded by a lock.

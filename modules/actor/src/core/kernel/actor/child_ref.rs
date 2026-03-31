@@ -3,9 +3,12 @@
 use core::{fmt, time::Duration};
 
 use crate::core::kernel::{
-  actor::{Pid, actor_ref::ActorRef},
-  error::SendError,
-  messaging::{AnyMessage, AskResponse, system_message::SystemMessage},
+  actor::{
+    Pid,
+    actor_ref::ActorRef,
+    error::SendError,
+    messaging::{AnyMessage, AskResponse, system_message::SystemMessage},
+  },
   system::state::SystemStateShared,
 };
 

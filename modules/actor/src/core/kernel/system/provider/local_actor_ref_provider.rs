@@ -4,8 +4,8 @@ use crate::core::kernel::{
   actor::{
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::ActorRef,
+    error::ActorError,
   },
-  error::ActorError,
   system::provider::ActorRefProvider,
 };
 

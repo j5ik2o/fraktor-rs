@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use super::{GuardianKind, SystemStateShared, running_state::RunningSystemState};
-use crate::core::kernel::{actor::Pid, spawn::SpawnError};
+use crate::core::kernel::actor::{Pid, spawn::SpawnError};
 
 /// Wrapper for the system state while guardians are being registered.
 pub(crate) struct BootingSystemState {

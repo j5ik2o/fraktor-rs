@@ -7,9 +7,9 @@ use crate::core::{
     actor::{
       Pid,
       actor_ref::{ActorRefSender, ActorRefSenderShared},
+      error::SendError,
+      messaging::AnyMessage,
     },
-    error::SendError,
-    messaging::AnyMessage,
     system::ActorSystem,
   },
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender},

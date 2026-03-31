@@ -169,7 +169,7 @@ fn publish_accepts_and_emits_events() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -199,7 +199,7 @@ fn publish_rejects_when_no_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let ack = pubsub.publish(request).expect("publish");
@@ -227,7 +227,7 @@ fn topology_update_reactivates_suspended_subscribers() {
   }]);
   let request = PublishRequest::new(
     topic.clone(),
-    fraktor_actor_rs::core::kernel::messaging::AnyMessage::new(batch),
+    fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
     PublishOptions::default(),
   );
   let _ = pubsub.publish(request).expect("publish");

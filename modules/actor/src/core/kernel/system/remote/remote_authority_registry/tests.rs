@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use crate::core::kernel::{
-  messaging::AnyMessage,
+  actor::messaging::AnyMessage,
   system::{
     remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
     state::AuthorityState,

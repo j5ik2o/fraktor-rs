@@ -11,7 +11,7 @@ use super::{
   QueueStateHandle, mailbox_enqueue_outcome::EnqueueOutcome, mailbox_offer_future::MailboxOfferFuture,
   message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
-use crate::core::kernel::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Bounded message queue with a fixed capacity and configurable overflow behaviour.
 pub struct BoundedMessageQueue {

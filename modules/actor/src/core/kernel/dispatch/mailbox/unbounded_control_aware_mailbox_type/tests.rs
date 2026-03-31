@@ -13,7 +13,7 @@ fn should_create_working_message_queue() {
 
 #[test]
 fn should_create_queue_that_prioritises_control_messages() {
-  use crate::core::kernel::messaging::AnyMessage;
+  use crate::core::kernel::actor::messaging::AnyMessage;
 
   let factory = UnboundedControlAwareMailboxType::new();
   let queue = factory.create();

@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::core::kernel::{actor::PipeSpawnError, error::SendError};
+use crate::core::kernel::actor::{PipeSpawnError, error::SendError};
 
 /// Describes failures that can occur when invoking ask from a typed actor context.
 #[derive(Debug)]

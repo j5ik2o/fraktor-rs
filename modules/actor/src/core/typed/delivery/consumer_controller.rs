@@ -10,13 +10,13 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use crate::core::{
   kernel::event::logging::LogLevel,
   typed::{
-    Behaviors,
-    actor::TypedActorRef,
+    TypedActorRef,
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, ConsumerControllerConfirmed, ConsumerControllerDelivery, ConsumerControllerSettings,
       ProducerControllerCommand, SeqNr, SequencedMessage, consumer_controller_command::ConsumerControllerCommandKind,
     },
+    dsl::Behaviors,
   },
 };
 

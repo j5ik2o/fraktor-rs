@@ -13,13 +13,15 @@ use super::{
   mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
-  actor::Pid,
-  dead_letter::DeadLetterReason,
+  actor::{
+    Pid,
+    dead_letter::DeadLetterReason,
+    error::SendError,
+    messaging::{AnyMessage, system_message::SystemMessage},
+    props::MailboxConfig,
+  },
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
-  error::SendError,
   event::logging::LogLevel,
-  messaging::{AnyMessage, system_message::SystemMessage},
-  props::MailboxConfig,
   system::state::SystemStateShared,
 };
 
@@ -52,9 +54,11 @@ impl Mailbox {
   ///
   /// # Errors
   ///
-  /// Returns [`MailboxConfigError`](crate::core::kernel::props::MailboxConfigError) when the
+  /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
-  pub fn new_from_config(config: &MailboxConfig) -> Result<Self, crate::core::kernel::props::MailboxConfigError> {
+  pub fn new_from_config(
+    config: &MailboxConfig,
+  ) -> Result<Self, crate::core::kernel::actor::props::MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(config)?;
     Ok(Self::new_with_queue(policy, queue))

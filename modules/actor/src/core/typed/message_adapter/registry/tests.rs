@@ -4,10 +4,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{
-    actor::{Actor, ActorCell, ActorContext},
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
+    actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
     system::ActorSystem,
   },
   typed::message_adapter::{AdapterError, AdapterOutcome, AdapterPayload, MessageAdapterRegistry},

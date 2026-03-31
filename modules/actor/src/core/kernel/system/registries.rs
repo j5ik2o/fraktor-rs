@@ -3,7 +3,7 @@
 use ahash::RandomState;
 use hashbrown::HashMap;
 
-use crate::core::kernel::{actor::Pid, spawn::NameRegistry};
+use crate::core::kernel::actor::{Pid, spawn::NameRegistry};
 
 /// Collection of name registries indexed by parent [`Pid`].
 pub(crate) struct Registries {

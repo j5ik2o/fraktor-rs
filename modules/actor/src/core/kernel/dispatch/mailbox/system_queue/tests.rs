@@ -1,5 +1,6 @@
 use crate::core::kernel::{
-  actor::Pid, dispatch::mailbox::system_queue::SystemQueue, messaging::system_message::SystemMessage,
+  actor::{Pid, messaging::system_message::SystemMessage},
+  dispatch::mailbox::system_queue::SystemQueue,
 };
 
 #[test]

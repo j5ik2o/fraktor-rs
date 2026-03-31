@@ -19,12 +19,14 @@ use super::{
   schedule_adapter_shared::ScheduleAdapterShared,
 };
 use crate::core::kernel::{
+  actor::{
+    error::{ActorError, SendError},
+    messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
+  },
   dispatch::mailbox::{
     EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, ScheduleHints, metrics_event::MailboxPressureEvent,
   },
-  error::{ActorError, SendError},
   event::{logging::LogLevel, stream::EventStreamEvent},
-  messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
   system::state::{SystemStateShared, SystemStateWeak},
 };
 

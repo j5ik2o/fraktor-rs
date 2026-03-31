@@ -2,10 +2,12 @@ use core::num::NonZeroUsize;
 
 use super::*;
 use crate::core::kernel::{
+  actor::{
+    error::SendError,
+    messaging::AnyMessage,
+    props::{MailboxConfigError, MailboxRequirement},
+  },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
-  error::SendError,
-  messaging::AnyMessage,
-  props::{MailboxConfigError, MailboxRequirement},
 };
 
 #[test]

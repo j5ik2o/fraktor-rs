@@ -9,8 +9,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{super::mailbox_queue_state::QueueState, QueuePollFuture};
 use crate::core::kernel::{
+  actor::messaging::AnyMessage,
   dispatch::mailbox::{MailboxPolicy, QueueStateHandle},
-  messaging::AnyMessage,
 };
 
 impl<T> QueuePollFuture<T>

@@ -6,10 +6,10 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     actor_path::{ActorPath, ActorPathFormatter, ActorPathParser, ActorPathParts, ActorUid, PathResolutionError},
     actor_selection::{ActorSelectionError, ActorSelectionResolver},
+    messaging::AnyMessage,
+    setup::ActorSystemConfig,
   },
-  messaging::AnyMessage,
   system::{
-    ActorSystemConfig,
     remote::{RemoteAuthorityRegistry, RemotingConfig},
     state::AuthorityState,
   },

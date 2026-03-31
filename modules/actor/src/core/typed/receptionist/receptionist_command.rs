@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use crate::core::typed::{actor::TypedActorRef, receptionist::Listing};
+use crate::core::typed::{TypedActorRef, receptionist::Listing};
 
 /// Commands accepted by the Receptionist actor.
 ///

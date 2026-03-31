@@ -3,10 +3,13 @@
 use alloc::vec::Vec;
 
 use crate::core::kernel::{
-  actor::{Actor, ActorContext, Pid, actor_ref::ActorRef},
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+  actor::{
+    Actor, ActorContext, Pid,
+    actor_ref::ActorRef,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
+  },
   system::guardian::SystemGuardianProtocol,
 };
 

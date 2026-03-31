@@ -5,10 +5,7 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
-use crate::core::kernel::{
-  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef},
-  error::ActorError,
-};
+use crate::core::kernel::actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError};
 
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].

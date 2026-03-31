@@ -13,6 +13,10 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess, sync_mut
 
 use super::schedule_waker::ScheduleWaker;
 use crate::core::kernel::{
+  actor::messaging::{
+    AnyMessage,
+    message_invoker::{MessageInvoker, MessageInvokerShared},
+  },
   dispatch::{
     dispatcher::{
       DispatchError, DispatchExecutor, DispatchExecutorRunner, DispatchShared, DispatcherShared, ScheduleAdapter,
@@ -26,10 +30,6 @@ use crate::core::kernel::{
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  },
-  messaging::{
-    AnyMessage,
-    message_invoker::{MessageInvoker, MessageInvokerShared},
   },
   system::{ActorSystem, state::SystemStateShared},
 };
@@ -227,21 +227,24 @@ fn mailbox_full_notifies_invoker_pressure_hook() {
   }
 
   impl MessageInvoker for PressureInvoker {
-    fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), crate::core::kernel::error::ActorError> {
+    fn invoke_user_message(
+      &mut self,
+      _message: AnyMessage,
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
       Ok(())
     }
 
     fn invoke_system_message(
       &mut self,
-      _message: crate::core::kernel::messaging::system_message::SystemMessage,
-    ) -> Result<(), crate::core::kernel::error::ActorError> {
+      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
       Ok(())
     }
 
     fn invoke_mailbox_pressure(
       &mut self,
       _event: &crate::core::kernel::dispatch::mailbox::metrics_event::MailboxPressureEvent,
-    ) -> Result<(), crate::core::kernel::error::ActorError> {
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
       *self.pressure_calls.lock() += 1;
       Ok(())
     }
@@ -426,7 +429,7 @@ impl Default for RecordingInvoker {
 }
 
 impl MessageInvoker for RecordingInvoker {
-  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), crate::core::kernel::error::ActorError> {
+  fn invoke_user_message(&mut self, message: AnyMessage) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     if let Some(value) = message.payload().downcast_ref::<usize>() {
       self.messages.lock().push(*value);
     }
@@ -435,8 +438,8 @@ impl MessageInvoker for RecordingInvoker {
 
   fn invoke_system_message(
     &mut self,
-    _message: crate::core::kernel::messaging::system_message::SystemMessage,
-  ) -> Result<(), crate::core::kernel::error::ActorError> {
+    _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
+  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     Ok(())
   }
 }

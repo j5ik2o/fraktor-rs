@@ -1,10 +1,7 @@
 //! Handle wrapper for RemoteWatchHook implementations.
 
 use super::{ActorRefProvider, RemoteWatchHook};
-use crate::core::kernel::{
-  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef},
-  error::ActorError,
-};
+use crate::core::kernel::actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError};
 
 /// Handle wrapper that combines a provider with its supported schemes.
 ///

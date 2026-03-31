@@ -12,11 +12,9 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::kernel::{
-  actor::Pid,
+  actor::{Pid, error::SendError, messaging::AnyMessage},
   dispatch::mailbox::{EnqueueOutcome, Mailbox, MailboxOverflowStrategy, MailboxPolicy},
-  error::SendError,
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  messaging::AnyMessage,
   system::ActorSystem,
 };
 

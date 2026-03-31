@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
-  extension::{ExtensionId, ExtensionInstaller},
+  actor::extension::{ExtensionId, ExtensionInstaller},
   system::{ActorSystem, ActorSystemBuildError},
 };
 

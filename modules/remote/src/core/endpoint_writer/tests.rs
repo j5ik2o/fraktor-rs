@@ -4,16 +4,17 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   serialization::{
     SerializationCallScope, SerializationExtension, SerializationExtensionShared, SerializationSetup,
     SerializationSetupBuilder, Serializer, SerializerId, builtin::StringSerializer,
   },
-  system::{ActorSystem, ActorSystemConfig},
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 

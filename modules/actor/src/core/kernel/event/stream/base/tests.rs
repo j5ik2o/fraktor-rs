@@ -6,13 +6,15 @@ use core::time::Duration;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::kernel::{
-  actor::Pid,
+  actor::{
+    Pid,
+    lifecycle::{LifecycleEvent, LifecycleStage},
+    messaging::AnyMessage,
+  },
   event::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
   },
-  lifecycle::{LifecycleEvent, LifecycleStage},
-  messaging::AnyMessage,
 };
 
 struct RecordingSubscriber {

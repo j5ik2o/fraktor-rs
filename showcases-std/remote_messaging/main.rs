@@ -16,14 +16,18 @@ use std::time::Duration;
 use anyhow::{Result, anyhow};
 use fraktor_actor_rs::{
   core::kernel::{
-    actor::{Actor, ActorContext, actor_ref::ActorRef},
-    error::ActorError,
-    extension::ExtensionInstallers,
-    futures::ActorFutureListener,
-    messaging::{AnyMessage, AnyMessageView},
-    props::Props,
+    actor::{
+      Actor, ActorContext,
+      actor_ref::ActorRef,
+      error::ActorError,
+      extension::ExtensionInstallers,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+      setup::ActorSystemConfig,
+    },
     serialization::SerializationExtensionInstaller,
-    system::{ActorSystemConfig, remote::RemotingConfig},
+    system::remote::RemotingConfig,
+    util::futures::ActorFutureListener,
   },
   std::{
     dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},

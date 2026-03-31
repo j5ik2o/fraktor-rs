@@ -1,7 +1,7 @@
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::{
-  actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+use fraktor_actor_rs::core::kernel::actor::{
+  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
 };

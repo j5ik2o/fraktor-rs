@@ -2,10 +2,12 @@
 
 use crate::core::{
   kernel::{
-    actor::Pid,
+    actor::{
+      Pid,
+      error::{ActorError, ActorErrorReason},
+      supervision::SupervisorStrategyConfig,
+    },
     dispatch::mailbox::metrics_event::MailboxPressureEvent,
-    error::{ActorError, ActorErrorReason},
-    supervision::SupervisorStrategyConfig,
   },
   typed::{actor::actor_context::TypedActorContext, message_adapter::AdapterError},
 };

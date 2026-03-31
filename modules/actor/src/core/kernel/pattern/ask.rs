@@ -5,11 +5,13 @@ use core::time::Duration;
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::kernel::{
-  actor::actor_ref::ActorRef,
-  futures::ActorFutureShared,
-  messaging::{AnyMessage, AskError, AskResponse, AskResult},
-  scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
+  actor::{
+    actor_ref::ActorRef,
+    messaging::{AnyMessage, AskError, AskResponse, AskResult},
+    scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
+  },
   system::state::SystemStateShared,
+  util::futures::ActorFutureShared,
 };
 
 /// Sends a request and arranges timeout completion on the returned ask future.

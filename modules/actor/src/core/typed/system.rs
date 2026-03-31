@@ -5,22 +5,22 @@ use core::marker::PhantomData;
 
 use crate::core::{
   kernel::{
-    dead_letter::DeadLetterEntry,
-    error::SendError,
+    actor::{
+      dead_letter::DeadLetterEntry, error::SendError, messaging::AskResult, setup::ActorSystemConfig, spawn::SpawnError,
+    },
     event::{
       logging::LogLevel,
       stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
     },
-    futures::ActorFutureShared,
-    messaging::AskResult,
-    spawn::SpawnError,
-    system::{ActorSystem, ActorSystemConfig, state::SystemStateShared},
+    system::{ActorSystem, state::SystemStateShared},
+    util::futures::ActorFutureShared,
   },
   typed::{
-    actor::{TypedActorRef, TypedChildRef},
+    TypedActorRef,
+    actor::TypedChildRef,
+    internal::TypedSchedulerShared,
     props::TypedProps,
     receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
-    scheduler::TypedSchedulerShared,
   },
 };
 
@@ -55,7 +55,7 @@ where
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
   pub fn new(
     guardian: &TypedProps<M>,
-    tick_driver_config: crate::core::kernel::scheduler::tick_driver::TickDriverConfig,
+    tick_driver_config: crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig,
   ) -> Result<Self, SpawnError> {
     Ok(Self { inner: ActorSystem::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
   }
@@ -182,7 +182,7 @@ where
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> crate::core::kernel::scheduler::SchedulerBackedDelayProvider {
+  pub fn delay_provider(&self) -> crate::core::kernel::actor::scheduler::SchedulerBackedDelayProvider {
     self.inner.delay_provider()
   }
 }

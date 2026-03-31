@@ -6,12 +6,13 @@ use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPathParts, GuardianKind},
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-  system::{ActorSystem, ActorSystemConfig},
+  system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
