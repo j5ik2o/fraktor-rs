@@ -14,6 +14,7 @@ use fraktor_actor_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    provider::ActorRefProvider,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
@@ -22,7 +23,6 @@ use fraktor_actor_rs::core::kernel::{
     subscriber_handle,
   },
   serialization::SerializationExtensionInstaller,
-  actor::provider::ActorRefProvider,
   system::{
     ActorSystem,
     remote::{RemoteWatchHook, RemoteWatchHookShared, RemotingConfig},

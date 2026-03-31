@@ -5,10 +5,8 @@ use core::any::Any;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::core::kernel::actor::provider::{ActorRefProvider, ActorRefProviderShared};
 use super::{
-  ActorSystem, ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError,
-  remote::RemoteWatchHook,
+  ActorSystem, ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError, remote::RemoteWatchHook,
 };
 use crate::core::kernel::{
   actor::{
@@ -16,6 +14,7 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     extension::{Extension, ExtensionId},
     props::{MailboxConfig, Props},
+    provider::{ActorRefProvider, ActorRefProviderShared},
     spawn::SpawnError,
   },
   dispatch::{

@@ -16,9 +16,9 @@ use crate::core::{
     actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
-    message_and_signals::BehaviorSignal,
     dsl::{StashBuffer, TimerScheduler, TimerSchedulerShared},
     internal::BehaviorSignalInterceptor,
+    message_and_signals::BehaviorSignal,
   },
 };
 

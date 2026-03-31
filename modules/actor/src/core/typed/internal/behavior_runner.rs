@@ -13,8 +13,8 @@ use crate::core::{
   typed::{
     actor::{TypedActor, TypedActorContext},
     behavior::{Behavior, BehaviorDirective},
-    message_and_signals::{BehaviorSignal, DeathPactError},
     message_adapter::AdapterError,
+    message_and_signals::{BehaviorSignal, DeathPactError},
   },
 };
 

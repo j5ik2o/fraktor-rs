@@ -8,7 +8,11 @@ use core::{
 };
 
 use crate::core::kernel::{
-  actor::{Pid, context_pipe::{ContextPipeTaskId, ContextPipeWaker}, messaging::AnyMessage},
+  actor::{
+    Pid,
+    context_pipe::{ContextPipeTaskId, ContextPipeWaker},
+    messaging::AnyMessage,
+  },
   system::state::SystemStateShared,
 };
 

@@ -9,13 +9,13 @@ use fraktor_actor_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::AnyMessage,
     props::Props,
+    provider::{ActorRefProvider, ActorRefProviderShared},
     scheduler::{
       SchedulerConfig,
       tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     setup::ActorSystemConfig,
   },
-  actor::provider::{ActorRefProvider, ActorRefProviderShared},
   system::ActorSystem,
 };
 

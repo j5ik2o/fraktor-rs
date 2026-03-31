@@ -10,6 +10,7 @@ use fraktor_actor_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::AnyMessage,
     props::Props,
+    provider::{ActorRefProvider, ActorRefProviderShared},
     scheduler::{
       SchedulerConfig, SchedulerShared,
       tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -19,7 +20,6 @@ use fraktor_actor_rs::core::kernel::{
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  actor::provider::{ActorRefProvider, ActorRefProviderShared},
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::{

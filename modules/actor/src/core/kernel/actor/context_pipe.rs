@@ -7,5 +7,5 @@ mod task_id;
 mod waker;
 
 pub(crate) use task::{ContextPipeFuture, ContextPipeTask};
-pub(crate) use waker::ContextPipeWaker;
 pub use task_id::ContextPipeTaskId;
+pub(crate) use waker::ContextPipeWaker;

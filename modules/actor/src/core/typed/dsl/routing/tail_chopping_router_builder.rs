@@ -11,8 +11,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use crate::core::{
   kernel::event::logging::LogLevel,
   typed::{
-    TypedActorRef, behavior::Behavior, message_and_signals::BehaviorSignal, dsl::Behaviors,
-    message_adapter::AdapterError, props::TypedProps,
+    TypedActorRef, behavior::Behavior, dsl::Behaviors, message_adapter::AdapterError,
+    message_and_signals::BehaviorSignal, props::TypedProps,
   },
 };
 

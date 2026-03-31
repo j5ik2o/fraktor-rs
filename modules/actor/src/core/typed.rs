@@ -10,28 +10,28 @@ mod actor_ref_resolver;
 mod behavior;
 /// Cross-cutting concern interceptor for typed behaviors.
 mod behavior_interceptor;
-/// Messages and signals delivered to typed behaviors (Pekko MessageAndSignals).
-pub mod message_and_signals;
 /// Point-to-point reliable delivery between a producer and consumer actor.
 pub mod delivery;
-/// Dispatcher registry — resolves thread-pool executors from a selector (placeholder).
-mod dispatchers;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
+/// Dispatcher registry — resolves thread-pool executors from a selector (placeholder).
+mod dispatchers;
 /// DSL package for typed actor development (Behaviors, stash, timers, ask patterns).
 pub mod dsl;
 /// Typed event stream package for subscribing and publishing to the system event stream.
 pub mod eventstream;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
 mod extension_setup;
-/// Logging options for typed behavior helpers.
-mod log_options;
 /// Internal implementation types (BehaviorRunner, TypedActorAdapter, scheduler internals).
 pub(crate) mod internal;
+/// Logging options for typed behavior helpers.
+mod log_options;
 /// Mailbox selection strategy for typed props.
 mod mailbox_selector;
 /// Message adapter primitives bridging external protocols.
 pub mod message_adapter;
+/// Messages and signals delivered to typed behaviors (Pekko MessageAndSignals).
+pub mod message_and_signals;
 /// Typed props that wrap untyped props.
 mod props;
 /// Typed pub/sub package for topic actors and commands.

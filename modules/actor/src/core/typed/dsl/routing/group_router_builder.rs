@@ -14,8 +14,8 @@ use crate::core::{
   typed::{
     TypedActorRef,
     behavior::Behavior,
-    message_and_signals::BehaviorSignal,
     dsl::Behaviors,
+    message_and_signals::BehaviorSignal,
     receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
   },
 };

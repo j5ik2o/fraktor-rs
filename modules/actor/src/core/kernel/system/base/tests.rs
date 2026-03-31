@@ -23,6 +23,7 @@ use crate::core::{
       lifecycle::LifecycleStage,
       messaging::system_message::SystemMessage,
       props::{MailboxConfig, MailboxRequirement, Props},
+      provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
       scheduler::{
         SchedulerConfig,
         tick_driver::{
@@ -36,7 +37,6 @@ use crate::core::{
     },
     dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-    actor::provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
     system::{
       remote::RemotingConfig,
       state::{SystemStateShared, system_state::SystemState},

@@ -14,10 +14,12 @@ use tracing::{
 
 use crate::{
   core::{
-    kernel::{actor::ActorContext, system::ActorSystem},
-    typed::{actor::TypedActorContext, dsl::Behaviors as CoreBehaviors, message_and_signals::BehaviorSignal},
+    kernel::{actor::ActorContext, event::logging::LogLevel, system::ActorSystem},
+    typed::{
+      LogOptions, actor::TypedActorContext, dsl::Behaviors as CoreBehaviors, message_and_signals::BehaviorSignal,
+    },
   },
-  std::typed::Behaviors, core::typed::LogOptions, core::kernel::event::logging::LogLevel,
+  std::typed::Behaviors,
 };
 
 /// Ensures that tracing's global callsite interest cache does not permanently
@@ -85,8 +87,7 @@ fn log_messages_with_opts_delegates_to_inner_behavior() {
   let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 
-  let options =
-    LogOptions::default().with_enabled(false).with_level(LogLevel::Info).with_logger_name("typed.test");
+  let options = LogOptions::default().with_enabled(false).with_level(LogLevel::Info).with_logger_name("typed.test");
   let mut behavior = Behaviors::log_messages_with_opts(
     options,
     CoreBehaviors::receive_message(move |_ctx, msg: &u32| {

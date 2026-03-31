@@ -13,11 +13,11 @@ use fraktor_actor_rs::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    provider::ActorRefProvider,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
   serialization::SerializationExtensionInstaller,
-  actor::provider::ActorRefProvider,
   system::{
     ActorSystem,
     remote::{RemoteWatchHookShared, RemotingConfig},
