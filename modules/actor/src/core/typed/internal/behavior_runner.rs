@@ -83,10 +83,13 @@ where
       },
       | BehaviorDirective::Stopped => {
         if !self.stopping {
-          ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
+          // Preserve `next` (and any attached signal_handler) before calling stop_self so
+          // the handler remains reachable even when stop_self returns an error.
           self.stopping = true;
+          self.current = next;
+          ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
         }
-        self.current = Behavior::stopped();
+        // If already stopping, leave self.current intact to preserve the signal_handler.
         Ok(())
       },
       | BehaviorDirective::Active => {

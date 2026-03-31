@@ -263,6 +263,39 @@ fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
   assert!(error.reason().as_str().contains("death pact"), "メッセージに death pact が含まれるべき");
 }
 
+/// Regression: `stopped_with_post_stop` returned from a message handler must
+/// still invoke the callback when `post_stop` dispatches `BehaviorSignal::Stopped`.
+///
+/// Previously `apply_transition` unconditionally replaced `self.current` with
+/// a plain `Behavior::stopped()` (no signal handler), silently discarding the
+/// callback before `post_stop` could run it.
+#[test]
+fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_handler() {
+  let called = Arc::new(AtomicBool::new(false));
+  let called_for_post_stop = called.clone();
+
+  let behavior = Behaviors::receive_message(move |_, _msg: &ProbeMessage| {
+    let cb_ref = called_for_post_stop.clone();
+    Ok(Behaviors::stopped_with_post_stop(move || {
+      cb_ref.store(true, Ordering::SeqCst);
+    }))
+  });
+
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let mut runner = BehaviorRunner::new(behavior);
+
+  // Simulate message delivery that transitions to stopped_with_post_stop.
+  // stop_self() may fail in the minimal test context (no registered actor cell),
+  // but the signal_handler must be preserved regardless so post_stop can invoke it.
+  let _ = runner.receive(&mut typed_ctx, &ProbeMessage);
+
+  // Simulate the post_stop lifecycle callback.
+  runner.post_stop(&mut typed_ctx).expect("post_stop");
+
+  assert!(called.load(Ordering::SeqCst), "post_stop callback must run after stopped_with_post_stop is returned from message handler");
+}
+
 #[test]
 fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
   let system = ActorSystem::new_empty();
