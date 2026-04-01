@@ -106,6 +106,22 @@ where
     Ok(TypedChildRef::from_untyped(child))
   }
 
+  /// Spawns an anonymous typed child actor from the given behavior.
+  ///
+  /// The child receives a system-generated name (no explicit name is set).
+  /// Corresponds to Pekko's `ActorContext.spawnAnonymous`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the child actor cannot be spawned.
+  pub fn spawn_anonymous<C>(&mut self, behavior: &Behavior<C>) -> Result<TypedChildRef<C>, SpawnError>
+  where
+    C: Send + Sync + 'static, {
+    let initial_behavior = behavior.clone();
+    let props = TypedProps::from_behavior_factory(move || initial_behavior.clone());
+    self.spawn_child(&props)
+  }
+
   /// Spawns a typed child actor and automatically watches it.
   ///
   /// # Errors

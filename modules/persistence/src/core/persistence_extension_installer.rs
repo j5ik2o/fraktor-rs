@@ -3,10 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::format;
-
 use fraktor_actor_rs::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::extension::{ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
 
@@ -41,8 +39,7 @@ where
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extension_id = PersistenceExtensionId::new(self.journal.clone(), self.snapshot_store.clone());
-    system.extended().register_extension(&extension_id).map(|_| ()).map_err(|error| {
-      ActorSystemBuildError::Configuration(format!("persistence extension registration failed: {error:?}"))
-    })
+    install_extension_id(system, &extension_id);
+    Ok(())
   }
 }

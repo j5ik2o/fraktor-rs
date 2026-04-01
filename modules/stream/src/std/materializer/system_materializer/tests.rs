@@ -46,10 +46,14 @@ fn build_system_with_materializer() -> ActorSystem {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let installers = ExtensionInstallers::default().with_extension_installer(
     |system: &ActorSystem| -> Result<(), ActorSystemBuildError> {
-      system
+      let registered = system.extended().register_extension(&SystemMaterializerId);
+      let existing = system
         .extended()
-        .register_extension(&SystemMaterializerId)
-        .map_err(|e| ActorSystemBuildError::Configuration(alloc::format!("{:?}", e)))?;
+        .extension(&SystemMaterializerId)
+        .ok_or_else(|| ActorSystemBuildError::Configuration("system materializer was not retained".into()))?;
+      if !fraktor_utils_rs::core::sync::ArcShared::ptr_eq(&registered, &existing) {
+        return Err(ActorSystemBuildError::Configuration("system materializer identity mismatch".into()));
+      }
       Ok(())
     },
   );

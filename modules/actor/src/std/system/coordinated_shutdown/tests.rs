@@ -241,7 +241,7 @@ fn get_returns_some_after_extension_registered() {
 
   let system = ActorSystem::new_empty();
   let extended = system.extended();
-  extended.register_extension(&CoordinatedShutdownId).expect("should register");
+  extended.register_extension(&CoordinatedShutdownId);
 
   let result = CoordinatedShutdown::get(&system);
   assert!(result.is_some(), "should return Some after extension is registered");
@@ -254,7 +254,7 @@ fn get_returns_functional_instance() {
 
   let system = ActorSystem::new_empty();
   let extended = system.extended();
-  extended.register_extension(&CoordinatedShutdownId).expect("should register");
+  extended.register_extension(&CoordinatedShutdownId);
 
   let cs = CoordinatedShutdown::get(&system).expect("extension should be available");
   let result = cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "test-task", || async {});

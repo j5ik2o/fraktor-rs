@@ -300,6 +300,44 @@ fn intercept_delegates_signal_to_interceptor() {
 }
 
 #[test]
+fn intercept_behavior_clone_restarts_with_fresh_inner_behavior() {
+  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count_clone = start_count.clone();
+  let receive_count = ArcShared::new(NoStdMutex::new(0u32));
+  let receive_count_clone = receive_count.clone();
+
+  let inner = Behaviors::setup(move |_ctx| {
+    *start_count_clone.lock() += 1;
+    Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same()))
+  });
+
+  let behavior = Behaviors::intercept_behavior::<u32, _>(
+    move || {
+      Box::new(RecordingInterceptor {
+        receive_count: receive_count_clone.clone(),
+        start_count:   ArcShared::new(NoStdMutex::new(0)),
+        signal_count:  ArcShared::new(NoStdMutex::new(0)),
+      })
+    },
+    inner,
+  );
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut first = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("first started");
+  let mut second = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("second started");
+
+  first.handle_message(&mut typed_ctx, &1u32).expect("first message");
+  second.handle_message(&mut typed_ctx, &2u32).expect("second message");
+
+  assert_eq!(*start_count.lock(), 2, "intercepted behavior should recreate the wrapped behavior for each clone");
+  assert_eq!(*receive_count.lock(), 2, "each clone should invoke its own interceptor pipeline");
+}
+
+#[test]
 fn receive_timeout_config_stores_duration_and_produces_message() {
   let config = ReceiveTimeoutConfig::<u32>::new(Duration::from_millis(500), || 99u32);
   assert_eq!(config.duration, Duration::from_millis(500));

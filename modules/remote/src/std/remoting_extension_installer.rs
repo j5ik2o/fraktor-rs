@@ -1,9 +1,7 @@
 //! Installer for the remoting extension.
 
-use alloc::format;
-
 use fraktor_actor_rs::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::extension::{ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
 
@@ -44,9 +42,7 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     }
 
     let id = RemotingExtensionId::new(merged_config);
-    system.extended().register_extension(&id).map(|_| ()).map_err(|error| {
-      ActorSystemBuildError::Configuration(format!("remoting extension registration failed: {error:?}"))
-    })?;
+    install_extension_id(system, &id);
     Ok(())
   }
 }

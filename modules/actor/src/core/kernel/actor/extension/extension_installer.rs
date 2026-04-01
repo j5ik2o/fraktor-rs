@@ -1,5 +1,6 @@
 //! Trait for installing actor system extensions via the builder.
 
+use super::ExtensionId;
 use crate::core::kernel::system::{ActorSystem, ActorSystemBuildError};
 
 /// Installs an [`Extension`](crate::core::kernel::actor::extension::Extension) during actor system
@@ -20,4 +21,11 @@ where
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     self(system)
   }
+}
+
+/// Registers an extension identifier during bootstrap.
+pub fn install_extension_id<E>(system: &ActorSystem, extension_id: &E)
+where
+  E: ExtensionId, {
+  system.extended().register_extension(extension_id);
 }

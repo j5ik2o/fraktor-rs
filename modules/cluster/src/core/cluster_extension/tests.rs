@@ -219,7 +219,7 @@ fn registers_extension_and_starts_member() {
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
 
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   let result = ext_shared.start_member();
   assert!(result.is_ok());
 }
@@ -230,7 +230,7 @@ fn register_on_member_up_invokes_callback_for_up_transition() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
@@ -252,7 +252,7 @@ fn register_on_member_removed_invokes_callback_for_removed_transition() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
@@ -274,7 +274,7 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
 
@@ -304,7 +304,7 @@ fn run_member_up_during_start_test(start_fn: impl FnOnce(&ClusterExtension) -> R
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   start_fn(&ext_shared).expect("start");
 
@@ -334,7 +334,7 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
 
@@ -356,7 +356,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.start_member().expect("start member");
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
   ext_shared.shutdown(true).expect("shutdown");
@@ -376,7 +376,7 @@ fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_i
   let system = ActorSystem::new_empty();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.start_member().expect("start member");
   ext_shared.shutdown(true).expect("shutdown");
 
@@ -396,7 +396,7 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
@@ -421,7 +421,7 @@ fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
   let event_stream = system.event_stream();
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
@@ -448,7 +448,7 @@ fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_inst
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
@@ -472,7 +472,7 @@ fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
 
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
@@ -499,7 +499,7 @@ fn subscribes_to_event_stream_and_applies_topology_on_topology_updated() {
   );
 
   // 2. エクステンションを登録
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 3. エクステンションを開始（この時点で EventStream を購読するべき）
   ext_shared.start_member().unwrap();
@@ -533,7 +533,7 @@ fn ignores_topology_with_same_hash_via_event_stream() {
     ClusterExtensionConfig::new().with_advertised_address("fraktor://demo").with_metrics_enabled(true),
   );
 
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.start_member().unwrap();
 
   // 同じハッシュのトポロジを2回 publish
@@ -645,7 +645,7 @@ fn phase1_integration_static_topology_publishes_to_event_stream_and_applies_to_c
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("grain-kind")]).unwrap();
 
   // 5. クラスタを開始（start_member で provider が静的トポロジを publish）
@@ -701,7 +701,7 @@ fn phase1_integration_topology_updated_includes_blocked_members() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 6. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -738,7 +738,7 @@ fn phase1_integration_duplicate_hash_topology_is_suppressed() {
   // 3. ClusterExtension をセットアップ
   let ext_id =
     stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
   ext_shared.start_member().unwrap();
 
   // 4. 同じハッシュのトポロジを複数回適用
@@ -768,7 +768,7 @@ fn phase1_integration_metrics_include_members_and_virtual_actors() {
   // 2. ClusterExtension をセットアップ
   let ext_id =
     stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 3. Kind を登録（virtual_actors が増加する）
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind"), ActivatedKind::new("analytics-kind")]).unwrap();
@@ -818,7 +818,7 @@ fn phase2_integration_join_leave_events_produce_topology_updated() {
   // 3. ClusterExtension をセットアップ
   let ext_id =
     stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 4. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -892,7 +892,7 @@ fn phase2_integration_blocklist_reflected_in_topology_events() {
     Box::new(StubPubSub),
     Box::new(StubIdentity),
   );
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 5. クラスタを開始
   ext_shared.start_member().unwrap();
@@ -937,7 +937,7 @@ fn phase2_integration_metrics_updated_correctly_with_dynamic_topology() {
   // 2. ClusterExtension をセットアップ
   let ext_id =
     stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 3. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();
@@ -993,7 +993,7 @@ fn phase2_integration_shutdown_resets_metrics_and_emits_event() {
   // 3. ClusterExtension をセットアップ
   let ext_id =
     stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("node-a").with_metrics_enabled(true));
-  let ext_shared = system.extended().register_extension(&ext_id).expect("extension");
+  let ext_shared = system.extended().register_extension(&ext_id);
 
   // 4. Kind を登録して起動
   ext_shared.setup_member_kinds(vec![ActivatedKind::new("worker-kind")]).unwrap();

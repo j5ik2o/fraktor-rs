@@ -19,6 +19,7 @@ use crate::core::{
   kernel::{
     actor::{
       Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON,
+      actor_context::ReceiveTimeoutState,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, PipeSpawnError},
@@ -99,6 +100,7 @@ pub struct ActorCell {
   dispatcher_config: DispatcherConfig,
   dispatcher:        DispatcherShared,
   sender:            ActorRefSenderShared,
+  receive_timeout:   RuntimeMutex<Option<ReceiveTimeoutState>>,
   state:             RuntimeMutex<ActorCellState>,
   terminated:        AtomicBool,
 }
@@ -115,6 +117,11 @@ impl ActorCell {
   #[allow(clippy::expect_used)]
   fn system(&self) -> SystemStateShared {
     self.system.upgrade().expect("system state has been dropped")
+  }
+
+  fn make_context(&self) -> ActorContext<'_> {
+    let system = ActorSystem::from_state(self.system());
+    ActorContext::new(&system, self.pid).with_receive_timeout_state(&self.receive_timeout)
   }
 
   /// Creates a new actor cell using the provided runtime state and props.
@@ -166,6 +173,7 @@ impl ActorCell {
     let sender = dispatcher.into_sender();
     let factory = props.factory().clone();
     let actor = ActorShared::new(factory.with_write(|f| f.create()));
+    let receive_timeout = RuntimeMutex::new(None);
     let state = RuntimeMutex::new(ActorCellState::new());
 
     let tags = props.tags().clone();
@@ -182,6 +190,7 @@ impl ActorCell {
       dispatcher_config,
       dispatcher,
       sender,
+      receive_timeout,
       state,
       terminated: AtomicBool::new(false),
     });
@@ -605,8 +614,7 @@ impl ActorCell {
       self.actor_ref().try_tell(message).map_err(|error| ActorError::from_send_error(&error))?;
       Ok(())
     } else {
-      let system = ActorSystem::from_state(self.system());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = self.make_context();
       let result = self.actor.with_write(|actor| actor.on_terminated(&mut ctx, terminated_pid));
       ctx.clear_sender();
       result
@@ -645,8 +653,8 @@ impl ActorCell {
 
   fn handle_recreate(&self) -> Result<(), ActorError> {
     {
-      let system = ActorSystem::from_state(self.system());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = self.make_context();
+      ctx.cancel_receive_timeout();
       self.actor.with_write(|actor| actor.pre_restart(&mut ctx))?;
       ctx.clear_sender();
     }
@@ -669,8 +677,8 @@ impl ActorCell {
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = self.make_context();
+    ctx.cancel_receive_timeout();
     let result = self.actor.with_write(|actor| actor.post_stop(&mut ctx));
     ctx.clear_sender();
     if result.is_ok() {
@@ -733,8 +741,7 @@ impl ActorCell {
     let (directive, affected) = self.handle_child_failure(payload.child(), &actor_error, now);
 
     {
-      let system = ActorSystem::from_state(self.system());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = self.make_context();
       if let Err(ref error) =
         self.actor.with_write(|actor| actor.on_child_failed(&mut ctx, payload.child(), &actor_error))
       {
@@ -793,8 +800,7 @@ impl ActorCell {
   }
 
   fn run_pre_start(&self, stage: LifecycleStage) -> Result<(), ActorError> {
-    let system = ActorSystem::from_state(self.system());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = self.make_context();
     let outcome = self.actor.with_write(|actor| actor.pre_start(&mut ctx));
     ctx.clear_sender();
     if outcome.is_ok() {
@@ -855,13 +861,15 @@ impl MessageInvoker for ActorCellInvoker {
       // Use with_sender() to receive ActorIdentity replies.
       return Ok(());
     }
-    let system = ActorSystem::from_state(cell.system());
-    let mut ctx = ActorContext::new(&system, cell.pid);
+    let mut ctx = cell.make_context();
     let failure_candidate = message.clone();
     let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
-    if let Err(ref error) = result {
-      let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
-      cell.report_failure(error, Some(snapshot));
+    match &result {
+      | Ok(()) => ctx.reschedule_receive_timeout(),
+      | Err(error) => {
+        let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
+        cell.report_failure(error, Some(snapshot));
+      },
     }
     result
   }
@@ -921,8 +929,7 @@ impl MessageInvoker for ActorCellInvoker {
       // ActorCell has been dropped, silently ignore the notification
       return Ok(());
     };
-    let system = ActorSystem::from_state(cell.system());
-    let mut ctx = ActorContext::new(&system, cell.pid);
+    let mut ctx = cell.make_context();
     let result = cell.actor.with_write(|actor| actor.on_mailbox_pressure(&mut ctx, event));
     if let Err(ref error) = result {
       cell.report_failure(error, None);
@@ -934,8 +941,7 @@ impl MessageInvoker for ActorCellInvoker {
 impl ActorCell {
   /// Returns the supervisor strategy configuration for this actor.
   pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
-    let system = ActorSystem::from_state(self.system());
-    let mut ctx = ActorContext::new(&system, self.pid);
+    let mut ctx = self.make_context();
     self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
   }
 
@@ -947,8 +953,7 @@ impl ActorCell {
   ) -> (SupervisorDirective, Vec<Pid>) {
     // Get supervisor strategy dynamically from actor instance
     let strategy = {
-      let system = ActorSystem::from_state(self.system());
-      let mut ctx = ActorContext::new(&system, self.pid);
+      let mut ctx = self.make_context();
       self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
     };
 
