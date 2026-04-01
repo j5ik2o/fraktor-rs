@@ -299,10 +299,8 @@ impl Behaviors {
   where
     M: Send + Sync + 'static,
     I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static, {
-    let behavior_slot = ArcShared::new(RuntimeMutex::new(Some(behavior)));
-    intercept_inner(interceptor_factory, move || {
-      behavior_slot.lock().take().ok_or_else(|| ActorError::fatal("intercepted behavior was already initialized"))
-    })
+    let behavior_template = behavior;
+    intercept_inner(interceptor_factory, move || Ok(behavior_template.clone()))
   }
 
   /// Wraps a behavior with a [`BehaviorSignalInterceptor`] for signal-only concerns.

@@ -230,3 +230,35 @@ fn transform_messages_inner_behavior_evolves_on_active() {
 
   assert_eq!(*call_count.lock(), 10);
 }
+
+#[test]
+fn narrow_clone_restarts_with_fresh_inner_behavior() {
+  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count_clone = start_count.clone();
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received_clone = received.clone();
+
+  let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
+    *start_count_clone.lock() += 1;
+    let received = received_clone.clone();
+    Behaviors::receive_message(move |_ctx, msg: &u32| {
+      received.lock().push(*msg);
+      Ok(Behaviors::same())
+    })
+  });
+
+  let behavior: Behavior<Wrapper> = inner.narrow();
+
+  let system = ActorSystem::new_empty();
+  let (_pid, mut context) = make_ctx(&system);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut first = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("first started");
+  let mut second = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("second started");
+
+  first.handle_message(&mut typed_ctx, &Wrapper(1)).expect("first message");
+  second.handle_message(&mut typed_ctx, &Wrapper(2)).expect("second message");
+
+  assert_eq!(*start_count.lock(), 2, "narrowed behavior should reinitialize the inner behavior for each clone");
+  assert_eq!(received.lock().as_slice(), &[1, 2]);
+}

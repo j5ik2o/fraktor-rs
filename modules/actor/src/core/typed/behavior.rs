@@ -233,16 +233,13 @@ where
     Outer: Send + Sync + 'static,
     F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
     let supervisor_override = self.supervisor_override.clone();
-    let inner_slot = ArcShared::new(RuntimeMutex::new(Some(self)));
+    let inner_template = self;
     let mapper = ArcShared::new(mapper);
 
     Behavior::<Outer>::from_signal_handler({
       move |ctx, signal| match signal {
         | BehaviorSignal::Started => {
-          let mut inner = inner_slot
-            .lock()
-            .take()
-            .ok_or_else(|| ActorError::fatal("transform_messages: inner behavior already consumed"))?;
+          let mut inner = inner_template.clone();
 
           {
             let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
