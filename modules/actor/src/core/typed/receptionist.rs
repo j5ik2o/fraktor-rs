@@ -1,7 +1,9 @@
 //! Receptionist actor providing service discovery within an actor system.
 
+mod deregistered;
 mod listing;
 mod receptionist_command;
+mod registered;
 mod service_key;
 #[cfg(test)]
 mod tests;
@@ -9,9 +11,11 @@ mod tests;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
+pub use deregistered::Deregistered;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;
+pub use registered::Registered;
 pub use service_key::ServiceKey;
 
 use crate::core::{
@@ -51,7 +55,7 @@ impl Receptionist {
     Behaviors::receive_message(move |ctx, cmd| {
       let mut guard = state_for_message.lock();
       match cmd {
-        | ReceptionistCommand::Register { service_id, type_id, actor_ref } => {
+        | ReceptionistCommand::Register { service_id, type_id, actor_ref, reply_to } => {
           let key = (service_id.clone(), *type_id);
           let entry = guard.registrations.entry(key.clone()).or_default();
           if !entry.iter().any(|r| r.pid() == actor_ref.pid()) {
@@ -63,16 +67,40 @@ impl Receptionist {
                 Some(ctx.pid()),
               );
             }
-            notify_subscribers(&guard.subscribers, &key, &guard.registrations);
+            notify_subscribers(&guard.subscribers, &key, &guard.registrations, ctx.system().as_untyped());
+          }
+          if let Some(mut rt) = reply_to.clone() {
+            let ack = Registered::new(service_id.clone(), *type_id, actor_ref.clone());
+            // ACK delivery is best-effort: the registration itself already succeeded,
+            // so a failed ack does not invalidate the operation.
+            if let Err(e) = rt.try_tell(ack) {
+              ctx.system().emit_log(
+                crate::core::kernel::event::logging::LogLevel::Warn,
+                alloc::format!("receptionist failed to send Registered ack: {:?}", e),
+                Some(ctx.pid()),
+              );
+            }
           }
         },
-        | ReceptionistCommand::Deregister { service_id, type_id, actor_ref } => {
+        | ReceptionistCommand::Deregister { service_id, type_id, actor_ref, reply_to } => {
           let key = (service_id.clone(), *type_id);
           if let Some(entry) = guard.registrations.get_mut(&key) {
             let before = entry.len();
             entry.retain(|r| r.pid() != actor_ref.pid());
             if entry.len() != before {
-              notify_subscribers(&guard.subscribers, &key, &guard.registrations);
+              notify_subscribers(&guard.subscribers, &key, &guard.registrations, ctx.system().as_untyped());
+            }
+          }
+          if let Some(mut rt) = reply_to.clone() {
+            let ack = Deregistered::new(service_id.clone(), *type_id, actor_ref.clone());
+            // ACK delivery is best-effort: the deregistration itself already succeeded,
+            // so a failed ack does not invalidate the operation.
+            if let Err(e) = rt.try_tell(ack) {
+              ctx.system().emit_log(
+                crate::core::kernel::event::logging::LogLevel::Warn,
+                alloc::format!("receptionist failed to send Deregistered ack: {:?}", e),
+                Some(ctx.pid()),
+              );
             }
           }
         },
@@ -115,7 +143,7 @@ impl Receptionist {
       }
       Ok(Behaviors::same())
     })
-    .receive_signal(move |_ctx, signal| {
+    .receive_signal(move |ctx, signal| {
       let BehaviorSignal::Terminated(terminated_pid) = signal else {
         return Ok(Behaviors::same());
       };
@@ -137,7 +165,7 @@ impl Receptionist {
       guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
 
       for key in &updated_keys {
-        notify_subscribers(&guard.subscribers, key, &guard.registrations);
+        notify_subscribers(&guard.subscribers, key, &guard.registrations, ctx.system().as_untyped());
       }
       Ok(Behaviors::same())
     })
@@ -152,6 +180,26 @@ impl Receptionist {
       service_id: key.id().into(),
       type_id:    key.type_id(),
       actor_ref:  actor_ref.into_untyped(),
+      reply_to:   None,
+    }
+  }
+
+  /// Creates a [`Register`](ReceptionistCommand::Register) command with an acknowledgement target.
+  ///
+  /// Corresponds to Pekko's `Receptionist.Register` with a `replyTo` parameter.
+  #[must_use]
+  pub fn register_with_ack<M>(
+    key: &ServiceKey<M>,
+    actor_ref: TypedActorRef<M>,
+    reply_to: TypedActorRef<Registered>,
+  ) -> ReceptionistCommand
+  where
+    M: Send + Sync + 'static, {
+    ReceptionistCommand::Register {
+      service_id: key.id().into(),
+      type_id:    key.type_id(),
+      actor_ref:  actor_ref.into_untyped(),
+      reply_to:   Some(reply_to),
     }
   }
 
@@ -164,6 +212,27 @@ impl Receptionist {
       service_id: key.id().into(),
       type_id:    key.type_id(),
       actor_ref:  actor_ref.into_untyped(),
+      reply_to:   None,
+    }
+  }
+
+  /// Creates a [`Deregister`](ReceptionistCommand::Deregister) command with an acknowledgement
+  /// target.
+  ///
+  /// Corresponds to Pekko's `Receptionist.Deregister` with a `replyTo` parameter.
+  #[must_use]
+  pub fn deregister_with_ack<M>(
+    key: &ServiceKey<M>,
+    actor_ref: TypedActorRef<M>,
+    reply_to: TypedActorRef<Deregistered>,
+  ) -> ReceptionistCommand
+  where
+    M: Send + Sync + 'static, {
+    ReceptionistCommand::Deregister {
+      service_id: key.id().into(),
+      type_id:    key.type_id(),
+      actor_ref:  actor_ref.into_untyped(),
+      reply_to:   Some(reply_to),
     }
   }
 
@@ -197,13 +266,20 @@ fn notify_subscribers(
   subscribers: &BTreeMap<RegistryKey, Vec<TypedActorRef<Listing>>>,
   key: &RegistryKey,
   registrations: &BTreeMap<RegistryKey, Vec<ActorRef>>,
+  system: &crate::core::kernel::system::ActorSystem,
 ) {
   if let Some(subs) = subscribers.get(key) {
     let refs = registrations.get(key).cloned().unwrap_or_default();
     let listing = Listing::new(key.0.clone(), key.1, refs);
     for sub in subs {
       let mut s = sub.clone();
-      if let Err(_error) = s.try_tell(listing.clone()) {}
+      if let Err(e) = s.try_tell(listing.clone()) {
+        system.emit_log(
+          crate::core::kernel::event::logging::LogLevel::Warn,
+          alloc::format!("receptionist failed to notify subscriber {:?}: {:?}", sub.pid(), e),
+          None,
+        );
+      }
     }
   }
 }

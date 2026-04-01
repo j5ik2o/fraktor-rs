@@ -6,7 +6,10 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use crate::core::typed::{TypedActorRef, receptionist::Listing};
+use crate::core::typed::{
+  TypedActorRef,
+  receptionist::{Deregistered, Listing, Registered},
+};
 
 /// Commands accepted by the Receptionist actor.
 ///
@@ -22,6 +25,8 @@ pub enum ReceptionistCommand {
     type_id:    TypeId,
     /// Erased actor reference to register.
     actor_ref:  crate::core::kernel::actor::actor_ref::ActorRef,
+    /// Optional acknowledgement target.
+    reply_to:   Option<TypedActorRef<Registered>>,
   },
   /// Remove a previously registered actor.
   Deregister {
@@ -31,6 +36,8 @@ pub enum ReceptionistCommand {
     type_id:    TypeId,
     /// Erased actor reference to deregister.
     actor_ref:  crate::core::kernel::actor::actor_ref::ActorRef,
+    /// Optional acknowledgement target.
+    reply_to:   Option<TypedActorRef<Deregistered>>,
   },
   /// Subscribe to listing changes for a service key.
   Subscribe {
