@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::supervise::Supervise;
+use super::{AbstractBehavior, supervise::Supervise};
 use crate::core::{
   kernel::actor::{error::ActorError, messaging::AnyMessage},
   typed::{
@@ -376,6 +376,33 @@ impl Behaviors {
         Ok(Behavior::stopped())
       },
       | _ => Ok(Behavior::same()),
+    })
+  }
+
+  /// Creates a behavior from an [`AbstractBehavior`] factory.
+  ///
+  /// The factory receives the actor context and returns the initial
+  /// `AbstractBehavior` instance. Corresponds to Pekko's pattern:
+  /// `Behaviors.setup(ctx => new MyBehavior(ctx))`.
+  pub fn from_abstract<M, A, F>(factory: F) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    A: AbstractBehavior<M>,
+    F: FnOnce(&mut TypedActorContext<'_, M>) -> A + Send + Sync + 'static, {
+    let slot = ArcShared::new(RuntimeMutex::new(Some(factory)));
+    Behaviors::setup(move |ctx| {
+      let Some(f) = slot.lock().take() else {
+        // The factory slot should be consumed exactly once. Reaching here indicates
+        // a logic error (e.g. the setup closure was invoked more than once).
+        debug_assert!(false, "from_abstract factory slot was already consumed");
+        return Behaviors::stopped();
+      };
+      let ab = f(ctx);
+      let shared = ArcShared::new(RuntimeMutex::new(ab));
+      let shared_msg = shared.clone();
+      let shared_sig = shared;
+      Behaviors::receive_message(move |ctx, msg| shared_msg.lock().on_message(ctx, msg))
+        .receive_signal(move |ctx, signal| shared_sig.lock().on_signal(ctx, signal))
     })
   }
 }

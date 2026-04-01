@@ -619,3 +619,132 @@ fn typed_props_without_tags_returns_empty_via_typed_context() {
   let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
   assert!(typed_ctx.tags().is_empty());
 }
+
+// --- T1: spawn_anonymous tests ---
+
+#[test]
+fn spawn_anonymous_creates_child_actor_that_receives_messages() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let received = ArcShared::new(NoStdMutex::new(0_u32));
+
+  let parent_props = TypedProps::<u32>::from_behavior_factory({
+    let received = received.clone();
+    move || {
+      let received = received.clone();
+      Behaviors::setup(move |ctx| {
+        // Given: a behavior that records received messages
+        let received_inner = received.clone();
+        let child_behavior = Behaviors::receive_message(move |_ctx, msg: &u32| {
+          *received_inner.lock() = *msg;
+          Ok(Behaviors::same())
+        });
+
+        // When: spawn_anonymous is called with the behavior
+        let child = ctx.spawn_anonymous(child_behavior).expect("spawn anonymous");
+
+        // Then: the child actor is created and can receive messages
+        let mut child_ref = child.into_actor_ref();
+        child_ref.tell(42);
+
+        Behaviors::ignore()
+      })
+    }
+  });
+
+  let _actor = system.as_untyped().spawn(parent_props.to_untyped()).expect("spawn parent");
+  wait_until(|| *received.lock() == 42);
+
+  assert_eq!(*received.lock(), 42);
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn spawn_anonymous_child_has_no_explicit_name() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let child_pid_slot: ArcShared<NoStdMutex<Option<crate::core::kernel::actor::Pid>>> =
+    ArcShared::new(NoStdMutex::new(None));
+
+  let parent_props = TypedProps::<u32>::from_behavior_factory({
+    let child_pid_slot = child_pid_slot.clone();
+    move || {
+      let child_pid_slot = child_pid_slot.clone();
+      Behaviors::setup(move |ctx| {
+        // Given: a simple behavior
+        let child_behavior = Behaviors::ignore();
+
+        // When: spawn_anonymous is called
+        let child = ctx.spawn_anonymous::<u32>(child_behavior).expect("spawn anonymous");
+
+        // Then: the child has a valid pid (system-assigned)
+        child_pid_slot.lock().replace(child.pid());
+
+        Behaviors::ignore()
+      })
+    }
+  });
+
+  let _actor = system.as_untyped().spawn(parent_props.to_untyped()).expect("spawn parent");
+  wait_until(|| child_pid_slot.lock().is_some());
+
+  // The child pid should be valid (non-zero sequence)
+  let child_pid = child_pid_slot.lock().expect("child pid should be set");
+  assert!(child_pid.value() > 0, "anonymous child should have a valid pid");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn spawn_anonymous_multiple_children_are_independent() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let count = ArcShared::new(NoStdMutex::new(0_u32));
+
+  let parent_props = TypedProps::<u32>::from_behavior_factory({
+    let count = count.clone();
+    move || {
+      let count = count.clone();
+      Behaviors::setup(move |ctx| {
+        // Given: two independent anonymous children
+        let count1 = count.clone();
+        let behavior1 = Behaviors::receive_message(move |_ctx, _msg: &u32| {
+          *count1.lock() += 1;
+          Ok(Behaviors::same())
+        });
+        let count2 = count.clone();
+        let behavior2 = Behaviors::receive_message(move |_ctx, _msg: &u32| {
+          *count2.lock() += 10;
+          Ok(Behaviors::same())
+        });
+
+        // When: both are spawned anonymously
+        let child1 = ctx.spawn_anonymous(behavior1).expect("spawn anonymous 1");
+        let child2 = ctx.spawn_anonymous(behavior2).expect("spawn anonymous 2");
+
+        // Then: they have different pids
+        assert_ne!(child1.pid(), child2.pid());
+
+        // And: they receive messages independently
+        let mut ref1 = child1.into_actor_ref();
+        let mut ref2 = child2.into_actor_ref();
+        ref1.tell(1);
+        ref2.tell(1);
+
+        Behaviors::ignore()
+      })
+    }
+  });
+
+  let _actor = system.as_untyped().spawn(parent_props.to_untyped()).expect("spawn parent");
+  wait_until(|| *count.lock() == 11);
+
+  assert_eq!(*count.lock(), 11, "both children should receive independently: 1 + 10 = 11");
+  system.terminate().expect("terminate");
+}

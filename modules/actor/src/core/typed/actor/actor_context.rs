@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, shared::Shared};
 
 use crate::core::{
   kernel::{
@@ -104,6 +104,28 @@ where
     C: Send + Sync + 'static, {
     let child = self.inner_mut().spawn_child(typed_props.to_untyped())?;
     Ok(TypedChildRef::from_untyped(child))
+  }
+
+  /// Spawns an anonymous typed child actor from the given behavior.
+  ///
+  /// The child receives a system-generated name (no explicit name is set).
+  /// Corresponds to Pekko's `ActorContext.spawnAnonymous`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the child actor cannot be spawned.
+  pub fn spawn_anonymous<C>(&mut self, behavior: Behavior<C>) -> Result<TypedChildRef<C>, SpawnError>
+  where
+    C: Send + Sync + 'static, {
+    let slot = ArcShared::new(RuntimeMutex::new(Some(behavior)));
+    let props = TypedProps::from_behavior_factory(move || {
+      // The factory is expected to be called exactly once during actor creation.
+      // If called again, it indicates a logic error.
+      let behavior = slot.lock().take();
+      debug_assert!(behavior.is_some(), "spawn_anonymous behavior factory was already consumed");
+      behavior.unwrap_or_else(Behavior::stopped)
+    });
+    self.spawn_child(&props)
   }
 
   /// Spawns a typed child actor and automatically watches it.

@@ -416,3 +416,86 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
 
   system.terminate().expect("terminate");
 }
+
+// --- T2: with_routee_props tests ---
+
+#[test]
+fn pool_router_builder_with_routee_props_builds_behavior() {
+  // Given: a pool router builder
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore);
+
+  // When: with_routee_props is called with an identity mapper
+  let builder = builder.with_routee_props(|props| props);
+
+  // Then: build succeeds
+  let _behavior: Behavior<u32> = builder.build();
+}
+
+#[test]
+fn pool_router_builder_with_routee_props_applies_tags_to_routees() {
+  let pool_size = 2_usize;
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_tags: ArcShared<NoStdMutex<Vec<alloc::collections::BTreeSet<String>>>> =
+    ArcShared::new(NoStdMutex::new(Vec::new()));
+
+  let props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    let child_tags = child_tags.clone();
+    move || {
+      let records = records.clone();
+      let child_tags = child_tags.clone();
+      let routee_factory = {
+        let records = records.clone();
+        let child_tags = child_tags.clone();
+        move || {
+          let records = records.clone();
+          let child_tags = child_tags.clone();
+          Behaviors::setup(move |ctx| {
+            // Capture the tags this routee was spawned with
+            child_tags.lock().push(ctx.tags());
+            let records = records.clone();
+            Behaviors::receive_message(move |_ctx, message: &u32| {
+              records.lock().push((0, *message));
+              Ok(Behaviors::same())
+            })
+          })
+        }
+      };
+      // When: with_routee_props adds a tag to each routee's props
+      Routers::pool::<u32, _>(pool_size, routee_factory)
+        .with_routee_props(|props| props.with_tag("pool-member"))
+        .build()
+    }
+  });
+
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
+  let mut router = system.user_guardian_ref();
+
+  // Send a message to trigger routee spawning
+  router.tell(1);
+  wait_until(|| records.lock().len() >= 1);
+
+  // Then: each routee should have the "pool-member" tag
+  let tags = child_tags.lock();
+  assert_eq!(tags.len(), pool_size, "all routees should have been spawned");
+  for routee_tags in tags.iter() {
+    assert!(routee_tags.contains("pool-member"), "routee should have 'pool-member' tag from with_routee_props mapper");
+  }
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pool_router_builder_with_routee_props_can_chain_with_other_builders() {
+  // Given: a pool router builder with multiple configuration steps
+  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore)
+    .with_round_robin()
+    .with_routee_props(|props| props.with_tag("tagged"))
+    .with_pool_size(5);
+
+  // Then: build succeeds (all builder steps compose)
+  let _behavior: Behavior<u32> = builder.build();
+}
