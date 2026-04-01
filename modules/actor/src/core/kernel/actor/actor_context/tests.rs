@@ -586,3 +586,81 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
   let result = context.try_forward(&mut target_ref, AnyMessage::new(42_u32));
   assert!(result.is_err());
 }
+
+// --- T7: classic receive-timeout tests ---
+
+#[test]
+fn set_receive_timeout_stores_handle() {
+  // Given: a kernel actor context with no receive timeout
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "timeout-actor", &props);
+  let mut context = ActorContext::new(&system, pid);
+
+  // When: set_receive_timeout is called
+  let timeout_msg = AnyMessage::new(999_u32);
+  context.set_receive_timeout(core::time::Duration::from_millis(500), timeout_msg);
+
+  // Then: has_receive_timeout returns true
+  assert!(context.has_receive_timeout(), "receive timeout should be configured after set");
+}
+
+#[test]
+fn cancel_receive_timeout_clears_handle() {
+  // Given: a kernel actor context with a configured receive timeout
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "cancel-actor", &props);
+  let mut context = ActorContext::new(&system, pid);
+  context.set_receive_timeout(core::time::Duration::from_millis(500), AnyMessage::new(999_u32));
+
+  // When: cancel_receive_timeout is called
+  context.cancel_receive_timeout();
+
+  // Then: has_receive_timeout returns false
+  assert!(!context.has_receive_timeout(), "receive timeout should be cleared after cancel");
+}
+
+#[test]
+fn set_receive_timeout_replaces_previous_timeout() {
+  // Given: a kernel actor context with an existing receive timeout
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| TestActor);
+  let _cell = register_cell(&system, pid, "replace-actor", &props);
+  let mut context = ActorContext::new(&system, pid);
+  context.set_receive_timeout(core::time::Duration::from_millis(500), AnyMessage::new(1_u32));
+
+  // When: set_receive_timeout is called again with different parameters
+  context.set_receive_timeout(core::time::Duration::from_millis(1000), AnyMessage::new(2_u32));
+
+  // Then: the timeout is still active (replaced, not accumulated)
+  assert!(context.has_receive_timeout(), "receive timeout should still be configured");
+}
+
+#[test]
+fn cancel_receive_timeout_is_idempotent() {
+  // Given: a kernel actor context with no receive timeout
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  // When: cancel_receive_timeout is called without prior set
+  context.cancel_receive_timeout();
+
+  // Then: no panic, still no timeout
+  assert!(!context.has_receive_timeout(), "cancel on no-timeout should be safe");
+}
+
+#[test]
+fn has_receive_timeout_returns_false_initially() {
+  // Given: a freshly created kernel actor context
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  // When/Then: has_receive_timeout returns false
+  assert!(!context.has_receive_timeout(), "new context should not have receive timeout");
+}
