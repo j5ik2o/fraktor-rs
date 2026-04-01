@@ -388,16 +388,9 @@ impl Behaviors {
   where
     M: Send + Sync + 'static,
     A: AbstractBehavior<M>,
-    F: FnOnce(&mut TypedActorContext<'_, M>) -> A + Send + Sync + 'static, {
-    let slot = ArcShared::new(RuntimeMutex::new(Some(factory)));
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> A + Send + Sync + 'static, {
     Behaviors::setup(move |ctx| {
-      let Some(f) = slot.lock().take() else {
-        // The factory slot should be consumed exactly once. Reaching here indicates
-        // a logic error (e.g. the setup closure was invoked more than once).
-        debug_assert!(false, "from_abstract factory slot was already consumed");
-        return Behaviors::stopped();
-      };
-      let ab = f(ctx);
+      let ab = factory(ctx);
       let shared = ArcShared::new(RuntimeMutex::new(ab));
       let shared_msg = shared.clone();
       let shared_sig = shared;

@@ -69,8 +69,9 @@ fn from_abstract_creates_behavior_that_handles_messages() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   // When: from_abstract creates a Behavior and we handle a message
-  let mut behavior =
-    Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior { count: count_clone });
+  let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior {
+    count: count_clone.clone(),
+  });
 
   // Setup phase (Started signal initializes the abstract behavior)
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup should succeed");
@@ -95,8 +96,9 @@ fn from_abstract_handles_multiple_messages_with_state() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut behavior =
-    Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior { count: count_clone });
+  let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior {
+    count: count_clone.clone(),
+  });
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
 
   // When: multiple messages are sent
@@ -142,7 +144,7 @@ fn from_abstract_delegates_signals_to_on_signal() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| SignalAwareBehavior {
-    signal_received: signal_clone,
+    signal_received: signal_clone.clone(),
   });
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
 
@@ -164,8 +166,9 @@ fn from_abstract_default_on_signal_returns_unhandled() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut behavior =
-    Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior { count: count_clone });
+  let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior {
+    count: count_clone.clone(),
+  });
   let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
 
   // When: a signal is delivered to an actor with default on_signal
@@ -192,7 +195,7 @@ fn from_abstract_factory_receives_context() {
   let count = ArcShared::new(NoStdMutex::new(0u32));
   let mut behavior = Behaviors::from_abstract(move |ctx: &mut TypedActorContext<'_, u32>| {
     *captured_pid_clone.lock() = ctx.pid().value();
-    CounterBehavior { count }
+    CounterBehavior { count: count.clone() }
   });
 
   // When: the behavior is initialized via Started signal
@@ -200,4 +203,31 @@ fn from_abstract_factory_receives_context() {
 
   // Then: the factory received the correct context
   assert_eq!(*captured_pid.lock(), typed_ctx.pid().value(), "factory should receive the correct pid");
+}
+
+#[test]
+fn from_abstract_clone_recreates_behavior_on_started() {
+  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count_clone = count.clone();
+  let factory_calls = ArcShared::new(NoStdMutex::new(0u32));
+  let factory_calls_clone = factory_calls.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| {
+    *factory_calls_clone.lock() += 1;
+    CounterBehavior { count: count_clone.clone() }
+  });
+
+  let mut first = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("first setup");
+  let mut second = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("second setup");
+
+  first.handle_message(&mut typed_ctx, &1u32).expect("first message");
+  second.handle_message(&mut typed_ctx, &2u32).expect("second message");
+
+  assert_eq!(*factory_calls.lock(), 2, "factory should run for each cloned behavior start");
+  assert_eq!(*count.lock(), 3, "each clone should initialize its own abstract behavior instance");
 }

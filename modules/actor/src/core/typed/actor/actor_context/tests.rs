@@ -11,7 +11,8 @@ use crate::core::{
   },
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
-    dsl::{Behaviors, StatusReply, TypedAskError},
+    behavior::Behavior,
+    dsl::{AbstractBehavior, Behaviors, StatusReply, TypedAskError},
   },
 };
 
@@ -93,6 +94,35 @@ enum AnonymousRestartParentMsg {
 #[derive(Clone, Debug)]
 enum AnonymousRestartChildMsg {
   Crash,
+}
+
+struct AnonymousSpawnCounterBehavior {
+  count: ArcShared<NoStdMutex<u32>>,
+}
+
+impl AbstractBehavior<u32> for AnonymousSpawnCounterBehavior {
+  fn on_message(
+    &mut self,
+    _ctx: &mut crate::core::typed::actor::TypedActorContext<'_, u32>,
+    msg: &u32,
+  ) -> Result<Behavior<u32>, ActorError> {
+    *self.count.lock() += *msg;
+    Ok(Behaviors::same())
+  }
+}
+
+struct AnonymousRestartCrashBehavior;
+
+impl AbstractBehavior<AnonymousRestartChildMsg> for AnonymousRestartCrashBehavior {
+  fn on_message(
+    &mut self,
+    _ctx: &mut crate::core::typed::actor::TypedActorContext<'_, AnonymousRestartChildMsg>,
+    msg: &AnonymousRestartChildMsg,
+  ) -> Result<Behavior<AnonymousRestartChildMsg>, ActorError> {
+    match msg {
+      | AnonymousRestartChildMsg::Crash => Err(ActorError::recoverable("boom")),
+    }
+  }
 }
 
 #[test]
@@ -761,6 +791,46 @@ fn spawn_anonymous_multiple_children_are_independent() {
 }
 
 #[test]
+fn spawn_anonymous_can_spawn_same_from_abstract_behavior_twice() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let count = ArcShared::new(NoStdMutex::new(0_u32));
+
+  let parent_props = TypedProps::<u32>::from_behavior_factory({
+    let count = count.clone();
+    move || {
+      let count = count.clone();
+      Behaviors::setup(move |ctx| {
+        let child_behavior = Behaviors::from_abstract({
+          let count = count.clone();
+          move |_ctx: &mut crate::core::typed::actor::TypedActorContext<'_, u32>| AnonymousSpawnCounterBehavior {
+            count: count.clone(),
+          }
+        });
+
+        let child1 = ctx.spawn_anonymous(&child_behavior).expect("spawn anonymous 1");
+        let child2 = ctx.spawn_anonymous(&child_behavior).expect("spawn anonymous 2");
+
+        let mut ref1 = child1.into_actor_ref();
+        let mut ref2 = child2.into_actor_ref();
+        ref1.tell(1);
+        ref2.tell(1);
+
+        Behaviors::ignore()
+      })
+    }
+  });
+
+  let _actor = system.as_untyped().spawn(parent_props.to_untyped()).expect("spawn parent");
+  wait_until(|| *count.lock() == 2);
+
+  assert_eq!(*count.lock(), 2, "from_abstract behavior should initialize independently for each anonymous child");
+  system.terminate().expect("terminate");
+}
+
+#[test]
 fn spawn_anonymous_child_restarts_under_supervision() {
   let guardian_props = TypedProps::<AnonymousRestartParentMsg>::from_behavior_factory(Behaviors::ignore);
   let system = TypedActorSystem::<AnonymousRestartParentMsg>::new(
@@ -782,11 +852,9 @@ fn spawn_anonymous_child_restarts_under_supervision() {
       let restart_strategy = restart_strategy.clone();
       Behaviors::setup(move |ctx| {
         let start_count = start_count.clone();
-        let child_behavior = Behaviors::supervise(Behaviors::setup(move |_ctx| {
+        let child_behavior = Behaviors::supervise(Behaviors::from_abstract(move |_ctx| {
           *start_count.lock() += 1;
-          Behaviors::receive_message(|_ctx, msg: &AnonymousRestartChildMsg| match msg {
-            | AnonymousRestartChildMsg::Crash => Err(ActorError::recoverable("boom")),
-          })
+          AnonymousRestartCrashBehavior
         }))
         .on_failure(restart_strategy.clone());
 

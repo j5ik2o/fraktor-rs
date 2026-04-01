@@ -15,6 +15,9 @@ use crate::core::{
 /// optionally `on_signal`.
 ///
 /// Convert to a [`Behavior`] using [`Behaviors::from_abstract`].
+///
+/// The factory passed to `from_abstract` must be reusable because it can be
+/// invoked on the initial start, on restart, and from cloned behaviors.
 pub trait AbstractBehavior<M>: Send + Sync + 'static
 where
   M: Send + Sync + 'static, {
