@@ -196,8 +196,16 @@ impl BackoffSupervisorActor {
       .map_err(|error| ActorError::recoverable(alloc::format!("failed to schedule backoff command: {:?}", error)))
   }
 
-  fn schedule_start_child(&self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    let delay = self.strategy.compute_backoff(self.restart_count.saturating_sub(1));
+  const fn backoff_iteration_for_restart_count(restart_count: u32) -> u32 {
+    restart_count.saturating_sub(1)
+  }
+
+  fn schedule_start_child(&self, ctx: &mut ActorContext<'_>, next_restart_count: u32) -> Result<(), ActorError> {
+    // Pekko calculates the delay using the current restart counter before incrementing it.
+    // We store the incremented restart count first, so map "restart attempt N" to
+    // "backoff iteration N-1" explicitly here.
+    let backoff_iteration = Self::backoff_iteration_for_restart_count(next_restart_count);
+    let delay = self.strategy.compute_backoff(backoff_iteration);
     Self::schedule_internal_command(ctx, delay, BackoffSupervisorInternalCommand::StartChild)
   }
 
@@ -213,10 +221,6 @@ impl BackoffSupervisorActor {
       auto_reset,
       BackoffSupervisorInternalCommand::ResetRestartCount(self.restart_count),
     )
-  }
-
-  const fn can_restart_again(&self) -> bool {
-    self.max_retries == 0 || self.restart_count < self.max_retries
   }
 
   fn handle_internal_command(
@@ -301,22 +305,24 @@ impl Actor for BackoffSupervisorActor {
     self.child = None;
     match self.mode {
       | BackoffMode::OnStop => {
-        if !self.can_restart_again() {
+        let next_restart_count = self.restart_count + 1;
+        if self.max_retries != 0 && next_restart_count > self.max_retries {
           return Ok(());
         }
-        self.restart_count += 1;
-        self.schedule_start_child(ctx)
+        self.restart_count = next_restart_count;
+        self.schedule_start_child(ctx, next_restart_count)
       },
       | BackoffMode::OnFailure => {
         if !self.pending_restart {
           return Ok(());
         }
         self.pending_restart = false;
-        if !self.can_restart_again() {
+        let next_restart_count = self.restart_count + 1;
+        if self.max_retries != 0 && next_restart_count > self.max_retries {
           return Ok(());
         }
-        self.restart_count += 1;
-        self.schedule_start_child(ctx)
+        self.restart_count = next_restart_count;
+        self.schedule_start_child(ctx, next_restart_count)
       },
     }
   }

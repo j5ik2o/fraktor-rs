@@ -2,6 +2,7 @@
 //!
 //! This module contains error handling and restart strategies.
 
+mod backoff_options_data;
 mod backoff_supervisor_strategy;
 mod base;
 mod restart_statistics;

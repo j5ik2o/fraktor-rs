@@ -311,6 +311,16 @@ fn props_on_failure_with_manual_reset() {
 }
 
 #[test]
+fn first_restart_maps_to_zero_backoff_iteration() {
+  assert_eq!(super::BackoffSupervisorActor::backoff_iteration_for_restart_count(1), 0);
+}
+
+#[test]
+fn second_restart_maps_to_first_exponential_backoff_iteration() {
+  assert_eq!(super::BackoffSupervisorActor::backoff_iteration_for_restart_count(2), 1);
+}
+
+#[test]
 fn on_stop_restarts_child_only_after_backoff_tick() {
   let system = ActorSystem::new_empty();
   let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), one_tick_strategy());
