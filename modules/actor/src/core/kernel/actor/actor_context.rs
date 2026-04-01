@@ -484,10 +484,9 @@ impl ActorContext<'_> {
       if let Some(existing) = slot.as_mut() {
         Self::cancel_receive_timeout_handle(existing);
       }
-      *slot = Some(ReceiveTimeoutState::new(timeout, message));
-      if let Some(state) = slot.as_mut() {
-        Self::schedule_receive_timeout(&system, pid, state);
-      }
+      let mut state = ReceiveTimeoutState::new(timeout, message);
+      Self::schedule_receive_timeout(&system, pid, &mut state);
+      *slot = Some(state);
     });
   }
 

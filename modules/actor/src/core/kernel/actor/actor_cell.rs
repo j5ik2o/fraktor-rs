@@ -864,10 +864,12 @@ impl MessageInvoker for ActorCellInvoker {
     let mut ctx = cell.make_context();
     let failure_candidate = message.clone();
     let result = cell.actor.with_write(|actor| cell.pipeline.invoke_user(&mut **actor, &mut ctx, message));
-    ctx.reschedule_receive_timeout();
-    if let Err(ref error) = result {
-      let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
-      cell.report_failure(error, Some(snapshot));
+    match &result {
+      | Ok(()) => ctx.reschedule_receive_timeout(),
+      | Err(error) => {
+        let snapshot = FailureMessageSnapshot::from_message(&failure_candidate);
+        cell.report_failure(error, Some(snapshot));
+      },
     }
     result
   }

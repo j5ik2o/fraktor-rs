@@ -13,6 +13,7 @@ use crate::core::kernel::{
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   system::ActorSystem,
@@ -111,6 +112,37 @@ impl Actor for IdentityProbeActor {
       self.replies.lock().push(identity.clone());
     }
     Ok(())
+  }
+}
+
+struct ReceiveTimeoutFailingActor;
+
+impl Actor for ReceiveTimeoutFailingActor {
+  fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
+    ctx.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new("timeout"));
+    Ok(())
+  }
+
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<u32>().is_some() {
+      return Err(ActorError::recoverable("boom"));
+    }
+    Ok(())
+  }
+}
+
+struct ResumeSupervisorActor;
+
+impl Actor for ResumeSupervisorActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+
+  fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, core::time::Duration::from_secs(1), |_| {
+      SupervisorDirective::Resume
+    })
+    .into()
   }
 }
 
@@ -383,6 +415,45 @@ fn kill_user_message_reports_fatal_failure() {
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   let error = invoker.invoke_user_message(AnyMessage::new(SystemMessage::Kill)).expect_err("kill should fail");
   assert_eq!(error, ActorError::fatal("Kill"));
+}
+
+#[test]
+fn user_message_failure_does_not_reschedule_receive_timeout() {
+  let state = ActorSystem::new_empty().state();
+  let parent_props = Props::from_fn(|| ResumeSupervisorActor);
+  let parent = ActorCell::create(state.clone(), Pid::new(414, 0), None, "parent".to_string(), &parent_props)
+    .expect("create parent");
+  let props = Props::from_fn(|| ReceiveTimeoutFailingActor);
+  let cell =
+    ActorCell::create(state.clone(), Pid::new(415, 0), Some(parent.pid()), "timeout-failure".to_string(), &props)
+      .expect("create actor cell");
+  state.register_cell(parent.clone());
+  state.register_cell(cell.clone());
+
+  let mut parent_invoker = super::ActorCellInvoker { cell: parent.downgrade() };
+  parent_invoker.invoke_system_message(SystemMessage::Create).expect("create parent");
+
+  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  invoker.invoke_system_message(SystemMessage::Create).expect("create");
+
+  let initial_handle = cell
+    .receive_timeout
+    .lock()
+    .as_ref()
+    .and_then(super::super::actor_context::ReceiveTimeoutState::handle_raw)
+    .expect("receive timeout handle should exist after pre_start");
+
+  let error = invoker.invoke_user_message(AnyMessage::new(1_u32)).expect_err("user message should fail");
+  assert_eq!(error, ActorError::recoverable("boom"));
+
+  let current_handle = cell
+    .receive_timeout
+    .lock()
+    .as_ref()
+    .and_then(super::super::actor_context::ReceiveTimeoutState::handle_raw)
+    .expect("receive timeout handle should remain registered after failure");
+
+  assert_eq!(current_handle, initial_handle, "failure path must not arm a fresh receive-timeout timer");
 }
 
 #[test]

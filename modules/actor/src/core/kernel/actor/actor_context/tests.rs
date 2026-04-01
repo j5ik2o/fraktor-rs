@@ -3,7 +3,7 @@ use core::hint::spin_loop;
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
 
-use super::ActorContext;
+use super::{ActorContext, ReceiveTimeoutState};
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, Pid,
@@ -17,6 +17,12 @@ use crate::core::kernel::{
 };
 
 struct TestActor;
+
+impl ReceiveTimeoutState {
+  pub(crate) fn handle_raw(&self) -> Option<u64> {
+    self.handle.as_ref().map(crate::core::kernel::actor::scheduler::SchedulerHandle::raw)
+  }
+}
 
 impl Actor for TestActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
