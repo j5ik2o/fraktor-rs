@@ -138,7 +138,7 @@ impl ConsumerController {
           | Ok(adapter) => adapter,
           | Err(error) => {
             let message = alloc::format!("ConsumerController failed to create confirm adapter: {:?}", error);
-            ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
             return Behaviors::stopped();
           },
         };

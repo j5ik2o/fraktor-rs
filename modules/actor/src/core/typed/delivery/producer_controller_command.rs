@@ -5,7 +5,9 @@ mod tests;
 
 use crate::core::typed::{
   TypedActorRef,
-  delivery::{ConsumerControllerCommand, ProducerControllerRequestNext, SeqNr},
+  delivery::{
+    ConsumerControllerCommand, DurableProducerQueueState, ProducerControllerRequestNext, SeqNr, StoreMessageSentAck,
+  },
 };
 
 /// Commands handled by
@@ -44,9 +46,16 @@ where
   Resend { from_seq_nr: SeqNr },
   /// Ack from the consumer controller.
   Ack { confirmed_seq_nr: SeqNr },
+  /// Loaded durable queue state.
+  DurableQueueLoaded { state: DurableProducerQueueState<A> },
+  /// Acknowledgment that a sent message fact was stored.
+  DurableQueueMessageStored { ack: StoreMessageSentAck },
+  /// Internal timer: durable queue load timed out.
+  DurableQueueLoadTimedOut { attempt: u32 },
+  /// Internal timer: durable queue store timed out.
+  DurableQueueStoreTimedOut { seq_nr: SeqNr, attempt: u32 },
   /// Internal timer: resend the first unconfirmed message.
-  #[allow(dead_code)]
-  ResendFirstUnconfirmed,
+  ResendFirstUnconfirmed { seq_nr: SeqNr },
 }
 
 impl<A> ProducerControllerCommand<A>
@@ -94,10 +103,29 @@ where
     Self(ProducerControllerCommandKind::Ack { confirmed_seq_nr })
   }
 
+  /// Creates a `DurableQueueLoaded` command (internal).
+  pub(crate) const fn durable_queue_loaded(state: DurableProducerQueueState<A>) -> Self {
+    Self(ProducerControllerCommandKind::DurableQueueLoaded { state })
+  }
+
+  /// Creates a `DurableQueueMessageStored` command (internal).
+  pub(crate) const fn durable_queue_message_stored(ack: StoreMessageSentAck) -> Self {
+    Self(ProducerControllerCommandKind::DurableQueueMessageStored { ack })
+  }
+
+  /// Creates a `DurableQueueLoadTimedOut` command (internal timer).
+  pub(crate) const fn durable_queue_load_timed_out(attempt: u32) -> Self {
+    Self(ProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt })
+  }
+
+  /// Creates a `DurableQueueStoreTimedOut` command (internal timer).
+  pub(crate) const fn durable_queue_store_timed_out(seq_nr: SeqNr, attempt: u32) -> Self {
+    Self(ProducerControllerCommandKind::DurableQueueStoreTimedOut { seq_nr, attempt })
+  }
+
   /// Creates a `ResendFirstUnconfirmed` command (internal timer).
-  #[allow(dead_code)]
-  pub(crate) const fn resend_first_unconfirmed() -> Self {
-    Self(ProducerControllerCommandKind::ResendFirstUnconfirmed)
+  pub(crate) const fn resend_first_unconfirmed(seq_nr: SeqNr) -> Self {
+    Self(ProducerControllerCommandKind::ResendFirstUnconfirmed { seq_nr })
   }
 
   /// Returns a reference to the command kind.

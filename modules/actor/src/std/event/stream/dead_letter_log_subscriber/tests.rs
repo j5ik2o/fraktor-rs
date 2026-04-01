@@ -29,6 +29,7 @@ fn listener_ignores_non_dead_letter_events() {
     "test".into(),
     Duration::from_secs(0),
     None,
+    None,
   ));
   listener.on_event(&event);
 }

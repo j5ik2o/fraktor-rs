@@ -37,7 +37,7 @@ fn spawn_error_debug() {
   let error2 = SpawnError::system_unavailable();
   let error3 = SpawnError::invalid_props("reason");
 
-  let _ = format!("{:?}", error1);
-  let _ = format!("{:?}", error2);
-  let _ = format!("{:?}", error3);
+  assert!(!format!("{:?}", error1).is_empty());
+  assert!(!format!("{:?}", error2).is_empty());
+  assert!(!format!("{:?}", error3).is_empty());
 }

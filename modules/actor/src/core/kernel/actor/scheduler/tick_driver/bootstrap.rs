@@ -95,7 +95,7 @@ fn publish_driver_warning(ctx: &TickDriverProvisioningContext, message: &str) {
     let scheduler = ctx.scheduler();
     scheduler.with_read(|s| instant_to_duration(s.clock().now()))
   };
-  let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Warn, message.to_owned(), timestamp, None));
+  let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Warn, message.to_owned(), timestamp, None, None));
   ctx.event_stream().publish(&event);
 }
 

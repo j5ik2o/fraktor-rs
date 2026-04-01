@@ -53,7 +53,7 @@ fn mailbox_offer_future_bounded_block_completes_when_space_available() {
     | Err(error) => panic!("unexpected enqueue error: {error:?}"),
   };
 
-  let _ = mailbox.dequeue();
+  assert!(mailbox.dequeue().is_some());
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
@@ -130,7 +130,7 @@ fn mailbox_offer_future_republishes_metrics_after_pending_offer_completes() {
     | Err(error) => panic!("unexpected enqueue error: {error:?}"),
   };
 
-  let _ = mailbox.dequeue();
+  assert!(mailbox.dequeue().is_some());
 
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);

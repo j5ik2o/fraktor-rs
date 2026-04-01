@@ -59,7 +59,7 @@ impl MailboxInstrumentation {
       && user_len >= threshold
     {
       let message = format!("mailbox backlog reached {} (threshold: {})", user_len, threshold);
-      system_state.emit_log(LogLevel::Warn, message, Some(self.pid));
+      system_state.emit_log(LogLevel::Warn, message, Some(self.pid), None);
     }
   }
 
@@ -99,7 +99,7 @@ impl MailboxInstrumentation {
   /// Emits a log event tagged with the owning actor pid.
   pub fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
     if let Some(system_state) = self.get_system_state() {
-      system_state.emit_log(level, message.into(), Some(self.pid));
+      system_state.emit_log(level, message.into(), Some(self.pid), None);
     }
   }
 

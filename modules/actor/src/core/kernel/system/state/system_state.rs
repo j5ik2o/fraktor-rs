@@ -111,6 +111,7 @@ pub struct SystemState {
   scheduler_context: SchedulerContext,
   tick_driver_snapshot: Option<TickDriverSnapshot>,
   tick_driver_bundle: TickDriverBundle,
+  start_time: Duration,
 }
 
 impl SystemState {
@@ -164,6 +165,7 @@ impl SystemState {
       scheduler_context,
       tick_driver_snapshot: None,
       tick_driver_bundle,
+      start_time: Duration::ZERO,
     }
   }
 
@@ -241,6 +243,8 @@ impl SystemState {
       self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
     }
 
+    self.start_time = config.start_time().unwrap_or(Duration::ZERO);
+
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
     self.actor_path_registry.set_policy(policy);
   }
@@ -278,6 +282,14 @@ impl SystemState {
   #[must_use]
   pub fn system_name(&self) -> String {
     self.path_identity.system_name.clone()
+  }
+
+  /// Returns the start time of the actor system (epoch-relative duration).
+  ///
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn start_time(&self) -> Duration {
+    self.start_time
   }
 
   #[must_use]
@@ -635,9 +647,9 @@ impl SystemState {
   }
 
   /// Emits a log event via the event stream.
-  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
+  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>, logger_name: Option<String>) {
     let timestamp = self.monotonic_now();
-    let event = LogEvent::new(level, message, timestamp, origin);
+    let event = LogEvent::new(level, message, timestamp, origin, logger_name);
     self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
@@ -840,7 +852,7 @@ impl SystemState {
       | FailureOutcome::Resume => "resume",
     };
     let message = format!("failure outcome {} for {:?} (reason: {})", label, child, payload.reason().as_str());
-    self.emit_log(LogLevel::Info, message, Some(child));
+    self.emit_log(LogLevel::Info, message, Some(child), None);
   }
 
   #[allow(dead_code)]

@@ -38,6 +38,17 @@ impl ActorRefResolver {
     system.as_untyped().extended().extension(&ActorRefResolverId::new())
   }
 
+  pub(crate) fn install(system: &ActorSystem) {
+    let id = ActorRefResolverId::new();
+    if system.extended().has_extension(&id) {
+      return;
+    }
+    let registered = system.extended().register_extension(&id);
+    if let Some(existing) = system.extended().extension(&id) {
+      debug_assert!(ArcShared::ptr_eq(&registered, &existing));
+    }
+  }
+
   /// Serializes an untyped actor reference into a canonical string form.
   ///
   /// # Errors

@@ -3,15 +3,15 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
-use core::marker::PhantomData;
+use alloc::{format, string::String, vec::Vec};
+use core::{marker::PhantomData, time::Duration};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{
     actor::{
-      actor_ref::dead_letter::DeadLetterEntry, error::SendError, extension::ExtensionId, messaging::AskResult,
+      Address, actor_ref::dead_letter::DeadLetterEntry, error::SendError, extension::ExtensionId, messaging::AskResult,
       setup::ActorSystemConfig, spawn::SpawnError,
     },
     event::{
@@ -22,11 +22,13 @@ use crate::core::{
     util::futures::ActorFutureShared,
   },
   typed::{
-    TypedActorRef,
+    TypedActorRef, TypedActorSystemLog, TypedActorSystemSettings,
     actor::TypedChildRef,
+    dispatchers::Dispatchers,
     internal::TypedSchedulerShared,
     props::TypedProps,
     receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
+    scheduler::Scheduler,
   },
 };
 
@@ -135,8 +137,78 @@ where
   }
 
   /// Emits a log event with the specified severity.
-  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<crate::core::kernel::actor::Pid>) {
-    self.inner.emit_log(level, message, origin)
+  pub fn emit_log(
+    &self,
+    level: LogLevel,
+    message: impl Into<String>,
+    origin: Option<crate::core::kernel::actor::Pid>,
+    logger_name: Option<String>,
+  ) {
+    self.inner.emit_log(level, message, origin, logger_name)
+  }
+
+  /// Returns the configured actor system name.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.name`.
+  #[must_use]
+  pub fn name(&self) -> String {
+    self.inner.name()
+  }
+
+  /// Returns the default address of this actor system.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.address`.
+  #[must_use]
+  pub fn address(&self) -> Address {
+    Address::local(self.name())
+  }
+
+  /// Returns the start time of the actor system (epoch-relative duration).
+  ///
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn start_time(&self) -> Duration {
+    self.inner.start_time()
+  }
+
+  /// Returns the elapsed time since the system was started.
+  ///
+  /// In `no_std` environments the caller must provide the current time.
+  /// Corresponds to Pekko's `ActorSystem.uptime`.
+  #[must_use]
+  pub const fn uptime(&self, now: Duration) -> Duration {
+    now.saturating_sub(self.start_time())
+  }
+
+  /// Returns the immutable settings snapshot preserved by the underlying actor system.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.settings`.
+  #[must_use]
+  pub fn settings(&self) -> TypedActorSystemSettings {
+    self.inner.settings()
+  }
+
+  /// Emits a summary of the current system configuration to the event stream.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.logConfiguration()`.
+  pub fn log_configuration(&self) {
+    let settings = self.settings();
+    self.log().emit(
+      LogLevel::Info,
+      format!(
+        "typed actor system configuration: system_name={}, start_time={:?}",
+        settings.system_name(),
+        settings.start_time()
+      ),
+    );
+  }
+
+  /// Returns the system-level log handle.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.log`.
+  #[must_use]
+  pub fn log(&self) -> TypedActorSystemLog {
+    TypedActorSystemLog::new(self.inner.clone())
   }
 
   /// Publishes a raw event to the event stream.
@@ -157,6 +229,14 @@ where
   #[must_use]
   pub fn when_terminated(&self) -> ActorFutureShared<()> {
     self.inner.when_terminated()
+  }
+
+  /// Returns a future that resolves once the actor system terminates.
+  ///
+  /// Corresponds to Pekko's Java API alias `ActorSystem.getWhenTerminated`.
+  #[must_use]
+  pub fn get_when_terminated(&self) -> ActorFutureShared<()> {
+    self.when_terminated()
   }
 
   /// Sends a stop signal to the user guardian and initiates system shutdown.
@@ -180,10 +260,26 @@ where
     Self { inner: system, marker: PhantomData }
   }
 
-  /// Returns the typed scheduler handle.
+  /// Returns the typed scheduler facade.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.scheduler`.
   #[must_use]
-  pub fn scheduler(&self) -> TypedSchedulerShared {
+  pub fn scheduler(&self) -> Scheduler {
+    Scheduler::new(TypedSchedulerShared::new(self.inner.scheduler()))
+  }
+
+  /// Returns the raw typed scheduler shared handle for internal wiring.
+  #[must_use]
+  pub(crate) fn raw_scheduler(&self) -> TypedSchedulerShared {
     TypedSchedulerShared::new(self.inner.scheduler())
+  }
+
+  /// Returns the typed dispatcher lookup facade.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.dispatchers`.
+  #[must_use]
+  pub fn dispatchers(&self) -> Dispatchers {
+    Dispatchers::new(self.inner.state())
   }
 
   /// Returns a delay provider backed by the scheduler.

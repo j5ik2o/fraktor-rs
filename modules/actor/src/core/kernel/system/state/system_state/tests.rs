@@ -404,7 +404,7 @@ fn system_state_publish_event() {
   };
 
   let state = build_state();
-  let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None);
+  let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None, None);
   let event = EventStreamEvent::Log(log_event);
 
   state.publish_event(&event);
@@ -417,8 +417,8 @@ fn system_state_emit_log() {
   let state = build_state();
   let pid = state.allocate_pid();
 
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid));
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None);
+  state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid), None);
+  state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None, None);
 }
 
 #[test]

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::vec::Vec;
+use alloc::{format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
@@ -16,6 +16,7 @@ use crate::core::{
       messaging::{AnyMessage, AskError},
       spawn::SpawnError,
     },
+    event::logging::LogLevel,
     pattern::install_ask_timeout,
     util::futures::ActorFutureListener,
   },
@@ -24,7 +25,7 @@ use crate::core::{
     actor::{ask_on_context_error::AskOnContextError, child_ref::TypedChildRef},
     behavior::{Behavior, BehaviorDirective},
     dsl::{StatusReply, TypedAskError},
-    internal::ReceiveTimeoutConfig,
+    internal::{ReceiveTimeoutConfig, TypedSchedulerGuard},
     message_adapter::{AdaptMessage, AdapterError, MessageAdapterBuilder, MessageAdapterRegistry},
     props::TypedProps,
   },
@@ -86,6 +87,21 @@ where
   #[must_use]
   pub fn tags(&self) -> alloc::collections::BTreeSet<alloc::string::String> {
     self.inner().tags()
+  }
+
+  /// Sets a custom logger name for this actor context.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName(String)`.
+  pub fn set_logger_name(&mut self, name: impl Into<alloc::string::String>) {
+    self.inner_mut().set_logger_name(name);
+  }
+
+  /// Returns the custom logger name, if one has been configured.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName`.
+  #[must_use]
+  pub fn logger_name(&self) -> Option<&str> {
+    self.inner().logger_name()
   }
 
   /// Returns the typed self reference.
@@ -326,9 +342,7 @@ where
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();
-    scheduler.with_write(|guard| {
-      crate::core::typed::internal::TypedSchedulerGuard::new(guard).schedule_once(delay, target, message, None, None)
-    })
+    scheduler.with_write(|guard| TypedSchedulerGuard::new(guard).schedule_once(delay, target, message, None, None))
   }
 
   /// Provides mutable access to the underlying untyped context.
@@ -409,6 +423,53 @@ where
       AnyMessage::new(adapt)
     };
     self.inner_mut().pipe_to_self(mapped, |message| message)
+  }
+
+  /// Pipes the completion of an asynchronous computation to an external typed actor.
+  ///
+  /// Corresponds to Pekko's `PipeToSupport.pipeTo(recipient)`.
+  /// Unlike [`pipe_to_self`](Self::pipe_to_self), this delivers the result directly
+  /// to the recipient without going through the message adapter mechanism.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or stops before the task runs.
+  pub fn pipe_to<R, U, E, Fut, MapOk, MapErr>(
+    &mut self,
+    future: Fut,
+    recipient: &TypedActorRef<R>,
+    map_ok: MapOk,
+    map_err: MapErr,
+  ) -> Result<(), PipeSpawnError>
+  where
+    R: Send + Sync + 'static,
+    Fut: Future<Output = Result<U, E>> + Send + 'static,
+    U: Send + Sync + 'static,
+    E: Send + Sync + 'static,
+    MapOk: FnOnce(U) -> Result<R, AdapterError> + Send + 'static,
+    MapErr: FnOnce(E) -> Result<R, AdapterError> + Send + 'static, {
+    let system = self.inner().system().clone();
+    let pid = self.pid();
+    let logger_name = self.logger_name().map(String::from);
+    let mapped = async move {
+      let value: Result<R, AdapterError> = match future.await {
+        | Ok(v) => map_ok(v),
+        | Err(e) => map_err(e),
+      };
+      match value {
+        | Ok(msg) => Some(AnyMessage::new(msg)),
+        | Err(adapter_err) => {
+          system.emit_log(
+            LogLevel::Warn,
+            format!("typed pipe_to dropped message after adapter failure: {:?}", adapter_err),
+            Some(pid),
+            logger_name,
+          );
+          None
+        },
+      }
+    };
+    self.inner_mut().pipe_to(mapped, recipient.as_untyped(), |m| m)
   }
 
   /// Configures an idle timeout that sends `message` when no messages are received within

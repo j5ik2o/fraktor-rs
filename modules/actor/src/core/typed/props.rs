@@ -47,11 +47,12 @@ where
 
   /// Builds props from a typed behavior factory.
   #[must_use]
-  pub fn from_behavior_factory<F>(factory: F) -> Self
+  pub fn from_behavior_factory<F, B>(factory: F) -> Self
   where
-    F: Fn() -> Behavior<M> + Send + Sync + 'static, {
+    F: Fn() -> B + Send + Sync + 'static,
+    B: Into<Behavior<M>>, {
     let props = Props::from_fn(move || {
-      let behavior = factory();
+      let behavior = factory().into();
       TypedActorAdapter::<M>::new(BehaviorRunner::new(behavior))
     });
     Self { props, marker: PhantomData }

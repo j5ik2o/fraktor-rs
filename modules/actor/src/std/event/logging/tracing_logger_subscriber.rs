@@ -55,6 +55,7 @@ impl LoggerWriter for TracingLoggerWriter {
     let origin = event.origin().map(|pid| pid.to_string());
     let origin_str = origin.as_deref().unwrap_or("n/a");
     let message = event.message();
+    let logger_name = event.logger_name().unwrap_or("n/a");
 
     match event.level() {
       | LogLevel::Trace => {
@@ -63,6 +64,7 @@ impl LoggerWriter for TracingLoggerWriter {
           Level::TRACE,
           timestamp_micros = timestamp_micros,
           origin = origin_str,
+          logger_name = logger_name,
           "{}",
           message
         );
@@ -73,6 +75,7 @@ impl LoggerWriter for TracingLoggerWriter {
           Level::DEBUG,
           timestamp_micros = timestamp_micros,
           origin = origin_str,
+          logger_name = logger_name,
           "{}",
           message
         );
@@ -83,6 +86,7 @@ impl LoggerWriter for TracingLoggerWriter {
           Level::INFO,
           timestamp_micros = timestamp_micros,
           origin = origin_str,
+          logger_name = logger_name,
           "{}",
           message
         );
@@ -93,6 +97,7 @@ impl LoggerWriter for TracingLoggerWriter {
           Level::WARN,
           timestamp_micros = timestamp_micros,
           origin = origin_str,
+          logger_name = logger_name,
           "{}",
           message
         );
@@ -103,6 +108,7 @@ impl LoggerWriter for TracingLoggerWriter {
           Level::ERROR,
           timestamp_micros = timestamp_micros,
           origin = origin_str,
+          logger_name = logger_name,
           "{}",
           message
         );

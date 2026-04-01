@@ -761,3 +761,96 @@ fn receive_timeout_state_can_be_armed_again_after_later_delivery() {
   system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
   wait_until(|| events.lock().as_slice() == ["timeout", "timeout"]);
 }
+
+// --- T8: logger_name tests ---
+
+#[test]
+fn actor_context_logger_name_initially_none() {
+  // Given: a freshly created actor context
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let context = ActorContext::new(&system, pid);
+
+  // When/Then: logger_name returns None
+  assert!(context.logger_name().is_none());
+}
+
+#[test]
+fn actor_context_set_logger_name_stores_value() {
+  // Given: an actor context
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+
+  // When: set_logger_name is called
+  context.set_logger_name("my.actor.logger");
+
+  // Then: logger_name returns the configured value
+  assert_eq!(context.logger_name(), Some("my.actor.logger"));
+}
+
+#[test]
+fn actor_context_set_logger_name_replaces_previous() {
+  // Given: an actor context with a logger name already set
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  context.set_logger_name("first.logger");
+
+  // When: set_logger_name is called again
+  context.set_logger_name("second.logger");
+
+  // Then: the new name replaces the old one
+  assert_eq!(context.logger_name(), Some("second.logger"));
+}
+
+// --- pipe_to (external target) tests ---
+
+#[test]
+fn actor_context_pipe_to_delivers_to_external_target() {
+  // Given: two actors — a source and a target
+  let system = ActorSystem::new_empty();
+  let source_pid = system.allocate_pid();
+  let target_pid = system.allocate_pid();
+  let target_received = ArcShared::new(NoStdMutex::new(Vec::new()));
+
+  let source_props = Props::from_fn(|| TestActor);
+  register_cell(&system, source_pid, "source", &source_props);
+
+  let target_props = Props::from_fn({
+    let log = target_received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  let target_cell = register_cell(&system, target_pid, "target", &target_props);
+  let target_ref = target_cell.actor_ref();
+
+  let mut context = ActorContext::new(&system, source_pid);
+
+  // When: pipe_to is called with an external target
+  context.pipe_to(async { 99_i32 }, &target_ref, |value| Some(AnyMessage::new(value))).expect("pipe_to");
+
+  // Then: the target receives the message (not the source)
+  wait_until(|| !target_received.lock().is_empty());
+  assert_eq!(target_received.lock()[0], 99);
+}
+
+#[test]
+fn actor_context_pipe_to_self_still_works_after_pipe_to_added() {
+  // Given: an actor with pipe_to_self
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let log = received.clone();
+    move || ProbeActor::new(log.clone())
+  });
+  register_cell(&system, pid, "self-check", &props);
+  let mut context = ActorContext::new(&system, pid);
+
+  // When: pipe_to_self is used (existing API, should not break)
+  context.pipe_to_self(async { 77_i32 }, AnyMessage::new).expect("pipe to self");
+
+  // Then: the message is delivered to self
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 77);
+}

@@ -399,7 +399,7 @@ fn mailbox_user_len() {
   assert_eq!(mailbox.user_len(), 1);
   mailbox.enqueue_user(AnyMessage::new(2_u32)).unwrap();
   assert_eq!(mailbox.user_len(), 2);
-  let _ = mailbox.dequeue();
+  assert!(mailbox.dequeue().is_some());
   assert_eq!(mailbox.user_len(), 1);
 }
 
@@ -411,7 +411,7 @@ fn mailbox_system_len() {
   assert_eq!(mailbox.system_len(), 1);
   mailbox.enqueue_system(SystemMessage::Stop).unwrap();
   assert_eq!(mailbox.system_len(), 2);
-  let _ = mailbox.dequeue();
+  assert!(mailbox.dequeue().is_some());
   assert_eq!(mailbox.system_len(), 1);
 }
 

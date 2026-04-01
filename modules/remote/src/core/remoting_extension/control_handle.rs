@@ -147,7 +147,7 @@ impl RemotingControlHandle {
     if let Err(error) = self.inner.try_bootstrap_runtime(self.clone()) {
       let msg = format!("failed to bootstrap runtime after transport registration: {error:?}");
       if let Some(system) = self.inner.system.upgrade() {
-        system.emit_log(LogLevel::Warn, msg, None);
+        system.emit_log(LogLevel::Warn, msg, None, None);
       }
     }
   }
@@ -159,7 +159,7 @@ impl RemotingControlHandle {
     if let Err(error) = self.inner.try_bootstrap_runtime(self.clone()) {
       let msg = format!("failed to bootstrap runtime after endpoint IO registration: {error:?}");
       if let Some(system) = self.inner.system.upgrade() {
-        system.emit_log(LogLevel::Warn, msg, None);
+        system.emit_log(LogLevel::Warn, msg, None, None);
       }
     }
   }

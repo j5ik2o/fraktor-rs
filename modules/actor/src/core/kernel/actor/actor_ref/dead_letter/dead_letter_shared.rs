@@ -101,7 +101,7 @@ impl DeadLetterShared {
       | Some(pid) => (Some(pid), format!("deadletter for pid {:?} (reason: {:?})", pid, entry.reason())),
       | None => (None, format!("deadletter recorded (reason: {:?})", entry.reason())),
     };
-    let log = LogEvent::new(LogLevel::Warn, message, entry.timestamp(), origin);
+    let log = LogEvent::new(LogLevel::Warn, message, entry.timestamp(), origin, None);
     self.event_stream.publish(&EventStreamEvent::Log(log));
   }
 }

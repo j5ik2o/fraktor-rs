@@ -1,13 +1,19 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, time::Duration};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  kernel::actor::{
-    error::ActorError,
-    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
-    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  kernel::{
+    actor::{
+      error::ActorError,
+      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    },
+    event::{
+      logging::LogLevel,
+      stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    },
   },
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
@@ -24,6 +30,24 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
     spin_loop();
   }
   assert!(condition());
+}
+
+struct RecordingLogSubscriber {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+}
+
+impl RecordingLogSubscriber {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl EventStreamSubscriber for RecordingLogSubscriber {
+  fn on_event(&mut self, event: &EventStreamEvent) {
+    if matches!(event, EventStreamEvent::Log(_)) {
+      self.events.lock().push(event.clone());
+    }
+  }
 }
 
 #[test]
@@ -948,6 +972,300 @@ fn spawn_anonymous_narrowed_child_restarts_under_supervision() {
   parent.tell(AnonymousRestartParentMsg::CrashChild);
 
   wait_until(|| *start_count.lock() >= 2);
+
+  system.terminate().expect("terminate");
+}
+
+// --- T9: TypedActorContext logger_name delegation ---
+
+#[test]
+fn typed_context_set_logger_name_delegates_to_untyped() {
+  // Given: a typed actor system with a behavior that sets logger_name
+  let observed_name = ArcShared::new(NoStdMutex::new(None::<String>));
+  let observed_name_clone = observed_name.clone();
+
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let actor_props = TypedProps::<u32>::from_behavior_factory({
+    let observed = observed_name_clone;
+    move || {
+      let observed = observed.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        ctx.set_logger_name("custom.typed.logger");
+        *observed.lock() = ctx.logger_name().map(String::from);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+
+  let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn");
+  let mut actor_ref = TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
+
+  // When: a message triggers set_logger_name
+  actor_ref.tell(42);
+
+  // Then: the logger_name is stored via the untyped context
+  wait_until(|| observed_name.lock().is_some());
+  assert_eq!(observed_name.lock().as_deref(), Some("custom.typed.logger"));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_context_logger_name_initially_none() {
+  // Given: a typed actor system with a behavior that reads logger_name
+  let observed_name = ArcShared::new(NoStdMutex::new(None::<Option<String>>));
+  let observed_name_clone = observed_name.clone();
+
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let actor_props = TypedProps::<u32>::from_behavior_factory({
+    let observed = observed_name_clone;
+    move || {
+      let observed = observed.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        // Capture the logger_name before any set call
+        *observed.lock() = Some(ctx.logger_name().map(String::from));
+        Ok(Behaviors::same())
+      })
+    }
+  });
+
+  let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn");
+  let mut actor_ref = TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
+
+  // When: a message is processed without calling set_logger_name
+  actor_ref.tell(1);
+
+  // Then: logger_name is None
+  wait_until(|| observed_name.lock().is_some());
+  assert_eq!(observed_name.lock().as_ref().expect("should have observed"), &None);
+
+  system.terminate().expect("terminate");
+}
+
+// --- pipe_to (external target) tests ---
+
+#[test]
+fn typed_pipe_to_delivers_ok_result_to_external_target() {
+  // Given: a system with a sender actor and a receiver actor
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let receiver_props = TypedProps::<u32>::from_behavior_factory({
+    let received = received.clone();
+    move || {
+      let received = received.clone();
+      Behaviors::receive_message(move |_ctx, msg: &u32| {
+        received.lock().push(*msg);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
+  let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
+
+  // Create a sender actor that calls pipe_to
+  let sender_done = ArcShared::new(NoStdMutex::new(false));
+  let sender_props = TypedProps::<u32>::from_behavior_factory({
+    let receiver_ref = receiver_ref.clone();
+    let sender_done = sender_done.clone();
+    move || {
+      let receiver_ref = receiver_ref.clone();
+      let sender_done = sender_done.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        // When: pipe_to is called with an Ok future
+        let future = async { Ok::<u32, String>(42) };
+        ctx.pipe_to(future, &receiver_ref, |v| Ok(v), |_e: String| Ok(0)).expect("pipe_to");
+        *sender_done.lock() = true;
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let sender_child = system.as_untyped().spawn(sender_props.to_untyped()).expect("spawn sender");
+  let mut sender_ref = TypedActorRef::<u32>::from_untyped(sender_child.into_actor_ref());
+
+  // Trigger the sender
+  sender_ref.tell(1);
+
+  // Then: the receiver gets the mapped Ok value
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 42);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_pipe_to_delivers_err_result_to_external_target() {
+  // Given: a system with a sender actor and a receiver actor
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let receiver_props = TypedProps::<u32>::from_behavior_factory({
+    let received = received.clone();
+    move || {
+      let received = received.clone();
+      Behaviors::receive_message(move |_ctx, msg: &u32| {
+        received.lock().push(*msg);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
+  let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
+
+  // Create a sender actor that calls pipe_to with a failing future
+  let sender_props = TypedProps::<u32>::from_behavior_factory({
+    let receiver_ref = receiver_ref.clone();
+    move || {
+      let receiver_ref = receiver_ref.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        // When: pipe_to is called with an Err future
+        let future = async { Err::<u32, String>(String::from("failure")) };
+        ctx.pipe_to(future, &receiver_ref, |v| Ok(v), |_e: String| Ok(999)).expect("pipe_to");
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let sender_child = system.as_untyped().spawn(sender_props.to_untyped()).expect("spawn sender");
+  let mut sender_ref = TypedActorRef::<u32>::from_untyped(sender_child.into_actor_ref());
+
+  // Trigger the sender
+  sender_ref.tell(1);
+
+  // Then: the receiver gets the mapped Err value (999)
+  wait_until(|| !received.lock().is_empty());
+  assert_eq!(received.lock()[0], 999);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let receiver_props = TypedProps::<u32>::from_behavior_factory({
+    let received = received.clone();
+    move || {
+      let received = received.clone();
+      Behaviors::receive_message(move |_ctx, msg: &u32| {
+        received.lock().push(*msg);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
+  let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
+
+  let logs = ArcShared::new(NoStdMutex::new(Vec::<EventStreamEvent>::new()));
+  let subscriber = subscriber_handle(RecordingLogSubscriber::new(logs.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let sender_props = TypedProps::<u32>::from_behavior_factory({
+    let receiver_ref = receiver_ref.clone();
+    move || {
+      let receiver_ref = receiver_ref.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        let future = async { Ok::<u32, String>(7) };
+        ctx
+          .pipe_to(
+            future,
+            &receiver_ref,
+            |_value| Err(crate::core::typed::message_adapter::AdapterError::Custom(String::from("map-ok failure"))),
+            |_error: String| Ok(0),
+          )
+          .expect("pipe_to");
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let sender_child = system.as_untyped().spawn(sender_props.to_untyped()).expect("spawn sender");
+  let mut sender_ref = TypedActorRef::<u32>::from_untyped(sender_child.into_actor_ref());
+
+  sender_ref.tell(1);
+
+  wait_until(|| !logs.lock().is_empty());
+
+  assert!(received.lock().is_empty());
+  assert!(logs.lock().iter().any(|event| matches!(
+    event,
+    EventStreamEvent::Log(log)
+      if log.level() == LogLevel::Warn
+        && log.message().contains("typed pipe_to dropped message after adapter failure")
+        && log.message().contains("map-ok failure")
+  )));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_pipe_to_drops_message_and_logs_when_map_err_returns_adapter_error() {
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system =
+    TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
+
+  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let receiver_props = TypedProps::<u32>::from_behavior_factory({
+    let received = received.clone();
+    move || {
+      let received = received.clone();
+      Behaviors::receive_message(move |_ctx, msg: &u32| {
+        received.lock().push(*msg);
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
+  let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
+
+  let logs = ArcShared::new(NoStdMutex::new(Vec::<EventStreamEvent>::new()));
+  let subscriber = subscriber_handle(RecordingLogSubscriber::new(logs.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+
+  let sender_props = TypedProps::<u32>::from_behavior_factory({
+    let receiver_ref = receiver_ref.clone();
+    move || {
+      let receiver_ref = receiver_ref.clone();
+      Behaviors::receive_message(move |ctx, _msg: &u32| {
+        let future = async { Err::<u32, String>(String::from("future failure")) };
+        ctx
+          .pipe_to(
+            future,
+            &receiver_ref,
+            |value| Ok(value),
+            |_error| Err(crate::core::typed::message_adapter::AdapterError::Custom(String::from("map-err failure"))),
+          )
+          .expect("pipe_to");
+        Ok(Behaviors::same())
+      })
+    }
+  });
+  let sender_child = system.as_untyped().spawn(sender_props.to_untyped()).expect("spawn sender");
+  let mut sender_ref = TypedActorRef::<u32>::from_untyped(sender_child.into_actor_ref());
+
+  sender_ref.tell(1);
+
+  wait_until(|| !logs.lock().is_empty());
+
+  assert!(received.lock().is_empty());
+  assert!(logs.lock().iter().any(|event| matches!(
+    event,
+    EventStreamEvent::Log(log)
+      if log.level() == LogLevel::Warn
+        && log.message().contains("typed pipe_to dropped message after adapter failure")
+        && log.message().contains("map-err failure")
+  )));
 
   system.terminate().expect("terminate");
 }

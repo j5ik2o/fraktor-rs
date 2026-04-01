@@ -97,6 +97,16 @@ impl SupervisorStrategy {
     }
   }
 
+  /// Replaces the effective decider while preserving the rest of the strategy
+  /// configuration.
+  #[must_use]
+  pub fn with_dyn_decider<F>(mut self, decider: F) -> Self
+  where
+    F: Fn(&ActorError) -> SupervisorDirective + Send + Sync + 'static, {
+    self.dyn_decider = Some(ArcShared::new(decider));
+    self
+  }
+
   /// Evaluates the supervisor directive for the provided error.
   #[must_use]
   pub fn decide(&self, error: &ActorError) -> SupervisorDirective {
@@ -208,6 +218,13 @@ impl SupervisorStrategy {
   #[must_use]
   pub const fn with_log_level(mut self, level: LogLevel) -> Self {
     self.log_level = level;
+    self
+  }
+
+  /// Sets the strategy kind.
+  #[must_use]
+  pub const fn with_kind(mut self, kind: SupervisorStrategyKind) -> Self {
+    self.kind = kind;
     self
   }
 }

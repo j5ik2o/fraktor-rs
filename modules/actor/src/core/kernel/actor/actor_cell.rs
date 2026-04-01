@@ -31,7 +31,7 @@ use crate::core::{
       },
       props::{ActorFactoryShared, Props},
       spawn::SpawnError,
-      supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyConfig, SupervisorStrategyKind},
+      supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
       dispatcher::{DispatcherConfig, DispatcherShared},
@@ -530,8 +530,17 @@ impl ActorCell {
     state.adapter_handles.clear();
   }
 
-  /// Registers a new pipe task and schedules its first poll.
+  /// Registers a new pipe task targeting the actor itself and schedules its first poll.
   pub(crate) fn spawn_pipe_task(&self, future: ContextPipeFuture) -> Result<(), PipeSpawnError> {
+    self.spawn_pipe_task_inner(future, None)
+  }
+
+  /// Registers a new pipe task targeting an external actor and schedules its first poll.
+  pub(crate) fn spawn_pipe_to_task(&self, future: ContextPipeFuture, target: ActorRef) -> Result<(), PipeSpawnError> {
+    self.spawn_pipe_task_inner(future, Some(target))
+  }
+
+  fn spawn_pipe_task_inner(&self, future: ContextPipeFuture, target: Option<ActorRef>) -> Result<(), PipeSpawnError> {
     if self.is_terminated() {
       return Err(PipeSpawnError::TargetStopped);
     }
@@ -542,7 +551,10 @@ impl ActorCell {
     }
     let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
     state.pipe_task_counter = id.get();
-    let task = ContextPipeTask::new(id, future, self.pid, self.system());
+    let task = match target {
+      | Some(t) => ContextPipeTask::new_with_target(id, future, self.pid, self.system(), t),
+      | None => ContextPipeTask::new(id, future, self.pid, self.system()),
+    };
     state.pipe_tasks.push(task);
     drop(state);
     self.poll_pipe_task(id);
@@ -550,7 +562,7 @@ impl ActorCell {
   }
 
   fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
-    let message = {
+    let result = {
       let mut state = self.state.lock();
       let tasks = &mut state.pipe_tasks;
       let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
@@ -558,17 +570,23 @@ impl ActorCell {
       };
       match tasks[index].poll() {
         | Poll::Ready(message) => {
-          tasks.swap_remove(index);
-          Some(message)
+          let mut task = tasks.swap_remove(index);
+          Some((message, task.take_delivery_target()))
         },
         | Poll::Pending => None,
       }
     };
 
-    if let Some(message) = message {
-      // pipe_to_self の完了通知は actor 自身の mailbox への best-effort 送信であり、
-      // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
-      let _pipe_delivery = self.actor_ref().try_tell(message);
+    if let Some((Some(message), target)) = result {
+      if let Some(mut target_ref) = target {
+        // pipe_to: 外部 actor への best-effort 配信。target が停止済みの場合は
+        // 配信失敗が想定される。send failure の観測は try_tell 側が担う。
+        let _pipe_delivery = target_ref.try_tell(message);
+      } else {
+        // pipe_to_self: actor 自身の mailbox への best-effort 配信。
+        // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
+        let _pipe_delivery = self.actor_ref().try_tell(message);
+      }
     }
   }
 
@@ -939,12 +957,6 @@ impl MessageInvoker for ActorCellInvoker {
 }
 
 impl ActorCell {
-  /// Returns the supervisor strategy configuration for this actor.
-  pub(crate) fn supervisor_strategy_config(&self) -> SupervisorStrategyConfig {
-    let mut ctx = self.make_context();
-    self.actor.with_read(|actor| actor.supervisor_strategy(&mut ctx))
-  }
-
   pub(crate) fn handle_child_failure(
     &self,
     child: Pid,

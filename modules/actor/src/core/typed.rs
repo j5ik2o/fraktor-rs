@@ -1,5 +1,7 @@
 //! Typed interface wrappers around the untyped runtime.
 
+/// Pekko-compatible alias for [`ExtensionSetup`].
+mod abstract_extension_setup;
 /// Typed actor primitives (actors, contexts, references).
 pub mod actor;
 /// Typed actor reference wrapper promoted to the typed root.
@@ -14,7 +16,7 @@ mod behavior_interceptor;
 pub mod delivery;
 /// Dispatcher selection strategy for typed props.
 mod dispatcher_selector;
-/// Dispatcher registry — resolves thread-pool executors from a selector (placeholder).
+/// Typed dispatcher lookup facade.
 mod dispatchers;
 /// DSL package for typed actor development (Behaviors, stash, timers, ask patterns).
 pub mod dsl;
@@ -23,7 +25,7 @@ pub mod eventstream;
 /// Generic setup wrapper for configuring extensions during system bootstrap.
 mod extension_setup;
 /// Internal implementation types (BehaviorRunner, TypedActorAdapter, scheduler internals).
-pub(crate) mod internal;
+mod internal;
 /// Logging options for typed behavior helpers.
 mod log_options;
 /// Mailbox selection strategy for typed props.
@@ -40,21 +42,32 @@ pub mod pubsub;
 pub mod receptionist;
 /// Common recipient abstraction for typed and untyped actor references.
 mod recipient_ref;
+/// Typed scheduler facade.
+mod scheduler;
 /// Pekko-inspired spawn protocol for typed actors.
 mod spawn_protocol;
 /// Typed actor system interface.
 mod system;
+/// System-level log handle for typed actor systems.
+mod typed_actor_system_log;
+/// Immutable metadata snapshot for typed actor systems.
+mod typed_actor_system_settings;
+pub use abstract_extension_setup::AbstractExtensionSetup;
 pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
 pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use dispatcher_selector::DispatcherSelector;
+pub use dispatchers::Dispatchers;
 pub use extension_setup::ExtensionSetup;
 pub use log_options::LogOptions;
 pub use mailbox_selector::MailboxSelector;
 pub use props::TypedProps;
 pub use recipient_ref::RecipientRef;
+pub use scheduler::Scheduler;
 pub use spawn_protocol::SpawnProtocol;
 pub use system::TypedActorSystem;
+pub use typed_actor_system_log::TypedActorSystemLog;
+pub use typed_actor_system_settings::TypedActorSystemSettings;
 #[cfg(test)]
 mod tests;

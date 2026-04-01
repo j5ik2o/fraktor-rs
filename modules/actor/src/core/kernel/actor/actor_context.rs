@@ -44,6 +44,7 @@ pub struct ActorContext<'a> {
   current_message:       Option<AnyMessage>,
   receive_timeout_state: Option<NonNull<RuntimeMutex<Option<ReceiveTimeoutState>>>>,
   receive_timeout_local: Option<ReceiveTimeoutState>,
+  logger_name:           Option<String>,
   _marker:               PhantomData<&'a ()>,
 }
 
@@ -59,6 +60,7 @@ impl ActorContext<'_> {
       current_message: None,
       receive_timeout_state: None,
       receive_timeout_local: None,
+      logger_name: None,
       _marker: PhantomData,
     }
   }
@@ -104,6 +106,11 @@ impl ActorContext<'_> {
   /// Clears the current message marker after processing completes.
   pub(crate) fn clear_current_message(&mut self) {
     self.current_message = None;
+  }
+
+  /// Returns a clone of the current message being processed.
+  pub(crate) fn clone_current_message(&self) -> Option<AnyMessage> {
+    self.current_message.clone()
   }
 
   /// Stashes the currently processed user message for deferred handling.
@@ -379,9 +386,25 @@ impl ActorContext<'_> {
     self.system.state().cell(&self.pid).map(|cell| cell.tags().clone()).unwrap_or_default()
   }
 
+  /// Sets a custom logger name for this actor context.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName(String)`.
+  /// The name is propagated to all [`LogEvent`]s emitted via [`Self::log`].
+  pub fn set_logger_name(&mut self, name: impl Into<String>) {
+    self.logger_name = Some(name.into());
+  }
+
+  /// Returns the custom logger name, if one has been configured.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName`.
+  #[must_use]
+  pub fn logger_name(&self) -> Option<&str> {
+    self.logger_name.as_deref()
+  }
+
   /// Emits a log event associated with the running actor.
   pub fn log(&self, level: LogLevel, message: impl Into<String>) {
-    self.system.emit_log(level, message.into(), Some(self.pid));
+    self.system.emit_log(level, message.into(), Some(self.pid), self.logger_name.clone());
   }
 
   /// Pipes the completion of an asynchronous computation back to the running actor.
@@ -400,10 +423,36 @@ impl ActorContext<'_> {
 
     let mapped = async move {
       let value = future.await;
-      map(value)
+      Some(map(value))
     };
 
     cell.spawn_pipe_task(Box::pin(mapped))
+  }
+
+  /// Pipes the completion of an asynchronous computation to an external actor.
+  ///
+  /// Corresponds to Pekko's `PipeToSupport.pipeTo(recipient)`.
+  /// Returning `None` from `map` suppresses delivery after the caller has
+  /// already observed and handled the asynchronous result.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the actor is unavailable or already stopped.
+  pub fn pipe_to<Fut, Map, Output>(&mut self, future: Fut, target: &ActorRef, map: Map) -> Result<(), PipeSpawnError>
+  where
+    Fut: Future<Output = Output> + Send + 'static,
+    Map: FnOnce(Output) -> Option<AnyMessage> + Send + 'static, {
+    let state = self.system.state();
+    let Some(cell) = state.cell(&self.pid) else {
+      return Err(PipeSpawnError::ActorUnavailable);
+    };
+
+    let mapped = async move {
+      let value = future.await;
+      map(value)
+    };
+
+    cell.spawn_pipe_to_task(Box::pin(mapped), target.clone())
   }
 
   fn with_receive_timeout_slot<R>(&mut self, f: impl FnOnce(&mut Option<ReceiveTimeoutState>) -> R) -> R {
@@ -454,7 +503,7 @@ impl ActorContext<'_> {
         state.handle = None;
         // Receive-timeout scheduling is best-effort: the actor continues
         // to function normally even if the scheduler rejects the registration.
-        system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", error), Some(pid));
+        system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", error), Some(pid), None);
       },
     }
   }

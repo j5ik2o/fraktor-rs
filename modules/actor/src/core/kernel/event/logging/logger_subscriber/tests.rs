@@ -47,9 +47,9 @@ fn on_event_filters_by_level() {
   let (writer, logs) = TestWriter::new();
   let mut subscriber = LoggerSubscriber::new(LogLevel::Warn, Box::new(writer));
 
-  let debug_event = LogEvent::new(LogLevel::Debug, String::from("debug"), Duration::ZERO, None);
-  let warn_event = LogEvent::new(LogLevel::Warn, String::from("warn"), Duration::ZERO, None);
-  let error_event = LogEvent::new(LogLevel::Error, String::from("error"), Duration::ZERO, None);
+  let debug_event = LogEvent::new(LogLevel::Debug, String::from("debug"), Duration::ZERO, None, None);
+  let warn_event = LogEvent::new(LogLevel::Warn, String::from("warn"), Duration::ZERO, None, None);
+  let error_event = LogEvent::new(LogLevel::Error, String::from("error"), Duration::ZERO, None, None);
 
   subscriber.on_event(&EventStreamEvent::Log(debug_event));
   subscriber.on_event(&EventStreamEvent::Log(warn_event));
@@ -66,7 +66,7 @@ fn on_event_writes_matching_logs() {
   let (writer, logs) = TestWriter::new();
   let mut subscriber = LoggerSubscriber::new(LogLevel::Info, Box::new(writer));
 
-  let event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::ZERO, None);
+  let event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::ZERO, None, None);
   subscriber.on_event(&EventStreamEvent::Log(event));
 
   let recorded = logs.lock();

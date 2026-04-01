@@ -2,6 +2,8 @@
 
 use core::time::Duration;
 
+use crate::core::typed::delivery::ProducerControllerSettings;
+
 #[cfg(test)]
 mod tests;
 
@@ -9,7 +11,7 @@ mod tests;
 const DEFAULT_BUFFER_SIZE: u32 = 1000;
 
 /// Default internal ask timeout.
-const DEFAULT_INTERNAL_ASK_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_INTERNAL_ASK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Settings for
 /// [`WorkPullingProducerController`](super::WorkPullingProducerController).
@@ -17,15 +19,20 @@ const DEFAULT_INTERNAL_ASK_TIMEOUT: Duration = Duration::from_secs(5);
 /// Corresponds to Pekko's `WorkPullingProducerController.Settings`.
 #[derive(Debug, Clone)]
 pub struct WorkPullingProducerControllerSettings {
-  buffer_size:          u32,
-  internal_ask_timeout: Duration,
+  buffer_size:                  u32,
+  internal_ask_timeout:         Duration,
+  producer_controller_settings: ProducerControllerSettings,
 }
 
 impl WorkPullingProducerControllerSettings {
   /// Creates default settings.
   #[must_use]
   pub const fn new() -> Self {
-    Self { buffer_size: DEFAULT_BUFFER_SIZE, internal_ask_timeout: DEFAULT_INTERNAL_ASK_TIMEOUT }
+    Self {
+      buffer_size:                  DEFAULT_BUFFER_SIZE,
+      internal_ask_timeout:         DEFAULT_INTERNAL_ASK_TIMEOUT,
+      producer_controller_settings: ProducerControllerSettings::new(),
+    }
   }
 
   /// Returns the maximum number of messages buffered while waiting for worker
@@ -57,6 +64,20 @@ impl WorkPullingProducerControllerSettings {
   #[must_use]
   pub const fn with_internal_ask_timeout(self, timeout: Duration) -> Self {
     Self { internal_ask_timeout: timeout, ..self }
+  }
+
+  /// Returns the nested producer-controller settings applied to spawned worker
+  /// controllers and durable-queue retries.
+  #[must_use]
+  pub const fn producer_controller_settings(&self) -> &ProducerControllerSettings {
+    &self.producer_controller_settings
+  }
+
+  /// Returns a new settings value with the given nested producer-controller
+  /// settings.
+  #[must_use]
+  pub const fn with_producer_controller_settings(self, settings: ProducerControllerSettings) -> Self {
+    Self { producer_controller_settings: settings, ..self }
   }
 }
 

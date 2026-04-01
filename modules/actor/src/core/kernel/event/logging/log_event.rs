@@ -1,5 +1,8 @@
 //! Event payload describing a log entry emitted by the runtime.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 use core::time::Duration;
 
@@ -9,17 +12,27 @@ use crate::core::kernel::actor::Pid;
 /// Structured representation of a runtime log event.
 #[derive(Clone, Debug)]
 pub struct LogEvent {
-  level:     LogLevel,
-  message:   String,
-  timestamp: Duration,
-  origin:    Option<Pid>,
+  level:       LogLevel,
+  message:     String,
+  timestamp:   Duration,
+  origin:      Option<Pid>,
+  logger_name: Option<String>,
 }
 
 impl LogEvent {
   /// Creates a new log event.
+  ///
+  /// `logger_name` corresponds to Pekko's `ActorContext.setLoggerName` and
+  /// allows per-actor customisation of the tracing target.
   #[must_use]
-  pub const fn new(level: LogLevel, message: String, timestamp: Duration, origin: Option<Pid>) -> Self {
-    Self { level, message, timestamp, origin }
+  pub const fn new(
+    level: LogLevel,
+    message: String,
+    timestamp: Duration,
+    origin: Option<Pid>,
+    logger_name: Option<String>,
+  ) -> Self {
+    Self { level, message, timestamp, origin, logger_name }
   }
 
   /// Returns the severity level.
@@ -45,5 +58,14 @@ impl LogEvent {
   #[must_use]
   pub const fn timestamp(&self) -> Duration {
     self.timestamp
+  }
+
+  /// Returns the logger name override, if any.
+  ///
+  /// Corresponds to Pekko's `ActorContext.setLoggerName`.
+  #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn logger_name(&self) -> Option<&str> {
+    self.logger_name.as_deref()
   }
 }

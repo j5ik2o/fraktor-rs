@@ -324,7 +324,7 @@ fn actor_system_deadletters() {
 fn actor_system_emit_log() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  system.emit_log(crate::core::kernel::event::logging::LogLevel::Info, "test message", Some(pid));
+  system.emit_log(crate::core::kernel::event::logging::LogLevel::Info, "test message", Some(pid), None);
 }
 
 #[test]

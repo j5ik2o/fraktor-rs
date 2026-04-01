@@ -69,6 +69,7 @@ pub struct SystemStateShared {
   scheduler:           SchedulerShared,
   delay_provider:      SchedulerBackedDelayProvider,
   tick_driver_bundle:  TickDriverBundle,
+  start_time:          Duration,
 }
 
 impl Clone for SystemStateShared {
@@ -88,6 +89,7 @@ impl Clone for SystemStateShared {
       scheduler:           self.scheduler.clone(),
       delay_provider:      self.delay_provider.clone(),
       tick_driver_bundle:  self.tick_driver_bundle.clone(),
+      start_time:          self.start_time,
     }
   }
 }
@@ -109,6 +111,7 @@ impl SystemStateShared {
     let scheduler = state.scheduler();
     let delay_provider = state.delay_provider();
     let tick_driver_bundle = state.tick_driver_bundle();
+    let start_time = state.start_time();
     let inner = ArcShared::new(RuntimeRwLock::new(state));
     Self {
       inner,
@@ -125,6 +128,7 @@ impl SystemStateShared {
       scheduler,
       delay_provider,
       tick_driver_bundle,
+      start_time,
     }
   }
 
@@ -145,6 +149,7 @@ impl SystemStateShared {
     let scheduler = guard.scheduler();
     let delay_provider = guard.delay_provider();
     let tick_driver_bundle = guard.tick_driver_bundle();
+    let start_time = guard.start_time();
     drop(guard);
     Self {
       inner,
@@ -161,6 +166,7 @@ impl SystemStateShared {
       scheduler,
       delay_provider,
       tick_driver_bundle,
+      start_time,
     }
   }
 
@@ -207,7 +213,7 @@ impl SystemStateShared {
       guard.actor_path_registry_mut().unregister(pid);
       drop(guard);
       if let Err(e) = reserve_result {
-        self.emit_log(LogLevel::Warn, format!("failed to reserve uid for {:?}: {:?}", pid, e), Some(*pid));
+        self.emit_log(LogLevel::Warn, format!("failed to reserve uid for {:?}: {:?}", pid, e), Some(*pid), None);
       }
       // Intentionally discarding the removed cell; this is a HashMap::remove equivalent.
       drop(self.cells.with_write(|cells| cells.remove(pid)));
@@ -266,6 +272,14 @@ impl SystemStateShared {
   #[must_use]
   pub fn system_name(&self) -> String {
     self.system_name.clone()
+  }
+
+  /// Returns the start time of the actor system (epoch-relative duration).
+  ///
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn start_time(&self) -> Duration {
+    self.start_time
   }
 
   /// Retrieves an actor cell by pid.
@@ -485,9 +499,9 @@ impl SystemStateShared {
   }
 
   /// Emits a log event via the event stream.
-  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>) {
+  pub fn emit_log(&self, level: LogLevel, message: String, origin: Option<Pid>, logger_name: Option<String>) {
     let timestamp = self.monotonic_now();
-    let event = LogEvent::new(level, message, timestamp, origin);
+    let event = LogEvent::new(level, message, timestamp, origin, logger_name);
     self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
@@ -835,15 +849,12 @@ impl SystemStateShared {
     if let Some(parent_pid) = self.cell(&child_pid).and_then(|cell| cell.parent())
       && let Some(parent_cell) = self.cell(&parent_pid)
     {
-      let strategy = parent_cell.supervisor_strategy_config();
-      if strategy.logging_enabled() {
-        let level = strategy.effective_log_level(payload.restart_stats().failure_count() as u32);
-        let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
-        self.emit_log(level, message, Some(child_pid));
-      }
       if let Some(stats) = parent_cell.snapshot_child_restart_stats(child_pid) {
         payload = payload.with_restart_stats(stats);
       }
+      // Avoid reading the parent actor's supervisor strategy here. Failures can be
+      // reported while the parent still holds its actor lock during a synchronous
+      // forward, and the parent will apply its strategy when it handles Failure.
       if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
         return;
       }
@@ -855,7 +866,7 @@ impl SystemStateShared {
     }
 
     let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
-    self.emit_log(LogLevel::Error, message, Some(child_pid));
+    self.emit_log(LogLevel::Error, message, Some(child_pid), None);
     self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
     if let Err(e) = self.send_system_message(child_pid, SystemMessage::Stop) {
       self.record_send_error(Some(child_pid), &e);

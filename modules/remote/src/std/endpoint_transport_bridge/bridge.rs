@@ -301,7 +301,7 @@ impl EndpointTransportBridge {
         match effect {
           | EndpointAssociationEffect::DiscardDeferred { authority, .. } => {
             if let Some(system) = system.upgrade() {
-              system.emit_log(LogLevel::Error, format!("discarded deferred envelopes for {authority}"), None);
+              system.emit_log(LogLevel::Error, format!("discarded deferred envelopes for {authority}"), None, None);
             }
           },
           | EndpointAssociationEffect::Lifecycle(event) => event_publisher.publish_lifecycle(event),
@@ -358,7 +358,7 @@ impl EndpointTransportBridge {
 
   fn emit_error(&self, message: String) {
     if let Some(system) = self.system.upgrade() {
-      system.emit_log(LogLevel::Error, message, None);
+      system.emit_log(LogLevel::Error, message, None, None);
     }
   }
 

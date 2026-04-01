@@ -5,7 +5,7 @@ pub mod dispatch;
 pub mod event;
 mod io;
 pub mod pattern;
-mod routing;
+pub mod routing;
 pub mod serialization;
 pub mod system;
 pub mod util;
