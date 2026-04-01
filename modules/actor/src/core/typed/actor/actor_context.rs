@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, shared::Shared};
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
 
 use crate::core::{
   kernel::{
@@ -114,17 +114,11 @@ where
   /// # Errors
   ///
   /// Returns an error if the child actor cannot be spawned.
-  pub fn spawn_anonymous<C>(&mut self, behavior: Behavior<C>) -> Result<TypedChildRef<C>, SpawnError>
+  pub fn spawn_anonymous<C>(&mut self, behavior: &Behavior<C>) -> Result<TypedChildRef<C>, SpawnError>
   where
     C: Send + Sync + 'static, {
-    let slot = ArcShared::new(RuntimeMutex::new(Some(behavior)));
-    let props = TypedProps::from_behavior_factory(move || {
-      // The factory is expected to be called exactly once during actor creation.
-      // If called again, it indicates a logic error.
-      let behavior = slot.lock().take();
-      debug_assert!(behavior.is_some(), "spawn_anonymous behavior factory was already consumed");
-      behavior.unwrap_or_else(Behavior::stopped)
-    });
+    let initial_behavior = behavior.clone();
+    let props = TypedProps::from_behavior_factory(move || initial_behavior.clone());
     self.spawn_child(&props)
   }
 
