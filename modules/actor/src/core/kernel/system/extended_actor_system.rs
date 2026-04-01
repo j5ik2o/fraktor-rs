@@ -5,9 +5,7 @@ use core::any::Any;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::{
-  ActorSystem, ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError, remote::RemoteWatchHook,
-};
+use super::{ActorSystem, ActorSystemBuildError, RegisterExtraTopLevelError, remote::RemoteWatchHook};
 use crate::core::kernel::{
   actor::{
     ChildRef,
@@ -68,11 +66,8 @@ impl ExtendedActorSystem {
 
   /// Registers the provided extension and returns the shared instance.
   ///
-  /// # Errors
-  ///
-  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
-  /// startup and the extension is not registered yet.
-  pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
+  /// Registers an extension or returns the existing one (putIfAbsent semantics).
+  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
   where
     E: ExtensionId, {
     let state = self.inner.state();

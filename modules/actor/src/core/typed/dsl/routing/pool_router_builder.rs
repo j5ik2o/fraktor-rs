@@ -17,6 +17,7 @@ use crate::core::{
 
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;
 type BroadcastPredicate<M> = dyn Fn(&M) -> bool + Send + Sync;
+type RouteePropsMapper<M> = dyn Fn(TypedProps<M>) -> TypedProps<M> + Send + Sync;
 
 /// Configures and builds a pool router behavior.
 ///
@@ -30,6 +31,7 @@ where
   strategy:            PoolRouteStrategy<M>,
   broadcast_predicate: Option<ArcShared<BroadcastPredicate<M>>>,
   resizer:             Option<ArcShared<dyn Resizer>>,
+  routee_props_mapper: Option<ArcShared<RouteePropsMapper<M>>>,
 }
 
 impl<M> PoolRouterBuilder<M>
@@ -51,6 +53,7 @@ where
       strategy: PoolRouteStrategy::RoundRobin,
       broadcast_predicate: None,
       resizer: None,
+      routee_props_mapper: None,
     }
   }
 
@@ -123,6 +126,22 @@ where
     self
   }
 
+  /// Applies a transformation to the [`TypedProps`] used when spawning each routee.
+  ///
+  /// The `props_mapper` receives the default props built from the behavior factory
+  /// and returns modified props. This allows adding tags, adjusting dispatcher
+  /// settings, or any other props customization without replacing the entire props.
+  ///
+  /// Corresponds to Pekko's `PoolRouter.withRouteeProps`.
+  #[must_use]
+  pub fn with_routee_props(
+    mut self,
+    props_mapper: impl Fn(TypedProps<M>) -> TypedProps<M> + Send + Sync + 'static,
+  ) -> Self {
+    self.routee_props_mapper = Some(ArcShared::new(props_mapper));
+    self
+  }
+
   /// Builds the pool router as a [`Behavior`].
   #[must_use]
   pub fn build(self) -> Behavior<M> {
@@ -131,6 +150,7 @@ where
     let strategy = self.strategy;
     let broadcast_predicate = self.broadcast_predicate;
     let resizer = self.resizer;
+    let routee_props_mapper = self.routee_props_mapper;
 
     Behaviors::setup(move |ctx| {
       let bf = behavior_factory.clone();
@@ -138,6 +158,7 @@ where
         let factory: &(dyn Fn() -> Behavior<M> + Send + Sync) = &*bf;
         factory()
       });
+      let props = if let Some(ref mapper) = routee_props_mapper { mapper(props) } else { props };
 
       let mut routee_vec: Vec<TypedActorRef<M>> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {

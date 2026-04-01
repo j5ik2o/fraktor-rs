@@ -162,6 +162,6 @@ fn build_system_with_serialization() -> ActorSystem {
   let extension_id = SerializationExtensionId::new(setup);
 
   let system = ActorSystem::new_empty();
-  system.extended().register_extension(&extension_id).expect("register extension");
+  system.extended().register_extension(&extension_id);
   system
 }

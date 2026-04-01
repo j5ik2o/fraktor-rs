@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
-
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
@@ -42,10 +40,11 @@ pub(crate) enum BehaviorDirective {
 }
 
 type MessageHandler<M> =
-  Box<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync>;
+  ArcShared<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync>;
 
-type SignalHandler<M> =
-  Box<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + Send + Sync>;
+type SignalHandler<M> = ArcShared<
+  dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + Send + Sync,
+>;
 
 impl<M> Behavior<M>
 where
@@ -101,7 +100,7 @@ where
     F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     Self {
       directive:           BehaviorDirective::Active,
-      message_handler:     Some(Box::new(handler)),
+      message_handler:     Some(ArcShared::new(handler)),
       signal_handler:      None,
       supervisor_override: None,
     }
@@ -116,7 +115,7 @@ where
     Self {
       directive:           BehaviorDirective::Active,
       message_handler:     None,
-      signal_handler:      Some(Box::new(handler)),
+      signal_handler:      Some(ArcShared::new(handler)),
       supervisor_override: None,
     }
   }
@@ -128,7 +127,7 @@ where
       + Send
       + Sync
       + 'static, {
-    self.signal_handler = Some(Box::new(handler));
+    self.signal_handler = Some(ArcShared::new(handler));
     if matches!(self.directive, BehaviorDirective::Same) {
       self.directive = BehaviorDirective::Active;
     }
@@ -146,7 +145,7 @@ where
       + Sync
       + 'static, {
     let existing = self.signal_handler.take();
-    self.signal_handler = Some(Box::new(move |ctx, signal| {
+    self.signal_handler = Some(ArcShared::new(move |ctx, signal| {
       let result = wrapper(ctx, signal)?;
       if matches!(result.directive, BehaviorDirective::Same)
         && let Some(ref handler) = existing
@@ -183,7 +182,7 @@ where
       | BehaviorDirective::Ignore => Ok(Self::same()),
       | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
       | BehaviorDirective::Empty => Ok(Self::empty()),
-      | BehaviorDirective::Active => match &mut self.message_handler {
+      | BehaviorDirective::Active => match &self.message_handler {
         | Some(handler) => handler(ctx, message),
         | None => Ok(Self::same()),
       },
@@ -197,14 +196,14 @@ where
   ) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
-      | BehaviorDirective::Stopped => match &mut self.signal_handler {
+      | BehaviorDirective::Stopped => match &self.signal_handler {
         | Some(handler) => handler(ctx, signal),
         | None => Ok(Self::stopped()),
       },
       | BehaviorDirective::Ignore => Ok(Self::same()),
       | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
       | BehaviorDirective::Empty => Ok(Self::same()),
-      | BehaviorDirective::Active => match &mut self.signal_handler {
+      | BehaviorDirective::Active => match &self.signal_handler {
         | Some(handler) => handler(ctx, signal),
         | None => Ok(Self::same()),
       },
@@ -234,16 +233,13 @@ where
     Outer: Send + Sync + 'static,
     F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
     let supervisor_override = self.supervisor_override.clone();
-    let inner_slot = ArcShared::new(RuntimeMutex::new(Some(self)));
+    let inner_template = self;
     let mapper = ArcShared::new(mapper);
 
     Behavior::<Outer>::from_signal_handler({
       move |ctx, signal| match signal {
         | BehaviorSignal::Started => {
-          let mut inner = inner_slot
-            .lock()
-            .take()
-            .ok_or_else(|| ActorError::fatal("transform_messages: inner behavior already consumed"))?;
+          let mut inner = inner_template.clone();
 
           {
             let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
@@ -297,6 +293,20 @@ where
   where
     U: Clone + Into<M> + Send + Sync + 'static, {
     self.transform_messages(|outer: &U| Some(outer.clone().into()))
+  }
+}
+
+impl<M> Clone for Behavior<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn clone(&self) -> Self {
+    Self {
+      directive:           self.directive,
+      message_handler:     self.message_handler.clone(),
+      signal_handler:      self.signal_handler.clone(),
+      supervisor_override: self.supervisor_override.clone(),
+    }
   }
 }
 

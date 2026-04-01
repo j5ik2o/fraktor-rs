@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
-  actor::extension::{ExtensionId, ExtensionInstaller},
+  actor::extension::{ExtensionId, ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
 
@@ -68,10 +68,7 @@ where
   I: ExtensionId + Clone,
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    system
-      .extended()
-      .register_extension(self)
-      .map(|_| ())
-      .map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("extension registration failed: {error:?}")))
+    install_extension_id(system, self);
+    Ok(())
   }
 }

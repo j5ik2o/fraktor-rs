@@ -1,9 +1,7 @@
 //! Installer for the serialization extension.
 
-use alloc::format;
-
 use crate::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::extension::{ExtensionInstaller, install_extension_id},
   serialization::{SerializationExtensionId, SerializationSetup},
   system::{ActorSystem, ActorSystemBuildError},
 };
@@ -30,9 +28,7 @@ impl SerializationExtensionInstaller {
 impl ExtensionInstaller for SerializationExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extension_id = SerializationExtensionId::new(self.setup.clone());
-    system.extended().register_extension(&extension_id).map(|_| ()).map_err(|error| {
-      ActorSystemBuildError::Configuration(format!("serialization extension registration failed: {error:?}"))
-    })?;
+    install_extension_id(system, &extension_id);
     Ok(())
   }
 }

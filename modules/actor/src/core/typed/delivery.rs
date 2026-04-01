@@ -47,7 +47,7 @@ pub use sequenced_message::SequencedMessage;
 pub use work_pulling_producer_controller::WorkPullingProducerController;
 pub use work_pulling_producer_controller_command::WorkPullingProducerControllerCommand;
 pub use work_pulling_producer_controller_request_next::WorkPullingProducerControllerRequestNext;
-pub(crate) use work_pulling_producer_controller_settings::WorkPullingProducerControllerSettings;
+pub use work_pulling_producer_controller_settings::WorkPullingProducerControllerSettings;
 pub use worker_stats::WorkerStats;
 
 #[cfg(test)]
