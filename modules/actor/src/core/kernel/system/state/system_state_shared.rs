@@ -509,8 +509,7 @@ impl SystemStateShared {
   ///
   /// # Errors
   ///
-  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
-  /// startup and the extension is not registered yet.
+  /// Registers an extension or returns the existing one (putIfAbsent semantics).
   ///
   /// # Panics
   ///
@@ -531,9 +530,6 @@ impl SystemStateShared {
         }
         panic!("extension type mismatch for id {type_id:?}");
       }
-      if guard.has_root_started() && guard.root_guardian_pid().is_some() {
-        return Err(RegisterExtensionError::AlreadyStarted);
-      }
     }
 
     let created = factory();
@@ -545,9 +541,6 @@ impl SystemStateShared {
         return Ok(extension);
       }
       panic!("extension type mismatch for id {type_id:?}");
-    }
-    if guard.has_root_started() && guard.root_guardian_pid().is_some() {
-      return Err(RegisterExtensionError::AlreadyStarted);
     }
     guard.insert_extension(type_id, erased);
     Ok(created)

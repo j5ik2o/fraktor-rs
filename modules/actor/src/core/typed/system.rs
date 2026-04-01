@@ -1,19 +1,24 @@
 //! Typed actor system wrapper.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{string::String, vec::Vec};
 use core::marker::PhantomData;
+
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{
     actor::{
-      actor_ref::dead_letter::DeadLetterEntry, error::SendError, messaging::AskResult, setup::ActorSystemConfig,
-      spawn::SpawnError,
+      actor_ref::dead_letter::DeadLetterEntry, error::SendError, extension::ExtensionId, messaging::AskResult,
+      setup::ActorSystemConfig, spawn::SpawnError,
     },
     event::{
       logging::LogLevel,
       stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
     },
-    system::{ActorSystem, state::SystemStateShared},
+    system::{ActorSystem, RegisterExtensionError, state::SystemStateShared},
     util::futures::ActorFutureShared,
   },
   typed::{
@@ -185,6 +190,39 @@ where
   #[must_use]
   pub fn delay_provider(&self) -> crate::core::kernel::actor::scheduler::SchedulerBackedDelayProvider {
     self.inner.delay_provider()
+  }
+
+  /// Returns the extension registered for the given identifier.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.extension`.
+  #[must_use]
+  pub fn extension<E>(&self, ext_id: &E) -> Option<ArcShared<E::Ext>>
+  where
+    E: ExtensionId, {
+    self.inner.extended().extension(ext_id)
+  }
+
+  /// Returns whether an extension has been registered.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.hasExtension`.
+  #[must_use]
+  pub fn has_extension<E>(&self, ext_id: &E) -> bool
+  where
+    E: ExtensionId, {
+    self.inner.extended().has_extension(ext_id)
+  }
+
+  /// Registers an extension if not already present (putIfAbsent semantics).
+  ///
+  /// Corresponds to Pekko's `ActorSystem.registerExtension`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`RegisterExtensionError`] when registration fails.
+  pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
+  where
+    E: ExtensionId, {
+    self.inner.extended().register_extension(ext_id)
   }
 }
 

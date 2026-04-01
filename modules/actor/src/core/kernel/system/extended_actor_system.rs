@@ -70,8 +70,7 @@ impl ExtendedActorSystem {
   ///
   /// # Errors
   ///
-  /// Returns [`RegisterExtensionError::AlreadyStarted`] when the actor system already finished
-  /// startup and the extension is not registered yet.
+  /// Registers an extension or returns the existing one (putIfAbsent semantics).
   pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
   where
     E: ExtensionId, {
