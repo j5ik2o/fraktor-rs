@@ -44,10 +44,9 @@ fn register_extension_returns_created_instance() {
   let ext_id = TestExtensionId { initial_value: 42 };
 
   // When: register_extension is called
-  let result = system.register_extension(&ext_id);
+  let ext = system.register_extension(&ext_id);
 
   // Then: the created extension is returned with the initial value
-  let ext = result.expect("register_extension should succeed");
   assert_eq!(ext.value, 42);
 
   system.terminate().expect("terminate");
@@ -70,7 +69,7 @@ fn has_extension_returns_true_after_registration() {
   // Given: a typed actor system with an extension registered
   let system = new_test_system();
   let ext_id = TestExtensionId { initial_value: 0 };
-  system.register_extension(&ext_id).expect("register");
+  system.register_extension(&ext_id);
 
   // When/Then: has_extension returns true
   assert!(system.has_extension(&ext_id));
@@ -96,7 +95,7 @@ fn extension_returns_registered_instance() {
   // Given: a typed actor system with an extension registered
   let system = new_test_system();
   let ext_id = TestExtensionId { initial_value: 99 };
-  system.register_extension(&ext_id).expect("register");
+  system.register_extension(&ext_id);
 
   // When: extension is called
   let result: Option<ArcShared<TestExtension>> = system.extension(&ext_id);
@@ -113,10 +112,10 @@ fn register_extension_is_idempotent() {
   // Given: a typed actor system with an extension already registered
   let system = new_test_system();
   let ext_id = TestExtensionId { initial_value: 10 };
-  let first = system.register_extension(&ext_id).expect("first register");
+  let first = system.register_extension(&ext_id);
 
   // When: register_extension is called again with the same id
-  let second = system.register_extension(&ext_id).expect("second register");
+  let second = system.register_extension(&ext_id);
 
   // Then: the same instance is returned (putIfAbsent semantics)
   assert_eq!(first.value, second.value);

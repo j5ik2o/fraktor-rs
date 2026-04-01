@@ -95,13 +95,11 @@ fn extension_or_insert_with_does_not_hold_outer_read_lock_while_running_factory(
   let (write_result_tx, write_result_rx) = std::sync::mpsc::channel();
 
   let extension_thread = std::thread::spawn(move || {
-    let _ext = shared_for_extension
-      .extension_or_insert_with(TypeId::of::<TestExtension>(), || {
-        factory_started_tx.send(()).expect("started");
-        factory_release_rx.recv().expect("release");
-        ArcShared::new(TestExtension)
-      })
-      .expect("extension");
+    let _ext = shared_for_extension.extension_or_insert_with(TypeId::of::<TestExtension>(), || {
+      factory_started_tx.send(()).expect("started");
+      factory_release_rx.recv().expect("release");
+      ArcShared::new(TestExtension)
+    });
     extension_done_tx.send(()).expect("done");
   });
 
@@ -136,8 +134,7 @@ fn extension_or_insert_with_after_root_started_succeeds() {
   shared.mark_root_started();
 
   // Pekko compatibility: extensions can be registered at any time (putIfAbsent semantics).
-  let result = shared.extension_or_insert_with(TypeId::of::<TestExtension>(), || ArcShared::new(TestExtension));
-  assert!(result.is_ok(), "extension registration should succeed even after root started");
+  let _result = shared.extension_or_insert_with(TypeId::of::<TestExtension>(), || ArcShared::new(TestExtension));
 }
 
 #[test]

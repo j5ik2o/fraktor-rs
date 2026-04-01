@@ -46,7 +46,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{ActorSystemBuildError, RegisterExtensionError, RegisterExtraTopLevelError},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError},
   util::futures::ActorFutureShared,
 };
 
@@ -507,18 +507,12 @@ impl SystemStateShared {
 
   /// Inserts an extension if absent and returns the shared instance.
   ///
-  /// # Errors
-  ///
   /// Registers an extension or returns the existing one (putIfAbsent semantics).
   ///
   /// # Panics
   ///
   /// Panics when an extension exists for `type_id` but cannot be downcast to `E`.
-  pub fn extension_or_insert_with<E, F>(
-    &self,
-    type_id: TypeId,
-    factory: F,
-  ) -> Result<ArcShared<E>, RegisterExtensionError>
+  pub fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
   where
     E: core::any::Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
@@ -526,7 +520,7 @@ impl SystemStateShared {
       let guard = self.inner.read();
       if let Some(existing) = guard.extension_raw(&type_id) {
         if let Ok(extension) = existing.downcast::<E>() {
-          return Ok(extension);
+          return extension;
         }
         panic!("extension type mismatch for id {type_id:?}");
       }
@@ -538,12 +532,12 @@ impl SystemStateShared {
     let mut guard = self.inner.write();
     if let Some(existing) = guard.extension_raw(&type_id) {
       if let Ok(extension) = existing.downcast::<E>() {
-        return Ok(extension);
+        return extension;
       }
       panic!("extension type mismatch for id {type_id:?}");
     }
     guard.insert_extension(type_id, erased);
-    Ok(created)
+    created
   }
 
   /// Returns an extension by its type.

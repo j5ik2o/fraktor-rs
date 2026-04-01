@@ -2,7 +2,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   kernel::{
-    actor::{ActorContext, Pid, error::ActorError},
+    actor::{ActorContext, error::ActorError},
     system::ActorSystem,
   },
   typed::{

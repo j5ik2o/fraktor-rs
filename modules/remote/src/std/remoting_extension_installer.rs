@@ -1,11 +1,10 @@
 //! Installer for the remoting extension.
 
-use alloc::format;
-
 use fraktor_actor_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
   system::{ActorSystem, ActorSystemBuildError},
 };
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::remoting_extension_id::RemotingExtensionId;
 use crate::core::remoting_extension::RemotingExtensionConfig;
@@ -44,9 +43,14 @@ impl ExtensionInstaller for RemotingExtensionInstaller {
     }
 
     let id = RemotingExtensionId::new(merged_config);
-    system.extended().register_extension(&id).map(|_| ()).map_err(|error| {
-      ActorSystemBuildError::Configuration(format!("remoting extension registration failed: {error:?}"))
-    })?;
+    let registered = system.extended().register_extension(&id);
+    let existing = system
+      .extended()
+      .extension(&id)
+      .ok_or_else(|| ActorSystemBuildError::Configuration("remoting extension was not retained".into()))?;
+    if !ArcShared::ptr_eq(&registered, &existing) {
+      return Err(ActorSystemBuildError::Configuration("remoting extension identity mismatch".into()));
+    }
     Ok(())
   }
 }

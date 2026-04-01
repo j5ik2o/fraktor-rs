@@ -15,7 +15,7 @@ use crate::core::materialization::{ActorMaterializer, ActorMaterializerConfig};
 /// # Example
 ///
 /// ```text
-/// let ext = system.extended().register_extension(&SystemMaterializerId)?;
+/// let ext = system.extended().register_extension(&SystemMaterializerId);
 /// let materializer = ext.materializer();
 /// ```
 #[derive(Clone, Copy, Debug, Default)]

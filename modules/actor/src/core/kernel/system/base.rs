@@ -167,8 +167,8 @@ impl ActorSystem {
       installer.install(&system).map_err(|e| SpawnError::from_actor_system_build_error(&e))?;
     }
 
-    system.install_default_serialization_extension()?;
-    system.install_default_actor_ref_resolver_extension()?;
+    system.install_default_serialization_extension();
+    system.install_default_actor_ref_resolver_extension();
 
     system.state.mark_root_started();
 
@@ -282,24 +282,26 @@ impl ActorSystem {
     ExtendedActorSystem::new(self.clone())
   }
 
-  fn install_default_serialization_extension(&self) -> Result<(), SpawnError> {
+  fn install_default_serialization_extension(&self) {
     let id = default_serialization_extension_id();
     if self.extended().has_extension(&id) {
-      return Ok(());
+      return;
     }
-    self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
-      SpawnError::SystemBuildError(format!("default serialization extension registration failed: {error:?}"))
-    })
+    let registered = self.extended().register_extension(&id);
+    if let Some(existing) = self.extended().extension(&id) {
+      debug_assert!(ArcShared::ptr_eq(&registered, &existing));
+    }
   }
 
-  fn install_default_actor_ref_resolver_extension(&self) -> Result<(), SpawnError> {
+  fn install_default_actor_ref_resolver_extension(&self) {
     let id = ActorRefResolverId::new();
     if self.extended().has_extension(&id) {
-      return Ok(());
+      return;
     }
-    self.extended().register_extension(&id).map(|_| ()).map_err(|error| {
-      SpawnError::SystemBuildError(format!("default actor ref resolver extension registration failed: {error:?}"))
-    })
+    let registered = self.extended().register_extension(&id);
+    if let Some(existing) = self.extended().extension(&id) {
+      debug_assert!(ArcShared::ptr_eq(&registered, &existing));
+    }
   }
 
   /// Allocates a new pid (testing helper).

@@ -4,9 +4,9 @@
 mod tests;
 
 use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};
-use core::{future::Future, marker::PhantomData, time::Duration};
+use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_rs::core::sync::{RuntimeMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{
@@ -24,14 +24,27 @@ use crate::core::kernel::{
 
 pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 
+pub(crate) struct ReceiveTimeoutState {
+  duration: Duration,
+  message:  AnyMessage,
+  handle:   Option<SchedulerHandle>,
+}
+
+impl ReceiveTimeoutState {
+  const fn new(duration: Duration, message: AnyMessage) -> Self {
+    Self { duration, message, handle: None }
+  }
+}
+
 /// Provides contextual APIs while handling a message.
 pub struct ActorContext<'a> {
-  system:                 ActorSystem,
-  pid:                    Pid,
-  sender:                 Option<ActorRef>,
-  current_message:        Option<AnyMessage>,
-  receive_timeout_handle: Option<SchedulerHandle>,
-  _marker:                PhantomData<&'a ()>,
+  system:                ActorSystem,
+  pid:                   Pid,
+  sender:                Option<ActorRef>,
+  current_message:       Option<AnyMessage>,
+  receive_timeout_state: Option<NonNull<RuntimeMutex<Option<ReceiveTimeoutState>>>>,
+  receive_timeout_local: Option<ReceiveTimeoutState>,
+  _marker:               PhantomData<&'a ()>,
 }
 
 /// Alias for a context with the default runtime toolbox.
@@ -44,9 +57,15 @@ impl ActorContext<'_> {
       pid,
       sender: None,
       current_message: None,
-      receive_timeout_handle: None,
+      receive_timeout_state: None,
+      receive_timeout_local: None,
       _marker: PhantomData,
     }
+  }
+
+  pub(crate) fn with_receive_timeout_state(mut self, state: &RuntimeMutex<Option<ReceiveTimeoutState>>) -> Self {
+    self.receive_timeout_state = Some(NonNull::from(state));
+    self
   }
 
   /// Returns a reference to the actor system.
@@ -387,6 +406,71 @@ impl ActorContext<'_> {
     cell.spawn_pipe_task(Box::pin(mapped))
   }
 
+  fn with_receive_timeout_slot<R>(&mut self, f: impl FnOnce(&mut Option<ReceiveTimeoutState>) -> R) -> R {
+    if let Some(ptr) = self.receive_timeout_state {
+      // SAFETY: The actor cell owns this mutex and keeps it alive for the
+      // duration of message processing.
+      let mut guard = unsafe { ptr.as_ref() }.lock();
+      f(&mut guard)
+    } else {
+      f(&mut self.receive_timeout_local)
+    }
+  }
+
+  fn with_receive_timeout_slot_ref<R>(&self, f: impl FnOnce(&Option<ReceiveTimeoutState>) -> R) -> R {
+    if let Some(ptr) = self.receive_timeout_state {
+      // SAFETY: The actor cell owns this mutex and keeps it alive for the
+      // duration of message processing.
+      let guard = unsafe { ptr.as_ref() }.lock();
+      f(&guard)
+    } else {
+      f(&self.receive_timeout_local)
+    }
+  }
+
+  fn cancel_receive_timeout_handle(state: &mut ReceiveTimeoutState) {
+    if let Some(handle) = state.handle.take() {
+      // Cancel is best-effort: the timer may have already fired,
+      // so the return value (already-cancelled) is not actionable.
+      let _already_cancelled = handle.cancel();
+    }
+  }
+
+  fn schedule_receive_timeout(system: &ActorSystem, pid: Pid, state: &mut ReceiveTimeoutState) {
+    let Some(self_ref) = system.actor_ref(pid) else {
+      return;
+    };
+    let command = SchedulerCommand::SendMessage {
+      receiver:   self_ref,
+      message:    state.message.clone(),
+      dispatcher: None,
+      sender:     None,
+    };
+    match system.scheduler().with_write(|scheduler| scheduler.schedule_once(state.duration, command)) {
+      | Ok(handle) => {
+        state.handle = Some(handle);
+      },
+      | Err(error) => {
+        state.handle = None;
+        // Receive-timeout scheduling is best-effort: the actor continues
+        // to function normally even if the scheduler rejects the registration.
+        system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", error), Some(pid));
+      },
+    }
+  }
+
+  pub(crate) fn reschedule_receive_timeout(&mut self) {
+    let system = self.system.clone();
+    let pid = self.pid;
+    self.with_receive_timeout_slot(|slot| {
+      let Some(state) = slot.as_mut() else {
+        return;
+      };
+      Self::cancel_receive_timeout_handle(state);
+      Self::schedule_receive_timeout(&system, pid, state);
+    });
+  }
+
   /// Configures an idle timeout that sends `message` when no messages
   /// are received within `timeout`.
   ///
@@ -394,36 +478,34 @@ impl ActorContext<'_> {
   /// replaces the previous configuration.
   /// Corresponds to Pekko's classic `ActorContext.setReceiveTimeout`.
   pub fn set_receive_timeout(&mut self, timeout: Duration, message: AnyMessage) {
-    self.cancel_receive_timeout();
-    let scheduler = self.system.scheduler();
-    let self_ref = self.self_ref();
-    let command = SchedulerCommand::SendMessage { receiver: self_ref, message, dispatcher: None, sender: None };
-    match scheduler.with_write(|s| s.schedule_once(timeout, command)) {
-      | Ok(handle) => {
-        self.receive_timeout_handle = Some(handle);
-      },
-      | Err(e) => {
-        // Receive-timeout scheduling is best-effort: the actor continues
-        // to function normally even if the scheduler rejects the registration.
-        self.system.emit_log(LogLevel::Warn, format!("failed to schedule receive timeout: {:?}", e), Some(self.pid));
-      },
-    }
+    let system = self.system.clone();
+    let pid = self.pid;
+    self.with_receive_timeout_slot(|slot| {
+      if let Some(existing) = slot.as_mut() {
+        Self::cancel_receive_timeout_handle(existing);
+      }
+      *slot = Some(ReceiveTimeoutState::new(timeout, message));
+      if let Some(state) = slot.as_mut() {
+        Self::schedule_receive_timeout(&system, pid, state);
+      }
+    });
   }
 
   /// Disables the receive timeout.
   ///
   /// Corresponds to Pekko's classic `ActorContext.cancelReceiveTimeout`.
   pub fn cancel_receive_timeout(&mut self) {
-    if let Some(handle) = self.receive_timeout_handle.take() {
-      // Cancel is best-effort: the timer may have already fired,
-      // so the return value (already-cancelled) is not actionable.
-      let _already_cancelled = handle.cancel();
-    }
+    self.with_receive_timeout_slot(|slot| {
+      if let Some(state) = slot.as_mut() {
+        Self::cancel_receive_timeout_handle(state);
+      }
+      *slot = None;
+    });
   }
 
   /// Returns `true` when a receive timeout is currently configured.
   #[must_use]
-  pub const fn has_receive_timeout(&self) -> bool {
-    self.receive_timeout_handle.is_some()
+  pub fn has_receive_timeout(&self) -> bool {
+    self.with_receive_timeout_slot_ref(Option::is_some)
   }
 }

@@ -18,7 +18,7 @@ use crate::core::{
       logging::LogLevel,
       stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
     },
-    system::{ActorSystem, RegisterExtensionError, state::SystemStateShared},
+    system::{ActorSystem, state::SystemStateShared},
     util::futures::ActorFutureShared,
   },
   typed::{
@@ -215,11 +215,7 @@ where
   /// Registers an extension if not already present (putIfAbsent semantics).
   ///
   /// Corresponds to Pekko's `ActorSystem.registerExtension`.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`RegisterExtensionError`] when registration fails.
-  pub fn register_extension<E>(&self, ext_id: &E) -> Result<ArcShared<E::Ext>, RegisterExtensionError>
+  pub fn register_extension<E>(&self, ext_id: &E) -> ArcShared<E::Ext>
   where
     E: ExtensionId, {
     self.inner.extended().register_extension(ext_id)

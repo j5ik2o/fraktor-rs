@@ -68,10 +68,14 @@ where
   I: ExtensionId + Clone,
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    system
+    let registered = system.extended().register_extension(self);
+    let existing = system
       .extended()
-      .register_extension(self)
-      .map(|_| ())
-      .map_err(|error| ActorSystemBuildError::Configuration(alloc::format!("extension registration failed: {error:?}")))
+      .extension(self)
+      .ok_or_else(|| ActorSystemBuildError::Configuration("typed extension was not retained".into()))?;
+    if !ArcShared::ptr_eq(&registered, &existing) {
+      return Err(ActorSystemBuildError::Configuration("typed extension identity mismatch".into()));
+    }
+    Ok(())
   }
 }

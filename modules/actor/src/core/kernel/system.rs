@@ -15,7 +15,6 @@ mod extensions;
 mod extra_top_levels;
 /// Guardian actor related types.
 pub mod guardian;
-mod register_extension_error;
 mod register_extra_top_level_error;
 mod registries;
 /// Remote watch hook and authority related types.
@@ -36,6 +35,5 @@ pub use base::ActorSystem;
 pub use coordinated_shutdown_phase::CoordinatedShutdownPhase;
 pub use coordinated_shutdown_reason::CoordinatedShutdownReason;
 pub use extended_actor_system::ExtendedActorSystem;
-pub use register_extension_error::RegisterExtensionError;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
 pub use reservation_policy::ReservationPolicy;

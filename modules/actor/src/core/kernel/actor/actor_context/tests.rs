@@ -1,7 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
 
 use super::ActorContext;
 use crate::core::kernel::{
@@ -59,6 +59,27 @@ impl Actor for ProbeActor {
   fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if let Some(value) = message.downcast_ref::<i32>() {
       self.received.lock().push(*value);
+    }
+    Ok(())
+  }
+}
+
+struct ReceiveTimeoutTick;
+
+struct ReceiveTimeoutOnlyActor {
+  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl ReceiveTimeoutOnlyActor {
+  fn new(events: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl Actor for ReceiveTimeoutOnlyActor {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<ReceiveTimeoutTick>().is_some() {
+      self.events.lock().push("timeout");
     }
     Ok(())
   }
@@ -663,4 +684,74 @@ fn has_receive_timeout_returns_false_initially() {
 
   // When/Then: has_receive_timeout returns false
   assert!(!context.has_receive_timeout(), "new context should not have receive timeout");
+}
+
+#[test]
+fn receive_timeout_state_resets_across_fresh_contexts() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let events = events.clone();
+    move || ReceiveTimeoutOnlyActor::new(events.clone())
+  });
+  let _cell = register_cell(&system, pid, "timeout-state", &props);
+  let timeout_state = RuntimeMutex::new(None);
+
+  // Configure the timeout via one context instance.
+  {
+    let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+    context.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+  }
+
+  // Advance to t=1: the initial deadline is still in the future.
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  assert!(events.lock().is_empty(), "timeout should not fire before the initial deadline");
+
+  // Simulate the next message delivery by creating a fresh context and asking it to reschedule.
+  {
+    let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+    context.reschedule_receive_timeout();
+  }
+
+  // The original deadline t=2 should no longer fire.
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  assert!(events.lock().is_empty(), "reschedule should postpone the original deadline");
+
+  // The new deadline t=3 should deliver the timeout.
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  wait_until(|| events.lock().as_slice() == ["timeout"]);
+}
+
+#[test]
+fn receive_timeout_state_can_be_armed_again_after_later_delivery() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let events = events.clone();
+    move || ReceiveTimeoutOnlyActor::new(events.clone())
+  });
+  let _cell = register_cell(&system, pid, "timeout-state-repeat", &props);
+  let timeout_state = RuntimeMutex::new(None);
+
+  {
+    let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+    context.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+  }
+
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(2));
+  wait_until(|| events.lock().as_slice() == ["timeout"]);
+
+  // Simulate a later message delivery by rescheduling from a new context instance.
+  {
+    let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
+    context.reschedule_receive_timeout();
+  }
+
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  assert_eq!(events.lock().as_slice(), ["timeout"], "a fresh idle window should start from the later delivery");
+
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  wait_until(|| events.lock().as_slice() == ["timeout", "timeout"]);
 }

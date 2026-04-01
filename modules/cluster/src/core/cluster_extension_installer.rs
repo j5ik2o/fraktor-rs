@@ -1,6 +1,6 @@
 //! Installs the cluster extension into an actor system.
 
-use alloc::{boxed::Box, format};
+use alloc::boxed::Box;
 
 use fraktor_actor_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
@@ -303,9 +303,15 @@ impl ClusterExtensionInstaller {
       pubsub,
       identity_lookup,
     );
-    system.extended().register_extension(&id).map_err(|error| {
-      ActorSystemBuildError::Configuration(format!("cluster extension registration failed: {error:?}"))
-    })
+    let registered = system.extended().register_extension(&id);
+    let existing = system
+      .extended()
+      .extension(&id)
+      .ok_or_else(|| ActorSystemBuildError::Configuration("cluster extension was not retained".into()))?;
+    if !ArcShared::ptr_eq(&registered, &existing) {
+      return Err(ActorSystemBuildError::Configuration("cluster extension identity mismatch".into()));
+    }
+    Ok(registered)
   }
 }
 
