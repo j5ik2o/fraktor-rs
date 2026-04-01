@@ -303,15 +303,7 @@ impl ClusterExtensionInstaller {
       pubsub,
       identity_lookup,
     );
-    let registered = system.extended().register_extension(&id);
-    let existing = system
-      .extended()
-      .extension(&id)
-      .ok_or_else(|| ActorSystemBuildError::Configuration("cluster extension was not retained".into()))?;
-    if !ArcShared::ptr_eq(&registered, &existing) {
-      return Err(ActorSystemBuildError::Configuration("cluster extension identity mismatch".into()));
-    }
-    Ok(registered)
+    Ok(system.extended().register_extension(&id))
   }
 }
 

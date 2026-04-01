@@ -6,7 +6,7 @@ mod tests;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
-  actor::extension::{ExtensionId, ExtensionInstaller},
+  actor::extension::{ExtensionId, ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
 
@@ -68,14 +68,7 @@ where
   I: ExtensionId + Clone,
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    let registered = system.extended().register_extension(self);
-    let existing = system
-      .extended()
-      .extension(self)
-      .ok_or_else(|| ActorSystemBuildError::Configuration("typed extension was not retained".into()))?;
-    if !ArcShared::ptr_eq(&registered, &existing) {
-      return Err(ActorSystemBuildError::Configuration("typed extension identity mismatch".into()));
-    }
+    install_extension_id(system, self);
     Ok(())
   }
 }

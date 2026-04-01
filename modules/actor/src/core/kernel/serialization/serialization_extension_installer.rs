@@ -1,9 +1,7 @@
 //! Installer for the serialization extension.
 
-use fraktor_utils_rs::core::sync::ArcShared;
-
 use crate::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::extension::{ExtensionInstaller, install_extension_id},
   serialization::{SerializationExtensionId, SerializationSetup},
   system::{ActorSystem, ActorSystemBuildError},
 };
@@ -30,14 +28,7 @@ impl SerializationExtensionInstaller {
 impl ExtensionInstaller for SerializationExtensionInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extension_id = SerializationExtensionId::new(self.setup.clone());
-    let registered = system.extended().register_extension(&extension_id);
-    let existing = system
-      .extended()
-      .extension(&extension_id)
-      .ok_or_else(|| ActorSystemBuildError::Configuration("serialization extension was not retained".into()))?;
-    if !ArcShared::ptr_eq(&registered, &existing) {
-      return Err(ActorSystemBuildError::Configuration("serialization extension identity mismatch".into()));
-    }
+    install_extension_id(system, &extension_id);
     Ok(())
   }
 }

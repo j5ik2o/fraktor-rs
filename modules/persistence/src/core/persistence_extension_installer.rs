@@ -4,10 +4,9 @@
 mod tests;
 
 use fraktor_actor_rs::core::kernel::{
-  actor::extension::ExtensionInstaller,
+  actor::extension::{ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{journal::Journal, persistence_extension_id::PersistenceExtensionId, snapshot_store::SnapshotStore};
 
@@ -40,14 +39,7 @@ where
 {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
     let extension_id = PersistenceExtensionId::new(self.journal.clone(), self.snapshot_store.clone());
-    let registered = system.extended().register_extension(&extension_id);
-    let existing = system
-      .extended()
-      .extension(&extension_id)
-      .ok_or_else(|| ActorSystemBuildError::Configuration("persistence extension was not retained".into()))?;
-    if !ArcShared::ptr_eq(&registered, &existing) {
-      return Err(ActorSystemBuildError::Configuration("persistence extension identity mismatch".into()));
-    }
+    install_extension_id(system, &extension_id);
     Ok(())
   }
 }
