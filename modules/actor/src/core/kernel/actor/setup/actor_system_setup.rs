@@ -34,9 +34,7 @@ impl ActorSystemSetup {
   pub fn with_bootstrap_setup(self, bootstrap: BootstrapSetup) -> Self {
     let config = self.config;
     let bootstrap = bootstrap.into_actor_system_config();
-    let config = config
-      .with_system_name(bootstrap.system_name())
-      .with_default_guardian(bootstrap.default_guardian());
+    let config = config.with_system_name(bootstrap.system_name()).with_default_guardian(bootstrap.default_guardian());
     let config = match bootstrap.remoting_config() {
       | Some(remoting) => config.with_remoting_config(remoting.clone()),
       | None => config,

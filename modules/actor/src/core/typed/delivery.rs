@@ -35,7 +35,7 @@ mod worker_stats;
 
 /// Confirmation qualifier type alias.
 mod confirmation_qualifier;
-/// Commands for the durable producer queue actor.
+/// Durable producer queue facade and entry point.
 mod durable_producer_queue;
 /// Commands for the durable producer queue actor.
 mod durable_producer_queue_command;

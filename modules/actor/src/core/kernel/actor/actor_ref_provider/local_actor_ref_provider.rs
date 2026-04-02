@@ -15,6 +15,9 @@ use crate::core::kernel::{
 #[cfg(test)]
 mod tests;
 
+// Reserve a high sentinel pid next to the other typed/system facade sentinels
+// (`u64::MAX`, `u64::MAX - 1`, `u64::MAX - 2`) so this provider-scoped
+// dead-letter facade cannot collide with runtime-allocated actor pids.
 const PROVIDER_DEAD_LETTER_PID: Pid = Pid::new(u64::MAX - 3, 0);
 
 struct ProviderDeadLetterSender {
