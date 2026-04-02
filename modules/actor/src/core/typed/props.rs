@@ -4,7 +4,10 @@ use alloc::string::String;
 use core::marker::PhantomData;
 
 use crate::core::{
-  kernel::actor::props::Props,
+  kernel::{
+    actor::props::{MailboxConfig, Props},
+    dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  },
   typed::{
     actor::TypedActor,
     behavior::Behavior,
@@ -109,17 +112,13 @@ where
     match selector {
       | MailboxSelector::Default => self,
       | MailboxSelector::Unbounded => {
-        let policy = crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None);
-        let config = crate::core::kernel::actor::props::MailboxConfig::new(policy);
+        let policy = MailboxPolicy::unbounded(None);
+        let config = MailboxConfig::new(policy);
         self.map_props(|p| p.with_mailbox_config(config))
       },
       | MailboxSelector::Bounded(capacity) => {
-        let policy = crate::core::kernel::dispatch::mailbox::MailboxPolicy::bounded(
-          capacity,
-          crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
-          None,
-        );
-        let config = crate::core::kernel::actor::props::MailboxConfig::new(policy);
+        let policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
+        let config = MailboxConfig::new(policy);
         self.map_props(|p| p.with_mailbox_config(config))
       },
       | MailboxSelector::FromConfig(id) => self.map_props(|p| p.with_mailbox_id(id)),
