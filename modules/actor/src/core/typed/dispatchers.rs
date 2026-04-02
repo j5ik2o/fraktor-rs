@@ -28,7 +28,8 @@ const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 /// Corresponds to Pekko's `ActorSystem.dispatchers` / `Dispatchers` abstract
 /// class.
 ///
-/// Instances are obtained through [`TypedActorSystem::dispatchers()`].
+/// Instances are obtained through
+/// [`crate::core::typed::system::TypedActorSystem::dispatchers`].
 #[derive(Clone)]
 pub struct Dispatchers {
   state: SystemStateShared,

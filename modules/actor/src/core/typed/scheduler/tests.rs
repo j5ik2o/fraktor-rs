@@ -1,5 +1,7 @@
 use core::time::Duration;
 
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+
 use crate::core::{
   kernel::actor::{
     actor_ref::ActorRef,
@@ -10,10 +12,15 @@ use crate::core::{
 
 // --- ヘルパー ---------------------------------------------------------------
 
-fn new_scheduler() -> Scheduler {
+fn new_scheduler_with_context() -> (Scheduler, SchedulerContext) {
   let context = SchedulerContext::new(SchedulerConfig::default());
   let shared = TypedSchedulerShared::new(context.scheduler());
-  Scheduler::new(shared)
+  (Scheduler::new(shared), context)
+}
+
+fn new_scheduler() -> Scheduler {
+  let (scheduler, _context) = new_scheduler_with_context();
+  scheduler
 }
 
 fn null_receiver() -> TypedActorRef<u32> {
@@ -142,6 +149,28 @@ fn schedule_once_runnable_returns_handle() {
 
   // 期待: SchedulerHandle が返る
   assert!(result.is_ok(), "schedule_once_runnable should return a handle");
+}
+
+#[test]
+fn schedule_once_runnable_executes_when_context_runs() {
+  // 前提: Scheduler facade と SchedulerContext がある
+  let (scheduler, context) = new_scheduler_with_context();
+  let executions = ArcShared::new(std::sync::atomic::AtomicUsize::new(0));
+
+  // 操作: runnable を schedule してテスト用ランナーを進める
+  let handle = scheduler
+    .schedule_once_runnable(Duration::from_millis(1), {
+      let executions = executions.clone();
+      move |_batch: &ExecutionBatch| {
+        executions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      }
+    })
+    .expect("schedule_once_runnable should return a handle");
+  assert!(!handle.is_cancelled());
+  context.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  // 期待: runnable が実行される
+  assert_eq!(executions.load(std::sync::atomic::Ordering::Relaxed), 1);
 }
 
 #[test]
