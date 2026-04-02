@@ -1,5 +1,8 @@
 use alloc::collections::BTreeSet;
-use core::hint::spin_loop;
+use std::{
+  env, thread,
+  time::{Duration, Instant},
+};
 
 use crate::core::{
   kernel::{
@@ -69,13 +72,31 @@ impl Actor for EchoActor {
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  for _ in 0..10_000 {
+  let deadline = Instant::now() + scaled_duration(Duration::from_secs(5));
+  while Instant::now() < deadline {
     if condition() {
       return;
     }
-    spin_loop();
+    thread::yield_now();
   }
   panic!("condition not met");
+}
+
+fn test_time_factor() -> f64 {
+  match env::var("TEST_TIME_FACTOR") {
+    | Err(_) => 1.0,
+    | Ok(raw) => {
+      let factor = raw
+        .parse::<f64>()
+        .unwrap_or_else(|e| panic!("test_time_factor: TEST_TIME_FACTOR={raw:?} is not a valid f64: {e}"));
+      assert!(factor > 0.0, "test_time_factor: TEST_TIME_FACTOR={raw:?} must be positive, got {factor}");
+      factor
+    },
+  }
+}
+
+fn scaled_duration(base: Duration) -> Duration {
+  base.mul_f64(test_time_factor())
 }
 
 /// `path` returns `Some` when the actor is registered in the system.

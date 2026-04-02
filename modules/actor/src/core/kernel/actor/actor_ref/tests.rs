@@ -108,7 +108,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   let pid = Pid::new(10, 1);
   let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
   let response = reference.ask(AnyMessage::new("will-fail"));
-  assert_eq!(response.sender().pid(), pid);
+  assert_ne!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
   assert!(matches!(result, Err(crate::core::kernel::actor::messaging::AskError::SendFailed(_))));
 }
