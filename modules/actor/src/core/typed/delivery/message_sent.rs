@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
-
 use crate::core::typed::delivery::{ConfirmationQualifier, SeqNr};
 
 /// A persisted fact representing a message that has been sent by the producer.
@@ -72,8 +70,10 @@ where
 
   /// Returns a new `MessageSent` with the given confirmation qualifier.
   #[must_use]
-  pub fn with_confirmation_qualifier(self, qualifier: String) -> Self {
-    Self { confirmation_qualifier: qualifier, ..self }
+  pub fn with_confirmation_qualifier<T>(self, qualifier: T) -> Self
+  where
+    T: Into<ConfirmationQualifier>, {
+    Self { confirmation_qualifier: qualifier.into(), ..self }
   }
 
   /// Returns a new `MessageSent` with the given timestamp.

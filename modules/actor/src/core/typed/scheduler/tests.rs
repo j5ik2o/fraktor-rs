@@ -33,8 +33,7 @@ fn schedule_once_returns_handle() {
   let result = scheduler.schedule_once(Duration::from_millis(10), null_receiver(), 42u32);
 
   // Then: a SchedulerHandle is returned
-  assert!(result.is_ok(), "schedule_once should return a handle");
-  let handle = result.unwrap();
+  let handle = result.expect("schedule_once should return a handle");
   assert!(!handle.is_cancelled(), "newly created handle should not be cancelled");
 }
 

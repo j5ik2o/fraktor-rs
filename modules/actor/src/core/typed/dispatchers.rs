@@ -82,7 +82,7 @@ impl Dispatchers {
 
   fn normalize_dispatcher_id(id: &str) -> &str {
     match id {
-      | Self::DEFAULT_DISPATCHER_ID | Self::INTERNAL_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
+      | Self::DEFAULT_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
       | _ => id,
     }
   }

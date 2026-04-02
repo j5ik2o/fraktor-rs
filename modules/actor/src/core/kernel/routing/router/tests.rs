@@ -1,7 +1,7 @@
-use alloc::vec;
+use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -10,8 +10,9 @@ use crate::core::kernel::{
     error::SendError,
     messaging::AnyMessage,
   },
-  routing::{Broadcast, Routee, Router, RoutingLogic},
 };
+
+use super::super::{broadcast::Broadcast, routee::Routee, router::Router, routing_logic::RoutingLogic};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,21 +27,37 @@ impl RoutingLogic for FixedIndexLogic {
   }
 }
 
-/// A sender that records how many messages were received.
+/// A sender that records delivered messages.
 struct CountingSender {
-  count: ArcShared<AtomicUsize>,
+  count:    ArcShared<AtomicUsize>,
+  messages: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
 }
 
 impl ActorRefSender for CountingSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.count.fetch_add(1, Ordering::Relaxed);
+    self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
 }
 
-fn make_counting_routee(pid: Pid, counter: &ArcShared<AtomicUsize>) -> Routee {
-  let sender = CountingSender { count: counter.clone() };
+fn make_counting_routee(
+  pid: Pid,
+  counter: &ArcShared<AtomicUsize>,
+  messages: &ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+) -> Routee {
+  let sender = CountingSender { count: counter.clone(), messages: messages.clone() };
   Routee::ActorRef(ActorRef::new(pid, sender))
+}
+
+fn routee_pids(routees: &[Routee]) -> Vec<Pid> {
+  routees
+    .iter()
+    .filter_map(|routee| match routee {
+      | Routee::ActorRef(actor_ref) => Some(actor_ref.pid()),
+      | _ => None,
+    })
+    .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -52,7 +69,9 @@ fn new_creates_router_with_logic_and_routees() {
   // Given: a logic and two routees
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
 
   // When: creating a new Router
   let router = Router::new(FixedIndexLogic(0), routees);
@@ -70,7 +89,9 @@ fn route_sends_to_selected_routee() {
   // Given: a router with two routees, logic selects index 1
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
   let mut router = Router::new(FixedIndexLogic(1), routees);
 
   // When: routing a normal message
@@ -88,10 +109,13 @@ fn route_broadcast_sends_to_all_routees() {
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
   let c2 = ArcShared::new(AtomicUsize::new(0));
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m2 = ArcShared::new(NoStdMutex::new(Vec::new()));
   let routees = vec![
-    make_counting_routee(Pid::new(1, 0), &c0),
-    make_counting_routee(Pid::new(2, 0), &c1),
-    make_counting_routee(Pid::new(3, 0), &c2),
+    make_counting_routee(Pid::new(1, 0), &c0, &m0),
+    make_counting_routee(Pid::new(2, 0), &c1, &m1),
+    make_counting_routee(Pid::new(3, 0), &c2, &m2),
   ];
   let mut router = Router::new(FixedIndexLogic(0), routees);
 
@@ -103,6 +127,13 @@ fn route_broadcast_sends_to_all_routees() {
   assert_eq!(c0.load(Ordering::Relaxed), 1);
   assert_eq!(c1.load(Ordering::Relaxed), 1);
   assert_eq!(c2.load(Ordering::Relaxed), 1);
+  for messages in [&m0, &m1, &m2] {
+    let deliveries = messages.lock();
+    assert_eq!(deliveries.len(), 1);
+    let payload =
+      deliveries[0].downcast_ref::<u32>().expect("each routee should receive the unwrapped broadcast payload");
+    assert_eq!(*payload, 99_u32);
+  }
 }
 
 #[test]
@@ -126,22 +157,27 @@ fn with_routees_replaces_all_routees() {
   // Given: a router with two routees
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
   let router = Router::new(FixedIndexLogic(0), routees);
 
   // When: replacing with a new set of three routees
   let c3 = ArcShared::new(AtomicUsize::new(0));
   let c4 = ArcShared::new(AtomicUsize::new(0));
   let c5 = ArcShared::new(AtomicUsize::new(0));
+  let m3 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m4 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m5 = ArcShared::new(NoStdMutex::new(Vec::new()));
   let new_routees = vec![
-    make_counting_routee(Pid::new(10, 0), &c3),
-    make_counting_routee(Pid::new(11, 0), &c4),
-    make_counting_routee(Pid::new(12, 0), &c5),
+    make_counting_routee(Pid::new(10, 0), &c3, &m3),
+    make_counting_routee(Pid::new(11, 0), &c4, &m4),
+    make_counting_routee(Pid::new(12, 0), &c5, &m5),
   ];
   let router = router.with_routees(new_routees);
 
-  // Then: the router has three new routees
-  assert_eq!(router.routees().len(), 3);
+  // Then: 置換後の routee 群と順序が一致する
+  assert_eq!(routee_pids(router.routees()), vec![Pid::new(10, 0), Pid::new(11, 0), Pid::new(12, 0)]);
 }
 
 #[test]
@@ -149,16 +185,19 @@ fn add_routee_appends_to_list() {
   // Given: a router with two routees
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
   let router = Router::new(FixedIndexLogic(0), routees);
 
   // When: adding a third routee
   let c2 = ArcShared::new(AtomicUsize::new(0));
-  let new_routee = make_counting_routee(Pid::new(3, 0), &c2);
+  let m2 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let new_routee = make_counting_routee(Pid::new(3, 0), &c2, &m2);
   let router = router.add_routee(new_routee);
 
-  // Then: the router has three routees
-  assert_eq!(router.routees().len(), 3);
+  // Then: 末尾に追加される
+  assert_eq!(routee_pids(router.routees()), vec![Pid::new(1, 0), Pid::new(2, 0), Pid::new(3, 0)]);
 }
 
 #[test]
@@ -167,20 +206,24 @@ fn remove_routee_removes_matching() {
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
   let c2 = ArcShared::new(AtomicUsize::new(0));
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m2 = ArcShared::new(NoStdMutex::new(Vec::new()));
   let routees = vec![
-    make_counting_routee(Pid::new(1, 0), &c0),
-    make_counting_routee(Pid::new(2, 0), &c1),
-    make_counting_routee(Pid::new(3, 0), &c2),
+    make_counting_routee(Pid::new(1, 0), &c0, &m0),
+    make_counting_routee(Pid::new(2, 0), &c1, &m1),
+    make_counting_routee(Pid::new(3, 0), &c2, &m2),
   ];
   let router = Router::new(FixedIndexLogic(0), routees);
 
   // When: removing the middle routee by creating one with the same pid
   let c_ref = ArcShared::new(AtomicUsize::new(0));
-  let to_remove = make_counting_routee(Pid::new(2, 0), &c_ref);
+  let m_ref = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let to_remove = make_counting_routee(Pid::new(2, 0), &c_ref, &m_ref);
   let router = router.remove_routee(&to_remove);
 
-  // Then: the router has two remaining routees
-  assert_eq!(router.routees().len(), 2);
+  // Then: 指定した pid の routee だけが削除される
+  assert_eq!(routee_pids(router.routees()), vec![Pid::new(1, 0), Pid::new(3, 0)]);
 }
 
 #[test]
@@ -188,16 +231,19 @@ fn remove_routee_with_no_match_keeps_all() {
   // Given: a router with two routees
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
   let router = Router::new(FixedIndexLogic(0), routees);
 
   // When: removing a routee that does not exist in the list
   let c3 = ArcShared::new(AtomicUsize::new(0));
-  let non_existent = make_counting_routee(Pid::new(99, 0), &c3);
+  let m3 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let non_existent = make_counting_routee(Pid::new(99, 0), &c3, &m3);
   let router = router.remove_routee(&non_existent);
 
-  // Then: all routees remain
-  assert_eq!(router.routees().len(), 2);
+  // Then: routee 群は変わらない
+  assert_eq!(routee_pids(router.routees()), vec![Pid::new(1, 0), Pid::new(2, 0)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +255,9 @@ fn routees_accessor_returns_correct_len() {
   // Given: a router with two routees
   let c0 = ArcShared::new(AtomicUsize::new(0));
   let c1 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0), make_counting_routee(Pid::new(2, 0), &c1)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0), make_counting_routee(Pid::new(2, 0), &c1, &m1)];
   let router = Router::new(FixedIndexLogic(0), routees);
 
   // When: accessing routees
@@ -227,7 +275,8 @@ fn routees_accessor_returns_correct_len() {
 fn route_with_noroutee_selected_returns_ok() {
   // Given: a router with routees but logic returns a static NoRoutee
   let c0 = ArcShared::new(AtomicUsize::new(0));
-  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0)];
+  let m0 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![make_counting_routee(Pid::new(1, 0), &c0, &m0)];
 
   struct NoRouteeLogic;
 

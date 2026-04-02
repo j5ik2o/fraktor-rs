@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::kernel::routing::Routee;
+use super::routee::Routee;
 
 /// Responses to router management commands.
 ///

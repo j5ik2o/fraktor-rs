@@ -2,27 +2,27 @@ use crate::core::typed::delivery::{ConfirmationQualifier, NO_QUALIFIER};
 
 #[test]
 fn no_qualifier_is_empty_string() {
-  // Given/When: the NO_QUALIFIER constant
+  // 前提・実行: NO_QUALIFIER 定数を参照する
   let qualifier: &ConfirmationQualifier = &NO_QUALIFIER;
 
-  // Then: it should be an empty string
+  // 確認: 空文字列である
   assert!(qualifier.is_empty());
 }
 
 #[test]
 fn confirmation_qualifier_is_string_alias() {
-  // Given: a ConfirmationQualifier constructed from a string
+  // 前提: 文字列から ConfirmationQualifier を構築する
   let qualifier: ConfirmationQualifier = alloc::string::String::from("topic-A");
 
-  // Then: it should behave as a String
+  // 確認: String として振る舞う
   assert_eq!(qualifier.as_str(), "topic-A");
 }
 
 #[test]
 fn no_qualifier_equals_empty_string() {
-  // Given: the NO_QUALIFIER constant and an empty string
+  // 前提: NO_QUALIFIER と空文字列を用意する
   let empty: ConfirmationQualifier = alloc::string::String::from("");
 
-  // Then: they should be equal
+  // 確認: 両者は等しい
   assert_eq!(NO_QUALIFIER, empty);
 }

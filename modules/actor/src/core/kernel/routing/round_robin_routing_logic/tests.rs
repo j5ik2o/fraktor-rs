@@ -4,8 +4,9 @@ use crate::core::kernel::{
     actor_ref::{ActorRef, NullSender},
     messaging::AnyMessage,
   },
-  routing::{RoundRobinRoutingLogic, Routee, RoutingLogic},
 };
+
+use super::super::{routee::Routee, round_robin_routing_logic::RoundRobinRoutingLogic, routing_logic::RoutingLogic};
 
 fn make_routee(id: u64) -> Routee {
   Routee::ActorRef(ActorRef::new(Pid::new(id, 0), NullSender))
@@ -30,7 +31,7 @@ fn select_cycles_through_routees() {
   let mut selected_indices = alloc::vec::Vec::new();
   for _ in 0..6 {
     let selected = logic.select(&message, &routees);
-    let idx = routees.iter().position(|r| core::ptr::eq(r, selected)).unwrap();
+    let idx = routees.iter().position(|r| core::ptr::eq(r, selected)).expect("selected routee not found in routees");
     selected_indices.push(idx);
   }
 

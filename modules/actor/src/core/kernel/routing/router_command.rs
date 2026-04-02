@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::routing::Routee;
+use super::routee::Routee;
 
 /// Commands for dynamically modifying a router's routee set.
 ///

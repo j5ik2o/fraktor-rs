@@ -144,7 +144,7 @@ impl ConsumerController {
         };
       let state_for_msg = state.clone();
 
-      Behaviors::receive_message(move |_ctx, command: &ConsumerControllerCommand<A>| {
+      Behaviors::receive_message(move |ctx, command: &ConsumerControllerCommand<A>| {
         let (deferred, should_stop) = {
           let mut state = state_for_msg.lock();
           let mut deferred = Vec::new();
@@ -185,7 +185,7 @@ impl ConsumerController {
           (deferred, should_stop)
         }; // state lock released here
 
-        execute_deferred(deferred);
+        execute_deferred(deferred, ctx);
         if should_stop {
           return Ok(Behaviors::stopped());
         }
@@ -327,13 +327,39 @@ fn collect_send_request<A>(
   }
 }
 
-fn execute_deferred<A>(actions: Vec<DeferredAction<A>>)
-where
+fn execute_deferred<A>(
+  actions: Vec<DeferredAction<A>>,
+  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, ConsumerControllerCommand<A>>,
+) where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {
-      | DeferredAction::SendToProducer(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
-      | DeferredAction::Deliver(mut target, msg) => if let Err(_error) = target.try_tell(msg) {},
+      | DeferredAction::SendToProducer(mut target, msg) => {
+        let target_pid = target.pid();
+        if let Err(error) = target.try_tell(msg) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!(
+              "ConsumerController execute_deferred failed to SendToProducer for {:?}: {:?}",
+              target_pid,
+              error
+            ),
+            Some(ctx.pid()),
+            None,
+          );
+        }
+      },
+      | DeferredAction::Deliver(mut target, msg) => {
+        let target_pid = target.pid();
+        if let Err(error) = target.try_tell(msg) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("ConsumerController execute_deferred failed to Deliver for {:?}: {:?}", target_pid, error),
+            Some(ctx.pid()),
+            None,
+          );
+        }
+      },
     }
   }
 }

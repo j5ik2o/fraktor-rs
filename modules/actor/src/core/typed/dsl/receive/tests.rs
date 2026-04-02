@@ -3,7 +3,7 @@ use crate::core::{
   typed::{
     TypedProps,
     actor::TypedActorContext,
-    behavior::Behavior,
+    behavior::{Behavior, BehaviorDirective},
     dsl::{Behaviors, receive::Receive},
     message_and_signals::BehaviorSignal,
   },
@@ -109,8 +109,9 @@ fn receive_message_still_works_independently() {
   let mut b = behavior;
   let result = b.handle_message(&mut typed_ctx, &99u32);
 
-  // Then: it still works as before
-  assert!(result.is_ok());
+  // Then: same ビヘイビアを返す
+  let next = result.expect("receive_message handler should return a next behavior");
+  assert!(matches!(next.directive(), BehaviorDirective::Same));
 }
 
 #[test]

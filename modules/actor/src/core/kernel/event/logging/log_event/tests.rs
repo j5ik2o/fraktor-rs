@@ -4,14 +4,14 @@ use core::time::Duration;
 use super::LogEvent;
 use crate::core::kernel::{actor::Pid, event::logging::LogLevel};
 
-// --- LogEvent: logger_name field ---
+// --- LogEvent: logger_name フィールド ---
 
 #[test]
 fn log_event_new_with_logger_name_stores_value() {
-  // Given: a logger name and standard log parameters
+  // 前提: logger name と通常のログ引数がある
   let logger_name = Some(String::from("my.custom.logger"));
 
-  // When: a LogEvent is created with a logger_name
+  // 実行: logger_name 付きで LogEvent を生成する
   let event = LogEvent::new(
     LogLevel::Info,
     String::from("test message"),
@@ -20,31 +20,31 @@ fn log_event_new_with_logger_name_stores_value() {
     logger_name,
   );
 
-  // Then: the logger_name is accessible via the accessor
+  // 確認: logger_name が accessor から取得できる
   assert_eq!(event.logger_name(), Some("my.custom.logger"));
 }
 
 #[test]
 fn log_event_new_without_logger_name_returns_none() {
-  // Given: no logger name specified
-  // When: a LogEvent is created without a logger_name
+  // 前提: logger name を指定しない
+  // 実行: logger_name なしで LogEvent を生成する
   let event = LogEvent::new(LogLevel::Debug, String::from("debug message"), Duration::from_millis(200), None, None);
 
-  // Then: logger_name returns None
+  // 確認: logger_name は None を返す
   assert_eq!(event.logger_name(), None);
 }
 
 #[test]
 fn log_event_preserves_all_fields_with_logger_name() {
-  // Given: all fields including logger_name
+  // 前提: logger_name を含む全フィールドを用意する
   let pid = Pid::new(42, 0);
   let logger_name = Some(String::from("actor.context.logger"));
 
-  // When: a LogEvent is created
+  // 実行: LogEvent を生成する
   let event =
     LogEvent::new(LogLevel::Warn, String::from("warn message"), Duration::from_secs(5), Some(pid), logger_name);
 
-  // Then: all existing fields remain correct alongside logger_name
+  // 確認: logger_name と既存フィールドの両方が正しく保持される
   assert_eq!(event.level(), LogLevel::Warn);
   assert_eq!(event.message(), "warn message");
   assert_eq!(event.timestamp(), Duration::from_secs(5));

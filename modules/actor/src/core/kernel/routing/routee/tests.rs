@@ -176,7 +176,7 @@ fn send_on_several_sends_to_all() {
 }
 
 #[test]
-fn send_on_several_stops_at_first_error() {
+fn send_on_several_keeps_delivering_after_first_error() {
   // Given: Several with [ok, closed, ok]
   let (count_ok, sender_ok) = CapturingSender::new();
   let (count_ok2, sender_ok2) = CapturingSender::new();
@@ -189,11 +189,10 @@ fn send_on_several_stops_at_first_error() {
   // When: sending a message
   let result = routee.send(AnyMessage::new(42_u32));
 
-  // Then: the first routee received the message, but the second failed,
-  // so the third should NOT have received it
+  // Then: 最初のエラーは返すが、後続 routee への配信は継続する
   assert!(result.is_err());
   assert_eq!(count_ok.load(Ordering::Relaxed), 1);
-  assert_eq!(count_ok2.load(Ordering::Relaxed), 0);
+  assert_eq!(count_ok2.load(Ordering::Relaxed), 1);
 }
 
 // ---------------------------------------------------------------------------

@@ -41,7 +41,7 @@ fn lookup_from_config_selector_resolves_registered_dispatcher() {
 }
 
 #[test]
-fn lookup_from_config_selector_normalizes_internal_dispatcher_id() {
+fn lookup_from_config_selector_keeps_internal_dispatcher_id_distinct() {
   // Given: a Dispatchers facade backed by a system with default dispatchers
   let dispatchers = new_dispatchers_with_defaults();
 
@@ -49,8 +49,11 @@ fn lookup_from_config_selector_normalizes_internal_dispatcher_id() {
   let selector = DispatcherSelector::from_config(Dispatchers::INTERNAL_DISPATCHER_ID);
   let result = dispatchers.lookup(&selector);
 
-  // Then: the public id is normalized to the registered dispatcher
-  assert!(result.is_ok(), "FromConfig(InternalDispatcherId) should resolve to the default dispatcher");
+  // Then: default dispatcher には正規化されず、未登録なら Unknown になる
+  assert!(
+    matches!(result, Err(DispatcherRegistryError::Unknown(_))),
+    "FromConfig(InternalDispatcherId) should stay distinct from the default dispatcher"
+  );
 }
 
 #[test]

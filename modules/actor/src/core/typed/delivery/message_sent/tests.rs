@@ -98,9 +98,17 @@ fn partial_eq_compares_all_fields() {
   // Given
   let a = MessageSent::new(1, 42_u32, false, String::from("q"), 100);
   let b = MessageSent::new(1, 42_u32, false, String::from("q"), 100);
-  let c = MessageSent::new(2, 42_u32, false, String::from("q"), 100);
+  let different_seq = MessageSent::new(2, 42_u32, false, String::from("q"), 100);
+  let different_message = MessageSent::new(1, 7_u32, false, String::from("q"), 100);
+  let different_ack = MessageSent::new(1, 42_u32, true, String::from("q"), 100);
+  let different_qualifier = MessageSent::new(1, 42_u32, false, String::from("other"), 100);
+  let different_timestamp = MessageSent::new(1, 42_u32, false, String::from("q"), 101);
 
   // Then
   assert_eq!(a, b);
-  assert_ne!(a, c);
+  assert_ne!(a, different_seq);
+  assert_ne!(a, different_message);
+  assert_ne!(a, different_ack);
+  assert_ne!(a, different_qualifier);
+  assert_ne!(a, different_timestamp);
 }

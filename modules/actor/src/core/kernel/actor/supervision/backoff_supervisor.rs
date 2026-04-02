@@ -3,19 +3,22 @@
 use alloc::string::String;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
-use crate::core::kernel::actor::{
-  Actor, ActorContext, Pid,
-  child_ref::ChildRef,
-  error::ActorError,
-  messaging::{AnyMessage, AnyMessageView},
-  props::Props,
-  scheduler::SchedulerCommand,
-  supervision::{
-    BackoffOnFailureOptions, BackoffOnStopOptions, BackoffSupervisorCommand, BackoffSupervisorResponse,
-    BackoffSupervisorStrategy, SupervisorStrategy, SupervisorStrategyConfig,
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorContext, Pid,
+    child_ref::ChildRef,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::SchedulerCommand,
+    supervision::{
+      BackoffOnFailureOptions, BackoffOnStopOptions, BackoffSupervisorCommand, BackoffSupervisorResponse,
+      BackoffSupervisorStrategy, SupervisorStrategy, SupervisorStrategyConfig,
+    },
   },
+  event::logging::LogLevel,
 };
 
 #[cfg(test)]
@@ -37,6 +40,7 @@ enum BackoffSupervisorInternalCommand {
 }
 
 /// Configuration bundle for constructing a [`BackoffSupervisorActor`].
+#[derive(Clone)]
 struct BackoffConfig {
   child_props:         Props,
   child_name:          String,
@@ -103,21 +107,6 @@ impl BackoffConfig {
       manual_reset:        options.manual_reset(),
       supervisor_strategy: options.supervisor_strategy().cloned(),
       max_retries:         options.max_retries(),
-    }
-  }
-}
-
-impl Clone for BackoffConfig {
-  fn clone(&self) -> Self {
-    Self {
-      child_props:         self.child_props.clone(),
-      child_name:          self.child_name.clone(),
-      strategy:            self.strategy.clone(),
-      mode:                self.mode.clone(),
-      auto_reset:          self.auto_reset,
-      manual_reset:        self.manual_reset,
-      supervisor_strategy: self.supervisor_strategy.clone(),
-      max_retries:         self.max_retries,
     }
   }
 }
@@ -251,12 +240,25 @@ impl BackoffSupervisorActor {
       | BackoffSupervisorCommand::GetCurrentChild => {
         let pid = self.child.as_ref().map(ChildRef::pid);
         let response = AnyMessage::new(BackoffSupervisorResponse::CurrentChild(pid));
-        // best-effort: if no sender, the reply is simply not delivered.
-        let _reply_result = ctx.reply(response);
+        if let Err(error) = ctx.reply(response) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("BackoffSupervisor handle_command failed to reply to GetCurrentChild: {:?}", error),
+            Some(ctx.pid()),
+            None,
+          );
+        }
       },
       | BackoffSupervisorCommand::GetRestartCount => {
         let response = AnyMessage::new(BackoffSupervisorResponse::RestartCount(self.restart_count));
-        let _reply_result = ctx.reply(response);
+        if let Err(error) = ctx.reply(response) {
+          ctx.system().emit_log(
+            LogLevel::Warn,
+            alloc::format!("BackoffSupervisor handle_command failed to reply to GetRestartCount: {:?}", error),
+            Some(ctx.pid()),
+            None,
+          );
+        }
       },
       | BackoffSupervisorCommand::Reset => {
         self.restart_count = 0;
@@ -334,7 +336,7 @@ impl Actor for BackoffSupervisorActor {
       },
       | BackoffMode::OnFailure => {
         let base_strategy = self.supervisor_strategy.clone().unwrap_or_default();
-        let decision_source = base_strategy.clone();
+        let decision_source = ArcShared::new(base_strategy.clone());
         base_strategy
           .with_dyn_decider(move |error| match decision_source.decide(error) {
             | crate::core::kernel::actor::supervision::SupervisorDirective::Restart => {

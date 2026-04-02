@@ -145,6 +145,13 @@ fn direct_worker_delivery_tracks_worker_ack_timeout() {
         && *worker_local_seq_nr == 1
         && matches!(command, super::super::producer_controller_command::ProducerControllerCommandKind::Msg { .. })
   ));
+  let inflight = state
+    .workers
+    .get(&10)
+    .and_then(|entry| entry.in_flight.get(&1))
+    .expect("worker entry should track in-flight delivery after collect_on_msg");
+  assert_eq!(inflight.seq_nr(), 1);
+  assert_eq!(*inflight.message(), 42_u32);
 }
 
 #[test]

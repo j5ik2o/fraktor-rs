@@ -1029,6 +1029,3 @@ impl Default for SystemState {
     Self::new()
   }
 }
-
-unsafe impl Send for SystemState {}
-unsafe impl Sync for SystemState {}

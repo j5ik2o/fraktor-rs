@@ -415,10 +415,28 @@ fn system_state_emit_log() {
   use alloc::string::String;
 
   let state = build_state();
+  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
+  let _subscription = state.event_stream().subscribe(&subscriber);
   let pid = state.allocate_pid();
 
   state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid), None);
   state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None, None);
+  state.emit_log(
+    crate::core::kernel::event::logging::LogLevel::Warn,
+    String::from("named logger message"),
+    Some(pid),
+    Some(String::from("my_logger")),
+  );
+
+  let events_snapshot = events_shared.lock().clone();
+  let named_log = events_snapshot.iter().rev().find_map(|event| match event {
+    | EventStreamEvent::Log(log) if log.message() == "named logger message" => Some(log.clone()),
+    | _ => None,
+  });
+
+  let named_log = named_log.expect("named logger log event should be published");
+  assert_eq!(named_log.logger_name(), Some("my_logger"));
 }
 
 #[test]

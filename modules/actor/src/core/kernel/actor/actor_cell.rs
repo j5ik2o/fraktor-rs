@@ -6,6 +6,7 @@ mod tests;
 use alloc::{
   boxed::Box,
   collections::{BTreeSet, VecDeque},
+  format,
   string::String,
   vec,
   vec::Vec,
@@ -40,7 +41,7 @@ use crate::core::{
         metrics_event::MailboxPressureEvent,
       },
     },
-    event::stream::EventStreamEvent,
+    event::{logging::LogLevel, stream::EventStreamEvent},
     system::{
       ActorSystem,
       guardian::GuardianKind,
@@ -579,13 +580,28 @@ impl ActorCell {
 
     if let Some((Some(message), target)) = result {
       if let Some(mut target_ref) = target {
-        // pipe_to: 外部 actor への best-effort 配信。target が停止済みの場合は
-        // 配信失敗が想定される。send failure の観測は try_tell 側が担う。
-        let _pipe_delivery = target_ref.try_tell(message);
+        let target_pid = target_ref.pid();
+        if let Err(send_error) = target_ref.try_tell(message) {
+          self.system().record_send_error(Some(target_pid), &send_error);
+          self.system().emit_log(
+            LogLevel::Warn,
+            format!("pipe_to delivery failed for target {:?}: {:?}", target_pid, send_error),
+            Some(self.pid()),
+            None,
+          );
+        }
       } else {
-        // pipe_to_self: actor 自身の mailbox への best-effort 配信。
-        // actor が停止済みなら結果は不要。send failure の観測は try_tell 側が担う。
-        let _pipe_delivery = self.actor_ref().try_tell(message);
+        let self_pid = self.pid();
+        let mut self_ref = self.actor_ref();
+        if let Err(send_error) = self_ref.try_tell(message) {
+          self.system().record_send_error(Some(self_pid), &send_error);
+          self.system().emit_log(
+            LogLevel::Warn,
+            format!("pipe_to_self delivery failed for {:?}: {:?}", self_pid, send_error),
+            Some(self_pid),
+            None,
+          );
+        }
       }
     }
   }

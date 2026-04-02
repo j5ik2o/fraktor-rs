@@ -63,6 +63,12 @@ where
     demand_adapter:               TypedActorRef<ProducerControllerRequestNext<A>>,
     producer_controller_settings: crate::core::typed::delivery::ProducerControllerSettings,
   },
+  LogDropped {
+    total_seq_nr: u64,
+    buffered_len: usize,
+    buffer_size:  u32,
+    message_type: &'static str,
+  },
 }
 
 #[derive(Clone, Copy)]
@@ -360,8 +366,8 @@ impl WorkPullingProducerController {
       } else {
         None
       };
-      let durable_queue = if let Some(durable_queue_behavior) = durable_queue_behavior.clone() {
-        match ctx.spawn_anonymous(&durable_queue_behavior) {
+      let durable_queue = if let Some(durable_queue_behavior) = durable_queue_behavior.as_ref() {
+        match ctx.spawn_anonymous(&durable_queue_behavior.clone()) {
           | Ok(child) => Some(child.into_actor_ref()),
           | Err(error) => {
             let message = alloc::format!("WorkPullingProducerController failed to spawn durable queue: {:?}", error);
@@ -497,15 +503,23 @@ impl WorkPullingProducerController {
               }
             },
             | WorkPullingProducerControllerCommandKind::WorkerDeliveryTimedOut { worker_key, worker_local_seq_nr } => {
-              if let Some(entry) = state.workers.get(worker_key)
-                && let Some(sent) = entry.in_flight.get(worker_local_seq_nr)
-              {
-                timeout_warning = Some(alloc::format!(
-                  "WorkPullingProducerController worker delivery timed out for worker {} local_seq_nr {} total_seq_nr {}",
-                  worker_key,
-                  worker_local_seq_nr,
-                  sent.seq_nr()
-                ));
+              if let Some(entry) = state.workers.remove(worker_key) {
+                if let Some(sent) = entry.in_flight.get(worker_local_seq_nr) {
+                  timeout_warning = Some(alloc::format!(
+                    "WorkPullingProducerController worker delivery timed out for worker {} local_seq_nr {} total_seq_nr {}; removing stalled worker and replaying in-flight messages",
+                    worker_key,
+                    worker_local_seq_nr,
+                    sent.seq_nr()
+                  ));
+                }
+                deferred.push(WppcDeferredAction::StopWorkerPc(entry.producer_controller.clone()));
+                for inflight in entry.in_flight.into_values() {
+                  deferred.push(WppcDeferredAction::TellSelf(
+                    self_ref.clone(),
+                    WorkPullingProducerControllerCommand::replay_stored_message(inflight),
+                  ));
+                }
+                collect_maybe_request_next(&mut state, &mut deferred);
               }
             },
             | WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } => {
@@ -611,13 +625,20 @@ fn collect_on_worker_listing<A>(
 fn collect_on_msg<A>(state: &mut WorkPullingState<A>, message: A, deferred: &mut Vec<WppcDeferredAction<A>>)
 where
   A: Clone + Send + Sync + 'static, {
-  let work = BufferedWork::Fresh { seq_nr: state.current_seq_nr, message };
+  let total_seq_nr = state.current_seq_nr;
+  let work = BufferedWork::Fresh { seq_nr: total_seq_nr, message };
   if let Some(worker_key) = state.find_worker_with_demand() {
     collect_send_to_worker(state, worker_key, work, deferred);
   } else if (state.buffered.len() as u32) < state.buffer_size {
     state.buffered.push_back(work);
+  } else {
+    deferred.push(WppcDeferredAction::LogDropped {
+      total_seq_nr,
+      buffered_len: state.buffered.len(),
+      buffer_size: state.buffer_size,
+      message_type: core::any::type_name::<A>(),
+    });
   }
-  // バッファが満杯かつデマンドのあるワーカーがない場合、メッセージは暗黙的に破棄される。
 
   state.current_seq_nr += 1;
   collect_maybe_request_next(state, deferred);
@@ -863,7 +884,8 @@ fn execute_wppc_deferred<A>(
   durable_queue_request_timeout: core::time::Duration,
 ) where
   A: Clone + Send + Sync + 'static, {
-  for action in actions {
+  let mut pending: VecDeque<WppcDeferredAction<A>> = actions.into_iter().collect();
+  while let Some(action) = pending.pop_front() {
     match action {
       | WppcDeferredAction::TellWorker { mut target, message, worker_key, worker_local_seq_nr } => {
         if let Err(error) = target.try_tell(message) {
@@ -973,8 +995,22 @@ fn execute_wppc_deferred<A>(
           collect_drain_buffered(&mut s, &mut drain_deferred);
           collect_maybe_request_next(&mut s, &mut drain_deferred);
           drop(s);
-          execute_wppc_deferred(drain_deferred, ctx, state, internal_ask_timeout, durable_queue_request_timeout);
+          pending.extend(drain_deferred);
         }
+      },
+      | WppcDeferredAction::LogDropped { total_seq_nr, buffered_len, buffer_size, message_type } => {
+        ctx.system().emit_log(
+          LogLevel::Warn,
+          alloc::format!(
+            "WorkPullingProducerController dropped buffered message: seq_nr={}, buffered_len={}, buffer_size={}, message_type={}",
+            total_seq_nr,
+            buffered_len,
+            buffer_size,
+            message_type
+          ),
+          Some(ctx.pid()),
+          None,
+        );
       },
     }
   }

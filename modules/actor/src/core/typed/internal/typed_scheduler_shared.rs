@@ -4,6 +4,7 @@ use super::TypedSchedulerGuard;
 use crate::core::kernel::actor::scheduler::SchedulerShared;
 
 /// Shared handle that provides typed access to the scheduler mutex.
+#[derive(Clone)]
 pub struct TypedSchedulerShared {
   inner: SchedulerShared,
 }
@@ -27,11 +28,5 @@ impl TypedSchedulerShared {
   #[must_use]
   pub fn raw(&self) -> SchedulerShared {
     self.inner.clone()
-  }
-}
-
-impl Clone for TypedSchedulerShared {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
   }
 }

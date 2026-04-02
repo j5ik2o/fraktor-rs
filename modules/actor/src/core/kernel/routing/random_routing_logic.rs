@@ -5,10 +5,9 @@ mod tests;
 
 use portable_atomic::{AtomicU64, Ordering};
 
-use crate::core::kernel::{
-  actor::messaging::AnyMessage,
-  routing::{Routee, RoutingLogic},
-};
+use crate::core::kernel::actor::messaging::AnyMessage;
+
+use super::{routee::Routee, routing_logic::RoutingLogic};
 
 /// Selects a routee at random using a seed-based xorshift64 PRNG.
 ///

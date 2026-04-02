@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
-
 use crate::core::typed::{
   TypedActorRef,
   delivery::{ConfirmationQualifier, DurableProducerQueueState, MessageSent, SeqNr, StoreMessageSentAck},
@@ -67,7 +65,11 @@ where
 
   /// Creates a `StoreMessageConfirmed` command.
   #[must_use]
-  pub const fn store_message_confirmed(seq_nr: SeqNr, confirmation_qualifier: String, timestamp_millis: u64) -> Self {
+  pub const fn store_message_confirmed(
+    seq_nr: SeqNr,
+    confirmation_qualifier: ConfirmationQualifier,
+    timestamp_millis: u64,
+  ) -> Self {
     Self::StoreMessageConfirmed { seq_nr, confirmation_qualifier, timestamp_millis }
   }
 }

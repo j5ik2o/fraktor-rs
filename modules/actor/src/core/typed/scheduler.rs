@@ -26,6 +26,7 @@ use crate::core::{
 /// the scheduler lock internally.
 ///
 /// Instances are obtained through [`TypedActorSystem::scheduler()`].
+#[derive(Clone)]
 pub struct Scheduler {
   inner: TypedSchedulerShared,
 }
@@ -163,11 +164,5 @@ impl Scheduler {
     self
       .inner
       .with_write(|guard| KernelScheduler::schedule_with_fixed_delay(&mut *guard, initial_delay, delay, command))
-  }
-}
-
-impl Clone for Scheduler {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
   }
 }

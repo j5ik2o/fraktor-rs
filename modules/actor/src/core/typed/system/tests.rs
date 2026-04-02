@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::time::Duration;
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
@@ -56,7 +57,10 @@ impl EventStreamSubscriber for RecordingSubscriber {
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
+  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+    .with_start_time(Duration::from_secs(1))
+    .with_tick_driver(tick_driver);
+  TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system")
 }
 
 // --- T5: Extension facade tests ---
@@ -191,9 +195,8 @@ fn start_time_returns_non_zero_duration() {
   // When: start_time() is called
   let start_time = system.start_time();
 
-  // Then: start_time is a valid duration (configured or injected)
-  // The exact value depends on implementation, but it should be retrievable
-  let _ = start_time;
+  // Then: start_time is non-zero
+  assert_ne!(start_time, Duration::ZERO, "start_time should be non-zero");
 
   system.terminate().expect("terminate");
 }

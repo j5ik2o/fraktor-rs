@@ -1,10 +1,9 @@
-use crate::core::kernel::{
-  actor::messaging::AnyMessage,
-  routing::{Routee, RoutingLogic},
-};
+use crate::core::kernel::actor::messaging::AnyMessage;
+
+use super::super::{routee::Routee, routing_logic::RoutingLogic};
 
 // ---------------------------------------------------------------------------
-// Helper: FirstRoutingLogic
+// 補助実装: FirstRoutingLogic
 // ---------------------------------------------------------------------------
 
 /// Test implementation that always selects the first routee.
@@ -12,38 +11,43 @@ struct FirstRoutingLogic;
 
 impl RoutingLogic for FirstRoutingLogic {
   fn select<'a>(&self, _message: &AnyMessage, routees: &'a [Routee]) -> &'a Routee {
-    &routees[0]
+    if routees.is_empty() {
+      static NO_ROUTEE: Routee = Routee::NoRoutee;
+      &NO_ROUTEE
+    } else {
+      &routees[0]
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// テスト
 // ---------------------------------------------------------------------------
 
 #[test]
 fn custom_logic_selects_expected_routee() {
-  // Given: a FirstRoutingLogic and a slice of routees
+  // 前提: FirstRoutingLogic と routee 配列がある
   let logic = FirstRoutingLogic;
   let routees = [Routee::NoRoutee, Routee::NoRoutee];
   let message = AnyMessage::new(1_u32);
 
-  // When: selecting a routee
+  // 実行: routee を選択する
   let selected = logic.select(&message, &routees);
 
-  // Then: it should be the first element
+  // 確認: 先頭要素が選択される
   assert_eq!(*selected, routees[0]);
 }
 
 #[test]
 fn select_returns_reference_to_slice_element() {
-  // Given: a FirstRoutingLogic and a slice of routees
+  // 前提: FirstRoutingLogic と routee 配列がある
   let logic = FirstRoutingLogic;
   let routees = [Routee::NoRoutee, Routee::NoRoutee];
   let message = AnyMessage::new(2_u32);
 
-  // When: selecting a routee
+  // 実行: routee を選択する
   let selected = logic.select(&message, &routees);
 
-  // Then: the returned reference should point to the same address as the slice element
+  // 確認: 返却参照は配列の同じ要素を指す
   assert!(core::ptr::eq(selected, &routees[0]));
 }

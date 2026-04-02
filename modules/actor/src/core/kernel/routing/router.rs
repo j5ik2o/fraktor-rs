@@ -5,10 +5,9 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  routing::{Broadcast, Routee, RoutingLogic},
-};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+
+use super::{broadcast::Broadcast, routee::Routee, routing_logic::RoutingLogic};
 
 /// Routes messages to one or more routees using a configured [`RoutingLogic`].
 ///
@@ -17,6 +16,10 @@ use crate::core::kernel::{
 /// The router follows an immutable-update pattern: mutation methods consume
 /// `self` and return a new `Router` instance with the updated routee set.
 /// The routing logic is shared (not cloned) across updates.
+///
+/// When no routees are registered, the router silently drops messages.
+/// If observability is needed, add dead-letter publication, warning logs,
+/// or hooks at routee management boundaries or around [`route`](Self::route).
 pub struct Router<L: RoutingLogic> {
   logic:   L,
   routees: Vec<Routee>,
@@ -40,6 +43,10 @@ impl<L: RoutingLogic> Router<L> {
   /// If the message payload is a [`Broadcast`], the inner message is sent to
   /// all routees. Otherwise, the configured [`RoutingLogic`] selects a single
   /// routee for delivery.
+  ///
+  /// If no routees are registered, this method returns `Ok(())` and drops
+  /// the message. Integrate observability outside this method if that drop
+  /// should surface as a dead-letter, warning, or custom hook.
   ///
   /// # Errors
   ///

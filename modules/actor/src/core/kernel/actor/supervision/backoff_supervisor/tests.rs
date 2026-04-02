@@ -1,5 +1,6 @@
 use alloc::{string::String, vec::Vec};
-use core::{hint::spin_loop, time::Duration};
+use core::time::Duration;
+use std::thread::yield_now;
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
@@ -24,7 +25,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
     if condition() {
       return;
     }
-    spin_loop();
+    yield_now();
   }
   assert!(condition());
 }
@@ -158,8 +159,8 @@ fn get_current_child_returns_child_pid_when_child_is_running() {
   let response = inbox.lock();
   assert_eq!(response.len(), 1);
   let reply = response[0].downcast_ref::<BackoffSupervisorResponse>();
-  assert!(reply.is_some());
-  assert!(matches!(reply.unwrap(), BackoffSupervisorResponse::CurrentChild(Some(_))));
+  let reply = reply.expect("expected BackoffSupervisorResponse::CurrentChild(Some(_))");
+  assert!(matches!(reply, BackoffSupervisorResponse::CurrentChild(Some(_))));
 }
 
 // --- Protocol: GetRestartCount ---
@@ -187,8 +188,8 @@ fn get_restart_count_returns_zero_initially() {
   let response = inbox.lock();
   assert_eq!(response.len(), 1);
   let reply = response[0].downcast_ref::<BackoffSupervisorResponse>();
-  assert!(reply.is_some());
-  assert!(matches!(reply.unwrap(), BackoffSupervisorResponse::RestartCount(0)));
+  let reply = reply.expect("expected BackoffSupervisorResponse::RestartCount(0)");
+  assert!(matches!(reply, BackoffSupervisorResponse::RestartCount(0)));
 }
 
 // --- Protocol: Reset ---
@@ -215,7 +216,8 @@ fn reset_command_resets_restart_count() {
   wait_until(|| !inbox.lock().is_empty());
   let response = inbox.lock();
   let reply = response[0].downcast_ref::<BackoffSupervisorResponse>();
-  assert!(matches!(reply.unwrap(), BackoffSupervisorResponse::RestartCount(0)));
+  let reply = reply.expect("expected BackoffSupervisorResponse::RestartCount(0)");
+  assert!(matches!(reply, BackoffSupervisorResponse::RestartCount(0)));
 }
 
 // --- Message forwarding ---
@@ -247,17 +249,24 @@ fn unrecognized_messages_are_forwarded_to_child() {
 
 #[test]
 fn get_current_child_returns_none_when_no_child() {
-  // Given: a backoff supervisor that has not yet started its child
-  // (this tests the state before on_started or after child termination + max_retries exceeded)
-  let _system = ActorSystem::new_empty();
-  let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), default_strategy()).with_max_retries(0);
-  let _sup_props = BackoffSupervisor::props_on_stop(options);
+  let system = ActorSystem::new_empty();
+  let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), default_strategy());
+  let config = super::BackoffConfig::from_stop(options);
+  let mut actor = super::BackoffSupervisorActor::from_config(config);
 
-  // Construct the actor without calling on_started to simulate no-child state
-  // This is a boundary case — the exact behavior depends on implementation.
-  // The test verifies that CurrentChild(None) is a valid response.
-  let response = BackoffSupervisorResponse::CurrentChild(None);
-  assert!(matches!(response, BackoffSupervisorResponse::CurrentChild(None)));
+  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let mut ctx = ActorContext::new(&system, Pid::new(100, 0));
+  ctx.set_sender(Some(reply_ref));
+
+  actor.handle_command(&mut ctx, &BackoffSupervisorCommand::GetCurrentChild);
+
+  wait_until(|| !inbox.lock().is_empty());
+  let response = inbox.lock();
+  let reply = response[0]
+    .downcast_ref::<BackoffSupervisorResponse>()
+    .expect("expected BackoffSupervisorResponse::CurrentChild(None)");
+  assert!(matches!(reply, BackoffSupervisorResponse::CurrentChild(None)));
 }
 
 // --- Options: max_retries boundary ---

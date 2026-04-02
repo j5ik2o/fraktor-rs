@@ -4,19 +4,12 @@ use crate::core::kernel::{
     actor_ref::{ActorRef, NullSender},
     messaging::AnyMessage,
   },
-  routing::{RandomRoutingLogic, Routee, RoutingLogic},
 };
+
+use super::super::{random_routing_logic::RandomRoutingLogic, routee::Routee, routing_logic::RoutingLogic};
 
 fn make_routee(id: u64) -> Routee {
   Routee::ActorRef(ActorRef::new(Pid::new(id, 0), NullSender))
-}
-
-#[test]
-fn new_creates_logic_with_seed() {
-  // Given/When
-  let _logic = RandomRoutingLogic::new(12345);
-
-  // Then — construction succeeds without panic
 }
 
 #[test]
@@ -48,8 +41,14 @@ fn select_with_same_seed_produces_same_sequence() {
   for _ in 0..10 {
     let a = logic_a.select(&message, &routees);
     let b = logic_b.select(&message, &routees);
-    let idx_a = routees.iter().position(|r| core::ptr::eq(r, a)).unwrap();
-    let idx_b = routees.iter().position(|r| core::ptr::eq(r, b)).unwrap();
+    let idx_a = match routees.iter().position(|r| core::ptr::eq(r, a)) {
+      | Some(index) => index,
+      | None => panic!("selected routee for logic_a not found in routees"),
+    };
+    let idx_b = match routees.iter().position(|r| core::ptr::eq(r, b)) {
+      | Some(index) => index,
+      | None => panic!("selected routee for logic_b not found in routees"),
+    };
     seq_a.push(idx_a);
     seq_b.push(idx_b);
   }

@@ -36,8 +36,9 @@ use crate::core::{
 pub struct TypedActorSystem<M>
 where
   M: Send + Sync + 'static, {
-  inner:  ActorSystem,
-  marker: PhantomData<M>,
+  inner:          ActorSystem,
+  cached_address: Address,
+  marker:         PhantomData<M>,
 }
 
 impl<M> TypedActorSystem<M>
@@ -48,7 +49,9 @@ where
   #[must_use]
   #[cfg(any(test, feature = "test-support"))]
   pub fn new_empty() -> Self {
-    Self { inner: ActorSystem::new_empty(), marker: PhantomData }
+    let inner = ActorSystem::new_empty();
+    let cached_address = Address::local(inner.name());
+    Self { inner, cached_address, marker: PhantomData }
   }
 
   /// Creates a new typed actor system with the required tick driver configuration.
@@ -65,7 +68,9 @@ where
     guardian: &TypedProps<M>,
     tick_driver_config: crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig,
   ) -> Result<Self, SpawnError> {
-    Ok(Self { inner: ActorSystem::new(guardian.to_untyped(), tick_driver_config)?, marker: PhantomData })
+    let inner = ActorSystem::new(guardian.to_untyped(), tick_driver_config)?;
+    let cached_address = Address::local(inner.name());
+    Ok(Self { inner, cached_address, marker: PhantomData })
   }
 
   /// Creates a typed actor system using the supplied configuration.
@@ -74,7 +79,9 @@ where
   ///
   /// Returns [`SpawnError`] if guardian initialization fails.
   pub fn new_with_config(guardian: &TypedProps<M>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
-    Ok(Self { inner: ActorSystem::new_with_config(guardian.to_untyped(), config)?, marker: PhantomData })
+    let inner = ActorSystem::new_with_config(guardian.to_untyped(), config)?;
+    let cached_address = Address::local(inner.name());
+    Ok(Self { inner, cached_address, marker: PhantomData })
   }
 }
 
@@ -160,7 +167,7 @@ where
   /// Corresponds to Pekko's `ActorSystem.address`.
   #[must_use]
   pub fn address(&self) -> Address {
-    Address::local(self.name())
+    self.cached_address.clone()
   }
 
   /// Returns the start time of the actor system (epoch-relative duration).
@@ -256,8 +263,9 @@ where
 
   /// Wraps an existing untyped actor system so typed APIs can mirror its services.
   #[must_use]
-  pub const fn from_untyped(system: ActorSystem) -> Self {
-    Self { inner: system, marker: PhantomData }
+  pub fn from_untyped(system: ActorSystem) -> Self {
+    let cached_address = Address::local(system.name());
+    Self { inner: system, cached_address, marker: PhantomData }
   }
 
   /// Returns the typed scheduler facade.
@@ -323,6 +331,10 @@ where
   M: Send + Sync + 'static,
 {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), marker: PhantomData }
+    Self {
+      inner:          self.inner.clone(),
+      cached_address: self.cached_address.clone(),
+      marker:         PhantomData,
+    }
   }
 }

@@ -26,7 +26,8 @@ impl Routee {
   ///
   /// - `ActorRef`: delegates to [`ActorRef::try_tell`].
   /// - `NoRoutee`: returns `Ok(())` (message is silently dropped).
-  /// - `Several`: sends to each contained routee in order; stops at the first error.
+  /// - `Several`: sends to each contained routee in order; remembers the first error while still
+  ///   attempting delivery to the remaining routees.
   ///
   /// # Errors
   ///
@@ -36,10 +37,18 @@ impl Routee {
       | Self::ActorRef(actor_ref) => actor_ref.try_tell(message),
       | Self::NoRoutee => Ok(()),
       | Self::Several(routees) => {
+        let mut first_error = None;
         for routee in routees.iter_mut() {
-          routee.send(message.clone())?;
+          if let Err(error) = routee.send(message.clone())
+            && first_error.is_none()
+          {
+            first_error = Some(error);
+          }
         }
-        Ok(())
+        match first_error {
+          | Some(error) => Err(error),
+          | None => Ok(()),
+        }
       },
     }
   }
