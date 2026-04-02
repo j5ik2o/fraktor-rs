@@ -1,12 +1,12 @@
 use crate::core::kernel::{
   actor::{
     Actor, ActorContext,
-    actor_ref_provider::{ActorRefProvider, LocalActorRefProvider},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, LocalActorRefProvider},
     error::ActorError,
     messaging::AnyMessageView,
     props::Props,
   },
-  system::ActorSystem,
+  system::{ActorSystem, state::system_state::SystemState},
 };
 
 struct ProbeActor;
@@ -25,7 +25,7 @@ fn local_actor_ref_provider_exposes_guardians_dead_letters_and_temp_path() {
   );
   let config = crate::core::kernel::actor::setup::ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
-  let provider = LocalActorRefProvider::new_with_state(system.state());
+  let provider = LocalActorRefProvider::new_with_state(&system.state());
 
   assert!(provider.root_guardian().is_some());
   assert!(provider.guardian().is_some());
@@ -35,4 +35,19 @@ fn local_actor_ref_provider_exposes_guardians_dead_letters_and_temp_path() {
   let mut dead_letters = provider.dead_letters();
   dead_letters.tell(crate::core::kernel::actor::messaging::AnyMessage::new(String::from("probe")));
   assert!(!system.dead_letters().is_empty());
+}
+
+#[test]
+fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration() {
+  let state = crate::core::kernel::system::state::SystemStateShared::new(SystemState::new());
+  let weak = state.downgrade();
+
+  {
+    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&state));
+    state.install_actor_ref_provider(&provider).expect("install provider");
+  }
+
+  drop(state);
+
+  assert!(weak.upgrade().is_none(), "provider registration must not create a strong reference cycle");
 }
