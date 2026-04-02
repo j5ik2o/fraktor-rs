@@ -55,7 +55,7 @@ pub(crate) fn install_ask_timeout(
   }
 }
 
-fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
+pub(crate) fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
   if future.with_read(|inner| inner.is_ready()) {
     return;
   }

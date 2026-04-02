@@ -29,16 +29,16 @@
 注記:
 
 - このサマリー表の数値は初期分析時点の集計である
-- 2026-04-03 時点の再検証結果の正本は、下の「再検証結果」と「実装優先度」である
+- PR 後更新の再検証結果の正本は、下の「再検証結果」と「実装優先度」である
 - Phase 1 / Phase 2 の多くはこの初期集計後に解消されている
 
-## 再検証結果（2026-04-03）
+## 再検証結果（PR 更新: 2026-04-03）
 
 - `Phase 1`: 完了
 - `Phase 2`: 一部完了。capability parity の主要部分は完了したが、medium 難易度の family が残っている
 - `Phase 3`: 未完。classic parity の中核 family と typed 補助 surface が残っている
 
-2026-04-03 時点で完了確認できた主な項目:
+2026-04-03 に完了確認できた主な項目:
 
 - `ActorRefResolverSetup`
 - `TimerScheduler` の message-as-key shorthand
@@ -57,7 +57,6 @@
 
 この再検証時点で残っている要対応 parity family:
 
-- `MailboxSelector.unbounded`
 - `ActorSelection` surface
 - classic auto-received / monitoring message family
 - `Deployer` / `Deploy` / `Scope`
@@ -143,14 +142,12 @@
 | `ActorSystem.printTree` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorSystem.scala:167` | 未対応 | core/kernel | medium | actor hierarchy dump surface がない |
 | `ActorSystem.systemActorOf` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorSystem.scala:176` | 部分実装 | core/typed | medium | kernel には `system_actor_of` が private である (`modules/actor/src/core/kernel/system/base.rs:438`) が typed public API に出ていない |
 | `ActorRefResolverSetup` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorRefResolver.scala:95` | 未対応 | core/typed | easy | `ActorRefResolver` 本体 (`modules/actor/src/core/typed/actor_ref_resolver.rs:22`) はあるが setup hook がない |
-| `AskPattern` object / extension-method surface | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/AskPattern.scala:38` | 部分実装 | core/typed | easy | `TypedActorRef::ask` と `TypedActorContext::ask` はある (`modules/actor/src/core/typed/actor_ref.rs:89`, `modules/actor/src/core/typed/actor/actor_context.rs:510`) が、独立した pattern surface はない |
 
 ### typed 振る舞い / シグナル / 設定 DSL　✅ 実装済み 8/12 (67%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `Signal` family の契約一致 | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:35`, `:43`, `:59`, `:81`, `:104`, `:125` | 部分実装 | core/typed | medium | fraktor-rs は `BehaviorSignal` (`modules/actor/src/core/typed/message_and_signals/signal.rs:10`) で `Terminated` / `ChildFailed` / `MessageAdaptionFailure` / `PreRestart` は持つが、`PostStop` を `Stopped` に置き換え、さらに Pekko にない `Started` を追加しており契約が一致していない |
-| `MailboxSelector.unbounded` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Props.scala:208`, `:224` | 未対応 | core/typed | easy | fraktor-rs の `MailboxSelector` は `Default` / `Bounded` / `FromConfig` のみ (`modules/actor/src/core/typed/mailbox_selector.rs:13`) |
 | `TimerScheduler` の message-as-key convenience overload | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/TimerScheduler.scala:87`, `:107`, `:243` | 部分実装 | core/typed | trivial | fraktor-rs の `TimerScheduler` は key 必須 (`modules/actor/src/core/typed/dsl/timer_scheduler.rs:48`, `:117`)。`msg` 自体を key とみなす shorthand がない |
 | typed `Props.empty` / linked-list style props contract | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Props.scala:26`, `:41` | 部分実装 | core/typed | medium | fraktor-rs は `TypedProps::from_props` / `with_*` はある (`modules/actor/src/core/typed/props.rs:58`) が、`Props.empty` 相当の空 props と linked-list 合成モデルは公開していない |
 
@@ -169,7 +166,7 @@
 判定理由:
 - `hard` / `medium` の未実装ギャップが 11 件あり、しきい値 5 件を超えている
 - classic 側で `ActorSelection` / `FSM` / routing config / io family / deploy-setup family / `ActorRefProvider` fully-surfaced contract が未充足
-- typed 側でも standalone `AskPattern` / `TopicStats` cluster semantics / `DurableProducerQueue` entry point / `MailboxSelector.unbounded` が残っている
+- typed 側でも `TopicStats` cluster semantics と `DurableProducerQueue` entry point が残っている
 
 したがって、次のボトルネックは内部責務分割ではなく公開 API parity である。
 
@@ -180,7 +177,7 @@
 - `未対応` の項目は「追加する」と書く
 - `部分実装` の項目は「不足している何を埋めるか」を併記する
 - したがって、各 Phase の項目は直前のギャップ表の再配置であり、新しい提案ではない
-- ただし、このファイル上部のカテゴリ別ギャップ表とサマリー表は初期分析時点のスナップショットである。2026-04-03 時点の再検証と Phase 判定の正本は、この節の記述を正とする
+- ただし、このファイル上部のカテゴリ別ギャップ表とサマリー表は初期分析時点のスナップショットである。PR 更新: 2026-04-03 の再検証と Phase 判定の正本は、この節の記述を正とする
 
 ### Phase 1
 

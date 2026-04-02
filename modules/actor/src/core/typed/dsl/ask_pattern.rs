@@ -8,11 +8,7 @@ use core::time::Duration;
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use crate::core::{
-  kernel::{
-    actor::messaging::{AskError, AskResult},
-    pattern::install_ask_timeout,
-    util::futures::{ActorFuture, ActorFutureShared},
-  },
+  kernel::pattern::{complete_with_timeout, install_ask_timeout},
   typed::{
     TypedActorRef,
     dsl::{StatusReply, TypedAskResponse},
@@ -64,15 +60,5 @@ impl AskPattern {
     } else {
       complete_with_timeout(&future);
     }
-  }
-}
-
-fn complete_with_timeout(future: &ActorFutureShared<AskResult>) {
-  if future.with_read(|inner: &ActorFuture<AskResult>| inner.is_ready()) {
-    return;
-  }
-  let waker = future.with_write(|inner: &mut ActorFuture<AskResult>| inner.complete(Err(AskError::Timeout)));
-  if let Some(waker) = waker {
-    waker.wake();
   }
 }
