@@ -38,6 +38,14 @@ impl ActorRefSender for CountingSender {
   }
 }
 
+struct ClosedSender;
+
+impl ActorRefSender for ClosedSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Err(SendError::closed(message))
+  }
+}
+
 fn make_counting_routee(
   pid: Pid,
   counter: &ArcShared<AtomicUsize>,
@@ -129,6 +137,36 @@ fn route_broadcast_sends_to_all_routees() {
     assert_eq!(deliveries.len(), 1);
     let payload =
       deliveries[0].downcast_ref::<u32>().expect("each routee should receive the unwrapped broadcast payload");
+    assert_eq!(*payload, 99_u32);
+  }
+}
+
+#[test]
+fn route_broadcast_continues_after_first_send_error() {
+  // Given: a router whose first routee is closed and remaining routees are healthy
+  let c1 = ArcShared::new(AtomicUsize::new(0));
+  let c2 = ArcShared::new(AtomicUsize::new(0));
+  let m1 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let m2 = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let routees = vec![
+    Routee::ActorRef(ActorRef::new(Pid::new(1, 0), ClosedSender)),
+    make_counting_routee(Pid::new(2, 0), &c1, &m1),
+    make_counting_routee(Pid::new(3, 0), &c2, &m2),
+  ];
+  let mut router = Router::new(FixedIndexLogic(0), routees);
+
+  // When: routing a Broadcast message
+  let result = router.route(AnyMessage::new(Broadcast(AnyMessage::new(99_u32))));
+
+  // Then: the first error is returned, but later routees still receive the inner payload
+  assert!(result.is_err(), "broadcast should surface the first send error");
+  assert_eq!(c1.load(Ordering::Relaxed), 1);
+  assert_eq!(c2.load(Ordering::Relaxed), 1);
+  for messages in [&m1, &m2] {
+    let deliveries = messages.lock();
+    assert_eq!(deliveries.len(), 1);
+    let payload =
+      deliveries[0].downcast_ref::<u32>().expect("each healthy routee should receive the unwrapped broadcast payload");
     assert_eq!(*payload, 99_u32);
   }
 }
@@ -279,8 +317,8 @@ fn route_with_noroutee_selected_returns_ok() {
 
   impl RoutingLogic for NoRouteeLogic {
     fn select<'a>(&self, _message: &AnyMessage, _routees: &'a [Routee]) -> &'a Routee {
-      static NOROUTEE: std::sync::OnceLock<Routee> = std::sync::OnceLock::new();
-      NOROUTEE.get_or_init(|| Routee::NoRoutee)
+      static NOROUTEE: Routee = Routee::NoRoutee;
+      &NOROUTEE
     }
   }
 

@@ -57,6 +57,19 @@ fn with_auto_reset_sets_duration() {
 }
 
 #[test]
+fn with_auto_reset_disables_manual_reset() {
+  // Given: manual reset already enabled
+  let options = BackoffOnStopOptions::new(child_props(), String::from("child"), default_strategy()).with_manual_reset();
+
+  // When: setting auto reset afterwards
+  let options = options.with_auto_reset(Duration::from_secs(30));
+
+  // Then: auto reset wins and manual reset is cleared
+  assert_eq!(options.auto_reset(), Some(Duration::from_secs(30)));
+  assert!(!options.manual_reset());
+}
+
+#[test]
 fn auto_reset_is_none_by_default() {
   // Given: default options without auto_reset
   let options = BackoffOnStopOptions::new(child_props(), String::from("child"), default_strategy());
@@ -77,6 +90,20 @@ fn with_manual_reset_enables_manual_mode() {
 
   // Then: manual_reset is true
   assert!(options.manual_reset());
+}
+
+#[test]
+fn with_manual_reset_clears_auto_reset() {
+  // Given: auto reset already configured
+  let options = BackoffOnStopOptions::new(child_props(), String::from("child"), default_strategy())
+    .with_auto_reset(Duration::from_secs(30));
+
+  // When: enabling manual reset afterwards
+  let options = options.with_manual_reset();
+
+  // Then: manual reset wins and auto reset is cleared
+  assert!(options.manual_reset());
+  assert!(options.auto_reset().is_none());
 }
 
 #[test]

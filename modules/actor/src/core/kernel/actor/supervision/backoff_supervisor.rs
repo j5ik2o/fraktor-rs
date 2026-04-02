@@ -155,8 +155,13 @@ impl BackoffSupervisorActor {
     match ctx.spawn_child(&props) {
       | Ok(child) => {
         let child_ref = child.actor_ref().clone();
-        // best-effort: if the child is already stopped, handle_terminated will fire.
-        let _watch_result = ctx.watch(&child_ref);
+        if let Err(error) = ctx.watch(&child_ref) {
+          if let Err(stop_error) = child.stop() {
+            ctx.system().state().record_send_error(Some(child.pid()), &stop_error);
+          }
+          self.initialized = true;
+          return Err(ActorError::recoverable(alloc::format!("failed to install death watch: {:?}", error)));
+        }
         self.child = Some(child);
         self.initialized = true;
         Ok(())

@@ -1,5 +1,7 @@
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::{
-  kernel::actor::{ActorContext, error::ActorError},
+  kernel::actor::{ActorContext, error::ActorError, messaging::AnyMessage},
   typed::{
     TypedProps,
     actor::TypedActorContext,
@@ -56,8 +58,8 @@ fn receive_converts_to_behavior_via_from() {
   // When: converted to Behavior<M> via Into
   let behavior: Behavior<u32> = receive.into();
 
-  // Then: the behavior is valid and active
-  let _ = behavior;
+  // Then: signal handler は付与されていない
+  assert!(!behavior.has_signal_handler());
 }
 
 // --- Receive message handler is invoked correctly --------------------------
@@ -74,10 +76,10 @@ fn receive_message_handler_is_invoked() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let result = behavior.handle_message(&mut typed_ctx, &42);
+  let next = behavior.handle_message(&mut typed_ctx, &42).expect("message 42 should produce a next behavior");
 
   // Then: the handler returns Stopped for message 42
-  assert!(result.is_ok());
+  assert!(matches!(next.directive(), BehaviorDirective::Stopped));
 }
 
 // --- Receive with chained signal handler handles both messages and signals --
@@ -116,7 +118,16 @@ fn receive_message_still_works_independently() {
 
 #[test]
 fn receive_can_be_used_directly_in_typed_props_factory() {
+  // Given: a typed props built from Behaviors::receive
   let props = TypedProps::<u32>::from_behavior_factory(|| Behaviors::receive(|_ctx, _msg| Ok(Behaviors::same())));
 
-  let _ = props;
+  // When: invoking the stored factory through the untyped props layer
+  let system = crate::core::kernel::system::ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut actor = props.to_untyped().factory().with_write(|factory| factory.create());
+  let mut context = ActorContext::new(&system, pid);
+
+  // Then: the produced actor can process a message successfully
+  let result = actor.receive(&mut context, AnyMessage::new(7_u32).as_view());
+  assert!(result.is_ok(), "typed props factory should produce a runnable actor");
 }

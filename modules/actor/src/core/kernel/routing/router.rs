@@ -55,8 +55,16 @@ impl<L: RoutingLogic> Router<L> {
     if let Some(broadcast) = message.downcast_ref::<Broadcast>() {
       // Broadcast: clone the inner message to every routee.
       let inner = broadcast.0.clone();
+      let mut first_error = None;
       for routee in &mut self.routees {
-        routee.send(inner.clone())?;
+        if let Err(error) = routee.send(inner.clone())
+          && first_error.is_none()
+        {
+          first_error = Some(error);
+        }
+      }
+      if let Some(error) = first_error {
+        return Err(error);
       }
       return Ok(());
     }

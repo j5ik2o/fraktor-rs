@@ -82,6 +82,12 @@ fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
   assert_eq!(bundle.driver().resolution(), resolution);
 }
 
+#[test]
+fn system_state_build_from_config_sets_non_zero_start_time_by_default() {
+  let state = build_state();
+  assert_ne!(state.start_time(), Duration::ZERO);
+}
+
 fn base_config() -> ActorSystemConfig {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);

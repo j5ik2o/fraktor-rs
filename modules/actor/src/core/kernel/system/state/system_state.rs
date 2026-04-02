@@ -173,6 +173,7 @@ impl SystemState {
     use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
 
     let mut state = Self::new();
+    state.start_time = config.start_time().unwrap_or_else(|| state.monotonic_now());
     state.apply_actor_system_config(config);
 
     let event_stream = state.event_stream();
@@ -243,7 +244,9 @@ impl SystemState {
       self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
     }
 
-    self.start_time = config.start_time().unwrap_or(Duration::ZERO);
+    if let Some(start_time) = config.start_time() {
+      self.start_time = start_time;
+    }
 
     let policy = ReservationPolicy::with_quarantine_duration(self.default_quarantine_duration());
     self.actor_path_registry.set_policy(policy);

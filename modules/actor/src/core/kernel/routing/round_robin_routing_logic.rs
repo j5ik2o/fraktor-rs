@@ -22,7 +22,13 @@ impl RoundRobinRoutingLogic {
   /// Creates a new round-robin logic with its counter starting at zero.
   #[must_use]
   pub const fn new() -> Self {
-    Self { counter: AtomicUsize::new(0) }
+    Self::with_initial_counter(0)
+  }
+
+  /// Creates a new round-robin logic with the provided initial counter value.
+  #[must_use]
+  pub(crate) const fn with_initial_counter(counter: usize) -> Self {
+    Self { counter: AtomicUsize::new(counter) }
   }
 }
 

@@ -50,14 +50,14 @@ impl ActorRefSender for ClosedSender {
 
 #[test]
 fn actorref_variant_is_constructible() {
-  // Given: a valid ActorRef
+  // 前提: 有効な ActorRef がある
   let (_, sender) = CapturingSender::new();
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 
-  // When: wrapping it in a Routee
+  // 実行: Routee::ActorRef で包む
   let routee = Routee::ActorRef(actor_ref);
 
-  // Then: it should be the ActorRef variant
+  // 確認: ActorRef variant になる
   assert!(matches!(routee, Routee::ActorRef(_)));
 }
 

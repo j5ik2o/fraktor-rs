@@ -53,7 +53,7 @@ fn select_single_routee_always_returns_it() {
 #[test]
 fn select_wraps_cleanly_after_counter_overflow() {
   // Given
-  let logic = RoundRobinRoutingLogic { counter: core::sync::atomic::AtomicUsize::new(usize::MAX) };
+  let logic = RoundRobinRoutingLogic::with_initial_counter(usize::MAX);
   let routees = [make_routee(1), make_routee(2)];
   let message = AnyMessage::new(42_u32);
 

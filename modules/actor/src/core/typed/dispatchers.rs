@@ -29,6 +29,7 @@ const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 /// class.
 ///
 /// Instances are obtained through [`TypedActorSystem::dispatchers()`].
+#[derive(Clone)]
 pub struct Dispatchers {
   state: SystemStateShared,
 }
@@ -85,11 +86,5 @@ impl Dispatchers {
       | Self::DEFAULT_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
       | _ => id,
     }
-  }
-}
-
-impl Clone for Dispatchers {
-  fn clone(&self) -> Self {
-    Self { state: self.state.clone() }
   }
 }

@@ -33,10 +33,12 @@ impl BackoffOptionsData {
 
   pub(super) const fn set_auto_reset(&mut self, duration: Duration) {
     self.auto_reset = Some(duration);
+    self.manual_reset = false;
   }
 
   pub(super) const fn enable_manual_reset(&mut self) {
     self.manual_reset = true;
+    self.auto_reset = None;
   }
 
   #[must_use]
