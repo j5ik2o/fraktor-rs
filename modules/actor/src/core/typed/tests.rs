@@ -171,6 +171,17 @@ fn typed_props_empty_supports_immutable_builder_chain() {
 }
 
 #[test]
+fn typed_props_with_mailbox_unbounded_overrides_bounded_selector() {
+  let capacity = core::num::NonZeroUsize::new(8).expect("capacity");
+  let props = TypedProps::<CounterMessage>::empty().with_mailbox_bounded(capacity).with_mailbox_unbounded();
+
+  assert_eq!(
+    props.to_untyped().mailbox_policy().capacity(),
+    crate::core::kernel::dispatch::mailbox::MailboxCapacity::Unbounded
+  );
+}
+
+#[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(

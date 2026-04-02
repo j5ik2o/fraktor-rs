@@ -16,6 +16,12 @@ fn should_create_from_config() {
 }
 
 #[test]
+fn should_create_unbounded() {
+  let selector = MailboxSelector::unbounded();
+  assert_eq!(selector, MailboxSelector::Unbounded);
+}
+
+#[test]
 fn default_variant_matches_pekko_default_mailbox_contract() {
   let produced_selector = MailboxSelector::default();
   assert_eq!(produced_selector, MailboxSelector::Default);
