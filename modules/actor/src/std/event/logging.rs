@@ -5,6 +5,8 @@ mod actor_logging;
 mod diagnostic_actor_logging;
 mod logging_adapter;
 mod logging_receive;
+#[cfg(test)]
+mod tests;
 mod tracing_logger_subscriber;
 
 pub use actor_log_marker::ActorLogMarker;

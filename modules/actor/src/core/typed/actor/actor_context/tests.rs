@@ -721,7 +721,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   impl ActorRefSender for EventCollector {
     fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
       let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() else {
-        return Err(SendError::closed(message));
+        return Err(SendError::invalid_payload(message, "expected EventStreamEvent"));
       };
       self.events.lock().push(event.clone());
       Ok(SendOutcome::Delivered)

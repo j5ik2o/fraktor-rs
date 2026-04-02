@@ -3,30 +3,17 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::LoggingReceive;
-use crate::core::kernel::{
-  actor::ActorContext,
-  event::{
-    logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+use crate::{
+  core::kernel::{
+    actor::ActorContext,
+    event::{
+      logging::LogLevel,
+      stream::{EventStreamEvent, subscriber_handle},
+    },
+    system::ActorSystem,
   },
-  system::ActorSystem,
+  std::event::logging::tests::RecordingSubscriber,
 };
-
-struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
-}
-
-impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
-    Self { events }
-  }
-}
-
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().push(event.clone());
-  }
-}
 
 #[test]
 fn logging_receive_logs_handled_message_with_label() {

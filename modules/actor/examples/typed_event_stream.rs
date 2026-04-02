@@ -79,6 +79,21 @@ fn main() {
       .try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
       .expect("unsubscribe command should be accepted");
   }
+  let baseline_after_unsubscribe = events.lock().len();
+  let after_unsubscribe = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "typed-event-stream-after-unsubscribe".into(),
+    Duration::from_millis(2),
+    Some(Pid::new(900, 0)),
+    None,
+  ));
+  {
+    let mut event_stream = system.event_stream();
+    event_stream
+      .try_tell(EventStreamCommand::Publish(after_unsubscribe))
+      .expect("publish after unsubscribe should be accepted");
+  }
+  assert_eq!(events.lock().len(), baseline_after_unsubscribe, "collector should not receive events after unsubscribe");
 
   let mut ignore_ref = system.ignore_ref::<u32>();
   ignore_ref.try_tell(7_u32).expect("ignore_ref should accept messages");

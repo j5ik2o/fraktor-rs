@@ -569,7 +569,7 @@ fn get_when_terminated_tracks_same_lifecycle_as_when_terminated() {
 
 #[test]
 fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subscribers() {
-  // Given: a typed actor system with a subscriber registered through the existing helper
+  // 前提: 既存 helper で購読者を登録した typed actor system がある
   let system = new_test_system();
   let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
@@ -584,10 +584,10 @@ fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subs
     None,
   ));
 
-  // When: the public event_stream facade is used as an actor ref
+  // 実行: 公開 event_stream facade を actor ref として使う
   let result = event_stream.try_tell(EventStreamCommand::Publish(published.clone()));
 
-  // Then: the publish command succeeds and the subscriber observes the event
+  // 検証: publish command が成功し、購読者がイベントを観測する
   assert!(result.is_ok(), "event_stream should accept publish commands");
   let recorded = recorded_events.lock();
   assert!(
@@ -602,7 +602,7 @@ fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subs
 
 #[test]
 fn event_stream_supports_subscribe_and_unsubscribe_commands() {
-  // Given: a typed actor system and an actor-ref based subscriber
+  // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
   let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(recorded_events.clone()));
@@ -625,13 +625,13 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
     None,
   ));
 
-  // When: the subscriber is added, then removed, through public event stream commands
+  // 実行: 公開 event stream command で購読追加後に購読解除する
   let subscribe = subscribe_stream.try_tell(EventStreamCommand::Subscribe { subscriber: collector.clone() });
   let publish_first = publish_stream.try_tell(EventStreamCommand::Publish(first));
   let unsubscribe = unsubscribe_stream.try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() });
   let publish_second = publish_after_unsubscribe_stream.try_tell(EventStreamCommand::Publish(second));
 
-  // Then: only the first event is delivered to the actor-ref subscriber
+  // 検証: actor-ref 購読者には最初のイベントだけが届く
   assert!(subscribe.is_ok(), "subscribe command should be accepted");
   assert!(publish_first.is_ok(), "first publish command should be accepted");
   assert!(unsubscribe.is_ok(), "unsubscribe command should be accepted");
@@ -657,7 +657,7 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
 
 #[test]
 fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscribe_state() {
-  // Given: a typed actor system and an actor-ref based subscriber
+  // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
   let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(901, 0), CollectorSender::new(recorded_events.clone()));
@@ -676,7 +676,7 @@ fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscri
     None,
   ));
 
-  // When: subscribe / publish / unsubscribe use separate temporary facades
+  // 実行: subscribe / publish / unsubscribe を別々の一時 facade で行う
   {
     let mut subscribe_stream = system.event_stream();
     subscribe_stream
@@ -698,7 +698,7 @@ fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscri
     publish_stream.try_tell(EventStreamCommand::Publish(second)).expect("second publish command should be accepted");
   }
 
-  // Then: the subscription remains active after the first facade drops, and unsubscribe is shared
+  // 検証: 最初の facade を破棄しても購読は有効で、unsubscribe 状態は共有される
   let recorded = recorded_events.lock();
   assert_eq!(
     recorded
@@ -720,7 +720,7 @@ fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscri
 
 #[test]
 fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
-  // Given: a typed system and a second wrapper built from the same untyped actor system
+  // 前提: typed system と、同じ untyped actor system から作った別 wrapper がある
   let system = new_test_system();
   let other_wrapper = TypedActorSystem::<u32>::from_untyped(system.as_untyped().clone());
   let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -740,7 +740,7 @@ fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
     None,
   ));
 
-  // When: subscribe and unsubscribe cross the original wrapper and from_untyped wrapper
+  // 実行: subscribe / unsubscribe を元 wrapper と from_untyped wrapper でまたいで行う
   {
     let mut subscribe_stream = system.event_stream();
     subscribe_stream
@@ -762,7 +762,7 @@ fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
     publish_stream.try_tell(EventStreamCommand::Publish(second)).expect("second publish command should be accepted");
   }
 
-  // Then: both wrappers observe the same subscription state
+  // 検証: 両 wrapper が同じ購読状態を共有する
   let recorded = recorded_events.lock();
   assert_eq!(
     recorded
@@ -786,15 +786,15 @@ fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
 
 #[test]
 fn dead_letters_returns_typed_actor_ref_that_records_explicit_routing_entries() {
-  // Given: a typed actor system and the future dead-letter snapshot helper
+  // 前提: typed actor system と dead-letter snapshot helper がある
   let system = new_test_system();
   let baseline = system.dead_letter_entries().len();
   let mut dead_letters = system.dead_letters::<u32>();
 
-  // When: a message is sent through the dead-letters facade
+  // 実行: dead-letters facade 経由でメッセージを送る
   let result = dead_letters.try_tell(42_u32);
 
-  // Then: the sink accepts the message and records an explicit routing entry
+  // 検証: sink がメッセージを受理し、explicit routing を記録する
   assert!(result.is_ok(), "dead_letters should accept routed messages");
   let entries = system.dead_letter_entries();
   assert_eq!(entries.len(), baseline + 1);
@@ -807,15 +807,15 @@ fn dead_letters_returns_typed_actor_ref_that_records_explicit_routing_entries() 
 
 #[test]
 fn ignore_ref_accepts_messages_without_recording_dead_letters() {
-  // Given: a typed actor system and its ignore ref facade
+  // 前提: typed actor system と ignore ref facade がある
   let system = new_test_system();
   let baseline_dead_letters = system.dead_letter_entries().len();
   let mut ignore_ref = system.ignore_ref::<u32>();
 
-  // When: a message is sent to the ignore ref
+  // 実行: ignore ref にメッセージを送る
   let result = ignore_ref.try_tell(123_u32);
 
-  // Then: the message is accepted and no dead letter is recorded
+  // 検証: メッセージは受理され、dead letter は記録されない
   assert!(result.is_ok(), "ignore_ref should accept messages");
   assert_eq!(system.dead_letter_entries().len(), baseline_dead_letters);
 
@@ -824,13 +824,13 @@ fn ignore_ref_accepts_messages_without_recording_dead_letters() {
 
 #[test]
 fn print_tree_contains_bootstrapped_guardians_and_receptionist() {
-  // Given: a bootstrapped typed actor system
+  // 前提: bootstrap 済みの typed actor system がある
   let system = new_test_system();
 
-  // When: the actor hierarchy is rendered as a debug tree
+  // 実行: actor hierarchy を debug tree として描画する
   let tree = system.print_tree();
 
-  // Then: the known top-level guardians and receptionist appear in the output
+  // 検証: 既知の top-level guardian と receptionist が出力に含まれる
   assert!(tree.contains("system"), "print_tree should include system guardian");
   assert!(tree.contains("user"), "print_tree should include user guardian");
   assert!(tree.contains(SYSTEM_RECEPTIONIST_TOP_LEVEL), "print_tree should include receptionist");
@@ -840,15 +840,15 @@ fn print_tree_contains_bootstrapped_guardians_and_receptionist() {
 
 #[test]
 fn system_actor_of_spawns_actor_under_system_guardian() {
-  // Given: a typed actor system and typed props for a system actor
+  // 前提: typed actor system と system actor 用 typed props がある
   let system = new_test_system();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let system_guardian_pid = system.state().system_guardian_pid().expect("system guardian pid");
 
-  // When: a system actor is spawned
+  // 実行: system actor を spawn する
   let system_actor = system.system_actor_of(&props, "phase2-system-actor").expect("system actor");
 
-  // Then: the actor is registered as a child of the system guardian
+  // 検証: actor は system guardian の子として登録される
   assert!(system.state().child_pids(system_guardian_pid).contains(&system_actor.pid()));
   assert_eq!(system_actor.path().expect("system actor path").to_string(), "/system/phase2-system-actor");
 
@@ -857,27 +857,27 @@ fn system_actor_of_spawns_actor_under_system_guardian() {
 
 #[test]
 fn typed_actor_system_new_rejects_empty_guardian_props() {
-  // Given: factory 未設定の empty guardian props
+  // 前提: factory 未設定の empty guardian props
   let guardian_props = TypedProps::<u32>::empty();
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
 
-  // When: typed actor system を bootstrap する
+  // 実行: typed actor system を bootstrap する
   let result = TypedActorSystem::<u32>::new(&guardian_props, tick_driver);
 
-  // Then: invalid props として明示的に失敗する
+  // 検証: invalid props として明示的に失敗する
   assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
 }
 
 #[test]
 fn system_actor_of_rejects_empty_typed_props() {
-  // Given: 起動済みの typed actor system と empty typed props
+  // 前提: 起動済みの typed actor system と empty typed props
   let system = new_test_system();
   let props = TypedProps::<u32>::empty().with_dispatcher_same_as_parent().with_tag("phase2-empty-system-actor");
 
-  // When: /system 配下へ spawn を試みる
+  // 実行: /system 配下への spawn を試みる
   let result = system.system_actor_of(&props, "empty-system-actor");
 
-  // Then: factory 未設定のままでは invalid props として拒否される
+  // 検証: factory 未設定のままでは invalid props として拒否される
   assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
 
   system.terminate().expect("terminate");
@@ -885,15 +885,15 @@ fn system_actor_of_rejects_empty_typed_props() {
 
 #[test]
 fn print_tree_contains_spawned_system_actor_name() {
-  // Given: a typed actor system with a spawned system actor
+  // 前提: system actor を spawn 済みの typed actor system がある
   let system = new_test_system();
   let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let _system_actor = system.system_actor_of(&props, "tree-visible-system-actor").expect("system actor");
 
-  // When: the actor hierarchy is rendered as a debug tree
+  // 実行: actor hierarchy を debug tree として描画する
   let tree = system.print_tree();
 
-  // Then: the spawned system actor name is visible in the tree output
+  // 検証: spawn 済み system actor 名が tree 出力に含まれる
   assert!(tree.contains("tree-visible-system-actor"));
 
   system.terminate().expect("terminate");

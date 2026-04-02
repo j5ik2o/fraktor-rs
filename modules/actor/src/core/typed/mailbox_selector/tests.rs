@@ -17,5 +17,6 @@ fn should_create_from_config() {
 
 #[test]
 fn default_variant_matches_pekko_default_mailbox_contract() {
-  assert_eq!(MailboxSelector::Default, MailboxSelector::Default);
+  let produced_selector = MailboxSelector::default();
+  assert_eq!(produced_selector, MailboxSelector::Default);
 }

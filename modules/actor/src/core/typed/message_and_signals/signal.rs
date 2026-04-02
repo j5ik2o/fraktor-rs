@@ -8,7 +8,7 @@ use crate::core::{
 /// Enumerates lifecycle notifications delivered to typed behaviors.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BehaviorSignal {
-  /// Indicates that the actor has completed post-stop processing.
+  /// Delivered to a behavior so it can run post-stop logic as the actor is stopping.
   PostStop,
   /// Indicates that a watched actor terminated with the provided pid.
   Terminated(Pid),

@@ -283,7 +283,9 @@ where
           | BehaviorDirective::Active => inner = started_result,
           | BehaviorDirective::Stopped => return Ok(Behavior::stopped()),
           | BehaviorDirective::Empty => inner = Behavior::empty(),
-          | _ => {},
+          | BehaviorDirective::Same => {},
+          | BehaviorDirective::Ignore => inner = Behavior::ignore(),
+          | BehaviorDirective::Unhandled => inner = Behavior::unhandled(),
         }
       }
 

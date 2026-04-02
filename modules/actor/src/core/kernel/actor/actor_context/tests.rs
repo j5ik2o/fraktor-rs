@@ -340,10 +340,10 @@ fn actor_context_timers_facade_start_single_timer_and_cancel_tracks_active_state
   let context = ActorContext::new(&system, pid);
 
   // When: the future classic timers facade schedules and cancels a single timer
-  let mut timers = context.timers();
+  let timers = context.timers();
   timers.start_single_timer("tick", AnyMessage::new(7_i32), Duration::from_millis(25)).expect("schedule");
   assert!(timers.is_timer_active("tick"));
-  timers.cancel("tick");
+  timers.cancel("tick").expect("cancel");
 
   // Then: the timer is no longer active
   assert!(!timers.is_timer_active("tick"));
@@ -358,7 +358,7 @@ fn actor_context_timers_facade_persists_keys_across_fresh_contexts() {
   let _cell = register_cell(&system, pid, "timer-persist", &props);
 
   let first_context = ActorContext::new(&system, pid);
-  let mut first_timers = first_context.timers();
+  let first_timers = first_context.timers();
   first_timers.start_single_timer("tick", AnyMessage::new(9_i32), Duration::from_millis(25)).expect("schedule");
 
   // When: a fresh context queries the same timer key
@@ -377,7 +377,7 @@ fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "timer-periodic", &props);
   let context = ActorContext::new(&system, pid);
-  let mut timers = context.timers();
+  let timers = context.timers();
 
   // When: fixed-delay and fixed-rate timers are started and then cancelled together
   timers
@@ -386,7 +386,7 @@ fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
   timers
     .start_timer_at_fixed_rate("rate", AnyMessage::new(2_i32), Duration::from_millis(20))
     .expect("schedule fixed rate");
-  timers.cancel_all();
+  timers.cancel_all().expect("cancel all");
 
   // Then: both timer keys are reported inactive
   assert!(!timers.is_timer_active("delay"));

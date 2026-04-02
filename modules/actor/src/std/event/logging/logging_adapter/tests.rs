@@ -8,28 +8,12 @@ use crate::{
     actor::Pid,
     event::{
       logging::LogLevel,
-      stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+      stream::{EventStreamEvent, subscriber_handle},
     },
     system::ActorSystem,
   },
-  std::event::logging::ActorLogMarker,
+  std::event::logging::{ActorLogMarker, tests::RecordingSubscriber},
 };
-
-struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
-}
-
-impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
-    Self { events }
-  }
-}
-
-impl EventStreamSubscriber for RecordingSubscriber {
-  fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().push(event.clone());
-  }
-}
 
 #[test]
 fn logging_adapter_emits_marker_and_mdc_metadata_via_event_stream() {

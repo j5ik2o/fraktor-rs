@@ -19,6 +19,13 @@ pub enum SendError {
   NoRecipient(AnyMessage),
   /// The mailbox failed to accept the message before the timeout elapsed.
   Timeout(AnyMessage),
+  /// The sender rejected the payload because its runtime type was not accepted.
+  InvalidPayload {
+    /// The original message that failed payload validation.
+    message: AnyMessage,
+    /// Short description of the expected payload contract.
+    context: &'static str,
+  },
 }
 
 impl SendError {
@@ -52,6 +59,12 @@ impl SendError {
     Self::Timeout(message)
   }
 
+  /// Creates a send error representing a payload type mismatch.
+  #[must_use]
+  pub const fn invalid_payload(message: AnyMessage, context: &'static str) -> Self {
+    Self::InvalidPayload { message, context }
+  }
+
   /// Returns a shared reference to the owned message.
   #[must_use]
   pub const fn message(&self) -> &AnyMessage {
@@ -61,6 +74,7 @@ impl SendError {
       | SendError::Closed(message)
       | SendError::NoRecipient(message)
       | SendError::Timeout(message) => message,
+      | SendError::InvalidPayload { message, .. } => message,
     }
   }
 
@@ -73,6 +87,7 @@ impl SendError {
       | SendError::Closed(message)
       | SendError::NoRecipient(message)
       | SendError::Timeout(message) => message,
+      | SendError::InvalidPayload { message, .. } => message,
     }
   }
 }
@@ -85,6 +100,7 @@ impl fmt::Debug for SendError {
       | SendError::Closed(_) => f.debug_tuple("Closed").finish(),
       | SendError::NoRecipient(_) => f.debug_tuple("NoRecipient").finish(),
       | SendError::Timeout(_) => f.debug_tuple("Timeout").finish(),
+      | SendError::InvalidPayload { context, .. } => f.debug_tuple("InvalidPayload").field(context).finish(),
     }
   }
 }

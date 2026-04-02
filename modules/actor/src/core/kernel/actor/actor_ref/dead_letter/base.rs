@@ -42,6 +42,7 @@ impl DeadLetter {
       | SendError::Closed(_) => DeadLetterReason::RecipientUnavailable,
       | SendError::NoRecipient(_) => DeadLetterReason::MissingRecipient,
       | SendError::Timeout(_) => DeadLetterReason::MailboxTimeout,
+      | SendError::InvalidPayload { .. } => DeadLetterReason::RecipientUnavailable,
     };
     let message = error.message().clone();
     self.record_entry(message, reason, target, timestamp)

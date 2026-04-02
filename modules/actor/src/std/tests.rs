@@ -109,20 +109,12 @@ fn std_public_modules_expose_only_live_entry_points() {
 
 #[test]
 fn std_logging_module_exposes_classic_logging_family() {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  let logging_module = std::fs::read_to_string(manifest_dir.join("src/std/event/logging.rs"))
-    .expect("logging module source should be readable");
-
-  for export in [
-    "ActorLogMarker",
-    "ActorLogging",
-    "DiagnosticActorLogging",
-    "LoggingAdapter",
-    "LoggingReceive",
-    "TracingLoggerSubscriber",
-  ] {
-    assert!(logging_module.contains(export), "std logging module should export {export}");
-  }
+  let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
+  let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;
+  let _diagnostic_actor_logging = core::marker::PhantomData::<crate::std::event::logging::DiagnosticActorLogging>;
+  let _logging_adapter = core::marker::PhantomData::<crate::std::event::logging::LoggingAdapter>;
+  let _logging_receive = core::marker::PhantomData::<crate::std::event::logging::LoggingReceive>;
+  let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
 }
 
 #[test]
