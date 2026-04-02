@@ -14,6 +14,8 @@ pub enum MailboxSelector {
   /// Uses the system default unbounded mailbox.
   #[default]
   Default,
+  /// Uses an explicitly unbounded mailbox.
+  Unbounded,
   /// Uses a bounded mailbox with the specified capacity.
   Bounded(NonZeroUsize),
   /// Uses a mailbox registered under the given identifier.
@@ -25,6 +27,12 @@ impl MailboxSelector {
   #[must_use]
   pub const fn bounded(capacity: NonZeroUsize) -> Self {
     Self::Bounded(capacity)
+  }
+
+  /// Creates an explicitly unbounded mailbox selector.
+  #[must_use]
+  pub const fn unbounded() -> Self {
+    Self::Unbounded
   }
 
   /// Creates a selector that resolves from a configuration identifier.

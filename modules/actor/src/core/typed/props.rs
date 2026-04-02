@@ -108,6 +108,11 @@ where
   pub fn with_mailbox_selector(self, selector: MailboxSelector) -> Self {
     match selector {
       | MailboxSelector::Default => self,
+      | MailboxSelector::Unbounded => {
+        let policy = crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None);
+        let config = crate::core::kernel::actor::props::MailboxConfig::new(policy);
+        self.map_props(|p| p.with_mailbox_config(config))
+      },
       | MailboxSelector::Bounded(capacity) => {
         let policy = crate::core::kernel::dispatch::mailbox::MailboxPolicy::bounded(
           capacity,
@@ -143,6 +148,12 @@ where
   #[must_use]
   pub fn with_mailbox_bounded(self, capacity: core::num::NonZeroUsize) -> Self {
     self.with_mailbox_selector(MailboxSelector::bounded(capacity))
+  }
+
+  /// Shorthand: use an explicitly unbounded mailbox.
+  #[must_use]
+  pub fn with_mailbox_unbounded(self) -> Self {
+    self.with_mailbox_selector(MailboxSelector::unbounded())
   }
 
   /// Attaches metadata tags to the actor for observability and routing.

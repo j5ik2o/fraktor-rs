@@ -34,7 +34,7 @@
 
 ## 再検証結果（2026-04-03）
 
-- `Phase 1`: 残り 2 件。`MailboxSelector.unbounded` と standalone `AskPattern` surface
+- `Phase 1`: 完了
 - `Phase 2`: 一部完了。capability parity の主要部分は完了したが、medium 難易度の family が残っている
 - `Phase 3`: 未完。classic parity の中核 family と typed 補助 surface が残っている
 
@@ -67,7 +67,6 @@
 - classic routing config hierarchy
 - classic `Tcp` / `Udp` / `Dns` / `IO` extension family
 - classic event / logging bus utility family の未充足分
-- standalone `AskPattern` surface
 - `Topic.TopicStats` の cluster-wide semantics
 - `DurableProducerQueue` の独立 entry point
 
@@ -185,17 +184,16 @@
 
 ### Phase 1
 
-状態: 残り 2 件
-
-- `MailboxSelector.unbounded` を追加する（core/typed）
-- standalone `AskPattern` surface を追加する。現在は `TypedActorRef::ask` と `TypedActorContext::ask` はあるが、Pekko の独立 surface はない（core/typed）
+状態: 完了
 
 この Phase で完了済みの項目:
 
 - 完了: `ActorRefResolverSetup` を追加済み（core/typed）
+- 完了: `MailboxSelector.unbounded` を追加済み（core/typed）
 - 完了: `TimerScheduler` の message-as-key shorthand を追加済み（core/typed）
 - 完了: `Receptionist.Listing` に `allServiceInstances` と `servicesWereAddedOrRemoved` を追加済み（core/typed）
 - 完了: `ActorSystem.receptionist` は常在 actor ref 契約を `receptionist()` で満たし、互換補助として `receptionist_ref()` も保持している（core/typed）
+- 完了: standalone `AskPattern` surface を `AskPattern::ask` / `AskPattern::ask_with_status` として追加済み（core/typed）
 
 ### Phase 2
 
@@ -249,8 +247,8 @@ Phase 2 の各項目は以下の状態で完了している。
 
 ## まとめ
 
-- typed 側の主要 API はかなり揃っており、未完は `MailboxSelector.unbounded`、standalone `AskPattern`、`TopicStats` cluster semantics、`DurableProducerQueue` entry point など補助 family が中心である。
+- typed 側の主要 API はかなり揃っており、未完は `TopicStats` cluster semantics、`DurableProducerQueue` entry point など補助 family が中心である。
 - classic 側は `Timers`、stash capability parity、classic logging adapter family までは埋まったが、`ActorSelection`、classic auto-received message、`FSM`、routing config、`io` family、fully-surfaced `ActorRefProvider` が主要ギャップとして残る。
-- parity を低コストで前進できる残件は `MailboxSelector.unbounded` と standalone `AskPattern` surface である。これらが現在の `Phase 1` 残件である。
+- parity を低コストで前進できる easy ギャップは概ね埋まり、残件は medium 以上が中心である。
 - parity 上の主要ギャップは classic の selection / deployment / routing / io / FSM family と、typed の cluster-aware discovery / delivery family である。
 - API ギャップはまだ支配的であり、次のボトルネックは内部構造ではなく公開契約 parity の継続解消にある。

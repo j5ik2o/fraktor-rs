@@ -7,6 +7,7 @@
 pub mod routing;
 
 mod abstract_behavior;
+mod ask_pattern;
 mod behaviors;
 mod failure_handler;
 mod fsm_builder;
@@ -23,6 +24,7 @@ mod typed_ask_future;
 mod typed_ask_response;
 
 pub use abstract_behavior::AbstractBehavior;
+pub use ask_pattern::AskPattern;
 pub use behaviors::Behaviors;
 pub use failure_handler::FailureHandler;
 pub use fsm_builder::FsmBuilder;
