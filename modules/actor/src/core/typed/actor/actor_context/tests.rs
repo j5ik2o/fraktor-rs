@@ -728,7 +728,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
     }
   }
 
-  // Given: a typed context whose system() wrapper is rebuilt from the underlying actor system
+  // 前提: system() wrapper を基底 actor system から再構築した typed context がある
   let system = ActorSystem::new_empty();
   let typed_system = TypedActorSystem::<u32>::from_untyped(system.clone());
   let pid = system.allocate_pid();
@@ -755,7 +755,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
     None,
   ));
 
-  // When: subscribe/unsubscribe use ctx.system() wrappers while publish uses another typed wrapper
+  // 実行: subscribe/unsubscribe は ctx.system() wrapper を使い、publish は別 wrapper で行う
   {
     let mut subscribe_stream = typed_ctx.system().event_stream();
     subscribe_stream
@@ -781,7 +781,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
       .expect("second publish command should be accepted");
   }
 
-  // Then: ctx.system() shares the same endpoint state as other wrappers for the same actor system
+  // 検証: ctx.system() は同じ actor system の他 wrapper と endpoint state を共有する
   let recorded = recorded_events.lock();
   assert_eq!(
     recorded

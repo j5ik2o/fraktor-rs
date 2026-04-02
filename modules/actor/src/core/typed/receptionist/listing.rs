@@ -107,6 +107,9 @@ impl Listing {
   }
 
   /// Returns whether the listing reflects added or removed services.
+  // TODO: Track actual add/remove diffs when clustered receptionist reachability
+  // semantics are introduced. The current local-only implementation mirrors
+  // Pekko's non-clustered contract and therefore always returns true.
   #[must_use]
   pub const fn services_were_added_or_removed(&self) -> bool {
     true

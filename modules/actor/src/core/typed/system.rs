@@ -64,6 +64,10 @@ struct DeadLetterRefSender {
   state: SystemStateShared,
 }
 
+const EVENT_STREAM_FACADE_PID: Pid = Pid::new(u64::MAX - 2, 0);
+const DEAD_LETTER_FACADE_PID: Pid = Pid::new(u64::MAX - 1, 0);
+const IGNORE_FACADE_PID: Pid = Pid::new(u64::MAX, 0);
+
 impl EventStreamActorSubscription {
   const fn new(pid: Pid, subscription: EventStreamSubscription) -> Self {
     Self { pid, subscription }
@@ -120,7 +124,8 @@ impl ExtensionId for EventStreamRefId {
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let state = system.state();
-    let actor_ref = ActorRef::with_system(Pid::new(0, 0), EventStreamRefSender::new(system.event_stream()), &state);
+    let actor_ref =
+      ActorRef::with_system(EVENT_STREAM_FACADE_PID, EventStreamRefSender::new(system.event_stream()), &state);
     EventStreamRefEndpoint::new(actor_ref)
   }
 }
@@ -134,7 +139,7 @@ impl ActorRefSender for IgnoreRefSender {
 impl ActorRefSender for EventStreamRefSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     let Some(command) = message.downcast_ref::<EventStreamCommand>() else {
-      return Err(SendError::closed(message));
+      return Err(SendError::invalid_payload(message, "expected EventStreamCommand"));
     };
     match command {
       | EventStreamCommand::Publish(event) => self.event_stream.publish(event),
@@ -286,7 +291,7 @@ where
   where
     U: Send + Sync + 'static, {
     let state = self.inner.state();
-    let actor_ref = ActorRef::with_system(Pid::new(0, 0), DeadLetterRefSender::new(state.clone()), &state);
+    let actor_ref = ActorRef::with_system(DEAD_LETTER_FACADE_PID, DeadLetterRefSender::new(state.clone()), &state);
     TypedActorRef::from_untyped(actor_ref)
   }
 
@@ -301,7 +306,7 @@ where
   pub fn ignore_ref<U>(&self) -> TypedActorRef<U>
   where
     U: Send + Sync + 'static, {
-    TypedActorRef::from_untyped(ActorRef::new(Pid::new(0, 0), IgnoreRefSender))
+    TypedActorRef::from_untyped(ActorRef::new(IGNORE_FACADE_PID, IgnoreRefSender))
   }
 
   /// Renders the current actor hierarchy for debugging.

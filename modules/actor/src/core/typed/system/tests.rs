@@ -499,6 +499,13 @@ fn receptionist_ref_returns_none_when_missing() {
 }
 
 #[test]
+#[should_panic(expected = "system receptionist must be installed during actor system bootstrap")]
+fn receptionist_panics_when_missing() {
+  let system = TypedActorSystem::<u32>::from_untyped(ActorSystem::new_empty());
+  let _ = system.receptionist();
+}
+
+#[test]
 fn log_configuration_emits_log_event_to_event_stream() {
   // Given: a typed actor system with a recording subscriber
   let system = new_test_system();

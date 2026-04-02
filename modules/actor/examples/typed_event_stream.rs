@@ -33,6 +33,7 @@ impl CollectorSender {
 
 impl ActorRefSender for CollectorSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    // EventStreamEvent 以外のメッセージはこの example では意図的に無視する。
     if let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() {
       self.events.lock().push(event.clone());
     }

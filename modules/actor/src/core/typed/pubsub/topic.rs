@@ -44,10 +44,12 @@ impl Topic {
   /// `topic_instances` does not cause duplicate local delivery because only one
   /// branch executes for each publish.
   ///
-  /// # Errors
+  /// # Stops
   ///
-  /// Returns a fatal actor error when the topic cannot install its
-  /// receptionist adapter.
+  /// Returns a `Behavior`.
+  /// This actor stops via [`Behaviors::stopped`] when the receptionist is
+  /// unavailable, creating the receptionist adapter fails, or subscribing to
+  /// the receptionist fails.
   #[must_use]
   pub fn behavior<M>(topic_name: impl Into<String>) -> Behavior<TopicCommand<M>>
   where

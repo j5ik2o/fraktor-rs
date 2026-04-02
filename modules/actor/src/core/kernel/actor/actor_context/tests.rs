@@ -331,27 +331,27 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
 }
 
 #[test]
-fn actor_context_timers_facade_start_single_timer_and_cancel_tracks_active_state() {
-  // Given: a classic actor context with a registered self actor
+fn actor_context_timers_start_single_timer_and_cancel_tracks_active_state() {
+  // 前提: self actor が登録済みの classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "timer-self", &props);
   let context = ActorContext::new(&system, pid);
 
-  // When: the future classic timers facade schedules and cancels a single timer
+  // 実行: classic timers API で単発タイマーを登録してから取り消す
   let timers = context.timers();
   timers.start_single_timer("tick", AnyMessage::new(7_i32), Duration::from_millis(25)).expect("schedule");
   assert!(timers.is_timer_active("tick"));
   timers.cancel("tick").expect("cancel");
 
-  // Then: the timer is no longer active
+  // 検証: タイマーは非アクティブになる
   assert!(!timers.is_timer_active("tick"));
 }
 
 #[test]
-fn actor_context_timers_facade_persists_keys_across_fresh_contexts() {
-  // Given: a classic actor context with a registered self actor
+fn actor_context_timers_persist_keys_across_fresh_contexts() {
+  // 前提: self actor が登録済みの classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
@@ -361,17 +361,17 @@ fn actor_context_timers_facade_persists_keys_across_fresh_contexts() {
   let first_timers = first_context.timers();
   first_timers.start_single_timer("tick", AnyMessage::new(9_i32), Duration::from_millis(25)).expect("schedule");
 
-  // When: a fresh context queries the same timer key
+  // 実行: 新しい context から同じ timer key を参照する
   let second_context = ActorContext::new(&system, pid);
   let second_timers = second_context.timers();
 
-  // Then: the active timer remains visible because handles are cell-scoped
+  // 検証: handle が cell 単位のためアクティブタイマーは見える
   assert!(second_timers.is_timer_active("tick"));
 }
 
 #[test]
-fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
-  // Given: a classic actor context with active periodic timers
+fn actor_context_timers_cancel_all_clears_periodic_entries() {
+  // 前提: periodic timer が有効な classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
@@ -379,7 +379,7 @@ fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
   let context = ActorContext::new(&system, pid);
   let timers = context.timers();
 
-  // When: fixed-delay and fixed-rate timers are started and then cancelled together
+  // 実行: fixed-delay と fixed-rate の timer を開始してからまとめて取消する
   timers
     .start_timer_with_fixed_delay("delay", AnyMessage::new(1_i32), Duration::from_millis(20))
     .expect("schedule fixed delay");
@@ -388,7 +388,7 @@ fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
     .expect("schedule fixed rate");
   timers.cancel_all().expect("cancel all");
 
-  // Then: both timer keys are reported inactive
+  // 検証: 両方の timer key が非アクティブになる
   assert!(!timers.is_timer_active("delay"));
   assert!(!timers.is_timer_active("rate"));
 }
