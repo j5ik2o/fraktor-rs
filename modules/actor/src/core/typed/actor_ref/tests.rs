@@ -167,6 +167,8 @@ fn typed_actor_ref_ask_returns_typed_reply_and_registers_future() {
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
 
+  assert_ne!(response.sender().pid(), typed_ref.pid(), "typed reply ref must not reuse target pid");
+  assert!(response.sender().path().is_none(), "typed reply ref must not resolve to target actor path");
   assert_eq!(system.drain_ready_ask_futures().len(), 1, "typed ask should register future with system");
   assert_eq!(future.try_take().expect("ready").expect("ok"), 55);
 }

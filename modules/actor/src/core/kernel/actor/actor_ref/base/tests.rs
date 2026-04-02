@@ -125,9 +125,43 @@ fn actor_ref_ask_completes_send_failed_when_delivery_fails() {
   let mut actor: ActorRef = ActorRef::null();
 
   let response = actor.ask(AnyMessage::new(42_u32));
-  assert_eq!(response.sender().pid(), actor.pid());
+  assert_ne!(response.sender().pid(), actor.pid(), "reply ref must not reuse target pid");
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
   assert!(matches!(result, Err(crate::core::kernel::actor::messaging::AskError::SendFailed(_))));
+}
+
+#[test]
+fn actor_ref_ask_reply_sender_uses_distinct_pid_and_no_target_path() {
+  use crate::core::kernel::actor::{Actor, ActorCell, ActorContext, messaging::AnyMessageView, props::Props};
+
+  struct EchoActor;
+  impl Actor for EchoActor {
+    fn receive(
+      &mut self,
+      _ctx: &mut ActorContext<'_>,
+      message: AnyMessageView<'_>,
+    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+      if let Some(value) = message.downcast_ref::<u32>()
+        && let Some(sender) = message.sender()
+      {
+        let mut sender = sender.clone();
+        sender.tell(AnyMessage::new(*value));
+      }
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty().state();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| EchoActor);
+  let cell = ActorCell::create(system.clone(), pid, None, "ask-reply-probe".into(), &props).expect("create actor cell");
+  system.register_cell(cell.clone());
+
+  let mut actor = cell.actor_ref();
+  let response = actor.ask(AnyMessage::new(7_u32));
+
+  assert_ne!(response.sender().pid(), actor.pid(), "reply ref must not reuse target pid");
+  assert!(response.sender().path().is_none(), "ephemeral reply ref must not resolve to target path");
 }
 
 #[test]

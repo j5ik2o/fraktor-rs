@@ -10,6 +10,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::sync::SharedAccess;
+use portable_atomic::{AtomicU64, Ordering};
 
 use crate::core::kernel::{
   actor::{
@@ -34,6 +35,10 @@ pub struct ActorRef {
   system: Option<SystemStateWeak>,
 }
 
+// Fallback reply pid generator used only when no system state is attached.
+// Start away from runtime-allocated low pids and reserved facade pids.
+static ASK_REPLY_FALLBACK_PID: AtomicU64 = AtomicU64::new(u64::MAX / 2);
+
 impl ActorRef {
   fn complete_ask_future_with_error(future: &ActorFutureShared<AskResult>, error: &SendError) {
     let waker = future.with_write(|inner| inner.complete(Err(AskError::from(error))));
@@ -49,15 +54,24 @@ impl ActorRef {
   }
 
   fn build_ask_reply_ref(
-    pid: Pid,
     system: Option<&SystemStateShared>,
     path_aware_reply: bool,
     reply_sender: AskReplySender,
   ) -> Self {
+    let pid = Self::next_ask_reply_pid(system);
     if path_aware_reply && let Some(system) = system {
       return Self::with_system(pid, reply_sender, system);
     }
     Self::new(pid, reply_sender)
+  }
+
+  fn next_ask_reply_pid(system: Option<&SystemStateShared>) -> Pid {
+    if let Some(system) = system {
+      return system.allocate_pid();
+    }
+
+    let raw = ASK_REPLY_FALLBACK_PID.fetch_add(1, Ordering::Relaxed);
+    Pid::new(raw, 0)
   }
 
   /// Creates a new actor reference backed by the provided sender.
@@ -115,9 +129,8 @@ impl ActorRef {
   /// Sends a request built from a reply target and obtains the associated ask response.
   ///
   /// `path_aware_reply` controls whether the reply actor ref keeps the originating
-  /// system attached. Typed ask call sites use `true` so reply refs can still
-  /// participate in path-aware APIs, while classic `ActorRef::ask` keeps its
-  /// historical `false` behavior.
+  /// system attached. Reply refs always use a distinct PID from the target actor
+  /// so they do not collide in equality, hashing, or path resolution.
   #[must_use]
   pub(crate) fn ask_with_factory<F>(&mut self, path_aware_reply: bool, build: F) -> AskResponse
   where
@@ -125,7 +138,7 @@ impl ActorRef {
     let future = ActorFutureShared::<AskResult>::new();
     let system = self.system_state();
     let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = Self::build_ask_reply_ref(self.pid, system.as_ref(), path_aware_reply, reply_sender);
+    let reply_ref = Self::build_ask_reply_ref(system.as_ref(), path_aware_reply, reply_sender);
     let message = build(reply_ref.clone());
 
     if let Err(error) = self.try_tell(message) {
