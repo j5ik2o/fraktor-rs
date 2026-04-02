@@ -1,3 +1,5 @@
+use alloc::collections::BTreeSet;
+
 use crate::core::{
   kernel::{
     actor::{
@@ -11,7 +13,6 @@ use crate::core::{
   },
   typed::TypedActorRef,
 };
-use alloc::collections::BTreeSet;
 
 struct NoOpSender;
 
