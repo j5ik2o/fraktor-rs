@@ -11,6 +11,7 @@ mod identify;
 mod message_buffer;
 mod message_buffer_map;
 pub mod message_invoker;
+mod receive_timeout;
 mod status;
 /// Internal system messages exchanged within the actor runtime.
 pub mod system_message;
@@ -23,4 +24,5 @@ pub use ask_response::{AskResponse, AskResult};
 pub use identify::Identify;
 pub use message_buffer::MessageBuffer;
 pub use message_buffer_map::MessageBufferMap;
+pub use receive_timeout::ReceiveTimeout;
 pub use status::Status;

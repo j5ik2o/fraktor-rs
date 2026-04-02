@@ -25,7 +25,7 @@ impl Default for LocalActorRefProviderInstaller {
 
 impl ActorRefProviderInstaller for LocalActorRefProviderInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new());
+    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(system.state()));
     system.extended().register_actor_ref_provider(&provider)?;
     Ok(())
   }

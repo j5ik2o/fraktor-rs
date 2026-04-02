@@ -85,6 +85,31 @@ impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<
     let mut guard = self.inner.lock();
     guard.actor_ref(path)
   }
+
+  fn root_guardian(&self) -> Option<ActorRef> {
+    let guard = self.inner.lock();
+    guard.root_guardian()
+  }
+
+  fn guardian(&self) -> Option<ActorRef> {
+    let guard = self.inner.lock();
+    guard.guardian()
+  }
+
+  fn system_guardian(&self) -> Option<ActorRef> {
+    let guard = self.inner.lock();
+    guard.system_guardian()
+  }
+
+  fn dead_letters(&self) -> ActorRef {
+    let guard = self.inner.lock();
+    guard.dead_letters()
+  }
+
+  fn temp_path(&self) -> ActorPath {
+    let guard = self.inner.lock();
+    guard.temp_path()
+  }
 }
 
 impl<P: ActorRefProvider + 'static> SharedAccess<ActorRefProviderHandle<P>> for ActorRefProviderShared<P> {

@@ -16,6 +16,7 @@ mod address;
 mod child_ref;
 mod classic_timer_scheduler;
 pub mod context_pipe;
+pub mod deploy;
 pub mod error;
 pub mod extension;
 pub mod lifecycle;

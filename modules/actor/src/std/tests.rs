@@ -99,8 +99,10 @@ fn std_public_modules_expose_only_live_entry_points() {
   let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
   let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;
   let _diagnostic_actor_logging = core::marker::PhantomData::<crate::std::event::logging::DiagnosticActorLogging>;
+  let _bus_logging = core::marker::PhantomData::<crate::std::event::logging::BusLogging>;
   let _logging_adapter = core::marker::PhantomData::<crate::std::event::logging::LoggingAdapter>;
   let _logging_receive = core::marker::PhantomData::<crate::std::event::logging::LoggingReceive>;
+  let _no_logging = core::marker::PhantomData::<crate::std::event::logging::NoLogging>;
   let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
   let _shared = core::marker::PhantomData::<crate::std::event::stream::EventStreamSubscriberShared>;
 
@@ -112,8 +114,10 @@ fn std_logging_module_exposes_classic_logging_family() {
   let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
   let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;
   let _diagnostic_actor_logging = core::marker::PhantomData::<crate::std::event::logging::DiagnosticActorLogging>;
+  let _bus_logging = core::marker::PhantomData::<crate::std::event::logging::BusLogging>;
   let _logging_adapter = core::marker::PhantomData::<crate::std::event::logging::LoggingAdapter>;
   let _logging_receive = core::marker::PhantomData::<crate::std::event::logging::LoggingReceive>;
+  let _no_logging = core::marker::PhantomData::<crate::std::event::logging::NoLogging>;
   let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
 }
 

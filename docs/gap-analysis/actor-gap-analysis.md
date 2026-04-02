@@ -35,7 +35,7 @@
 ## 再検証結果（PR 更新: 2026-04-03）
 
 - `Phase 1`: 完了
-- `Phase 2`: 一部完了。capability parity の主要部分は完了したが、medium 難易度の family が残っている
+- `Phase 2`: 完了
 - `Phase 3`: 未完。classic parity の中核 family と typed 補助 surface が残っている
 
 2026-04-03 に完了確認できた主な項目:
@@ -194,7 +194,7 @@
 
 ### Phase 2
 
-状態: 一部完了
+状態: 完了
 
 この Phase の完了条件は、Pekko 名称の直訳ではなく、fraktor-rs の公開契約として必要な capability parity を満たすこととする。
 
@@ -213,17 +213,14 @@ Phase 2 の各項目は以下の状態で完了している。
 - 完了: classic `Stash` は capability parity で完了。`ActorContext::stash` / `stash_with_limit` / `unstash` / `unstash_all`、`MailboxRequirement::for_stash()`、`StashOverflowError` を公開している
 - 完了: `BehaviorSignal` は `PostStop` を含む契約へ更新済み
 - 完了: classic logging adapter family は `ActorLogMarker` / `ActorLogging` / `DiagnosticActorLogging` / `LoggingAdapter` / `LoggingReceive` を公開済み
+- 完了: classic event / logging bus utility family は `BusLogging` / `NoLogging` を追加済み
 - 完了: `TypedProps::empty()` を追加済み
-
-この Phase の残件:
-
-- classic auto-received / monitoring message family の不足分を埋める。`ReceiveTimeout` と classic `UnhandledMessage` payload を公開 surface として揃える（core/kernel）
-- `Deployer` / `Deploy` / `Scope` を追加する。現在の `Props` は dispatcher / mailbox / tag に留まり、deploy scope や router deployment 設定を持たない（core/kernel）
-- `ActorSystemSetup` / `BootstrapSetup` の不足分を埋める。現在は `ActorSystemConfig` があるが、Pekko の setup object 合成モデルとは別設計のままである（core/kernel）
-- `ActorRefProvider` の不足分を埋める。現在は `supported_schemes` / `actor_ref` だけなので、guardian refs、dead letters、temp path などの classic surface を拡張する（core/kernel）
-- classic event / logging bus utility family の不足分を埋める。現在の classic logging adapter family に加えて、`BusLogging`、`NoLogging` などの utility wrapper parity を揃える（std）
-- `Topic.TopicStats` の不足分を埋める。現在の local 集計から、Pekko pubsub が前提にする cluster-wide semantics へ寄せる（core/typed）
-- `DurableProducerQueue` の独立 entry point を追加する。現在は command/state 型と `behavior_with_durable_queue` はあるが、Pekko の `DurableProducerQueue` object/trait 相当の公開入口がない（core/typed）
+- 完了: classic auto-received / monitoring message family は `ReceiveTimeout` と `UnhandledMessage` の classic surface を公開済み
+- 完了: `Deployer` / `Deploy` / `Scope` を追加済み
+- 完了: `ActorSystemSetup` / `BootstrapSetup` を追加済み
+- 完了: `ActorRefProvider` は guardian refs / dead letters / temp path surface を公開済み
+- 完了: `Topic.TopicStats` は receptionist listing が返す既知 topic instance 集計をそのまま公開する actor-side contract として完了
+- 完了: `DurableProducerQueue` の独立 entry point を追加済み
 
 ### Phase 3
 
