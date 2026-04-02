@@ -3,9 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::kernel::actor::messaging::AnyMessage;
-
 use super::routee::Routee;
+use crate::core::kernel::actor::messaging::AnyMessage;
 
 /// Determines how a message is routed to one of the available routees.
 ///

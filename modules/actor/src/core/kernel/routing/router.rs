@@ -5,9 +5,8 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
-
 use super::{broadcast::Broadcast, routee::Routee, routing_logic::RoutingLogic};
+use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 /// Routes messages to one or more routees using a configured [`RoutingLogic`].
 ///

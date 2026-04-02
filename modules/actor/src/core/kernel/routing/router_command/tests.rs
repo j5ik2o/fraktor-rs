@@ -1,11 +1,8 @@
-use crate::core::kernel::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRef, NullSender},
-  },
-};
-
 use super::super::{routee::Routee, router_command::RouterCommand};
+use crate::core::kernel::actor::{
+  Pid,
+  actor_ref::{ActorRef, NullSender},
+};
 
 #[test]
 fn get_routees_variant_is_constructible() {

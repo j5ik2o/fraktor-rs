@@ -5,9 +5,8 @@ mod tests;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::core::kernel::actor::messaging::AnyMessage;
-
 use super::{routee::Routee, routing_logic::RoutingLogic};
+use crate::core::kernel::actor::messaging::AnyMessage;
 
 /// Selects routees in a cyclic round-robin order.
 ///

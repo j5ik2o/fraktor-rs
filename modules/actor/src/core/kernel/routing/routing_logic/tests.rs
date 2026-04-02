@@ -1,6 +1,5 @@
-use crate::core::kernel::actor::messaging::AnyMessage;
-
 use super::super::{routee::Routee, routing_logic::RoutingLogic};
+use crate::core::kernel::actor::messaging::AnyMessage;
 
 // ---------------------------------------------------------------------------
 // 補助実装: FirstRoutingLogic

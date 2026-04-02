@@ -1,12 +1,9 @@
-use crate::core::kernel::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRef, NullSender},
-    messaging::AnyMessage,
-  },
+use super::super::{round_robin_routing_logic::RoundRobinRoutingLogic, routee::Routee, routing_logic::RoutingLogic};
+use crate::core::kernel::actor::{
+  Pid,
+  actor_ref::{ActorRef, NullSender},
+  messaging::AnyMessage,
 };
-
-use super::super::{routee::Routee, round_robin_routing_logic::RoundRobinRoutingLogic, routing_logic::RoutingLogic};
 
 fn make_routee(id: u64) -> Routee {
   Routee::ActorRef(ActorRef::new(Pid::new(id, 0), NullSender))

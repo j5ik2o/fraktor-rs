@@ -3,16 +3,13 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
-use crate::core::kernel::{
-  actor::{
-    Pid,
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    error::SendError,
-    messaging::AnyMessage,
-  },
-};
-
 use super::super::{broadcast::Broadcast, routee::Routee, router::Router, routing_logic::RoutingLogic};
+use crate::core::kernel::actor::{
+  Pid,
+  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  error::SendError,
+  messaging::AnyMessage,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
