@@ -11,7 +11,7 @@ use crate::core::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
-  typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, internal::ActorRefResolverId},
+  typed::{ActorRefResolverSetup, TypedActorSystem, TypedProps, dsl::Behaviors},
 };
 
 struct NoopActor;
@@ -55,14 +55,13 @@ fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
 #[test]
 fn actor_ref_resolver_setup_overrides_default_extension_factory() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let setup = ExtensionSetup::new(ActorRefResolverId::new(), |system: &crate::core::kernel::system::ActorSystem| {
-    ActorRefResolver::new(system)
-  });
+  let setup =
+    ActorRefResolverSetup::new(|system: &crate::core::kernel::system::ActorSystem| ActorRefResolver::new(system));
   let config = ActorSystemConfig::default()
     .with_extension_installers(ExtensionInstallers::default().with_extension_installer(setup))
     .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
 
   let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
-  assert!(system.as_untyped().extended().has_extension(&ActorRefResolverId::new()));
+  assert!(ActorRefResolver::get(&system).is_some());
   system.terminate().expect("terminate");
 }

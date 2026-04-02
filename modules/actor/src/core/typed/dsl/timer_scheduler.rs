@@ -4,7 +4,10 @@
 mod tests;
 
 use alloc::vec::Vec;
-use core::time::Duration;
+use core::{
+  hash::{Hash, Hasher},
+  time::Duration,
+};
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
@@ -39,6 +42,14 @@ impl<M> TimerScheduler<M>
 where
   M: Send + Sync + Clone + 'static,
 {
+  fn timer_key_for_message(message: &M) -> TimerKey
+  where
+    M: Hash, {
+    let mut hasher = ahash::AHasher::default();
+    message.hash(&mut hasher);
+    TimerKey::new(alloc::format!("{:016x}", hasher.finish()))
+  }
+
   /// Creates a timer scheduler bound to the provided actor.
   #[must_use]
   pub fn new(self_ref: TypedActorRef<M>, scheduler: TypedSchedulerShared) -> Self {
@@ -58,6 +69,22 @@ where
     delay: Duration,
   ) -> Result<(), SchedulerError> {
     self.start_timer_with_fixed_delay_initial(key, message, delay, delay)
+  }
+
+  /// Starts a timer using `message` itself as the timer key.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the command.
+  pub fn start_timer_with_fixed_delay_with_message_key(
+    &mut self,
+    message: M,
+    delay: Duration,
+  ) -> Result<(), SchedulerError>
+  where
+    M: Hash, {
+    let key = Self::timer_key_for_message(&message);
+    self.start_timer_with_fixed_delay(key, message, delay)
   }
 
   /// Starts a timer that sends `message` to self after each `delay`, with non-compensating
@@ -97,6 +124,22 @@ where
     self.start_timer_at_fixed_rate_initial(key, message, interval, interval)
   }
 
+  /// Starts a fixed-rate timer using `message` itself as the timer key.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the command.
+  pub fn start_timer_at_fixed_rate_with_message_key(
+    &mut self,
+    message: M,
+    interval: Duration,
+  ) -> Result<(), SchedulerError>
+  where
+    M: Hash, {
+    let key = Self::timer_key_for_message(&message);
+    self.start_timer_at_fixed_rate(key, message, interval)
+  }
+
   /// Starts a timer that sends `message` to self at each `interval`, with compensating
   /// semantics. The first message is sent after `initial_delay`.
   ///
@@ -130,6 +173,18 @@ where
     let handle = self.scheduler.with_write(|guard| guard.schedule_once(delay, self_ref, message, None, None))?;
     self.entries.insert(key, handle);
     Ok(())
+  }
+
+  /// Starts a one-shot timer using `message` itself as the timer key.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the command.
+  pub fn start_single_timer_with_message_key(&mut self, message: M, delay: Duration) -> Result<(), SchedulerError>
+  where
+    M: Hash, {
+    let key = Self::timer_key_for_message(&message);
+    self.start_single_timer(key, message, delay)
   }
 
   /// Returns whether a timer with the provided key is currently active.

@@ -58,7 +58,7 @@ fn group_router_should_route_via_system_receptionist() {
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let routee_props = TypedProps::<u32>::from_behavior_factory({
@@ -96,7 +96,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
@@ -170,7 +170,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
@@ -226,7 +226,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
@@ -284,7 +284,7 @@ fn group_router_uses_round_robin_routing_by_default() {
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   for routee_index in 0..2_usize {

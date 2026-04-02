@@ -176,6 +176,12 @@ impl ActorContext<'_> {
     cell.unstash_messages()
   }
 
+  /// Returns the classic timer facade for the running actor.
+  #[must_use]
+  pub fn timers(&self) -> crate::core::kernel::actor::ClassicTimerScheduler {
+    crate::core::kernel::actor::ClassicTimerScheduler::new(&self.system, self.pid)
+  }
+
   /// Returns an [`ActorRef`] pointing to the running actor.
   ///
   /// # Panics

@@ -68,7 +68,7 @@ where
         let timestamp = system.state().monotonic_now();
         let message_type = core::any::type_name::<M>().to_string();
         let event = TypedUnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
-        system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
+        system.publish_event(&EventStreamEvent::UnhandledMessage(event));
         Ok(())
       },
       | BehaviorDirective::Empty => {
@@ -77,7 +77,7 @@ where
         let timestamp = system.state().monotonic_now();
         let message_type = core::any::type_name::<M>().to_string();
         let event = TypedUnhandledMessageEvent::new(ctx.pid(), message_type, timestamp);
-        system.event_stream().publish(&EventStreamEvent::UnhandledMessage(event));
+        system.publish_event(&EventStreamEvent::UnhandledMessage(event));
         self.current = Behavior::empty();
         Ok(())
       },
@@ -113,7 +113,7 @@ where
   ) -> Result<BehaviorDirective, ActorError> {
     if let BehaviorSignal::MessageAdaptionFailure(failure) = signal {
       let event = Self::adapter_failure_event(ctx, failure);
-      ctx.system().event_stream().publish(&EventStreamEvent::AdapterFailure(event));
+      ctx.system().publish_event(&EventStreamEvent::AdapterFailure(event));
     }
     let next = self.current.handle_signal(ctx, signal)?;
     let directive = next.directive();
@@ -131,7 +131,8 @@ where
       ctx.stop_self().map_err(|error| ActorError::from_send_error(&error))?;
       self.stopping = true;
     }
-    self.dispatch_signal(ctx, &BehaviorSignal::Started)?;
+    let next = self.current.handle_start(ctx)?;
+    self.apply_transition(ctx, next)?;
     Ok(())
   }
 
@@ -142,9 +143,9 @@ where
 
   fn post_stop(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<(), ActorError> {
     // post_stop に到達した時点で停止は確定しているため、
-    // Stopped シグナル処理中に stop_self を再送しないようにする。
+    // PostStop シグナル処理中に stop_self を再送しないようにする。
     self.stopping = true;
-    self.dispatch_signal(ctx, &BehaviorSignal::Stopped)?;
+    self.dispatch_signal(ctx, &BehaviorSignal::PostStop)?;
     Ok(())
   }
 

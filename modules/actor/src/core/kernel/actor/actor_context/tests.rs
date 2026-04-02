@@ -1,5 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
-use core::hint::spin_loop;
+use core::{hint::spin_loop, time::Duration};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
 
@@ -328,6 +328,91 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
   assert_eq!(cell.stashed_message_len(), 0);
   wait_until(|| received.lock().len() == 2);
   assert_eq!(received.lock().clone(), vec![1, 2]);
+}
+
+#[test]
+fn actor_context_timers_facade_start_single_timer_and_cancel_tracks_active_state() {
+  // Given: a classic actor context with a registered self actor
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-self", &props);
+  let context = ActorContext::new(&system, pid);
+
+  // When: the future classic timers facade schedules and cancels a single timer
+  let mut timers = context.timers();
+  timers.start_single_timer("tick", AnyMessage::new(7_i32), Duration::from_millis(25)).expect("schedule");
+  assert!(timers.is_timer_active("tick"));
+  timers.cancel("tick");
+
+  // Then: the timer is no longer active
+  assert!(!timers.is_timer_active("tick"));
+}
+
+#[test]
+fn actor_context_timers_facade_persists_keys_across_fresh_contexts() {
+  // Given: a classic actor context with a registered self actor
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-persist", &props);
+
+  let first_context = ActorContext::new(&system, pid);
+  let mut first_timers = first_context.timers();
+  first_timers.start_single_timer("tick", AnyMessage::new(9_i32), Duration::from_millis(25)).expect("schedule");
+
+  // When: a fresh context queries the same timer key
+  let second_context = ActorContext::new(&system, pid);
+  let second_timers = second_context.timers();
+
+  // Then: the active timer remains visible because handles are cell-scoped
+  assert!(second_timers.is_timer_active("tick"));
+}
+
+#[test]
+fn actor_context_timers_facade_cancel_all_clears_periodic_entries() {
+  // Given: a classic actor context with active periodic timers
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-periodic", &props);
+  let context = ActorContext::new(&system, pid);
+  let mut timers = context.timers();
+
+  // When: fixed-delay and fixed-rate timers are started and then cancelled together
+  timers
+    .start_timer_with_fixed_delay("delay", AnyMessage::new(1_i32), Duration::from_millis(20))
+    .expect("schedule fixed delay");
+  timers
+    .start_timer_at_fixed_rate("rate", AnyMessage::new(2_i32), Duration::from_millis(20))
+    .expect("schedule fixed rate");
+  timers.cancel_all();
+
+  // Then: both timer keys are reported inactive
+  assert!(!timers.is_timer_active("delay"));
+  assert!(!timers.is_timer_active("rate"));
+}
+
+#[test]
+fn actor_context_stash_overflow_error_converts_from_actor_error() {
+  // Given: a stash overflow produced by the existing context API
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "stash-overflow", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+  context.stash_with_limit(1).expect("stash first");
+  context.set_current_message(Some(AnyMessage::new(2_i32)));
+  let error = context.stash_with_limit(1).expect_err("overflow should fail");
+
+  // When: the future public stash overflow error is extracted
+  let overflow: crate::core::kernel::actor::StashOverflowError =
+    error.try_into().expect("classic stash overflow error");
+
+  // Then: the conversion succeeds and yields the public error type
+  let _ = overflow;
 }
 
 #[test]

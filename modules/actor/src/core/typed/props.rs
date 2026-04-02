@@ -64,6 +64,15 @@ where
     Self { props, marker: PhantomData }
   }
 
+  /// Builds empty typed props without an actor factory.
+  ///
+  /// These props can be used as an immutable builder root and will be rejected
+  /// at spawn time until a factory-backed conversion is supplied.
+  #[must_use]
+  pub fn empty() -> Self {
+    Self::from_props(Props::empty())
+  }
+
   /// Returns the underlying props.
   #[must_use]
   pub const fn to_untyped(&self) -> &Props {

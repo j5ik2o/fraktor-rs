@@ -1,6 +1,6 @@
 extern crate std;
 
-use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, collections::BTreeMap, format, string::String, vec::Vec};
 use core::time::Duration;
 use std::{
   fmt,
@@ -41,6 +41,10 @@ fn forwards_log_events_to_tracing() {
   assert_eq!(event.message, "hello");
   assert_eq!(event.timestamp_micros, Some(42));
   assert_eq!(event.origin, Some(String::from("n/a")));
+  assert_eq!(event.logger_name, Some(String::from("n/a")));
+  assert_eq!(event.marker_name, Some(String::from("n/a")));
+  assert_eq!(event.marker_properties, Some(String::from("{}")));
+  assert_eq!(event.mdc, Some(String::from("{}")));
 }
 
 #[test]
@@ -58,6 +62,35 @@ fn filters_events_below_threshold() {
   let events = collector.events();
   assert_eq!(events.len(), 1);
   assert_eq!(events[0].message, "warn");
+}
+
+#[test]
+fn forwards_structured_marker_and_mdc_fields_to_tracing() {
+  let collector = RecordingSubscriber::default();
+  let shared = collector.clone();
+  with_default(shared, || {
+    let mut subscriber = TracingLoggerSubscriber::new(LogLevel::Trace);
+    let marker_properties = BTreeMap::from([(String::from("pekkoMessageClass"), String::from("ExampleMessage"))]);
+    let mdc = BTreeMap::from([(String::from("iam"), String::from("the one who knocks"))]);
+    let log = LogEvent::new(
+      LogLevel::Warn,
+      String::from("structured"),
+      Duration::from_micros(11),
+      None,
+      Some(String::from("classic.logging")),
+    )
+    .with_marker("pekkoDeadLetter", marker_properties)
+    .with_mdc(mdc);
+    subscriber.on_event(&EventStreamEvent::Log(log));
+  });
+
+  let events = collector.events();
+  assert_eq!(events.len(), 1);
+  let event = &events[0];
+  assert_eq!(event.logger_name, Some(String::from("classic.logging")));
+  assert_eq!(event.marker_name, Some(String::from("pekkoDeadLetter")));
+  assert_eq!(event.marker_properties, Some(String::from("{\"pekkoMessageClass\": \"ExampleMessage\"}")));
+  assert_eq!(event.mdc, Some(String::from("{\"iam\": \"the one who knocks\"}")));
 }
 
 #[derive(Clone, Default)]
@@ -89,11 +122,15 @@ impl Subscriber for RecordingSubscriber {
     let mut visitor = EventVisitor::default();
     event.record(&mut visitor);
     let captured = CapturedEvent {
-      level:            *metadata.level(),
-      target:           metadata.target().to_owned(),
-      message:          visitor.message.unwrap_or_default(),
-      origin:           visitor.origin.or_else(|| Some(String::from("n/a"))),
-      timestamp_micros: visitor.timestamp_micros,
+      level:             *metadata.level(),
+      target:            metadata.target().to_owned(),
+      message:           visitor.message.unwrap_or_default(),
+      origin:            visitor.origin.or_else(|| Some(String::from("n/a"))),
+      logger_name:       visitor.logger_name.or_else(|| Some(String::from("n/a"))),
+      marker_name:       visitor.marker_name.or_else(|| Some(String::from("n/a"))),
+      marker_properties: visitor.marker_properties.or_else(|| Some(String::from("{}"))),
+      mdc:               visitor.mdc.or_else(|| Some(String::from("{}"))),
+      timestamp_micros:  visitor.timestamp_micros,
     };
     self.events.lock().expect("lock").push(captured);
   }
@@ -105,30 +142,42 @@ impl Subscriber for RecordingSubscriber {
 
 #[derive(Clone, Debug)]
 struct CapturedEvent {
-  level:            Level,
-  target:           String,
-  message:          String,
-  origin:           Option<String>,
-  timestamp_micros: Option<u64>,
+  level:             Level,
+  target:            String,
+  message:           String,
+  origin:            Option<String>,
+  logger_name:       Option<String>,
+  marker_name:       Option<String>,
+  marker_properties: Option<String>,
+  mdc:               Option<String>,
+  timestamp_micros:  Option<u64>,
 }
 
 impl Default for CapturedEvent {
   fn default() -> Self {
     Self {
-      level:            Level::INFO,
-      target:           String::new(),
-      message:          String::new(),
-      origin:           None,
-      timestamp_micros: None,
+      level:             Level::INFO,
+      target:            String::new(),
+      message:           String::new(),
+      origin:            None,
+      logger_name:       None,
+      marker_name:       None,
+      marker_properties: None,
+      mdc:               None,
+      timestamp_micros:  None,
     }
   }
 }
 
 #[derive(Default)]
 struct EventVisitor {
-  message:          Option<String>,
-  origin:           Option<String>,
-  timestamp_micros: Option<u64>,
+  message:           Option<String>,
+  origin:            Option<String>,
+  logger_name:       Option<String>,
+  marker_name:       Option<String>,
+  marker_properties: Option<String>,
+  mdc:               Option<String>,
+  timestamp_micros:  Option<u64>,
 }
 
 impl Visit for EventVisitor {
@@ -136,6 +185,8 @@ impl Visit for EventVisitor {
     match field.name() {
       | "message" => self.message = Some(value.to_owned()),
       | "origin" => self.origin = Some(value.to_owned()),
+      | "logger_name" => self.logger_name = Some(value.to_owned()),
+      | "marker_name" => self.marker_name = Some(value.to_owned()),
       | _ => {},
     }
   }
@@ -151,6 +202,10 @@ impl Visit for EventVisitor {
       self.message = Some(format_value(value));
     } else if field.name() == "origin" && self.origin.is_none() {
       self.origin = Some(format_value(value));
+    } else if field.name() == "marker_properties" {
+      self.marker_properties = Some(format!("{value:?}"));
+    } else if field.name() == "mdc" {
+      self.mdc = Some(format!("{value:?}"));
     }
   }
 }

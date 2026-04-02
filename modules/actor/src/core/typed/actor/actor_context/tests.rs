@@ -694,6 +694,111 @@ fn typed_props_without_tags_returns_empty_via_typed_context() {
   assert!(typed_ctx.tags().is_empty());
 }
 
+#[test]
+fn typed_context_system_reuses_shared_event_stream_endpoint() {
+  use alloc::string::String;
+
+  use crate::core::kernel::{
+    actor::{
+      ActorCell, ActorContext, Pid,
+      actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+      error::SendError,
+      messaging::AnyMessage,
+    },
+    system::ActorSystem,
+  };
+
+  struct EventCollector {
+    events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  }
+
+  impl EventCollector {
+    fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+      Self { events }
+    }
+  }
+
+  impl ActorRefSender for EventCollector {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+      let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() else {
+        return Err(SendError::closed(message));
+      };
+      self.events.lock().push(event.clone());
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  // Given: a typed context whose system() wrapper is rebuilt from the underlying actor system
+  let system = ActorSystem::new_empty();
+  let typed_system = TypedActorSystem::<u32>::from_untyped(system.clone());
+  let pid = system.allocate_pid();
+  let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let cell =
+    ActorCell::create(system.state(), pid, None, String::from("event-stream-owner"), props.to_untyped()).expect("cell");
+  system.state().register_cell(cell);
+  let mut context = ActorContext::new(&system, pid);
+  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let collector = ActorRef::new(Pid::new(903, 0), EventCollector::new(recorded_events.clone()));
+  let first = EventStreamEvent::Log(crate::core::kernel::event::logging::LogEvent::new(
+    LogLevel::Info,
+    "phase2-context-first-event".into(),
+    Duration::from_millis(14),
+    Some(Pid::new(903, 0)),
+    None,
+  ));
+  let second = EventStreamEvent::Log(crate::core::kernel::event::logging::LogEvent::new(
+    LogLevel::Info,
+    "phase2-context-second-event".into(),
+    Duration::from_millis(15),
+    Some(Pid::new(903, 0)),
+    None,
+  ));
+
+  // When: subscribe/unsubscribe use ctx.system() wrappers while publish uses another typed wrapper
+  {
+    let mut subscribe_stream = typed_ctx.system().event_stream();
+    subscribe_stream
+      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Subscribe { subscriber: collector.clone() })
+      .expect("subscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = typed_system.event_stream();
+    publish_stream
+      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Publish(first))
+      .expect("first publish command should be accepted");
+  }
+  {
+    let mut unsubscribe_stream = typed_ctx.system().event_stream();
+    unsubscribe_stream
+      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
+      .expect("unsubscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = typed_system.event_stream();
+    publish_stream
+      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Publish(second))
+      .expect("second publish command should be accepted");
+  }
+
+  // Then: ctx.system() shares the same endpoint state as other wrappers for the same actor system
+  let recorded = recorded_events.lock();
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-context-first-event"))
+      .count(),
+    1,
+  );
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-context-second-event"))
+      .count(),
+    0,
+  );
+}
+
 // --- T1: spawn_anonymous tests ---
 
 #[test]

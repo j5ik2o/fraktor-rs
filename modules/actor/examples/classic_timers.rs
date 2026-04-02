@@ -1,0 +1,74 @@
+#![cfg(not(target_os = "none"))]
+
+use core::time::Duration;
+use std::{thread, vec::Vec};
+
+use fraktor_actor_rs::core::kernel::{
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  system::ActorSystem,
+};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+struct Start;
+struct Tick;
+
+struct TimerActor {
+  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+}
+
+impl TimerActor {
+  fn new(events: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl Actor for TimerActor {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if message.downcast_ref::<Start>().is_some() {
+      ctx
+        .timers()
+        .start_single_timer("example-tick", AnyMessage::new(Tick), Duration::from_millis(1))
+        .map_err(|_| ActorError::recoverable("timer schedule failed"))?;
+      return Ok(());
+    }
+    if message.downcast_ref::<Tick>().is_some() {
+      self.events.lock().push("tick");
+    }
+    Ok(())
+  }
+}
+
+fn main() {
+  let driver = ManualTestDriver::new();
+  let controller = driver.controller();
+  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let events = events.clone();
+    move || TimerActor::new(events.clone())
+  });
+  let system = ActorSystem::new(&props, TickDriverConfig::manual(driver)).expect("system");
+
+  system.user_guardian_ref().tell(AnyMessage::new(Start));
+  controller.inject_and_drive(1);
+
+  wait_until(|| !events.lock().is_empty());
+  assert_eq!(events.lock().clone(), vec!["tick"]);
+
+  system.terminate().expect("terminate");
+}
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert!(condition());
+}

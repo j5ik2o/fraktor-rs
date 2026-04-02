@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{collections::BTreeMap, string::String};
 use core::time::Duration;
 
 use super::LogEvent;
@@ -22,6 +22,9 @@ fn log_event_new_with_logger_name_stores_value() {
 
   // 確認: logger_name が accessor から取得できる
   assert_eq!(event.logger_name(), Some("my.custom.logger"));
+  assert_eq!(event.marker_name(), None);
+  assert!(event.marker_properties().is_empty());
+  assert!(event.mdc().is_empty());
 }
 
 #[test]
@@ -50,4 +53,18 @@ fn log_event_preserves_all_fields_with_logger_name() {
   assert_eq!(event.timestamp(), Duration::from_secs(5));
   assert_eq!(event.origin(), Some(pid));
   assert_eq!(event.logger_name(), Some("actor.context.logger"));
+}
+
+#[test]
+fn log_event_with_marker_and_mdc_preserves_structured_metadata() {
+  let marker_properties = BTreeMap::from([(String::from("pekkoMessageClass"), String::from("ExampleMessage"))]);
+  let mdc = BTreeMap::from([(String::from("iam"), String::from("the one who knocks"))]);
+
+  let event = LogEvent::new(LogLevel::Error, String::from("structured"), Duration::from_secs(1), None, None)
+    .with_marker("pekkoDeadLetter", marker_properties.clone())
+    .with_mdc(mdc.clone());
+
+  assert_eq!(event.marker_name(), Some("pekkoDeadLetter"));
+  assert_eq!(event.marker_properties(), &marker_properties);
+  assert_eq!(event.mdc(), &mdc);
 }

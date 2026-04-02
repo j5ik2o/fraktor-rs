@@ -8,6 +8,8 @@ pub mod actor;
 mod actor_ref;
 /// Actor-ref serialization extension for typed APIs.
 mod actor_ref_resolver;
+/// Setup wrapper for replacing the default actor-ref resolver extension.
+mod actor_ref_resolver_setup;
 /// Typed behavior representation.
 mod behavior;
 /// Cross-cutting concern interceptor for typed behaviors.
@@ -55,6 +57,7 @@ mod typed_actor_system_settings;
 pub use abstract_extension_setup::AbstractExtensionSetup;
 pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
+pub use actor_ref_resolver_setup::ActorRefResolverSetup;
 pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use dispatcher_selector::DispatcherSelector;

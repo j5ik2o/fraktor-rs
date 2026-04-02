@@ -46,8 +46,8 @@ impl Topic {
   ///
   /// # Errors
   ///
-  /// Returns a fatal actor error when the actor system does not provide a
-  /// receptionist or when the topic cannot install its receptionist adapter.
+  /// Returns a fatal actor error when the topic cannot install its
+  /// receptionist adapter.
   #[must_use]
   pub fn behavior<M>(topic_name: impl Into<String>) -> Behavior<TopicCommand<M>>
   where
@@ -58,10 +58,7 @@ impl Topic {
       ArcShared::new(RuntimeMutex::new(TopicState { topic_instances: Vec::new(), local_subscribers: Vec::new() }));
 
     Behaviors::setup(move |ctx| {
-      let Some(receptionist) = ctx.system().receptionist_ref() else {
-        ctx.system().emit_log(LogLevel::Error, "topic requires receptionist", Some(ctx.pid()), None);
-        return Behaviors::stopped();
-      };
+      let receptionist = ctx.system().receptionist();
       let adapter =
         match ctx.message_adapter(move |listing: Listing| Ok(TopicCommand::topic_instances_updated(listing))) {
           | Ok(adapter) => adapter,

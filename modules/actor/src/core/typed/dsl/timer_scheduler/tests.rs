@@ -34,6 +34,15 @@ fn start_single_timer_registers_entry() {
 }
 
 #[test]
+fn start_single_timer_with_message_key_replaces_previous_timer_for_same_message() {
+  let (shared, receiver) = build_scheduler_pair();
+  let mut ts = TimerScheduler::new(receiver, shared);
+
+  ts.start_single_timer_with_message_key(7u32, Duration::from_millis(100)).expect("schedule first");
+  ts.start_single_timer_with_message_key(7u32, Duration::from_millis(200)).expect("schedule replacement");
+}
+
+#[test]
 fn cancel_removes_timer() {
   let (shared, receiver) = build_scheduler_pair();
   let mut ts = TimerScheduler::new(receiver, shared);
@@ -76,6 +85,15 @@ fn start_timer_with_fixed_delay_registers_entry() {
 }
 
 #[test]
+fn start_timer_with_fixed_delay_with_message_key_replaces_previous_timer_for_same_message() {
+  let (shared, receiver) = build_scheduler_pair();
+  let mut ts = TimerScheduler::new(receiver, shared);
+
+  ts.start_timer_with_fixed_delay_with_message_key(11u32, Duration::from_millis(100)).expect("schedule first");
+  ts.start_timer_with_fixed_delay_with_message_key(11u32, Duration::from_millis(150)).expect("schedule replacement");
+}
+
+#[test]
 fn start_timer_with_fixed_delay_initial_registers_entry() {
   let (shared, receiver) = build_scheduler_pair();
   let mut ts = TimerScheduler::new(receiver, shared);
@@ -92,6 +110,15 @@ fn start_timer_at_fixed_rate_registers_entry() {
   let key = TimerKey::new("rate");
   ts.start_timer_at_fixed_rate(key.clone(), 1u32, Duration::from_millis(100)).expect("schedule");
   assert!(ts.is_timer_active(&key));
+}
+
+#[test]
+fn start_timer_at_fixed_rate_with_message_key_replaces_previous_timer_for_same_message() {
+  let (shared, receiver) = build_scheduler_pair();
+  let mut ts = TimerScheduler::new(receiver, shared);
+
+  ts.start_timer_at_fixed_rate_with_message_key(13u32, Duration::from_millis(100)).expect("schedule first");
+  ts.start_timer_at_fixed_rate_with_message_key(13u32, Duration::from_millis(200)).expect("schedule replacement");
 }
 
 #[test]

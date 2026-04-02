@@ -16,7 +16,7 @@ use crate::core::kernel::{
 
 /// Immutable configuration describing how to construct an actor.
 pub struct Props {
-  factory: ActorFactoryShared,
+  factory: Option<ActorFactoryShared>,
   name: Option<String>,
   tags: BTreeSet<String>,
   mailbox_config: MailboxConfig,
@@ -33,7 +33,27 @@ impl Props {
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory>) -> Self {
     Self {
-      factory: ActorFactoryShared::new(factory),
+      factory: Some(ActorFactoryShared::new(factory)),
+      name: None,
+      tags: BTreeSet::new(),
+      mailbox_config: MailboxConfig::default(),
+      mailbox_id: None,
+      middleware: Vec::new(),
+      dispatcher_config: DispatcherConfig::default(),
+      dispatcher_id: None,
+      dispatcher_custom: false,
+      dispatcher_same_as_parent: false,
+    }
+  }
+
+  /// Creates props without an actor factory.
+  ///
+  /// These props are only valid as a configuration builder and must not reach
+  /// actor spawn without a factory being installed first.
+  #[must_use]
+  pub(crate) fn empty() -> Self {
+    Self {
+      factory: None,
       name: None,
       tags: BTreeSet::new(),
       mailbox_config: MailboxConfig::default(),
@@ -55,10 +75,10 @@ impl Props {
     Self::new(Box::new(factory))
   }
 
-  /// Returns the actor factory.
+  /// Returns the actor factory, if configured.
   #[must_use]
-  pub const fn factory(&self) -> &ActorFactoryShared {
-    &self.factory
+  pub const fn factory(&self) -> Option<&ActorFactoryShared> {
+    self.factory.as_ref()
   }
 
   /// Returns the configured actor name, if any.

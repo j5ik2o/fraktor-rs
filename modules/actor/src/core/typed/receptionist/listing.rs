@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::any::TypeId;
 
 use super::service_key::ServiceKey;
@@ -83,12 +83,32 @@ impl Listing {
   /// # Errors
   ///
   /// Returns an error when the key does not match this listing.
-  pub fn service_instances<M>(&self, key: &ServiceKey<M>) -> Result<Vec<TypedActorRef<M>>, ActorError>
+  pub fn service_instances<M>(&self, key: &ServiceKey<M>) -> Result<BTreeSet<TypedActorRef<M>>, ActorError>
   where
     M: Send + Sync + 'static, {
     if !self.is_for_key(key) {
       return Err(ActorError::recoverable("listing key mismatch"));
     }
-    self.typed_refs::<M>()
+    Ok(self.typed_refs::<M>()?.into_iter().collect())
+  }
+
+  /// Returns all typed actor references for the given service key.
+  ///
+  /// In the current non-clustered implementation this is identical to
+  /// [`Self::service_instances`].
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the key does not match this listing.
+  pub fn all_service_instances<M>(&self, key: &ServiceKey<M>) -> Result<BTreeSet<TypedActorRef<M>>, ActorError>
+  where
+    M: Send + Sync + 'static, {
+    self.service_instances(key)
+  }
+
+  /// Returns whether the listing reflects added or removed services.
+  #[must_use]
+  pub const fn services_were_added_or_removed(&self) -> bool {
+    true
   }
 }

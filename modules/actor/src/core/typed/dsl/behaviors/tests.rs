@@ -237,7 +237,7 @@ fn intercept_delegates_started_to_interceptor() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  behavior.handle_start(&mut typed_ctx).expect("started");
 
   assert_eq!(*start_count.lock(), 1, "start interceptor should have been called once");
   assert_eq!(*signal_count.lock(), 0, "started should not be counted as a signal interception");
@@ -264,7 +264,7 @@ fn intercept_delegates_message_to_interceptor() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
 
   inner.handle_message(&mut typed_ctx, &42u32).expect("message");
 
@@ -292,9 +292,9 @@ fn intercept_delegates_signal_to_interceptor() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
 
-  inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("signal");
+  inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("signal");
 
   assert_eq!(*signal_count.lock(), 1, "signal interceptor should have been called once");
 }
@@ -327,8 +327,8 @@ fn intercept_behavior_clone_restarts_with_fresh_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut first = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("first started");
-  let mut second = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("second started");
+  let mut first = behavior.clone().handle_start(&mut typed_ctx).expect("first started");
+  let mut second = behavior.clone().handle_start(&mut typed_ctx).expect("second started");
 
   first.handle_message(&mut typed_ctx, &1u32).expect("first message");
   second.handle_message(&mut typed_ctx, &2u32).expect("second message");
@@ -392,7 +392,7 @@ fn monitor_sends_clone_to_monitor_ref() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
 
   inner.handle_message(&mut typed_ctx, &42u32).expect("message");
 
@@ -425,7 +425,7 @@ fn monitor_passes_message_to_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &99u32).expect("message");
 
   let captured = inner_received.lock();
@@ -511,9 +511,9 @@ fn stopped_with_post_stop_has_stopped_directive() {
   );
 }
 
-/// `stopped_with_post_stop` executes the callback when `Stopped` signal is received.
+/// `stopped_with_post_stop` executes the callback when `PostStop` signal is received.
 #[test]
-fn stopped_with_post_stop_executes_callback_on_stopped_signal() {
+fn stopped_with_post_stop_executes_callback_on_post_stop_signal() {
   let called = ArcShared::new(NoStdMutex::new(false));
   let called_clone = called.clone();
 
@@ -526,7 +526,7 @@ fn stopped_with_post_stop_executes_callback_on_stopped_signal() {
     *called_clone.lock() = true;
   });
 
-  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("should handle Stopped signal");
+  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("should handle PostStop signal");
 
   assert!(*called.lock(), "post_stop callback should have been invoked");
 }
@@ -541,16 +541,16 @@ fn stopped_with_post_stop_returns_stopped_directive() {
 
   let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(|| {});
 
-  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("should handle");
+  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("should handle");
   assert!(
     matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Stopped),
     "should return Stopped directive"
   );
 }
 
-/// `stopped_with_post_stop` does not invoke callback for non-Stopped signals.
+/// `stopped_with_post_stop` does not invoke callback for non-PostStop signals.
 #[test]
-fn stopped_with_post_stop_ignores_non_stopped_signals() {
+fn stopped_with_post_stop_ignores_non_post_stop_signals() {
   let called = ArcShared::new(NoStdMutex::new(false));
   let called_clone = called.clone();
 
@@ -563,10 +563,10 @@ fn stopped_with_post_stop_ignores_non_stopped_signals() {
     *called_clone.lock() = true;
   });
 
-  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("should handle Started");
+  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::PreRestart).expect("should handle PreRestart");
   assert!(
     matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same),
-    "non-Stopped signals should return Same"
+    "non-PostStop signals should return Same"
   );
-  assert!(!*called.lock(), "callback should not be invoked for Started signal");
+  assert!(!*called.lock(), "callback should not be invoked for PreRestart signal");
 }

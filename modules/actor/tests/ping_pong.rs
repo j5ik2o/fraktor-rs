@@ -84,9 +84,10 @@ impl NamingGuardian {
 impl Actor for NamingGuardian {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
     if message.downcast_ref::<Start>().is_some() {
-      let _ = ctx
+      let actor = ctx
         .spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"))
-        .map(|actor| self.spawned.lock().push(actor.pid().value()));
+        .map_err(|_| ActorError::recoverable("named worker spawn failed"))?;
+      self.spawned.lock().push(actor.pid().value());
 
       let duplicate = ctx.spawn_child(&Props::from_fn(|| SilentActor).with_name("worker"));
       *self.conflict.lock() = matches!(duplicate, Err(SpawnError::NameConflict(_)));

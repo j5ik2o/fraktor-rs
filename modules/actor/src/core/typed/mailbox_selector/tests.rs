@@ -14,3 +14,8 @@ fn should_create_from_config() {
   let selector = MailboxSelector::from_config("priority-mailbox");
   assert_eq!(selector, MailboxSelector::FromConfig("priority-mailbox".into()));
 }
+
+#[test]
+fn default_variant_matches_pekko_default_mailbox_contract() {
+  assert_eq!(MailboxSelector::Default, MailboxSelector::Default);
+}

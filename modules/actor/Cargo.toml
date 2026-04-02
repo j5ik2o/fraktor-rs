@@ -81,6 +81,21 @@ name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 required-features = ["test-support"]
 
+[[example]]
+name = "typed_event_stream"
+path = "examples/typed_event_stream.rs"
+required-features = ["std", "test-support"]
+
+[[example]]
+name = "classic_timers"
+path = "examples/classic_timers.rs"
+required-features = ["std", "test-support"]
+
+[[example]]
+name = "classic_logging"
+path = "examples/classic_logging.rs"
+required-features = ["std", "test-support"]
+
 [lints]
 workspace = true
 

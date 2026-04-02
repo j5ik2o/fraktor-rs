@@ -157,10 +157,7 @@ impl Behaviors {
   where
     M: Send + Sync + 'static,
     F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> Behavior<M> + Send + Sync + 'static, {
-    Behavior::from_signal_handler(move |ctx, signal| match signal {
-      | BehaviorSignal::Started => Ok(factory(ctx)),
-      | _ => Ok(Behavior::same()),
-    })
+    Behavior::from_start_handler(move |ctx| Ok(factory(ctx)))
   }
 
   /// Creates a behavior using a bounded stash helper.
@@ -285,7 +282,7 @@ impl Behaviors {
       let shared = ArcShared::new(mutex);
       let shared_for_stop = shared.clone();
       factory(shared).compose_signal(move |_ctx, signal| match signal {
-        | BehaviorSignal::Stopped => {
+        | BehaviorSignal::PostStop => {
           shared_for_stop.lock().cancel_all();
           Ok(Behavior::same())
         },
@@ -378,14 +375,14 @@ impl Behaviors {
 
   /// Returns a behavior that stops the actor after running a cleanup callback.
   ///
-  /// The `post_stop` callback is invoked when the `Stopped` signal is received,
+  /// The `post_stop` callback is invoked when the `PostStop` signal is received,
   /// before the actor terminates. Corresponds to Pekko's `Behaviors.stopped(postStop)`.
   pub fn stopped_with_post_stop<M, F>(post_stop: F) -> Behavior<M>
   where
     M: Send + Sync + 'static,
     F: Fn() + Send + Sync + 'static, {
     Behavior::stopped().receive_signal(move |_ctx, signal| match signal {
-      | BehaviorSignal::Stopped => {
+      | BehaviorSignal::PostStop => {
         post_stop();
         Ok(Behavior::stopped())
       },
@@ -419,44 +416,40 @@ where
   M: Send + Sync + 'static,
   I: Fn() -> Box<dyn BehaviorInterceptor<M, M>> + Send + Sync + 'static,
   F: Fn() -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
-  Behavior::from_signal_handler(move |ctx, signal| match signal {
-    | BehaviorSignal::Started => {
-      let mut interceptor = interceptor_factory();
-      let mut inner = behavior_factory()?;
+  Behavior::from_start_handler(move |ctx| {
+    let mut interceptor = interceptor_factory();
+    let mut inner = behavior_factory()?;
 
-      let started_result =
-        interceptor.around_start(ctx, &mut |ctx| inner.handle_signal(ctx, &BehaviorSignal::Started))?;
-      if apply_intercepted_directive(&mut inner, started_result).is_err() {
-        return Ok(Behavior::stopped());
-      }
+    let started_result = interceptor.around_start(ctx, &mut |ctx| inner.handle_start(ctx))?;
+    if apply_intercepted_directive(&mut inner, started_result).is_err() {
+      return Ok(Behavior::stopped());
+    }
 
-      let state = InterceptState { interceptor, inner };
-      let mutex = RuntimeMutex::new(state);
-      let shared = ArcShared::new(mutex);
+    let state = InterceptState { interceptor, inner };
+    let mutex = RuntimeMutex::new(state);
+    let shared = ArcShared::new(mutex);
 
-      let shared_msg = shared.clone();
-      let shared_sig = shared;
+    let shared_msg = shared.clone();
+    let shared_sig = shared;
 
-      Ok(
-        Behaviors::receive_message(move |ctx, msg| {
-          let mut guard = shared_msg.lock();
-          let next = {
-            let InterceptState { interceptor, inner } = &mut *guard;
-            interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?
-          };
-          Ok(resolve_intercepted_directive(&mut guard.inner, next))
-        })
-        .receive_signal(move |ctx, signal| {
-          let mut guard = shared_sig.lock();
-          let next = {
-            let InterceptState { interceptor, inner } = &mut *guard;
-            interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?
-          };
-          Ok(resolve_intercepted_directive(&mut guard.inner, next))
-        }),
-      )
-    },
-    | _ => Ok(Behavior::same()),
+    Ok(
+      Behaviors::receive_message(move |ctx, msg| {
+        let mut guard = shared_msg.lock();
+        let next = {
+          let InterceptState { interceptor, inner } = &mut *guard;
+          interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?
+        };
+        Ok(resolve_intercepted_directive(&mut guard.inner, next))
+      })
+      .receive_signal(move |ctx, signal| {
+        let mut guard = shared_sig.lock();
+        let next = {
+          let InterceptState { interceptor, inner } = &mut *guard;
+          interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?
+        };
+        Ok(resolve_intercepted_directive(&mut guard.inner, next))
+      }),
+    )
   })
 }
 

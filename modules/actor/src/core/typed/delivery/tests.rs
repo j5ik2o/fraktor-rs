@@ -466,9 +466,8 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
   cc_ref.tell(ConsumerController::start(consumer_ref));
 
   // ワーカーのコンシューマーコントローラーを Receptionist に登録する。
-  if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref.clone()));
-  }
+  let mut receptionist_ref = system.receptionist();
+  receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref.clone()));
 
   // RequestNext 受信時にメッセージを送信するモックプロデューサーを生成する。
   let producer_props = TypedProps::<WorkPullingProducerControllerRequestNext<u32>>::from_behavior_factory({
@@ -541,9 +540,8 @@ fn work_pulling_with_durable_queue_replays_loaded_unconfirmed_messages() {
   let consumer_ref = TypedActorRef::<ConsumerControllerDelivery<u32>>::from_untyped(consumer_cell.into_actor_ref());
   cc_ref.tell(ConsumerController::start(consumer_ref));
 
-  if let Some(mut receptionist_ref) = system.receptionist_ref() {
-    receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref));
-  }
+  let mut receptionist_ref = system.receptionist();
+  receptionist_ref.tell(Receptionist::register(&worker_key, cc_ref));
 
   wait_until(|| system.state().child_pids(wppc_ref.pid()).len() >= 2);
   wait_until(|| delivered.lock().contains(&99_u32));

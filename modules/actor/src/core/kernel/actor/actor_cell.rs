@@ -31,6 +31,7 @@ use crate::core::{
         system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
       },
       props::{ActorFactoryShared, Props},
+      scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle},
       spawn::SpawnError,
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
@@ -57,6 +58,7 @@ struct ActorCellState {
   watchers:               Vec<Pid>,
   watch_with_messages:    Vec<(Pid, AnyMessage)>,
   stashed_messages:       VecDeque<AnyMessage>,
+  timer_handles:          Vec<(String, SchedulerHandle)>,
   pipe_tasks:             Vec<ContextPipeTask>,
   adapter_handles:        Vec<AdapterRefHandle>,
   adapter_handle_counter: u64,
@@ -71,6 +73,7 @@ impl ActorCellState {
       watchers:               Vec::new(),
       watch_with_messages:    Vec::new(),
       stashed_messages:       VecDeque::new(),
+      timer_handles:          Vec::new(),
       pipe_tasks:             Vec::new(),
       adapter_handles:        Vec::new(),
       adapter_handle_counter: 0,
@@ -172,7 +175,9 @@ impl ActorCell {
     let dispatcher = dispatcher_config.build_dispatcher(mailbox.clone())?;
     mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
-    let factory = props.factory().clone();
+    let Some(factory) = props.factory().cloned() else {
+      return Err(SpawnError::invalid_props("actor factory is required"));
+    };
     let actor = ActorShared::new(factory.with_write(|f| f.create()));
     let receive_timeout = RuntimeMutex::new(None);
     let state = RuntimeMutex::new(ActorCellState::new());
@@ -373,6 +378,125 @@ impl ActorCell {
     let count = state.stashed_messages.len();
     state.stashed_messages.clear();
     count
+  }
+
+  fn take_timer_handle(&self, key: &str) -> Option<SchedulerHandle> {
+    let mut state = self.state.lock();
+    let index = state.timer_handles.iter().position(|(existing, _)| existing == key)?;
+    let (_, handle) = state.timer_handles.swap_remove(index);
+    Some(handle)
+  }
+
+  fn store_timer_handle(&self, key: String, handle: SchedulerHandle) {
+    let mut state = self.state.lock();
+    if let Some((_, existing_handle)) = state.timer_handles.iter_mut().find(|(existing, _)| existing == &key) {
+      *existing_handle = handle;
+    } else {
+      state.timer_handles.push((key, handle));
+    }
+  }
+
+  fn schedule_timer_command(
+    &self,
+    key: String,
+    initial_delay: Duration,
+    command: SchedulerCommand,
+    interval: Option<Duration>,
+    fixed_rate: bool,
+  ) -> Result<(), SchedulerError> {
+    self.cancel_timer(&key);
+    let scheduler = self.system().scheduler();
+    let handle = scheduler.with_write(|scheduler| match (interval, fixed_rate) {
+      | (Some(duration), true) => scheduler.schedule_at_fixed_rate(initial_delay, duration, command),
+      | (Some(duration), false) => scheduler.schedule_with_fixed_delay(initial_delay, duration, command),
+      | (None, _) => scheduler.schedule_once(initial_delay, command),
+    })?;
+    self.store_timer_handle(key, handle);
+    Ok(())
+  }
+
+  /// Schedules a one-shot timer associated with `key`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the request.
+  pub(crate) fn schedule_single_timer(
+    &self,
+    key: String,
+    message: AnyMessage,
+    delay: Duration,
+  ) -> Result<(), SchedulerError> {
+    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, dispatcher: None, sender: None };
+    self.schedule_timer_command(key, delay, command, None, false)
+  }
+
+  /// Schedules a fixed-delay timer associated with `key`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the request.
+  pub(crate) fn schedule_fixed_delay_timer(
+    &self,
+    key: String,
+    message: AnyMessage,
+    initial_delay: Duration,
+    delay: Duration,
+  ) -> Result<(), SchedulerError> {
+    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, dispatcher: None, sender: None };
+    self.schedule_timer_command(key, initial_delay, command, Some(delay), false)
+  }
+
+  /// Schedules a fixed-rate timer associated with `key`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the scheduler rejects the request.
+  pub(crate) fn schedule_fixed_rate_timer(
+    &self,
+    key: String,
+    message: AnyMessage,
+    initial_delay: Duration,
+    interval: Duration,
+  ) -> Result<(), SchedulerError> {
+    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, dispatcher: None, sender: None };
+    self.schedule_timer_command(key, initial_delay, command, Some(interval), true)
+  }
+
+  /// Returns whether the timer associated with `key` is currently active.
+  #[must_use]
+  pub(crate) fn is_timer_active(&self, key: &str) -> bool {
+    let state = self.state.lock();
+    state
+      .timer_handles
+      .iter()
+      .find(|(existing, _)| existing == key)
+      .is_some_and(|(_, handle)| !handle.is_cancelled() && !handle.is_completed())
+  }
+
+  /// Cancels the timer associated with `key`.
+  pub(crate) fn cancel_timer(&self, key: &str) {
+    let Some(handle) = self.take_timer_handle(key) else {
+      return;
+    };
+    self.system().scheduler().with_write(|scheduler| {
+      scheduler.cancel(&handle);
+    });
+  }
+
+  /// Cancels every tracked timer for this actor.
+  pub(crate) fn cancel_all_timers(&self) {
+    let handles = {
+      let mut state = self.state.lock();
+      mem::take(&mut state.timer_handles)
+    };
+    if handles.is_empty() {
+      return;
+    }
+    self.system().scheduler().with_write(|scheduler| {
+      for (_, handle) in &handles {
+        scheduler.cancel(handle);
+      }
+    });
   }
 
   /// Re-enqueues the oldest stashed user message back to this actor mailbox.
@@ -614,6 +738,10 @@ impl ActorCell {
     self.state.lock().stashed_messages.clear();
   }
 
+  fn drop_timer_handles(&self) {
+    self.cancel_all_timers();
+  }
+
   fn drop_watch_with_messages(&self) {
     self.state.lock().watch_with_messages.clear();
   }
@@ -695,6 +823,7 @@ impl ActorCell {
 
     self.drop_pipe_tasks();
     self.drop_stash_messages();
+    self.drop_timer_handles();
     self.drop_watch_with_messages();
     self.publish_lifecycle(LifecycleStage::Stopped);
     self.recreate_actor();
@@ -728,6 +857,7 @@ impl ActorCell {
 
     self.clear_child_stats(&children_snapshot);
     self.drop_stash_messages();
+    self.drop_timer_handles();
     self.mark_terminated();
     self.notify_watchers_on_stop();
 
