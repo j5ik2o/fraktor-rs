@@ -298,7 +298,7 @@ where
       let outer_signal = move |ctx: &mut TypedActorContext<'_, Outer>, signal: &BehaviorSignal| {
         let mut guard = state_sig.lock();
         let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-        let next = guard.handle_signal(&mut inner_ctx, signal)?;
+        let next = guard.handle_signal(&mut inner_ctx, signal)?.resolve_started_behavior(&mut inner_ctx)?;
         Ok(resolve_transform_directive(&mut guard, next))
       };
 
@@ -309,7 +309,7 @@ where
           | Some(inner_msg) => {
             let mut guard = state_msg.lock();
             let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-            let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
+            let next = guard.handle_message(&mut inner_ctx, &inner_msg)?.resolve_started_behavior(&mut inner_ctx)?;
             Ok(resolve_transform_directive(&mut guard, next))
           },
           | None => Ok(Behavior::unhandled()),
