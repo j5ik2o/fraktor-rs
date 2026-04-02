@@ -3,7 +3,10 @@ use alloc::vec::Vec;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
-  kernel::{actor::ActorContext, system::ActorSystem},
+  kernel::{
+    actor::{ActorContext, supervision::SupervisorStrategyKind},
+    system::ActorSystem,
+  },
   typed::{
     actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
@@ -260,4 +263,62 @@ fn narrow_clone_restarts_with_fresh_inner_behavior() {
 
   assert_eq!(*start_count.lock(), 2, "narrowed behavior should reinitialize the inner behavior for each clone");
   assert_eq!(received.lock().as_slice(), &[1, 2]);
+}
+
+#[test]
+fn transform_messages_propagates_supervisor_override_from_started_inner() {
+  let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
+    Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())).with_supervisor_strategy(
+      crate::core::kernel::actor::supervision::SupervisorStrategy::new(
+        SupervisorStrategyKind::OneForOne,
+        5,
+        core::time::Duration::from_secs(1),
+        |_| crate::core::kernel::actor::supervision::SupervisorDirective::Restart,
+      ),
+    )
+  });
+
+  let mut outer: Behavior<Outer> = inner.transform_messages(|msg: &Outer| match msg {
+    | Outer::Num(n) => Some(*n),
+    | Outer::Text(_) => None,
+  });
+
+  let system = ActorSystem::new_empty();
+  let (_pid, mut context) = make_ctx(&system);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let active = outer.handle_start(&mut typed_ctx).expect("started");
+
+  assert!(active.supervisor_override().is_some(), "started inner supervisor override should be preserved");
+}
+
+#[test]
+fn transform_messages_preserves_post_stop_handler_from_started_stopped_inner() {
+  let signal_received = ArcShared::new(NoStdMutex::new(false));
+  let signal_clone = signal_received.clone();
+
+  let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
+    let signal_clone = signal_clone.clone();
+    Behaviors::stopped().receive_signal(move |_ctx, signal| {
+      if matches!(signal, BehaviorSignal::PostStop) {
+        *signal_clone.lock() = true;
+      }
+      Ok(Behaviors::stopped())
+    })
+  });
+
+  let mut outer: Behavior<Outer> = inner.transform_messages(|msg: &Outer| match msg {
+    | Outer::Num(n) => Some(*n),
+    | Outer::Text(_) => None,
+  });
+
+  let system = ActorSystem::new_empty();
+  let (_pid, mut context) = make_ctx(&system);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut active = outer.handle_start(&mut typed_ctx).expect("started");
+  assert!(matches!(active.directive(), BehaviorDirective::Stopped));
+  active.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("post stop");
+
+  assert!(*signal_received.lock(), "started stopped inner signal handler should be preserved");
 }

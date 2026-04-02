@@ -58,6 +58,7 @@ where
   }
 
   fn apply_transition(&mut self, ctx: &mut TypedActorContext<'_, M>, next: Behavior<M>) -> Result<(), ActorError> {
+    let next = next.resolve_started_behavior(ctx)?;
     let override_strategy = next.supervisor_override().cloned();
 
     match next.directive() {

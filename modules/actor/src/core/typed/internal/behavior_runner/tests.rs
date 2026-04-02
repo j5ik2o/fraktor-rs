@@ -248,6 +248,38 @@ fn behavior_runner_pre_start_uses_internal_setup_without_public_started_signal()
 }
 
 #[test]
+fn behavior_runner_resolves_nested_setup_returned_from_message_transition() {
+  let setup_ran = Arc::new(AtomicBool::new(false));
+  let handled = Arc::new(AtomicBool::new(false));
+  let setup_ran_for_message = setup_ran.clone();
+  let handled_for_nested = handled.clone();
+
+  let behavior = Behaviors::receive_message(move |_ctx, _msg: &ProbeMessage| {
+    let setup_ran = setup_ran_for_message.clone();
+    let handled = handled_for_nested.clone();
+    Ok(Behaviors::setup(move |_ctx| {
+      setup_ran.store(true, Ordering::SeqCst);
+      let handled = handled.clone();
+      Behaviors::receive_message(move |_ctx, _msg: &ProbeMessage| {
+        handled.store(true, Ordering::SeqCst);
+        Ok(Behaviors::same())
+      })
+    }))
+  });
+
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  runner.pre_start(&mut typed_ctx).expect("pre_start");
+  runner.receive(&mut typed_ctx, &ProbeMessage).expect("first message");
+  assert!(setup_ran.load(Ordering::SeqCst), "nested setup should run during transition");
+
+  runner.receive(&mut typed_ctx, &ProbeMessage).expect("second message");
+  assert!(handled.load(Ordering::SeqCst), "behavior returned by nested setup should become current");
+}
+
+#[test]
 fn behavior_runner_pre_start_does_not_mark_stopping_when_stop_self_fails() {
   let mut runner = BehaviorRunner::new(Behaviors::stopped::<ProbeMessage>());
   let (mut ctx, mut registry) = build_context();

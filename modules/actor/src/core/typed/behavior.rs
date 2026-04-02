@@ -247,6 +247,16 @@ where
     }
   }
 
+  pub(crate) fn resolve_started_behavior(
+    mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+  ) -> Result<Behavior<M>, ActorError> {
+    while matches!(self.directive, BehaviorDirective::Active) && self.start_handler.is_some() {
+      self = self.handle_start(ctx)?;
+    }
+    Ok(self)
+  }
+
   pub(crate) const fn directive(&self) -> BehaviorDirective {
     self.directive
   }
@@ -269,48 +279,45 @@ where
   where
     Outer: Send + Sync + 'static,
     F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
-    let supervisor_override = self.supervisor_override.clone();
     let inner_template = self;
     let mapper = ArcShared::new(mapper);
 
     Behavior::<Outer>::from_start_handler(move |ctx| {
-      let mut inner = inner_template.clone();
-
-      {
+      let inner = {
         let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-        let started_result = inner.handle_start(&mut inner_ctx)?;
-        match started_result.directive() {
-          | BehaviorDirective::Active => inner = started_result,
-          | BehaviorDirective::Stopped => return Ok(Behavior::stopped()),
-          | BehaviorDirective::Empty => inner = Behavior::empty(),
-          | BehaviorDirective::Same => {},
-          | BehaviorDirective::Ignore => inner = Behavior::ignore(),
-          | BehaviorDirective::Unhandled => inner = Behavior::unhandled(),
-        }
-      }
+        inner_template.clone().resolve_started_behavior(&mut inner_ctx)?
+      };
+      let final_supervisor_override = inner.supervisor_override().cloned();
+      let outer_directive = inner.directive();
 
       let state = ArcShared::new(RuntimeMutex::new(inner));
       let state_msg = state.clone();
       let state_sig = state;
       let mapper_msg = mapper.clone();
 
-      let mut outer = Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
-        | Some(inner_msg) => {
-          let mut guard = state_msg.lock();
-          let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-          let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
-          Ok(resolve_transform_directive(&mut guard, next))
-        },
-        | None => Ok(Behavior::unhandled()),
-      })
-      .receive_signal(move |ctx, signal| {
+      let outer_signal = move |ctx: &mut TypedActorContext<'_, Outer>, signal: &BehaviorSignal| {
         let mut guard = state_sig.lock();
         let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
         let next = guard.handle_signal(&mut inner_ctx, signal)?;
         Ok(resolve_transform_directive(&mut guard, next))
-      });
-      // 内部 Behavior の supervisor_override を外部 Behavior に引き継ぐ
-      if let Some(strategy) = &supervisor_override {
+      };
+
+      let mut outer = match outer_directive {
+        | BehaviorDirective::Stopped => Behavior::<Outer>::stopped().receive_signal(outer_signal),
+        | BehaviorDirective::Empty => Behavior::<Outer>::empty().receive_signal(outer_signal),
+        | _ => Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
+          | Some(inner_msg) => {
+            let mut guard = state_msg.lock();
+            let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+            let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
+            Ok(resolve_transform_directive(&mut guard, next))
+          },
+          | None => Ok(Behavior::unhandled()),
+        })
+        .receive_signal(outer_signal),
+      };
+
+      if let Some(strategy) = &final_supervisor_override {
         outer = outer.with_supervisor_strategy(strategy.clone());
       }
       Ok(outer)
