@@ -106,14 +106,10 @@ impl ActorRefProvider for LocalActorRefProvider {
   }
 
   fn dead_letters(&self) -> ActorRef {
-    debug_assert!(self.state.is_some(), "LocalActorRefProvider.state not initialized");
     let Some(state) = &self.state else {
+      debug_assert!(false, "LocalActorRefProvider.state not initialized");
       return ActorRef::null();
     };
     ActorRef::with_system(PROVIDER_DEAD_LETTER_PID, ProviderDeadLetterSender::new(state.clone()), state)
-  }
-
-  fn temp_path(&self) -> ActorPath {
-    ActorPath::root().child("temp")
   }
 }

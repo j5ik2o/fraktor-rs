@@ -75,7 +75,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
     }
     spin_loop();
   }
-  assert!(condition());
+  panic!("condition not met");
 }
 
 /// `path` returns `Some` when the actor is registered in the system.
