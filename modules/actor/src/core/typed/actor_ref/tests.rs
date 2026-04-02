@@ -22,6 +22,14 @@ impl ActorRefSender for NoOpSender {
   }
 }
 
+struct AlternateNoOpSender;
+
+impl ActorRefSender for AlternateNoOpSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
+  }
+}
+
 // --- Phase 1 タスク3: path / narrow / unsafe_upcast ---
 
 /// `path` returns `None` when the actor reference has no system.
@@ -107,7 +115,7 @@ fn narrow_is_consistent_with_map() {
 #[test]
 fn typed_actor_ref_equality_and_order_are_consistent_by_pid() {
   let left = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), NoOpSender));
-  let right = TypedActorRef::<u32>::from_untyped(ActorRef::null().with_pid(Pid::new(77, 1)));
+  let right = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), AlternateNoOpSender));
 
   assert_eq!(left, right);
   assert_eq!(left.cmp(&right), core::cmp::Ordering::Equal);
