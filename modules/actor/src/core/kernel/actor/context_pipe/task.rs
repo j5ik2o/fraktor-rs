@@ -58,7 +58,7 @@ impl ContextPipeTask {
   }
 
   /// Takes the delivery target, leaving `None` in its place.
-  pub(crate) fn take_delivery_target(&mut self) -> Option<ActorRef> {
+  pub(crate) const fn take_delivery_target(&mut self) -> Option<ActorRef> {
     self.delivery_target.take()
   }
 
