@@ -35,14 +35,8 @@ impl ActorSystemSetup {
     let config = self.config;
     let bootstrap = bootstrap.into_actor_system_config();
     let config = config.with_system_name(bootstrap.system_name()).with_default_guardian(bootstrap.default_guardian());
-    let config = match bootstrap.remoting_config() {
-      | Some(remoting) => config.with_remoting_config(remoting.clone()),
-      | None => config,
-    };
-    let config = match bootstrap.start_time() {
-      | Some(start_time) => config.with_start_time(start_time),
-      | None => config,
-    };
+    let config = config.with_remoting_config(bootstrap.remoting_config().cloned());
+    let config = config.with_start_time(bootstrap.start_time());
     Self { config }
   }
 

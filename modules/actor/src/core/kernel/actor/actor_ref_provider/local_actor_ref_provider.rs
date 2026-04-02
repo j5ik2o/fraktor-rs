@@ -15,9 +15,9 @@ use crate::core::kernel::{
 #[cfg(test)]
 mod tests;
 
-// Reserve a high sentinel pid next to the other typed/system facade sentinels
-// (`u64::MAX`, `u64::MAX - 1`, `u64::MAX - 2`) so this provider-scoped
-// dead-letter facade cannot collide with runtime-allocated actor pids.
+// 他の typed/system facade 用セントネル (`u64::MAX`, `u64::MAX - 1`,
+// `u64::MAX - 2`) に隣接する高い PID を予約し、この provider スコープの
+// dead-letter facade がランタイム割り当ての actor PID と衝突しないようにする。
 const PROVIDER_DEAD_LETTER_PID: Pid = Pid::new(u64::MAX - 3, 0);
 
 struct ProviderDeadLetterSender {
@@ -106,6 +106,7 @@ impl ActorRefProvider for LocalActorRefProvider {
   }
 
   fn dead_letters(&self) -> ActorRef {
+    debug_assert!(self.state.is_some(), "LocalActorRefProvider.state not initialized");
     let Some(state) = &self.state else {
       return ActorRef::null();
     };

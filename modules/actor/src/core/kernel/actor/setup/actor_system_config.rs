@@ -53,10 +53,10 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Enables remoting with the given configuration.
+  /// Sets or clears the remoting configuration.
   #[must_use]
-  pub fn with_remoting_config(mut self, config: RemotingConfig) -> Self {
-    self.remoting_config = Some(config);
+  pub fn with_remoting_config(mut self, config: impl Into<Option<RemotingConfig>>) -> Self {
+    self.remoting_config = config.into();
     self
   }
 
@@ -117,8 +117,8 @@ impl ActorSystemConfig {
   /// In `no_std` environments the caller must inject the current time.
   /// Corresponds to Pekko's `ActorSystem.startTime`.
   #[must_use]
-  pub const fn with_start_time(mut self, start_time: Duration) -> Self {
-    self.start_time = Some(start_time);
+  pub fn with_start_time(mut self, start_time: impl Into<Option<Duration>>) -> Self {
+    self.start_time = start_time.into();
     self
   }
 
