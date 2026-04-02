@@ -117,19 +117,19 @@ impl BackoffConfig {
 /// (`GetCurrentChild`, `Reset`, `GetRestartCount`). Unrecognized messages
 /// are forwarded to the child.
 struct BackoffSupervisorActor {
-  child:               Option<ChildRef>,
-  restart_count:       u32,
-  child_props:         Props,
-  child_name:          String,
-  strategy:            BackoffSupervisorStrategy,
-  mode:                BackoffMode,
-  auto_reset:          Option<Duration>,
-  manual_reset:        bool,
+  child: Option<ChildRef>,
+  restart_count: u32,
+  child_props: Props,
+  child_name: String,
+  strategy: BackoffSupervisorStrategy,
+  mode: BackoffMode,
+  auto_reset: Option<Duration>,
+  manual_reset: bool,
   supervisor_strategy: Option<SupervisorStrategy>,
   supervisor_strategy_config: SupervisorStrategyConfig,
-  max_retries:         u32,
-  initialized:         bool,
-  pending_restart:     bool,
+  max_retries: u32,
+  initialized: bool,
+  pending_restart: bool,
 }
 
 impl BackoffSupervisorActor {
@@ -138,9 +138,7 @@ impl BackoffSupervisorActor {
     supervisor_strategy: &Option<SupervisorStrategy>,
   ) -> SupervisorStrategyConfig {
     match mode {
-      | BackoffMode::OnStop => {
-        supervisor_strategy.clone().map_or_else(SupervisorStrategyConfig::default, Into::into)
-      },
+      | BackoffMode::OnStop => supervisor_strategy.clone().map_or_else(SupervisorStrategyConfig::default, Into::into),
       | BackoffMode::OnFailure => {
         let base_strategy = supervisor_strategy.clone().unwrap_or_default();
         let decision_source = ArcShared::new(base_strategy.clone());
@@ -159,19 +157,19 @@ impl BackoffSupervisorActor {
   fn from_config(config: BackoffConfig) -> Self {
     let supervisor_strategy_config = Self::build_supervisor_strategy_config(&config.mode, &config.supervisor_strategy);
     Self {
-      child:               None,
-      restart_count:       0,
-      child_props:         config.child_props,
-      child_name:          config.child_name,
-      strategy:            config.strategy,
-      mode:                config.mode,
-      auto_reset:          config.auto_reset,
-      manual_reset:        config.manual_reset,
+      child: None,
+      restart_count: 0,
+      child_props: config.child_props,
+      child_name: config.child_name,
+      strategy: config.strategy,
+      mode: config.mode,
+      auto_reset: config.auto_reset,
+      manual_reset: config.manual_reset,
       supervisor_strategy: config.supervisor_strategy,
       supervisor_strategy_config,
-      max_retries:         config.max_retries,
-      initialized:         false,
-      pending_restart:     false,
+      max_retries: config.max_retries,
+      initialized: false,
+      pending_restart: false,
     }
   }
 
@@ -338,7 +336,7 @@ impl Actor for BackoffSupervisorActor {
     self.child = None;
     match self.mode {
       | BackoffMode::OnStop => {
-        let next_restart_count = self.restart_count + 1;
+        let next_restart_count = self.restart_count.saturating_add(1);
         if self.max_retries != 0 && next_restart_count > self.max_retries {
           return Ok(());
         }
@@ -350,7 +348,7 @@ impl Actor for BackoffSupervisorActor {
           return Ok(());
         }
         self.pending_restart = false;
-        let next_restart_count = self.restart_count + 1;
+        let next_restart_count = self.restart_count.saturating_add(1);
         if self.max_retries != 0 && next_restart_count > self.max_retries {
           return Ok(());
         }

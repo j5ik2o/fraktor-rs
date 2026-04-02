@@ -330,6 +330,41 @@ fn second_restart_maps_to_first_exponential_backoff_iteration() {
 }
 
 #[test]
+fn on_stop_restart_count_saturates_at_u32_max() {
+  let system = ActorSystem::new_empty();
+  let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), default_strategy());
+  let config = super::BackoffConfig::from_stop(options);
+  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let child_pid = Pid::new(42, 0);
+  actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
+  actor.restart_count = u32::MAX;
+
+  let mut ctx = ActorContext::new(&system, Pid::new(999, 0));
+  let result = actor.on_terminated(&mut ctx, child_pid);
+
+  assert!(result.is_err(), "test context without actor ref should fail after updating restart_count");
+  assert_eq!(actor.restart_count, u32::MAX);
+}
+
+#[test]
+fn on_failure_restart_count_saturates_at_u32_max() {
+  let system = ActorSystem::new_empty();
+  let options = BackoffOnFailureOptions::new(noop_props(), String::from("child"), default_strategy());
+  let config = super::BackoffConfig::from_failure(options);
+  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let child_pid = Pid::new(43, 0);
+  actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
+  actor.restart_count = u32::MAX;
+  actor.pending_restart = true;
+
+  let mut ctx = ActorContext::new(&system, Pid::new(1000, 0));
+  let result = actor.on_terminated(&mut ctx, child_pid);
+
+  assert!(result.is_err(), "test context without actor ref should fail after updating restart_count");
+  assert_eq!(actor.restart_count, u32::MAX);
+}
+
+#[test]
 fn on_stop_restarts_child_only_after_backoff_tick() {
   let system = ActorSystem::new_empty();
   let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), one_tick_strategy());
