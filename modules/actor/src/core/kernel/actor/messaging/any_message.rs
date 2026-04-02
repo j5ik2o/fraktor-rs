@@ -77,6 +77,12 @@ impl AnyMessage {
     &*self.payload
   }
 
+  /// Attempts to downcast the payload to a concrete type.
+  #[must_use]
+  pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+    self.payload.downcast_ref::<T>()
+  }
+
   /// Returns a clone of the shared payload pointer (internal use).
   pub(crate) fn payload_arc(&self) -> ArcShared<dyn Any + Send + Sync + 'static> {
     self.payload.clone()

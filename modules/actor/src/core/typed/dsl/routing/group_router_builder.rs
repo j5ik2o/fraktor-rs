@@ -112,7 +112,7 @@ where
                 listing.service_id(),
                 error
               );
-              ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()));
+              ctx.system().emit_log(LogLevel::Warn, message, Some(ctx.pid()), None);
               return Ok(Behaviors::same());
             },
           };
@@ -135,6 +135,7 @@ where
           LogLevel::Warn,
           alloc::format!("group router failed to subscribe to receptionist: {:?}", error),
           Some(ctx.pid()),
+          None,
         );
       }
       let receptionist_for_signal = receptionist;
@@ -169,6 +170,7 @@ where
               LogLevel::Warn,
               alloc::format!("group router failed to deliver message to routee: {:?}", error),
               Some(ctx.pid()),
+              None,
             );
           }
         }
@@ -182,6 +184,7 @@ where
               LogLevel::Warn,
               alloc::format!("group router failed to unsubscribe from receptionist: {:?}", error),
               Some(ctx.pid()),
+              None,
             );
           }
         }

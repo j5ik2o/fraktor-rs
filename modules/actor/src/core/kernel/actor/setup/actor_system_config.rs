@@ -1,6 +1,7 @@
 //! Actor system configuration API.
 
 use alloc::string::{String, ToString};
+use core::time::Duration;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -34,6 +35,7 @@ pub struct ActorSystemConfig {
   default_dispatcher_config: Option<DispatcherConfig>,
   dispatchers:               Dispatchers,
   mailboxes:                 Mailboxes,
+  start_time:                Option<Duration>,
 }
 
 impl ActorSystemConfig {
@@ -107,6 +109,16 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_mailbox(mut self, id: impl Into<String>, config: MailboxConfig) -> Self {
     self.mailboxes.register_or_update(id, config);
+    self
+  }
+
+  /// Sets the start time of the actor system (epoch-relative duration).
+  ///
+  /// In `no_std` environments the caller must inject the current time.
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn with_start_time(mut self, start_time: Duration) -> Self {
+    self.start_time = Some(start_time);
     self
   }
 
@@ -188,6 +200,14 @@ impl ActorSystemConfig {
   pub const fn mailboxes(&self) -> &Mailboxes {
     &self.mailboxes
   }
+
+  /// Returns the configured start time, or `None` if not set.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn start_time(&self) -> Option<Duration> {
+    self.start_time
+  }
 }
 
 impl Default for ActorSystemConfig {
@@ -207,6 +227,7 @@ impl Default for ActorSystemConfig {
       default_dispatcher_config: None,
       dispatchers,
       mailboxes,
+      start_time: None,
     }
   }
 }

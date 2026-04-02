@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{AbstractBehavior, supervise::Supervise};
+use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{
   kernel::actor::{error::ActorError, messaging::AnyMessage},
   typed::{
@@ -61,6 +61,7 @@ where
         crate::core::kernel::event::logging::LogLevel::Warn,
         alloc::format!("monitor interceptor failed to deliver message: {:?}", error),
         Some(ctx.pid()),
+        None,
       );
     }
     target(ctx, message)
@@ -173,6 +174,21 @@ impl Behaviors {
     Self::setup(move |_ctx| factory(StashBuffer::new(capacity)))
   }
 
+  /// Creates a receive builder that handles typed messages.
+  ///
+  /// Unlike [`receive_message`](Self::receive_message) which returns a
+  /// [`Behavior`] directly, this method returns an intermediate
+  /// [`Receive`] that can be further chained with a signal handler via
+  /// [`Receive::receive_signal`].
+  ///
+  /// Corresponds to Pekko's `Behaviors.receive`.
+  pub fn receive<M, F>(handler: F) -> Receive<M>
+  where
+    M: Send + Sync + 'static,
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    Receive::new(Behavior::from_message_handler(handler))
+  }
+
   /// Creates a behavior that handles typed messages and can return the next behavior.
   pub fn receive_message<M, F>(handler: F) -> Behavior<M>
   where
@@ -263,7 +279,7 @@ impl Behaviors {
     F: Fn(TimerSchedulerShared<M>) -> Behavior<M> + Send + Sync + 'static, {
     Self::setup(move |ctx| {
       let self_ref = ctx.self_ref();
-      let scheduler = ctx.system().scheduler();
+      let scheduler = ctx.system().raw_scheduler();
       let timers = TimerScheduler::new(self_ref, scheduler);
       let mutex = RuntimeMutex::new(timers);
       let shared = ArcShared::new(mutex);

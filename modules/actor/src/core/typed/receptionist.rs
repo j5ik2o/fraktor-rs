@@ -65,6 +65,7 @@ impl Receptionist {
                 crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to watch registered actor: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
             notify_subscribers(&guard.subscribers, &key, &guard.registrations, ctx.system().as_untyped());
@@ -78,6 +79,7 @@ impl Receptionist {
                 crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to send Registered ack: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
           }
@@ -100,6 +102,7 @@ impl Receptionist {
                 crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to send Deregistered ack: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
           }
@@ -117,6 +120,7 @@ impl Receptionist {
                 crate::core::kernel::event::logging::LogLevel::Warn,
                 alloc::format!("receptionist failed to watch subscriber: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
             subscribers.push(subscriber.clone());
@@ -277,6 +281,7 @@ fn notify_subscribers(
         system.emit_log(
           crate::core::kernel::event::logging::LogLevel::Warn,
           alloc::format!("receptionist failed to notify subscriber {:?}: {:?}", sub.pid(), e),
+          None,
           None,
         );
       }

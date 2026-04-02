@@ -120,7 +120,7 @@ where
           | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("scatter-gather router failed to spawn child: {:?}", e);
-            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
             break;
           },
         }
@@ -128,7 +128,7 @@ where
 
       // routee が1体も起動できなかった場合はルーターを停止する
       if routee_vec.is_empty() {
-        ctx.system().emit_log(LogLevel::Error, "scatter-gather router has no routees, stopping", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, "scatter-gather router has no routees, stopping", Some(ctx.pid()), None);
         return Behaviors::stopped();
       }
 
@@ -169,6 +169,7 @@ where
                 LogLevel::Warn,
                 alloc::format!("scatter-gather router failed to deliver message to routee: {:?}", error),
                 Some(ctx.pid()),
+                None,
               );
             }
           }
@@ -235,6 +236,7 @@ fn spawn_gather_coordinator<'a, M, R>(
             LogLevel::Warn,
             alloc::format!("scatter-gather coordinator failed to deliver request: {:?}", error),
             Some(ctx.pid()),
+            None,
           );
         }
       }
@@ -243,12 +245,13 @@ fn spawn_gather_coordinator<'a, M, R>(
           LogLevel::Warn,
           alloc::format!("scatter-gather coordinator failed to schedule timeout: {:?}", e),
           Some(ctx.pid()),
+          None,
         );
       }
     },
     | Err(e) => {
       let msg = alloc::format!("scatter-gather coordinator spawn failed: {:?}", e);
-      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
       // caller が無応答にならないよう timeout_reply を即時返却する
       if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
     },

@@ -29,7 +29,7 @@ fn forwards_log_events_to_tracing() {
   let shared = collector.clone();
   with_default(shared, || {
     let mut subscriber = TracingLoggerSubscriber::new(LogLevel::Trace);
-    let log = LogEvent::new(LogLevel::Info, String::from("hello"), Duration::from_micros(42), None);
+    let log = LogEvent::new(LogLevel::Info, String::from("hello"), Duration::from_micros(42), None, None);
     subscriber.on_event(&EventStreamEvent::Log(log));
   });
 
@@ -49,9 +49,9 @@ fn filters_events_below_threshold() {
   let shared = collector.clone();
   with_default(shared, || {
     let mut subscriber = TracingLoggerSubscriber::new(LogLevel::Warn);
-    let info = LogEvent::new(LogLevel::Info, String::from("info"), Duration::ZERO, None);
+    let info = LogEvent::new(LogLevel::Info, String::from("info"), Duration::ZERO, None, None);
     subscriber.on_event(&EventStreamEvent::Log(info));
-    let warn = LogEvent::new(LogLevel::Warn, String::from("warn"), Duration::ZERO, None);
+    let warn = LogEvent::new(LogLevel::Warn, String::from("warn"), Duration::ZERO, None, None);
     subscriber.on_event(&EventStreamEvent::Log(warn));
   });
 

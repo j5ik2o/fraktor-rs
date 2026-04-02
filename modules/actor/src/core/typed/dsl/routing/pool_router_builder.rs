@@ -166,7 +166,7 @@ where
           | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("pool router failed to spawn child: {:?}", e);
-            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
             break;
           },
         }
@@ -236,7 +236,7 @@ where
                     | Ok(child) => new_routees.push(child.into_actor_ref()),
                     | Err(e) => {
                       let msg = alloc::format!("pool router resize failed to spawn child: {:?}", e);
-                      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+                      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
                       break;
                     },
                   }
@@ -274,6 +274,7 @@ where
                     LogLevel::Warn,
                     alloc::format!("pool router failed to stop routee during resize: {:?}", e),
                     Some(ctx.pid()),
+                    None,
                   );
                 }
               }
@@ -299,6 +300,7 @@ where
               LogLevel::Warn,
               alloc::format!("pool router failed to deliver message to routee: {:?}", error),
               Some(ctx.pid()),
+              None,
             );
           }
         }

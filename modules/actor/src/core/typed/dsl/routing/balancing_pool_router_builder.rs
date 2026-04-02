@@ -201,7 +201,7 @@ where
           },
           | Err(e) => {
             let msg = alloc::format!("balancing pool router failed to spawn child: {:?}", e);
-            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
             break;
           },
         }
@@ -209,7 +209,7 @@ where
 
       // routee が1体も起動できなかった場合はルーターを停止する
       if routee_pids.is_empty() {
-        ctx.system().emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, "balancing pool router has no routees, stopping", Some(ctx.pid()), None);
         return Behaviors::stopped();
       }
 

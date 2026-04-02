@@ -20,6 +20,21 @@ const REMOVED_STD_ALIAS_FILES: &[&str] = &[
   "src/std/typed/typed_ask_response.rs",
 ];
 
+const REMOVED_UNWIRED_STD_IO_PATHS: &[&str] = &[
+  "src/std/io/connection_closed/tests.rs",
+  "src/std/io/dns_command/tests.rs",
+  "src/std/io/dns_event/tests.rs",
+  "src/std/io/dns_ext/tests.rs",
+  "src/std/io/tcp_command/tests.rs",
+  "src/std/io/tcp_event/tests.rs",
+  "src/std/io/tcp_ext/tests.rs",
+  "src/std/io/tcp_socket_option/tests.rs",
+  "src/std/io/udp_command/tests.rs",
+  "src/std/io/udp_event/tests.rs",
+  "src/std/io/udp_ext/tests.rs",
+  "src/std/io/udp_socket_option/tests.rs",
+];
+
 struct NoopSubscriber;
 
 impl crate::std::event::stream::EventStreamSubscriber for NoopSubscriber {
@@ -33,6 +48,16 @@ fn removed_std_alias_files_stay_deleted() {
   for relative_path in REMOVED_STD_ALIAS_FILES {
     let path = manifest_dir.join(relative_path);
     assert!(!path.exists(), "削除済み alias ファイルが復活しています: {}", display_relative_path(manifest_dir, &path));
+  }
+}
+
+#[test]
+fn unfinished_std_io_tree_stays_deleted_until_module_is_wired() {
+  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+
+  for relative_path in REMOVED_UNWIRED_STD_IO_PATHS {
+    let path = manifest_dir.join(relative_path);
+    assert!(!path.exists(), "未配線の std/io ツリーが復活しています: {}", display_relative_path(manifest_dir, &path));
   }
 }
 

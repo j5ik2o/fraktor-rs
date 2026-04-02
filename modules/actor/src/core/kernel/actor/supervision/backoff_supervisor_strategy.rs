@@ -11,7 +11,7 @@ const DEFAULT_STASH_CAPACITY: usize = 1000;
 
 /// Supervisor strategy providing exponential backoff for restart delays.
 ///
-/// The backoff delay is computed as `min(max_backoff, min_backoff * 2^restart_count)`.
+/// The backoff delay is computed as `min(max_backoff, min_backoff * 2^restart_iteration)`.
 /// An optional jitter can be applied via
 /// [`compute_backoff_with_jitter`](Self::compute_backoff_with_jitter).
 #[derive(Clone, Debug)]
@@ -58,14 +58,17 @@ impl BackoffSupervisorStrategy {
     }
   }
 
-  /// Computes the deterministic backoff delay for the given restart count.
+  /// Computes the deterministic backoff delay for the given restart iteration.
   ///
-  /// Formula: `min(max_backoff, min_backoff * 2^restart_count)`.
+  /// `restart_iteration = 0` represents the first delayed restart attempt and
+  /// therefore returns `min_backoff`.
+  ///
+  /// Formula: `min(max_backoff, min_backoff * 2^restart_iteration)`.
   /// Overflow-safe: caps at `max_backoff` when the multiplication would overflow.
   #[must_use]
-  pub fn compute_backoff(&self, restart_count: u32) -> Duration {
+  pub fn compute_backoff(&self, restart_iteration: u32) -> Duration {
     let base = self.min_backoff.as_nanos();
-    let factor = 1u128.checked_shl(restart_count).unwrap_or(u128::MAX);
+    let factor = 1u128.checked_shl(restart_iteration).unwrap_or(u128::MAX);
     let delay_nanos = base.saturating_mul(factor);
     let max_nanos = self.max_backoff.as_nanos();
     let capped = delay_nanos.min(max_nanos);
@@ -74,11 +77,13 @@ impl BackoffSupervisorStrategy {
 
   /// Computes the backoff delay with jitter applied.
   ///
-  /// Formula: `compute_backoff(restart_count) * (1.0 + random * random_factor)`.
+  /// `restart_iteration = 0` represents the first delayed restart attempt.
+  ///
+  /// Formula: `compute_backoff(restart_iteration) * (1.0 + random * random_factor)`.
   /// The `random` parameter should be in `[0.0, 1.0]`.
   #[must_use]
-  pub fn compute_backoff_with_jitter(&self, restart_count: u32, random: f64) -> Duration {
-    let base = self.compute_backoff(restart_count);
+  pub fn compute_backoff_with_jitter(&self, restart_iteration: u32, random: f64) -> Duration {
+    let base = self.compute_backoff(restart_iteration);
     let random = if random.is_nan() { 0.0 } else { random.clamp(0.0, 1.0) };
     let jitter_multiplier = 1.0 + random * self.random_factor;
     let nanos = (base.as_nanos() as f64 * jitter_multiplier) as u128;

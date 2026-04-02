@@ -60,7 +60,7 @@ fn test_remoting_config_defaults() {
 #[test]
 #[should_panic(expected = "quarantine duration must be >= 1 second")]
 fn test_remoting_config_rejects_short_quarantine() {
-  let _ = RemotingConfig::default().with_quarantine_duration(Duration::from_millis(999));
+  drop(RemotingConfig::default().with_quarantine_duration(Duration::from_millis(999)));
 }
 
 #[test]

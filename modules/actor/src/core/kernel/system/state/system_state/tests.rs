@@ -82,6 +82,12 @@ fn system_state_build_from_config_provides_scheduler_and_tick_driver_bundle() {
   assert_eq!(bundle.driver().resolution(), resolution);
 }
 
+#[test]
+fn system_state_build_from_config_sets_non_zero_start_time_by_default() {
+  let state = build_state();
+  assert_ne!(state.start_time(), Duration::ZERO);
+}
+
 fn base_config() -> ActorSystemConfig {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
@@ -404,7 +410,7 @@ fn system_state_publish_event() {
   };
 
   let state = build_state();
-  let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None);
+  let log_event = LogEvent::new(LogLevel::Info, String::from("test"), Duration::from_millis(1), None, None);
   let event = EventStreamEvent::Log(log_event);
 
   state.publish_event(&event);
@@ -415,10 +421,28 @@ fn system_state_emit_log() {
   use alloc::string::String;
 
   let state = build_state();
+  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
+  let _subscription = state.event_stream().subscribe(&subscriber);
   let pid = state.allocate_pid();
 
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid));
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None);
+  state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid), None);
+  state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None, None);
+  state.emit_log(
+    crate::core::kernel::event::logging::LogLevel::Warn,
+    String::from("named logger message"),
+    Some(pid),
+    Some(String::from("my_logger")),
+  );
+
+  let events_snapshot = events_shared.lock().clone();
+  let named_log = events_snapshot.iter().rev().find_map(|event| match event {
+    | EventStreamEvent::Log(log) if log.message() == "named logger message" => Some(log.clone()),
+    | _ => None,
+  });
+
+  let named_log = named_log.expect("named logger log event should be published");
+  assert_eq!(named_log.logger_name(), Some("my_logger"));
 }
 
 #[test]

@@ -8,6 +8,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::time::Duration;
 
 use fraktor_utils_rs::core::{
   collections::queue::capabilities::QueueCapability,
@@ -47,8 +48,7 @@ use crate::core::{
     util::futures::ActorFutureShared,
   },
   typed::{
-    TypedProps,
-    internal::ActorRefResolverId,
+    ActorRefResolver, TypedActorSystemSettings, TypedProps,
     receptionist::{Receptionist, ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
   },
 };
@@ -58,7 +58,8 @@ const CREATE_SEND_FAILED: &str = "create system message delivery failed";
 
 /// Core runtime structure that owns registry, guardians, and spawn logic.
 pub struct ActorSystem {
-  state: SystemStateShared,
+  state:    SystemStateShared,
+  settings: TypedActorSystemSettings,
 }
 
 impl ActorSystem {
@@ -94,15 +95,16 @@ impl ActorSystem {
       | Ok(state) => state,
       | Err(error) => panic!("default test-support config should always build: {error:?}"),
     };
-    let state = SystemStateShared::new(state);
-    state.mark_root_started();
-    Self { state }
+    let system = Self::from_state(SystemStateShared::new(state));
+    system.state.mark_root_started();
+    system
   }
 
   /// Creates an actor system from an existing system state.
   #[must_use]
-  pub const fn from_state(state: SystemStateShared) -> Self {
-    Self { state }
+  pub fn from_state(state: SystemStateShared) -> Self {
+    let settings = TypedActorSystemSettings::new(state.system_name(), state.start_time());
+    Self { state, settings }
   }
 
   /// Creates a new actor system and runs the provided configuration callback before startup.
@@ -294,14 +296,7 @@ impl ActorSystem {
   }
 
   fn install_default_actor_ref_resolver_extension(&self) {
-    let id = ActorRefResolverId::new();
-    if self.extended().has_extension(&id) {
-      return;
-    }
-    let registered = self.extended().register_extension(&id);
-    if let Some(existing) = self.extended().extension(&id) {
-      debug_assert!(ArcShared::ptr_eq(&registered, &existing));
-    }
+    ActorRefResolver::install(self);
   }
 
   /// Allocates a new pid (testing helper).
@@ -390,8 +385,36 @@ impl ActorSystem {
   }
 
   /// Emits a log event with the specified severity.
-  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
-    self.state.emit_log(level, message.into(), origin);
+  pub fn emit_log(
+    &self,
+    level: LogLevel,
+    message: impl Into<String>,
+    origin: Option<Pid>,
+    logger_name: Option<String>,
+  ) {
+    self.state.emit_log(level, message.into(), origin, logger_name);
+  }
+
+  /// Returns the configured actor system name.
+  ///
+  /// Corresponds to Pekko's `ActorSystem.name`.
+  #[must_use]
+  pub fn name(&self) -> String {
+    self.state.system_name()
+  }
+
+  /// Returns the immutable settings snapshot preserved by this actor system.
+  #[must_use]
+  pub fn settings(&self) -> TypedActorSystemSettings {
+    self.settings.clone()
+  }
+
+  /// Returns the start time of the actor system (epoch-relative duration).
+  ///
+  /// Corresponds to Pekko's `ActorSystem.startTime`.
+  #[must_use]
+  pub const fn start_time(&self) -> Duration {
+    self.state.start_time()
   }
 
   /// Publishes a raw event to the event stream.
@@ -675,7 +698,7 @@ impl ActorSystem {
 
 impl Clone for ActorSystem {
   fn clone(&self) -> Self {
-    Self { state: self.state.clone() }
+    Self { state: self.state.clone(), settings: self.settings.clone() }
   }
 }
 

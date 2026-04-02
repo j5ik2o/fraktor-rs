@@ -56,11 +56,11 @@ impl LoopbackDeliverer for LoopbackDelivererImpl {
     match self.reader.decode(envelope) {
       | Ok(inbound) => {
         if let Err(error) = self.reader.deliver(inbound) {
-          system.emit_log(LogLevel::Warn, format!("loopback delivery failed: {error:?}"), None);
+          system.emit_log(LogLevel::Warn, format!("loopback delivery failed: {error:?}"), None, None);
         }
       },
       | Err(error) => {
-        system.emit_log(LogLevel::Warn, format!("loopback decode failed: {error:?}"), None);
+        system.emit_log(LogLevel::Warn, format!("loopback decode failed: {error:?}"), None, None);
       },
     }
   }

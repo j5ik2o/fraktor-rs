@@ -72,10 +72,10 @@ impl SerializationExtension {
       // 通常は発生しないが、システム構成に重大な問題がある場合にパニックする
       if let Err(error) = builtin::register_defaults(&registry, |name, id| {
         let message = format!("serializer collision detected for built-in {name} (id {:?})", id);
-        state.emit_log(LogLevel::Warn, message, None);
+        state.emit_log(LogLevel::Warn, message, None, None);
       }) {
         let message = format!("critical: failed to register builtin serializers: {error:?}");
-        state.emit_log(LogLevel::Error, message, None);
+        state.emit_log(LogLevel::Error, message, None, None);
         panic!("failed to register builtin serializers: {error:?}");
       }
     }
@@ -313,7 +313,7 @@ impl SerializationExtension {
         | Ok(value) => {
           let message = format!("manifest '{manifest}' resolved via serializer {:?}", serializer.identifier());
           if let Some(system_state) = self.system_state.upgrade() {
-            system_state.emit_log(LogLevel::Info, message, None);
+            system_state.emit_log(LogLevel::Info, message, None, None);
           }
           return Ok(value);
         },
@@ -332,7 +332,7 @@ impl SerializationExtension {
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     let log_message = format!("manifest '{manifest}' not resolved (serializer {:?})", msg.serializer_id());
     if let Some(system_state) = self.system_state.upgrade() {
-      system_state.emit_log(LogLevel::Warn, log_message, None);
+      system_state.emit_log(LogLevel::Warn, log_message, None, None);
     }
     let payload =
       NotSerializableError::new(manifest.clone(), Some(msg.serializer_id()), Some(manifest), None, transport_hint);
@@ -347,7 +347,7 @@ impl SerializationExtension {
     };
     let message = format!("{source} for type {type_name} -> {:?}", serializer_id);
     if let Some(system_state) = self.system_state.upgrade() {
-      system_state.emit_log(level, message, None);
+      system_state.emit_log(level, message, None, None);
     }
   }
 
@@ -417,7 +417,7 @@ impl SerializationExtension {
       payload.serializer_id(),
       payload.manifest(),
     );
-    system_state.emit_log(LogLevel::Warn, log_message, payload.pid());
+    system_state.emit_log(LogLevel::Warn, log_message, payload.pid(), None);
   }
 }
 

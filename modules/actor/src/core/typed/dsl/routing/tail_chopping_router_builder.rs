@@ -115,7 +115,7 @@ where
           | Ok(child) => routee_vec.push(child.into_actor_ref()),
           | Err(e) => {
             let msg = alloc::format!("tail-chopping router failed to spawn child: {:?}", e);
-            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
             break;
           },
         }
@@ -123,7 +123,7 @@ where
 
       // routee が1体も起動できなかった場合はルーターを停止する
       if routee_vec.is_empty() {
-        ctx.system().emit_log(LogLevel::Error, "tail-chopping router has no routees, stopping", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, "tail-chopping router has no routees, stopping", Some(ctx.pid()), None);
         return Behaviors::stopped();
       }
 
@@ -162,6 +162,7 @@ where
                 LogLevel::Warn,
                 alloc::format!("tail-chopping router failed to deliver message to routee: {:?}", error),
                 Some(ctx.pid()),
+                None,
               );
             }
           }
@@ -236,7 +237,7 @@ fn spawn_chop_coordinator<'a, M, R>(
     | Ok(_) => {},
     | Err(e) => {
       let msg = alloc::format!("tail-chopping coordinator spawn failed: {:?}", e);
-      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()));
+      ctx.system().emit_log(LogLevel::Warn, msg, Some(ctx.pid()), None);
       // caller が無応答にならないよう timeout_reply を即時返却する。
       if let Err(_error) = fallback_reply_to.try_tell(fallback_timeout_reply) {}
     },
@@ -279,6 +280,7 @@ where
             LogLevel::Warn,
             alloc::format!("tail-chopping coordinator failed to deliver initial request: {:?}", error),
             Some(ctx.pid()),
+            None,
           );
         }
       }
@@ -291,6 +293,7 @@ where
           LogLevel::Warn,
           alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
           Some(ctx.pid()),
+          None,
         );
       }
       // 全体タイムアウトを設定する
@@ -299,6 +302,7 @@ where
           LogLevel::Warn,
           alloc::format!("tail-chopping coordinator failed to schedule final timeout: {:?}", e),
           Some(ctx.pid()),
+          None,
         );
       }
 
@@ -324,6 +328,7 @@ where
                 LogLevel::Warn,
                 alloc::format!("tail-chopping coordinator failed to deliver request: {:?}", error),
                 Some(ctx.pid()),
+                None,
               );
             }
             *idx += 1;
@@ -334,6 +339,7 @@ where
                 LogLevel::Warn,
                 alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
           }

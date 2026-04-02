@@ -49,6 +49,7 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
     "test message".into(),
     Duration::from_millis(100),
     Some(Pid::new(1, 0)),
+    None,
   ));
 
   subscriber.on_event(&event);
@@ -73,6 +74,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
       alloc::format!("message {}", i),
       Duration::from_millis(i as u64),
       Some(Pid::new(1, 0)),
+      None,
     ));
     subscriber.on_event(&event);
   }

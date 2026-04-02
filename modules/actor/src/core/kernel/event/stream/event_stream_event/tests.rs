@@ -66,7 +66,7 @@ fn event_stream_event_dead_letter_clone() {
 #[cfg(feature = "alloc")]
 #[test]
 fn event_stream_event_log_clone() {
-  let log_event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::from_secs(0), None);
+  let log_event = LogEvent::new(LogLevel::Info, String::from("test message"), Duration::from_secs(0), None, None);
   let event = EventStreamEvent::Log(log_event.clone());
   let cloned = event.clone();
   match (event, cloned) {

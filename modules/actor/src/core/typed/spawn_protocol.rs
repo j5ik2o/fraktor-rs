@@ -101,6 +101,7 @@ impl SpawnProtocol {
           crate::core::kernel::event::logging::LogLevel::Warn,
           alloc::format!("spawn protocol command execution failed: {:?}", e),
           Some(ctx.pid()),
+          None,
         );
       }
       Ok(Behaviors::same())

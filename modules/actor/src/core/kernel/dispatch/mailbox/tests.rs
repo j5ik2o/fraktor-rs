@@ -79,7 +79,7 @@ fn mailbox_schedule_requests_follow_state_engine() {
   mailbox.set_running();
   assert!(!mailbox.request_schedule(hints));
 
-  let _ = mailbox.set_idle();
+  assert!(mailbox.set_idle());
   assert!(mailbox.request_schedule(hints));
 }
 
@@ -97,7 +97,7 @@ fn mailbox_schedule_hints_reflect_current_workload() {
   assert!(system_hints.has_system_messages);
   assert!(!system_hints.has_user_messages);
   assert!(!system_hints.backpressure_active);
-  let _ = mailbox.dequeue();
+  assert!(mailbox.dequeue().is_some());
 
   mailbox.enqueue_user(AnyMessage::new(String::from("user"))).expect("user enqueue");
   let user_hints = mailbox.current_schedule_hints();

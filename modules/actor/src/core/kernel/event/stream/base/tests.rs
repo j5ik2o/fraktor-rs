@@ -37,7 +37,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
 fn event_stream_replays_buffer_for_new_subscribers() {
   let stream = EventStreamShared::default();
 
-  let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None);
+  let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None, None);
   stream.publish(&EventStreamEvent::Log(log));
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -62,6 +62,7 @@ fn subscribe_no_replay_skips_buffered_events() {
     String::from("buffered"),
     Duration::from_millis(1),
     None,
+    None,
   )));
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -74,6 +75,7 @@ fn subscribe_no_replay_skips_buffered_events() {
     LogLevel::Info,
     String::from("live"),
     Duration::from_millis(2),
+    None,
     None,
   )));
 
@@ -91,11 +93,13 @@ fn capacity_limits_buffer_size() {
     String::from("first"),
     Duration::from_millis(1),
     None,
+    None,
   )));
   stream.publish(&EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     String::from("second"),
     Duration::from_millis(2),
+    None,
     None,
   )));
 
@@ -155,6 +159,7 @@ fn unsubscribe_removes_subscriber() {
     String::from("before unsubscribe"),
     Duration::from_millis(1),
     None,
+    None,
   )));
 
   stream.unsubscribe(subscription.id());
@@ -163,6 +168,7 @@ fn unsubscribe_removes_subscriber() {
     LogLevel::Info,
     String::from("after unsubscribe"),
     Duration::from_millis(2),
+    None,
     None,
   )));
 

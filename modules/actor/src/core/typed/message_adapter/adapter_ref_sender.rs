@@ -50,7 +50,7 @@ impl ActorRefSender for AdapterRefSender {
       let error = SendError::closed(message);
       self.system.record_send_error(Some(self.pid), &error);
       let log = format!("adapter-ref-{} target stopped", self.handle_id);
-      self.system.emit_log(LogLevel::Warn, log, Some(self.pid));
+      self.system.emit_log(LogLevel::Warn, log, Some(self.pid), None);
       return Err(error);
     }
 

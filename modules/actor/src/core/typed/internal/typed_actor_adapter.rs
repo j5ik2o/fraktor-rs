@@ -57,12 +57,12 @@ where
   ) -> Result<(), ActorError> {
     let sender = envelope.sender().cloned();
     let Some(payload) = envelope.take_payload() else {
-      ctx.system().emit_log(LogLevel::Warn, "adapter envelope missing payload", Some(ctx.pid()));
+      ctx.system().emit_log(LogLevel::Warn, "adapter envelope missing payload", Some(ctx.pid()), None);
       return Ok(());
     };
     if payload.type_id() != envelope.type_id() {
       Self::record_dead_letter(ctx, payload, sender.as_ref(), DeadLetterReason::ExplicitRouting, is_control);
-      ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()));
+      ctx.system().emit_log(LogLevel::Error, "adapter envelope corrupted", Some(ctx.pid()), None);
       return Ok(());
     }
     let (outcome, leftover) = self.adapters.adapt(payload);
@@ -90,7 +90,7 @@ where
         if let Some(payload) = original_payload {
           Self::record_dead_letter(ctx, payload, sender, DeadLetterReason::ExplicitRouting, is_control);
         }
-        ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Warn, "adapter dropped message", Some(ctx.pid()), None);
         Ok(())
       },
     }
@@ -154,6 +154,7 @@ where
             LogLevel::Warn,
             alloc::format!("failed to schedule receive timeout: {}", e),
             Some(ctx.pid()),
+            None,
           );
         },
       }

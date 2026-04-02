@@ -10,6 +10,7 @@ use core::{
 use crate::core::kernel::{
   actor::{
     Pid,
+    actor_ref::ActorRef,
     context_pipe::{ContextPipeTaskId, ContextPipeWaker},
     messaging::AnyMessage,
   },
@@ -17,21 +18,37 @@ use crate::core::kernel::{
 };
 
 /// Future type stored by context pipe tasks.
-pub(crate) type ContextPipeFuture = Pin<Box<dyn Future<Output = AnyMessage> + Send + 'static>>;
+///
+/// `None` means the asynchronous result was intentionally dropped after it had
+/// already been observed (for example after logging an adapter failure).
+pub(crate) type ContextPipeFuture = Pin<Box<dyn Future<Output = Option<AnyMessage>> + Send + 'static>>;
 
-/// Represents a pending `pipe_to_self` computation tracked by an actor cell.
+/// Represents a pending `pipe_to_self` or `pipe_to` computation tracked by an actor cell.
 pub(crate) struct ContextPipeTask {
-  id:     ContextPipeTaskId,
-  future: ContextPipeFuture,
-  pid:    Pid,
-  system: SystemStateShared,
+  id:              ContextPipeTaskId,
+  future:          ContextPipeFuture,
+  pid:             Pid,
+  system:          SystemStateShared,
+  delivery_target: Option<ActorRef>,
 }
 
 impl ContextPipeTask {
-  /// Creates a new context pipe task with the provided future.
+  /// Creates a new context pipe task targeting the actor itself (`pipe_to_self`).
   #[must_use]
   pub(crate) fn new(id: ContextPipeTaskId, future: ContextPipeFuture, pid: Pid, system: SystemStateShared) -> Self {
-    Self { id, future, pid, system }
+    Self { id, future, pid, system, delivery_target: None }
+  }
+
+  /// Creates a new context pipe task targeting an external actor (`pipe_to`).
+  #[must_use]
+  pub(crate) fn new_with_target(
+    id: ContextPipeTaskId,
+    future: ContextPipeFuture,
+    pid: Pid,
+    system: SystemStateShared,
+    target: ActorRef,
+  ) -> Self {
+    Self { id, future, pid, system, delivery_target: Some(target) }
   }
 
   /// Returns the identifier of the task.
@@ -40,8 +57,13 @@ impl ContextPipeTask {
     self.id
   }
 
+  /// Takes the delivery target, leaving `None` in its place.
+  pub(crate) const fn take_delivery_target(&mut self) -> Option<ActorRef> {
+    self.delivery_target.take()
+  }
+
   /// Polls the underlying future using a context pipe waker.
-  pub(crate) fn poll(&mut self) -> Poll<AnyMessage> {
+  pub(crate) fn poll(&mut self) -> Poll<Option<AnyMessage>> {
     let waker = ContextPipeWaker::into_waker(self.system.clone(), self.pid, self.id);
     let mut context = Context::from_waker(&waker);
     self.future.as_mut().poll(&mut context)

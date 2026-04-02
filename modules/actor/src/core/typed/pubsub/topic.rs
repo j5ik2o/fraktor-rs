@@ -59,7 +59,7 @@ impl Topic {
 
     Behaviors::setup(move |ctx| {
       let Some(receptionist) = ctx.system().receptionist_ref() else {
-        ctx.system().emit_log(LogLevel::Error, "topic requires receptionist", Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, "topic requires receptionist", Some(ctx.pid()), None);
         return Behaviors::stopped();
       };
       let adapter =
@@ -67,14 +67,14 @@ impl Topic {
           | Ok(adapter) => adapter,
           | Err(error) => {
             let message = alloc::format!("topic failed to create receptionist adapter: {:?}", error);
-            ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
+            ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
             return Behaviors::stopped();
           },
         };
       let mut receptionist_ref = receptionist.clone();
       if let Err(error) = receptionist_ref.try_tell(Receptionist::subscribe(&topic_key, adapter)) {
         let message = alloc::format!("topic failed to subscribe to receptionist: {:?}", error);
-        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()));
+        ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
         return Behaviors::stopped();
       }
 
@@ -110,6 +110,7 @@ impl Topic {
                 LogLevel::Warn,
                 alloc::format!("topic failed to unwatch subscriber: {:?}", e),
                 Some(ctx.pid()),
+                None,
               );
             }
             remove_subscriber(&mut state.local_subscribers, subscriber.pid());
@@ -184,6 +185,7 @@ fn deregister_if_empty<M>(
       LogLevel::Warn,
       alloc::format!("topic failed to deregister from receptionist: {:?}", error),
       Some(ctx.pid()),
+      None,
     );
   }
 }

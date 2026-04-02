@@ -10,6 +10,8 @@ mod abstract_behavior;
 mod behaviors;
 mod failure_handler;
 mod fsm_builder;
+/// Intermediate receive builder for typed behaviors.
+mod receive;
 mod stash_buffer;
 mod status_reply;
 mod status_reply_error;
@@ -24,6 +26,7 @@ pub use abstract_behavior::AbstractBehavior;
 pub use behaviors::Behaviors;
 pub use failure_handler::FailureHandler;
 pub use fsm_builder::FsmBuilder;
+pub use receive::Receive;
 pub use stash_buffer::StashBuffer;
 pub use status_reply::StatusReply;
 pub use status_reply_error::StatusReplyError;

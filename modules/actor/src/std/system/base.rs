@@ -169,8 +169,18 @@ impl ActorSystem {
   }
 
   /// Emits a log event with the specified severity.
-  pub fn emit_log(&self, level: LogLevel, message: impl Into<String>, origin: Option<Pid>) {
-    self.inner.emit_log(level, message, origin)
+  ///
+  /// `logger_name` identifies the emitting logger. Passing `Some(...)` uses
+  /// that explicit name, while `None` delegates to `self.inner.emit_log`
+  /// using the default or caller-derived logger identity.
+  pub fn emit_log(
+    &self,
+    level: LogLevel,
+    message: impl Into<String>,
+    origin: Option<Pid>,
+    logger_name: Option<String>,
+  ) {
+    self.inner.emit_log(level, message, origin, logger_name)
   }
 
   /// Publishes a raw event to the event stream.
