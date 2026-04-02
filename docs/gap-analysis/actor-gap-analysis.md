@@ -26,6 +26,21 @@
 - 一方で classic 側は `ActorSelection`、public `actorOf` surface、classic `FSM`、Pekko IO family が未充足で、公開契約 parity の主ボトルネックになっている。
 - そのため今回は API ギャップが支配的であり、構造比較は後続フェーズと判断する。
 
+## 進捗の読み方
+
+- actor モジュール全体の完了条件は `34/34` である
+- 現在の actor モジュール全体進捗は `24/34 (71%)` である
+- 各カテゴリ見出しの `3/6` のような数値は、そのカテゴリ内だけの進捗である
+- したがって、たとえば `classic コア契約` が `6/6` になっても、それは「そのカテゴリが完了」という意味であり、actor モジュール全体の完了ではない
+
+| カテゴリ | カテゴリ内進捗 |
+|----------|----------------|
+| classic コア契約 | 3/6 |
+| classic ライフサイクル / runtime | 4/7 |
+| typed コア契約 | 8/10 |
+| typed DSL / routing | 5/6 |
+| typed ディスカバリ / delivery | 4/5 |
+
 ## 層別カバレッジ
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
@@ -36,7 +51,7 @@
 
 ## カテゴリ別ギャップ
 
-### classic コア契約 ✅ 実装済み 3/6 (50%)
+### classic コア契約 ✅ カテゴリ内 3/6 (50%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
@@ -44,7 +59,7 @@
 | `ActorRefFactory` public surface (`actorOf`, `stop`, `actorSelection`) | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorRefProvider.scala:189`, `:230`, `:255`, `:284` | 部分実装 | core/kernel | medium | fraktor-rs は `ActorContext::spawn_child` (`modules/actor/src/core/kernel/actor/actor_context.rs:218`) と `ExtendedActorSystem::spawn_system_actor` (`modules/actor/src/core/kernel/system/extended_actor_system.rs:148`) はあるが、classic `ActorSystem` 自体の public `actor_of`/`stop`/`actor_selection` 契約はない |
 | `ActorRefProvider` full classic contract | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorRefProvider.scala:47`, `:95`, `:100`, `:120`, `:145`, `:165` | 部分実装 | core/kernel | medium | fraktor-rs の trait は `supported_schemes` / `actor_ref` を中心に最小化されており (`modules/actor/src/core/kernel/actor/actor_ref_provider/base.rs:20`)、`deployer`, `tempContainer`, `unregisterTempActor`, external address 解決などの classic surface は未公開 |
 
-### classic ライフサイクル / runtime ✅ 実装済み 4/7 (57%)
+### classic ライフサイクル / runtime ✅ カテゴリ内 4/7 (57%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
@@ -52,20 +67,20 @@
 | `Tcp` / `Udp` / `Dns` / `IO` family | Pekko actor moduleの public IO family 一式 | 未対応 | std | hard | fraktor-rs には `modules/actor/src/std/io/` のパッケージ境界だけがあり、`std.rs` から再公開もされていない (`modules/actor/src/std.rs:1`)。公開 API と実体の両方が不足している |
 | `CoordinatedShutdown` advanced task helpers | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/CoordinatedShutdown.scala:564`, `:648`, `:815`, `:897` | 部分実装 | std | medium | fraktor-rs は `add_task` / `timeout` / `run` まで (`modules/actor/src/std/system/coordinated_shutdown.rs:184`, `:209`, `:245`) で、`addCancellableTask`, `addActorTerminationTask`, JVM shutdown hook 系の helper がない |
 
-### typed コア契約 ✅ 実装済み 8/10 (80%)
+### typed コア契約 ✅ カテゴリ内 8/10 (80%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `ActorSystem` が `ActorRef` / `RecipientRef` を兼ねる契約 | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorSystem.scala:45`, `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorRef.scala:35`, `:126` | 部分実装 | core/typed | hard | fraktor-rs の `TypedActorSystem` は system handle であり (`modules/actor/src/core/typed/system.rs:161`)、`TypedActorRef` ではない。`user_guardian_ref()` はあるが、system 自体へ `tell` する契約は未提供 |
 | typed `EventStream.Command` の型別 subscribe 契約 | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/eventstream/EventStream.scala:31`, `:52`, `:69` | 部分実装 | core/typed | medium | fraktor-rs の `EventStreamCommand` は `EventStreamEvent` 固定 publish と raw subscriber 登録のみ (`modules/actor/src/core/typed/eventstream/event_stream_command.rs:8`) で、Pekko の `ClassTag` ベース subtype subscription 契約がない |
 
-### typed DSL / routing ✅ 実装済み 5/6 (83%)
+### typed DSL / routing ✅ カテゴリ内 5/6 (83%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `GroupRouter` / `PoolRouter` fluent parity の未充足分 | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/Routers.scala:55`, `:90`, `:128`, `:173` | 部分実装 | core/typed | easy | fraktor-rs は builder 自体はかなり揃っており、`with_consistent_hash`, `with_routee_props`, `with_broadcast_predicate` まである (`modules/actor/src/core/typed/dsl/routing/pool_router_builder.rs:95`, `:137`, `:104`) が、group router の `preferLocalRoutees` 相当と Pekko の `Behavior` 兼 builder trait 契約はない |
 
-### typed ディスカバリ / delivery ✅ 実装済み 4/5 (80%)
+### typed ディスカバリ / delivery ✅ カテゴリ内 4/5 (80%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
