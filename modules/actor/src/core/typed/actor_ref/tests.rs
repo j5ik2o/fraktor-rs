@@ -1,4 +1,5 @@
 use alloc::collections::BTreeSet;
+use core::hint::spin_loop;
 
 use crate::core::{
   kernel::{
@@ -6,12 +7,12 @@ use crate::core::{
       Actor, ActorCell, ActorContext, Pid,
       actor_ref::{ActorRef, ActorRefSender, SendOutcome},
       error::{ActorError, SendError},
-      messaging::{AnyMessage, AnyMessageView},
+      messaging::{AnyMessage, AnyMessageView, AskError},
       props::Props,
     },
     system::ActorSystem,
   },
-  typed::TypedActorRef,
+  typed::{TypedActorRef, dsl::TypedAskError},
 };
 
 struct NoOpSender;
@@ -47,6 +48,34 @@ impl Actor for NoOpActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
+}
+
+#[derive(Clone)]
+struct EchoRequest {
+  value:    u32,
+  reply_to: TypedActorRef<u32>,
+}
+
+struct EchoActor;
+
+impl Actor for EchoActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(request) = message.downcast_ref::<EchoRequest>() {
+      let mut reply_to = request.reply_to.clone();
+      reply_to.tell(request.value);
+    }
+    Ok(())
+  }
+}
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  for _ in 0..10_000 {
+    if condition() {
+      return;
+    }
+    spin_loop();
+  }
+  assert!(condition());
 }
 
 /// `path` returns `Some` when the actor is registered in the system.
@@ -122,4 +151,33 @@ fn typed_actor_ref_equality_and_order_are_consistent_by_pid() {
 
   let set = BTreeSet::from([left, right]);
   assert_eq!(set.len(), 1, "BTreeSet dedup should match PartialEq semantics");
+}
+
+#[test]
+fn typed_actor_ref_ask_returns_typed_reply_and_registers_future() {
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let pid = state.allocate_pid();
+  let props = Props::from_fn(|| EchoActor);
+  let cell = ActorCell::create(state.clone(), pid, None, "typed-ask-echo".into(), &props).expect("create actor");
+  state.register_cell(cell.clone());
+  let mut typed_ref = TypedActorRef::<EchoRequest>::from_untyped(cell.actor_ref());
+
+  let response = typed_ref.ask::<u32, _>(|reply_to| EchoRequest { value: 55, reply_to });
+  let mut future = response.future().clone();
+  wait_until(|| future.is_ready());
+
+  assert_eq!(system.drain_ready_ask_futures().len(), 1, "typed ask should register future with system");
+  assert_eq!(future.try_take().expect("ready").expect("ok"), 55);
+}
+
+#[test]
+fn typed_actor_ref_ask_reports_send_failure() {
+  let mut typed_ref = TypedActorRef::<EchoRequest>::from_untyped(ActorRef::null());
+
+  let response = typed_ref.ask::<u32, _>(|reply_to| EchoRequest { value: 1, reply_to });
+  let mut future = response.future().clone();
+  wait_until(|| future.is_ready());
+
+  assert!(matches!(future.try_take().expect("ready"), Err(TypedAskError::AskFailed(AskError::SendFailed(_)))));
 }

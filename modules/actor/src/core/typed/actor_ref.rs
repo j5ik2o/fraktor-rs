@@ -6,18 +6,8 @@ use core::{
   marker::PhantomData,
 };
 
-use fraktor_utils_rs::core::sync::SharedAccess;
-
 use crate::core::{
-  kernel::{
-    actor::{
-      Pid,
-      actor_path::ActorPath,
-      actor_ref::{ActorRef, AskReplySender},
-      messaging::{AnyMessage, AskError, AskResponse, AskResult},
-    },
-    util::futures::ActorFutureShared,
-  },
+  kernel::actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef, messaging::AnyMessage},
   typed::dsl::{StatusReply, TypedAskResponse},
 };
 
@@ -94,25 +84,11 @@ where
   where
     R: Send + Sync + 'static,
     F: FnOnce(TypedActorRef<R>) -> M, {
-    let future = ActorFutureShared::<AskResult>::new();
-    let reply_sender = AskReplySender::new(future.clone());
-    let system = self.inner.system_state();
-    let reply_ref = if let Some(system) = &system {
-      ActorRef::with_system(self.inner.pid(), reply_sender, system)
-    } else {
-      ActorRef::new(self.inner.pid(), reply_sender)
-    };
-    let reply_typed = TypedActorRef::from_untyped(reply_ref.clone());
-    let message = build(reply_typed);
-    if let Err(error) = self.inner.try_tell(AnyMessage::new(message)) {
-      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
-      if let Some(waker) = waker {
-        waker.wake();
-      }
-    } else if let Some(system) = system {
-      system.register_ask_future(future.clone());
-    }
-    TypedAskResponse::from_generic(AskResponse::new(reply_ref, future))
+    let response = self.inner.ask_with_factory(true, |reply_ref| {
+      let reply_typed = TypedActorRef::from_untyped(reply_ref);
+      AnyMessage::new(build(reply_typed))
+    });
+    TypedAskResponse::from_generic(response)
   }
 
   /// Sends a typed request expecting a [`StatusReply<R>`] response.

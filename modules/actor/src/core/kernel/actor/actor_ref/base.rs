@@ -35,6 +35,31 @@ pub struct ActorRef {
 }
 
 impl ActorRef {
+  fn complete_ask_future_with_error(future: &ActorFutureShared<AskResult>, error: &SendError) {
+    let waker = future.with_write(|inner| inner.complete(Err(AskError::from(error))));
+    if let Some(waker) = waker {
+      waker.wake();
+    }
+  }
+
+  fn register_ask_future_if_available(system: Option<SystemStateShared>, future: &ActorFutureShared<AskResult>) {
+    if let Some(system) = system {
+      system.register_ask_future(future.clone());
+    }
+  }
+
+  fn build_ask_reply_ref(
+    pid: Pid,
+    system: Option<&SystemStateShared>,
+    path_aware_reply: bool,
+    reply_sender: AskReplySender,
+  ) -> Self {
+    if path_aware_reply && let Some(system) = system {
+      return Self::with_system(pid, reply_sender, system);
+    }
+    Self::new(pid, reply_sender)
+  }
+
   /// Creates a new actor reference backed by the provided sender.
   #[must_use]
   pub fn new<T>(pid: Pid, sender: T) -> Self
@@ -85,6 +110,31 @@ impl ActorRef {
   #[must_use]
   pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
     self.system.as_ref().and_then(|weak| weak.upgrade())
+  }
+
+  /// Sends a request built from a reply target and obtains the associated ask response.
+  ///
+  /// `path_aware_reply` controls whether the reply actor ref keeps the originating
+  /// system attached. Typed ask call sites use `true` so reply refs can still
+  /// participate in path-aware APIs, while classic `ActorRef::ask` keeps its
+  /// historical `false` behavior.
+  #[must_use]
+  pub(crate) fn ask_with_factory<F>(&mut self, path_aware_reply: bool, build: F) -> AskResponse
+  where
+    F: FnOnce(ActorRef) -> AnyMessage, {
+    let future = ActorFutureShared::<AskResult>::new();
+    let system = self.system_state();
+    let reply_sender = AskReplySender::new(future.clone());
+    let reply_ref = Self::build_ask_reply_ref(self.pid, system.as_ref(), path_aware_reply, reply_sender);
+    let message = build(reply_ref.clone());
+
+    if let Err(error) = self.try_tell(message) {
+      Self::complete_ask_future_with_error(&future, &error);
+      return AskResponse::new(reply_ref, future);
+    }
+
+    Self::register_ask_future_if_available(system, &future);
+    AskResponse::new(reply_ref, future)
   }
 
   /// Sends a message to the referenced actor (fire-and-forget).
@@ -153,21 +203,7 @@ impl ActorRef {
   /// `Err(AskError)` when the request times out or the reply path fails.
   #[must_use]
   pub fn ask(&mut self, message: AnyMessage) -> AskResponse {
-    let future = ActorFutureShared::<AskResult>::new();
-    let reply_sender = AskReplySender::new(future.clone());
-    let reply_ref = ActorRef::new(self.pid, reply_sender);
-    let envelope = message.with_sender(reply_ref.clone());
-    if let Err(error) = self.try_tell(envelope) {
-      let waker = future.with_write(|inner| inner.complete(Err(AskError::from(&error))));
-      if let Some(waker) = waker {
-        waker.wake();
-      }
-      return AskResponse::new(reply_ref, future);
-    }
-    if let Some(system) = self.system.as_ref().and_then(|weak| weak.upgrade()) {
-      system.register_ask_future(future.clone());
-    }
-    AskResponse::new(reply_ref, future)
+    self.ask_with_factory(false, |reply_ref| message.with_sender(reply_ref))
   }
 
   /// Sends a request and arranges timeout completion on the returned ask future.
