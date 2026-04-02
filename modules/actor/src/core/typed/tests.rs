@@ -141,6 +141,36 @@ fn typed_props_with_same_as_parent_dispatcher_selector_marks_parent_inheritance(
 }
 
 #[test]
+fn typed_props_empty_supports_immutable_builder_chain() {
+  // Given: factory を持たない empty typed props がある
+  let props = TypedProps::<CounterMessage>::empty();
+  let capacity = core::num::NonZeroUsize::new(8).expect("capacity");
+
+  // When: dispatcher / mailbox / tags を immutable builder で合成する
+  let configured = props
+    .clone()
+    .with_dispatcher_selector(crate::core::typed::DispatcherSelector::SameAsParent)
+    .with_mailbox_bounded(capacity)
+    .with_tags(["phase2-empty", "typed-props"]);
+
+  // Then: 元の props は空のままで、派生 props にだけ設定が積まれる
+  assert!(!props.to_untyped().dispatcher_same_as_parent());
+  assert!(props.to_untyped().tags().is_empty());
+  assert_eq!(
+    props.to_untyped().mailbox_policy().capacity(),
+    crate::core::kernel::dispatch::mailbox::MailboxCapacity::Unbounded
+  );
+
+  assert!(configured.to_untyped().dispatcher_same_as_parent());
+  assert_eq!(
+    configured.to_untyped().mailbox_policy().capacity(),
+    crate::core::kernel::dispatch::mailbox::MailboxCapacity::Bounded { capacity }
+  );
+  assert!(configured.to_untyped().tags().contains("phase2-empty"));
+  assert!(configured.to_untyped().tags().contains("typed-props"));
+}
+
+#[test]
 fn typed_behaviors_handle_recursive_state() {
   let props = TypedProps::<CounterMessage>::from_behavior_factory(|| behavior_counter(0));
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
@@ -279,12 +309,13 @@ struct LifecycleCommand;
 #[test]
 fn typed_behaviors_receive_signal_notifications() {
   let started = Arc::new(AtomicUsize::new(0));
-  let stopped = Arc::new(AtomicUsize::new(0));
+  let post_stop = Arc::new(AtomicUsize::new(0));
   let start_probe = Arc::clone(&started);
-  let stop_probe = Arc::clone(&stopped);
+  let post_stop_probe = Arc::clone(&post_stop);
 
-  let props =
-    TypedProps::<LifecycleCommand>::from_behavior_factory(move || signal_probe_behavior(&start_probe, &stop_probe));
+  let props = TypedProps::<LifecycleCommand>::from_behavior_factory(move || {
+    signal_probe_behavior(&start_probe, &post_stop_probe)
+  });
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
@@ -293,7 +324,7 @@ fn typed_behaviors_receive_signal_notifications() {
   system.as_untyped().run_until_terminated();
 
   assert_eq!(started.load(Ordering::SeqCst), 1);
-  assert_eq!(stopped.load(Ordering::SeqCst), 1);
+  assert_eq!(post_stop.load(Ordering::SeqCst), 1);
 }
 
 #[derive(Clone)]
@@ -558,36 +589,34 @@ fn stash_order_open_behavior(history: Vec<String>) -> Behavior<StashOrderCommand
   })
 }
 
-fn signal_probe_behavior(started: &Arc<AtomicUsize>, stopped: &Arc<AtomicUsize>) -> Behavior<LifecycleCommand> {
+fn signal_probe_behavior(started: &Arc<AtomicUsize>, post_stop: &Arc<AtomicUsize>) -> Behavior<LifecycleCommand> {
   let start_probe = Arc::clone(started);
-  let stop_probe = Arc::clone(stopped);
-  Behaviors::receive_signal(move |_ctx, signal| {
-    match signal {
-      | BehaviorSignal::Started => {
-        start_probe.fetch_add(1, Ordering::SeqCst);
-      },
-      | BehaviorSignal::Stopped => {
-        stop_probe.fetch_add(1, Ordering::SeqCst);
-      },
-      | BehaviorSignal::Terminated(_)
-      | BehaviorSignal::MessageAdaptionFailure(_)
-      | BehaviorSignal::ChildFailed { .. }
-      | BehaviorSignal::PreRestart => {},
-    }
-    Ok(Behaviors::same())
+  let post_stop_probe = Arc::clone(post_stop);
+  Behaviors::setup(move |_ctx| {
+    start_probe.fetch_add(1, Ordering::SeqCst);
+    let post_stop_probe = post_stop_probe.clone();
+    Behaviors::receive_signal(move |_ctx, signal| {
+      match signal {
+        | BehaviorSignal::PostStop => {
+          post_stop_probe.fetch_add(1, Ordering::SeqCst);
+        },
+        | BehaviorSignal::Terminated(_)
+        | BehaviorSignal::MessageAdaptionFailure(_)
+        | BehaviorSignal::ChildFailed { .. }
+        | BehaviorSignal::PreRestart => {},
+      }
+      Ok(Behaviors::same())
+    })
   })
 }
 
 fn child_behavior(counter: &Arc<AtomicUsize>) -> Behavior<ChildCommand> {
   let start_probe = Arc::clone(counter);
-  Behaviors::receive_message(move |_ctx, message| match message {
-    | ChildCommand::Crash => Err(ActorError::recoverable("boom")),
-  })
-  .receive_signal(move |_ctx, signal| {
-    if matches!(signal, BehaviorSignal::Started) {
-      start_probe.fetch_add(1, Ordering::SeqCst);
-    }
-    Ok(Behaviors::same())
+  Behaviors::setup(move |_ctx| {
+    start_probe.fetch_add(1, Ordering::SeqCst);
+    Behaviors::receive_message(move |_ctx, message| match message {
+      | ChildCommand::Crash => Err(ActorError::recoverable("boom")),
+    })
   })
 }
 
@@ -841,8 +870,8 @@ fn adapter_not_found_routes_to_dead_letter() {
   let envelope = AdapterEnvelope::new(payload, None);
   untyped.tell(AnyMessage::new(envelope));
 
-  wait_until(|| !system.dead_letters().is_empty());
-  let entries = system.dead_letters();
+  wait_until(|| !system.dead_letter_entries().is_empty());
+  let entries: Vec<crate::core::kernel::actor::actor_ref::dead_letter::DeadLetterEntry> = system.dead_letter_entries();
   assert!(entries.iter().any(|entry| entry.reason() == DeadLetterReason::ExplicitRouting));
 
   system.terminate().expect("terminate");

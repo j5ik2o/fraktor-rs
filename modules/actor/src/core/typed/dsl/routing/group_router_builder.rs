@@ -177,7 +177,7 @@ where
         Ok(Behaviors::same())
       })
       .receive_signal(move |ctx, signal| {
-        if matches!(signal, BehaviorSignal::Stopped) {
+        if matches!(signal, BehaviorSignal::PostStop) {
           let unsubscribe = Receptionist::unsubscribe(&key_for_signal, listing_ref_for_signal.clone());
           if let Err(error) = receptionist_for_signal.lock().try_tell(unsubscribe) {
             ctx.system().emit_log(

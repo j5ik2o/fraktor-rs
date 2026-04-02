@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::String;
+use alloc::{collections::BTreeMap, string::String};
 use core::time::Duration;
 
 use super::LogLevel;
@@ -12,11 +12,14 @@ use crate::core::kernel::actor::Pid;
 /// Structured representation of a runtime log event.
 #[derive(Clone, Debug)]
 pub struct LogEvent {
-  level:       LogLevel,
-  message:     String,
-  timestamp:   Duration,
-  origin:      Option<Pid>,
-  logger_name: Option<String>,
+  level:             LogLevel,
+  message:           String,
+  timestamp:         Duration,
+  origin:            Option<Pid>,
+  logger_name:       Option<String>,
+  marker_name:       Option<String>,
+  marker_properties: BTreeMap<String, String>,
+  mdc:               BTreeMap<String, String>,
 }
 
 impl LogEvent {
@@ -32,7 +35,31 @@ impl LogEvent {
     origin: Option<Pid>,
     logger_name: Option<String>,
   ) -> Self {
-    Self { level, message, timestamp, origin, logger_name }
+    Self {
+      level,
+      message,
+      timestamp,
+      origin,
+      logger_name,
+      marker_name: None,
+      marker_properties: BTreeMap::new(),
+      mdc: BTreeMap::new(),
+    }
+  }
+
+  /// Attaches structured marker metadata to the event.
+  #[must_use]
+  pub fn with_marker(mut self, marker_name: impl Into<String>, marker_properties: BTreeMap<String, String>) -> Self {
+    self.marker_name = Some(marker_name.into());
+    self.marker_properties = marker_properties;
+    self
+  }
+
+  /// Attaches structured MDC metadata to the event.
+  #[must_use]
+  pub fn with_mdc(mut self, mdc: BTreeMap<String, String>) -> Self {
+    self.mdc = mdc;
+    self
   }
 
   /// Returns the severity level.
@@ -67,5 +94,24 @@ impl LogEvent {
   #[allow(clippy::missing_const_for_fn)]
   pub fn logger_name(&self) -> Option<&str> {
     self.logger_name.as_deref()
+  }
+
+  /// Returns the marker name, if any.
+  #[must_use]
+  #[allow(clippy::missing_const_for_fn)]
+  pub fn marker_name(&self) -> Option<&str> {
+    self.marker_name.as_deref()
+  }
+
+  /// Returns the structured marker properties.
+  #[must_use]
+  pub const fn marker_properties(&self) -> &BTreeMap<String, String> {
+    &self.marker_properties
+  }
+
+  /// Returns the structured MDC entries.
+  #[must_use]
+  pub const fn mdc(&self) -> &BTreeMap<String, String> {
+    &self.mdc
   }
 }

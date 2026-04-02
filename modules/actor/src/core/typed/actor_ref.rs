@@ -1,6 +1,10 @@
 //! Typed actor reference wrapper.
 
-use core::marker::PhantomData;
+use core::{
+  cmp::Ordering,
+  hash::{Hash, Hasher},
+  marker::PhantomData,
+};
 
 use fraktor_utils_rs::core::sync::SharedAccess;
 
@@ -183,5 +187,43 @@ where
 {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_struct("TypedActorRef").field("pid", &self.pid()).finish()
+  }
+}
+
+impl<M> PartialEq for TypedActorRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn eq(&self, other: &Self) -> bool {
+    self.pid() == other.pid()
+  }
+}
+
+impl<M> Eq for TypedActorRef<M> where M: Send + Sync + 'static {}
+
+impl<M> Hash for TypedActorRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn hash<H: Hasher>(&self, state: &mut H) {
+    self.pid().hash(state);
+  }
+}
+
+impl<M> PartialOrd for TypedActorRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<M> Ord for TypedActorRef<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn cmp(&self, other: &Self) -> Ordering {
+    (self.pid().value(), self.pid().generation()).cmp(&(other.pid().value(), other.pid().generation()))
   }
 }

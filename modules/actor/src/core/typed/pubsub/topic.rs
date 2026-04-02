@@ -44,10 +44,12 @@ impl Topic {
   /// `topic_instances` does not cause duplicate local delivery because only one
   /// branch executes for each publish.
   ///
-  /// # Errors
+  /// # Stops
   ///
-  /// Returns a fatal actor error when the actor system does not provide a
-  /// receptionist or when the topic cannot install its receptionist adapter.
+  /// Returns a `Behavior`.
+  /// This actor stops via [`Behaviors::stopped`] when the receptionist is
+  /// unavailable, creating the receptionist adapter fails, or subscribing to
+  /// the receptionist fails.
   #[must_use]
   pub fn behavior<M>(topic_name: impl Into<String>) -> Behavior<TopicCommand<M>>
   where
@@ -85,9 +87,9 @@ impl Topic {
         match command.clone().into_kind() {
           | TopicCommandKind::Publish(message) => {
             if state.topic_instances.is_empty() {
-              publish_local(&state.local_subscribers, &message);
+              publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
             } else {
-              publish_instances(&state.topic_instances, &message);
+              publish_instances(&state.topic_instances, &message, ctx, &topic_key_for_messages);
             }
           },
           | TopicCommandKind::Subscribe(subscriber) => {
@@ -126,7 +128,7 @@ impl Topic {
             state.topic_instances = listing.typed_refs::<TopicCommand<M>>()?;
           },
           | TopicCommandKind::MessagePublished(message) => {
-            publish_local(&state.local_subscribers, &message);
+            publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
           },
           | TopicCommandKind::SubscriberTerminated(pid) => {
             remove_subscriber(&mut state.local_subscribers, pid);
@@ -196,20 +198,52 @@ where
   subscribers.retain(|subscriber| subscriber.pid() != pid);
 }
 
-fn publish_local<M>(subscribers: &[TypedActorRef<M>], message: &M)
-where
+fn publish_local<M>(
+  subscribers: &[TypedActorRef<M>],
+  message: &M,
+  ctx: &TypedActorContext<'_, TopicCommand<M>>,
+  topic_key: &ServiceKey<TopicCommand<M>>,
+) where
   M: Clone + Send + Sync + 'static, {
   for subscriber in subscribers {
     let mut subscriber = subscriber.clone();
-    if let Err(_error) = subscriber.try_tell(message.clone()) {}
+    if let Err(error) = subscriber.try_tell(message.clone()) {
+      ctx.system().emit_log(
+        LogLevel::Warn,
+        alloc::format!(
+          "topic {} failed to publish to local subscriber {:?}: {:?}",
+          topic_key.id(),
+          subscriber.pid(),
+          error
+        ),
+        Some(ctx.pid()),
+        None,
+      );
+    }
   }
 }
 
-fn publish_instances<M>(topic_instances: &[TypedActorRef<TopicCommand<M>>], message: &M)
-where
+fn publish_instances<M>(
+  topic_instances: &[TypedActorRef<TopicCommand<M>>],
+  message: &M,
+  ctx: &TypedActorContext<'_, TopicCommand<M>>,
+  topic_key: &ServiceKey<TopicCommand<M>>,
+) where
   M: Clone + Send + Sync + 'static, {
   for topic in topic_instances {
     let mut topic = topic.clone();
-    if let Err(_error) = topic.try_tell(TopicCommand::message_published(message.clone())) {}
+    if let Err(error) = topic.try_tell(TopicCommand::message_published(message.clone())) {
+      ctx.system().emit_log(
+        LogLevel::Warn,
+        alloc::format!(
+          "topic {} failed to forward published message to topic instance {:?}: {:?}",
+          topic_key.id(),
+          topic.pid(),
+          error
+        ),
+        Some(ctx.pid()),
+        None,
+      );
+    }
   }
 }

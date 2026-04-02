@@ -205,6 +205,81 @@ fn behavior_runner_dispatches_pre_restart_signal() {
 }
 
 #[test]
+fn behavior_runner_dispatches_post_stop_signal() {
+  let received = Arc::new(AtomicBool::new(false));
+  let behavior = signal_probe_behavior(|s| matches!(s, BehaviorSignal::PostStop), received.clone());
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+  let result = runner.post_stop(&mut typed_ctx);
+  assert!(result.is_ok());
+  assert!(received.load(Ordering::SeqCst));
+}
+
+#[test]
+fn behavior_runner_pre_start_uses_internal_setup_without_public_started_signal() {
+  let setup_count = Arc::new(AtomicBool::new(false));
+  let signal_received = Arc::new(AtomicBool::new(false));
+  let setup_count_for_factory = setup_count.clone();
+  let signal_received_for_signal = signal_received.clone();
+
+  let behavior = Behaviors::setup(move |_ctx| {
+    setup_count_for_factory.store(true, Ordering::SeqCst);
+    let signal_received = signal_received_for_signal.clone();
+    Behaviors::receive_signal(move |_ctx, signal| {
+      if matches!(signal, BehaviorSignal::PostStop) {
+        signal_received.store(true, Ordering::SeqCst);
+      }
+      Ok(Behaviors::same())
+    })
+  });
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  runner.pre_start(&mut typed_ctx).expect("pre_start");
+
+  assert!(setup_count.load(Ordering::SeqCst), "setup factory should run during pre_start");
+  assert!(!signal_received.load(Ordering::SeqCst), "pre_start must not dispatch any public signal");
+
+  runner.post_stop(&mut typed_ctx).expect("post_stop");
+
+  assert!(signal_received.load(Ordering::SeqCst), "public signal handling should remain available after setup");
+}
+
+#[test]
+fn behavior_runner_resolves_nested_setup_returned_from_message_transition() {
+  let setup_ran = Arc::new(AtomicBool::new(false));
+  let handled = Arc::new(AtomicBool::new(false));
+  let setup_ran_for_message = setup_ran.clone();
+  let handled_for_nested = handled.clone();
+
+  let behavior = Behaviors::receive_message(move |_ctx, _msg: &ProbeMessage| {
+    let setup_ran = setup_ran_for_message.clone();
+    let handled = handled_for_nested.clone();
+    Ok(Behaviors::setup(move |_ctx| {
+      setup_ran.store(true, Ordering::SeqCst);
+      let handled = handled.clone();
+      Behaviors::receive_message(move |_ctx, _msg: &ProbeMessage| {
+        handled.store(true, Ordering::SeqCst);
+        Ok(Behaviors::same())
+      })
+    }))
+  });
+
+  let mut runner = BehaviorRunner::new(behavior);
+  let (mut ctx, mut registry) = build_context();
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut ctx, Some(&mut registry));
+
+  runner.pre_start(&mut typed_ctx).expect("pre_start");
+  runner.receive(&mut typed_ctx, &ProbeMessage).expect("first message");
+  assert!(setup_ran.load(Ordering::SeqCst), "nested setup should run during transition");
+
+  runner.receive(&mut typed_ctx, &ProbeMessage).expect("second message");
+  assert!(handled.load(Ordering::SeqCst), "behavior returned by nested setup should become current");
+}
+
+#[test]
 fn behavior_runner_pre_start_does_not_mark_stopping_when_stop_self_fails() {
   let mut runner = BehaviorRunner::new(Behaviors::stopped::<ProbeMessage>());
   let (mut ctx, mut registry) = build_context();
@@ -279,7 +354,7 @@ fn behavior_runner_death_pact_errors_when_handler_returns_unhandled() {
 }
 
 /// Regression: `stopped_with_post_stop` returned from a message handler must
-/// still invoke the callback when `post_stop` dispatches `BehaviorSignal::Stopped`.
+/// still invoke the callback when `post_stop` dispatches `BehaviorSignal::PostStop`.
 ///
 /// Previously `apply_transition` unconditionally replaced `self.current` with
 /// a plain `Behavior::stopped()` (no signal handler), silently discarding the

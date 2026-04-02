@@ -41,7 +41,7 @@ fn behavior_should_be_constructible() {
 #[test]
 fn unsubscribe_should_stop_listing_updates() {
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("svc");
 
   let updates = ArcShared::new(NoStdMutex::new(0_usize));
@@ -79,7 +79,7 @@ fn unsubscribe_should_stop_listing_updates() {
 #[test]
 fn terminated_routee_should_be_removed_from_listing() {
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("svc");
 
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -101,7 +101,7 @@ fn terminated_routee_should_be_removed_from_listing() {
 fn register_with_ack_sends_registered_to_reply_to() {
   // Given: a system with a receptionist and an ack receiver
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("ack-svc");
 
   let ack_received = ArcShared::new(NoStdMutex::new(false));
@@ -143,7 +143,7 @@ fn register_with_ack_sends_registered_to_reply_to() {
 fn deregister_with_ack_sends_deregistered_to_reply_to() {
   // Given: a system with a registered actor
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("dereg-svc");
 
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -189,7 +189,7 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
 fn registered_is_for_key_returns_true_for_matching_key() {
   // Given: a system with a registered actor via register_with_ack
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("key-check-svc");
 
   let captured_registered =
@@ -230,7 +230,7 @@ fn registered_is_for_key_returns_true_for_matching_key() {
 fn register_without_ack_still_works() {
   // Given: a system with a receptionist
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("no-ack-svc");
 
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -252,7 +252,7 @@ fn register_without_ack_still_works() {
 #[test]
 fn terminated_subscriber_should_be_cleaned_up() {
   let system = new_test_system();
-  let mut receptionist = system.receptionist_ref().expect("system receptionist");
+  let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("svc");
 
   let updates = ArcShared::new(NoStdMutex::new(0_usize));

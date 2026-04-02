@@ -143,18 +143,17 @@ fn deserialization_failure_produces_dead_letter_error() {
 
 #[test]
 fn deliver_routes_message_to_local_actor() {
-  let system = build_system();
-  let serialization = serialization_extension(&system);
-  let reader = EndpointReader::new(system.downgrade(), serialization);
   let events: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
     let events = events.clone();
     move || RecordingActor { events: events.clone() }
   })
-  .with_name("recorder");
-  let child = system.extended().spawn_system_actor(&props).expect("spawn");
-  let actor_ref = child.actor_ref().clone();
-  let recipient = actor_ref.path().expect("recipient path");
+  .with_name("reader-tests");
+  let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = ActorSystem::new_with_config(&props, &system_config).expect("system builds");
+  let serialization = serialization_extension(&system);
+  let reader = EndpointReader::new(system.downgrade(), serialization);
+  let recipient = system.user_guardian_ref().path().expect("recipient path");
 
   let inbound = InboundEnvelope::new(
     recipient,

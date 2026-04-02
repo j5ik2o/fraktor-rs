@@ -1,5 +1,5 @@
 use alloc::{string::String, vec, vec::Vec};
-use core::hint::spin_loop;
+use core::{hint::spin_loop, time::Duration};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
 
@@ -328,6 +328,91 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
   assert_eq!(cell.stashed_message_len(), 0);
   wait_until(|| received.lock().len() == 2);
   assert_eq!(received.lock().clone(), vec![1, 2]);
+}
+
+#[test]
+fn actor_context_timers_start_single_timer_and_cancel_tracks_active_state() {
+  // 前提: self actor が登録済みの classic actor context がある
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-self", &props);
+  let context = ActorContext::new(&system, pid);
+
+  // 実行: classic timers API で単発タイマーを登録してから取り消す
+  let timers = context.timers();
+  timers.start_single_timer("tick", AnyMessage::new(7_i32), Duration::from_millis(25)).expect("schedule");
+  assert!(timers.is_timer_active("tick"));
+  timers.cancel("tick").expect("cancel");
+
+  // 検証: タイマーは非アクティブになる
+  assert!(!timers.is_timer_active("tick"));
+}
+
+#[test]
+fn actor_context_timers_persist_keys_across_fresh_contexts() {
+  // 前提: self actor が登録済みの classic actor context がある
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-persist", &props);
+
+  let first_context = ActorContext::new(&system, pid);
+  let first_timers = first_context.timers();
+  first_timers.start_single_timer("tick", AnyMessage::new(9_i32), Duration::from_millis(25)).expect("schedule");
+
+  // 実行: 新しい context から同じ timer key を参照する
+  let second_context = ActorContext::new(&system, pid);
+  let second_timers = second_context.timers();
+
+  // 検証: handle が cell 単位のためアクティブタイマーは見える
+  assert!(second_timers.is_timer_active("tick"));
+}
+
+#[test]
+fn actor_context_timers_cancel_all_clears_periodic_entries() {
+  // 前提: periodic timer が有効な classic actor context がある
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "timer-periodic", &props);
+  let context = ActorContext::new(&system, pid);
+  let timers = context.timers();
+
+  // 実行: fixed-delay と fixed-rate の timer を開始してからまとめて取消する
+  timers
+    .start_timer_with_fixed_delay("delay", AnyMessage::new(1_i32), Duration::from_millis(20))
+    .expect("schedule fixed delay");
+  timers
+    .start_timer_at_fixed_rate("rate", AnyMessage::new(2_i32), Duration::from_millis(20))
+    .expect("schedule fixed rate");
+  timers.cancel_all().expect("cancel all");
+
+  // 検証: 両方の timer key が非アクティブになる
+  assert!(!timers.is_timer_active("delay"));
+  assert!(!timers.is_timer_active("rate"));
+}
+
+#[test]
+fn actor_context_stash_overflow_error_converts_from_actor_error() {
+  // 前提: 既存の context API で stash overflow を発生させる
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "stash-overflow", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+  context.stash_with_limit(1).expect("stash first");
+  context.set_current_message(Some(AnyMessage::new(2_i32)));
+  let error = context.stash_with_limit(1).expect_err("overflow should fail");
+
+  // 実行: 公開エラー型として stash overflow を取り出す
+  let overflow: crate::core::kernel::actor::StashOverflowError =
+    error.try_into().expect("classic stash overflow error");
+
+  // 検証: 変換が成功し、公開エラー型として扱える
+  let _ = overflow;
 }
 
 #[test]

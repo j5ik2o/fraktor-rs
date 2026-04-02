@@ -15,6 +15,7 @@ pub struct Behavior<M>
 where
   M: Send + Sync + 'static, {
   directive:           BehaviorDirective,
+  start_handler:       Option<StartHandler<M>>,
   message_handler:     Option<MessageHandler<M>>,
   signal_handler:      Option<SignalHandler<M>>,
   supervisor_override: Option<SupervisorStrategyConfig>,
@@ -42,6 +43,9 @@ pub(crate) enum BehaviorDirective {
 type MessageHandler<M> =
   ArcShared<dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync>;
 
+type StartHandler<M> =
+  ArcShared<dyn for<'a> Fn(&mut TypedActorContext<'a, M>) -> Result<Behavior<M>, ActorError> + Send + Sync>;
+
 type SignalHandler<M> = ArcShared<
   dyn for<'a> Fn(&mut TypedActorContext<'a, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + Send + Sync,
 >;
@@ -53,6 +57,7 @@ where
   pub(crate) const fn same() -> Self {
     Self {
       directive:           BehaviorDirective::Same,
+      start_handler:       None,
       message_handler:     None,
       signal_handler:      None,
       supervisor_override: None,
@@ -62,6 +67,7 @@ where
   pub(crate) const fn stopped() -> Self {
     Self {
       directive:           BehaviorDirective::Stopped,
+      start_handler:       None,
       message_handler:     None,
       signal_handler:      None,
       supervisor_override: None,
@@ -71,6 +77,7 @@ where
   pub(crate) const fn ignore() -> Self {
     Self {
       directive:           BehaviorDirective::Ignore,
+      start_handler:       None,
       message_handler:     None,
       signal_handler:      None,
       supervisor_override: None,
@@ -80,6 +87,7 @@ where
   pub(crate) const fn unhandled() -> Self {
     Self {
       directive:           BehaviorDirective::Unhandled,
+      start_handler:       None,
       message_handler:     None,
       signal_handler:      None,
       supervisor_override: None,
@@ -89,6 +97,19 @@ where
   pub(crate) const fn empty() -> Self {
     Self {
       directive:           BehaviorDirective::Empty,
+      start_handler:       None,
+      message_handler:     None,
+      signal_handler:      None,
+      supervisor_override: None,
+    }
+  }
+
+  pub(crate) fn from_start_handler<F>(handler: F) -> Self
+  where
+    F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
+    Self {
+      directive:           BehaviorDirective::Active,
+      start_handler:       Some(ArcShared::new(handler)),
       message_handler:     None,
       signal_handler:      None,
       supervisor_override: None,
@@ -100,6 +121,7 @@ where
     F: for<'a> Fn(&mut TypedActorContext<'a, M>, &M) -> Result<Behavior<M>, ActorError> + Send + Sync + 'static, {
     Self {
       directive:           BehaviorDirective::Active,
+      start_handler:       None,
       message_handler:     Some(ArcShared::new(handler)),
       signal_handler:      None,
       supervisor_override: None,
@@ -114,6 +136,7 @@ where
       + 'static, {
     Self {
       directive:           BehaviorDirective::Active,
+      start_handler:       None,
       message_handler:     None,
       signal_handler:      Some(ArcShared::new(handler)),
       supervisor_override: None,
@@ -189,6 +212,20 @@ where
     }
   }
 
+  pub(crate) fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
+    match self.directive {
+      | BehaviorDirective::Same => Ok(Self::same()),
+      | BehaviorDirective::Stopped => Ok(Self::stopped()),
+      | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
+      | BehaviorDirective::Empty => Ok(Self::same()),
+      | BehaviorDirective::Active => match &self.start_handler {
+        | Some(handler) => handler(ctx),
+        | None => Ok(Self::same()),
+      },
+    }
+  }
+
   pub(crate) fn handle_signal(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
@@ -208,6 +245,16 @@ where
         | None => Ok(Self::same()),
       },
     }
+  }
+
+  pub(crate) fn resolve_started_behavior(
+    mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+  ) -> Result<Behavior<M>, ActorError> {
+    while matches!(self.directive, BehaviorDirective::Active) && self.start_handler.is_some() {
+      self = self.handle_start(ctx)?;
+    }
+    Ok(self)
   }
 
   pub(crate) const fn directive(&self) -> BehaviorDirective {
@@ -232,54 +279,48 @@ where
   where
     Outer: Send + Sync + 'static,
     F: Fn(&Outer) -> Option<M> + Send + Sync + 'static, {
-    let supervisor_override = self.supervisor_override.clone();
     let inner_template = self;
     let mapper = ArcShared::new(mapper);
 
-    Behavior::<Outer>::from_signal_handler({
-      move |ctx, signal| match signal {
-        | BehaviorSignal::Started => {
-          let mut inner = inner_template.clone();
+    Behavior::<Outer>::from_start_handler(move |ctx| {
+      let inner = {
+        let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+        inner_template.clone().resolve_started_behavior(&mut inner_ctx)?
+      };
+      let final_supervisor_override = inner.supervisor_override().cloned();
+      let outer_directive = inner.directive();
 
-          {
+      let state = ArcShared::new(RuntimeMutex::new(inner));
+      let state_msg = state.clone();
+      let state_sig = state;
+      let mapper_msg = mapper.clone();
+
+      let outer_signal = move |ctx: &mut TypedActorContext<'_, Outer>, signal: &BehaviorSignal| {
+        let mut guard = state_sig.lock();
+        let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+        let next = guard.handle_signal(&mut inner_ctx, signal)?.resolve_started_behavior(&mut inner_ctx)?;
+        Ok(resolve_transform_directive(&mut guard, next))
+      };
+
+      let mut outer = match outer_directive {
+        | BehaviorDirective::Stopped => Behavior::<Outer>::stopped().receive_signal(outer_signal),
+        | BehaviorDirective::Empty => Behavior::<Outer>::empty().receive_signal(outer_signal),
+        | _ => Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
+          | Some(inner_msg) => {
+            let mut guard = state_msg.lock();
             let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-            let started_result = inner.handle_signal(&mut inner_ctx, &BehaviorSignal::Started)?;
-            match started_result.directive() {
-              | BehaviorDirective::Active => inner = started_result,
-              | BehaviorDirective::Stopped => return Ok(Behavior::stopped()),
-              | BehaviorDirective::Empty => inner = Behavior::empty(),
-              | _ => {},
-            }
-          }
-
-          let state = ArcShared::new(RuntimeMutex::new(inner));
-          let state_msg = state.clone();
-          let state_sig = state;
-          let mapper_msg = mapper.clone();
-
-          let mut outer = Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
-            | Some(inner_msg) => {
-              let mut guard = state_msg.lock();
-              let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-              let next = guard.handle_message(&mut inner_ctx, &inner_msg)?;
-              Ok(resolve_transform_directive(&mut guard, next))
-            },
-            | None => Ok(Behavior::unhandled()),
-          })
-          .receive_signal(move |ctx, signal| {
-            let mut guard = state_sig.lock();
-            let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-            let next = guard.handle_signal(&mut inner_ctx, signal)?;
+            let next = guard.handle_message(&mut inner_ctx, &inner_msg)?.resolve_started_behavior(&mut inner_ctx)?;
             Ok(resolve_transform_directive(&mut guard, next))
-          });
-          // 内部 Behavior の supervisor_override を外部 Behavior に引き継ぐ
-          if let Some(strategy) = &supervisor_override {
-            outer = outer.with_supervisor_strategy(strategy.clone());
-          }
-          Ok(outer)
-        },
-        | _ => Ok(Behavior::same()),
+          },
+          | None => Ok(Behavior::unhandled()),
+        })
+        .receive_signal(outer_signal),
+      };
+
+      if let Some(strategy) = &final_supervisor_override {
+        outer = outer.with_supervisor_strategy(strategy.clone());
       }
+      Ok(outer)
     })
   }
 
@@ -303,6 +344,7 @@ where
   fn clone(&self) -> Self {
     Self {
       directive:           self.directive,
+      start_handler:       self.start_handler.clone(),
       message_handler:     self.message_handler.clone(),
       signal_handler:      self.signal_handler.clone(),
       supervisor_override: self.supervisor_override.clone(),

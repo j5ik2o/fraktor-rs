@@ -17,6 +17,13 @@ fn tags_empty_by_default() {
 }
 
 #[test]
+fn empty_props_do_not_have_factory() {
+  let props = Props::empty();
+  assert!(props.factory().is_none());
+  assert!(props.tags().is_empty());
+}
+
+#[test]
 fn with_tags_sets_tags() {
   let props = Props::from_fn(|| TestActor).with_tags(["foo", "bar"]);
   let mut expected = BTreeSet::new();

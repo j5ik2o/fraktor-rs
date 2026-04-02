@@ -21,14 +21,10 @@ fn probe_props(start_count: &Arc<AtomicUsize>) -> TypedProps<ProbeCommand> {
   let start_count = Arc::clone(start_count);
   TypedProps::from_behavior_factory(move || {
     let start_count = Arc::clone(&start_count);
-    Behaviors::receive_message(move |_ctx, _message: &ProbeCommand| Ok(Behaviors::same())).receive_signal(
-      move |_ctx, signal| {
-        if matches!(signal, crate::core::typed::message_and_signals::BehaviorSignal::Started) {
-          start_count.fetch_add(1, Ordering::SeqCst);
-        }
-        Ok(Behaviors::same())
-      },
-    )
+    Behaviors::setup(move |_ctx| {
+      start_count.fetch_add(1, Ordering::SeqCst);
+      Behaviors::receive_message(move |_ctx, _message: &ProbeCommand| Ok(Behaviors::same()))
+    })
   })
 }
 
@@ -36,14 +32,10 @@ fn other_probe_props(start_count: &Arc<AtomicUsize>) -> TypedProps<OtherProbeCom
   let start_count = Arc::clone(start_count);
   TypedProps::from_behavior_factory(move || {
     let start_count = Arc::clone(&start_count);
-    Behaviors::receive_message(move |_ctx, _message: &OtherProbeCommand| Ok(Behaviors::same())).receive_signal(
-      move |_ctx, signal| {
-        if matches!(signal, crate::core::typed::message_and_signals::BehaviorSignal::Started) {
-          start_count.fetch_add(1, Ordering::SeqCst);
-        }
-        Ok(Behaviors::same())
-      },
-    )
+    Behaviors::setup(move |_ctx| {
+      start_count.fetch_add(1, Ordering::SeqCst);
+      Behaviors::receive_message(move |_ctx, _message: &OtherProbeCommand| Ok(Behaviors::same()))
+    })
   })
 }
 

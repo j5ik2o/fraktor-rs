@@ -9,9 +9,10 @@ use core::num::NonZeroUsize;
 /// Selects which mailbox type to assign to an actor.
 ///
 /// Inspired by Pekko's `MailboxSelector` hierarchy.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum MailboxSelector {
   /// Uses the system default unbounded mailbox.
+  #[default]
   Default,
   /// Uses a bounded mailbox with the specified capacity.
   Bounded(NonZeroUsize),

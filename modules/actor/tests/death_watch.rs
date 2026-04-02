@@ -67,7 +67,7 @@ impl HarnessWatcher {
 
   fn stop_child(&self) {
     if let Some(child) = self.child_slot.lock().as_ref() {
-      let _ = child.stop();
+      child.stop().expect("stop child should succeed");
     }
   }
 }
@@ -470,7 +470,7 @@ impl Actor for WatchWithHarness {
     }
     if message.downcast_ref::<StopChild>().is_some() {
       if let Some(child) = self.child_slot.lock().as_ref() {
-        let _ = child.stop();
+        child.stop().expect("stop child should succeed");
       }
       return Ok(());
     }

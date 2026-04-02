@@ -469,8 +469,13 @@ impl SystemStateShared {
       return Some(ActorPath::root_with_guardian(self.guardian_kind));
     }
     segments.reverse();
-    let mut path = ActorPath::root_with_guardian(self.guardian_kind);
-    for segment in segments {
+    let (guardian_kind, actor_segments) = match segments.first().map(String::as_str) {
+      | Some("system") => (PathGuardianKind::System, &segments[1..]),
+      | Some("user") => (PathGuardianKind::User, &segments[1..]),
+      | _ => (self.guardian_kind, segments.as_slice()),
+    };
+    let mut path = ActorPath::root_with_guardian(guardian_kind);
+    for segment in actor_segments {
       path = path.child(segment);
     }
     Some(path)

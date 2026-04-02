@@ -89,7 +89,7 @@ fn receive_with_signal_sets_signal_handler() {
   // 前提: signal handler を追加した Behavior<u32> がある
   let behavior: Behavior<u32> =
     Behaviors::receive(|_ctx, _msg: &u32| Ok(Behaviors::same())).receive_signal(|_ctx, signal| match signal {
-      | BehaviorSignal::Stopped => Ok(Behaviors::stopped()),
+      | BehaviorSignal::PostStop => Ok(Behaviors::stopped()),
       | _ => Ok(Behaviors::same()),
     });
 
@@ -124,7 +124,7 @@ fn receive_can_be_used_directly_in_typed_props_factory() {
   // 操作: untyped props 経由で保持された factory を実行する
   let system = crate::core::kernel::system::ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let mut actor = props.to_untyped().factory().with_write(|factory| factory.create());
+  let mut actor = props.to_untyped().factory().expect("typed props factory").with_write(|factory| factory.create());
   let mut context = ActorContext::new(&system, pid);
 
   // 期待: 生成された actor が正常にメッセージを処理できる

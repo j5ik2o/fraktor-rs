@@ -11,8 +11,16 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use crate::core::{
   kernel::{
     actor::{
-      Address, actor_ref::dead_letter::DeadLetterEntry, error::SendError, extension::ExtensionId, messaging::AskResult,
-      setup::ActorSystemConfig, spawn::SpawnError,
+      Address, Pid,
+      actor_ref::{
+        ActorRef, ActorRefSender, SendOutcome,
+        dead_letter::{DeadLetterEntry, DeadLetterReason},
+      },
+      error::SendError,
+      extension::{Extension, ExtensionId},
+      messaging::{AnyMessage, AskResult},
+      setup::ActorSystemConfig,
+      spawn::SpawnError,
     },
     event::{
       logging::LogLevel,
@@ -25,6 +33,7 @@ use crate::core::{
     TypedActorRef, TypedActorSystemLog, TypedActorSystemSettings,
     actor::TypedChildRef,
     dispatchers::Dispatchers,
+    eventstream::EventStreamCommand,
     internal::TypedSchedulerShared,
     props::TypedProps,
     receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
@@ -32,13 +41,135 @@ use crate::core::{
   },
 };
 
+struct IgnoreRefSender;
+
+struct EventStreamRefEndpoint {
+  actor_ref: ActorRef,
+}
+
+struct EventStreamRefSender {
+  event_stream:  EventStreamShared,
+  subscriptions: Vec<EventStreamActorSubscription>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct EventStreamRefId;
+
+struct EventStreamActorSubscription {
+  pid:          Pid,
+  subscription: EventStreamSubscription,
+}
+
+struct DeadLetterRefSender {
+  state: SystemStateShared,
+}
+
+const EVENT_STREAM_FACADE_PID: Pid = Pid::new(u64::MAX - 2, 0);
+const DEAD_LETTER_FACADE_PID: Pid = Pid::new(u64::MAX - 1, 0);
+const IGNORE_FACADE_PID: Pid = Pid::new(u64::MAX, 0);
+
+impl EventStreamActorSubscription {
+  const fn new(pid: Pid, subscription: EventStreamSubscription) -> Self {
+    Self { pid, subscription }
+  }
+}
+
+impl EventStreamRefEndpoint {
+  const fn new(actor_ref: ActorRef) -> Self {
+    Self { actor_ref }
+  }
+
+  fn actor_ref(&self) -> ActorRef {
+    self.actor_ref.clone()
+  }
+}
+
+impl EventStreamRefSender {
+  const fn new(event_stream: EventStreamShared) -> Self {
+    Self { event_stream, subscriptions: Vec::new() }
+  }
+
+  fn subscribe_actor(&mut self, subscriber: &ActorRef) {
+    if self.subscriptions.iter().any(|entry| entry.pid == subscriber.pid()) {
+      return;
+    }
+    let subscription = self.event_stream.subscribe_actor(subscriber.clone());
+    self.subscriptions.push(EventStreamActorSubscription::new(subscriber.pid(), subscription));
+  }
+
+  fn unsubscribe_actor(&mut self, subscriber: &ActorRef) {
+    if let Some(position) = self.subscriptions.iter().position(|entry| entry.pid == subscriber.pid()) {
+      let removed = self.subscriptions.swap_remove(position);
+      drop(removed.subscription);
+    }
+  }
+}
+
+impl DeadLetterRefSender {
+  const fn new(state: SystemStateShared) -> Self {
+    Self { state }
+  }
+}
+
+impl Extension for EventStreamRefEndpoint {}
+
+impl EventStreamRefId {
+  const fn new() -> Self {
+    Self
+  }
+}
+
+impl ExtensionId for EventStreamRefId {
+  type Ext = EventStreamRefEndpoint;
+
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
+    let state = system.state();
+    let actor_ref =
+      ActorRef::with_system(EVENT_STREAM_FACADE_PID, EventStreamRefSender::new(system.event_stream()), &state);
+    EventStreamRefEndpoint::new(actor_ref)
+  }
+}
+
+impl ActorRefSender for IgnoreRefSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
+    Ok(SendOutcome::Delivered)
+  }
+}
+
+impl ActorRefSender for EventStreamRefSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    let Some(command) = message.downcast_ref::<EventStreamCommand>() else {
+      return Err(SendError::invalid_payload(message, "expected EventStreamCommand"));
+    };
+    match command {
+      | EventStreamCommand::Publish(event) => self.event_stream.publish(event),
+      | EventStreamCommand::Subscribe { subscriber } => self.subscribe_actor(subscriber),
+      | EventStreamCommand::Unsubscribe { subscriber } => self.unsubscribe_actor(subscriber),
+    }
+    Ok(SendOutcome::Delivered)
+  }
+}
+
+impl ActorRefSender for DeadLetterRefSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    self.state.record_dead_letter(message, DeadLetterReason::ExplicitRouting, None);
+    Ok(SendOutcome::Delivered)
+  }
+}
+
 /// Actor system facade that enforces a message type `M` at the API boundary.
 pub struct TypedActorSystem<M>
 where
   M: Send + Sync + 'static, {
-  inner:          ActorSystem,
-  cached_address: Address,
-  marker:         PhantomData<M>,
+  inner:            ActorSystem,
+  cached_address:   Address,
+  event_stream_ref: TypedActorRef<EventStreamCommand>,
+  marker:           PhantomData<M>,
+}
+
+fn build_event_stream_ref(system: &ActorSystem) -> TypedActorRef<EventStreamCommand> {
+  let endpoint = system.extended().register_extension(&EventStreamRefId::new());
+  TypedActorRef::from_untyped(endpoint.actor_ref())
 }
 
 impl<M> TypedActorSystem<M>
@@ -51,7 +182,8 @@ where
   pub fn new_empty() -> Self {
     let inner = ActorSystem::new_empty();
     let cached_address = Address::local(inner.name());
-    Self { inner, cached_address, marker: PhantomData }
+    let event_stream_ref = build_event_stream_ref(&inner);
+    Self { inner, cached_address, event_stream_ref, marker: PhantomData }
   }
 
   /// Creates a new typed actor system with the required tick driver configuration.
@@ -70,7 +202,8 @@ where
   ) -> Result<Self, SpawnError> {
     let inner = ActorSystem::new(guardian.to_untyped(), tick_driver_config)?;
     let cached_address = Address::local(inner.name());
-    Ok(Self { inner, cached_address, marker: PhantomData })
+    let event_stream_ref = build_event_stream_ref(&inner);
+    Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })
   }
 
   /// Creates a typed actor system using the supplied configuration.
@@ -81,7 +214,8 @@ where
   pub fn new_with_config(guardian: &TypedProps<M>, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     let inner = ActorSystem::new_with_config(guardian.to_untyped(), config)?;
     let cached_address = Address::local(inner.name());
-    Ok(Self { inner, cached_address, marker: PhantomData })
+    let event_stream_ref = build_event_stream_ref(&inner);
+    Ok(Self { inner, cached_address, event_stream_ref, marker: PhantomData })
   }
 }
 
@@ -113,10 +247,24 @@ where
     self.inner.state()
   }
 
-  /// Returns the system receptionist reference when available.
+  /// Returns the system receptionist reference when the bootstrap installed it.
   #[must_use]
   pub fn receptionist_ref(&self) -> Option<TypedActorRef<ReceptionistCommand>> {
     self.inner.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).map(TypedActorRef::from_untyped)
+  }
+
+  /// Returns the system receptionist reference.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the underlying actor system was created without the system
+  /// receptionist top-level actor being installed.
+  #[must_use]
+  pub fn receptionist(&self) -> TypedActorRef<ReceptionistCommand> {
+    let Some(receptionist) = self.receptionist_ref() else {
+      panic!("system receptionist must be installed during actor system bootstrap");
+    };
+    receptionist
   }
 
   /// Allocates a new pid (testing helper).
@@ -125,10 +273,10 @@ where
     self.inner.allocate_pid()
   }
 
-  /// Returns the shared event stream handle.
+  /// Returns the typed event stream command endpoint.
   #[must_use]
-  pub fn event_stream(&self) -> EventStreamShared {
-    self.inner.event_stream()
+  pub fn event_stream(&self) -> TypedActorRef<EventStreamCommand> {
+    self.event_stream_ref.clone()
   }
 
   /// Subscribes the provided observer to the event stream.
@@ -137,10 +285,47 @@ where
     self.inner.subscribe_event_stream(subscriber)
   }
 
-  /// Returns a snapshot of recorded dead letters.
+  /// Returns the dead-letter sink facade.
   #[must_use]
-  pub fn dead_letters(&self) -> Vec<DeadLetterEntry> {
+  pub fn dead_letters<U>(&self) -> TypedActorRef<U>
+  where
+    U: Send + Sync + 'static, {
+    let state = self.inner.state();
+    let actor_ref = ActorRef::with_system(DEAD_LETTER_FACADE_PID, DeadLetterRefSender::new(state.clone()), &state);
+    TypedActorRef::from_untyped(actor_ref)
+  }
+
+  /// Returns a snapshot of recorded dead letters for diagnostics and tests.
+  #[must_use]
+  pub fn dead_letter_entries(&self) -> Vec<DeadLetterEntry> {
     self.inner.dead_letters()
+  }
+
+  /// Returns an actor reference that accepts and discards every message.
+  #[must_use]
+  pub fn ignore_ref<U>(&self) -> TypedActorRef<U>
+  where
+    U: Send + Sync + 'static, {
+    TypedActorRef::from_untyped(ActorRef::new(IGNORE_FACADE_PID, IgnoreRefSender))
+  }
+
+  /// Renders the current actor hierarchy for debugging.
+  ///
+  /// The exact format is not stable and must not be parsed.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the actor system has not completed bootstrap and therefore has
+  /// no root guardian registered.
+  #[must_use]
+  pub fn print_tree(&self) -> String {
+    let state = self.inner.state();
+    let Some(root_pid) = state.root_guardian_pid() else {
+      panic!("actor system must be bootstrapped before print_tree");
+    };
+    let mut tree = String::new();
+    append_tree_line(&mut tree, &state, root_pid, 0);
+    tree
   }
 
   /// Emits a log event with the specified severity.
@@ -232,6 +417,23 @@ where
     Ok(TypedChildRef::from_untyped(child))
   }
 
+  /// Spawns a named actor under the `/system` guardian.
+  ///
+  /// This is intended for library and runtime components, matching Pekko's
+  /// `systemActorOf` contract.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] if the system guardian is unavailable or the actor
+  /// cannot be created.
+  pub fn system_actor_of<C>(&self, typed_props: &TypedProps<C>, name: &str) -> Result<TypedActorRef<C>, SpawnError>
+  where
+    C: Send + Sync + 'static, {
+    let named_props = typed_props.clone().map_props(|props| props.with_name(name));
+    let child = self.inner.extended().spawn_system_actor(named_props.to_untyped())?;
+    Ok(TypedActorRef::from_untyped(child.into_actor_ref()))
+  }
+
   /// Returns a future that resolves once the actor system terminates.
   #[must_use]
   pub fn when_terminated(&self) -> ActorFutureShared<()> {
@@ -265,7 +467,8 @@ where
   #[must_use]
   pub fn from_untyped(system: ActorSystem) -> Self {
     let cached_address = Address::local(system.name());
-    Self { inner: system, cached_address, marker: PhantomData }
+    let event_stream_ref = build_event_stream_ref(&system);
+    Self { inner: system, cached_address, event_stream_ref, marker: PhantomData }
   }
 
   /// Returns the typed scheduler facade.
@@ -332,9 +535,34 @@ where
 {
   fn clone(&self) -> Self {
     Self {
-      inner:          self.inner.clone(),
-      cached_address: self.cached_address.clone(),
-      marker:         PhantomData,
+      inner:            self.inner.clone(),
+      cached_address:   self.cached_address.clone(),
+      event_stream_ref: self.event_stream_ref.clone(),
+      marker:           PhantomData,
     }
+  }
+}
+
+fn append_tree_line(tree: &mut String, state: &SystemStateShared, pid: Pid, depth: usize) {
+  if !tree.is_empty() {
+    tree.push('\n');
+  }
+  for _ in 0..depth {
+    tree.push_str("  ");
+  }
+  let Some(path) = state.actor_path(&pid) else {
+    panic!("registered actor must have a logical path");
+  };
+  tree.push_str(&path.to_string());
+
+  let mut child_pids = state.child_pids(pid);
+  child_pids.sort_by_key(|child_pid| {
+    let Some(path) = state.actor_path(child_pid) else {
+      panic!("registered child actor must have a logical path");
+    };
+    path.to_string()
+  });
+  for child_pid in child_pids {
+    append_tree_line(tree, state, child_pid, depth + 1);
   }
 }

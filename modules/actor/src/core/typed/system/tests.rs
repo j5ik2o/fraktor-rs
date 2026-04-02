@@ -8,16 +8,25 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 use crate::core::{
   kernel::{
     actor::{
+      Pid,
+      actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
+      error::SendError,
       extension::{Extension, ExtensionId},
+      messaging::AnyMessage,
       scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     event::{
-      logging::LogLevel,
+      logging::{LogEvent, LogLevel},
       stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     },
     system::ActorSystem,
   },
-  typed::{TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{
+    TypedActorSystem, TypedProps,
+    dsl::Behaviors,
+    eventstream::EventStreamCommand,
+    receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
+  },
 };
 
 struct TestExtension {
@@ -51,6 +60,25 @@ impl RecordingSubscriber {
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
+  }
+}
+
+struct CollectorSender {
+  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+}
+
+impl CollectorSender {
+  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+    Self { events }
+  }
+}
+
+impl ActorRefSender for CollectorSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    if let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() {
+      self.events.lock().push(event.clone());
+    }
+    Ok(SendOutcome::Delivered)
   }
 }
 
@@ -448,6 +476,36 @@ fn settings_returns_snapshot_preserved_through_from_untyped() {
 }
 
 #[test]
+fn receptionist_returns_registered_system_receptionist_ref() {
+  let system = new_test_system();
+
+  let receptionist_ref = system.receptionist_ref();
+  let receptionist = system.receptionist();
+  let top_level =
+    system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).expect("system receptionist top-level registration");
+  let top_level = crate::core::typed::TypedActorRef::<ReceptionistCommand>::from_untyped(top_level);
+
+  assert_eq!(receptionist_ref.expect("registered receptionist").pid(), top_level.pid());
+  assert_eq!(receptionist.pid(), top_level.pid());
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn receptionist_ref_returns_none_when_missing() {
+  let system = TypedActorSystem::<u32>::from_untyped(ActorSystem::new_empty());
+
+  assert!(system.receptionist_ref().is_none());
+}
+
+#[test]
+#[should_panic(expected = "system receptionist must be installed during actor system bootstrap")]
+fn receptionist_panics_when_missing() {
+  let system = TypedActorSystem::<u32>::from_untyped(ActorSystem::new_empty());
+  let _ = system.receptionist();
+}
+
+#[test]
 fn log_configuration_emits_log_event_to_event_stream() {
   // Given: a typed actor system with a recording subscriber
   let system = new_test_system();
@@ -512,4 +570,338 @@ fn get_when_terminated_tracks_same_lifecycle_as_when_terminated() {
 
   // Then: the Scala future becomes ready and the Java alias remains callable
   assert!(scala_future.with_read(|future| future.is_ready()));
+}
+
+// --- T13: TypedActorSystem parity surface for Phase 2 system endpoints ---
+
+#[test]
+fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subscribers() {
+  // 前提: 既存 helper で購読者を登録した typed actor system がある
+  let system = new_test_system();
+  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
+  let _subscription = system.subscribe_event_stream(&subscriber);
+  let baseline_len = recorded_events.lock().len();
+  let mut event_stream = system.event_stream();
+  let published = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-event-stream-publish".into(),
+    Duration::from_millis(7),
+    None,
+    None,
+  ));
+
+  // 実行: 公開 event_stream facade を actor ref として使う
+  let result = event_stream.try_tell(EventStreamCommand::Publish(published.clone()));
+
+  // 検証: publish command が成功し、購読者がイベントを観測する
+  assert!(result.is_ok(), "event_stream should accept publish commands");
+  let recorded = recorded_events.lock();
+  assert!(
+    recorded[baseline_len..]
+      .iter()
+      .any(|event| { matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-event-stream-publish") })
+  );
+  drop(recorded);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn event_stream_supports_subscribe_and_unsubscribe_commands() {
+  // 前提: typed actor system と actor-ref ベースの購読者がある
+  let system = new_test_system();
+  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(recorded_events.clone()));
+  let mut subscribe_stream = system.event_stream();
+  let mut publish_stream = system.event_stream();
+  let mut unsubscribe_stream = system.event_stream();
+  let mut publish_after_unsubscribe_stream = system.event_stream();
+  let first = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-first-event".into(),
+    Duration::from_millis(8),
+    Some(Pid::new(900, 0)),
+    None,
+  ));
+  let second = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-second-event".into(),
+    Duration::from_millis(9),
+    Some(Pid::new(900, 0)),
+    None,
+  ));
+
+  // 実行: 公開 event stream command で購読追加後に購読解除する
+  let subscribe = subscribe_stream.try_tell(EventStreamCommand::Subscribe { subscriber: collector.clone() });
+  let publish_first = publish_stream.try_tell(EventStreamCommand::Publish(first));
+  let unsubscribe = unsubscribe_stream.try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() });
+  let publish_second = publish_after_unsubscribe_stream.try_tell(EventStreamCommand::Publish(second));
+
+  // 検証: actor-ref 購読者には最初のイベントだけが届く
+  assert!(subscribe.is_ok(), "subscribe command should be accepted");
+  assert!(publish_first.is_ok(), "first publish command should be accepted");
+  assert!(unsubscribe.is_ok(), "unsubscribe command should be accepted");
+  assert!(publish_second.is_ok(), "second publish command should be accepted");
+  let recorded = recorded_events.lock();
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-first-event"))
+      .count(),
+    1,
+  );
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-second-event"))
+      .count(),
+    0,
+  );
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscribe_state() {
+  // 前提: typed actor system と actor-ref ベースの購読者がある
+  let system = new_test_system();
+  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let collector = ActorRef::new(Pid::new(901, 0), CollectorSender::new(recorded_events.clone()));
+  let first = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-ephemeral-first-event".into(),
+    Duration::from_millis(10),
+    Some(Pid::new(901, 0)),
+    None,
+  ));
+  let second = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-ephemeral-second-event".into(),
+    Duration::from_millis(11),
+    Some(Pid::new(901, 0)),
+    None,
+  ));
+
+  // 実行: subscribe / publish / unsubscribe を別々の一時 facade で行う
+  {
+    let mut subscribe_stream = system.event_stream();
+    subscribe_stream
+      .try_tell(EventStreamCommand::Subscribe { subscriber: collector.clone() })
+      .expect("subscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = system.event_stream();
+    publish_stream.try_tell(EventStreamCommand::Publish(first)).expect("first publish command should be accepted");
+  }
+  {
+    let mut unsubscribe_stream = system.event_stream();
+    unsubscribe_stream
+      .try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
+      .expect("unsubscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = system.event_stream();
+    publish_stream.try_tell(EventStreamCommand::Publish(second)).expect("second publish command should be accepted");
+  }
+
+  // 検証: 最初の facade を破棄しても購読は有効で、unsubscribe 状態は共有される
+  let recorded = recorded_events.lock();
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-ephemeral-first-event"))
+      .count(),
+    1,
+  );
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-ephemeral-second-event"))
+      .count(),
+    0,
+  );
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
+  // 前提: typed system と、同じ untyped actor system から作った別 wrapper がある
+  let system = new_test_system();
+  let other_wrapper = TypedActorSystem::<u32>::from_untyped(system.as_untyped().clone());
+  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let collector = ActorRef::new(Pid::new(902, 0), CollectorSender::new(recorded_events.clone()));
+  let first = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-from-untyped-first-event".into(),
+    Duration::from_millis(12),
+    Some(Pid::new(902, 0)),
+    None,
+  ));
+  let second = EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "phase2-from-untyped-second-event".into(),
+    Duration::from_millis(13),
+    Some(Pid::new(902, 0)),
+    None,
+  ));
+
+  // 実行: subscribe / unsubscribe を元 wrapper と from_untyped wrapper でまたいで行う
+  {
+    let mut subscribe_stream = system.event_stream();
+    subscribe_stream
+      .try_tell(EventStreamCommand::Subscribe { subscriber: collector.clone() })
+      .expect("subscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = other_wrapper.event_stream();
+    publish_stream.try_tell(EventStreamCommand::Publish(first)).expect("first publish command should be accepted");
+  }
+  {
+    let mut unsubscribe_stream = other_wrapper.event_stream();
+    unsubscribe_stream
+      .try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
+      .expect("unsubscribe command should be accepted");
+  }
+  {
+    let mut publish_stream = system.event_stream();
+    publish_stream.try_tell(EventStreamCommand::Publish(second)).expect("second publish command should be accepted");
+  }
+
+  // 検証: 両 wrapper が同じ購読状態を共有する
+  let recorded = recorded_events.lock();
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-from-untyped-first-event"))
+      .count(),
+    1,
+  );
+  assert_eq!(
+    recorded
+      .iter()
+      .filter(
+        |event| matches!(event, EventStreamEvent::Log(log) if log.message() == "phase2-from-untyped-second-event")
+      )
+      .count(),
+    0,
+  );
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn dead_letters_returns_typed_actor_ref_that_records_explicit_routing_entries() {
+  // 前提: typed actor system と dead-letter snapshot helper がある
+  let system = new_test_system();
+  let baseline = system.dead_letter_entries().len();
+  let mut dead_letters = system.dead_letters::<u32>();
+
+  // 実行: dead-letters facade 経由でメッセージを送る
+  let result = dead_letters.try_tell(42_u32);
+
+  // 検証: sink がメッセージを受理し、explicit routing を記録する
+  assert!(result.is_ok(), "dead_letters should accept routed messages");
+  let entries = system.dead_letter_entries();
+  assert_eq!(entries.len(), baseline + 1);
+  assert_eq!(entries.last().expect("dead-letter entry").reason(), DeadLetterReason::ExplicitRouting);
+
+  system.terminate().expect("terminate");
+}
+
+// --- T14: TypedActorSystem parity surface for implemented Phase 2 endpoints ---
+
+#[test]
+fn ignore_ref_accepts_messages_without_recording_dead_letters() {
+  // 前提: typed actor system と ignore ref facade がある
+  let system = new_test_system();
+  let baseline_dead_letters = system.dead_letter_entries().len();
+  let mut ignore_ref = system.ignore_ref::<u32>();
+
+  // 実行: ignore ref にメッセージを送る
+  let result = ignore_ref.try_tell(123_u32);
+
+  // 検証: メッセージは受理され、dead letter は記録されない
+  assert!(result.is_ok(), "ignore_ref should accept messages");
+  assert_eq!(system.dead_letter_entries().len(), baseline_dead_letters);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn print_tree_contains_bootstrapped_guardians_and_receptionist() {
+  // 前提: bootstrap 済みの typed actor system がある
+  let system = new_test_system();
+
+  // 実行: actor hierarchy を debug tree として描画する
+  let tree = system.print_tree();
+
+  // 検証: 既知の top-level guardian と receptionist が出力に含まれる
+  assert!(tree.contains("system"), "print_tree should include system guardian");
+  assert!(tree.contains("user"), "print_tree should include user guardian");
+  assert!(tree.contains(SYSTEM_RECEPTIONIST_TOP_LEVEL), "print_tree should include receptionist");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn system_actor_of_spawns_actor_under_system_guardian() {
+  // 前提: typed actor system と system actor 用 typed props がある
+  let system = new_test_system();
+  let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let system_guardian_pid = system.state().system_guardian_pid().expect("system guardian pid");
+
+  // 実行: system actor を spawn する
+  let system_actor = system.system_actor_of(&props, "phase2-system-actor").expect("system actor");
+
+  // 検証: actor は system guardian の子として登録される
+  assert!(system.state().child_pids(system_guardian_pid).contains(&system_actor.pid()));
+  assert_eq!(system_actor.path().expect("system actor path").to_string(), "/system/phase2-system-actor");
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn typed_actor_system_new_rejects_empty_guardian_props() {
+  // 前提: factory 未設定の empty guardian props
+  let guardian_props = TypedProps::<u32>::empty();
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+
+  // 実行: typed actor system を bootstrap する
+  let result = TypedActorSystem::<u32>::new(&guardian_props, tick_driver);
+
+  // 検証: invalid props として明示的に失敗する
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
+}
+
+#[test]
+fn system_actor_of_rejects_empty_typed_props() {
+  // 前提: 起動済みの typed actor system と empty typed props
+  let system = new_test_system();
+  let props = TypedProps::<u32>::empty().with_dispatcher_same_as_parent().with_tag("phase2-empty-system-actor");
+
+  // 実行: /system 配下への spawn を試みる
+  let result = system.system_actor_of(&props, "empty-system-actor");
+
+  // 検証: factory 未設定のままでは invalid props として拒否される
+  assert!(matches!(result, Err(crate::core::kernel::actor::spawn::SpawnError::InvalidProps(_))));
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn print_tree_contains_spawned_system_actor_name() {
+  // 前提: system actor を spawn 済みの typed actor system がある
+  let system = new_test_system();
+  let props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let _system_actor = system.system_actor_of(&props, "tree-visible-system-actor").expect("system actor");
+
+  // 実行: actor hierarchy を debug tree として描画する
+  let tree = system.print_tree();
+
+  // 検証: spawn 済み system actor 名が tree 出力に含まれる
+  assert!(tree.contains("tree-visible-system-actor"));
+
+  system.terminate().expect("terminate");
 }

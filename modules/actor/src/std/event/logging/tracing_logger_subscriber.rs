@@ -8,7 +8,7 @@ mod tests;
 use alloc::{boxed::Box, string::ToString};
 use core::time::Duration;
 
-use tracing::{Level, event};
+use tracing::{Level, event, field};
 
 use crate::{
   core::kernel::event::{
@@ -56,6 +56,9 @@ impl LoggerWriter for TracingLoggerWriter {
     let origin_str = origin.as_deref().unwrap_or("n/a");
     let message = event.message();
     let logger_name = event.logger_name().unwrap_or("n/a");
+    let marker_name = event.marker_name().unwrap_or("n/a");
+    let marker_properties = field::debug(event.marker_properties());
+    let mdc = field::debug(event.mdc());
 
     match event.level() {
       | LogLevel::Trace => {
@@ -65,6 +68,9 @@ impl LoggerWriter for TracingLoggerWriter {
           timestamp_micros = timestamp_micros,
           origin = origin_str,
           logger_name = logger_name,
+          marker_name = marker_name,
+          marker_properties = marker_properties,
+          mdc = mdc,
           "{}",
           message
         );
@@ -76,6 +82,9 @@ impl LoggerWriter for TracingLoggerWriter {
           timestamp_micros = timestamp_micros,
           origin = origin_str,
           logger_name = logger_name,
+          marker_name = marker_name,
+          marker_properties = marker_properties,
+          mdc = mdc,
           "{}",
           message
         );
@@ -87,6 +96,9 @@ impl LoggerWriter for TracingLoggerWriter {
           timestamp_micros = timestamp_micros,
           origin = origin_str,
           logger_name = logger_name,
+          marker_name = marker_name,
+          marker_properties = marker_properties,
+          mdc = mdc,
           "{}",
           message
         );
@@ -98,6 +110,9 @@ impl LoggerWriter for TracingLoggerWriter {
           timestamp_micros = timestamp_micros,
           origin = origin_str,
           logger_name = logger_name,
+          marker_name = marker_name,
+          marker_properties = marker_properties,
+          mdc = mdc,
           "{}",
           message
         );
@@ -109,6 +124,9 @@ impl LoggerWriter for TracingLoggerWriter {
           timestamp_micros = timestamp_micros,
           origin = origin_str,
           logger_name = logger_name,
+          marker_name = marker_name,
+          marker_properties = marker_properties,
+          mdc = mdc,
           "{}",
           message
         );

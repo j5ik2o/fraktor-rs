@@ -74,7 +74,7 @@ fn log_messages_delegates_to_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &77u32).expect("message");
 
   let captured = inner_received.lock();
@@ -102,7 +102,7 @@ fn log_messages_with_opts_delegates_to_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &78u32).expect("message");
 
   assert_eq!(inner_received.lock().as_slice(), &[78]);
@@ -125,7 +125,7 @@ fn log_messages_with_opts_skips_logging_when_disabled() {
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
     inner.handle_message(&mut typed_ctx, &90_u32).expect("message");
   });
 
@@ -150,7 +150,7 @@ fn log_messages_with_opts_records_level_and_logger_name() {
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
     inner.handle_message(&mut typed_ctx, &91_u32).expect("message");
   });
 
@@ -205,7 +205,7 @@ fn with_static_mdc_delegates_to_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &55_u32).expect("message");
 
   assert_eq!(inner_received.lock().as_slice(), &[55]);
@@ -229,7 +229,7 @@ fn with_static_mdc_creates_span_on_message() {
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
     inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
 
     let spans = collector.spans();
@@ -264,7 +264,7 @@ fn with_mdc_merges_static_and_per_message_entries() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &66_u32).expect("message");
 
   assert_eq!(inner_received.lock().as_slice(), &[66]);
@@ -288,13 +288,13 @@ fn with_static_mdc_creates_span_on_signal() {
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-    // Started signal goes through around_start; subsequent signals use around_signal
-    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
-    // Stopped signal triggers around_signal which creates the MDC span
-    let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped);
+    // Startup goes through around_start; subsequent public signals use around_signal.
+    let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
+    // PostStop signal triggers around_signal which creates the MDC span
+    let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop);
 
     let spans = collector.spans();
-    assert!(!spans.is_empty(), "span should be created for Stopped signal");
+    assert!(!spans.is_empty(), "span should be created for PostStop signal");
     assert!(spans.iter().any(|s| s.name == "actor_mdc"));
   });
 }
@@ -433,7 +433,7 @@ fn with_message_mdc_delegates_to_inner_behavior() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
   inner.handle_message(&mut typed_ctx, &88_u32).expect("message");
 
   assert_eq!(inner_received.lock().as_slice(), &[88]);
@@ -461,7 +461,7 @@ fn with_message_mdc_creates_actor_mdc_span() {
     let mut context = ActorContext::new(&system, pid);
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-    let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("started");
+    let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
     inner.handle_message(&mut typed_ctx, &42_u32).expect("message");
 
     let spans = collector.spans();

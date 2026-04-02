@@ -1,3 +1,5 @@
+use alloc::collections::BTreeSet;
+
 use crate::core::{
   kernel::{
     actor::{
@@ -15,6 +17,14 @@ use crate::core::{
 struct NoOpSender;
 
 impl ActorRefSender for NoOpSender {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
+  }
+}
+
+struct AlternateNoOpSender;
+
+impl ActorRefSender for AlternateNoOpSender {
   fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Ok(SendOutcome::Delivered)
   }
@@ -100,4 +110,16 @@ fn narrow_is_consistent_with_map() {
   let via_narrow: TypedActorRef<u64> = TypedActorRef::<u32>::from_untyped(actor_ref).narrow();
 
   assert_eq!(via_map.pid(), via_narrow.pid(), "map and narrow should produce same pid");
+}
+
+#[test]
+fn typed_actor_ref_equality_and_order_are_consistent_by_pid() {
+  let left = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), NoOpSender));
+  let right = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), AlternateNoOpSender));
+
+  assert_eq!(left, right);
+  assert_eq!(left.cmp(&right), core::cmp::Ordering::Equal);
+
+  let set = BTreeSet::from([left, right]);
+  assert_eq!(set.len(), 1, "BTreeSet dedup should match PartialEq semantics");
 }

@@ -1,4 +1,4 @@
-use alloc::vec;
+use alloc::{collections::BTreeSet, vec, vec::Vec};
 use core::any::TypeId;
 
 use crate::core::typed::receptionist::{Listing, ServiceKey};
@@ -71,8 +71,18 @@ fn service_instances_returns_refs_for_matching_key() {
   let key = ServiceKey::<u32>::new("svc");
   let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
 
-  let instances = listing.service_instances(&key).expect("should succeed for matching key");
-  assert!(instances.is_empty(), "empty listing should return empty vec");
+  let instances: BTreeSet<_> = listing.service_instances(&key).expect("should succeed for matching key");
+  assert!(instances.is_empty(), "empty listing should return an empty set");
+}
+
+/// `all_service_instances` returns typed refs for a matching key.
+#[test]
+fn all_service_instances_returns_refs_for_matching_key() {
+  let key = ServiceKey::<u32>::new("svc");
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
+
+  let instances: BTreeSet<_> = listing.all_service_instances(&key).expect("should succeed for matching key");
+  assert!(instances.is_empty(), "empty listing should return an empty set");
 }
 
 /// `service_instances` returns error for a mismatched key.
@@ -82,6 +92,16 @@ fn service_instances_returns_error_for_mismatched_key() {
   let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
 
   let result = listing.service_instances(&key);
+  assert!(result.is_err(), "should fail when type_id does not match");
+}
+
+/// `all_service_instances` returns error for a mismatched key.
+#[test]
+fn all_service_instances_returns_error_for_mismatched_key() {
+  let key = ServiceKey::<u64>::new("svc");
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
+
+  let result = listing.all_service_instances(&key);
   assert!(result.is_err(), "should fail when type_id does not match");
 }
 
@@ -118,6 +138,39 @@ fn service_instances_with_refs_returns_typed_refs() {
 
   let instances = listing.service_instances(&key).expect("should succeed");
   assert_eq!(instances.len(), 2, "should return all registered refs");
-  assert_eq!(instances[0].pid(), Pid::new(1, 0));
-  assert_eq!(instances[1].pid(), Pid::new(2, 0));
+  let pids = instances.into_iter().map(|actor_ref| actor_ref.pid()).collect::<Vec<_>>();
+  assert_eq!(pids, vec![Pid::new(1, 0), Pid::new(2, 0)]);
+}
+
+/// `service_instances` deduplicates repeated actor refs into a set contract.
+#[test]
+fn service_instances_deduplicate_duplicate_refs() {
+  use crate::core::kernel::actor::{
+    Pid,
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::AnyMessage,
+  };
+
+  struct StubSender;
+  impl ActorRefSender for StubSender {
+    fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+      Ok(SendOutcome::Delivered)
+    }
+  }
+
+  let duplicate = ActorRef::new(Pid::new(9, 0), StubSender);
+  let key = ServiceKey::<u32>::new("svc");
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![duplicate.clone(), duplicate]);
+
+  let instances = listing.service_instances(&key).expect("should succeed");
+  assert_eq!(instances.len(), 1, "service_instances should expose a set contract");
+  assert_eq!(instances.into_iter().next().expect("one instance").pid(), Pid::new(9, 0));
+}
+
+/// `services_were_added_or_removed` is always `true` for local-only listings.
+#[test]
+fn services_were_added_or_removed_returns_true_for_local_listing() {
+  let listing = Listing::new("svc", TypeId::of::<u32>(), vec![]);
+  assert!(listing.services_were_added_or_removed());
 }

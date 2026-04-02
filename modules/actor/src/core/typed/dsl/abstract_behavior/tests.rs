@@ -73,8 +73,7 @@ fn from_abstract_creates_behavior_that_handles_messages() {
     count: count_clone.clone(),
   });
 
-  // Setup phase (Started signal initializes the abstract behavior)
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup should succeed");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("setup should succeed");
 
   // Then: the message is handled by the AbstractBehavior
   let result = inner.handle_message(&mut typed_ctx, &10u32).expect("message should be handled");
@@ -99,7 +98,7 @@ fn from_abstract_handles_multiple_messages_with_state() {
   let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior {
     count: count_clone.clone(),
   });
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("setup");
 
   // When: multiple messages are sent
   inner.handle_message(&mut typed_ctx, &1u32).expect("first");
@@ -119,7 +118,7 @@ fn from_abstract_supports_behavior_transition_to_stopped() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let mut behavior = Behaviors::from_abstract(|_ctx: &mut TypedActorContext<'_, u32>| StoppingBehavior);
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("setup");
 
   // When: a non-stop message is sent
   let same_result = inner.handle_message(&mut typed_ctx, &42u32).expect("should return same");
@@ -146,10 +145,10 @@ fn from_abstract_delegates_signals_to_on_signal() {
   let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| SignalAwareBehavior {
     signal_received: signal_clone.clone(),
   });
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("setup");
 
   // When: a signal is delivered
-  inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("signal should be handled");
+  inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("signal should be handled");
 
   // Then: the on_signal handler was invoked
   assert!(*signal_received.lock(), "on_signal should have been called");
@@ -169,10 +168,10 @@ fn from_abstract_default_on_signal_returns_unhandled() {
   let mut behavior = Behaviors::from_abstract(move |_ctx: &mut TypedActorContext<'_, u32>| CounterBehavior {
     count: count_clone.clone(),
   });
-  let mut inner = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
+  let mut inner = behavior.handle_start(&mut typed_ctx).expect("setup");
 
   // When: a signal is delivered to an actor with default on_signal
-  let result = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::Stopped).expect("signal");
+  let result = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("signal");
 
   // Then: the default on_signal returns Unhandled
   assert!(
@@ -198,8 +197,7 @@ fn from_abstract_factory_receives_context() {
     CounterBehavior { count: count.clone() }
   });
 
-  // When: the behavior is initialized via Started signal
-  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("setup");
+  behavior.handle_start(&mut typed_ctx).expect("setup");
 
   // Then: the factory received the correct context
   assert_eq!(*captured_pid.lock(), typed_ctx.pid().value(), "factory should receive the correct pid");
@@ -222,8 +220,8 @@ fn from_abstract_clone_recreates_behavior_on_started() {
     CounterBehavior { count: count_clone.clone() }
   });
 
-  let mut first = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("first setup");
-  let mut second = behavior.clone().handle_signal(&mut typed_ctx, &BehaviorSignal::Started).expect("second setup");
+  let mut first = behavior.clone().handle_start(&mut typed_ctx).expect("first setup");
+  let mut second = behavior.clone().handle_start(&mut typed_ctx).expect("second setup");
 
   first.handle_message(&mut typed_ctx, &1u32).expect("first message");
   second.handle_message(&mut typed_ctx, &2u32).expect("second message");

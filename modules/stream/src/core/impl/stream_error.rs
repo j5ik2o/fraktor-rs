@@ -116,7 +116,7 @@ impl StreamError {
   pub fn from_send_error(error: &SendError) -> Self {
     match error {
       | SendError::Full(_) | SendError::Suspended(_) => Self::WouldBlock,
-      | SendError::Closed(_) | SendError::NoRecipient(_) | SendError::Timeout(_) => {
+      | SendError::Closed(_) | SendError::NoRecipient(_) | SendError::Timeout(_) | SendError::InvalidPayload { .. } => {
         Self::failed_typed::<SendError>(format!("send failed: {error:?}"))
       },
     }

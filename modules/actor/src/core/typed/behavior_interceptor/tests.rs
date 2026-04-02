@@ -45,6 +45,6 @@ fn interceptor_trait_has_default_around_signal() {
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
   let result =
-    interceptor.around_signal(&mut typed_ctx, &BehaviorSignal::Started, &mut |_ctx, _sig| Ok(Behaviors::same()));
+    interceptor.around_signal(&mut typed_ctx, &BehaviorSignal::PostStop, &mut |_ctx, _sig| Ok(Behaviors::same()));
   assert!(result.is_ok());
 }
