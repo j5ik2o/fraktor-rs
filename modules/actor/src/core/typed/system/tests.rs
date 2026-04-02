@@ -479,14 +479,23 @@ fn settings_returns_snapshot_preserved_through_from_untyped() {
 fn receptionist_returns_registered_system_receptionist_ref() {
   let system = new_test_system();
 
+  let receptionist_ref = system.receptionist_ref();
   let receptionist = system.receptionist();
   let top_level =
     system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).expect("system receptionist top-level registration");
   let top_level = crate::core::typed::TypedActorRef::<ReceptionistCommand>::from_untyped(top_level);
 
+  assert_eq!(receptionist_ref.expect("registered receptionist").pid(), top_level.pid());
   assert_eq!(receptionist.pid(), top_level.pid());
 
   system.terminate().expect("terminate");
+}
+
+#[test]
+fn receptionist_ref_returns_none_when_missing() {
+  let system = TypedActorSystem::<u32>::from_untyped(ActorSystem::new_empty());
+
+  assert!(system.receptionist_ref().is_none());
 }
 
 #[test]

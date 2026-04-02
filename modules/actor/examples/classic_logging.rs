@@ -1,6 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{thread, vec::Vec};
+use std::{string::String, thread, vec::Vec};
 
 use fraktor_actor_rs::{
   core::kernel::{
@@ -80,10 +80,10 @@ fn main() {
       matches!(
         event,
         EventStreamEvent::Log(log)
-          if log.message().contains("marker=pekkoDeadLetter")
-            && log.message().contains("pekkoMessageClass=Start")
-            && log.message().contains("mdc=iam=example.logging.actor")
-            && log.message().ends_with("classic diagnostic logging facade")
+          if log.message() == "classic diagnostic logging facade"
+            && log.marker_name() == Some("pekkoDeadLetter")
+            && log.marker_properties().get("pekkoMessageClass").map(String::as_str) == Some("Start")
+            && log.mdc().get("iam").map(String::as_str) == Some("example.logging.actor")
       )
     });
     let has_debug = events

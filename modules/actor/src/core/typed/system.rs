@@ -242,6 +242,12 @@ where
     self.inner.state()
   }
 
+  /// Returns the system receptionist reference when the bootstrap installed it.
+  #[must_use]
+  pub fn receptionist_ref(&self) -> Option<TypedActorRef<ReceptionistCommand>> {
+    self.inner.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).map(TypedActorRef::from_untyped)
+  }
+
   /// Returns the system receptionist reference.
   ///
   /// # Panics
@@ -250,10 +256,10 @@ where
   /// receptionist top-level actor being installed.
   #[must_use]
   pub fn receptionist(&self) -> TypedActorRef<ReceptionistCommand> {
-    let Some(receptionist) = self.inner.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL) else {
+    let Some(receptionist) = self.receptionist_ref() else {
       panic!("system receptionist must be installed during actor system bootstrap");
     };
-    TypedActorRef::from_untyped(receptionist)
+    receptionist
   }
 
   /// Allocates a new pid (testing helper).

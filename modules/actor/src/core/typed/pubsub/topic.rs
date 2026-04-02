@@ -58,7 +58,10 @@ impl Topic {
       ArcShared::new(RuntimeMutex::new(TopicState { topic_instances: Vec::new(), local_subscribers: Vec::new() }));
 
     Behaviors::setup(move |ctx| {
-      let receptionist = ctx.system().receptionist();
+      let Some(receptionist) = ctx.system().receptionist_ref() else {
+        ctx.system().emit_log(LogLevel::Error, "topic requires receptionist", Some(ctx.pid()), None);
+        return Behaviors::stopped();
+      };
       let adapter =
         match ctx.message_adapter(move |listing: Listing| Ok(TopicCommand::topic_instances_updated(listing))) {
           | Ok(adapter) => adapter,

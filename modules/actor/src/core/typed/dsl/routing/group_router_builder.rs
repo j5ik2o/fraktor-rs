@@ -93,7 +93,10 @@ where
 
     Behaviors::setup(move |ctx| {
       let key_for_signal = key.clone();
-      let receptionist_ref = receptionist_override.as_ref().cloned().unwrap_or_else(|| ctx.system().receptionist());
+      let Some(receptionist_ref) = receptionist_override.as_ref().cloned().or_else(|| ctx.system().receptionist_ref())
+      else {
+        return Behaviors::stopped();
+      };
       let receptionist = ArcShared::new(RuntimeMutex::new(receptionist_ref));
 
       // Create a child actor to receive Listing updates and refresh the routee set.
