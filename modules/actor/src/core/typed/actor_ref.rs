@@ -195,7 +195,7 @@ where
   M: Send + Sync + 'static,
 {
   fn eq(&self, other: &Self) -> bool {
-    self.inner == other.inner
+    self.pid() == other.pid()
   }
 }
 
@@ -206,7 +206,7 @@ where
   M: Send + Sync + 'static,
 {
   fn hash<H: Hasher>(&self, state: &mut H) {
-    self.inner.hash(state);
+    self.pid().hash(state);
   }
 }
 
