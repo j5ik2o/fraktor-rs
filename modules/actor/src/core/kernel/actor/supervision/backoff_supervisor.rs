@@ -126,13 +126,38 @@ struct BackoffSupervisorActor {
   auto_reset:          Option<Duration>,
   manual_reset:        bool,
   supervisor_strategy: Option<SupervisorStrategy>,
+  supervisor_strategy_config: SupervisorStrategyConfig,
   max_retries:         u32,
   initialized:         bool,
   pending_restart:     bool,
 }
 
 impl BackoffSupervisorActor {
+  fn build_supervisor_strategy_config(
+    mode: &BackoffMode,
+    supervisor_strategy: &Option<SupervisorStrategy>,
+  ) -> SupervisorStrategyConfig {
+    match mode {
+      | BackoffMode::OnStop => {
+        supervisor_strategy.clone().map_or_else(SupervisorStrategyConfig::default, Into::into)
+      },
+      | BackoffMode::OnFailure => {
+        let base_strategy = supervisor_strategy.clone().unwrap_or_default();
+        let decision_source = ArcShared::new(base_strategy.clone());
+        base_strategy
+          .with_dyn_decider(move |error| match decision_source.decide(error) {
+            | crate::core::kernel::actor::supervision::SupervisorDirective::Restart => {
+              crate::core::kernel::actor::supervision::SupervisorDirective::Stop
+            },
+            | other => other,
+          })
+          .into()
+      },
+    }
+  }
+
   fn from_config(config: BackoffConfig) -> Self {
+    let supervisor_strategy_config = Self::build_supervisor_strategy_config(&config.mode, &config.supervisor_strategy);
     Self {
       child:               None,
       restart_count:       0,
@@ -143,6 +168,7 @@ impl BackoffSupervisorActor {
       auto_reset:          config.auto_reset,
       manual_reset:        config.manual_reset,
       supervisor_strategy: config.supervisor_strategy,
+      supervisor_strategy_config,
       max_retries:         config.max_retries,
       initialized:         false,
       pending_restart:     false,
@@ -335,23 +361,7 @@ impl Actor for BackoffSupervisorActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    match self.mode {
-      | BackoffMode::OnStop => {
-        self.supervisor_strategy.clone().map_or_else(SupervisorStrategyConfig::default, Into::into)
-      },
-      | BackoffMode::OnFailure => {
-        let base_strategy = self.supervisor_strategy.clone().unwrap_or_default();
-        let decision_source = ArcShared::new(base_strategy.clone());
-        base_strategy
-          .with_dyn_decider(move |error| match decision_source.decide(error) {
-            | crate::core::kernel::actor::supervision::SupervisorDirective::Restart => {
-              crate::core::kernel::actor::supervision::SupervisorDirective::Stop
-            },
-            | other => other,
-          })
-          .into()
-      },
-    }
+    self.supervisor_strategy_config.clone()
   }
 
   fn on_child_failed(&mut self, _ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {
