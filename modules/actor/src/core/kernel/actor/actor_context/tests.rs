@@ -395,7 +395,7 @@ fn actor_context_timers_cancel_all_clears_periodic_entries() {
 
 #[test]
 fn actor_context_stash_overflow_error_converts_from_actor_error() {
-  // Given: a stash overflow produced by the existing context API
+  // 前提: 既存の context API で stash overflow を発生させる
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
@@ -407,11 +407,11 @@ fn actor_context_stash_overflow_error_converts_from_actor_error() {
   context.set_current_message(Some(AnyMessage::new(2_i32)));
   let error = context.stash_with_limit(1).expect_err("overflow should fail");
 
-  // When: the future public stash overflow error is extracted
+  // 実行: 公開エラー型として stash overflow を取り出す
   let overflow: crate::core::kernel::actor::StashOverflowError =
     error.try_into().expect("classic stash overflow error");
 
-  // Then: the conversion succeeds and yields the public error type
+  // 検証: 変換が成功し、公開エラー型として扱える
   let _ = overflow;
 }
 
