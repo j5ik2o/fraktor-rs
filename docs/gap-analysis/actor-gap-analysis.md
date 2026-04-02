@@ -26,6 +26,51 @@
 | カバレッジ（実装対象 parity family 単位） | 30/50 (60%) |
 | ギャップ数 | 23（要対応: 20, n/a: 3） |
 
+注記:
+
+- このサマリー表の数値は初期分析時点の集計である
+- 2026-04-03 時点の再検証結果の正本は、下の「再検証結果」と「実装優先度」である
+- Phase 1 / Phase 2 の多くはこの初期集計後に解消されている
+
+## 再検証結果（2026-04-03）
+
+- `Phase 1`: 残り 2 件。`MailboxSelector.unbounded` と standalone `AskPattern` surface
+- `Phase 2`: 一部完了。capability parity の主要部分は完了したが、medium 難易度の family が残っている
+- `Phase 3`: 未完。classic parity の中核 family と typed 補助 surface が残っている
+
+2026-04-03 時点で完了確認できた主な項目:
+
+- `ActorRefResolverSetup`
+- `TimerScheduler` の message-as-key shorthand
+- `Receptionist.Listing.all_service_instances` / `services_were_added_or_removed`
+- `ActorSystem.receptionist`
+- `ActorSystem.event_stream`
+- `ActorSystem.dead_letters`
+- `ActorSystem.ignore_ref`
+- `ActorSystem.print_tree`
+- `ActorSystem.system_actor_of`
+- classic `Timers` surface
+- classic `Stash` capability parity
+- `BehaviorSignal::PostStop`
+- classic logging adapter family
+- `TypedProps::empty()`
+
+この再検証時点で残っている要対応 parity family:
+
+- `MailboxSelector.unbounded`
+- `ActorSelection` surface
+- classic auto-received / monitoring message family
+- `Deployer` / `Deploy` / `Scope`
+- `ActorSystemSetup` / `BootstrapSetup`
+- classic `FSM` / `AbstractFSM` / `LoggingFSM`
+- classic fully-surfaced `ActorRefProvider` contract
+- classic routing config hierarchy
+- classic `Tcp` / `Udp` / `Dns` / `IO` extension family
+- classic event / logging bus utility family の未充足分
+- standalone `AskPattern` surface
+- `Topic.TopicStats` の cluster-wide semantics
+- `DurableProducerQueue` の独立 entry point
+
 ## 層別カバレッジ
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
@@ -123,9 +168,9 @@
 今回は API ギャップが支配的なため省略する。
 
 判定理由:
-- `hard` / `medium` の未実装ギャップが 12 件あり、しきい値 5 件を超えている
-- classic 側で `ActorSelection` / `Timers` / `Stash` / `FSM` / routing config / io family が未充足
-- typed 側でも `deadLetters` / `eventStream` / `systemActorOf` / `receptionist` 契約差が残っている
+- `hard` / `medium` の未実装ギャップが 11 件あり、しきい値 5 件を超えている
+- classic 側で `ActorSelection` / `FSM` / routing config / io family / deploy-setup family / `ActorRefProvider` fully-surfaced contract が未充足
+- typed 側でも standalone `AskPattern` / `TopicStats` cluster semantics / `DurableProducerQueue` entry point / `MailboxSelector.unbounded` が残っている
 
 したがって、次のボトルネックは内部責務分割ではなく公開 API parity である。
 
@@ -136,19 +181,25 @@
 - `未対応` の項目は「追加する」と書く
 - `部分実装` の項目は「不足している何を埋めるか」を併記する
 - したがって、各 Phase の項目は直前のギャップ表の再配置であり、新しい提案ではない
-- ただし、このファイル上部のカテゴリ別ギャップ表は初期分析時点のスナップショットである。以降の Phase 判定と完了条件の更新は、この節の記述を正とする
+- ただし、このファイル上部のカテゴリ別ギャップ表とサマリー表は初期分析時点のスナップショットである。2026-04-03 時点の再検証と Phase 判定の正本は、この節の記述を正とする
 
 ### Phase 1
 
-- `ActorRefResolverSetup` を追加する。現在は `ActorRefResolver` 本体だけがあり、差し替え用 setup hook がない（core/typed）
+状態: 残り 2 件
+
 - `MailboxSelector.unbounded` を追加する（core/typed）
-- `TimerScheduler` に message-as-key shorthand を追加する。現在は key 必須で、`msg` を key とみなす convenience overload がない（core/typed）
-- `Receptionist.Listing` に `allServiceInstances` と `servicesWereAddedOrRemoved` を追加する。現在は `service_instances` / `is_for_key` までしかない（core/typed）
-- `ActorSystem.receptionist` の不足分を埋める。現在は `receptionist_ref() -> Option<_>` なので、Pekko と同じ常在 actor ref 契約へ合わせる（core/typed）
+- standalone `AskPattern` surface を追加する。現在は `TypedActorRef::ask` と `TypedActorContext::ask` はあるが、Pekko の独立 surface はない（core/typed）
+
+この Phase で完了済みの項目:
+
+- 完了: `ActorRefResolverSetup` を追加済み（core/typed）
+- 完了: `TimerScheduler` の message-as-key shorthand を追加済み（core/typed）
+- 完了: `Receptionist.Listing` に `allServiceInstances` と `servicesWereAddedOrRemoved` を追加済み（core/typed）
+- 完了: `ActorSystem.receptionist` は常在 actor ref 契約を `receptionist()` で満たし、互換補助として `receptionist_ref()` も保持している（core/typed）
 
 ### Phase 2
 
-状態: 完了
+状態: 一部完了
 
 この Phase の完了条件は、Pekko 名称の直訳ではなく、fraktor-rs の公開契約として必要な capability parity を満たすこととする。
 
@@ -169,29 +220,37 @@ Phase 2 の各項目は以下の状態で完了している。
 - 完了: classic logging adapter family は `ActorLogMarker` / `ActorLogging` / `DiagnosticActorLogging` / `LoggingAdapter` / `LoggingReceive` を公開済み
 - 完了: `TypedProps::empty()` を追加済み
 
+この Phase の残件:
+
+- classic auto-received / monitoring message family の不足分を埋める。`ReceiveTimeout` と classic `UnhandledMessage` payload を公開 surface として揃える（core/kernel）
+- `Deployer` / `Deploy` / `Scope` を追加する。現在の `Props` は dispatcher / mailbox / tag に留まり、deploy scope や router deployment 設定を持たない（core/kernel）
+- `ActorSystemSetup` / `BootstrapSetup` の不足分を埋める。現在は `ActorSystemConfig` があるが、Pekko の setup object 合成モデルとは別設計のままである（core/kernel）
+- `ActorRefProvider` の不足分を埋める。現在は `supported_schemes` / `actor_ref` だけなので、guardian refs、dead letters、temp path などの classic surface を拡張する（core/kernel）
+- classic event / logging bus utility family の不足分を埋める。現在の classic logging adapter family に加えて、`BusLogging`、`NoLogging` などの utility wrapper parity を揃える（std）
+- `Topic.TopicStats` の不足分を埋める。現在の local 集計から、Pekko pubsub が前提にする cluster-wide semantics へ寄せる（core/typed）
+- `DurableProducerQueue` の独立 entry point を追加する。現在は command/state 型と `behavior_with_durable_queue` はあるが、Pekko の `DurableProducerQueue` object/trait 相当の公開入口がない（core/typed）
+
 ### Phase 3
 
 - `ActorSelection` の不足分を埋める。現在の `ActorSelectionResolver` に加えて、selection handle 本体、`tell`、`forward`、`resolveOne`、`toSerializationFormat` を実装する（core/kernel）
 - classic `FSM` / `AbstractFSM` parity の不足分を埋める。typed `FsmBuilder` とは別に、classic の state timeout、transition subscription、`when` DSL、`LoggingFSM` を実装する（core/kernel）
 - classic routing config hierarchy の不足分を埋める。現在の kernel `Router` / `Routee` / `RoutingLogic` に加えて、`RouterConfig`、`Pool`、`Group`、`FromConfig` などの公開設定 surface を実装する（core/kernel）
 - classic `Tcp` / `Udp` / `Dns` / `IO` extension family を追加する。現在は actor path に `fraktor.tcp` scheme があるだけで、公開 actor API がない（std）
-- `ActorRefProvider` の不足分を埋める。現在は `supported_schemes` / `actor_ref` だけなので、guardian refs、dead letters、temp path などの classic surface を拡張する（core/kernel）
-- `Topic.TopicStats` の不足分を埋める。現在の local 集計から、Pekko pubsub が前提にする cluster-wide semantics へ寄せる（core/typed）
-- `DurableProducerQueue` の独立 entry point を追加する。現在は command/state 型と `behavior_with_durable_queue` はあるが、Pekko の `DurableProducerQueue` object/trait 相当の公開入口がない（core/typed）
 
 ### 対象外（n/a）
 
 - `AbstractActor*` Java DSL
 - `DynamicAccess` / `ReflectiveDynamicAccess`
 - `IndirectActorProducer`
+- JVM serialization extras (`JavaSerializer`, `CurrentSystem`, Java-compat serializer hierarchy)
 
 理由:
 - いずれも JVM / Java 継承 / reflection / classloader 前提のため、Rust/no_std parity の直接対象ではない
 
 ## まとめ
 
-- typed 側の主要 API はかなり揃っているが、system-level contract の細部と discovery 補助 API にまだ差がある。
-- classic 側は kernel の基本部品自体は多いものの、Pekko 利用者が直接触る DSL surface では `ActorSelection`、`Timers`、`Stash`、`FSM`、routing config、io family が大きく欠けている。
-- 低コストで parity を前進できるのは `ActorRefResolverSetup`、`MailboxSelector.unbounded`、`TimerScheduler` shorthand、`Receptionist.Listing` 拡張、`ActorSystem.receptionist` の常在化である。
-- parity 上の主要ギャップは classic helper DSL 群と network / routing / selection family であり、内部構造より先に公開契約を埋めるべき段階にある。
-- カバー率で見ると、現状は 60% で、Phase 1 完了で 70%、Phase 2 完了で 86%、Phase 3 完了で実装対象 parity は 100% に到達する想定である。
+- typed 側の主要 API はかなり揃っており、未完は `MailboxSelector.unbounded`、standalone `AskPattern`、`TopicStats` cluster semantics、`DurableProducerQueue` entry point など補助 family が中心である。
+- classic 側は `Timers`、stash capability parity、classic logging adapter family までは埋まったが、`ActorSelection`、classic auto-received message、`FSM`、routing config、`io` family、fully-surfaced `ActorRefProvider` が主要ギャップとして残る。
+- parity を低コストで前進できる残件は `MailboxSelector.unbounded` と standalone `AskPattern` surface である。これらが現在の `Phase 1` 残件である。
+- parity 上の主要ギャップは classic の selection / deployment / routing / io / FSM family と、typed の cluster-aware discovery / delivery family である。
+- API ギャップはまだ支配的であり、次のボトルネックは内部構造ではなく公開契約 parity の継続解消にある。
