@@ -167,3 +167,22 @@ fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration(
 
   assert!(weak.upgrade().is_none(), "provider registration must not create a strong reference cycle");
 }
+
+#[test]
+fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
+  let props = Props::from_fn(|| ProbeActor).with_name("user-root");
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+    .with_system_name("provider-shared")
+    .with_tick_driver(tick_driver);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
+  let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
+
+  let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&system.state()));
+
+  let resolved = provider.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
+  assert_eq!(resolved, child.actor_ref().clone());
+}

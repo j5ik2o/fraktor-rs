@@ -73,6 +73,27 @@ impl<P: ActorRefProvider + 'static> ActorRefProviderShared<P> {
     let mut guard = self.inner.lock();
     guard.actor_ref(path)
   }
+
+  /// Resolves an actor reference through the shared wrapper without requiring an outer mutable
+  /// borrow.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the provider cannot resolve the path.
+  pub fn resolve_actor_ref(&self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    let mut guard = self.inner.lock();
+    guard.resolve_actor_ref(path)
+  }
+
+  /// Resolves an actor reference from its canonical string form through the shared wrapper.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the string is not a valid actor path or resolution fails.
+  pub fn resolve_actor_ref_str(&self, path: &str) -> Result<ActorRef, ActorError> {
+    let mut guard = self.inner.lock();
+    guard.resolve_actor_ref_str(path)
+  }
 }
 
 impl<P: ActorRefProvider + 'static> Clone for ActorRefProviderShared<P> {
