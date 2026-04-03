@@ -1,30 +1,91 @@
 # actor モジュール ギャップ分析
 
-集計注記:
-- 集計対象は `actor-typed` の typed root / `scaladsl` / `receptionist` / `eventstream` / `delivery` / `routing` と、typed API が参照する classic bridge (`ActorPath`, `Address`, `Cancellable`)。
-- `javadsl` 重複、`internal` 実装、deprecated、JVM 専用 util は除外した。
-- `fraktor-rs` 側の件数は「Pekko parity surface に対応する公開契約」の数であり、crate 全体の公開型総数ではない。
+## マッピング前提
 
-## サマリー
+このレポートでは比較軸を次の 3 つに固定する。
+
+| Pekko 側 | fraktor-rs 側 | 備考 |
+|----------|---------------|------|
+| untyped (`pekko-actor`) | `modules/actor/src/core/kernel/` | classic / untyped の API family を `core/kernel` へ対応付ける |
+| typed (`pekko-actor-typed`) | `modules/actor/src/core/typed/` | typed public surface を `core/typed` へ対応付ける |
+| host/std runtime helper | `modules/actor/src/std/` | `CoordinatedShutdown` や IO family のような std 依存 API をここへ置く |
+
+重要:
+
+- 以前の版は classic 側を `ActorPath` / `Address` / `Cancellable` に縮退しており、`core/kernel` の残件数を把握するには不十分だった。
+- 今回は **Pekko untyped -> core/kernel** を独立して数え、`core/kernel` の API 残件絶対数を先に出す。
+- そのうえで、API family 数に現れない **構造差 / semantic 差** を別枠で記録する。
+
+## core/kernel 絶対数サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数 | 56 |
-| fraktor-rs parity 実装数 | 40（core: 36, std: 4） |
-| カバレッジ（型単位） | 40/56 (71%) |
-| ギャップ数 | 16（core: 16, std: 0） |
+| Pekko untyped family 数（core/kernel 対応範囲） | 12 |
+| core/kernel 実装済み family 数 | 12 |
+| core/kernel API 未充足の絶対数 | 0 |
+| core/kernel 構造 / semantic 差 | 5 |
+| untyped 由来だが std 側で扱う family 数 | 2 |
 
-## 層別カバレッジ
+解釈:
 
-| 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
-|----|-------------|------------------|-----------|
-| core / untyped kernel | 6 | 6 | 100% |
-| core / typed ラッパー | 46 | 30 | 65% |
-| std / アダプタ | 4 | 4 | 100% |
+- **API family の絶対数としては `core/kernel` の残件は 0**。
+- ただし、Pekko untyped と比較したときの **責務配置・設定モデル・semantic 差** は 5 件残っている。
+- また、Pekko classic のうち `IO family` と `CoordinatedShutdown` advanced helpers は `core/kernel` ではなく `std` 側の課題として扱う。
 
-## カテゴリ別ギャップ
+## core/kernel family カバレッジ
 
-### 基盤 DSL / 型　✅ 実装済み 15/22 (68%)
+### core/kernel ✅ 実装済み 12/12 (100%)
+
+| family | Pekko参照 | fraktor対応 | 状態 | 備考 |
+|--------|-----------|-------------|------|------|
+| `ActorSystem` / `ActorRefFactory` surface | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorSystem.scala:527` | `modules/actor/src/core/kernel/system/base.rs:61` | 実装済み | actor selection, event stream, scheduler, actor 解決まで公開面がある |
+| `ActorRefProvider` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorRefProvider.scala:40` | `modules/actor/src/core/kernel/actor/actor_ref_provider/base.rs:27` | 実装済み | local provider と installer 含む |
+| `ActorSelection` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorSelection.scala:39` | `modules/actor/src/core/kernel/actor/actor_selection/selection.rs:24` | 実装済み | resolver 含む |
+| `FSM` / `AbstractFSM` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/FSM.scala:430` | `modules/actor/src/core/kernel/actor/fsm/machine.rs:33`, `modules/actor/src/core/kernel/actor/fsm/abstract_fsm.rs:6` | 実装済み | family として存在 |
+| `Deploy` / `Deployer` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/Deployer.scala:225` | `modules/actor/src/core/kernel/actor/deploy/descriptor.rs:8`, `modules/actor/src/core/kernel/actor/deploy/deployer.rs:10` | 実装済み | deploy 記述子と deployer を持つ |
+| `Dispatchers` / `Dispatcher` runtime | `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatchers.scala:114`, `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatcher.scala:41` | `modules/actor/src/core/kernel/dispatch/dispatcher/dispatchers.rs:16`, `modules/actor/src/core/kernel/dispatch/dispatcher/dispatcher_shared.rs:28` | 実装済み | dispatcher family として存在 |
+| `EventStream` | `references/pekko/actor/src/main/scala/org/apache/pekko/event/EventStream.scala:34` | `modules/actor/src/core/kernel/event/stream/base.rs:19` | 実装済み | shared handle と subscription を持つ |
+| `Serialization` / `SerializationSetup` | `references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serialization.scala:147`, `references/pekko/actor/src/main/scala/org/apache/pekko/serialization/SerializationSetup.scala:46` | `modules/actor/src/core/kernel/serialization/extension.rs:48`, `modules/actor/src/core/kernel/serialization/serialization_setup.rs:17`, `modules/actor/src/core/kernel/serialization/serialization_registry/registry.rs:17` | 実装済み | registry / extension / setup を持つ |
+| `Router` / `RoutingLogic` family | `references/pekko/actor/src/main/scala/org/apache/pekko/routing/RouterConfig.scala:52` | `modules/actor/src/core/kernel/routing/router.rs:22`, `modules/actor/src/core/kernel/routing/routing_logic.rs:14` | 実装済み | router 本体と routing logic family がある |
+| `ActorPath` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorPath.scala` | `modules/actor/src/core/kernel/actor/actor_path/base.rs:13` | 実装済み | parser / formatter / child path を持つ |
+| `Address` | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/Address.scala:38` | `modules/actor/src/core/kernel/actor/address.rs:17` | 実装済み | protocol / system / host / port を持つ |
+| `Scheduler` / `Cancellable` bridge | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/Scheduler.scala:456` | `modules/actor/src/core/kernel/actor/scheduler.rs:43`, `modules/actor/src/core/kernel/actor/scheduler/handle.rs:15` | 実装済み | `Cancellable` alias を追加済み |
+
+## core/kernel 実装差異
+
+以下は **API family の未充足数には含めない**。  
+理由は、公開 family 自体は存在するが、Pekko と責務分割や semantic が一致していないため。
+
+| 差異 | Pekko側の根拠 | fraktor-rs側の現状 | 種類 | 緊急度 | 備考 |
+|------|---------------|--------------------|------|--------|------|
+| `EventStream` の分類モデル差 | `references/pekko/actor/src/main/scala/org/apache/pekko/event/EventStream.scala:34` | `modules/actor/src/core/kernel/event/stream/base.rs:19` | semantic差 | medium | Pekko は `LoggingBus + SubchannelClassification` 前提、fraktor は明示購読レジストリ中心 |
+| `Dispatchers` 設定モデル差 | `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatchers.scala:114`, `references/pekko/actor/src/main/scala/org/apache/pekko/dispatch/Dispatcher.scala:41` | `modules/actor/src/core/kernel/dispatch/dispatcher/dispatchers.rs:16`, `modules/actor/src/core/kernel/dispatch/dispatcher/dispatcher_shared.rs:28` | semantic差 | medium | Pekko の configurator / config-driven executor ecosystem までは持たない |
+| `Serialization` bootstrap 差 | `references/pekko/actor/src/main/scala/org/apache/pekko/serialization/Serialization.scala:147`, `references/pekko/actor/src/main/scala/org/apache/pekko/serialization/SerializationSetup.scala:46` | `modules/actor/src/core/kernel/serialization/extension.rs:48`, `modules/actor/src/core/kernel/serialization/builder.rs:20` | semantic差 | medium | Pekko の `DynamicAccess` / classloader / serializer 自動生成モデルとは一致しない |
+| `Deployer` と router config の結合差 | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/Deployer.scala:225` | `modules/actor/src/core/kernel/actor/deploy/deployer.rs:10`, `modules/actor/src/core/kernel/routing/` | 構造差 | medium | Pekko は deploy config から router config を組み立てるが、fraktor は責務が分離されている |
+| remote 責務が actor core に同居 | Pekko remote は `pekko-remote` 側に分離 | `modules/actor/src/core/kernel/system/remote/` | 構造差 | high | `RemotingConfig` や `RemoteAuthorityRegistry` が `core/kernel` にある |
+
+## std 側へ残る untyped runtime gap
+
+これは Pekko classic 由来だが、`core/kernel` の残件数には入れない。
+
+### std / untyped runtime helper ⏳ 0/2 実装済み
+
+| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
+|-----------|-----------|-------------|----------|--------|------|
+| `Tcp` / `Udp` / `Dns` / `IO` family | Pekko actor module の public IO family 一式 | 未対応 | std | hard | `modules/actor/src/std/io/` は存在するが未公開で、公開 API parity には未到達 |
+| `CoordinatedShutdown` advanced task helpers | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/CoordinatedShutdown.scala:564`, `:648`, `:815`, `:897` | 部分実装 | std | medium | `add_task` / `run` はあるが `addCancellableTask` / `addActorTerminationTask` 相当がない |
+
+## typed 側の残件サマリー
+
+core/kernel の絶対数は把握できたので、typed 側は残件だけを維持する。
+
+| 指標 | 値 |
+|------|-----|
+| Pekko typed family 数（主集計） | 46 |
+| core/typed 実装済み family 数 | 30 |
+| core/typed API 未充足の絶対数 | 16 |
+
+### typed 基盤 DSL / 型　✅ 実装済み 15/22 (68%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
@@ -36,7 +97,7 @@
 | `RestartSupervisorStrategy` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/SupervisorStrategy.scala:266` | 部分実装 | core/typed | medium | `with_stop_children` / `with_stash_capacity` は kernel 側にある (`modules/actor/src/core/kernel/actor/supervision/base.rs:186`, `:193`) が、typed 専用型と `withLimit` がない。 |
 | `BackoffSupervisorStrategy` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/SupervisorStrategy.scala:320` | 部分実装 | core/typed | medium | `BackoffSupervisorStrategy` 自体はある (`modules/actor/src/core/kernel/actor/supervision/backoff_supervisor_strategy.rs:18`) が、typed façade と Pekko と同じ builder surface ではない。 |
 
-### ライフサイクル / Signals　✅ 実装済み 3/7 (43%)
+### typed ライフサイクル / Signals　✅ 実装済み 3/7 (43%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
@@ -45,71 +106,42 @@
 | `Terminated` / `ChildFailed` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:81`, `:104` | 部分実装 | core/typed | medium | `Pid` ベースの enum variant で吸収しており、Pekko の dedicated wrapper 型ではない (`modules/actor/src/core/typed/message_and_signals/signal.rs:15`, `:19`)。 |
 | `MessageAdaptionFailure` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:125` | 部分実装 | core/typed | easy | variant はあるが、独立公開型ではない (`modules/actor/src/core/typed/message_and_signals/signal.rs:17`)。 |
 
-### Receptionist / EventStream　✅ 実装済み 10/12 (83%)
+### typed Receptionist / EventStream　✅ 実装済み 10/12 (83%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `Receptionist` extension façade (`ref`, `createExtension`, `get`) | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/receptionist/Receptionist.scala:33`, `:107`, `:108` | 部分実装 | core/typed | easy | fraktor は plain actor と `TypedActorSystem::receptionist_ref/receptionist` で提供 (`modules/actor/src/core/typed/receptionist.rs:42`, `modules/actor/src/core/typed/system.rs:252`)。ExtensionId としては公開していない。 |
 | `ServiceKey.Listing` / `ServiceKey.Registered` extractor | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/receptionist/Receptionist.scala:81`, `:90` | 未対応 | core/typed | easy | `Listing` (`modules/actor/src/core/typed/receptionist/listing.rs:14`) と `Registered` (`modules/actor/src/core/typed/receptionist/registered.rs:16`) はあるが、`ServiceKey` に紐づく extractor helper がない。 |
 
-### Routing / Delivery　✅ 実装済み 7/9 (78%)
+### typed Routing / Delivery　✅ 実装済み 7/9 (78%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
 | `GroupRouter[T]` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/Routers.scala:58` | 未対応 | core/typed | medium | `GroupRouterBuilder` はある (`modules/actor/src/core/typed/dsl/routing/group_router_builder.rs:29`) が、Pekko のような公開 Behavior 型はない。 |
 | `PoolRouter[T]` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/Routers.scala:131` | 未対応 | core/typed | medium | `PoolRouterBuilder` はある (`modules/actor/src/core/typed/dsl/routing/pool_router_builder.rs:26`) が、公開 Behavior 型がない。 |
 
-### クラシック橋渡し　✅ 実装済み 5/6 (83%)
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `ActorTags` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Props.scala:241`, `:255` | 別経路のみ | core/typed | trivial | fraktor は `TypedProps::with_tags/with_tag` (`modules/actor/src/core/typed/props.rs:162`, `:171`) で吸収しており、独立型を持たない。 |
-
-## 内部モジュール構造ギャップ
-
-今回は API ギャップが支配的なため省略。
-
-省略理由:
-- 型単位カバレッジが 71% に留まる
-- `medium` 以上の未実装ギャップが 8 件ある
-- 特に typed supervision と signal surface の不足が、内部責務分割より先に parity を阻害している
-
 ## 実装優先度
 
-### Phase 1
+### core/kernel
 
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `ActorRef.! / RecipientRef.!` | core/typed | 既存 `tell` の薄い alias 追加で済む。 |
-| `BehaviorInterceptor.isSame` | core/typed | 既存 trait にデフォルトメソッドを足すだけで閉じる。 |
-| `Props.withMailboxFromConfig` | core/typed | `MailboxSelector::from_config` への shorthand を追加するだけで済む。 |
-| `Receptionist` extension façade (`ref/get/createExtension`) | core/typed | 既存 `TypedActorSystem::receptionist_ref/receptionist` の薄いラッパーで実装できる。 |
-| `ActorTags` façade | core/typed | `TypedProps::with_tags/with_tag` の薄い補助型で済む。 |
+- API 残件 absolute count は 0
+- 次の優先課題は API 追加ではなく、`EventStream` / `Dispatchers` / `Serialization` / `Deployer` / remote 境界の構造整理
 
-### Phase 2
+### std
 
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `SupervisorStrategy.resume/restart/stop` | core/typed | kernel 戦略型を typed ルートに持ち上げる作業。 |
-| `RestartSupervisorStrategy` | core/typed | `withLimit` を含む façade 追加が必要。 |
-| `BackoffSupervisorStrategy` | core/typed | kernel 実装はあるため、typed parity surface の整備が中心。 |
-| `Signal` | core/typed | 既存 `BehaviorSignal` を public wrapper 群へ分解する作業。 |
-| `PreRestart` / `PostStop` | core/typed | enum variant を dedicated public type へ切り出す必要がある。 |
-| `Terminated` / `ChildFailed` | core/typed | `Pid` だけでなく wrapper 型の追加が必要。 |
-| `MessageAdaptionFailure` | core/typed | variant を公開型へ昇格する作業。 |
-| `ServiceKey.Listing` / `ServiceKey.Registered` extractor | core/typed | 既存 `Listing` / `Registered` の helper 追加で閉じる。 |
-| `GroupRouter[T]` | core/typed | builder 返しではなく public Behavior 型を持たせる必要がある。 |
-| `PoolRouter[T]` | core/typed | 同上。 |
+- `IO family`
+- `CoordinatedShutdown` advanced helpers
 
-### Phase 3
+### core/typed
 
-| 項目 | 実装先層 | 根拠 |
-|------|----------|------|
-| `ExtensibleBehavior[T]` | core/typed | 既存 `Behavior` / `AbstractBehavior` / interceptors の契約に横断的に触れるため、型設計の再整理が必要。 |
+- `ExtensibleBehavior`
+- typed `SupervisorStrategy` façade
+- dedicated signal types
+- `GroupRouter` / `PoolRouter` public Behavior 型
 
 ## まとめ
 
-- 全体評価: actor モジュールは receptionist / eventstream / delivery / router builder までかなり前進しているが、**typed の公開契約を Pekko と同じ粒度で見たときに signals と supervision が手薄**。
-- parity を低コストで前進できる代表例: `!` alias、`BehaviorInterceptor.isSame`、`withMailboxFromConfig`、`Receptionist` extension façade。
-- parity 上の主要ギャップ: `ExtensibleBehavior`、typed `SupervisorStrategy` façade、signal の dedicated public types、`GroupRouter` / `PoolRouter` の公開 Behavior 型。
-- 次のボトルネック: まだ API ギャップが支配的であり、現時点では内部モジュール構造より **typed surface の整理** が優先。
+- **Pekko untyped -> core/kernel の API family 絶対数は `12/12` で、残件 absolute count は `0`**。
+- ただし `core/kernel` の実装差異は消えておらず、`構造 / semantic 差` として 5 件ある。
+- `IO family` と `CoordinatedShutdown` advanced helpers は `core/kernel` の残件ではなく、`std` 側の untyped runtime gap。
+- actor モジュール全体の次のボトルネックは `core/kernel` の API 欠損ではなく、`core/typed` の公開契約不足と `core/kernel` の責務配置差である。
