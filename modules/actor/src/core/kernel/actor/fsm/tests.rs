@@ -140,6 +140,52 @@ fn fsm_stay_does_not_reschedule_state_timeout() {
 }
 
 #[test]
+fn fsm_goto_same_state_rearms_timeout_and_notifies_transition_observer() {
+  let (_system, mut ctx) = build_context();
+  let transitions = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let transitions_for_cb = transitions.clone();
+
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 1);
+  fsm.set_state_timeout(ProbeState::Idle, Duration::from_millis(20));
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if let Some(delta) = message.downcast_ref::<usize>() {
+      return Ok(FsmTransition::goto(ProbeState::Idle).using(*data + *delta));
+    }
+    if message.downcast_ref::<FsmStateTimeout<ProbeState>>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.on_transition(move |from, to| {
+    transitions_for_cb.lock().push((from.clone(), to.clone()));
+  });
+  fsm.initialize(&ctx).expect("initialize");
+  let generation = fsm.generation();
+
+  let reenter = AnyMessage::new(5usize);
+  let reenter_view = reenter.as_view();
+  fsm.handle(&mut ctx, &reenter_view).expect("reenter");
+
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
+  assert_eq!(fsm.state_data(), Some(&6));
+  assert_eq!(fsm.generation(), generation + 1);
+  assert_eq!(transitions.lock().as_slice(), &[(ProbeState::Idle, ProbeState::Idle)]);
+
+  let stale_timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation));
+  let stale_timeout_view = stale_timeout.as_view();
+  fsm.handle(&mut ctx, &stale_timeout_view).expect("stale timeout");
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
+
+  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation + 1));
+  let timeout_view = timeout.as_view();
+  fsm.handle(&mut ctx, &timeout_view).expect("timeout");
+
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
+  assert_eq!(fsm.state_data(), Some(&7));
+}
+
+#[test]
 fn fsm_stop_records_reason_and_invokes_termination_callback() {
   let (_system, mut ctx) = build_context();
   let terminations = ArcShared::new(NoStdMutex::new(Vec::new()));

@@ -244,17 +244,17 @@ where
       return Ok(());
     }
 
+    let explicit_transition = next_state.is_some();
     let next_state = next_state.unwrap_or_else(|| current_state.clone());
-    let state_changed = next_state != *current_state;
 
-    if state_changed {
+    if explicit_transition {
       self.reschedule_state_timeout_for_state(ctx, &next_state)?;
     }
 
     self.state = Some(next_state.clone());
     self.data = Some(next_data);
 
-    if state_changed {
+    if explicit_transition {
       for observer in &mut self.transition_observers {
         observer(current_state, &next_state);
       }
