@@ -26,6 +26,9 @@ struct Advance;
 #[derive(Clone)]
 struct Finish;
 
+#[derive(Clone)]
+struct Ignore;
+
 struct NoopActor;
 
 impl Actor for NoopActor {
@@ -147,6 +150,35 @@ fn fsm_state_timeout_message_transitions_when_generation_matches() {
   let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation));
   let view = timeout.as_view();
   fsm.handle(&mut ctx, &view).expect("timeout");
+
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
+  assert_eq!(fsm.state_data(), Some(&1));
+}
+
+#[test]
+fn fsm_unhandled_message_does_not_reschedule_state_timeout() {
+  let (_system, mut ctx) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.set_state_timeout(ProbeState::Idle, Duration::from_millis(20));
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if message.downcast_ref::<FsmStateTimeout<ProbeState>>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+  let generation = fsm.generation();
+
+  let ignore = AnyMessage::new(Ignore);
+  let ignore_view = ignore.as_view();
+  fsm.handle(&mut ctx, &ignore_view).expect("ignore");
+
+  assert_eq!(fsm.generation(), generation);
+
+  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation));
+  let timeout_view = timeout.as_view();
+  fsm.handle(&mut ctx, &timeout_view).expect("timeout");
 
   assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
   assert_eq!(fsm.state_data(), Some(&1));

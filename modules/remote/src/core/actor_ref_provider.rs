@@ -5,6 +5,7 @@
 
 mod loopback_router;
 mod remote_error;
+mod shared;
 
 /// Errors returned by actor reference provider operations.
 pub use remote_error::RemoteActorRefProviderError;

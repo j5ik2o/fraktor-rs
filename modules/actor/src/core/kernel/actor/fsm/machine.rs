@@ -185,7 +185,6 @@ where
     }
 
     if !transition.handled() {
-      self.reschedule_state_timeout(ctx)?;
       return Ok(());
     }
 

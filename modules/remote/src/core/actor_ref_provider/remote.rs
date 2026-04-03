@@ -14,8 +14,8 @@ use ahash::RandomState;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Address, Pid,
-    actor_path::{ActorPath, ActorPathParts, ActorPathScheme, GuardianKind},
-    actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     actor_ref_provider::ActorRefProvider,
     deploy::Deployer,
     error::{ActorError, SendError},
@@ -35,6 +35,7 @@ use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
   actor_ref_provider::{
     loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
+    shared::SharedRemoteActorRefProvider,
   },
   endpoint_writer::{EndpointWriterError, EndpointWriterShared},
   envelope::{OutboundMessage, OutboundPriority},
@@ -43,8 +44,6 @@ use crate::core::{
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingError},
   watcher::{RemoteWatcherCommand, RemoteWatcherDaemon},
 };
-
-const PROVIDER_TEMP_CONTAINER_PID: Pid = Pid::new(u64::MAX - 4, 0);
 
 /// Provider that creates [`ActorRef`] instances for remote recipients.
 ///
@@ -180,23 +179,6 @@ impl RemoteActorRefProvider {
   /// Returns the watchers registered for a remote PID (test helper).
   pub fn remote_watchers_for_test(&self, pid: Pid) -> Option<Vec<Pid>> {
     self.watch_entries.get(&pid).map(|entry| entry.watchers().to_vec())
-  }
-
-  fn state(&self) -> Option<fraktor_actor_rs::core::kernel::system::state::SystemStateShared> {
-    self.system.upgrade().map(|system| system.state())
-  }
-
-  fn default_address_from_state(
-    state: &fraktor_actor_rs::core::kernel::system::state::SystemStateShared,
-  ) -> Option<Address> {
-    let (host, Some(port)) = state.canonical_authority_components()? else {
-      return None;
-    };
-    Some(Address::remote(state.system_name(), host, port))
-  }
-
-  fn root_path_for_state(state: &fraktor_actor_rs::core::kernel::system::state::SystemStateShared) -> ActorPath {
-    ActorPath::from_parts(ActorPathParts::local(state.system_name()).with_guardian(GuardianKind::User))
   }
 }
 
@@ -356,97 +338,94 @@ impl RemoteWatchEntry {
   }
 }
 
+impl SharedRemoteActorRefProvider for RemoteActorRefProvider {
+  fn actor_system_weak(&self) -> &ActorSystemWeak {
+    &self.system
+  }
+
+  fn create_remote_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, RemoteActorRefProviderError> {
+    Self::actor_ref(self, path)
+  }
+
+  fn map_actor_ref_error(error: RemoteActorRefProviderError) -> ActorError {
+    ActorError::fatal(format!("{error}"))
+  }
+
+  fn system_unavailable_message() -> &'static str {
+    "remote provider system unavailable"
+  }
+}
+
 impl ActorRefProvider for RemoteActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    &[ActorPathScheme::FraktorTcp]
+    <Self as SharedRemoteActorRefProvider>::supported_schemes(self)
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
-    Self::actor_ref(self, path).map_err(|error| ActorError::fatal(format!("{error}")))
+    <Self as SharedRemoteActorRefProvider>::actor_ref(self, path)
   }
 
   fn root_guardian(&self) -> Option<ActorRef> {
-    self.state()?.root_guardian().map(|cell| cell.actor_ref())
+    <Self as SharedRemoteActorRefProvider>::root_guardian(self)
   }
 
   fn guardian(&self) -> Option<ActorRef> {
-    self.state()?.user_guardian().map(|cell| cell.actor_ref())
+    <Self as SharedRemoteActorRefProvider>::guardian(self)
   }
 
   fn system_guardian(&self) -> Option<ActorRef> {
-    self.state()?.system_guardian().map(|cell| cell.actor_ref())
+    <Self as SharedRemoteActorRefProvider>::system_guardian(self)
   }
 
   fn root_path(&self) -> ActorPath {
-    self.state().map_or_else(
-      || ActorPath::from_parts(ActorPathParts::local("cellactor")),
-      |state| Self::root_path_for_state(&state),
-    )
+    <Self as SharedRemoteActorRefProvider>::root_path(self)
   }
 
   fn root_guardian_at(&self, address: &Address) -> Option<ActorRef> {
-    let default = self.get_default_address()?;
-    if address.protocol() == default.protocol() { self.root_guardian() } else { None }
+    <Self as SharedRemoteActorRefProvider>::root_guardian_at(self, address)
   }
 
   fn deployer(&self) -> Option<Deployer> {
-    Some(self.state()?.deployer())
+    <Self as SharedRemoteActorRefProvider>::deployer(self)
   }
 
   fn temp_path(&self) -> ActorPath {
-    self.root_path().child("temp")
+    <Self as SharedRemoteActorRefProvider>::temp_path(self)
   }
 
   fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
-    let state = self.state().ok_or_else(|| ActorError::fatal("remote provider system unavailable"))?;
-    let generated = if prefix.is_empty() {
-      state.next_temp_actor_name_with_prefix("tmp")
-    } else {
-      state.next_temp_actor_name_with_prefix(prefix)
-    };
-    self.temp_path().try_child(&generated).map_err(|error| ActorError::fatal(format!("invalid temp path: {error}")))
+    <Self as SharedRemoteActorRefProvider>::temp_path_with_prefix(self, prefix)
   }
 
   fn temp_container(&self) -> Option<ActorRef> {
-    let state = self.state()?;
-    state.register_actor_path(PROVIDER_TEMP_CONTAINER_PID, &self.temp_path());
-    Some(ActorRef::with_system(PROVIDER_TEMP_CONTAINER_PID, NullSender, &state))
+    <Self as SharedRemoteActorRefProvider>::temp_container(self)
   }
 
   fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
-    Some(self.state()?.register_temp_actor(actor))
+    <Self as SharedRemoteActorRefProvider>::register_temp_actor(self, actor)
   }
 
   fn unregister_temp_actor(&self, name: &str) {
-    if let Some(state) = self.state() {
-      state.unregister_temp_actor(name);
-    }
+    <Self as SharedRemoteActorRefProvider>::unregister_temp_actor(self, name)
   }
 
   fn unregister_temp_actor_path(&self, path: &ActorPath) -> Result<(), ActorError> {
-    match path.segments() {
-      | [guardian, temp, name] if guardian.as_str() == "user" && temp.as_str() == "temp" => {
-        self.unregister_temp_actor(name.as_str());
-        Ok(())
-      },
-      | _ => Err(ActorError::fatal(format!("invalid temp actor path: {}", path.to_relative_string()))),
-    }
+    <Self as SharedRemoteActorRefProvider>::unregister_temp_actor_path(self, path)
   }
 
   fn temp_actor(&self, name: &str) -> Option<ActorRef> {
-    self.state()?.temp_actor(name)
+    <Self as SharedRemoteActorRefProvider>::temp_actor(self, name)
   }
 
   fn termination_future(&self) -> ActorFutureShared<()> {
-    self.state().map_or_else(ActorFutureShared::new, |state| state.termination_future())
+    <Self as SharedRemoteActorRefProvider>::termination_future(self)
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
-    let default = self.get_default_address()?;
-    if addr.protocol() == default.protocol() { Some(default) } else { None }
+    <Self as SharedRemoteActorRefProvider>::get_external_address_for(self, addr)
   }
 
   fn get_default_address(&self) -> Option<Address> {
-    Self::default_address_from_state(&self.state()?)
+    <Self as SharedRemoteActorRefProvider>::get_default_address(self)
   }
 }
