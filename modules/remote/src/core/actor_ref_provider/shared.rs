@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::kernel::{
 
 use super::remote_error::RemoteActorRefProviderError;
 
-/// 予約済み PID。高位のセントネル領域を使い、他の固定 PID と衝突しないようにする。
+/// Reserved PID in the high sentinel range to avoid collisions with other fixed IDs.
 pub(crate) const PROVIDER_TEMP_CONTAINER_PID: Pid = Pid::new(u64::MAX - 4, 0);
 
 pub(crate) trait SharedRemoteActorRefProvider {
@@ -95,10 +95,10 @@ pub(crate) trait SharedRemoteActorRefProvider {
       .map_err(|error| ActorError::fatal(alloc::format!("invalid temp path: {error}")))
   }
 
-  /// `/temp` コンテナの `ActorRef` を返す。
+  /// Returns the `/temp` container `ActorRef`.
   ///
-  /// 呼び出しのたびに provider 側の temp path を actor path registry へ再登録するため、
-  /// 繰り返し使う場合は戻り値を呼び出し側で保持する。
+  /// Each call re-registers the provider temp path in the actor path registry,
+  /// so callers should cache the returned ref when they need repeated access.
   fn temp_container(&self) -> Option<ActorRef> {
     let state = self.provider_state()?;
     state.register_actor_path(PROVIDER_TEMP_CONTAINER_PID, &self.temp_path());
@@ -135,7 +135,11 @@ pub(crate) trait SharedRemoteActorRefProvider {
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
     let default = self.get_default_address()?;
-    if addr.protocol() == default.protocol() { Some(default) } else { None }
+    if (!addr.has_global_scope() && addr.system() == default.system()) || *addr == default {
+      Some(default)
+    } else {
+      None
+    }
   }
 
   fn get_default_address(&self) -> Option<Address> {

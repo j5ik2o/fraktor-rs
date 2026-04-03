@@ -444,7 +444,7 @@ impl SystemStateShared {
   /// Generates a unique `/temp` path segment using the provided prefix hint.
   #[must_use]
   pub fn next_temp_actor_name_with_prefix(&self, prefix: &str) -> String {
-    self.inner.read().next_temp_actor_name_with_prefix(prefix)
+    self.inner.write().next_temp_actor_name_with_prefix(prefix)
   }
 
   /// Removes a temporary actor reference if registered.

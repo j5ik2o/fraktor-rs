@@ -163,7 +163,8 @@ fn remote_provider_exposes_classic_contract_helpers() {
 
   let default = provider.get_default_address().expect("default address");
   assert_eq!(default, Address::remote(system.name(), "127.0.0.1", 4100));
-  assert_eq!(provider.get_external_address_for(&Address::remote("peer", "10.0.0.1", 9000)), Some(default.clone()));
+  assert_eq!(provider.get_external_address_for(&Address::local(system.name())), Some(default.clone()));
+  assert!(provider.get_external_address_for(&Address::remote("peer", "10.0.0.1", 9000)).is_none());
   assert!(provider.root_guardian_at(&Address::local(system.name())).is_some());
   assert!(provider.root_guardian_at(&default).is_some());
   assert!(provider.root_guardian_at(&Address::remote("other", "10.0.0.2", 4200)).is_none());
