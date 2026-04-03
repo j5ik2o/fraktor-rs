@@ -60,7 +60,7 @@ pub(crate) trait SharedRemoteActorRefProvider {
 
   fn root_path(&self) -> ActorPath {
     self.provider_state().map_or_else(
-      || ActorPath::from_parts(ActorPathParts::local("cellactor")),
+      || ActorPath::from_parts(ActorPathParts::local("cellactor").with_guardian(GuardianKind::User)),
       |state| Self::root_path_for_state(&state),
     )
   }
