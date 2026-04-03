@@ -142,8 +142,9 @@ fn fsm_state_timeout_message_transitions_when_generation_matches() {
     Ok(FsmTransition::unhandled())
   });
   fsm.initialize(&ctx).expect("initialize");
+  let generation = fsm.generation();
 
-  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, 1));
+  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation));
   let view = timeout.as_view();
   fsm.handle(&mut ctx, &view).expect("timeout");
 

@@ -210,6 +210,12 @@ where
     self.terminated
   }
 
+  /// Returns the current timeout generation used to reject stale timeout messages.
+  #[must_use]
+  pub const fn generation(&self) -> u64 {
+    self.timeout_generation
+  }
+
   /// Returns the last stop reason, if any.
   #[must_use]
   pub const fn last_stop_reason(&self) -> Option<&FsmReason> {
