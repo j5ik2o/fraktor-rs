@@ -134,6 +134,10 @@ impl ActorRefProvider for TestActorRefProvider {
     let sender = ActorRefSenderShared::new(TestSender);
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
+
+  fn termination_future(&self) -> fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<()> {
+    fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared::new()
+  }
 }
 
 struct TestSender;

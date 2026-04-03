@@ -18,13 +18,13 @@
 | Pekko 公開型数 | 34 |
 | fraktor-rs 公開型数 | 27（core: 24, std: 3） |
 | カバレッジ（型単位） | 27/34 (79%) |
-| ギャップ数 | 7（core: 5, std: 2） |
+| ギャップ数 | 6（core: 4, std: 2） |
 
 補足:
 
 - typed 側は `Receptionist`、`Topic`、reliable delivery、typed `AskPattern`、typed `RouterBuilder` まで揃っており、主要 DSL はかなり進んでいる。
 - classic 側も `ActorSelection` handle、本来の `ActorRefFactory` surface、classic `FSM` family まで揃い、主要な core 契約の穴はかなり埋まった。
-- 一方で `ActorRefProvider` の full classic contract、Pekko IO family、typed `ActorSystem` recipient 契約、typed `EventStream` の型別 subscribe 契約は未充足で、公開契約 parity の主ボトルネックになっている。
+- 一方で Pekko IO family、typed `ActorSystem` recipient 契約、typed `EventStream` の型別 subscribe 契約は未充足で、公開契約 parity の主ボトルネックになっている。
 - そのため今回は API ギャップが支配的であり、構造比較は後続フェーズと判断する。
 
 ## 進捗の読み方
@@ -36,7 +36,7 @@
 
 | カテゴリ | カテゴリ内進捗 |
 |----------|----------------|
-| classic コア契約 | 5/6 |
+| classic コア契約 | 6/6 |
 | classic ライフサイクル / runtime | 5/7 |
 | typed コア契約 | 8/10 |
 | typed DSL / routing | 5/6 |
@@ -52,11 +52,11 @@
 
 ## カテゴリ別ギャップ
 
-### classic コア契約 ⏳ カテゴリ内 5/6 (83%)
+### classic コア契約 ✅ カテゴリ内 6/6 (100%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `ActorRefProvider` full classic contract | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorRefProvider.scala:47`, `:95`, `:100`, `:120`, `:145`, `:165` | 部分実装 | core/kernel | medium | fraktor-rs の trait は `supported_schemes` / `actor_ref` を中心に最小化されており (`modules/actor/src/core/kernel/actor/actor_ref_provider/base.rs:20`)、`deployer`, `tempContainer`, `unregisterTempActor`, external address 解決などの classic surface は未公開 |
+| `ActorRefProvider` full classic contract | `references/pekko/actor/src/main/scala/org/apache/pekko/actor/ActorRefProvider.scala:47`, `:95`, `:100`, `:120`, `:145`, `:165` | 対応済み | core/kernel | done | `deployer`, `temp_container`, `unregister_temp_actor`, external/default address 解決、termination future まで公開済み (`modules/actor/src/core/kernel/actor/actor_ref_provider/base.rs:20`, `modules/actor/src/core/kernel/actor/actor_ref_provider/local_actor_ref_provider.rs:184`, `modules/remote/src/core/actor_ref_provider/shared.rs:76`) |
 
 ### classic ライフサイクル / runtime ⏳ カテゴリ内 5/7 (71%)
 
@@ -92,7 +92,7 @@
 
 - 型単位カバレッジが `79%` で、内部構造分析へ進む目安の `80%` をまだ下回っている
 - `hard` / `medium` の未実装ギャップが 6 件あり、しきい値 5 件を超えている
-- 特に `ActorRefProvider` の full classic contract、typed `ActorSystem` recipient 契約、typed `EventStream` の型別 subscribe、Pekko IO family が未充足で、内部責務分割より公開契約 parity の穴埋めが先である
+- 特に typed `ActorSystem` recipient 契約、typed `EventStream` の型別 subscribe、Pekko IO family が未充足で、内部責務分割より公開契約 parity の穴埋めが先である
 
 ## 実装優先度
 
@@ -106,7 +106,6 @@
 
 - typed `EventStream.Command` に型別 subscribe/unsubscribe 契約を追加する（実装先層: `core/typed`）
 - `TopicStats` の semantics を cluster-aware な契約へ拡張するか、少なくとも local-only との差を API で明示する（実装先層: `core/typed`）
-- `ActorRefProvider` の classic contract を段階的に公開し、temp actor / address 解決 surface を埋める（実装先層: `core/kernel`）
 - `TypedActorSystem` を `RecipientRef` 的に扱える契約へ寄せるか、同等 surface を別名で公開して parity を埋める（実装先層: `core/typed`）
 
 ### Phase 3
@@ -128,5 +127,5 @@
 
 - 全体評価: typed 側の主要機能はかなりカバー済みで、classic parity も `ActorSelection`、`ActorRefFactory` surface、classic `FSM` まで揃ってきた
 - 低コストで前進できる項目: group router fluent parity、`CoordinatedShutdown` helper surface、typed event stream の型別 subscribe 契約
-- 主要ギャップ: `ActorRefProvider` full classic contract、Pekko IO family、`TypedActorSystem` の recipient 契約、typed `TopicStats` の cluster-aware semantics
+- 主要ギャップ: Pekko IO family、`TypedActorSystem` の recipient 契約、typed `EventStream` の型別 subscribe、typed `TopicStats` の cluster-aware semantics
 - 次のボトルネック評価: API ギャップがまだ支配的であり、内部構造ではなく公開契約 parity の継続解消が先行課題である

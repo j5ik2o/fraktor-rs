@@ -1,7 +1,10 @@
 //! Handle wrapper for RemoteWatchHook implementations.
 
 use super::{ActorRefProvider, RemoteWatchHook};
-use crate::core::kernel::actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError};
+use crate::core::kernel::{
+  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError},
+  util::futures::ActorFutureShared,
+};
 
 /// Handle wrapper that combines a provider with its supported schemes.
 ///
@@ -61,5 +64,9 @@ where
 
   fn actor_ref(&mut self, path: crate::core::kernel::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.actor_ref(path)
+  }
+
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    self.provider.termination_future()
   }
 }

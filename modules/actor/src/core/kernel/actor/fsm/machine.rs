@@ -147,10 +147,11 @@ where
     if self.state.is_none() || self.data.is_none() {
       return Err(ActorError::recoverable("fsm requires start_with before initialize"));
     }
+    self.reschedule_state_timeout(ctx)?;
     self.initialized = true;
     self.terminated = false;
     self.last_stop_reason = None;
-    self.reschedule_state_timeout(ctx)
+    Ok(())
   }
 
   /// Evaluates the current message against the active state handler.

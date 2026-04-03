@@ -146,9 +146,7 @@ pub trait ActorRefProvider: Send + Sync {
 
   /// Returns a future that completes when the backing actor system terminates.
   #[must_use]
-  fn termination_future(&self) -> ActorFutureShared<()> {
-    ActorFutureShared::new()
-  }
+  fn termination_future(&self) -> ActorFutureShared<()>;
 
   /// Returns the external address to use when communicating with the given address.
   #[must_use]

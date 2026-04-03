@@ -791,6 +791,10 @@ impl ActorRefProvider for DummyActorRefProvider {
     *self.last_path.lock() = Some(path.clone());
     Ok(ActorRef::null())
   }
+
+  fn termination_future(&self) -> crate::core::kernel::util::futures::ActorFutureShared<()> {
+    crate::core::kernel::util::futures::ActorFutureShared::new()
+  }
 }
 
 #[test]
