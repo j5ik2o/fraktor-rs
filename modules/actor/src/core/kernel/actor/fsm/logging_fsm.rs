@@ -118,28 +118,30 @@ where
     let was_terminated = self.inner.is_terminated();
 
     self.inner.handle(ctx, message)?;
+    let current_state = self.inner.state_name();
 
-    if let (Some(from), Some(to)) = (previous_state.as_ref(), self.inner.state_name())
-      && from != to
-    {
-      ctx.system().emit_log(
-        LogLevel::Debug,
-        format!("fsm transition: {from:?} -> {to:?}"),
-        Some(ctx.pid()),
-        self.logger_name.clone(),
-      );
+    match (previous_state.as_ref(), current_state) {
+      | (Some(from), Some(to)) if from != to => {
+        ctx.system().emit_log(
+          LogLevel::Debug,
+          format!("fsm transition: {from:?} -> {to:?}"),
+          Some(ctx.pid()),
+          self.logger_name.clone(),
+        );
+      },
+      | _ => {},
     }
 
-    if !was_terminated
-      && self.inner.is_terminated()
-      && let (Some(reason), Some(state)) = (self.inner.last_stop_reason(), previous_state.as_ref())
-    {
-      ctx.system().emit_log(
-        LogLevel::Info,
-        format!("fsm terminated in state {state:?}: {reason:?}"),
-        Some(ctx.pid()),
-        self.logger_name.clone(),
-      );
+    match (was_terminated, self.inner.is_terminated(), self.inner.last_stop_reason(), current_state) {
+      | (false, true, Some(reason), Some(state)) => {
+        ctx.system().emit_log(
+          LogLevel::Info,
+          format!("fsm terminated in state {state:?}: {reason:?}"),
+          Some(ctx.pid()),
+          self.logger_name.clone(),
+        );
+      },
+      | _ => {},
     }
 
     Ok(())
