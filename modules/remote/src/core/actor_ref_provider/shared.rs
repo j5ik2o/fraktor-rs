@@ -14,8 +14,8 @@ use fraktor_actor_rs::core::kernel::{
 
 use super::remote_error::RemoteActorRefProviderError;
 
-/// Reserved PID in the high sentinel range to avoid collisions with other fixed IDs.
-pub(crate) const PROVIDER_TEMP_CONTAINER_PID: Pid = Pid::new(u64::MAX - 4, 0);
+/// Reserved PID in the high sentinel range to avoid collisions with local provider sentinels.
+pub(crate) const PROVIDER_TEMP_CONTAINER_PID: Pid = Pid::new(u64::MAX - 5, 0);
 
 pub(crate) trait SharedRemoteActorRefProvider {
   fn actor_system_weak(&self) -> &ActorSystemWeak;
