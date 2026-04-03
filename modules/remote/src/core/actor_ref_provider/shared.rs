@@ -28,10 +28,10 @@ pub(crate) trait SharedRemoteActorRefProvider {
   }
 
   fn default_address_from_state(state: &SystemStateShared) -> Option<Address> {
-    let (host, Some(port)) = state.canonical_authority_components()? else {
-      return None;
-    };
-    Some(Address::remote(state.system_name(), host, port))
+    match state.canonical_authority_components() {
+      | Some((host, Some(port))) => Some(Address::remote(state.system_name(), host, port)),
+      | _ => Some(Address::local(state.system_name())),
+    }
   }
 
   fn root_path_for_state(state: &SystemStateShared) -> ActorPath {

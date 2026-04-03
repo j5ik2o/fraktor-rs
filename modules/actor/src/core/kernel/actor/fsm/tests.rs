@@ -18,6 +18,7 @@ use crate::core::kernel::{
 enum ProbeState {
   Idle,
   Active,
+  Waiting,
 }
 
 #[derive(Clone)]
@@ -223,6 +224,53 @@ fn fsm_state_timeout_message_transitions_when_generation_matches() {
 
   assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
   assert_eq!(fsm.state_data(), Some(&1));
+}
+
+#[test]
+fn fsm_no_timeout_transition_does_not_bump_generation_before_timed_state() {
+  let (_system, mut ctx) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 0);
+  fsm.set_state_timeout(ProbeState::Waiting, Duration::from_millis(20));
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.when(ProbeState::Active, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if message.downcast_ref::<Finish>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Waiting).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.when(ProbeState::Waiting, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if message.downcast_ref::<FsmStateTimeout<ProbeState>>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Idle).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+  assert_eq!(fsm.generation(), 0);
+
+  let advance = AnyMessage::new(Advance);
+  let advance_view = advance.as_view();
+  fsm.handle(&mut ctx, &advance_view).expect("advance");
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
+  assert_eq!(fsm.generation(), 0);
+
+  let finish = AnyMessage::new(Finish);
+  let finish_view = finish.as_view();
+  fsm.handle(&mut ctx, &finish_view).expect("finish");
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Waiting));
+  assert_eq!(fsm.generation(), 1);
+
+  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Waiting, 1));
+  let timeout_view = timeout.as_view();
+  fsm.handle(&mut ctx, &timeout_view).expect("timeout");
+
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
+  assert_eq!(fsm.state_data(), Some(&3));
 }
 
 #[test]

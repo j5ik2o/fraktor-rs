@@ -49,6 +49,13 @@ fn build_system() -> ActorSystem {
   ActorSystem::new_with_config(&props, &system_config).expect("system builds")
 }
 
+fn build_system_without_canonical_authority() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
+  let system_config = ActorSystemConfig::default()
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  ActorSystem::new_with_config(&props, &system_config).expect("system builds")
+}
+
 fn serialization_setup() -> SerializationSetup {
   let serializer_id = SerializerId::try_from(82).expect("serializer id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(StringSerializer::new(serializer_id));
@@ -184,4 +191,15 @@ fn remote_provider_exposes_classic_contract_helpers() {
   assert!(!future.with_read(|inner| inner.is_ready()));
   system.state().mark_terminated();
   assert!(future.with_read(|inner| inner.is_ready()));
+}
+
+#[test]
+fn remote_provider_falls_back_to_local_default_address_when_canonical_authority_is_missing() {
+  let system = build_system_without_canonical_authority();
+  let provider = provider(&system);
+
+  let default = provider.get_default_address().expect("default address");
+  assert_eq!(default, Address::local(system.name()));
+  assert_eq!(provider.get_external_address_for(&Address::local(system.name())), Some(default.clone()));
+  assert!(provider.root_guardian_at(&Address::local(system.name())).is_some());
 }

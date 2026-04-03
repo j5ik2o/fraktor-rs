@@ -272,10 +272,10 @@ where
 
   fn reschedule_state_timeout_for_state(&mut self, ctx: &ActorContext<'_>, state: &State) -> Result<(), ActorError> {
     self.cancel_state_timeout(ctx)?;
-    self.timeout_generation = self.timeout_generation.wrapping_add(1);
     let Some(timeout) = self.state_timeouts.get(state).copied() else {
       return Ok(());
     };
+    self.timeout_generation = self.timeout_generation.wrapping_add(1);
     let message = AnyMessage::new(FsmStateTimeout::new(state.clone(), self.timeout_generation));
     ctx
       .timers()
