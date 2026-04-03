@@ -51,8 +51,7 @@ fn build_system() -> ActorSystem {
 
 fn build_system_without_canonical_authority() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
-  let system_config = ActorSystemConfig::default()
-    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
   ActorSystem::new_with_config(&props, &system_config).expect("system builds")
 }
 
