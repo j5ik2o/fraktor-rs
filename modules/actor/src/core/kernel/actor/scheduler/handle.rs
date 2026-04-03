@@ -8,6 +8,9 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use super::cancellable::CancellableEntry;
 
 /// Identifier for scheduled jobs.
+///
+/// This is also exposed as the Pekko-compatible
+/// [`Cancellable`](crate::core::kernel::actor::scheduler::Cancellable) alias.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchedulerHandle {
   raw:   u64,
@@ -28,6 +31,8 @@ impl SchedulerHandle {
   }
 
   /// Returns whether the job has been cancelled.
+  ///
+  /// Corresponds to Pekko's `Cancellable.isCancelled`.
   #[must_use]
   pub fn is_cancelled(&self) -> bool {
     self.entry.is_cancelled()

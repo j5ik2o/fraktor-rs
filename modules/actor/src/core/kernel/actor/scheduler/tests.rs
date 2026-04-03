@@ -21,7 +21,7 @@ use hashbrown::HashMap;
 use proptest::prelude::*;
 
 use super::{
-  BatchMode, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext,
+  BatchMode, Cancellable, ExecutionBatch, Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext,
   SchedulerError, SchedulerMode, SchedulerRunnable, SchedulerRunner, SchedulerWarning,
   command::SchedulerCommand,
   diagnostics::{DeterministicEvent, SchedulerDiagnosticsEvent},
@@ -155,6 +155,14 @@ fn schedule_once_returns_handle_for_valid_delay() {
   let mut scheduler = build_scheduler();
   let handle = scheduler.schedule_once(Duration::from_millis(10), SchedulerCommand::Noop).expect("handle");
   assert_ne!(handle.raw(), 0);
+}
+
+#[test]
+fn schedule_once_handle_can_be_used_as_cancellable_alias() {
+  let mut scheduler = build_scheduler();
+  let handle: Cancellable = scheduler.schedule_once(Duration::from_millis(10), SchedulerCommand::Noop).expect("handle");
+  assert!(!handle.is_cancelled());
+  assert!(!handle.is_completed());
 }
 
 #[test]

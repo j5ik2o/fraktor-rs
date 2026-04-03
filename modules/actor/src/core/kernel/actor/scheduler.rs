@@ -40,6 +40,11 @@ pub use dump::SchedulerDump;
 pub use dump_job::SchedulerDumpJob;
 pub use error::SchedulerError;
 pub use execution_batch::{BatchMode, ExecutionBatch};
+/// Pekko-compatible alias for a scheduled job handle.
+///
+/// This preserves the existing `SchedulerHandle` surface while exposing the
+/// name used by Pekko's scheduler APIs.
+pub type Cancellable = handle::SchedulerHandle;
 pub use handle::SchedulerHandle;
 pub use metrics::SchedulerMetrics;
 pub use mode::SchedulerMode;
