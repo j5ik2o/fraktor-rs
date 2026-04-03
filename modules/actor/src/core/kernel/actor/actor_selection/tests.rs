@@ -1,7 +1,7 @@
 //! Tests for ActorSelectionResolver
 
 use core::time::Duration;
-use std::{thread, time::Instant};
+use std::{env, thread, time::Instant};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
@@ -77,15 +77,31 @@ fn spawn_selection_probe(
 }
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
-  let start = Instant::now();
-  let timeout = Duration::from_secs(2);
-  while start.elapsed() < timeout {
+  let deadline = Instant::now() + scaled_duration(Duration::from_secs(2));
+  while Instant::now() < deadline {
     if condition() {
       return;
     }
     thread::yield_now();
   }
   assert!(condition());
+}
+
+fn test_time_factor() -> f64 {
+  match env::var("TEST_TIME_FACTOR") {
+    | Err(_) => 1.0,
+    | Ok(raw) => {
+      let factor = raw
+        .parse::<f64>()
+        .unwrap_or_else(|e| panic!("test_time_factor: TEST_TIME_FACTOR={raw:?} is not a valid f64: {e}"));
+      assert!(factor > 0.0, "test_time_factor: TEST_TIME_FACTOR={raw:?} must be positive, got {factor}");
+      factor
+    },
+  }
+}
+
+fn scaled_duration(base: Duration) -> Duration {
+  base.mul_f64(test_time_factor())
 }
 
 #[test]

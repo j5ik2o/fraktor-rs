@@ -43,7 +43,6 @@ where
   }
 
   /// Returns mutable access to the underlying FSM runtime.
-  #[must_use]
   pub const fn inner_mut(&mut self) -> &mut Fsm<State, Data> {
     &mut self.inner
   }

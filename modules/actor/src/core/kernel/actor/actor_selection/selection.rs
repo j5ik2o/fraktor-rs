@@ -82,7 +82,7 @@ impl ActorSelection {
 
   fn deliver(&self, message: AnyMessage) -> Result<(), ActorSelectionError> {
     let path = self.resolve_target_path()?;
-    self.ensure_authority_state(&path, Some(message.clone()))?;
+    self.ensure_authority_state(&path, Some(&message))?;
     let mut actor_ref = self.resolve_actor_ref(path)?;
     actor_ref.try_tell(message).map_err(ActorSelectionError::from)
   }
@@ -110,7 +110,7 @@ impl ActorSelection {
     super::ActorSelectionResolver::resolve_relative(&self.base_path, &self.selection).map_err(ActorSelectionError::from)
   }
 
-  fn ensure_authority_state(&self, path: &ActorPath, message: Option<AnyMessage>) -> Result<(), ActorSelectionError> {
+  fn ensure_authority_state(&self, path: &ActorPath, message: Option<&AnyMessage>) -> Result<(), ActorSelectionError> {
     let Some(authority) = path.parts().authority_endpoint() else {
       return Ok(());
     };
@@ -120,7 +120,7 @@ impl ActorSelection {
         if let Some(message) = message {
           self
             .system
-            .remote_authority_defer(authority.clone(), message)
+            .remote_authority_defer(authority, message.clone())
             .map_err(|_| ActorSelectionError::from(PathResolutionError::AuthorityQuarantined))?;
         }
         Err(ActorSelectionError::from(PathResolutionError::AuthorityUnresolved))

@@ -468,11 +468,20 @@ fn actor_system_spawn_without_guardian() {
   assert!(result.is_err());
 }
 
-#[test]
-fn actor_system_actor_of_spawns_under_user_guardian() {
+fn make_test_system() -> ActorSystem {
+  make_test_system_with_name("test-system")
+}
+
+fn make_test_system_with_name(name: &str) -> ActorSystem {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let config = ActorSystemConfig::default().with_system_name(name).with_tick_driver(tick_driver);
+  ActorSystem::new_with_config(&props, &config).expect("system")
+}
+
+#[test]
+fn actor_system_actor_of_spawns_under_user_guardian() {
+  let system = make_test_system();
 
   let child = system.actor_of(&Props::from_fn(|| TestActor)).expect("spawn child");
   let path = child.actor_ref().path().expect("child path");
@@ -483,9 +492,7 @@ fn actor_system_actor_of_spawns_under_user_guardian() {
 
 #[test]
 fn actor_system_actor_of_named_uses_requested_name() {
-  let props = Props::from_fn(|| TestActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system = make_test_system();
 
   let child = system.actor_of_named(&Props::from_fn(|| TestActor), "named-child").expect("spawn child");
   let path = child.actor_ref().path().expect("child path");
@@ -495,9 +502,7 @@ fn actor_system_actor_of_named_uses_requested_name() {
 
 #[test]
 fn actor_system_actor_of_named_rejects_duplicate_name() {
-  let props = Props::from_fn(|| TestActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system = make_test_system();
 
   let first = system.actor_of_named(&Props::from_fn(|| TestActor), "dup-name");
   assert!(first.is_ok());
@@ -508,9 +513,7 @@ fn actor_system_actor_of_named_rejects_duplicate_name() {
 
 #[test]
 fn actor_system_stop_stops_target_actor() {
-  let props = Props::from_fn(|| TestActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system = make_test_system();
 
   let child = system.actor_of_named(&Props::from_fn(|| TestActor), "stop-target").expect("spawn child");
   let actor = child.actor_ref().clone();
@@ -523,9 +526,7 @@ fn actor_system_stop_stops_target_actor() {
 
 #[test]
 fn extended_actor_system_exposes_actor_ref_factory_surface() {
-  let props = Props::from_fn(|| TestActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let system = ActorSystem::new(&props, tick_driver).expect("system");
+  let system = make_test_system();
   let extended = system.extended();
 
   let child = extended.actor_of_named(&Props::from_fn(|| TestActor), "extended-child").expect("spawn child");
@@ -539,10 +540,7 @@ fn extended_actor_system_exposes_actor_ref_factory_surface() {
 
 #[test]
 fn extended_actor_system_exposes_actor_selection_surface() {
-  let props = Props::from_fn(|| TestActor);
-  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = ActorSystemConfig::default().with_system_name("extended-selection-system").with_tick_driver(tick_driver);
-  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = make_test_system_with_name("extended-selection-system");
   let extended = system.extended();
 
   let child = extended.actor_of_named(&Props::from_fn(|| TestActor), "extended-selection-child").expect("spawn child");

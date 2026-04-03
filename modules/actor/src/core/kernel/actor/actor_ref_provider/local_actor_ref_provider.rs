@@ -157,10 +157,6 @@ impl ActorRefProvider for LocalActorRefProvider {
     ActorPath::from_parts(ActorPathParts::local(state.system_name()).with_guardian(GuardianKind::User))
   }
 
-  fn resolve_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
-    self.actor_ref(path)
-  }
-
   fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
     let state = self.state()?;
     Some(state.register_temp_actor(actor))
