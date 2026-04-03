@@ -19,6 +19,7 @@ pub mod context_pipe;
 pub mod deploy;
 pub mod error;
 pub mod extension;
+pub mod fsm;
 pub mod lifecycle;
 pub mod messaging;
 mod pid;
