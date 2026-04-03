@@ -26,6 +26,6 @@
     "opsx:explore": "./scripts/run-takt.sh --skip-git -w opsx-explore"
   },
   "devDependencies": {
-    "takt": "^0.33.0"
+    "takt": "^0.34.0"
   }
 }
