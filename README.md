@@ -4,16 +4,20 @@
 [![crates.io](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
 [![docs.rs](https://docs.rs/fraktor-rs/badge.svg)](https://docs.rs/fraktor-rs)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/j5ik2o/fraktor-rs)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
+[![dependency status](https://deps.rs/repo/github/j5ik2o/fraktor-rs/status.svg)](https://deps.rs/repo/github/j5ik2o/fraktor-rs)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
+[![Lines of Code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j5ik2o/fraktor-rs/refs/heads/main/.github/badges/tokei_badge.json)](https://github.com/j5ik2o/fraktor-rs)
 
 [日本語版](README.ja.md)
 
-fraktor-rs is a specification-driven actor runtime that brings Pekko and Proto.Actor-style semantics to both `no_std` targets and host runtimes. It gives you one workspace with shared `core`/`std` layering for actors, remoting, clustering, and streams instead of maintaining separate embedded and host codebases.
+fraktor-rs is a specification-driven actor runtime that brings Pekko and Proto.Actor-style semantics to both `no_std` targets and host runtimes. It gives you one workspace with shared `core`/`std` layering for utilities, actors, persistence, remoting, clustering, and streams instead of maintaining separate embedded and host codebases.
 
 ## Highlights
 
 - Shared `core`/`std` module structure across the workspace, so the same actor model can be used on embedded targets and on Tokio-based hosts.
-- Five focused crates for utils, actors, remoting, clustering, and streams, plus runnable showcases for the common scenarios.
+- Six focused crates for utils, actors, persistence, remoting, clustering, and streams, plus runnable showcases for the common scenarios.
 - Pekko / Proto.Actor inspired semantics for lifecycle, supervision, death watch, actor paths, remoting, and typed/untyped bridging.
 - Specification-driven workflow with project steering, custom dylint rules, and reproducible CI entrypoints.
 
@@ -54,10 +58,12 @@ The workspace is organized around these crates:
 | --- | --- |
 | [`modules/utils`](modules/utils) | Portable primitives, runtime toolbox, atomics, synchronization, timers |
 | [`modules/actor`](modules/actor) | ActorSystem, mailboxes, supervision, typed APIs, scheduler, EventStream |
+| [`modules/persistence`](modules/persistence) | Event sourcing, journals, snapshot stores, persistent actor support |
 | [`modules/remote`](modules/remote) | Remoting extension, endpoint management, transport adapters, failure detection |
 | [`modules/cluster`](modules/cluster) | Membership, identity lookup, placement, topology, pub-sub, ECS integration |
 | [`modules/stream`](modules/stream) | Reactive stream primitives built on the actor system |
-| [`showcases/std`](showcases/std) | Runnable examples such as getting started, request/reply, timers, routing, remoting, and clustering |
+| [`modules/actor/examples`](modules/actor/examples) | Focused actor examples such as typed event stream, classic timers, and classic logging |
+| [`showcases/std`](showcases/std) | Runnable end-to-end showcases such as getting started, request/reply, timers, routing, persistence, remoting, and clustering |
 
 Common entrypoints:
 

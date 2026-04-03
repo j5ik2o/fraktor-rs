@@ -4,16 +4,20 @@
 [![crates.io](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
 [![docs.rs](https://docs.rs/fraktor-rs/badge.svg)](https://docs.rs/fraktor-rs)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/j5ik2o/fraktor-rs)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
+[![dependency status](https://deps.rs/repo/github/j5ik2o/fraktor-rs/status.svg)](https://deps.rs/repo/github/j5ik2o/fraktor-rs)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
+[![Lines of Code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j5ik2o/fraktor-rs/refs/heads/main/.github/badges/tokei_badge.json)](https://github.com/j5ik2o/fraktor-rs)
 
 [English](README.md)
 
-fraktor-rs は、Pekko と Proto.Actor 由来のアクターモデルを `no_std` ターゲットとホストランタイムの両方で扱うための、仕様駆動のアクターランタイムです。アクター、Remoting、Cluster、Streams を `core` / `std` の共通構造でそろえ、組み込み向け実装と Tokio 向け実装を別コードベースに分断せずに運用できます。
+fraktor-rs は、Pekko と Proto.Actor 由来のアクターモデルを `no_std` ターゲットとホストランタイムの両方で扱うための、仕様駆動のアクターランタイムです。utilities、actor、persistence、Remoting、Cluster、Streams を `core` / `std` の共通構造でそろえ、組み込み向け実装と Tokio 向け実装を別コードベースに分断せずに運用できます。
 
 ## Highlights
 
 - ワークスペース全体で `core` / `std` の構造を共有し、同じアクターモデルを組み込み環境とホスト環境で扱える
-- utils / actor / remote / cluster / stream の 5 クレートと、主要ユースケースを試せる showcase 群を持つ
+- utils / actor / persistence / remote / cluster / stream の 6 クレートと、主要ユースケースを試せる showcase 群を持つ
 - ライフサイクル、supervision、death watch、actor path、remoting、typed/untyped bridge で Pekko / Proto.Actor の意味論を取り込んでいる
 - spec-driven workflow、steering、custom dylint、CI スクリプトで変更を一貫して管理できる
 
@@ -54,10 +58,12 @@ cargo test -p fraktor-actor-rs --features "std test-support tokio-executor"
 | --- | --- |
 | [`modules/utils`](modules/utils) | portable primitives、runtime toolbox、atomics、同期、timer |
 | [`modules/actor`](modules/actor) | ActorSystem、mailbox、supervision、typed API、scheduler、EventStream |
+| [`modules/persistence`](modules/persistence) | event sourcing、journal、snapshot store、persistent actor support |
 | [`modules/remote`](modules/remote) | Remoting 拡張、endpoint 管理、transport adapter、failure detection |
 | [`modules/cluster`](modules/cluster) | membership、identity lookup、placement、topology、pub-sub、ECS 統合 |
 | [`modules/stream`](modules/stream) | アクターシステム上に構築されたリアクティブストリーム |
-| [`showcases/std`](showcases/std) | getting started、request/reply、timers、routing、remoting、clustering などの実行例 |
+| [`modules/actor/examples`](modules/actor/examples) | typed event stream、classic timers、classic logging などの actor 例 |
+| [`showcases/std`](showcases/std) | getting started、request/reply、timers、routing、persistence、remoting、clustering などの end-to-end 実行例 |
 
 よく使う実行例:
 
