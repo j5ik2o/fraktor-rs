@@ -246,6 +246,10 @@ where
     let next_state = next_state.unwrap_or_else(|| current_state.clone());
     let state_changed = next_state != *current_state;
 
+    if state_changed {
+      self.reschedule_state_timeout_for_state(ctx, &next_state)?;
+    }
+
     self.state = Some(next_state.clone());
     self.data = Some(next_data);
 
@@ -255,16 +259,19 @@ where
       }
     }
 
-    self.reschedule_state_timeout(ctx)
+    Ok(())
   }
 
   fn reschedule_state_timeout(&mut self, ctx: &ActorContext<'_>) -> Result<(), ActorError> {
-    self.cancel_state_timeout(ctx)?;
-    self.timeout_generation = self.timeout_generation.wrapping_add(1);
-
-    let Some(state) = self.state.as_ref() else {
+    let Some(state) = self.state.clone() else {
       return Ok(());
     };
+    self.reschedule_state_timeout_for_state(ctx, &state)
+  }
+
+  fn reschedule_state_timeout_for_state(&mut self, ctx: &ActorContext<'_>, state: &State) -> Result<(), ActorError> {
+    self.cancel_state_timeout(ctx)?;
+    self.timeout_generation = self.timeout_generation.wrapping_add(1);
     let Some(timeout) = self.state_timeouts.get(state).copied() else {
       return Ok(());
     };

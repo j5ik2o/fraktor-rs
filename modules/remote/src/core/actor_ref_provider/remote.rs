@@ -348,7 +348,7 @@ impl SharedRemoteActorRefProvider for RemoteActorRefProvider {
   }
 
   fn map_actor_ref_error(error: RemoteActorRefProviderError) -> ActorError {
-    ActorError::fatal(format!("{error}"))
+    ActorError::fatal(format!("{error:?}"))
   }
 
   fn system_unavailable_message() -> &'static str {

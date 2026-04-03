@@ -105,6 +105,40 @@ fn fsm_stay_using_updates_data_without_state_change() {
 }
 
 #[test]
+fn fsm_stay_does_not_reschedule_state_timeout() {
+  let (_system, mut ctx) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Idle, 1);
+  fsm.set_state_timeout(ProbeState::Idle, Duration::from_millis(20));
+  fsm.when(ProbeState::Idle, |_ctx, message: &AnyMessageView<'_>, _state, data| {
+    if let Some(delta) = message.downcast_ref::<usize>() {
+      return Ok(FsmTransition::stay().using(*data + *delta));
+    }
+    if message.downcast_ref::<FsmStateTimeout<ProbeState>>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Active).using(*data + 1));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+  let generation = fsm.generation();
+
+  let stay = AnyMessage::new(5usize);
+  let stay_view = stay.as_view();
+  fsm.handle(&mut ctx, &stay_view).expect("stay");
+
+  assert_eq!(fsm.generation(), generation);
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
+  assert_eq!(fsm.state_data(), Some(&6));
+
+  let timeout = AnyMessage::new(FsmStateTimeout::new(ProbeState::Idle, generation));
+  let timeout_view = timeout.as_view();
+  fsm.handle(&mut ctx, &timeout_view).expect("timeout");
+
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Active));
+  assert_eq!(fsm.state_data(), Some(&7));
+}
+
+#[test]
 fn fsm_stop_records_reason_and_invokes_termination_callback() {
   let (_system, mut ctx) = build_context();
   let terminations = ArcShared::new(NoStdMutex::new(Vec::new()));

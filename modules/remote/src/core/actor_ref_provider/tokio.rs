@@ -342,7 +342,7 @@ impl SharedRemoteActorRefProvider for TokioActorRefProvider {
   }
 
   fn map_actor_ref_error(error: RemoteActorRefProviderError) -> ActorError {
-    ActorError::fatal(alloc::format!("Failed to create Tokio actor ref: {:?}", error))
+    ActorError::fatal(alloc::format!("{error:?}"))
   }
 
   fn system_unavailable_message() -> &'static str {
