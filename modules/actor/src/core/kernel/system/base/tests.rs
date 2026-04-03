@@ -468,6 +468,92 @@ fn actor_system_spawn_without_guardian() {
   assert!(result.is_err());
 }
 
+fn make_test_system() -> ActorSystem {
+  make_test_system_with_name("test-system")
+}
+
+fn make_test_system_with_name(name: &str) -> ActorSystem {
+  let props = Props::from_fn(|| TestActor);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let config = ActorSystemConfig::default().with_system_name(name).with_tick_driver(tick_driver);
+  ActorSystem::new_with_config(&props, &config).expect("system")
+}
+
+#[test]
+fn actor_system_actor_of_spawns_under_user_guardian() {
+  let system = make_test_system();
+
+  let child = system.actor_of(&Props::from_fn(|| TestActor)).expect("spawn child");
+  let path = child.actor_ref().path().expect("child path");
+
+  assert!(path.to_relative_string().starts_with("/user/"));
+  assert!(system.state().cell(&child.pid()).is_some());
+}
+
+#[test]
+fn actor_system_actor_of_named_uses_requested_name() {
+  let system = make_test_system();
+
+  let child = system.actor_of_named(&Props::from_fn(|| TestActor), "named-child").expect("spawn child");
+  let path = child.actor_ref().path().expect("child path");
+
+  assert!(path.to_relative_string().ends_with("/named-child"));
+}
+
+#[test]
+fn actor_system_actor_of_named_rejects_duplicate_name() {
+  let system = make_test_system();
+
+  let first = system.actor_of_named(&Props::from_fn(|| TestActor), "dup-name");
+  assert!(first.is_ok());
+
+  let second = system.actor_of_named(&Props::from_fn(|| TestActor), "dup-name");
+  assert!(matches!(second, Err(SpawnError::NameConflict(_))));
+}
+
+#[test]
+fn actor_system_stop_stops_target_actor() {
+  let system = make_test_system();
+
+  let child = system.actor_of_named(&Props::from_fn(|| TestActor), "stop-target").expect("spawn child");
+  let actor = child.actor_ref().clone();
+
+  system.stop(&actor).expect("stop");
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+
+  assert!(system.state().cell(&actor.pid()).is_none());
+}
+
+#[test]
+fn extended_actor_system_exposes_actor_ref_factory_surface() {
+  let system = make_test_system();
+  let extended = system.extended();
+
+  let child = extended.actor_of_named(&Props::from_fn(|| TestActor), "extended-child").expect("spawn child");
+  let actor = child.actor_ref().clone();
+
+  assert!(child.actor_ref().path().expect("path").to_relative_string().ends_with("/extended-child"));
+  extended.stop(&actor).expect("stop");
+  system.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
+  assert!(system.state().cell(&actor.pid()).is_none());
+}
+
+#[test]
+fn extended_actor_system_exposes_actor_selection_surface() {
+  let system = make_test_system_with_name("extended-selection-system");
+  let extended = system.extended();
+
+  let child = extended.actor_of_named(&Props::from_fn(|| TestActor), "extended-selection-child").expect("spawn child");
+  let path = child.actor_ref().path().expect("path");
+
+  let by_string =
+    extended.actor_selection(&path.to_relative_string()).to_serialization_format().expect("serialize by string");
+  let by_path = extended.actor_selection_from_path(&path).to_serialization_format().expect("serialize by path");
+
+  assert!(by_string.ends_with("/extended-selection-child"));
+  assert!(by_path.ends_with("/extended-selection-child"));
+}
+
 #[test]
 fn actor_system_drain_ready_ask_futures() {
   let system = ActorSystem::new_empty();
@@ -704,6 +790,10 @@ impl ActorRefProvider for DummyActorRefProvider {
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     *self.last_path.lock() = Some(path.clone());
     Ok(ActorRef::null())
+  }
+
+  fn termination_future(&self) -> crate::core::kernel::util::futures::ActorFutureShared<()> {
+    crate::core::kernel::util::futures::ActorFutureShared::new()
   }
 }
 

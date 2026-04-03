@@ -13,10 +13,11 @@ use alloc::{
 use ahash::RandomState;
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    Pid,
+    Address, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     actor_ref_provider::ActorRefProvider,
+    deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
   },
@@ -24,6 +25,7 @@ use fraktor_actor_rs::core::kernel::{
     ActorSystem, ActorSystemWeak,
     remote::{RemoteAuthorityError, RemoteWatchHook},
   },
+  util::futures::ActorFutureShared,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 use hashbrown::HashMap;
@@ -33,6 +35,7 @@ use crate::core::{
   actor_ref_field_normalizer::ActorRefFieldNormalizerGeneric,
   actor_ref_provider::{
     loopback_router, loopback_router::LoopbackDeliveryOutcome, remote_error::RemoteActorRefProviderError,
+    shared::SharedRemoteActorRefProvider,
   },
   endpoint_writer::{EndpointWriterError, EndpointWriterShared},
   envelope::{OutboundMessage, OutboundPriority},
@@ -335,12 +338,94 @@ impl RemoteWatchEntry {
   }
 }
 
+impl SharedRemoteActorRefProvider for RemoteActorRefProvider {
+  fn actor_system_weak(&self) -> &ActorSystemWeak {
+    &self.system
+  }
+
+  fn create_remote_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, RemoteActorRefProviderError> {
+    Self::actor_ref(self, path)
+  }
+
+  fn map_actor_ref_error(error: RemoteActorRefProviderError) -> ActorError {
+    ActorError::fatal(format!("{error:?}"))
+  }
+
+  fn system_unavailable_message() -> &'static str {
+    "remote provider system unavailable"
+  }
+}
+
 impl ActorRefProvider for RemoteActorRefProvider {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
-    &[ActorPathScheme::FraktorTcp]
+    <Self as SharedRemoteActorRefProvider>::supported_schemes(self)
   }
 
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
-    Self::actor_ref(self, path).map_err(|error| ActorError::fatal(format!("{error}")))
+    <Self as SharedRemoteActorRefProvider>::actor_ref(self, path)
+  }
+
+  fn root_guardian(&self) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::root_guardian(self)
+  }
+
+  fn guardian(&self) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::guardian(self)
+  }
+
+  fn system_guardian(&self) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::system_guardian(self)
+  }
+
+  fn root_path(&self) -> ActorPath {
+    <Self as SharedRemoteActorRefProvider>::root_path(self)
+  }
+
+  fn root_guardian_at(&self, address: &Address) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::root_guardian_at(self, address)
+  }
+
+  fn deployer(&self) -> Option<Deployer> {
+    <Self as SharedRemoteActorRefProvider>::deployer(self)
+  }
+
+  fn temp_path(&self) -> ActorPath {
+    <Self as SharedRemoteActorRefProvider>::temp_path(self)
+  }
+
+  fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
+    <Self as SharedRemoteActorRefProvider>::temp_path_with_prefix(self, prefix)
+  }
+
+  fn temp_container(&self) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::temp_container(self)
+  }
+
+  fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
+    <Self as SharedRemoteActorRefProvider>::register_temp_actor(self, actor)
+  }
+
+  fn unregister_temp_actor(&self, name: &str) {
+    <Self as SharedRemoteActorRefProvider>::unregister_temp_actor(self, name)
+  }
+
+  fn unregister_temp_actor_path(&self, path: &ActorPath) -> Result<(), ActorError> {
+    <Self as SharedRemoteActorRefProvider>::unregister_temp_actor_path(self, path)
+  }
+
+  fn temp_actor(&self, name: &str) -> Option<ActorRef> {
+    <Self as SharedRemoteActorRefProvider>::temp_actor(self, name)
+  }
+
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    <Self as SharedRemoteActorRefProvider>::termination_future(self)
+  }
+
+  fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
+    <Self as SharedRemoteActorRefProvider>::get_external_address_for(self, addr)
+  }
+
+  fn get_default_address(&self) -> Option<Address> {
+    <Self as SharedRemoteActorRefProvider>::get_default_address(self)
   }
 }

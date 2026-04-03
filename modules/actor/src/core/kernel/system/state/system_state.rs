@@ -36,6 +36,7 @@ use crate::core::kernel::{
       ActorRef,
       dead_letter::{DeadLetterEntry, DeadLetterShared},
     },
+    deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AskResult,
@@ -105,6 +106,7 @@ pub struct SystemState {
   remote_watch_hook: RemoteWatchHookDynShared,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
+  deployer: Deployer,
   path_identity: PathIdentity,
   actor_path_registry: ActorPathRegistry,
   remote_authority_registry: RemoteAuthorityRegistry,
@@ -158,6 +160,7 @@ impl SystemState {
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       dispatchers,
       mailboxes,
+      deployer: Deployer::default(),
       path_identity: PathIdentity::default(),
       actor_path_registry: ActorPathRegistry::default(),
       remote_authority_registry: RemoteAuthorityRegistry::default(),
@@ -287,6 +290,12 @@ impl SystemState {
     self.path_identity.system_name.clone()
   }
 
+  /// Returns a snapshot of the deployer registry.
+  #[must_use]
+  pub fn deployer(&self) -> Deployer {
+    self.deployer.clone()
+  }
+
   /// Returns the start time of the actor system (epoch-relative duration).
   ///
   /// Corresponds to Pekko's `ActorSystem.startTime`.
@@ -371,6 +380,10 @@ impl SystemState {
 
   pub(crate) fn register_ask_future(&mut self, future: ActorFutureShared<AskResult>) {
     self.ask_futures.push(future);
+  }
+
+  pub(crate) fn register_actor_path(&mut self, pid: Pid, path: &ActorPath) {
+    self.actor_path_registry.register(pid, path);
   }
 
   #[must_use]
@@ -561,6 +574,12 @@ impl SystemState {
   pub(crate) fn next_temp_actor_name(&self) -> String {
     let id = self.temp_counter.fetch_add(1, Ordering::Relaxed) + 1;
     format!("t{:x}", id)
+  }
+
+  #[must_use]
+  pub(crate) fn next_temp_actor_name_with_prefix(&self, prefix: &str) -> String {
+    let id = self.temp_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    format!("{prefix}-t{:x}", id)
   }
 
   /// Resolves the actor path for the specified pid if the actor exists.

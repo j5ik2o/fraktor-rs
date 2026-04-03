@@ -1,15 +1,108 @@
 //! Tests for ActorSelectionResolver
 
 use core::time::Duration;
+use std::{env, thread, time::Instant};
+
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathError, ActorPathParts, PathResolutionError},
-    actor_selection::{ActorSelectionError, ActorSelectionResolver},
-    messaging::AnyMessage,
+    actor_ref::{ActorRef, NullSender},
+    actor_selection::{ActorSelection, ActorSelectionError, ActorSelectionResolver},
+    error::ActorError,
+    messaging::{ActorIdentity, AnyMessage, AnyMessageView},
+    props::Props,
   },
-  system::remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
+  system::{
+    ActorSystem,
+    remote::{RemoteAuthorityError, RemoteAuthorityRegistry},
+  },
 };
+
+struct NoopActor;
+
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+struct SelectionProbeActor {
+  messages: ArcShared<NoStdMutex<Vec<String>>>,
+  senders:  ArcShared<NoStdMutex<Vec<Option<Pid>>>>,
+}
+
+impl SelectionProbeActor {
+  fn new(messages: ArcShared<NoStdMutex<Vec<String>>>, senders: ArcShared<NoStdMutex<Vec<Option<Pid>>>>) -> Self {
+    Self { messages, senders }
+  }
+}
+
+impl Actor for SelectionProbeActor {
+  fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    if let Some(text) = message.downcast_ref::<String>() {
+      self.messages.lock().push(text.clone());
+      self.senders.lock().push(ctx.sender().map(|sender| sender.pid()));
+    }
+    Ok(())
+  }
+}
+
+fn build_selection_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("selection-root");
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+    .with_system_name("selection-spec")
+    .with_tick_driver(tick_driver);
+  ActorSystem::new_with_config(&props, &config).expect("system")
+}
+
+fn spawn_selection_probe(
+  system: &ActorSystem,
+) -> (crate::core::kernel::actor::ChildRef, ArcShared<NoStdMutex<Vec<String>>>, ArcShared<NoStdMutex<Vec<Option<Pid>>>>)
+{
+  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let senders = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let props = Props::from_fn({
+    let messages = messages.clone();
+    let senders = senders.clone();
+    move || SelectionProbeActor::new(messages.clone(), senders.clone())
+  });
+  let child = system.actor_of_named(&props, "selection-target").expect("selection target");
+  (child, messages, senders)
+}
+
+fn wait_until(mut condition: impl FnMut() -> bool) {
+  let deadline = Instant::now() + scaled_duration(Duration::from_secs(2));
+  while Instant::now() < deadline {
+    if condition() {
+      return;
+    }
+    thread::yield_now();
+  }
+  assert!(condition());
+}
+
+fn test_time_factor() -> f64 {
+  match env::var("TEST_TIME_FACTOR") {
+    | Err(_) => 1.0,
+    | Ok(raw) => {
+      let factor = raw
+        .parse::<f64>()
+        .unwrap_or_else(|e| panic!("test_time_factor: TEST_TIME_FACTOR={raw:?} is not a valid f64: {e}"));
+      assert!(factor > 0.0, "test_time_factor: TEST_TIME_FACTOR={raw:?} must be positive, got {factor}");
+      factor
+    },
+  }
+}
+
+fn scaled_duration(base: Duration) -> Duration {
+  base.mul_f64(test_time_factor())
+}
 
 #[test]
 fn test_resolve_current_path() {
@@ -256,4 +349,90 @@ fn test_scenario_guardian_boundary_protection() {
     ActorSelectionResolver::resolve_relative(&deep, "../../../../.."),
     Err(ActorPathError::RelativeEscape)
   ));
+}
+
+#[test]
+fn actor_selection_tell_delivers_to_selected_actor() {
+  let system = build_selection_system();
+  let (child, messages, senders) = spawn_selection_probe(&system);
+  let selection = system.actor_selection(&child.actor_ref().path().expect("path").to_relative_string());
+
+  selection.tell(AnyMessage::new(String::from("ping")), None).expect("tell");
+
+  wait_until(|| messages.lock().len() == 1);
+  assert_eq!(messages.lock().clone(), vec![String::from("ping")]);
+  assert_eq!(senders.lock().clone(), vec![None]);
+}
+
+#[test]
+fn actor_selection_forward_preserves_sender() {
+  let system = build_selection_system();
+  let (child, messages, senders) = spawn_selection_probe(&system);
+  let path = child.actor_ref().path().expect("path");
+  let selection = system.actor_selection_from_path(&path);
+  let sender = ActorRef::new(Pid::new(9000, 0), NullSender);
+
+  selection.forward(AnyMessage::new(String::from("forwarded")), &sender).expect("forward");
+
+  wait_until(|| messages.lock().len() == 1);
+  assert_eq!(messages.lock().clone(), vec![String::from("forwarded")]);
+  assert_eq!(senders.lock().clone(), vec![Some(sender.pid())]);
+}
+
+#[test]
+fn actor_selection_resolve_one_returns_actor_identity_reply() {
+  let system = build_selection_system();
+  let (child, _, _) = spawn_selection_probe(&system);
+  let path = child.actor_ref().path().expect("path");
+  let selection = system.actor_selection_from_path(&path);
+
+  let response = selection.resolve_one(Duration::from_millis(100)).expect("resolve_one");
+
+  wait_until(|| response.future().with_read(|future| future.is_ready()));
+  let result = response.future().with_write(|future| future.try_take()).expect("ready result");
+  let reply = result.expect("identify should succeed");
+  let identity = reply.downcast_ref::<ActorIdentity>().expect("ActorIdentity");
+
+  assert_eq!(identity.actor_ref().expect("resolved actor").pid(), child.pid());
+}
+
+#[test]
+fn actor_selection_to_serialization_format_returns_canonical_uri() {
+  let system = build_selection_system();
+  let (child, _, _) = spawn_selection_probe(&system);
+  let path = child.actor_ref().path().expect("path");
+  let selection = system.actor_selection_from_path(&path);
+
+  let serialized = selection.to_serialization_format().expect("serialize");
+
+  assert!(serialized.starts_with("fraktor://selection-spec/"));
+  assert!(serialized.ends_with(&child.actor_ref().path().expect("path").to_relative_string()));
+}
+
+#[test]
+fn actor_selection_tell_defers_when_remote_authority_is_unresolved() {
+  let system = build_selection_system();
+  let path = ActorPath::from_parts(ActorPathParts::with_authority("selection-spec", Some(("peer.example.com", 2552))))
+    .child("worker");
+  let selection = ActorSelection::from_path(system.state(), &path);
+
+  let error = selection.tell(AnyMessage::new(String::from("remote")), None).expect_err("unresolved authority");
+
+  assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityUnresolved)));
+  assert_eq!(system.state().remote_authority_deferred_count("peer.example.com:2552"), 1);
+}
+
+#[test]
+fn actor_selection_forward_rejects_quarantined_authority() {
+  let system = build_selection_system();
+  system.state().remote_authority_set_quarantine("peer.example.com:2553", Some(Duration::from_secs(30)));
+  let path = ActorPath::from_parts(ActorPathParts::with_authority("selection-spec", Some(("peer.example.com", 2553))))
+    .child("worker");
+  let selection = ActorSelection::from_path(system.state(), &path);
+  let sender = ActorRef::new(Pid::new(9001, 0), NullSender);
+
+  let error =
+    selection.forward(AnyMessage::new(String::from("quarantined")), &sender).expect_err("quarantined authority");
+
+  assert!(matches!(error, ActorSelectionError::Authority(PathResolutionError::AuthorityQuarantined)));
 }

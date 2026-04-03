@@ -5,7 +5,10 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
-use crate::core::kernel::actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError};
+use crate::core::kernel::{
+  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError},
+  util::futures::ActorFutureShared,
+};
 
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].
@@ -92,5 +95,9 @@ impl<P: ActorRefProvider + RemoteWatchHook + Send + 'static> ActorRefProvider fo
 
   fn actor_ref(&mut self, path: crate::core::kernel::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> {
     self.with_write(|inner| inner.actor_ref(path))
+  }
+
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    self.with_read(|inner| inner.termination_future())
   }
 }

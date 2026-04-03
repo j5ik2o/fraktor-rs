@@ -5,8 +5,10 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorContext, Address, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
+    actor_ref::ActorRef,
+    actor_ref_provider::ActorRefProvider,
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -37,6 +39,17 @@ impl Actor for NoopActor {
 }
 
 fn build_system() -> ActorSystem {
+  let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
+  let remoting = fraktor_actor_rs::core::kernel::system::remote::RemotingConfig::default()
+    .with_canonical_host("127.0.0.1")
+    .with_canonical_port(4100);
+  let system_config = ActorSystemConfig::default()
+    .with_remoting_config(remoting)
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  ActorSystem::new_with_config(&props, &system_config).expect("system builds")
+}
+
+fn build_system_without_canonical_authority() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
   let system_config = ActorSystemConfig::default().with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
   ActorSystem::new_with_config(&props, &system_config).expect("system builds")
@@ -147,4 +160,45 @@ fn tell_to_quarantined_authority_records_dead_letter() {
   let queued = provider.writer_for_test().with_write(|writer| writer.try_next()).expect("writer");
   assert!(queued.is_none());
   assert_eq!(system.state().dead_letters().len(), 1);
+}
+
+#[test]
+fn remote_provider_exposes_classic_contract_helpers() {
+  let system = build_system();
+  let provider = provider(&system);
+
+  let default = provider.get_default_address().expect("default address");
+  assert_eq!(default, Address::remote(system.name(), "127.0.0.1", 4100));
+  assert_eq!(provider.get_external_address_for(&Address::local(system.name())), Some(default.clone()));
+  assert!(provider.get_external_address_for(&Address::remote("peer", "10.0.0.1", 9000)).is_none());
+  assert!(provider.root_guardian_at(&Address::local(system.name())).is_some());
+  assert!(provider.root_guardian_at(&default).is_some());
+  assert!(provider.root_guardian_at(&Address::remote("other", "10.0.0.2", 4200)).is_none());
+  assert!(provider.deployer().is_some());
+
+  let temp_path = provider.temp_path_with_prefix("probe").expect("prefixed temp path");
+  assert!(temp_path.to_relative_string().starts_with("/user/temp/probe-"));
+  let temp_container = provider.temp_container().expect("temp container");
+  assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
+
+  let temp_ref = ActorRef::new(Pid::new(7878, 0), fraktor_actor_rs::core::kernel::actor::actor_ref::NullSender);
+  let temp_name = provider.register_temp_actor(temp_ref).expect("temp actor");
+  provider.unregister_temp_actor_path(&provider.temp_path().child(&temp_name)).expect("unregister temp actor path");
+  assert!(provider.temp_actor(&temp_name).is_none());
+
+  let future = provider.termination_future();
+  assert!(!future.with_read(|inner| inner.is_ready()));
+  system.state().mark_terminated();
+  assert!(future.with_read(|inner| inner.is_ready()));
+}
+
+#[test]
+fn remote_provider_falls_back_to_local_default_address_when_canonical_authority_is_missing() {
+  let system = build_system_without_canonical_authority();
+  let provider = provider(&system);
+
+  let default = provider.get_default_address().expect("default address");
+  assert_eq!(default, Address::local(system.name()));
+  assert_eq!(provider.get_external_address_for(&Address::local(system.name())), Some(default.clone()));
+  assert!(provider.root_guardian_at(&Address::local(system.name())).is_some());
 }

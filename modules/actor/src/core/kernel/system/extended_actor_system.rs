@@ -9,8 +9,10 @@ use super::{ActorSystem, ActorSystemBuildError, RegisterExtraTopLevelError, remo
 use crate::core::kernel::{
   actor::{
     ChildRef,
+    actor_path::ActorPath,
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_selection::ActorSelection,
     extension::{Extension, ExtensionId},
     props::{MailboxConfig, Props},
     spawn::SpawnError,
@@ -138,6 +140,51 @@ impl ExtendedActorSystem {
   /// occurs after startup.
   pub fn register_extra_top_level(&self, name: &str, actor: ActorRef) -> Result<(), RegisterExtraTopLevelError> {
     self.inner.state().register_extra_top_level(name, actor)
+  }
+
+  /// Spawns a new top-level actor under the user guardian.
+  ///
+  /// Corresponds to classic `ActorRefFactory.actorOf(props)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created.
+  pub fn actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.inner.actor_of(props)
+  }
+
+  /// Spawns a new named top-level actor under the user guardian.
+  ///
+  /// Corresponds to classic `ActorRefFactory.actorOf(props, name)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created, including duplicate names.
+  pub fn actor_of_named(&self, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    self.inner.actor_of_named(props, name)
+  }
+
+  /// Sends a stop signal to the specified actor reference.
+  ///
+  /// Corresponds to classic `ActorRefFactory.stop(actor)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
+  pub fn stop(&self, actor: &ActorRef) -> Result<(), crate::core::kernel::actor::error::SendError> {
+    self.inner.stop(actor)
+  }
+
+  /// Creates a classic actor selection rooted at the actor system.
+  #[must_use]
+  pub fn actor_selection(&self, path: &str) -> ActorSelection {
+    self.inner.actor_selection(path)
+  }
+
+  /// Creates a classic actor selection anchored to the provided path.
+  #[must_use]
+  pub fn actor_selection_from_path(&self, path: &ActorPath) -> ActorSelection {
+    self.inner.actor_selection_from_path(path)
   }
 
   /// Spawns a new actor as a child of the system guardian (extensions/internal subsystems).

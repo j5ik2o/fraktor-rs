@@ -24,12 +24,13 @@ use crate::core::{
   kernel::{
     actor::{
       ActorCell, ChildRef, Pid,
-      actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, PathSegment},
+      actor_path::{ActorPath, ActorPathParts, ActorPathScheme, ActorUid, GuardianKind, PathSegment},
       actor_ref::{
         ActorRef,
         dead_letter::{DeadLetterEntry, DeadLetterReason},
       },
       actor_ref_provider::ActorRefResolveError,
+      actor_selection::ActorSelection,
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
@@ -240,6 +241,14 @@ impl ActorSystem {
     ActorPath::from_parts_and_segments(parts, segments.to_vec(), uid)
   }
 
+  fn actor_selection_root_path(&self) -> ActorPath {
+    let mut parts = ActorPathParts::local(self.state.system_name()).with_guardian(GuardianKind::User);
+    if let Some((host, Some(port))) = self.state.canonical_authority_components() {
+      parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
+    }
+    ActorPath::from_parts(parts)
+  }
+
   /// Returns the actor reference to the user guardian.
   ///
   /// # Panics
@@ -257,6 +266,18 @@ impl ActorSystem {
   #[must_use]
   pub fn system_guardian_ref(&self) -> Option<ActorRef> {
     self.state.system_guardian().map(|cell| cell.actor_ref())
+  }
+
+  /// Creates a classic actor selection rooted at the actor system.
+  #[must_use]
+  pub fn actor_selection(&self, path: &str) -> ActorSelection {
+    ActorSelection::new(self.state(), self.actor_selection_root_path(), path.into())
+  }
+
+  /// Creates a classic actor selection anchored to the provided path.
+  #[must_use]
+  pub fn actor_selection_from_path(&self, path: &ActorPath) -> ActorSelection {
+    ActorSelection::from_path(self.state(), path)
   }
 
   /// Returns the shared system state.
@@ -442,6 +463,28 @@ impl ActorSystem {
     self.spawn_child(guardian_pid, props)
   }
 
+  /// Spawns a new top-level actor under the user guardian.
+  ///
+  /// Corresponds to classic `ActorRefFactory.actorOf(props)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created.
+  pub fn actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.spawn(props)
+  }
+
+  /// Spawns a new named top-level actor under the user guardian.
+  ///
+  /// Corresponds to classic `ActorRefFactory.actorOf(props, name)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created, including duplicate names.
+  pub fn actor_of_named(&self, props: &Props, name: &str) -> Result<ChildRef, SpawnError> {
+    self.spawn(&props.clone().with_name(name))
+  }
+
   /// Spawns a new actor under the system guardian (internal use only).
   #[allow(dead_code)]
   pub(crate) fn system_actor_of(&self, props: &Props) -> Result<ChildRef, SpawnError> {
@@ -489,6 +532,17 @@ impl ActorSystem {
   /// Returns an error if the stop message cannot be enqueued.
   pub(crate) fn stop_actor(&self, pid: Pid) -> Result<(), SendError> {
     self.state.send_system_message(pid, SystemMessage::Stop)
+  }
+
+  /// Sends a stop signal to the specified actor reference.
+  ///
+  /// Corresponds to classic `ActorRefFactory.stop(actor)`.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the stop message cannot be enqueued.
+  pub fn stop(&self, actor: &ActorRef) -> Result<(), SendError> {
+    self.stop_actor(actor.pid())
   }
 
   /// Drains ask futures that have been fulfilled since the last check.
