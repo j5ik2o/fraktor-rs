@@ -26,6 +26,7 @@ use crate::core::kernel::{
       ActorRef,
       dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
     },
+    deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AskResult,
@@ -234,6 +235,11 @@ impl SystemStateShared {
     Some(ActorPath::from_parts_and_segments(parts, segments, base.uid()))
   }
 
+  /// Registers a canonical actor path for a synthetic pid.
+  pub fn register_actor_path(&self, pid: Pid, path: &ActorPath) {
+    self.inner.write().register_actor_path(pid, path);
+  }
+
   fn canonical_parts(&self) -> Option<ActorPathParts> {
     let mut parts = ActorPathParts::local(self.system_name.clone()).with_guardian(self.guardian_kind);
     let Some(host) = self.canonical_host.clone() else {
@@ -272,6 +278,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn system_name(&self) -> String {
     self.system_name.clone()
+  }
+
+  /// Returns a snapshot of the deployer registry.
+  #[must_use]
+  pub fn deployer(&self) -> Deployer {
+    self.inner.read().deployer()
   }
 
   /// Returns the start time of the actor system (epoch-relative duration).
@@ -427,6 +439,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn register_temp_actor(&self, actor: ActorRef) -> String {
     self.inner.write().register_temp_actor(actor)
+  }
+
+  /// Generates a unique `/temp` path segment using the provided prefix hint.
+  #[must_use]
+  pub fn next_temp_actor_name_with_prefix(&self, prefix: &str) -> String {
+    self.inner.read().next_temp_actor_name_with_prefix(prefix)
   }
 
   /// Removes a temporary actor reference if registered.

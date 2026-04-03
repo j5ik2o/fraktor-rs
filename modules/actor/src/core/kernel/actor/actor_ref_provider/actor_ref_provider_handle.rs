@@ -3,10 +3,15 @@
 use alloc::string::String;
 
 use super::ActorRefProvider;
-use crate::core::kernel::actor::{
-  actor_path::{ActorPath, ActorPathScheme},
-  actor_ref::ActorRef,
-  error::ActorError,
+use crate::core::kernel::{
+  actor::{
+    Address,
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::ActorRef,
+    deploy::Deployer,
+    error::ActorError,
+  },
+  util::futures::ActorFutureShared,
 };
 
 /// Handle wrapper that combines a provider with its supported schemes.
@@ -80,12 +85,28 @@ where
     self.provider.root_path()
   }
 
+  fn root_guardian_at(&self, address: &Address) -> Option<ActorRef> {
+    self.provider.root_guardian_at(address)
+  }
+
+  fn deployer(&self) -> Option<Deployer> {
+    self.provider.deployer()
+  }
+
   fn resolve_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.resolve_actor_ref(path)
   }
 
   fn resolve_actor_ref_str(&mut self, path: &str) -> Result<ActorRef, ActorError> {
     self.provider.resolve_actor_ref_str(path)
+  }
+
+  fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
+    self.provider.temp_path_with_prefix(prefix)
+  }
+
+  fn temp_container(&self) -> Option<ActorRef> {
+    self.provider.temp_container()
   }
 
   fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
@@ -96,7 +117,23 @@ where
     self.provider.unregister_temp_actor(name);
   }
 
+  fn unregister_temp_actor_path(&self, path: &ActorPath) -> Result<(), ActorError> {
+    self.provider.unregister_temp_actor_path(path)
+  }
+
   fn temp_actor(&self, name: &str) -> Option<ActorRef> {
     self.provider.temp_actor(name)
+  }
+
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    self.provider.termination_future()
+  }
+
+  fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
+    self.provider.get_external_address_for(addr)
+  }
+
+  fn get_default_address(&self) -> Option<Address> {
+    self.provider.get_default_address()
   }
 }

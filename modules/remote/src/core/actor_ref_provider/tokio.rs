@@ -3,6 +3,7 @@
 mod installer;
 
 use alloc::{
+  format,
   string::{String, ToString},
   vec::Vec,
 };
@@ -10,10 +11,11 @@ use alloc::{
 use ahash::RandomState;
 use fraktor_actor_rs::core::kernel::{
   actor::{
-    Pid,
-    actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    Address, Pid,
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme, GuardianKind},
+    actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
     actor_ref_provider::ActorRefProvider,
+    deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
   },
@@ -21,6 +23,7 @@ use fraktor_actor_rs::core::kernel::{
     ActorSystem, ActorSystemWeak,
     remote::{RemoteAuthorityError, RemoteWatchHook},
   },
+  util::futures::ActorFutureShared,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 use hashbrown::HashMap;
@@ -38,6 +41,8 @@ use crate::core::{
   remoting_extension::{RemotingControl, RemotingControlShared, RemotingError},
   watcher::{RemoteWatcherCommand, RemoteWatcherDaemon},
 };
+
+const PROVIDER_TEMP_CONTAINER_PID: Pid = Pid::new(u64::MAX - 4, 0);
 
 /// Provider that creates [`ActorRef`] instances for remote recipients using Tokio TCP
 /// transport.
@@ -169,6 +174,23 @@ impl TokioActorRefProvider {
   /// Returns the watchers registered for a remote PID (test helper).
   pub fn remote_watchers_for_test(&self, pid: Pid) -> Option<Vec<Pid>> {
     self.watch_entries.get(&pid).map(|entry| entry.watchers().to_vec())
+  }
+
+  fn state(&self) -> Option<fraktor_actor_rs::core::kernel::system::state::SystemStateShared> {
+    self.system.upgrade().map(|system| system.state())
+  }
+
+  fn default_address_from_state(
+    state: &fraktor_actor_rs::core::kernel::system::state::SystemStateShared,
+  ) -> Option<Address> {
+    let (host, Some(port)) = state.canonical_authority_components()? else {
+      return None;
+    };
+    Some(Address::remote(state.system_name(), host, port))
+  }
+
+  fn root_path_for_state(state: &fraktor_actor_rs::core::kernel::system::state::SystemStateShared) -> ActorPath {
+    ActorPath::from_parts(ActorPathParts::local(state.system_name()).with_guardian(GuardianKind::User))
   }
 }
 
@@ -337,5 +359,90 @@ impl ActorRefProvider for TokioActorRefProvider {
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     Self::actor_ref(self, path)
       .map_err(|error| ActorError::fatal(alloc::format!("Failed to create Tokio actor ref: {:?}", error)))
+  }
+
+  fn root_guardian(&self) -> Option<ActorRef> {
+    self.state()?.root_guardian().map(|cell| cell.actor_ref())
+  }
+
+  fn guardian(&self) -> Option<ActorRef> {
+    self.state()?.user_guardian().map(|cell| cell.actor_ref())
+  }
+
+  fn system_guardian(&self) -> Option<ActorRef> {
+    self.state()?.system_guardian().map(|cell| cell.actor_ref())
+  }
+
+  fn root_path(&self) -> ActorPath {
+    self.state().map_or_else(
+      || ActorPath::from_parts(ActorPathParts::local("cellactor")),
+      |state| Self::root_path_for_state(&state),
+    )
+  }
+
+  fn root_guardian_at(&self, address: &Address) -> Option<ActorRef> {
+    let default = self.get_default_address()?;
+    if address.protocol() == default.protocol() { self.root_guardian() } else { None }
+  }
+
+  fn deployer(&self) -> Option<Deployer> {
+    Some(self.state()?.deployer())
+  }
+
+  fn temp_path(&self) -> ActorPath {
+    self.root_path().child("temp")
+  }
+
+  fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
+    let state = self.state().ok_or_else(|| ActorError::fatal("tokio provider system unavailable"))?;
+    let generated = if prefix.is_empty() {
+      state.next_temp_actor_name_with_prefix("tmp")
+    } else {
+      state.next_temp_actor_name_with_prefix(prefix)
+    };
+    self.temp_path().try_child(&generated).map_err(|error| ActorError::fatal(format!("invalid temp path: {error}")))
+  }
+
+  fn temp_container(&self) -> Option<ActorRef> {
+    let state = self.state()?;
+    state.register_actor_path(PROVIDER_TEMP_CONTAINER_PID, &self.temp_path());
+    Some(ActorRef::with_system(PROVIDER_TEMP_CONTAINER_PID, NullSender, &state))
+  }
+
+  fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
+    Some(self.state()?.register_temp_actor(actor))
+  }
+
+  fn unregister_temp_actor(&self, name: &str) {
+    if let Some(state) = self.state() {
+      state.unregister_temp_actor(name);
+    }
+  }
+
+  fn unregister_temp_actor_path(&self, path: &ActorPath) -> Result<(), ActorError> {
+    match path.segments() {
+      | [guardian, temp, name] if guardian.as_str() == "user" && temp.as_str() == "temp" => {
+        self.unregister_temp_actor(name.as_str());
+        Ok(())
+      },
+      | _ => Err(ActorError::fatal(format!("invalid temp actor path: {}", path.to_relative_string()))),
+    }
+  }
+
+  fn temp_actor(&self, name: &str) -> Option<ActorRef> {
+    self.state()?.temp_actor(name)
+  }
+
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    self.state().map_or_else(ActorFutureShared::new, |state| state.termination_future())
+  }
+
+  fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
+    let default = self.get_default_address()?;
+    if addr.protocol() == default.protocol() { Some(default) } else { None }
+  }
+
+  fn get_default_address(&self) -> Option<Address> {
+    Self::default_address_from_state(&self.state()?)
   }
 }

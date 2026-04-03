@@ -2,10 +2,15 @@
 
 use alloc::{format, string::String};
 
-use crate::core::kernel::actor::{
-  actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind},
-  actor_ref::ActorRef,
-  error::ActorError,
+use crate::core::kernel::{
+  actor::{
+    Address,
+    actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind},
+    actor_ref::ActorRef,
+    deploy::Deployer,
+    error::ActorError,
+  },
+  util::futures::ActorFutureShared,
 };
 
 /// Trait for all ActorRef providers to implement.
@@ -67,6 +72,18 @@ pub trait ActorRefProvider: Send + Sync {
     ActorPath::from_parts(ActorPathParts::local("cellactor").with_guardian(GuardianKind::User))
   }
 
+  /// Returns the root guardian ref for the requested address when reachable.
+  #[must_use]
+  fn root_guardian_at(&self, _address: &Address) -> Option<ActorRef> {
+    None
+  }
+
+  /// Returns the deployer registry associated with this provider.
+  #[must_use]
+  fn deployer(&self) -> Option<Deployer> {
+    None
+  }
+
   /// Resolves an actor reference for the provided path.
   ///
   /// # Errors
@@ -88,6 +105,22 @@ pub trait ActorRefProvider: Send + Sync {
     self.resolve_actor_ref(path)
   }
 
+  /// Returns a generated temporary actor path using the provided prefix hint.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the provider cannot generate a valid prefixed temp path.
+  fn temp_path_with_prefix(&self, prefix: &str) -> Result<ActorPath, ActorError> {
+    let _ = prefix;
+    Err(ActorError::fatal("temporary prefixed actor path is not supported by this provider"))
+  }
+
+  /// Returns the actor reference representing `/temp` when available.
+  #[must_use]
+  fn temp_container(&self) -> Option<ActorRef> {
+    None
+  }
+
   /// Registers a temporary actor reference and returns the generated segment name.
   fn register_temp_actor(&self, _actor: ActorRef) -> Option<String> {
     None
@@ -96,9 +129,36 @@ pub trait ActorRefProvider: Send + Sync {
   /// Removes a temporary actor mapping if present.
   fn unregister_temp_actor(&self, _name: &str) {}
 
+  /// Unregisters a temporary actor using its `/temp/...` path.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error when the path is not a valid temp actor path.
+  fn unregister_temp_actor_path(&self, _path: &ActorPath) -> Result<(), ActorError> {
+    Err(ActorError::fatal("temporary actor path unregistration is not supported by this provider"))
+  }
+
   /// Resolves a temporary actor reference by generated segment name.
   #[must_use]
   fn temp_actor(&self, _name: &str) -> Option<ActorRef> {
+    None
+  }
+
+  /// Returns a future that completes when the backing actor system terminates.
+  #[must_use]
+  fn termination_future(&self) -> ActorFutureShared<()> {
+    ActorFutureShared::new()
+  }
+
+  /// Returns the external address to use when communicating with the given address.
+  #[must_use]
+  fn get_external_address_for(&self, _addr: &Address) -> Option<Address> {
+    None
+  }
+
+  /// Returns the default external address for this provider when available.
+  #[must_use]
+  fn get_default_address(&self) -> Option<Address> {
     None
   }
 }

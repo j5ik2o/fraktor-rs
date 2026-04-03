@@ -1,6 +1,8 @@
+use fraktor_utils_rs::core::sync::SharedAccess;
+
 use crate::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorContext, Address, Pid,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, LocalActorRefProvider},
     error::{ActorError, SendError},
@@ -88,6 +90,47 @@ fn local_actor_ref_provider_supports_temp_actor_round_trip() {
 
   provider.unregister_temp_actor(&name);
   assert!(provider.temp_actor(&name).is_none());
+}
+
+#[test]
+fn local_actor_ref_provider_exposes_classic_contract_helpers() {
+  let props = Props::from_fn(|| ProbeActor);
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+    .with_system_name("provider-helpers")
+    .with_tick_driver(tick_driver);
+  let system = ActorSystem::new_with_config(&props, &config).expect("system");
+  let provider = LocalActorRefProvider::new_with_state(&system.state());
+
+  let root_at = provider.root_guardian_at(&Address::local("provider-helpers")).expect("root guardian at local");
+  assert_eq!(root_at.pid(), provider.root_guardian().expect("root guardian").pid());
+  assert!(provider.root_guardian_at(&Address::remote("other", "127.0.0.1", 2552)).is_none());
+
+  let prefixed = provider.temp_path_with_prefix("reply").expect("prefixed temp path");
+  assert!(prefixed.to_relative_string().starts_with("/user/temp/reply-"));
+
+  let temp_container = provider.temp_container().expect("temp container");
+  assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
+
+  let temp_ref = ActorRef::new(Pid::new(5252, 0), TempProbeSender);
+  let name = provider.register_temp_actor(temp_ref).expect("temp actor");
+  let path = provider.temp_path().child(&name);
+  provider.unregister_temp_actor_path(&path).expect("unregister by path");
+  assert!(provider.temp_actor(&name).is_none());
+
+  assert!(provider.deployer().is_some());
+  assert_eq!(provider.get_default_address(), Some(Address::local("provider-helpers")));
+  assert_eq!(
+    provider.get_external_address_for(&Address::local("provider-helpers")),
+    Some(Address::local("provider-helpers"))
+  );
+
+  let future = provider.termination_future();
+  assert!(!future.with_read(|inner| inner.is_ready()));
+  system.state().mark_terminated();
+  assert!(future.with_read(|inner| inner.is_ready()));
 }
 
 #[test]
