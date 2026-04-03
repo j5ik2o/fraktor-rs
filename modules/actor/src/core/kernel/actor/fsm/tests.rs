@@ -167,6 +167,42 @@ fn fsm_stop_records_reason_and_invokes_termination_callback() {
 }
 
 #[test]
+fn fsm_restart_requires_initialize_before_handling_messages() {
+  let (_system, mut ctx) = build_context();
+  let mut fsm = Fsm::<ProbeState, usize>::new();
+  fsm.start_with(ProbeState::Active, 5);
+  fsm.when(ProbeState::Active, |_ctx, message: &AnyMessageView<'_>, _state, _data| {
+    if message.downcast_ref::<Finish>().is_some() {
+      return Ok(FsmTransition::stop(FsmReason::Normal));
+    }
+    if message.downcast_ref::<Advance>().is_some() {
+      return Ok(FsmTransition::goto(ProbeState::Idle).using(0));
+    }
+    Ok(FsmTransition::unhandled())
+  });
+  fsm.initialize(&ctx).expect("initialize");
+
+  let finish = AnyMessage::new(Finish);
+  let finish_view = finish.as_view();
+  fsm.handle(&mut ctx, &finish_view).expect("finish");
+  assert!(fsm.is_terminated());
+
+  fsm.start_with(ProbeState::Active, 1);
+  let advance = AnyMessage::new(Advance);
+  let advance_view = advance.as_view();
+  let error = fsm.handle(&mut ctx, &advance_view).expect_err("restart should require initialize");
+
+  assert!(!fsm.is_terminated());
+  assert!(
+    matches!(error, crate::core::kernel::actor::error::ActorError::Recoverable(reason) if reason.as_str() == "fsm not initialized")
+  );
+
+  fsm.initialize(&ctx).expect("reinitialize");
+  fsm.handle(&mut ctx, &advance_view).expect("advance");
+  assert_eq!(fsm.state_name(), Some(&ProbeState::Idle));
+}
+
+#[test]
 fn fsm_state_timeout_message_transitions_when_generation_matches() {
   let (_system, mut ctx) = build_context();
   let mut fsm = Fsm::<ProbeState, usize>::new();

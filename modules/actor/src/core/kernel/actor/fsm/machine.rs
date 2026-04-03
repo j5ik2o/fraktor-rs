@@ -77,6 +77,7 @@ where
   pub fn start_with(&mut self, state: State, data: Data) {
     self.state = Some(state);
     self.data = Some(data);
+    self.initialized = false;
     self.terminated = false;
     self.last_stop_reason = None;
   }
