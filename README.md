@@ -4,112 +4,94 @@
 [![crates.io](https://img.shields.io/crates/v/fraktor-rs.svg)](https://crates.io/crates/fraktor-rs)
 [![docs.rs](https://docs.rs/fraktor-rs/badge.svg)](https://docs.rs/fraktor-rs)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/j5ik2o/fraktor-rs)
-[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com)
-[![dependency status](https://deps.rs/repo/github/j5ik2o/fraktor-rs/status.svg)](https://deps.rs/repo/github/j5ik2o/fraktor-rs)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![License](https://img.shields.io/badge/License-APACHE2.0-blue.svg)](https://opensource.org/licenses/apache-2-0)
-[![Lines of Code](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j5ik2o/fraktor-rs/refs/heads/main/.github/badges/tokei_badge.json)](https://github.com/j5ik2o/fraktor-rs)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
-> See [README.ja.md](README.ja.md) for the Japanese edition.
+[日本語版](README.ja.md)
 
-fraktor-rs is an actor runtime that mirrors [Pekko](https://github.com/apache/pekko) and [protoactor-go](https://github.com/asynkron/protoactor-go) semantics across `no_std` boards and host environments such as Tokio. The workspace ships five crates—`fraktor-utils-rs`, `fraktor-actor-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, and `fraktor-stream-rs`—each exposing `core` (#![no_std]) and `std` modules behind features instead of maintaining legacy `*-core` / `*-std` sibling crates.
+fraktor-rs is a specification-driven actor runtime that brings Pekko and Proto.Actor-style semantics to both `no_std` targets and host runtimes. It gives you one workspace with shared `core`/`std` layering for actors, remoting, clustering, and streams instead of maintaining separate embedded and host codebases.
 
-## Key Capabilities
-- **Lifecycle-first ActorSystem** – `modules/actor/src/core/lifecycle/*` and `system/*` prioritize `SystemMessage::{Create,Recreate,Failure}` in the system mailbox, combine deterministic SupervisorStrategy flows, and surface DeathWatch decisions immediately through the guardian hierarchy.
-- **Typed/Untyped protocol bridge** – `typed/*` APIs provide `Behavior` + `TypedActorRef` ergonomics while `into_untyped`/`as_untyped` shims keep reply semantics explicit without depending on global sender state, preserving the Proto.Actor-inspired `reply_to` discipline.
-- **Observability & diagnostics** – EventStream, DeadLetter, LoggerSubscriber, and `tick_driver_snapshot` expose lifecycle/remoting/tick driver metrics with the same payloads on RTT/UART and tracing subscribers, making it easy to probe `RemoteAuthorityManagerGeneric` state or scheduler drift.
-- **Remoting stack** – `fraktor-remote-rs::core` adds `RemoteActorRefProvider`, `RemoteWatcherDaemon`, `EndpointManager`, deferred envelopes, flight recorder buffers, and quarantine tracking so actor trees can extend across nodes without leaking Pekko compatibility rules.
-- **Transport adapters & failure detection** – Loopback routing ships in `core::loopback_router` while `std::transport::tokio_tcp` provides handshake, backpressure, and `failure_detector` hooks for TCP environments; adapters are pluggable through `transport::factory`.
-- **Cluster extension** – `fraktor-cluster-rs` provides protoactor-go compatible cluster primitives including identity lookup, placement strategies, membership gossip, and topology management for distributed actor systems with optional AWS ECS integration.
-- **Streams processing** – `fraktor-stream-rs` offers stream processing primitives built on top of the actor system, enabling reactive data flow patterns in both `no_std` and `std` environments.
-- **Toolbox & allocator-agnostic primitives** – `fraktor-utils-rs` delivers `RuntimeToolbox`, portable atomics, spin-based mutexes, timers, and Arc replacements so the upper layers stay interrupt-safe on `thumbv6/v8` MCUs yet reuse the same API on hosts.
+## Highlights
 
-## Architecture
-```mermaid
-flowchart LR
-    subgraph Utils [fraktor-utils-rs]
-        UC[core: no_std]
-        US[std: host helpers]
-    end
-    subgraph Actor [fraktor-actor-rs]
-        AC[core]
-        AS[std + tokio-executor]
-    end
-    subgraph Remote [fraktor-remote-rs]
-        RC[core]
-        RS[std + transport]
-    end
-    subgraph Cluster [fraktor-cluster-rs]
-        CC[core]
-        CS[std + aws-ecs]
-    end
-    subgraph Streams [fraktor-stream-rs]
-        SC[core]
-        SS[std]
-    end
+- Shared `core`/`std` module structure across the workspace, so the same actor model can be used on embedded targets and on Tokio-based hosts.
+- Five focused crates for utils, actors, remoting, clustering, and streams, plus runnable showcases for the common scenarios.
+- Pekko / Proto.Actor inspired semantics for lifecycle, supervision, death watch, actor paths, remoting, and typed/untyped bridging.
+- Specification-driven workflow with project steering, custom dylint rules, and reproducible CI entrypoints.
 
-    UC --> AC
-    AC --> RC
-    RC --> CC
-    AC --> SC
-    US --> AS
-    AS --> RS
-    RS --> CS
-    AS --> SS
+## Quickstart
+
+### Requirements
+
+- `rustup`
+- Rust toolchain `nightly-2025-12-01`
+- `cargo-dylint`, `rustc-dev`, and `llvm-tools-preview` if you want to run the full local checks
+
+### Install
+
+```bash
+rustup toolchain install nightly-2025-12-01 --component rustfmt --component clippy
+git clone git@github.com:j5ik2o/fraktor-rs.git
+cd fraktor-rs
 ```
 
-Each crate exports the same API surface across `core` and `std`: `core` stays allocator-agnostic for embedded builds, `std` layers Tokio/logging adapters. `fraktor-remote-rs` composes actor/utils to provide remoting extensions, `fraktor-cluster-rs` builds on remote for distributed clustering, and `fraktor-stream-rs` provides reactive stream processing on top of the actor system.
+### Run
 
-## Getting Started
-1. **Install prerequisites**
-   - Rust nightly toolchain (`rustup toolchain install nightly`)
-   - `cargo-dylint`, `rustc-dev`, and `llvm-tools-preview` for custom lints
-   - Optional embedded targets: `thumbv6m-none-eabi`, `thumbv8m.main-none-eabi`
-2. **Clone the repo**
-   ```bash
-   git clone git@github.com:j5ik2o/fraktor-rs.git
-   cd fraktor-rs
-   ```
-3. **Run the core checks**
-   ```bash
-   cargo fmt --check
-   cargo test -p fraktor-utils-rs
-   cargo test -p fraktor-actor-rs --features test-support
-   cargo test -p fraktor-remote-rs quickstart --features test-support
-   scripts/ci-check.sh all   # lint + dylint + no_std/std/embedded + docs
-   ```
+```bash
+cargo run -p fraktor-showcases-std --example getting_started
+```
 
-## Repository Layout
-| Path | Description |
+### Verify
+
+```bash
+cargo test -p fraktor-actor-rs --features "std test-support tokio-executor"
+./scripts/ci-check.sh all
+```
+
+## Usage
+
+The workspace is organized around these crates:
+
+| Crate | Purpose |
 | --- | --- |
-| `modules/utils/` | `fraktor-utils-rs`: `RuntimeToolbox`, portable atomics, timer families, Arc replacements, and interrupts-safe primitives split into `core`/`std`. |
-| `modules/actor/` | `fraktor-actor-rs`: ActorSystem, mailboxes, supervision, typed APIs, scheduler/tick driver, EventStream, and Pekko-compatible ActorPath handling. |
-| `modules/remote/` | `fraktor-remote-rs`: remoting extension, remote actor ref provider, endpoint managers/readers/writers, remote watcher daemon, loopback + Tokio TCP transport. |
-| `modules/cluster/` | `fraktor-cluster-rs`: protoactor-go compatible cluster primitives including identity lookup, placement strategies, membership gossip, topology management, and AWS ECS integration. |
-| `modules/streams/` | `fraktor-stream-rs`: stream processing primitives built on the actor system for reactive data flow patterns. |
-| `showcases-std/` | Runnable examples organised by use-case: getting started, request/reply, state management, child lifecycle, timers, routing, stash, serialization, stream pipeline, persistent actor, cluster membership, and remote messaging. Run with `cargo run -p fraktor-showcases-std --example <name>` (add `--features advanced` for cross-module examples). |
-| `docs/guides/` | Operational guides such as actor-system bootstrapping, DeathWatch migration, and tick-driver quickstarts. |
-| `.kiro/steering/` | Project-wide steering policies (architecture, tech, structure) enforced by custom dylint rules. |
-| `.kiro/specs/` | Specification folders following the requirements → design → tasks → implementation workflow. |
-| `references/` | Upstream Pekko and protoactor-go snapshots referenced when porting semantics. |
-| `scripts/` | Repeatable CI entry points (`ci-check.sh`, formatter/lint wrappers, embedded runners). |
+| [`modules/utils`](modules/utils) | Portable primitives, runtime toolbox, atomics, synchronization, timers |
+| [`modules/actor`](modules/actor) | ActorSystem, mailboxes, supervision, typed APIs, scheduler, EventStream |
+| [`modules/remote`](modules/remote) | Remoting extension, endpoint management, transport adapters, failure detection |
+| [`modules/cluster`](modules/cluster) | Membership, identity lookup, placement, topology, pub-sub, ECS integration |
+| [`modules/stream`](modules/stream) | Reactive stream primitives built on the actor system |
+| [`showcases/std`](showcases/std) | Runnable examples such as getting started, request/reply, timers, routing, remoting, and clustering |
 
-## Specification-Driven Development
-- Use `/prompts:kiro-spec-init`, `-requirements`, `-design`, and `-tasks` to capture every feature’s intent before touching code.
-- Implementation happens through `/prompts:kiro-spec-impl` and is validated by `/prompts:kiro-validate-*`, ensuring traceability between specs, tasks, and automated tests.
-- Steering documents (`.kiro/steering/*.md`) define global rules: 2018 modules only, 1 public type per file, rustdoc in English, other docs in Japanese, and no `#[cfg(feature = "std")]` inside runtime core modules.
+Common entrypoints:
 
-## Roadmap
-- Harden the `fraktor-remote-rs` endpoint manager state machine (quarantine expiry, deferred envelope replay, and remote watcher daemons).
-- Publish transport cookbooks for loopback and Tokio TCP remoting flows under `docs/guides/remote-*`.
-- Expand scheduler/tick-driver guides to include watchdog metrics emitted from `EventStreamEvent::TickDriver`.
-- Integrate the remoting failure detector with EventStream probes so Pekko-compatible InvalidAssociation events stay observable across transports.
+```bash
+# Run a standard showcase
+cargo run -p fraktor-showcases-std --example request_reply
+
+# Run an advanced showcase
+cargo run -p fraktor-showcases-std --example remote_messaging --features advanced
+```
+
+## Documentation
+
+- API docs: [docs.rs/fraktor-rs](https://docs.rs/fraktor-rs)
+- Repository knowledge base: [DeepWiki](https://deepwiki.com/j5ik2o/fraktor-rs)
+- Current parity reports:
+  - [Actor](docs/gap-analysis/actor-gap-analysis.md)
+  - [Remote](docs/gap-analysis/remote-gap-analysis.md)
+  - [Cluster](docs/gap-analysis/cluster-gap-analysis.md)
+  - [Persistence](docs/gap-analysis/persistence-gap-analysis.md)
+  - [Stream](docs/gap-analysis/stream-gap-analysis.md)
+
+## Getting help
+
+- Issues: [GitHub Issues](https://github.com/j5ik2o/fraktor-rs/issues)
+- Source of truth for implementation rules: [AGENTS.md](AGENTS.md)
 
 ## Contributing
-1. Fork and create a feature branch linked to a spec under `.kiro/specs/<feature>/`.
-2. Follow the spec lifecycle (requirements → design → tasks → implementation) before writing Rust code.
-3. Run `scripts/ci-check.sh all` locally so lint/dylint/no_std/std/embedded/doc jobs pass.
-4. Submit a PR that references the spec/task IDs and describe any remoting or runtime impacts.
+
+- Follow the repository's spec-driven workflow before implementation.
+- Respect the project-wide rules in [`.kiro/steering`](.kiro/steering) and [AGENTS.md](AGENTS.md).
+- Run `./scripts/ci-check.sh all` before opening a PR.
+- Use a focused branch and describe runtime, remoting, cluster, or stream impact in the PR.
 
 ## License
-Dual-licensed under Apache-2.0 and MIT. See `LICENSE-APACHE` and `LICENSE-MIT` for details.
+
+Dual-licensed under Apache-2.0 and MIT. See [LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).
