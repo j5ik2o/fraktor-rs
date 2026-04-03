@@ -1,5 +1,7 @@
 //! Handle wrapper for ActorRefProvider implementations.
 
+use alloc::string::String;
+
 use super::ActorRefProvider;
 use crate::core::kernel::actor::{
   actor_path::{ActorPath, ActorPathScheme},
@@ -72,5 +74,29 @@ where
 
   fn temp_path(&self) -> ActorPath {
     self.provider.temp_path()
+  }
+
+  fn root_path(&self) -> ActorPath {
+    self.provider.root_path()
+  }
+
+  fn resolve_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    self.provider.resolve_actor_ref(path)
+  }
+
+  fn resolve_actor_ref_str(&mut self, path: &str) -> Result<ActorRef, ActorError> {
+    self.provider.resolve_actor_ref_str(path)
+  }
+
+  fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
+    self.provider.register_temp_actor(actor)
+  }
+
+  fn unregister_temp_actor(&self, name: &str) {
+    self.provider.unregister_temp_actor(name);
+  }
+
+  fn temp_actor(&self, name: &str) -> Option<ActorRef> {
+    self.provider.temp_actor(name)
   }
 }

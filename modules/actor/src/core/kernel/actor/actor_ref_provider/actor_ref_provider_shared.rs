@@ -1,5 +1,6 @@
 //! Shared wrapper for ActorRefProvider implementations.
 
+use alloc::string::String;
 use core::{any::TypeId, marker::PhantomData};
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
@@ -109,6 +110,36 @@ impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<
   fn temp_path(&self) -> ActorPath {
     let guard = self.inner.lock();
     guard.temp_path()
+  }
+
+  fn root_path(&self) -> ActorPath {
+    let guard = self.inner.lock();
+    guard.root_path()
+  }
+
+  fn resolve_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    let mut guard = self.inner.lock();
+    guard.resolve_actor_ref(path)
+  }
+
+  fn resolve_actor_ref_str(&mut self, path: &str) -> Result<ActorRef, ActorError> {
+    let mut guard = self.inner.lock();
+    guard.resolve_actor_ref_str(path)
+  }
+
+  fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
+    let guard = self.inner.lock();
+    guard.register_temp_actor(actor)
+  }
+
+  fn unregister_temp_actor(&self, name: &str) {
+    let guard = self.inner.lock();
+    guard.unregister_temp_actor(name);
+  }
+
+  fn temp_actor(&self, name: &str) -> Option<ActorRef> {
+    let guard = self.inner.lock();
+    guard.temp_actor(name)
   }
 }
 

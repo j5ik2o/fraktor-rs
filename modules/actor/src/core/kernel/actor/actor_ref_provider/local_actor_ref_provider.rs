@@ -1,9 +1,11 @@
 //! Local-only actor reference provider.
 
+use alloc::{format, string::String};
+
 use crate::core::kernel::{
   actor::{
     Pid,
-    actor_path::{ActorPath, ActorPathScheme, GuardianKind},
+    actor_path::{ActorPath, ActorPathParts, ActorPathScheme, GuardianKind},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
     actor_ref_provider::ActorRefProvider,
     error::{ActorError, SendError},
@@ -73,6 +75,37 @@ impl LocalActorRefProvider {
     }?;
     state.cell(&pid).map(|cell| cell.actor_ref())
   }
+
+  fn resolve_local_path(&self, path: &ActorPath) -> Result<ActorRef, ActorError> {
+    let Some(state) = self.state() else {
+      return Err(ActorError::fatal("LocalActorRefProvider is not bound to a system state"));
+    };
+
+    let segments = path.segments();
+    match segments {
+      | [guardian] if guardian.as_str() == GuardianKind::User.segment() => {
+        return self.guardian().ok_or_else(|| ActorError::fatal("user guardian is not available"));
+      },
+      | [guardian] if guardian.as_str() == GuardianKind::System.segment() => {
+        return self.system_guardian().ok_or_else(|| ActorError::fatal("system guardian is not available"));
+      },
+      | [guardian, temp, name] if guardian.as_str() == GuardianKind::User.segment() && temp.as_str() == "temp" => {
+        return state
+          .temp_actor(name.as_str())
+          .ok_or_else(|| ActorError::fatal(format!("temporary actor not found: {}", name.as_str())));
+      },
+      | _ => {},
+    }
+
+    let Some(pid) = state.with_actor_path_registry(|registry| registry.pid_for(path)) else {
+      return Err(ActorError::fatal(format!("actor path not found: {}", path.to_relative_string())));
+    };
+
+    state
+      .cell(&pid)
+      .map(|cell| cell.actor_ref())
+      .ok_or_else(|| ActorError::fatal(format!("actor cell not found for pid {:?}", pid)))
+  }
 }
 
 impl Default for LocalActorRefProvider {
@@ -92,10 +125,7 @@ impl ActorRefProvider for LocalActorRefProvider {
       return Err(ActorError::fatal("LocalActorRefProvider does not support remote actor paths"));
     }
 
-    // For local-only systems, actor references are typically created through
-    // ActorContext::spawn_child() rather than through the provider.
-    // This method is primarily for path-based lookups, which are not yet implemented.
-    Err(ActorError::fatal("Path-based actor lookup not yet implemented for local provider"))
+    self.resolve_local_path(&path)
   }
 
   fn root_guardian(&self) -> Option<ActorRef> {
@@ -118,5 +148,31 @@ impl ActorRefProvider for LocalActorRefProvider {
       return ActorRef::null();
     };
     ActorRef::with_system(PROVIDER_DEAD_LETTER_PID, ProviderDeadLetterSender::new(state.downgrade()), &state)
+  }
+
+  fn root_path(&self) -> ActorPath {
+    let Some(state) = self.state() else {
+      return ActorPath::from_parts(ActorPathParts::local("cellactor").with_guardian(GuardianKind::User));
+    };
+    ActorPath::from_parts(ActorPathParts::local(state.system_name()).with_guardian(GuardianKind::User))
+  }
+
+  fn resolve_actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
+    self.actor_ref(path)
+  }
+
+  fn register_temp_actor(&self, actor: ActorRef) -> Option<String> {
+    let state = self.state()?;
+    Some(state.register_temp_actor(actor))
+  }
+
+  fn unregister_temp_actor(&self, name: &str) {
+    if let Some(state) = self.state() {
+      state.unregister_temp_actor(name);
+    }
+  }
+
+  fn temp_actor(&self, name: &str) -> Option<ActorRef> {
+    self.state()?.temp_actor(name)
   }
 }
