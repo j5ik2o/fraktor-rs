@@ -35,6 +35,8 @@ mod worker_stats;
 
 /// Confirmation qualifier type alias.
 mod confirmation_qualifier;
+/// Durable producer queue facade and entry point.
+mod durable_producer_queue;
 /// Commands for the durable producer queue actor.
 mod durable_producer_queue_command;
 /// Durable producer queue state for crash recovery.
@@ -50,6 +52,7 @@ pub use consumer_controller_command::ConsumerControllerCommand;
 pub use consumer_controller_confirmed::ConsumerControllerConfirmed;
 pub use consumer_controller_delivery::ConsumerControllerDelivery;
 pub use consumer_controller_settings::ConsumerControllerSettings;
+pub use durable_producer_queue::DurableProducerQueue;
 pub use durable_producer_queue_command::DurableProducerQueueCommand;
 pub use durable_producer_queue_state::DurableProducerQueueState;
 pub use message_sent::MessageSent;

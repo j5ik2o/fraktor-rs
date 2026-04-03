@@ -34,7 +34,7 @@ use crate::core::{
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
       scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
-      setup::ActorSystemConfig,
+      setup::{ActorSystemConfig, ActorSystemSetup},
       spawn::SpawnError,
     },
     event::{
@@ -142,6 +142,15 @@ impl ActorSystem {
   /// Returns [`SpawnError`] when guardian initialization fails.
   pub fn new_with_config(user_guardian_props: &Props, config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     Self::new_with_config_and(user_guardian_props, config, |_| Ok(()))
+  }
+
+  /// Creates a new actor system from a Pekko-style setup facade.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when guardian initialization or bootstrap fails.
+  pub fn new_with_setup(user_guardian_props: &Props, setup: &ActorSystemSetup) -> Result<Self, SpawnError> {
+    Self::new_with_config(user_guardian_props, setup.as_actor_system_config())
   }
 
   /// Creates an actor system with configuration and a bootstrap callback.

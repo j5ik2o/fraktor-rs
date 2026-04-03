@@ -1,25 +1,77 @@
 //! Local-only actor reference provider.
 
-use crate::core::kernel::actor::{
-  actor_path::{ActorPath, ActorPathScheme},
-  actor_ref::ActorRef,
-  actor_ref_provider::ActorRefProvider,
-  error::ActorError,
+use crate::core::kernel::{
+  actor::{
+    Pid,
+    actor_path::{ActorPath, ActorPathScheme, GuardianKind},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
+    actor_ref_provider::ActorRefProvider,
+    error::{ActorError, SendError},
+    messaging::AnyMessage,
+  },
+  system::state::{SystemStateShared, SystemStateWeak},
 };
+
+#[cfg(test)]
+mod tests;
+
+// 他の typed/system facade 用セントネル (`u64::MAX`, `u64::MAX - 1`,
+// `u64::MAX - 2`) に隣接する高い PID を予約し、この provider スコープの
+// dead-letter facade がランタイム割り当ての actor PID と衝突しないようにする。
+const PROVIDER_DEAD_LETTER_PID: Pid = Pid::new(u64::MAX - 3, 0);
+
+struct ProviderDeadLetterSender {
+  state: SystemStateWeak,
+}
+
+impl ProviderDeadLetterSender {
+  const fn new(state: SystemStateWeak) -> Self {
+    Self { state }
+  }
+}
+
+impl ActorRefSender for ProviderDeadLetterSender {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
+    let Some(state) = self.state.upgrade() else {
+      return Err(SendError::closed(message));
+    };
+    state.record_dead_letter(message, DeadLetterReason::ExplicitRouting, None);
+    Ok(SendOutcome::Delivered)
+  }
+}
 
 /// Provider for local-only actor systems.
 ///
 /// This provider only supports local actor references and will return an error
 /// if asked to create a reference for a remote actor path (with authority).
 pub struct LocalActorRefProvider {
-  _marker: core::marker::PhantomData<()>,
+  state: Option<SystemStateWeak>,
 }
 
 impl LocalActorRefProvider {
   /// Creates a new local actor reference provider.
   #[must_use]
   pub const fn new() -> Self {
-    Self { _marker: core::marker::PhantomData }
+    Self { state: None }
+  }
+
+  /// Creates a local actor reference provider bound to the provided system state.
+  #[must_use]
+  pub fn new_with_state(state: &SystemStateShared) -> Self {
+    Self { state: Some(state.downgrade()) }
+  }
+
+  fn state(&self) -> Option<SystemStateShared> {
+    self.state.as_ref()?.upgrade()
+  }
+
+  fn guardian_ref(&self, guardian: GuardianKind) -> Option<ActorRef> {
+    let state = self.state()?;
+    let pid = match guardian {
+      | GuardianKind::System => state.system_guardian_pid(),
+      | GuardianKind::User => state.user_guardian_pid(),
+    }?;
+    state.cell(&pid).map(|cell| cell.actor_ref())
   }
 }
 
@@ -44,5 +96,27 @@ impl ActorRefProvider for LocalActorRefProvider {
     // ActorContext::spawn_child() rather than through the provider.
     // This method is primarily for path-based lookups, which are not yet implemented.
     Err(ActorError::fatal("Path-based actor lookup not yet implemented for local provider"))
+  }
+
+  fn root_guardian(&self) -> Option<ActorRef> {
+    let state = self.state()?;
+    let pid = state.root_guardian_pid()?;
+    state.cell(&pid).map(|cell| cell.actor_ref())
+  }
+
+  fn guardian(&self) -> Option<ActorRef> {
+    self.guardian_ref(GuardianKind::User)
+  }
+
+  fn system_guardian(&self) -> Option<ActorRef> {
+    self.guardian_ref(GuardianKind::System)
+  }
+
+  fn dead_letters(&self) -> ActorRef {
+    let Some(state) = self.state() else {
+      debug_assert!(false, "LocalActorRefProvider.state not initialized");
+      return ActorRef::null();
+    };
+    ActorRef::with_system(PROVIDER_DEAD_LETTER_PID, ProviderDeadLetterSender::new(state.downgrade()), &state)
   }
 }

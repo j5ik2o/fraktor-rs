@@ -53,4 +53,24 @@ where
   fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.actor_ref(path)
   }
+
+  fn root_guardian(&self) -> Option<ActorRef> {
+    self.provider.root_guardian()
+  }
+
+  fn guardian(&self) -> Option<ActorRef> {
+    self.provider.guardian()
+  }
+
+  fn system_guardian(&self) -> Option<ActorRef> {
+    self.provider.system_guardian()
+  }
+
+  fn dead_letters(&self) -> ActorRef {
+    self.provider.dead_letters()
+  }
+
+  fn temp_path(&self) -> ActorPath {
+    self.provider.temp_path()
+  }
 }

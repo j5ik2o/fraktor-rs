@@ -141,6 +141,16 @@ fn untyped_recipient_ref_supports_ask() {
   assert_eq!(reply.payload().downcast_ref::<u32>(), Some(&99));
 }
 
+#[test]
+fn untyped_recipient_ref_ask_preserves_send_failure_semantics() {
+  let mut recipient = ActorRef::null();
+
+  let response = RecipientRef::ask::<u32, _>(&mut recipient, |reply_to| EchoRequest { value: 9, reply_to });
+  let result = response.future().with_write(|inner| inner.try_take()).expect("future should be ready");
+
+  assert!(matches!(result, Err(crate::core::kernel::actor::messaging::AskError::SendFailed(_))));
+}
+
 /// `TypedActorRef::tell` returns `()` (fire-and-forget, Pekko-compatible).
 /// `try_tell` no longer exists on TypedActorRef.
 #[test]
