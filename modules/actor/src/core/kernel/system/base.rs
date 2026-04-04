@@ -85,11 +85,13 @@ impl ActorSystem {
   pub fn new_empty_with<F>(configure: F) -> Self
   where
     F: FnOnce(ActorSystemConfig) -> ActorSystemConfig, {
-    let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    );
-    let scheduler_config =
-      crate::core::kernel::actor::scheduler::SchedulerConfig::default().with_runner_api_enabled(true);
+    use crate::core::kernel::actor::scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    };
+
+    let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+    let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
     let config = ActorSystemConfig::default().with_scheduler_config(scheduler_config).with_tick_driver(tick_driver);
     let config = configure(config);
     let state = match SystemState::build_from_config(&config) {

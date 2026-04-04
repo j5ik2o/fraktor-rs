@@ -6,7 +6,10 @@ mod tests;
 use alloc::vec::Vec;
 
 use super::failure_handler::FailureHandler;
-use crate::core::{kernel::actor::supervision::SupervisorStrategyConfig, typed::behavior::Behavior};
+use crate::core::{
+  kernel::actor::supervision::{SupervisorStrategy, SupervisorStrategyConfig},
+  typed::behavior::Behavior,
+};
 
 /// Fluent helper returned by [`crate::core::typed::dsl::Behaviors::supervise`].
 pub struct Supervise<M>
@@ -55,7 +58,7 @@ where
     handlers: Vec<FailureHandler>,
     fallback: SupervisorStrategyConfig,
   ) -> SupervisorStrategyConfig {
-    let composed = crate::core::kernel::actor::supervision::SupervisorStrategy::with_decider(move |error| {
+    let composed = SupervisorStrategy::with_decider(move |error| {
       for handler in &handlers {
         if error.reason().source_type_id() == Some(handler.type_id()) {
           return handler.strategy().decide(error);

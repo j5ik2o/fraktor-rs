@@ -12,9 +12,16 @@ use alloc::{
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  kernel::{actor::actor_ref::ActorRef, event::logging::LogLevel},
+  kernel::{
+    actor::{
+      actor_ref::ActorRef,
+      messaging::{AnyMessage, system_message::SystemMessage},
+    },
+    event::logging::LogLevel,
+  },
   typed::{
     TypedActorRef,
+    actor::TypedActorContext,
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, DurableProducerQueueState, MessageSent,
@@ -24,6 +31,7 @@ use crate::core::{
       work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
     dsl::Behaviors,
+    props::TypedProps,
     receptionist::{Listing, Receptionist, ServiceKey},
   },
 };
@@ -1028,12 +1036,7 @@ fn stop_worker_producer_controller<A>(
 ) -> Result<(), crate::core::kernel::actor::error::SendError>
 where
   A: Clone + Send + Sync + 'static, {
-  pc_ref
-    .as_untyped_mut()
-    .try_tell(crate::core::kernel::actor::messaging::AnyMessage::new(
-      crate::core::kernel::actor::messaging::system_message::SystemMessage::PoisonPill,
-    ))
-    .map(|_| ())
+  pc_ref.as_untyped_mut().try_tell(AnyMessage::new(SystemMessage::PoisonPill)).map(|_| ())
 }
 
 /// Result of spawning a per-worker ProducerController.
@@ -1044,7 +1047,7 @@ type SpawnedWorker<A> = (WorkerEntry<A>, TypedActorRef<ProducerControllerCommand
 /// after inserting the entry into `state.workers` so that inline-dispatched
 /// `InternalDemand` signals find the registered worker.
 fn spawn_worker_actor<A>(
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
   producer_controller_settings: &crate::core::typed::delivery::ProducerControllerSettings,
@@ -1054,7 +1057,7 @@ where
   let pc_id = pc_producer_id.to_string();
   let producer_controller_settings = producer_controller_settings.clone();
 
-  let pc_props = crate::core::typed::TypedProps::<ProducerControllerCommand<A>>::from_behavior_factory(move || {
+  let pc_props = TypedProps::<ProducerControllerCommand<A>>::from_behavior_factory(move || {
     ProducerController::behavior_with_settings::<A>(pc_id.clone(), &producer_controller_settings, None)
   });
 

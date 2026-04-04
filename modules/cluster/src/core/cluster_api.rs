@@ -29,7 +29,7 @@ use crate::core::{
   ClusterApiError, ClusterError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterRequestError,
   ClusterResolveError, ClusterSubscriptionInitialStateMode,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainMetricsShared},
-  identity::ClusterIdentity,
+  identity::{ClusterIdentity, LookupError},
   placement::PlacementEvent,
 };
 
@@ -254,7 +254,7 @@ impl ClusterApi {
         return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
       }
       let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
-        | crate::core::identity::LookupError::Pending => ClusterResolveError::LookupPending,
+        | LookupError::Pending => ClusterResolveError::LookupPending,
         | _ => ClusterResolveError::LookupFailed,
       });
       let events = guard.drain_placement_events();

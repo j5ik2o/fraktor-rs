@@ -15,7 +15,7 @@ use crate::core::kernel::{
     scheduler::SchedulerCommand,
     supervision::{
       BackoffOnFailureOptions, BackoffOnStopOptions, BackoffSupervisorCommand, BackoffSupervisorResponse,
-      BackoffSupervisorStrategy, SupervisorStrategy, SupervisorStrategyConfig,
+      BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig,
     },
   },
   event::logging::LogLevel,
@@ -144,9 +144,7 @@ impl BackoffSupervisorActor {
         let decision_source = ArcShared::new(base_strategy.clone());
         base_strategy
           .with_dyn_decider(move |error| match decision_source.decide(error) {
-            | crate::core::kernel::actor::supervision::SupervisorDirective::Restart => {
-              crate::core::kernel::actor::supervision::SupervisorDirective::Stop
-            },
+            | SupervisorDirective::Restart => SupervisorDirective::Stop,
             | other => other,
           })
           .into()

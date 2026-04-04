@@ -620,6 +620,7 @@ run_dylint() {
     "type-per-file-lint:lints/type-per-file-lint"
     "tests-location-lint:lints/tests-location-lint"
     "use-placement-lint:lints/use-placement-lint"
+    "redundant-fqcn-lint:lints/redundant-fqcn-lint"
     "rustdoc-lint:lints/rustdoc-lint"
     "cfg-std-forbid-lint:lints/cfg-std-forbid-lint"
     "ambiguous-suffix-lint:lints/ambiguous-suffix-lint"

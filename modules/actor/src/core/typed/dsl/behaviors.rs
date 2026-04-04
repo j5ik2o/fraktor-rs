@@ -10,7 +10,10 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{
-  kernel::actor::{error::ActorError, messaging::AnyMessage},
+  kernel::{
+    actor::{error::ActorError, messaging::AnyMessage},
+    event::logging::LogLevel,
+  },
   typed::{
     TypedActorRef,
     actor::TypedActorContext,
@@ -58,7 +61,7 @@ where
     // interceptor の診断性を保つため warning log を残す。
     if let Err(error) = self.monitor_ref.try_tell(message.clone()) {
       ctx.system().emit_log(
-        crate::core::kernel::event::logging::LogLevel::Warn,
+        LogLevel::Warn,
         alloc::format!("monitor interceptor failed to deliver message: {:?}", error),
         Some(ctx.pid()),
         None,

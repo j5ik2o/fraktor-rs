@@ -9,7 +9,9 @@ use core::time::Duration;
 use super::ActorSelectionError;
 use crate::core::kernel::{
   actor::{
-    actor_path::{ActorPath, ActorPathParser, ActorPathParts, GuardianKind, PathResolutionError, PathSegment},
+    actor_path::{
+      ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind, PathResolutionError, PathSegment,
+    },
     actor_ref::ActorRef,
     actor_ref_provider::ActorRefResolveError,
     messaging::{AnyMessage, AskResponse, Identify},
@@ -156,10 +158,7 @@ impl ActorSelection {
     }
     let mut parts = ActorPathParts::local(system.system_name()).with_guardian(path.guardian());
     if let Some((host, Some(port))) = system.canonical_authority_components() {
-      parts = parts
-        .with_scheme(crate::core::kernel::actor::actor_path::ActorPathScheme::FraktorTcp)
-        .with_authority_host(host)
-        .with_authority_port(port);
+      parts = parts.with_scheme(ActorPathScheme::FraktorTcp).with_authority_host(host).with_authority_port(port);
     }
     ActorPath::from_parts_and_segments(parts, path.segments().to_vec(), path.uid())
   }

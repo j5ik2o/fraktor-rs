@@ -1,0 +1,34 @@
+# redundant-fqcn-lint
+
+## 概要
+- `redundant_fqcn::redundant_fqcn` は、`use` 宣言以外の場所で `crate::...` から始まる不要な完全修飾パスを検出します。
+- import は `crate::` 始まりで書きつつ、本文側では短い名前へ寄せる、というこのリポジトリの読みやすさの規約を機械的に守るための lint です。
+- diagnostic 自体を AI 向け修正指示として設計し、`use` 追加と本文置換をそのまま自動化できるようにします。
+
+## チェック内容
+- `use crate::...` は対象外です。
+- 関数呼び出し、構築式、`match` パターンなどの式コンテキストに現れる `crate::...` のうち、型名や enum 名を含むパスを警告します。
+- 型注釈、`pub(in crate::...)`、type alias、`QSelf` を使った完全修飾は対象外にして、初期導入の誤検知を抑えます。
+- すでに同名の別 import があり、短い名前にすると衝突する場合は許可します。例: `use domain::UserAccount;` がある状態で `crate::infra::UserAccount(ua)` を呼ぶケース。
+- `modules/*/src/core/` から `crate::std::...` を参照するブリッジ箇所は例外です。構造ルール上 import できないため、ここは FQCN を許可します。
+
+## 違反例
+```rust
+fn build() -> crate::sample::domain::Widget {
+  crate::sample::domain::Widget::new()
+}
+
+fn is_idle(mode: crate::sample::domain::Mode) -> bool {
+  matches!(mode, crate::sample::domain::Mode::Idle)
+}
+```
+
+## 修正ガイド
+1. ファイル冒頭の `use` ブロックへ `use crate::sample::domain::{Mode, Widget};` のような import を追加する。
+2. 本文中の `crate::...` プレフィックスを取り除き、`Widget::new()` や `Mode::Idle` のような短い表記へ置き換える。
+3. 同じファイル内の同種の FQCN をまとめて統一する。
+4. `use` 宣言と対象箇所以外のコードは変更しない。
+
+## 例外指定
+- 一時的に無効化する場合は `#![allow(redundant_fqcn::redundant_fqcn)]` を使う。
+- 本当に完全修飾が必要な箇所は、まず QSelf や型推論の事情で必要かを確認し、必要な場合のみ局所的に `#[allow(...)]` を使う。

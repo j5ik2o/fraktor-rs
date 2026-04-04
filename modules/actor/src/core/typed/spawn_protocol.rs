@@ -8,7 +8,7 @@ use alloc::{format, string::String};
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  kernel::actor::error::ActorError,
+  kernel::{actor::error::ActorError, event::logging::LogLevel},
   typed::{TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, props::TypedProps},
 };
 
@@ -98,7 +98,7 @@ impl SpawnProtocol {
       // On failure the requester's ask future remains pending until its timeout.
       if let Err(e) = command.command.execute(ctx) {
         ctx.system().emit_log(
-          crate::core::kernel::event::logging::LogLevel::Warn,
+          LogLevel::Warn,
           alloc::format!("spawn protocol command execution failed: {:?}", e),
           Some(ctx.pid()),
           None,
