@@ -18,6 +18,10 @@ pub struct BackoffSupervisorStrategy {
 
 impl BackoffSupervisorStrategy {
   /// Creates the default typed backoff strategy.
+  ///
+  /// The default configuration keeps unlimited stash capacity and disables
+  /// critical log level escalation by setting the escalation threshold to
+  /// `u32::MAX`.
   #[must_use]
   pub(crate) fn new(min_backoff: Duration, max_backoff: Duration, random_factor: f64) -> Self {
     Self {

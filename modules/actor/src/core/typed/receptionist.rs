@@ -113,18 +113,18 @@ impl Receptionist {
     })
   }
 
-  fn register_extension_facade<M>(system: &crate::core::typed::TypedActorSystem<M>) -> ArcShared<Self>
+  fn ensure_extension<M>(system: &crate::core::typed::TypedActorSystem<M>) -> ArcShared<Self>
   where
     M: Send + Sync + 'static, {
     system.register_extension(&ReceptionistExtensionId::new())
   }
 
-  /// Returns the receptionist extension facade for the provided system.
+  /// Returns the receptionist extension for the provided system.
   #[must_use]
   pub fn get<M>(system: &crate::core::typed::TypedActorSystem<M>) -> Self
   where
     M: Send + Sync + 'static, {
-    let registered = Self::register_extension_facade(system);
+    let registered = Self::ensure_extension(system);
     let extension_id = ReceptionistExtensionId::new();
     if let Some(existing) = system.extension(&extension_id) {
       debug_assert!(ArcShared::ptr_eq(&registered, &existing));
@@ -132,12 +132,12 @@ impl Receptionist {
     registered.with_ref(|receptionist: &Receptionist| receptionist.clone())
   }
 
-  /// Creates the receptionist extension facade for the provided system.
+  /// Creates the receptionist extension for the provided system.
   #[must_use]
   pub fn create_extension<M>(system: &crate::core::typed::TypedActorSystem<M>) -> Self
   where
     M: Send + Sync + 'static, {
-    Self::register_extension_facade(system).with_ref(|receptionist: &Receptionist| receptionist.clone())
+    Self::ensure_extension(system).with_ref(|receptionist: &Receptionist| receptionist.clone())
   }
 
   /// Returns the receptionist actor reference held by this facade.
@@ -165,7 +165,7 @@ impl Receptionist {
         | WatchTarget::Subscriber(subscriber) => {
           ctx.watch(&subscriber).map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error)))
         },
-      });
+      })?;
       Ok(Behaviors::same())
     })
     .receive_signal(move |ctx, signal| {
@@ -292,22 +292,19 @@ fn handle_command<Watch>(
   origin: Option<Pid>,
   command: &ReceptionistCommand,
   mut watch_target: Watch,
-) where
+) -> Result<(), ActorError>
+where
   Watch: FnMut(WatchTarget) -> Result<(), ActorError>, {
   match command {
     | ReceptionistCommand::Register { service_id, type_id, actor_ref, reply_to } => {
       let key = (service_id.clone(), *type_id);
-      let entry = state.registrations.entry(key.clone()).or_default();
-      if !entry.iter().any(|existing| existing.pid() == actor_ref.pid()) {
-        entry.push(actor_ref.clone());
-        if let Err(error) = watch_target(WatchTarget::RegisteredActor(actor_ref.clone())) {
-          system.emit_log(
-            LogLevel::Warn,
-            alloc::format!("receptionist failed to watch registered actor: {:?}", error),
-            origin,
-            None,
-          );
-        }
+      let already_registered = state
+        .registrations
+        .get(&key)
+        .is_some_and(|entry| entry.iter().any(|existing| existing.pid() == actor_ref.pid()));
+      if !already_registered {
+        watch_target(WatchTarget::RegisteredActor(actor_ref.clone()))?;
+        state.registrations.entry(key.clone()).or_default().push(actor_ref.clone());
         notify_subscribers(&state.subscribers, &key, &state.registrations, system, origin);
       }
       if let Some(reply_to) = reply_to.clone() {
@@ -355,17 +352,13 @@ fn handle_command<Watch>(
           None,
         );
       }
-      let subscribers = state.subscribers.entry(key).or_default();
-      if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
-        if let Err(error) = watch_target(WatchTarget::Subscriber(subscriber.clone())) {
-          system.emit_log(
-            LogLevel::Warn,
-            alloc::format!("receptionist failed to watch subscriber: {:?}", error),
-            origin,
-            None,
-          );
-        }
-        subscribers.push(subscriber.clone());
+      let already_subscribed = state
+        .subscribers
+        .get(&key)
+        .is_some_and(|subscribers| subscribers.iter().any(|existing| existing.pid() == subscriber.pid()));
+      if !already_subscribed {
+        watch_target(WatchTarget::Subscriber(subscriber.clone()))?;
+        state.subscribers.entry(key).or_default().push(subscriber.clone());
       }
     },
     | ReceptionistCommand::Unsubscribe { service_id, type_id, subscriber } => {
@@ -400,6 +393,8 @@ fn handle_command<Watch>(
       }
     },
   }
+
+  Ok(())
 }
 
 fn try_send_registered_ack(

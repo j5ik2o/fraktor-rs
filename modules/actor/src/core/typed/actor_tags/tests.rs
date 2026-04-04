@@ -10,7 +10,7 @@ fn actor_tags_expose_distinct_tags() {
 }
 
 #[test]
-fn actor_tags_apply_to_typed_props_copies_tags_without_mutating_source_props() {
+fn actor_tags_apply_to_typed_props_replaces_tags_without_mutating_source_props() {
   let props = TypedProps::<u32>::empty().with_tag("existing");
   let configured = ActorTags::new(["frontend", "edge"]).apply_to(props.clone());
   let expected = TypedProps::<u32>::empty().with_tags(["frontend", "edge"]);

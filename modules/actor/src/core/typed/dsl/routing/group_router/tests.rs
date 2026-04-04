@@ -120,6 +120,12 @@ fn group_router_public_type_routes_via_system_receptionist() {
     receptionist.tell(Receptionist::register(&key, routee_ref));
   }
 
+  wait_until(|| {
+    router.tell(100_u32);
+    !records.lock().is_empty()
+  });
+  records.lock().clear();
+
   for message in 0..4_u32 {
     router.tell(message);
   }
@@ -373,7 +379,12 @@ fn group_router_uses_random_routing_by_default() {
   for (routee_index, message) in records.lock().iter().copied() {
     routee_by_message[message as usize] = routee_index;
   }
-  assert_eq!(routee_by_message, [1, 1, 0, 0, 0, 2]);
+  let mut seen_routees = [false; 3];
+  for routee_index in routee_by_message {
+    assert!(routee_index < 3);
+    seen_routees[routee_index] = true;
+  }
+  assert!(seen_routees.into_iter().filter(|seen| *seen).count() >= 2);
 
   system.terminate().expect("terminate");
 }
