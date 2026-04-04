@@ -70,3 +70,4 @@ Cargo.lock
 /.codex*/version.json
 /.codex*/skills/.system
 /.codex*/logs*
+/.codex*/plugins/
