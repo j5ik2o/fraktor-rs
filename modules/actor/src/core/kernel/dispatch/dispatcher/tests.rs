@@ -140,12 +140,18 @@ fn schedule_adapter_receives_pending_signal() {
 
   // Wait until the spawned thread has attempted to send to the full mailbox,
   // confirmed by on_pending() being called at least once.
-  while adapter
-    .with_write(|a| a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls())
-    == 0
-  {
+  let mut pending_observed = false;
+  for _ in 0..10_000 {
+    if adapter.with_write(|a| {
+      a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
+    }) > 0
+    {
+      pending_observed = true;
+      break;
+    }
     thread::yield_now();
   }
+  assert!(pending_observed, "schedule adapter should observe pending backpressure before dispatcher tick");
 
   dispatcher.register_for_execution(register_user_hint());
   tick.tick();
