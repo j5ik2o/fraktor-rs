@@ -152,6 +152,7 @@ impl EcsClusterConfig {
   }
 }
 
+#[cfg(feature = "aws-ecs")]
 impl ClusterExtensionInstaller {
   /// Creates a new installer with `AwsEcsClusterProvider`.
   ///
