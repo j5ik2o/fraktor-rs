@@ -1,6 +1,11 @@
 最終承認を行ってください。
 `pass_previous_response: false` のため、Report Directory内のレポートから情報を取得する。
 
+## 最重要方針
+
+Pekko 互換の見た目ではなく、Rust / fraktor-rs の設計原則を壊さずに
+Pekko の契約意図が実現されているかを最終判定すること。
+
 **ピース全体の確認:**
 1. レポートディレクトリ内の全レポートを確認し、ピース全体の整合性をチェックする
    - 計画と実装結果が一致しているか
@@ -22,6 +27,7 @@
 - `05-pekko-compat-review.md` の承認済み判定があることを確認
 - `07-test-review.md` の承認済み判定があることを確認
 - `review-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
+- wrapper / alias 偽装、fallback/no-op 公開API、public/internal 境界悪化がレポート上で否定されていることを確認
 ※ supervisor は CI を自身では実行しない（implement/qa-fix/pekko-compat-fix の実行済み証跡をレポートで確認するのみ）
 ※ `./scripts/ci-check.sh ai all` は supervise の次の `final-ci` ステップで1回だけ実行する
 

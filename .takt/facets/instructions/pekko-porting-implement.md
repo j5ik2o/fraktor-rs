@@ -2,6 +2,11 @@
 Piece Contextに示されたReport Directory内のファイルのみ参照してください。他のレポートディレクトリは検索/参照しないでください。
 Report Directory内のレポートを一次情報として参照してください。不足情報の補完が必要な場合に限り、Previous Responseや会話履歴を補助的に参照して構いません（Previous Responseは提供されない場合があります）。情報が競合する場合は、Report Directory内のレポートと実際のファイル内容を優先してください。
 
+## 最重要方針
+
+Pekko の契約意図を Rust / fraktor-rs の設計原則を壊さずに実装すること。
+見た目だけ Pekko に似せる実装は失敗とみなす。
+
 ## タスク分解（team_leader として実行される場合）
 
 このステップは team_leader モードで実行されます。計画レポート（`00-plan.md`）の
@@ -69,6 +74,10 @@ Small / Medium / Large
 - タスク指示書にない機能を追加していないか確認した
 - if/else で同一関数を呼び出し、引数の差異のみになっていないか確認した
 - 新しいコードが既存の実装パターン（API呼び出し方式、型定義方式等）と一致しているか確認した
+- wrapper / alias を追加しただけで互換 API を実装したことにしていないか確認した
+- `ignore()` / `empty()` / `self` を返すだけの fallback を public API に露出していないか確認した
+- no-op / placeholder のまま Pekko互換名を public にしていないか確認した
+- `public API` と `internal implementation` の境界が悪化していないか確認した
 
 **必須出力（見出しを含める）**
 ## 作業結果
@@ -81,3 +90,8 @@ Small / Medium / Large
 - {テスト実行コマンドと結果}
 ## 実行結果
 - {変更範囲 lint/型チェック と変更範囲テストの成功ログ}
+
+## Fake Gap チェック
+- wrapper/alias 偽装: なし / あり（内容）
+- fallback/no-op 公開API: なし / あり（内容）
+- public/internal 境界悪化: なし / あり（内容）
