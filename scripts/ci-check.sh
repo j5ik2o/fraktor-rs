@@ -789,7 +789,7 @@ run_dylint() {
   fi
   local -a main_package_args=()
   local -a hardware_targets=()
-  local -a feature_packages=("fraktor-actor-rs=tokio-executor")
+  local -a feature_packages=("fraktor-actor-adaptor-rs=tokio-executor")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
     if ! command -v python3 >/dev/null 2>&1; then
@@ -1212,8 +1212,8 @@ run_perf() {
   log_step "cargo test -p fraktor-actor-rs stress_scheduler_handles_"
   run_cargo test -p fraktor-actor-rs stress_scheduler_handles_ || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-rs --bench actor_baseline --features test-support,std,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
-  run_cargo bench -p fraktor-actor-rs --bench actor_baseline --features test-support,std,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
+  run_cargo bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1
 }
 
 run_all() {

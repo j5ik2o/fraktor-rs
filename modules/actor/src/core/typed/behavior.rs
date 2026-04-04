@@ -194,6 +194,29 @@ where
     self.supervisor_override.as_ref()
   }
 
+  /// Handles a typed message using this behavior.
+  ///
+  /// This helper is public only for tests and `test-support` consumers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorError`] when the configured message handler fails.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn handle_message(&mut self, ctx: &mut TypedActorContext<'_, M>, message: &M) -> Result<Behavior<M>, ActorError> {
+    match self.directive {
+      | BehaviorDirective::Same => Ok(Self::same()),
+      | BehaviorDirective::Stopped => Ok(Self::stopped()),
+      | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
+      | BehaviorDirective::Empty => Ok(Self::empty()),
+      | BehaviorDirective::Active => match &self.message_handler {
+        | Some(handler) => handler(ctx, message),
+        | None => Ok(Self::same()),
+      },
+    }
+  }
+
+  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_message(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
@@ -212,6 +235,29 @@ where
     }
   }
 
+  /// Runs the start hook for this behavior.
+  ///
+  /// This helper is public only for tests and `test-support` consumers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorError`] when the configured start handler fails.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
+    match self.directive {
+      | BehaviorDirective::Same => Ok(Self::same()),
+      | BehaviorDirective::Stopped => Ok(Self::stopped()),
+      | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
+      | BehaviorDirective::Empty => Ok(Self::same()),
+      | BehaviorDirective::Active => match &self.start_handler {
+        | Some(handler) => handler(ctx),
+        | None => Ok(Self::same()),
+      },
+    }
+  }
+
+  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_start(&mut self, ctx: &mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError> {
     match self.directive {
       | BehaviorDirective::Same => Ok(Self::same()),
@@ -226,6 +272,36 @@ where
     }
   }
 
+  /// Handles a signal using this behavior.
+  ///
+  /// This helper is public only for tests and `test-support` consumers.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`ActorError`] when the configured signal handler fails.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn handle_signal(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    signal: &BehaviorSignal,
+  ) -> Result<Behavior<M>, ActorError> {
+    match self.directive {
+      | BehaviorDirective::Same => Ok(Self::same()),
+      | BehaviorDirective::Stopped => match &self.signal_handler {
+        | Some(handler) => handler(ctx, signal),
+        | None => Ok(Self::stopped()),
+      },
+      | BehaviorDirective::Ignore => Ok(Self::same()),
+      | BehaviorDirective::Unhandled => Ok(Self::unhandled()),
+      | BehaviorDirective::Empty => Ok(Self::same()),
+      | BehaviorDirective::Active => match &self.signal_handler {
+        | Some(handler) => handler(ctx, signal),
+        | None => Ok(Self::same()),
+      },
+    }
+  }
+
+  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn handle_signal(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,

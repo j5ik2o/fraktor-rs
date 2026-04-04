@@ -127,7 +127,7 @@ fn main() {
   let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver_config).with_extension_installers(installers);
 
-  let system = fraktor_actor_rs::std::system::ActorSystem::new_with_config(&props, &config).expect("system");
+  let system = fraktor_actor_adaptor_rs::std::system::ActorSystem::new_with_config(&props, &config).expect("system");
   let termination = system.when_terminated();
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));

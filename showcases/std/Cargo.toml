@@ -6,7 +6,8 @@ publish = false
 
 [dependencies]
 # 基本依存（全 example 共通）
-fraktor-actor-rs = { workspace = true, features = ["std", "test-support"] }
+fraktor-actor-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-adaptor-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-rs = { workspace = true, features = ["std"] }
 fraktor-stream-rs = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }

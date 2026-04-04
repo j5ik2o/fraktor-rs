@@ -56,7 +56,3 @@ extern crate alloc;
 
 /// Core actor runtime module containing all actor system components.
 pub mod core;
-/// Standard library runtime bindings and utilities.
-#[allow(cfg_std_forbid)]
-#[cfg(feature = "std")]
-pub mod std;

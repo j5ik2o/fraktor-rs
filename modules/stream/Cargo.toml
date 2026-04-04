@@ -14,7 +14,7 @@ autoexamples = false
 
 [features]
 default = []
-std = ["fraktor-utils-rs/std", "fraktor-actor-rs/std", "fraktor-actor-rs/test-support"]
+std = ["fraktor-utils-rs/std", "fraktor-actor-rs/test-support"]
 compression = ["dep:miniz_oxide"]
 
 [dependencies]

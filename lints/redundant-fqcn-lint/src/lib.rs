@@ -62,7 +62,7 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
 
   let line_starts = compute_line_starts(&source);
   let bindings = collect_use_bindings(&file);
-  let mut collector = PathCollector::new(path.to_path_buf(), bindings);
+  let mut collector = PathCollector::new(bindings);
   collector.visit_file(&file);
 
   for occurrence in collector.occurrences {
@@ -99,21 +99,17 @@ struct PathOccurrence {
 }
 
 struct PathCollector {
-  current_path: PathBuf,
-  occurrences:  Vec<PathOccurrence>,
-  seen:         HashSet<SpanKey>,
-  bindings:     Vec<UseBinding>,
+  occurrences: Vec<PathOccurrence>,
+  seen:        HashSet<SpanKey>,
+  bindings:    Vec<UseBinding>,
 }
 
 impl PathCollector {
-  fn new(current_path: PathBuf, bindings: Vec<UseBinding>) -> Self {
-    Self { current_path, occurrences: Vec::new(), seen: HashSet::new(), bindings }
+  fn new(bindings: Vec<UseBinding>) -> Self {
+    Self { occurrences: Vec::new(), seen: HashSet::new(), bindings }
   }
 
   fn record_path(&mut self, path: &SynPath) {
-    if self.is_core_to_std_bridge(path) {
-      return;
-    }
     let Some(occurrence) = build_occurrence(path) else {
       return;
     };
@@ -131,13 +127,6 @@ impl PathCollector {
       .bindings
       .iter()
       .any(|binding| binding.local_name == occurrence.root_name && binding.source_path != occurrence.import_path)
-  }
-
-  fn is_core_to_std_bridge(&self, path: &SynPath) -> bool {
-    self.current_path.to_string_lossy().contains("/src/core/")
-      && path.leading_colon.is_none()
-      && path.segments.first().is_some_and(|segment| segment.ident == "crate")
-      && path.segments.iter().nth(1).is_some_and(|segment| segment.ident == "std")
   }
 }
 

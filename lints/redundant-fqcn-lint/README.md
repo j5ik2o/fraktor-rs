@@ -10,7 +10,6 @@
 - 関数呼び出し、構築式、`match` パターンなどの式コンテキストに現れる `crate::...` のうち、型名や enum 名を含むパスを警告します。
 - 型注釈、`pub(in crate::...)`、type alias、`QSelf` を使った完全修飾は対象外にして、初期導入の誤検知を抑えます。
 - すでに同名の別 import があり、短い名前にすると衝突する場合は許可します。例: `use domain::UserAccount;` がある状態で `crate::infra::UserAccount(ua)` を呼ぶケース。
-- `modules/*/src/core/` から `crate::std::...` を参照するブリッジ箇所は例外です。構造ルール上 import できないため、ここは FQCN を許可します。
 
 ## 違反例
 ```rust

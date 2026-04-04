@@ -5,19 +5,17 @@
 
 use std::time::Duration;
 
-use fraktor_actor_rs::{
-  core::kernel::actor::{
-    Actor, ActorContext,
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
-    setup::ActorSystemConfig,
+use fraktor_actor_adaptor_rs::std::system::ActorSystem;
+use fraktor_actor_rs::core::kernel::actor::{
+  Actor, ActorContext,
+  error::ActorError,
+  messaging::AnyMessageView,
+  props::Props,
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  std::system::ActorSystem,
+  setup::ActorSystemConfig,
 };
 use fraktor_stream_rs::core::materialization::{
   ActorMaterializer, ActorMaterializerConfig, Completion, StreamCompletion,

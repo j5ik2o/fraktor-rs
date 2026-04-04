@@ -12,12 +12,10 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_rs::{
-  core::{
-    kernel::actor::error::ActorError,
-    typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps},
-  },
-  std::typed::Behaviors,
+use fraktor_actor_adaptor_rs::std::typed::Behaviors;
+use fraktor_actor_rs::core::{
+  kernel::actor::error::ActorError,
+  typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps},
 };
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::SharedAccess;

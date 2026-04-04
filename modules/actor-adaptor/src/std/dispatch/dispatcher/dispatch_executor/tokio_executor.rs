@@ -1,0 +1,23 @@
+use fraktor_actor_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
+use tokio::runtime::Handle;
+
+/// Executor that drives a dispatcher on a Tokio runtime handle.
+pub struct TokioExecutor {
+  handle: Handle,
+}
+
+impl TokioExecutor {
+  /// Creates a new executor bound to the provided Tokio runtime handle.
+  #[must_use]
+  pub const fn new(handle: Handle) -> Self {
+    Self { handle }
+  }
+}
+
+impl DispatchExecutor for TokioExecutor {
+  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
+    #[allow(clippy::let_underscore_future)]
+    let _ = self.handle.spawn_blocking(move || dispatcher.drive());
+    Ok(())
+  }
+}

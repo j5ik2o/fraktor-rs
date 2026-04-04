@@ -28,6 +28,7 @@ resolver = "2"
 members = [
     "modules/utils",
     "modules/actor",
+    "modules/actor-adaptor",
     "modules/persistence",
     "modules/remote",
     "modules/cluster",
@@ -59,6 +60,7 @@ let_underscore_must_use = "deny"
 
 [workspace.dependencies]
 fraktor-actor-rs = { path = "modules/actor", version = "0.2.11" }
+fraktor-actor-adaptor-rs = { path = "modules/actor-adaptor", version = "0.2.11" }
 fraktor-cluster-rs = { path = "modules/cluster", version = "0.2.11", default-features = false }
 fraktor-persistence-rs = { path = "modules/persistence", version = "0.2.11", default-features = false }
 fraktor-remote-rs = { path = "modules/remote", version = "0.2.11", default-features = false }

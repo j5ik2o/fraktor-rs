@@ -46,6 +46,18 @@ where
   M: Send + Sync + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
+    Self {
+      inner:           NonNull::from(inner),
+      adapters:        adapters.map(NonNull::from),
+      receive_timeout: None,
+      _marker:         PhantomData,
+    }
+  }
+
+  /// Creates a typed wrapper from the provided untyped context.
+  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
     Self {
       inner:           NonNull::from(inner),
