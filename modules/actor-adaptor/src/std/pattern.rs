@@ -12,14 +12,25 @@ mod tests;
 
 use core::{future::Future, time::Duration};
 
+use fraktor_actor_rs::core::kernel::{
+  actor::{
+    actor_ref::ActorRef,
+    messaging::{AnyMessage, AskError, AskResponse},
+  },
+  pattern::{
+    CircuitBreaker as CoreCircuitBreaker, CircuitBreakerShared as CoreCircuitBreakerShared,
+    ask_with_timeout as core_ask_with_timeout, graceful_stop as core_graceful_stop,
+    graceful_stop_with_message as core_graceful_stop_with_message, retry as core_retry,
+  },
+};
 use fraktor_utils_rs::core::timing::delay::DelayProvider;
 pub use std_clock::StdClock;
 
 /// Inner circuit breaker state machine using the standard clock.
-pub type CircuitBreaker = fraktor_actor_rs::core::kernel::pattern::CircuitBreaker<StdClock>;
+pub type CircuitBreaker = CoreCircuitBreaker<StdClock>;
 
 /// Thread-safe shared circuit breaker using the standard clock.
-pub type CircuitBreakerShared = fraktor_actor_rs::core::kernel::pattern::CircuitBreakerShared<StdClock>;
+pub type CircuitBreakerShared = CoreCircuitBreakerShared<StdClock>;
 
 /// Creates a new [`CircuitBreaker`] in the **Closed** state using the real
 /// system clock.
@@ -56,12 +67,8 @@ pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> Cir
 /// The returned future resolves with a timeout error when the reply is not
 /// observed before the deadline.
 #[must_use]
-pub fn ask_with_timeout(
-  actor_ref: &mut fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef,
-  message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage,
-  timeout: Duration,
-) -> fraktor_actor_rs::core::kernel::actor::messaging::AskResponse {
-  fraktor_actor_rs::core::kernel::pattern::ask_with_timeout(actor_ref, message, timeout)
+pub fn ask_with_timeout(actor_ref: &mut ActorRef, message: AnyMessage, timeout: Duration) -> AskResponse {
+  core_ask_with_timeout(actor_ref, message, timeout)
 }
 
 /// Sends `PoisonPill` and waits until the target actor disappears from the system registry.
@@ -72,11 +79,8 @@ pub fn ask_with_timeout(
 /// message cannot be delivered, or
 /// [`fraktor_actor_rs::core::kernel::actor::messaging::AskError::Timeout`] when the actor does not
 /// stop before `timeout`.
-pub async fn graceful_stop(
-  target: &mut fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef,
-  timeout: Duration,
-) -> Result<(), fraktor_actor_rs::core::kernel::actor::messaging::AskError> {
-  fraktor_actor_rs::core::kernel::pattern::graceful_stop(target, timeout).await
+pub async fn graceful_stop(target: &mut ActorRef, timeout: Duration) -> Result<(), AskError> {
+  core_graceful_stop(target, timeout).await
 }
 
 /// Sends the supplied stop message and waits until the target actor disappears from the system
@@ -89,11 +93,11 @@ pub async fn graceful_stop(
 /// [`fraktor_actor_rs::core::kernel::actor::messaging::AskError::Timeout`] when the actor does not
 /// stop before `timeout`.
 pub async fn graceful_stop_with_message(
-  target: &mut fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef,
-  stop_message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessage,
+  target: &mut ActorRef,
+  stop_message: AnyMessage,
   timeout: Duration,
-) -> Result<(), fraktor_actor_rs::core::kernel::actor::messaging::AskError> {
-  fraktor_actor_rs::core::kernel::pattern::graceful_stop_with_message(target, stop_message, timeout).await
+) -> Result<(), AskError> {
+  core_graceful_stop_with_message(target, stop_message, timeout).await
 }
 
 /// Retries an async operation up to `attempts` times with caller-provided delays.
@@ -115,5 +119,5 @@ where
   F: FnMut() -> Fut,
   Fut: Future<Output = Result<T, E>>,
   D: FnMut(usize) -> Duration, {
-  fraktor_actor_rs::core::kernel::pattern::retry(attempts, delay_provider, delay_for, operation).await
+  core_retry(attempts, delay_provider, delay_for, operation).await
 }

@@ -2,6 +2,8 @@
 
 use alloc::string::{String, ToString};
 
+use crate::core::remoting_extension::RemotingError;
+
 /// Describes failures that occur while constructing remote actor references.
 #[derive(Debug)]
 pub enum RemoteActorRefProviderError {
@@ -26,8 +28,8 @@ impl core::fmt::Display for RemoteActorRefProviderError {
   }
 }
 
-impl From<crate::core::remoting_extension::RemotingError> for RemoteActorRefProviderError {
-  fn from(value: crate::core::remoting_extension::RemotingError) -> Self {
+impl From<RemotingError> for RemoteActorRefProviderError {
+  fn from(value: RemotingError) -> Self {
     Self::Remoting(value.to_string())
   }
 }

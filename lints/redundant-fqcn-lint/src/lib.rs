@@ -16,7 +16,7 @@ use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceF
 use syn::{
   spanned::Spanned,
   visit::{self, Visit},
-  ExprPath, ExprStruct, File, Item, Pat, PatStruct, PatTupleStruct, Path as SynPath, UseTree,
+  ExprPath, ExprStruct, File, Item, Pat, PatStruct, PatTupleStruct, Path as SynPath, TypePath, UseTree,
 };
 
 dylint_linting::impl_late_lint! {
@@ -133,7 +133,7 @@ impl PathCollector {
 impl<'ast> Visit<'ast> for PathCollector {
   fn visit_item(&mut self, item: &'ast Item) {
     match item {
-      | Item::Use(_) | Item::Type(_) => {},
+      | Item::Use(_) => {},
       | _ => visit::visit_item(self, item),
     }
   }
@@ -171,6 +171,13 @@ impl<'ast> Visit<'ast> for PathCollector {
       self.record_path(&node.path);
     }
     visit::visit_pat_tuple_struct(self, node);
+  }
+
+  fn visit_type_path(&mut self, node: &'ast TypePath) {
+    if node.qself.is_none() {
+      self.record_path(&node.path);
+    }
+    visit::visit_type_path(self, node);
   }
 }
 

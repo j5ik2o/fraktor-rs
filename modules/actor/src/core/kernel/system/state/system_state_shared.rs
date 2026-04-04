@@ -454,7 +454,7 @@ impl SystemStateShared {
   }
 
   /// Unregisters a temporary actor by pid when present.
-  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::kernel::actor::Pid) {
+  pub fn unregister_temp_actor_by_pid(&self, pid: &Pid) {
     self.inner.write().unregister_temp_actor_by_pid(pid);
   }
 

@@ -18,7 +18,7 @@ use crate::core::kernel::{
     actor_ref::dead_letter::DeadLetterReason,
     error::SendError,
     messaging::{AnyMessage, system_message::SystemMessage},
-    props::MailboxConfig,
+    props::{MailboxConfig, MailboxConfigError},
   },
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
   event::logging::LogLevel,
@@ -56,9 +56,7 @@ impl Mailbox {
   ///
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
-  pub fn new_from_config(
-    config: &MailboxConfig,
-  ) -> Result<Self, crate::core::kernel::actor::props::MailboxConfigError> {
+  pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(config)?;
     Ok(Self::new_with_queue(policy, queue))

@@ -3,11 +3,13 @@
 #[cfg(test)]
 mod tests;
 
+use crate::{RuntimeMutexBackend, RuntimeRwLockBackend};
+
 /// Runtime-selected mutex alias.
-pub type RuntimeMutex<T> = crate::RuntimeMutexBackend<T>;
+pub type RuntimeMutex<T> = RuntimeMutexBackend<T>;
 
 /// Runtime-selected rwlock alias.
-pub type RuntimeRwLock<T> = crate::RuntimeRwLockBackend<T>;
+pub type RuntimeRwLock<T> = RuntimeRwLockBackend<T>;
 
 /// No-std mutex alias.
 pub type NoStdMutex<T> = RuntimeMutex<T>;

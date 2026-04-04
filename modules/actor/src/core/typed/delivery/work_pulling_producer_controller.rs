@@ -15,6 +15,7 @@ use crate::core::{
   kernel::{
     actor::{
       actor_ref::ActorRef,
+      error::SendError,
       messaging::{AnyMessage, system_message::SystemMessage},
     },
     event::logging::LogLevel,
@@ -25,8 +26,8 @@ use crate::core::{
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, DurableProducerQueueState, MessageSent,
-      ProducerController, ProducerControllerCommand, ProducerControllerRequestNext, StoreMessageSentAck,
-      WorkPullingProducerControllerCommand, WorkPullingProducerControllerRequestNext,
+      ProducerController, ProducerControllerCommand, ProducerControllerRequestNext, ProducerControllerSettings,
+      StoreMessageSentAck, WorkPullingProducerControllerCommand, WorkPullingProducerControllerRequestNext,
       WorkPullingProducerControllerSettings, WorkerStats,
       work_pulling_producer_controller_command::WorkPullingProducerControllerCommandKind,
     },
@@ -69,7 +70,7 @@ where
     worker_ref:                   ActorRef,
     producer_id:                  String,
     demand_adapter:               TypedActorRef<ProducerControllerRequestNext<A>>,
-    producer_controller_settings: crate::core::typed::delivery::ProducerControllerSettings,
+    producer_controller_settings: ProducerControllerSettings,
   },
   LogDropped {
     total_seq_nr: u64,
@@ -557,7 +558,7 @@ impl WorkPullingProducerController {
 
 /// Subscribes to the Receptionist for a specific worker service key.
 fn subscribe_to_receptionist<A>(
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_service_key: &ServiceKey<ConsumerControllerCommand<A>>,
   listing_adapter: &TypedActorRef<Listing>,
 ) where
@@ -589,7 +590,7 @@ fn collect_on_worker_listing<A>(
   listing: &Listing,
   producer_id: &str,
   self_ref: &TypedActorRef<WorkPullingProducerControllerCommand<A>>,
-  producer_controller_settings: &crate::core::typed::delivery::ProducerControllerSettings,
+  producer_controller_settings: &ProducerControllerSettings,
   deferred: &mut Vec<WppcDeferredAction<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
@@ -893,7 +894,7 @@ fn collect_on_durable_queue_message_stored<A>(
 /// Executes deferred actions outside the state lock.
 fn execute_wppc_deferred<A>(
   actions: Vec<WppcDeferredAction<A>>,
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
+  ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   state: &ArcShared<RuntimeMutex<WorkPullingState<A>>>,
   internal_ask_timeout: core::time::Duration,
   durable_queue_request_timeout: core::time::Duration,
@@ -1033,7 +1034,7 @@ fn execute_wppc_deferred<A>(
 
 fn stop_worker_producer_controller<A>(
   pc_ref: &mut TypedActorRef<ProducerControllerCommand<A>>,
-) -> Result<(), crate::core::kernel::actor::error::SendError>
+) -> Result<(), SendError>
 where
   A: Clone + Send + Sync + 'static, {
   pc_ref.as_untyped_mut().try_tell(AnyMessage::new(SystemMessage::PoisonPill)).map(|_| ())
@@ -1050,7 +1051,7 @@ fn spawn_worker_actor<A>(
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   worker_ref: &ActorRef,
   pc_producer_id: &str,
-  producer_controller_settings: &crate::core::typed::delivery::ProducerControllerSettings,
+  producer_controller_settings: &ProducerControllerSettings,
 ) -> Option<SpawnedWorker<A>>
 where
   A: Clone + Send + Sync + 'static, {

@@ -13,6 +13,7 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     actor_selection::ActorSelection,
+    error::SendError,
     extension::{Extension, ExtensionId},
     props::{MailboxConfig, Props},
     spawn::SpawnError,
@@ -171,7 +172,7 @@ impl ExtendedActorSystem {
   /// # Errors
   ///
   /// Returns an error if the stop message cannot be enqueued.
-  pub fn stop(&self, actor: &ActorRef) -> Result<(), crate::core::kernel::actor::error::SendError> {
+  pub fn stop(&self, actor: &ActorRef) -> Result<(), SendError> {
     self.inner.stop(actor)
   }
 

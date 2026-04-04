@@ -160,7 +160,7 @@ impl TopicPubSub {
       source_ref.via_mat(Flow::from_graph_stage(TopicSourceCleanupStage { cleanup: cleanup.clone() }), KeepLeft);
     let extended = system.extended();
 
-    source.map_materialized_value(move |actor_source_ref: crate::core::r#impl::queue::ActorSourceRef<T>| {
+    source.map_materialized_value(move |actor_source_ref: ActorSourceRef<T>| {
       let bridge_props = TypedProps::<T>::from_behavior_factory(move || bridge_behavior(actor_source_ref.clone()));
       #[allow(clippy::expect_used)]
       let child =

@@ -14,6 +14,7 @@ use crate::core::{
       ActorContext, ChildRef, Pid,
       error::{ActorError, PipeSpawnError, SendError},
       messaging::{AnyMessage, AskError},
+      scheduler::{SchedulerError, SchedulerHandle},
       spawn::SpawnError,
     },
     event::logging::LogLevel,
@@ -323,11 +324,7 @@ where
   /// # Errors
   ///
   /// Returns an error if forwarding fails synchronously while enqueueing.
-  pub fn try_forward<C>(
-    &mut self,
-    target: &mut TypedActorRef<C>,
-    message: C,
-  ) -> Result<(), crate::core::kernel::actor::error::SendError>
+  pub fn try_forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
@@ -346,10 +343,7 @@ where
     delay: Duration,
     target: TypedActorRef<C>,
     message: C,
-  ) -> Result<
-    crate::core::kernel::actor::scheduler::SchedulerHandle,
-    crate::core::kernel::actor::scheduler::SchedulerError,
-  >
+  ) -> Result<SchedulerHandle, SchedulerError>
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();

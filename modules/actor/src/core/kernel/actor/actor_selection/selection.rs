@@ -10,7 +10,8 @@ use super::{ActorSelectionError, ActorSelectionResolver};
 use crate::core::kernel::{
   actor::{
     actor_path::{
-      ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind, PathResolutionError, PathSegment,
+      ActorPath, ActorPathError, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind, PathResolutionError,
+      PathSegment,
     },
     actor_ref::ActorRef,
     actor_ref_provider::ActorRefResolveError,
@@ -131,10 +132,7 @@ impl ActorSelection {
     }
   }
 
-  fn resolve_absolute(
-    base: &ActorPath,
-    selection: &str,
-  ) -> Result<ActorPath, crate::core::kernel::actor::actor_path::ActorPathError> {
+  fn resolve_absolute(base: &ActorPath, selection: &str) -> Result<ActorPath, ActorPathError> {
     let trimmed = selection.trim_start_matches('/');
     let raw_segments: Vec<&str> = trimmed.split('/').filter(|segment| !segment.is_empty()).collect();
     let guardian = match raw_segments.first().copied() {

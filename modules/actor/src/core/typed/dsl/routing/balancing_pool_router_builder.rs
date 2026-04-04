@@ -12,9 +12,13 @@ use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  kernel::{actor::error::ActorError, event::logging::LogLevel},
+  kernel::{
+    actor::{Pid, error::ActorError},
+    event::logging::LogLevel,
+  },
   typed::{
     TypedActorRef,
+    actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
     dsl::Behaviors,
@@ -66,7 +70,7 @@ where
   }
 
   /// Remove a worker from the idle list (e.g. on termination).
-  fn remove_worker(&mut self, pid: &crate::core::kernel::actor::Pid) {
+  fn remove_worker(&mut self, pid: &Pid) {
     if let Some(pos) = self.idle_workers.iter().position(|w| w.pid() == *pid) {
       self.idle_workers.remove(pos);
     }
@@ -90,8 +94,8 @@ where
 {
   fn around_start(
     &mut self,
-    ctx: &mut crate::core::typed::actor::TypedActorContext<'_, M>,
-    start: &mut dyn FnMut(&mut crate::core::typed::actor::TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError>,
+    ctx: &mut TypedActorContext<'_, M>,
+    start: &mut dyn FnMut(&mut TypedActorContext<'_, M>) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
     let result = start(ctx)?;
     // Only register as idle if the inner behavior did NOT return Stopped.
@@ -104,12 +108,9 @@ where
 
   fn around_receive(
     &mut self,
-    ctx: &mut crate::core::typed::actor::TypedActorContext<'_, M>,
+    ctx: &mut TypedActorContext<'_, M>,
     message: &M,
-    target: &mut dyn FnMut(
-      &mut crate::core::typed::actor::TypedActorContext<'_, M>,
-      &M,
-    ) -> Result<Behavior<M>, ActorError>,
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
   ) -> Result<Behavior<M>, ActorError> {
     let result = target(ctx, message)?;
     // Only re-register as idle if the routee is NOT stopping.
@@ -180,7 +181,7 @@ where
     Behaviors::setup(move |ctx| {
       let queue = ArcShared::new(RuntimeMutex::new(SharedWorkQueue::new()));
 
-      let mut routee_pids: Vec<crate::core::kernel::actor::Pid> = Vec::with_capacity(pool_size);
+      let mut routee_pids: Vec<Pid> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
         let q = queue.clone();
         let bf = behavior_factory.clone();

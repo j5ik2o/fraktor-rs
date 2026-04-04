@@ -18,7 +18,7 @@ use fraktor_utils_rs::core::{
 
 use super::ClusterPubSub;
 use crate::core::{
-  ClusterEvent, StartupMode,
+  ClusterEvent, StartupMode, TopologyUpdate,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, PubSubBatch, PubSubBroker, PubSubConfig,
@@ -300,7 +300,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
     Ok(PublishAck::accepted())
   }
 
-  fn on_topology(&mut self, update: &crate::core::TopologyUpdate) {
+  fn on_topology(&mut self, update: &TopologyUpdate) {
     self.last_observed_at = Some(update.observed_at);
     for topic in self.broker.topics() {
       if let Ok(removed) =

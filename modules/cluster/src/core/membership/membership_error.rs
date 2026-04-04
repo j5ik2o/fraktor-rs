@@ -2,6 +2,8 @@
 
 use alloc::string::String;
 
+use super::NodeStatus;
+
 /// Errors that can occur while mutating the membership table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MembershipError {
@@ -24,9 +26,9 @@ pub enum MembershipError {
     /// Target authority.
     authority: String,
     /// Current status.
-    from:      super::NodeStatus,
+    from:      NodeStatus,
     /// Requested status.
-    to:        super::NodeStatus,
+    to:        NodeStatus,
   },
   /// Join rejected due to quarantine.
   Quarantined {

@@ -19,9 +19,11 @@ use fraktor_actor_rs::core::kernel::{
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
   event::stream::{
-    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    subscriber_handle,
   },
   system::ActorSystem,
+  util::futures::ActorFutureShared,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -132,7 +134,7 @@ impl ClusterApi {
     identity: &ClusterIdentity,
     message: AnyMessage,
     timeout: Option<Duration>,
-  ) -> Result<fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>, ClusterRequestError> {
+  ) -> Result<ActorFutureShared<AskResult>, ClusterRequestError> {
     let response = self.request(identity, message, timeout)?;
     let (_, future) = response.into_parts();
     Ok(future)
@@ -279,7 +281,7 @@ impl ClusterApi {
   fn schedule_timeout(
     &self,
     timeout: Duration,
-    future: fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>,
+    future: ActorFutureShared<AskResult>,
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
@@ -328,17 +330,14 @@ fn split_pid(pid: &str) -> Result<(&str, &str), ClusterResolveError> {
   Ok((authority, path))
 }
 
-fn publish_grain_event(
-  event_stream: &fraktor_actor_rs::core::kernel::event::stream::EventStreamShared,
-  event: GrainEvent,
-) {
+fn publish_grain_event(event_stream: &EventStreamShared, event: GrainEvent) {
   let payload = AnyMessage::new(event);
   let extension_event = EventStreamEvent::Extension { name: String::from(GRAIN_EVENT_STREAM_NAME), payload };
   event_stream.publish(&extension_event);
 }
 
 struct TimeoutRunnable {
-  future: fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<AskResult>,
+  future: ActorFutureShared<AskResult>,
 }
 
 impl SchedulerRunnable for TimeoutRunnable {

@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 
 use fraktor_actor_rs::core::kernel::actor::actor_path::ActorPathParts;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{control_handle::RemotingControlHandle, error::RemotingError};
 use crate::core::{
@@ -35,4 +35,4 @@ pub trait RemotingControl: Send + Sync {
 }
 
 /// Shared handle wrapping [`RemotingControlHandle`] with external synchronization.
-pub type RemotingControlShared = ArcShared<fraktor_utils_rs::core::sync::RuntimeMutex<RemotingControlHandle>>;
+pub type RemotingControlShared = ArcShared<RuntimeMutex<RemotingControlHandle>>;

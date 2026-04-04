@@ -5,6 +5,7 @@ use alloc::string::ToString;
 use crate::core::{
   kernel::{
     actor::{
+      Pid,
       error::{ActorError, ActorErrorReason},
       supervision::SupervisorStrategyConfig,
     },
@@ -150,11 +151,7 @@ where
     Ok(())
   }
 
-  fn on_terminated(
-    &mut self,
-    ctx: &mut TypedActorContext<'_, M>,
-    terminated: crate::core::kernel::actor::Pid,
-  ) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut TypedActorContext<'_, M>, terminated: Pid) -> Result<(), ActorError> {
     // シグナルハンドラが Terminated を実際に処理したかを判定する。
     // has_signal_handler() だけでは不十分 — ハンドラが Unhandled を返す場合も
     // DeathPactError を発行する必要がある (Pekko 互換)。
@@ -175,7 +172,7 @@ where
   fn on_child_failed(
     &mut self,
     ctx: &mut TypedActorContext<'_, M>,
-    child: crate::core::kernel::actor::Pid,
+    child: Pid,
     error: &ActorError,
   ) -> Result<(), ActorError> {
     self.dispatch_signal(ctx, &BehaviorSignal::ChildFailed { pid: child, error: error.clone() })?;

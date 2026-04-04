@@ -6,7 +6,10 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
 
 use fraktor_actor_rs::core::{
-  kernel::{actor::error::ActorError, event::logging::LogLevel},
+  kernel::{
+    actor::{Pid, error::ActorError},
+    event::logging::LogLevel,
+  },
   typed::{
     Behavior, BehaviorInterceptor, LogOptions,
     actor::TypedActorContext as CoreTypedActorContext,
@@ -288,7 +291,7 @@ impl Behaviors {
   }
 }
 
-fn log_received_message<M>(options: &LogOptions, pid: fraktor_actor_rs::core::kernel::actor::Pid, message: &M)
+fn log_received_message<M>(options: &LogOptions, pid: Pid, message: &M)
 where
   M: core::fmt::Debug, {
   if !options.enabled() {

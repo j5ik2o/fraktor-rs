@@ -7,6 +7,8 @@ extern crate alloc;
 
 use alloc::string::String;
 
+use crate::core::kernel::system::ActorSystemBuildError;
+
 /// Enumeration describing spawn failures.
 #[derive(Debug)]
 pub enum SpawnError {
@@ -61,7 +63,7 @@ impl SpawnError {
 
   /// Creates a system build error from ActorSystemBuildError.
   #[must_use]
-  pub fn from_actor_system_build_error(error: &crate::core::kernel::system::ActorSystemBuildError) -> Self {
+  pub fn from_actor_system_build_error(error: &ActorSystemBuildError) -> Self {
     Self::SystemBuildError(alloc::format!("{:?}", error))
   }
 }

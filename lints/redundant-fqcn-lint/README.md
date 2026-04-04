@@ -7,8 +7,8 @@
 
 ## チェック内容
 - `use crate::...` / `use self::...` / `use super::...` / `use fraktor_*::...` は対象外です。
-- 関数呼び出し、構築式、`match` パターンなどの式コンテキストに現れる完全修飾パスのうち、型名や enum 名を含むパスを警告します。
-- 型注釈、`pub(in crate::...)`、type alias、`QSelf` を使った完全修飾は対象外にして、初期導入の誤検知を抑えます。
+- 関数呼び出し、構築式、`match` パターン、関数シグネチャ、型注釈、フィールド型など、`use` 以外に現れる完全修飾パスのうち、型名や enum 名を含むパスを警告します。
+- `pub(in crate::...)` と `QSelf` を使った完全修飾は対象外にして、必要な完全修飾の誤検知を抑えます。
 - すでに同名の別 import があり、短い名前にすると衝突する場合は許可します。例: `use domain::UserAccount;` がある状態で `crate::infra::UserAccount(ua)` を呼ぶケース。
 
 ## 違反例
@@ -29,6 +29,10 @@ fn log() {
     None,
     None,
   );
+}
+
+fn accepts(pid: fraktor_actor_rs::core::kernel::actor::Pid) {
+  let _ = pid;
 }
 ```
 

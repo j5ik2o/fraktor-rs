@@ -7,7 +7,7 @@ use core::{
 };
 
 use crate::core::{
-  kernel::actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef, messaging::AnyMessage},
+  kernel::actor::{Pid, actor_path::ActorPath, actor_ref::ActorRef, error::SendError, messaging::AnyMessage},
   typed::dsl::{StatusReply, TypedAskResponse},
 };
 
@@ -68,7 +68,7 @@ where
   /// # Errors
   ///
   /// Returns an error when the underlying mailbox rejects the message.
-  pub fn try_tell(&mut self, message: M) -> Result<(), crate::core::kernel::actor::error::SendError> {
+  pub fn try_tell(&mut self, message: M) -> Result<(), SendError> {
     self.inner.try_tell(AnyMessage::new(message))
   }
 

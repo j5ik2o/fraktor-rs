@@ -11,14 +11,14 @@ use super::{
   DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision,
   SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
   StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
-  flow::Flow,
+  flow::{Flow, broadcast_definition},
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
   validate_positive_argument,
 };
 use crate::core::{
   attributes::Attributes,
-  r#impl::queue::SinkQueue,
+  r#impl::{fusing::DemandTracker, queue::SinkQueue},
   stage::{GraphStage, GraphStageLogic, StreamStage},
 };
 
@@ -479,7 +479,7 @@ where
     let (second_graph, right_mat) = second.into_parts();
     let second_inlet = second_graph.head_inlet();
 
-    let broadcast = super::flow::broadcast_definition::<In>(2);
+    let broadcast = broadcast_definition::<In>(2);
     let broadcast_outlet = broadcast.outlet;
 
     let mut graph = StreamGraph::new();
@@ -632,11 +632,11 @@ where
     }
   }
 
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     if let Some(factory) = self.factory.take() {
       let sink = factory();
       let (graph, _inner_completion) = sink.into_parts();
@@ -693,7 +693,7 @@ where
     }
   }
 
-  fn on_tick(&mut self, demand: &mut super::DemandTracker) -> Result<bool, StreamError> {
+  fn on_tick(&mut self, demand: &mut DemandTracker) -> Result<bool, StreamError> {
     match &mut self.inner {
       | Some(inner) => inner.on_tick(demand),
       | None => Ok(false),
@@ -732,11 +732,11 @@ impl<In> SinkLogic for IgnoreSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, _input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, _input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     demand.request(1)?;
     Ok(SinkDecision::Continue)
   }
@@ -799,11 +799,11 @@ impl<In> SinkLogic for NeverSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let _: In = downcast_value(input)?;
     demand.request(1)?;
     Ok(SinkDecision::Continue)
@@ -834,11 +834,11 @@ where
   In: Send + Sync + 'static,
   F: FnMut(In) + Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     (self.func)(value);
     demand.request(1)?;
@@ -953,11 +953,11 @@ where
   Acc: Send + Sync + 'static,
   F: FnMut(Acc, In) -> Acc + Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     let Some(current) = self.acc.take() else {
       return Err(StreamError::Failed);
@@ -992,11 +992,11 @@ where
     self.pending.is_none()
   }
 
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     let Some(current) = self.acc.take() else {
       return Err(StreamError::Failed);
@@ -1029,7 +1029,7 @@ where
     self.completion.complete(Err(error));
   }
 
-  fn on_tick(&mut self, demand: &mut super::DemandTracker) -> Result<bool, StreamError> {
+  fn on_tick(&mut self, demand: &mut DemandTracker) -> Result<bool, StreamError> {
     let Some(mut future) = self.pending.take() else {
       return Ok(false);
     };
@@ -1139,11 +1139,11 @@ impl<In> SinkLogic for HeadSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, _demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     if self.seen {
       return Ok(SinkDecision::Complete);
     }
@@ -1222,11 +1222,11 @@ impl<In> SinkLogic for LastSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     self.last = Some(value);
     demand.request(1)?;
@@ -1294,11 +1294,11 @@ struct CancelledSinkLogic {
 }
 
 impl SinkLogic for CancelledSinkLogic {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, _input: DynValue, _demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, _input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     self.completion.complete(Ok(StreamDone::new()));
     Ok(SinkDecision::Complete)
   }
@@ -1324,11 +1324,11 @@ where
   In: Send + Sync + 'static,
   F: FnMut(Result<StreamDone, StreamError>) + Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, _input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, _input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     demand.request(1)?;
     Ok(SinkDecision::Continue)
   }
@@ -1355,11 +1355,11 @@ impl<In> SinkLogic for HeadOptionSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, _demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, _demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     if self.seen {
       return Ok(SinkDecision::Complete);
     }
@@ -1391,11 +1391,11 @@ impl<In> SinkLogic for LastOptionSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     self.last = Some(value);
     demand.request(1)?;
@@ -1424,11 +1424,11 @@ where
   In: Send + Sync + 'static,
   F: FnMut(In, In) -> In + Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     let next = match self.acc.take() {
       | Some(current) => (self.func)(current, value),
@@ -1461,11 +1461,11 @@ impl<In> SinkLogic for QueueSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     self.queue.push(value);
     demand.request(1)?;

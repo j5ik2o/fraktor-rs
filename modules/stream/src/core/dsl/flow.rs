@@ -7,9 +7,9 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowLogic, KeepLeft, KeepRight, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff,
-  RestartSettings, StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDslError, StreamError,
-  StreamGraph, StreamNotUsed, SupervisionStrategy,
+  DelayStrategy, FlowDefinition, FlowLogic, KeepLeft, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
+  RestartBackoff, RestartSettings, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamBufferConfig,
+  StreamCompletion, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
   flow_sub_flow::FlowSubFlow,
@@ -324,7 +324,7 @@ where
   where
     T: Send + Sync + 'static,
     Factory: FnMut() -> Acc + Send + Sync + 'static,
-    Acc: crate::core::dsl::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    Acc: StatefulMapConcatAccumulator<Out, T> + 'static, {
     let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -632,7 +632,7 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn throttle(mut self, capacity: usize, mode: super::ThrottleMode) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+  pub fn throttle(mut self, capacity: usize, mode: ThrottleMode) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
     let definition = throttle_definition::<Out>(capacity, mode);
     let inlet_id = definition.inlet;
@@ -4087,12 +4087,12 @@ where
   }
 }
 
-pub(in crate::core) fn throttle_definition<In>(capacity: usize, mode: super::ThrottleMode) -> FlowDefinition
+pub(in crate::core) fn throttle_definition<In>(capacity: usize, mode: ThrottleMode) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let enforcing = matches!(mode, super::ThrottleMode::Enforcing);
+  let enforcing = matches!(mode, ThrottleMode::Enforcing);
   let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity, enforcing };
   FlowDefinition {
     kind:        StageKind::FlowThrottle,
@@ -4135,7 +4135,7 @@ where
 fn strategy_delay_definition<In, S>(strategy: S) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  S: crate::core::dsl::DelayStrategy<In> + 'static, {
+  S: DelayStrategy<In> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = StrategyDelayLogic::new(strategy);
@@ -4946,7 +4946,7 @@ where
   }
 }
 
-pub(in crate::core) fn watch_termination_definition<In>(completion: super::StreamCompletion<()>) -> FlowDefinition
+pub(in crate::core) fn watch_termination_definition<In>(completion: StreamCompletion<()>) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();

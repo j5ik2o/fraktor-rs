@@ -6,7 +6,12 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::kernel::{
-  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError},
+  actor::{
+    Pid,
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::ActorRef,
+    error::ActorError,
+  },
   util::futures::ActorFutureShared,
 };
 
@@ -93,7 +98,7 @@ impl<P: ActorRefProvider + RemoteWatchHook + Send + 'static> ActorRefProvider fo
     self.with_read(|inner| inner.supported_schemes())
   }
 
-  fn actor_ref(&mut self, path: crate::core::kernel::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     self.with_write(|inner| inner.actor_ref(path))
   }
 

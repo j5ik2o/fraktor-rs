@@ -11,7 +11,7 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  ClusterExtensionConfig,
+  ClusterExtension, ClusterExtensionConfig,
   cluster_extension_id::ClusterExtensionId,
   cluster_provider::{ClusterProvider, LocalClusterProvider},
   downing_provider::{DowningProvider, NoopDowningProvider},
@@ -225,10 +225,7 @@ impl ClusterExtensionInstaller {
   /// # Panics
   ///
   /// Panics if the extension is already installed with different configuration.
-  pub fn install(
-    &self,
-    system: &ActorSystem,
-  ) -> Result<ArcShared<crate::core::ClusterExtension>, ActorSystemBuildError> {
+  pub fn install(&self, system: &ActorSystem) -> Result<ArcShared<ClusterExtension>, ActorSystemBuildError> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
     if config.advertised_address().is_empty()

@@ -10,8 +10,8 @@ use core::{
 use super::{
   BoundedSourceQueue, DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer,
   OverflowStrategy, RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue,
-  SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
-  StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy,
+  SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamCompletion,
+  StreamDone, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow::{
     Flow, async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_lazy_definition, concat_substreams_definition, debounce_definition, delay_definition,
@@ -992,7 +992,7 @@ where
   where
     T: Send + Sync + 'static,
     Factory: FnMut() -> Acc + Send + Sync + 'static,
-    Acc: crate::core::dsl::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    Acc: StatefulMapConcatAccumulator<Out, T> + 'static, {
     let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -1349,7 +1349,7 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn throttle(mut self, capacity: usize, mode: super::ThrottleMode) -> Result<Source<Out, Mat>, StreamDslError> {
+  pub fn throttle(mut self, capacity: usize, mode: ThrottleMode) -> Result<Source<Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
     let definition = throttle_definition::<Out>(capacity, mode);
     let inlet_id = definition.inlet;
@@ -2113,7 +2113,7 @@ where
   where
     T: Send + Sync + 'static,
     Mat2: Send + Sync + 'static,
-    F: FnMut(Vec<Out>) -> super::flow::Flow<Out, T, Mat2> + Send + Sync + 'static,
+    F: FnMut(Vec<Out>) -> Flow<Out, T, Mat2> + Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
     // Probe factory with empty prefix to extract the materialized value for combination.
     let probe = factory(Vec::new());

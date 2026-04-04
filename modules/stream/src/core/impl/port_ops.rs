@@ -6,7 +6,7 @@ use super::graph_dsl_builder::GraphDslBuilder;
 use crate::core::{
   StreamError,
   dsl::{Flow, Sink},
-  shape::{Outlet, PortId},
+  shape::{Inlet, Outlet, PortId},
 };
 
 #[cfg(test)]
@@ -72,7 +72,7 @@ impl<T: Send + Sync + 'static> PortOps<T> {
   /// Returns [`StreamError::InvalidConnection`] if the connection fails.
   pub(crate) fn connect_to<BIn, BOut, BMat>(
     self,
-    inlet: &crate::core::shape::Inlet<T>,
+    inlet: &Inlet<T>,
     b: &mut GraphDslBuilder<BIn, BOut, BMat>,
   ) -> Result<(), StreamError> {
     b.connect(&self.outlet(), inlet)

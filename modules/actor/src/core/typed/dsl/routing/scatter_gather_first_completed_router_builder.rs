@@ -10,7 +10,10 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
-  typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
+  typed::{
+    TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal,
+    props::TypedProps,
+  },
 };
 
 /// Shared closure that rewrites an incoming message with a new reply target.
@@ -197,7 +200,7 @@ where
 /// Spawns a one-shot coordinator that forwards the first reply from any routee.
 #[allow(clippy::too_many_arguments)]
 fn spawn_gather_coordinator<'a, M, R>(
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'a, M>,
+  ctx: &mut TypedActorContext<'a, M>,
   routees: &[TypedActorRef<M>],
   message: &M,
   reply_to: TypedActorRef<R>,

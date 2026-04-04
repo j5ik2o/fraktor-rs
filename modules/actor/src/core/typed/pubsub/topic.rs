@@ -12,7 +12,10 @@ use super::{
   topic_stats::TopicStats,
 };
 use crate::core::{
-  kernel::{actor::error::ActorError, event::logging::LogLevel},
+  kernel::{
+    actor::{Pid, error::ActorError},
+    event::logging::LogLevel,
+  },
   typed::{
     TypedActorRef,
     actor::TypedActorContext,
@@ -192,7 +195,7 @@ fn deregister_if_empty<M>(
   }
 }
 
-fn remove_subscriber<M>(subscribers: &mut Vec<TypedActorRef<M>>, pid: crate::core::kernel::actor::Pid)
+fn remove_subscriber<M>(subscribers: &mut Vec<TypedActorRef<M>>, pid: Pid)
 where
   M: Clone + Send + Sync + 'static, {
   subscribers.retain(|subscriber| subscriber.pid() != pid);

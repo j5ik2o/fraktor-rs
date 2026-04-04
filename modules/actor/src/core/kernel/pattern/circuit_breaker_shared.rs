@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
-  circuit_breaker_state::CircuitBreakerState, clock::Clock,
+  circuit_breaker_open_error::CircuitBreakerOpenError, circuit_breaker_state::CircuitBreakerState, clock::Clock,
 };
 
 #[cfg(test)]
@@ -63,7 +63,7 @@ impl<C: Clock> CircuitBreakerShared<C> {
     let state_at_permit = self
       .with_write(|cb| {
         cb.is_call_permitted()?;
-        Ok::<_, super::circuit_breaker_open_error::CircuitBreakerOpenError>(cb.state())
+        Ok::<_, CircuitBreakerOpenError>(cb.state())
       })
       .map_err(CircuitBreakerCallError::Open)?;
 
