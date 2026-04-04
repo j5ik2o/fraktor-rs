@@ -165,7 +165,7 @@ impl Receptionist {
         | WatchTarget::Subscriber(subscriber) => {
           ctx.watch(&subscriber).map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error)))
         },
-      })?;
+      });
       Ok(Behaviors::same())
     })
     .receive_signal(move |ctx, signal| {
@@ -190,7 +190,7 @@ impl Receptionist {
       guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
 
       for key in &updated_keys {
-        notify_subscribers(&guard.subscribers, key, &guard.registrations, ctx.system().as_untyped());
+        notify_subscribers(&guard.subscribers, key, &guard.registrations, ctx.system().as_untyped(), None);
       }
       Ok(Behaviors::same())
     })
@@ -292,8 +292,7 @@ fn handle_command<Watch>(
   origin: Option<Pid>,
   command: &ReceptionistCommand,
   mut watch_target: Watch,
-) -> Result<(), ActorError>
-where
+) where
   Watch: FnMut(WatchTarget) -> Result<(), ActorError>, {
   match command {
     | ReceptionistCommand::Register { service_id, type_id, actor_ref, reply_to } => {
@@ -309,7 +308,7 @@ where
             None,
           );
         }
-        notify_subscribers(&state.subscribers, &key, &state.registrations, system);
+        notify_subscribers(&state.subscribers, &key, &state.registrations, system, origin);
       }
       if let Some(reply_to) = reply_to.clone() {
         let ack = Registered::new(service_id.clone(), *type_id, actor_ref.clone());
@@ -318,12 +317,19 @@ where
     },
     | ReceptionistCommand::Deregister { service_id, type_id, actor_ref, reply_to } => {
       let key = (service_id.clone(), *type_id);
+      let mut registrations_updated = false;
+      let mut remove_key = false;
       if let Some(entry) = state.registrations.get_mut(&key) {
         let before = entry.len();
         entry.retain(|existing| existing.pid() != actor_ref.pid());
-        if entry.len() != before {
-          notify_subscribers(&state.subscribers, &key, &state.registrations, system);
-        }
+        registrations_updated = entry.len() != before;
+        remove_key = entry.is_empty();
+      }
+      if remove_key {
+        state.registrations.remove(&key);
+      }
+      if registrations_updated {
+        notify_subscribers(&state.subscribers, &key, &state.registrations, system, origin);
       }
       if let Some(reply_to) = reply_to.clone() {
         let ack = Deregistered::new(service_id.clone(), *type_id, actor_ref.clone());
@@ -335,7 +341,20 @@ where
       let current = state.registrations.get(&key).cloned().unwrap_or_default();
       let listing = Listing::new(service_id.clone(), *type_id, current);
       let mut typed_subscriber = subscriber.clone();
-      typed_subscriber.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
+      if let Err(error) = typed_subscriber.try_tell(listing) {
+        system.emit_log(
+          LogLevel::Warn,
+          alloc::format!(
+            "receptionist failed to send initial listing to subscriber {:?} for service_id={} type_id={:?}: {:?}",
+            subscriber.pid(),
+            service_id,
+            type_id,
+            error
+          ),
+          origin,
+          None,
+        );
+      }
       let subscribers = state.subscribers.entry(key).or_default();
       if !subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
         if let Err(error) = watch_target(WatchTarget::Subscriber(subscriber.clone())) {
@@ -365,11 +384,22 @@ where
       let current = state.registrations.get(&key).cloned().unwrap_or_default();
       let listing = Listing::new(service_id.clone(), *type_id, current);
       let mut reply_to = reply_to.clone();
-      reply_to.try_tell(listing).map_err(|error| ActorError::from_send_error(&error))?;
+      if let Err(error) = reply_to.try_tell(listing) {
+        system.emit_log(
+          LogLevel::Warn,
+          alloc::format!(
+            "receptionist failed to reply with listing to {:?} for service_id={} type_id={:?}: {:?}",
+            reply_to.pid(),
+            service_id,
+            type_id,
+            error
+          ),
+          origin,
+          None,
+        );
+      }
     },
   }
-
-  Ok(())
 }
 
 fn try_send_registered_ack(
@@ -414,17 +444,24 @@ fn notify_subscribers(
   key: &RegistryKey,
   registrations: &BTreeMap<RegistryKey, Vec<ActorRef>>,
   system: &ActorSystem,
+  origin: Option<Pid>,
 ) {
   if let Some(subs) = subscribers.get(key) {
     let refs = registrations.get(key).cloned().unwrap_or_default();
     let listing = Listing::new(key.0.clone(), key.1, refs);
     for sub in subs {
       let mut s = sub.clone();
-      if let Err(e) = s.try_tell(listing.clone()) {
+      if let Err(error) = s.try_tell(listing.clone()) {
         system.emit_log(
-          crate::core::kernel::event::logging::LogLevel::Warn,
-          alloc::format!("receptionist failed to notify subscriber {:?}: {:?}", sub.pid(), e),
-          None,
+          LogLevel::Warn,
+          alloc::format!(
+            "receptionist failed to notify subscriber {:?} for service_id={} type_id={:?}: {:?}",
+            sub.pid(),
+            key.0,
+            key.1,
+            error
+          ),
+          origin,
           None,
         );
       }

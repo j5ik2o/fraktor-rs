@@ -328,8 +328,7 @@ fn register_logs_warn_and_preserves_registration_when_watch_fails() {
 
   {
     let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
-      .expect("register should still succeed");
+    handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")));
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.registrations.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.registrations[&registry_key][0].pid(), routee.pid());
@@ -351,8 +350,7 @@ fn subscribe_logs_warn_and_preserves_subscriber_when_watch_fails() {
 
   {
     let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
-      .expect("subscribe should still succeed");
+    handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")));
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.subscribers.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.subscribers[&registry_key][0].pid(), subscriber.pid());
@@ -360,6 +358,51 @@ fn subscribe_logs_warn_and_preserves_subscriber_when_watch_fails() {
 
   assert_eq!(listings.lock().len(), 1, "initial listing should still be delivered");
   assert!(has_warn_log(&events, "receptionist failed to watch subscriber"));
+}
+
+#[test]
+fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fails() {
+  let system = ActorSystem::new_empty();
+  let (events, _subscription) = subscribe_log_recorder(&system);
+  let state = Receptionist::empty_state();
+  let key = ServiceKey::<u32>::new("closed-subscriber");
+  let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
+  let command = Receptionist::subscribe(&key, subscriber.clone());
+
+  {
+    let mut guard = state.lock();
+    handle_command(&mut guard, &system, None, &command, |_| Ok(()));
+    let registry_key = (String::from(key.id()), key.type_id());
+    assert_eq!(guard.subscribers.get(&registry_key).map(Vec::len), Some(1));
+    assert_eq!(guard.subscribers[&registry_key][0].pid(), subscriber.pid());
+  }
+
+  assert!(has_warn_log(&events, "receptionist failed to send initial listing to subscriber"));
+  assert!(has_warn_log(&events, "service_id=closed-subscriber"));
+}
+
+#[test]
+fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscriber_fails() {
+  let system = ActorSystem::new_empty();
+  let (events, _subscription) = subscribe_log_recorder(&system);
+  let state = Receptionist::empty_state();
+  let key = ServiceKey::<u32>::new("notify-fail");
+  let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
+  let subscribe = Receptionist::subscribe(&key, subscriber);
+  let routee = ActorRef::new(Pid::new(705, 0), NullSender);
+  let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
+
+  {
+    let mut guard = state.lock();
+    handle_command(&mut guard, &system, None, &subscribe, |_| Ok(()));
+    handle_command(&mut guard, &system, None, &register, |_| Ok(()));
+    let registry_key = (String::from(key.id()), key.type_id());
+    assert_eq!(guard.registrations.get(&registry_key).map(Vec::len), Some(1));
+    assert_eq!(guard.registrations[&registry_key][0].pid(), routee.pid());
+  }
+
+  assert!(has_warn_log(&events, "receptionist failed to notify subscriber"));
+  assert!(has_warn_log(&events, "service_id=notify-fail"));
 }
 
 #[test]
@@ -374,7 +417,7 @@ fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_c
 
   {
     let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Ok(())).expect("register_with_ack should still succeed");
+    handle_command(&mut guard, &system, None, &command, |_| Ok(()));
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.registrations.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.registrations[&registry_key][0].pid(), routee.pid());
@@ -394,7 +437,7 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
   {
     let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
     let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &register, |_| Ok(())).expect("seed registration");
+    handle_command(&mut guard, &system, None, &register, |_| Ok(()));
   }
 
   let reply_to = TypedActorRef::from_untyped(ActorRef::null());
@@ -402,13 +445,29 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
 
   {
     let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &deregister, |_| Ok(()))
-      .expect("deregister_with_ack should still succeed");
+    handle_command(&mut guard, &system, None, &deregister, |_| Ok(()));
     let registry_key = (String::from(key.id()), key.type_id());
-    assert!(guard.registrations.get(&registry_key).map_or(true, Vec::is_empty));
+    assert!(guard.registrations.get(&registry_key).is_none());
   }
 
   assert!(has_warn_log(&events, "receptionist failed to send Deregistered ack"));
+}
+
+#[test]
+fn find_logs_warn_and_returns_ok_when_reply_target_is_closed() {
+  let system = ActorSystem::new_empty();
+  let (events, _subscription) = subscribe_log_recorder(&system);
+  let state = Receptionist::empty_state();
+  let key = ServiceKey::<u32>::new("find-closed-reply");
+  let command = Receptionist::find(&key, TypedActorRef::from_untyped(ActorRef::null()));
+
+  {
+    let mut guard = state.lock();
+    handle_command(&mut guard, &system, None, &command, |_| Ok(()));
+  }
+
+  assert!(has_warn_log(&events, "receptionist failed to reply with listing"));
+  assert!(has_warn_log(&events, "service_id=find-closed-reply"));
 }
 
 #[test]

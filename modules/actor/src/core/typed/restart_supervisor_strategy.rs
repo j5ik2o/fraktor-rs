@@ -23,7 +23,10 @@ pub struct RestartSupervisorStrategy {
 }
 
 impl RestartSupervisorStrategy {
-  /// Creates the default typed restart strategy.
+  /// Creates the default Pekko-compatible restart strategy with unlimited restarts.
+  ///
+  /// This default uses `max_restarts = 0` and `within = Duration::ZERO`, which
+  /// matches Pekko's unlimited restart contract.
   #[must_use]
   pub(crate) const fn new() -> Self {
     Self {

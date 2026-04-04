@@ -29,12 +29,6 @@ impl ActorTags {
     &self.tags
   }
 
-  /// Returns the stored tags.
-  #[must_use]
-  pub const fn get_tags(&self) -> &BTreeSet<String> {
-    self.tags()
-  }
-
   /// Applies the stored tags to typed props.
   #[must_use]
   pub fn apply_to<M>(self, props: TypedProps<M>) -> TypedProps<M>
