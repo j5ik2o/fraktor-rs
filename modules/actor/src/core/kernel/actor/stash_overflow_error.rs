@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::core::kernel::actor::{ActorContext, error::ActorError};
+use crate::core::kernel::actor::{ActorContext, STASH_OVERFLOW_REASON, error::ActorError};
 
 /// Indicates that a classic actor stash exceeded its configured capacity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,12 +18,12 @@ impl TryFrom<ActorError> for StashOverflowError {
 
 impl From<StashOverflowError> for ActorError {
   fn from(_: StashOverflowError) -> Self {
-    ActorError::recoverable(crate::core::kernel::actor::STASH_OVERFLOW_REASON)
+    ActorError::recoverable(STASH_OVERFLOW_REASON)
   }
 }
 
 impl fmt::Display for StashOverflowError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{}", crate::core::kernel::actor::STASH_OVERFLOW_REASON)
+    write!(f, "{}", STASH_OVERFLOW_REASON)
   }
 }

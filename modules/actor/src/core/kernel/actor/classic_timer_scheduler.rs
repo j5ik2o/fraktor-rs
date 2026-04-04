@@ -4,7 +4,7 @@ use alloc::string::String;
 use core::time::Duration;
 
 use crate::core::kernel::{
-  actor::{Pid, messaging::AnyMessage, scheduler::SchedulerError},
+  actor::{ActorCell, Pid, messaging::AnyMessage, scheduler::SchedulerError},
   system::ActorSystem,
 };
 
@@ -21,7 +21,7 @@ impl ClassicTimerScheduler {
     Self { system: system.clone(), pid }
   }
 
-  fn with_cell<R>(&self, f: impl FnOnce(&crate::core::kernel::actor::ActorCell) -> R) -> Result<R, SchedulerError> {
+  fn with_cell<R>(&self, f: impl FnOnce(&ActorCell) -> R) -> Result<R, SchedulerError> {
     let state = self.system.state();
     let Some(cell) = state.cell(&self.pid) else {
       return Err(SchedulerError::ActorUnavailable);
@@ -92,6 +92,6 @@ impl ClassicTimerScheduler {
   ///
   /// Returns an error when the backing actor cell is no longer available.
   pub fn cancel_all(&self) -> Result<(), SchedulerError> {
-    self.with_cell(crate::core::kernel::actor::ActorCell::cancel_all_timers)
+    self.with_cell(ActorCell::cancel_all_timers)
   }
 }

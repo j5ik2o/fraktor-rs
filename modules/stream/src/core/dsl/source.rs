@@ -38,6 +38,7 @@ use crate::core::{
   attributes::Attributes,
   r#impl::{
     fusing::{StreamBufferConfig, map_definition},
+    interpreter::{DEFAULT_BOUNDARY_CAPACITY, IslandBoundaryShared, IslandSplitter},
     materialization::Stream,
   },
   materialization::DriveOutcome,
@@ -2161,7 +2162,7 @@ where
     }
 
     let plan = graph.into_plan()?;
-    let island_plan = crate::core::r#impl::interpreter::IslandSplitter::split(plan);
+    let island_plan = IslandSplitter::split(plan);
 
     if island_plan.islands().len() <= 1 {
       // Single island: existing path
@@ -2190,8 +2191,8 @@ where
         let element_type = crossing.element_type();
         let boundary_capacity = islands[downstream_idx]
           .input_buffer_capacity_for_inlet(crossing.to_port())
-          .unwrap_or(crate::core::r#impl::interpreter::DEFAULT_BOUNDARY_CAPACITY);
-        let boundary = crate::core::r#impl::interpreter::IslandBoundaryShared::new(boundary_capacity);
+          .unwrap_or(DEFAULT_BOUNDARY_CAPACITY);
+        let boundary = IslandBoundaryShared::new(boundary_capacity);
         boundaries.push((boundary.clone(), downstream_idx));
         islands[upstream_idx].add_boundary_sink(boundary.clone(), crossing.from_port(), element_type);
         islands[downstream_idx].add_boundary_source(boundary, crossing.to_port(), element_type);

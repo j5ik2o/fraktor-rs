@@ -1,5 +1,7 @@
 use alloc::{string::String, vec::Vec};
 
+#[cfg(feature = "tokio-executor")]
+use crate::std::{dispatch::dispatcher::DispatcherConfig, scheduler::TickDriverConfig as StdTickDriverConfig};
 use crate::{
   core::kernel::{
     actor::{
@@ -54,10 +56,10 @@ impl ActorSystem {
   /// or tick driver setup fails.
   #[cfg(feature = "tokio-executor")]
   pub fn new(props: &Props) -> Result<Self, SpawnError> {
-    let tick_driver = crate::std::scheduler::TickDriverConfig::default_config();
+    let tick_driver = StdTickDriverConfig::default_config();
     let config = ActorSystemConfig::default()
       .with_tick_driver(tick_driver)
-      .with_default_dispatcher(crate::std::dispatch::dispatcher::DispatcherConfig::default_config().into_core());
+      .with_default_dispatcher(DispatcherConfig::default_config().into_core());
     Self::new_with_config(props, &config)
   }
 

@@ -9,7 +9,10 @@ use core::marker::PhantomData;
 use crate::core::{
   kernel::{
     actor::props::{MailboxConfig, Props},
-    dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+    dispatch::{
+      dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID,
+      mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+    },
   },
   typed::{
     actor::TypedActor,
@@ -104,8 +107,7 @@ where
       | DispatcherSelector::Default => self,
       | DispatcherSelector::FromConfig(id) => self.map_props(|p| p.with_dispatcher_id(id)),
       | DispatcherSelector::SameAsParent => self.map_props(|p| p.with_dispatcher_same_as_parent()),
-      | DispatcherSelector::Blocking => self
-        .map_props(|p| p.with_dispatcher_id(crate::core::kernel::dispatch::dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID)),
+      | DispatcherSelector::Blocking => self.map_props(|p| p.with_dispatcher_id(DEFAULT_BLOCKING_DISPATCHER_ID)),
     }
   }
 

@@ -45,6 +45,7 @@ libraries = [
     { path = "lints/type-per-file-lint" },
     { path = "lints/tests-location-lint" },
     { path = "lints/use-placement-lint" },
+    { path = "lints/redundant-fqcn-lint" },
     { path = "lints/rustdoc-lint" },
     { path = "lints/cfg-std-forbid-lint" },
 ]

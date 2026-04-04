@@ -20,7 +20,7 @@ use super::{
   validate_positive_argument,
 };
 use crate::core::{
-  DynValue, KillSwitchStateHandle, SourceLogic, SubstreamCancelStrategy, attributes::Attributes,
+  DynValue, KillSwitchStateHandle, SharedKillSwitch, SourceLogic, SubstreamCancelStrategy, attributes::Attributes,
   r#impl::materialization::Stream, materialization::DriveOutcome, stage::StreamStage,
 };
 
@@ -3246,7 +3246,7 @@ where
   /// [`SharedKillSwitch`]: crate::core::SharedKillSwitch
   #[must_use]
   pub fn from_sink_and_source_coupled<Mat1, Mat2>(sink: Sink<In, Mat1>, source: Source<Out, Mat2>) -> Self {
-    let ks = crate::core::SharedKillSwitch::new();
+    let ks = SharedKillSwitch::new();
     let state = ks.state_handle();
     let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source(sink, wrapped_source);
@@ -3267,7 +3267,7 @@ where
   ) -> Flow<In, Out, C::Out>
   where
     C: MatCombineRule<Mat1, Mat2>, {
-    let ks = crate::core::SharedKillSwitch::new();
+    let ks = SharedKillSwitch::new();
     let state = ks.state_handle();
     let wrapped_source = source.via(Flow::<Out, Out, StreamNotUsed>::from_coupled_termination_state(state.clone()));
     let base = Self::from_sink_and_source_mat(sink, wrapped_source, combine);

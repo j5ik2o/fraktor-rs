@@ -13,6 +13,7 @@ use crate::core::{
     behavior::Behavior,
     dsl::Behaviors,
     message_and_signals::BehaviorSignal,
+    props::TypedProps,
     receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
   },
 };
@@ -118,8 +119,7 @@ where
         })
       });
 
-      let listing_props =
-        crate::core::typed::props::TypedProps::<Listing>::from_behavior_factory(move || (*listing_factory)());
+      let listing_props = TypedProps::<Listing>::from_behavior_factory(move || (*listing_factory)());
       let listing_ref = match ctx.spawn_child(&listing_props) {
         | Ok(child) => child.actor_ref(),
         | Err(_) => return Behaviors::stopped(),

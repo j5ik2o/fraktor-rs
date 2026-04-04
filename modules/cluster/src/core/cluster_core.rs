@@ -23,8 +23,8 @@ use fraktor_utils_rs::core::{
 };
 
 use crate::core::{
-  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot, ClusterProviderShared,
-  MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
+  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot, ClusterProviderError,
+  ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
   downing_provider::DowningProvider,
   grain::{GrainKey, KindRegistry},
   identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},
@@ -370,7 +370,7 @@ impl ClusterCore {
   /// or provider-side down processing fails.
   pub fn down(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
-      return Err(ClusterError::from(crate::core::ClusterProviderError::down("cluster is not started")));
+      return Err(ClusterError::from(ClusterProviderError::down("cluster is not started")));
     }
     self.downing_provider.lock().down(authority).map_err(ClusterError::from)?;
     self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
@@ -383,7 +383,7 @@ impl ClusterCore {
   /// Returns an error if the cluster is not started or the provider rejects the join request.
   pub fn join(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
-      return Err(ClusterError::from(crate::core::ClusterProviderError::join("cluster is not started")));
+      return Err(ClusterError::from(ClusterProviderError::join("cluster is not started")));
     }
     self.provider.with_write(|provider| provider.join(authority)).map_err(ClusterError::from)
   }
@@ -395,7 +395,7 @@ impl ClusterCore {
   /// Returns an error if the cluster is not started or the provider rejects the leave request.
   pub fn leave(&mut self, authority: &str) -> Result<(), ClusterError> {
     if self.mode.is_none() {
-      return Err(ClusterError::from(crate::core::ClusterProviderError::leave("cluster is not started")));
+      return Err(ClusterError::from(ClusterProviderError::leave("cluster is not started")));
     }
     self.provider.with_write(|provider| provider.leave(authority)).map_err(ClusterError::from)
   }

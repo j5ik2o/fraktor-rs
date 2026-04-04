@@ -51,6 +51,8 @@ use crate::core::{
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
 };
+#[cfg(feature = "tokio-transport")]
+use crate::std::endpoint_transport_bridge::{EndpointTransportBridge, EndpointTransportBridgeConfig};
 
 /// Shared handle used by endpoints and providers to drive remoting.
 pub struct RemotingControlHandle {
@@ -425,7 +427,7 @@ impl RemotingControlInner {
         .canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
       let system_name = system.state().system_name();
-      let config = crate::std::endpoint_transport_bridge::EndpointTransportBridgeConfig {
+      let config = EndpointTransportBridgeConfig {
         system: system.downgrade(),
         control,
         writer,
@@ -443,7 +445,7 @@ impl RemotingControlInner {
         ack_send_window: self.ack_send_window,
         ack_receive_window: self.ack_receive_window,
       };
-      let handle = crate::std::endpoint_transport_bridge::EndpointTransportBridge::spawn(config)
+      let handle = EndpointTransportBridge::spawn(config)
         .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
       *bridge_guard = Some(handle);
     }

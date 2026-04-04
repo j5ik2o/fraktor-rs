@@ -33,7 +33,7 @@ pub type CircuitBreakerShared = crate::core::kernel::pattern::CircuitBreakerShar
 /// Panics if `max_failures` is zero.
 #[must_use]
 pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBreaker {
-  crate::core::kernel::pattern::CircuitBreaker::new_with_clock(max_failures, reset_timeout, StdClock)
+  CircuitBreaker::new_with_clock(max_failures, reset_timeout, StdClock)
 }
 
 /// Creates a new [`CircuitBreakerShared`] in the **Closed** state using the
@@ -48,7 +48,7 @@ pub fn circuit_breaker(max_failures: u32, reset_timeout: Duration) -> CircuitBre
 /// Panics if `max_failures` is zero.
 #[must_use]
 pub fn circuit_breaker_shared(max_failures: u32, reset_timeout: Duration) -> CircuitBreakerShared {
-  crate::core::kernel::pattern::CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)
+  CircuitBreakerShared::new_with_clock(max_failures, reset_timeout, StdClock)
 }
 
 /// Sends a request and arranges timeout completion on the returned ask future.

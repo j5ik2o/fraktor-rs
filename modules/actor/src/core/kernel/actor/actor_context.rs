@@ -10,7 +10,7 @@ use fraktor_utils_rs::core::sync::{RuntimeMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{
-    ChildRef, Pid,
+    ChildRef, ClassicTimerScheduler, Pid,
     actor_ref::ActorRef,
     error::{ActorError, PipeSpawnError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
@@ -178,8 +178,8 @@ impl ActorContext<'_> {
 
   /// Returns the classic timer facade for the running actor.
   #[must_use]
-  pub fn timers(&self) -> crate::core::kernel::actor::ClassicTimerScheduler {
-    crate::core::kernel::actor::ClassicTimerScheduler::new(&self.system, self.pid)
+  pub fn timers(&self) -> ClassicTimerScheduler {
+    ClassicTimerScheduler::new(&self.system, self.pid)
   }
 
   /// Returns an [`ActorRef`] pointing to the running actor.
