@@ -1,7 +1,4 @@
-//! Builder for configuring and constructing pool routers.
-
-#[cfg(test)]
-mod tests;
+//! Public pool router type for typed routing DSL.
 
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
@@ -15,15 +12,18 @@ use crate::core::{
   typed::{TypedActorRef, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal, props::TypedProps},
 };
 
+#[cfg(test)]
+mod tests;
+
 type RouteSelector<M> = dyn Fn(&[TypedActorRef<M>], &M) -> Vec<TypedActorRef<M>> + Send + Sync;
 type BroadcastPredicate<M> = dyn Fn(&M) -> bool + Send + Sync;
 type RouteePropsMapper<M> = dyn Fn(TypedProps<M>) -> TypedProps<M> + Send + Sync;
 
-/// Configures and builds a pool router behavior.
+/// Configures a pool router behavior.
 ///
 /// The resulting behavior spawns `pool_size` child actors and distributes
-/// incoming messages to them using round-robin routing.
-pub struct PoolRouterBuilder<M>
+/// incoming messages to them using round-robin routing by default.
+pub struct PoolRouter<M>
 where
   M: Send + Sync + Clone + 'static, {
   pool_size:           usize,
@@ -34,7 +34,7 @@ where
   routee_props_mapper: Option<ArcShared<RouteePropsMapper<M>>>,
 }
 
-impl<M> PoolRouterBuilder<M>
+impl<M> PoolRouter<M>
 where
   M: Send + Sync + Clone + 'static,
 {
@@ -43,7 +43,8 @@ where
   /// # Panics
   ///
   /// Panics if `pool_size` is zero.
-  pub(crate) fn new<F>(pool_size: usize, behavior_factory: F) -> Self
+  #[must_use]
+  pub fn new<F>(pool_size: usize, behavior_factory: F) -> Self
   where
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
     assert!(pool_size > 0, "pool size must be positive");
@@ -142,9 +143,7 @@ where
     self
   }
 
-  /// Builds the pool router as a [`Behavior`].
-  #[must_use]
-  pub fn build(self) -> Behavior<M> {
+  fn into_behavior(self) -> Behavior<M> {
     let pool_size = self.pool_size;
     let behavior_factory = self.behavior_factory;
     let strategy = self.strategy;
@@ -172,7 +171,6 @@ where
         }
       }
 
-      // Clone props for potential resize spawning.
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
       let routee_count = routee_vec.len();
@@ -222,7 +220,6 @@ where
       let dispatch_counts_for_resize = dispatch_counts_for_msg;
       let message_counter = AtomicU64::new(0);
       Behaviors::receive_message(move |ctx, message: &M| {
-        // --- Resize check ---
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
           if resizer.is_time_for_resize(counter) {
@@ -242,9 +239,6 @@ where
                   }
                 }
                 if !new_routees.is_empty() {
-                  // routee 配列と dispatch_counts を同一 routees guard 内で更新する。
-                  // select_targets も routees guard を取得してから dispatch_counts を参照するため、
-                  // この guard を保持している間は select_targets が割り込めず不整合は発生しない。
                   let mut guard = routees_for_msg.lock();
                   guard.extend(new_routees);
                   if let Some(ref dc) = dispatch_counts_for_resize {
@@ -257,11 +251,9 @@ where
               let abs_delta = (-delta) as usize;
               let to_stop: Vec<TypedActorRef<M>> = {
                 let mut guard = routees_for_msg.lock();
-                // routee を全て削除しない — 最低1台は残す
                 let remove_count = abs_delta.min(guard.len().saturating_sub(1));
                 let split_at = guard.len() - remove_count;
                 let removed = guard.split_off(split_at);
-                // SmallestMailbox 用 dispatch_counts も routees guard 内で同期して縮小する
                 if let Some(ref dc) = dispatch_counts_for_resize {
                   let mut counts = dc.lock();
                   counts.truncate(guard.len());
@@ -282,16 +274,15 @@ where
           }
         }
 
-        // --- Route message ---
         let targets = {
           let guard = routees_for_msg.lock();
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
           if let Some(predicate) = broadcast_predicate_for_message.as_ref() {
-            if predicate(message) { guard.to_vec() } else { (select_targets)(&guard, message) }
+            if predicate(message) { guard.to_vec() } else { select_targets(&guard, message) }
           } else {
-            (select_targets)(&guard, message)
+            select_targets(&guard, message)
           }
         };
         for mut target in targets {
@@ -329,6 +320,15 @@ where
   }
 }
 
+impl<M> From<PoolRouter<M>> for Behavior<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  fn from(router: PoolRouter<M>) -> Self {
+    router.into_behavior()
+  }
+}
+
 #[derive(Clone)]
 enum PoolRouteStrategy<M>
 where
@@ -340,12 +340,12 @@ where
   SmallestMailbox,
 }
 
-const fn pseudo_random_index(seed: u64, len: usize) -> usize {
+pub(super) const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   let mixed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
   (mixed as usize) % len
 }
 
-fn select_smallest_mailbox_index<M>(
+pub(super) fn select_smallest_mailbox_index<M>(
   routees: &[TypedActorRef<M>],
   dispatch_counts: &ArcShared<RuntimeMutex<Vec<usize>>>,
 ) -> usize

@@ -48,3 +48,47 @@ fn interceptor_trait_has_default_around_signal() {
     interceptor.around_signal(&mut typed_ctx, &BehaviorSignal::PostStop, &mut |_ctx, _sig| Ok(Behaviors::same()));
   assert!(result.is_ok());
 }
+
+#[test]
+fn interceptor_trait_default_is_same_returns_true_for_same_instance() {
+  struct IdentityInterceptor;
+
+  impl BehaviorInterceptor<u32> for IdentityInterceptor {}
+
+  let interceptor = IdentityInterceptor;
+  let this: &dyn BehaviorInterceptor<u32> = &interceptor;
+
+  assert!(this.is_same(this));
+}
+
+#[test]
+fn interceptor_trait_default_is_same_returns_false_for_distinct_instances() {
+  struct IdentityInterceptor;
+
+  impl BehaviorInterceptor<u32> for IdentityInterceptor {}
+
+  let left = IdentityInterceptor;
+  let right = IdentityInterceptor;
+  let left_ref: &dyn BehaviorInterceptor<u32> = &left;
+  let right_ref: &dyn BehaviorInterceptor<u32> = &right;
+
+  assert!(!left_ref.is_same(right_ref));
+}
+
+#[test]
+fn interceptor_trait_is_same_can_be_overridden() {
+  struct AlwaysSameInterceptor;
+
+  impl BehaviorInterceptor<u32> for AlwaysSameInterceptor {
+    fn is_same(&self, _other: &dyn BehaviorInterceptor<u32>) -> bool {
+      true
+    }
+  }
+
+  let left = AlwaysSameInterceptor;
+  let right = AlwaysSameInterceptor;
+  let left_ref: &dyn BehaviorInterceptor<u32> = &left;
+  let right_ref: &dyn BehaviorInterceptor<u32> = &right;
+
+  assert!(left_ref.is_same(right_ref));
+}

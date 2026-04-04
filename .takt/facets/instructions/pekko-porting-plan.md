@@ -1,7 +1,7 @@
 Pekko互換仕様のRust実装をバッチ単位で計画してください。
 
 ## やらないこと (Do Not)
-- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
+- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このステップはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ステップの責務。
 - バッチ選定と実装計画を作成できる場合は、`要件が不明確、情報不足` を選ばないこと。
 - `確認事項` セクションは、計画を確定できない真の blocker がある場合のみ書くこと。単なる追加提案、設計メモ、将来の改善案は `確認事項` に入れず、`スコープ外` または `実装ガイドライン` に書くこと。
 - `docs/gap-analysis/*.md` と直前の `coder-scope.md` / `coder-decisions.md` から合理的に推論できる事項は自己解決すること。
@@ -71,7 +71,7 @@ Pekko互換仕様のRust実装をバッチ単位で計画してください。
 ## 並行実装可能性の判定（team_leader 向け）
 
 バッチ内の各タスクについて、以下の基準で並行実装可能性を判定する。
-implement ムーブメントでは team_leader が最大3つのサブタスクに並行分解するため、
+implement ステップでは team_leader が最大3つのサブタスクに並行分解するため、
 この情報が分解の品質に直結する。
 
 ### 判定基準

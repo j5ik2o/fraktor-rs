@@ -4,7 +4,7 @@
 **ピース全体の確認:**
 1. レポートディレクトリ内の全レポートを確認し、ピース全体の整合性をチェックする
    - 計画と実装結果が一致しているか
-   - 各レビュームーブメントの指摘が適切に対応されているか
+   - 各レビューステップの指摘が適切に対応されているか
    - タスクの本来の目的が達成されているか
 2. タスク指示書の各要件が達成されているか
    - タスク指示書から要件を1つずつ抽出する
@@ -17,12 +17,13 @@
 未対応の改善提案がないか確認してください。
 
 **fraktor-rs固有の検証:**
-- qa-fix / pekko-compat-fix / implement ムーブメントのレポートに、変更範囲に対する検証（dylint/対象テスト）が記録されていることを確認
+- review-fix / implement ステップのレポートに、変更範囲に対する検証（dylint/対象テスト）が記録されていることを確認
 - `06-qa-review.md` の判定がapprovedであることを確認
 - `05-pekko-compat-review.md` の承認済み判定があることを確認
-- `qa-fix` / `pekko-compat-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
+- `07-test-review.md` の承認済み判定があることを確認
+- `review-fix` の修正内容が上記レビュー結果と矛盾していないことを確認
 ※ supervisor は CI を自身では実行しない（implement/qa-fix/pekko-compat-fix の実行済み証跡をレポートで確認するのみ）
-※ `./scripts/ci-check.sh ai all` は supervise の次の `final-ci` ムーブメントで1回だけ実行する
+※ `./scripts/ci-check.sh ai all` は supervise の次の `final-ci` ステップで1回だけ実行する
 
 **Validation出力契約:**
 ```markdown

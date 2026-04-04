@@ -22,6 +22,12 @@ pub trait BehaviorInterceptor<Outer, Inner = Outer>: Send + Sync
 where
   Outer: Send + Sync + 'static,
   Inner: Send + Sync + 'static, {
+  /// Returns true when `other` represents the same interceptor instance.
+  #[must_use]
+  fn is_same(&self, other: &dyn BehaviorInterceptor<Outer, Inner>) -> bool {
+    core::ptr::addr_eq(self, other)
+  }
+
   /// Called when the wrapped behavior starts.
   ///
   /// The default delegates directly to the `start` callback.

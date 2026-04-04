@@ -1,5 +1,5 @@
 name: pekko-porting
-description: Pekko互換仕様をRustでテスト先行実装するための開発ピース（ギャップ分析→テスト作成→実装→QAレビュー→Pekko互換レビュー→監督）
+description: Pekko互換仕様をRustでテスト先行実装するための開発ワークフロー（ギャップ分析→テスト作成→実装→並列レビュー（QA＋Pekko互換＋テスト品質）→監督）
 piece_config:
   provider_options:
     codex:
@@ -7,7 +7,7 @@ piece_config:
     opencode:
       network_access: true
 max_movements: 100
-initial_movement: plan
+initial_step: plan
 
 personas:
   pekko-porting-qa-reviewer: ../facets/personas/pekko-porting-qa-reviewer.md
@@ -23,8 +23,7 @@ policies:
 instructions:
   pekko-porting-plan: ../facets/instructions/pekko-porting-plan.md
   pekko-porting-implement: ../facets/instructions/pekko-porting-implement.md
-  pekko-porting-qa-fix: ../facets/instructions/pekko-porting-qa-fix.md
-  pekko-porting-compat-fix: ../facets/instructions/pekko-porting-compat-fix.md
+  pekko-porting-review-fix: ../facets/instructions/pekko-porting-review-fix.md
   pekko-porting-supervise: ../facets/instructions/pekko-porting-supervise.md
   pekko-porting-final-ci: ../facets/instructions/pekko-porting-final-ci.md
   pekko-porting-ai-fix: ../facets/instructions/pekko-porting-ai-fix.md
@@ -36,8 +35,7 @@ instructions:
   loop-monitor-plan-implement: ../facets/instructions/loop-monitor-plan-implement.md
   loop-monitor-ai-review-fix-pekko: ../facets/instructions/loop-monitor-ai-review-fix-pekko.md
   loop-monitor-ai-fix-no-fix: ../facets/instructions/loop-monitor-ai-fix-no-fix.md
-  loop-monitor-reviewers-qa-fix-pekko: ../facets/instructions/loop-monitor-reviewers-qa-fix-pekko.md
-  loop-monitor-pekko-compat-review-fix-pekko: ../facets/instructions/loop-monitor-pekko-compat-review-fix-pekko.md
+  loop-monitor-reviewers-review-fix: ../facets/instructions/loop-monitor-reviewers-review-fix.md
   loop-monitor-supervise-pekko-compat-fix: ../facets/instructions/loop-monitor-supervise-pekko-compat-fix.md
 
 report_formats:
@@ -88,33 +86,20 @@ loop_monitors:
 
   - cycle:
       - reviewers
-      - qa-fix
+      - review-fix
     threshold: 3
     judge:
       persona: supervisor
-      instruction: loop-monitor-reviewers-qa-fix-pekko
+      instruction: loop-monitor-reviewers-review-fix
       rules:
         - condition: 健全（進捗あり）
           next: reviewers
-        - condition: 非生産的（改善なし）
-          next: pekko-compat-review
-
-  - cycle:
-      - pekko-compat-review
-      - pekko-compat-fix
-    threshold: 3
-    judge:
-      persona: supervisor
-      instruction: loop-monitor-pekko-compat-review-fix-pekko
-      rules:
-        - condition: 健全（進捗あり）
-          next: pekko-compat-review
         - condition: 非生産的（改善なし）
           next: supervise
 
   - cycle:
       - supervise
-      - pekko-compat-fix
+      - review-fix
     threshold: 3
     judge:
       persona: supervisor
@@ -125,7 +110,7 @@ loop_monitors:
         - condition: 非生産的（改善なし）
           next: ABORT
 
-movements:
+steps:
   - name: plan
     edit: false
     persona: planner
@@ -325,94 +310,81 @@ movements:
         next: reviewers
 
   - name: reviewers
-    edit: false
-    persona: pekko-porting-qa-reviewer
-    policy:
-      - review
-      - qa
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - WebSearch
-          - WebFetch
-    instruction: pekko-porting-review-qa
-    output_contracts:
-      report:
-        - name: 06-qa-review.md
-          format: pekko-porting-qa-review
+    parallel:
+      - name: qa-review
+        persona: pekko-porting-qa-reviewer
+        policy:
+          - review
+          - qa
+        edit: false
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - WebSearch
+              - WebFetch
+        instruction: pekko-porting-review-qa
+        output_contracts:
+          report:
+            - name: 06-qa-review.md
+              format: pekko-porting-qa-review
+        rules:
+          - condition: approved
+          - condition: needs_fix
+      - name: pekko-compat-review
+        persona: pekko-porting-compat-reviewer
+        policy:
+          - review
+          - pekko-compat
+        knowledge:
+          - pekko-porting
+          - architecture
+        edit: false
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - WebSearch
+              - WebFetch
+        instruction: pekko-porting-review-compat
+        output_contracts:
+          report:
+            - name: 05-pekko-compat-review.md
+              format: pekko-compat-review
+        rules:
+          - condition: approved
+          - condition: needs_fix
+      - name: test-review
+        persona: testing-reviewer
+        policy:
+          - review
+          - testing
+        edit: false
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+        instruction: review-test
+        output_contracts:
+          report:
+            - name: 07-test-review.md
+              format: testing-review
+        rules:
+          - condition: approved
+          - condition: needs_fix
     rules:
-      - condition: approved
-        next: pekko-compat-review
-      - condition: needs_fix
-        next: qa-fix
-
-  - name: qa-fix
-    edit: true
-    persona: coder
-    policy:
-      - coding
-      - testing
-      - fraktor-coding
-    session: refresh
-    knowledge:
-      - pekko-porting
-      - architecture
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - Edit
-          - Write
-          - Bash
-          - WebSearch
-          - WebFetch
-    required_permission_mode: edit
-    pass_previous_response: false
-    instruction: pekko-porting-qa-fix
-    rules:
-      - condition: 修正完了
-        next: reviewers
-      - condition: 修正不要（指摘対象の確認済み、仕様通り）
-        next: reviewers
-      - condition: 部分的に修正した（残りは仕様通りで修正不要）
-        next: reviewers
-      - condition: 判断できない、情報不足
-        next: reviewers
-
-  - name: pekko-compat-review
-    edit: false
-    persona: pekko-porting-compat-reviewer
-    policy:
-      - review
-      - pekko-compat
-    knowledge:
-      - pekko-porting
-      - architecture
-    provider_options:
-      claude:
-        allowed_tools:
-          - Read
-          - Glob
-          - Grep
-          - WebSearch
-          - WebFetch
-    instruction: pekko-porting-review-compat
-    output_contracts:
-      report:
-        - name: 05-pekko-compat-review.md
-          format: pekko-compat-review
-    rules:
-      - condition: approved
+      - condition: all("approved")
         next: supervise
-      - condition: needs_fix
-        next: pekko-compat-fix
+      - condition: any("needs_fix")
+        next: review-fix
 
-  - name: pekko-compat-fix
+  - name: review-fix
     edit: true
     persona: coder
     policy:
@@ -436,16 +408,16 @@ movements:
           - WebFetch
     required_permission_mode: edit
     pass_previous_response: false
-    instruction: pekko-porting-compat-fix
+    instruction: pekko-porting-review-fix
     rules:
       - condition: 修正完了
-        next: pekko-compat-review
+        next: reviewers
       - condition: 修正不要（指摘対象の確認済み、仕様通り）
-        next: pekko-compat-review
+        next: reviewers
       - condition: 部分的に修正した（残りは仕様通りで修正不要）
-        next: pekko-compat-review
+        next: reviewers
       - condition: 判断できない、情報不足
-        next: pekko-compat-review
+        next: reviewers
 
   - name: supervise
     edit: false
@@ -474,7 +446,7 @@ movements:
       - condition: すべて問題なし
         next: final-ci
       - condition: テスト失敗、ビルドエラー、要件未達（修正で解決可能）
-        next: pekko-compat-fix
+        next: review-fix
       - condition: 根本的な設計変更が必要
         next: plan
 
@@ -497,6 +469,6 @@ movements:
       - condition: ci-check.sh ai all が成功
         next: COMPLETE
       - condition: ci-check.sh ai all が失敗
-        next: pekko-compat-fix
+        next: review-fix
       - condition: 判断できない、情報不足
-        next: pekko-compat-fix
+        next: review-fix

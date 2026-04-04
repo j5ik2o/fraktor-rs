@@ -3,10 +3,13 @@ use core::{any::TypeId, hint::spin_loop};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
-use super::{GroupRouterBuilder, rendezvous_hash_index};
+use super::rendezvous_hash_index;
 use crate::core::typed::{
   TypedActorRef, TypedActorSystem, TypedProps,
-  dsl::{Behaviors, routing::Routers},
+  dsl::{
+    Behaviors,
+    routing::{GroupRouter, Routers},
+  },
   receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
 };
 
@@ -21,27 +24,27 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 }
 
 #[test]
-fn should_create_builder_from_service_key() {
+fn should_create_group_router_from_service_key() {
   let key = ServiceKey::<u32>::new("test-group");
-  let _builder = GroupRouterBuilder::new(key);
+  let _router: GroupRouter<u32> = Routers::group(key);
 }
 
 #[test]
-fn group_router_builder_with_random_routing_builds_behavior() {
+fn group_router_with_random_routing_builds_behavior() {
   let key = ServiceKey::<u32>::new("test-group-random-build");
-  let _behavior = Routers::group(key).with_random_routing(7).build();
+  let _router: GroupRouter<u32> = GroupRouter::new(key).with_random_routing(7);
 }
 
 #[test]
-fn group_router_builder_with_round_robin_routing_builds_behavior() {
+fn group_router_with_round_robin_routing_builds_behavior() {
   let key = ServiceKey::<u32>::new("test-group-round-robin-build");
-  let _behavior = Routers::group(key).with_round_robin_routing().build();
+  let _router: GroupRouter<u32> = GroupRouter::new(key).with_round_robin_routing();
 }
 
 #[test]
-fn group_router_builder_with_consistent_hash_routing_builds_behavior() {
+fn group_router_with_consistent_hash_routing_builds_behavior() {
   let key = ServiceKey::<u32>::new("test-group-consistent-hash-build");
-  let _behavior = Routers::group(key).with_consistent_hash_routing(|message| message.to_string()).build();
+  let _router: GroupRouter<u32> = GroupRouter::new(key).with_consistent_hash_routing(|message| message.to_string());
 }
 
 #[test]
@@ -50,7 +53,7 @@ fn group_router_should_route_via_system_receptionist() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).build()
+    move || Routers::group(key.clone())
   });
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
@@ -82,6 +85,58 @@ fn group_router_should_route_via_system_receptionist() {
 }
 
 #[test]
+fn group_router_public_type_routes_via_system_receptionist() {
+  let key = ServiceKey::<u32>::new("test-group-public-type");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let router_props = TypedProps::<u32>::from_behavior_factory({
+    let key = key.clone();
+    move || {
+      let router: GroupRouter<u32> = GroupRouter::new(key.clone()).with_round_robin_routing();
+      router
+    }
+  });
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
+  let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
+  let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
+  let mut receptionist = system.receptionist();
+
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  for routee_index in 0..2_usize {
+    let routee_props = TypedProps::<u32>::from_behavior_factory({
+      let records = records.clone();
+      move || {
+        let records = records.clone();
+        Behaviors::receive_message(move |_ctx, message: &u32| {
+          records.lock().push((routee_index, *message));
+          Ok(Behaviors::same())
+        })
+      }
+    });
+    let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
+    let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
+    receptionist.tell(Receptionist::register(&key, routee_ref));
+  }
+
+  for message in 0..4_u32 {
+    router.tell(message);
+  }
+  wait_until(|| records.lock().len() == 4);
+
+  let mut routee_by_message = [usize::MAX; 4];
+  for (routee_index, message) in records.lock().iter().copied() {
+    routee_by_message[message as usize] = routee_index;
+  }
+  assert_ne!(routee_by_message[0], routee_by_message[1]);
+  assert_eq!(routee_by_message[0], routee_by_message[2]);
+  assert_eq!(routee_by_message[1], routee_by_message[3]);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
 fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
   let key = ServiceKey::<u32>::new("test-group-consistent-hash");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -92,7 +147,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).with_consistent_hash_routing(|message| message.to_string()).build()
+    move || GroupRouter::new(key.clone()).with_consistent_hash_routing(|message| message.to_string())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -166,7 +221,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).with_round_robin_routing().build()
+    move || GroupRouter::new(key.clone()).with_round_robin_routing()
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -222,7 +277,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).with_random_routing(11).build()
+    move || GroupRouter::new(key.clone()).with_random_routing(11)
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -270,8 +325,8 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
 }
 
 #[test]
-fn group_router_uses_round_robin_routing_by_default() {
-  let key = ServiceKey::<u32>::new("test-group-default-round-robin-routing");
+fn group_router_uses_random_routing_by_default() {
+  let key = ServiceKey::<u32>::new("test-group-default-random-routing");
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
@@ -280,14 +335,14 @@ fn group_router_uses_round_robin_routing_by_default() {
 
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
-    move || Routers::group(key.clone()).build()
+    move || Routers::group(key.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  for routee_index in 0..2_usize {
+  for routee_index in 0..3_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
       move || {
@@ -309,19 +364,16 @@ fn group_router_uses_round_robin_routing_by_default() {
   });
   records.lock().clear();
 
-  for message in 0..4_u32 {
+  for message in 0..6_u32 {
     router.tell(message);
   }
-  wait_until(|| records.lock().len() == 4);
+  wait_until(|| records.lock().len() == 6);
 
-  let mut routee_by_message = [usize::MAX; 4];
+  let mut routee_by_message = [usize::MAX; 6];
   for (routee_index, message) in records.lock().iter().copied() {
     routee_by_message[message as usize] = routee_index;
   }
-  assert!(routee_by_message.iter().all(|index| *index < 2));
-  assert_ne!(routee_by_message[0], routee_by_message[1]);
-  assert_eq!(routee_by_message[0], routee_by_message[2]);
-  assert_eq!(routee_by_message[1], routee_by_message[3]);
+  assert_eq!(routee_by_message, [1, 1, 0, 0, 0, 2]);
 
   system.terminate().expect("terminate");
 }
@@ -341,7 +393,7 @@ fn group_router_should_route_via_explicit_receptionist() {
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
     let receptionist_ref = receptionist_ref.clone();
-    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+    move || GroupRouter::new(key.clone()).build_with_receptionist(receptionist_ref.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -456,7 +508,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
     let receptionist_ref = receptionist_ref.clone();
-    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+    move || GroupRouter::new(key.clone()).build_with_receptionist(receptionist_ref.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
@@ -512,7 +564,7 @@ fn group_router_should_unsubscribe_when_stopped() {
   let router_props = TypedProps::<u32>::from_behavior_factory({
     let key = key.clone();
     let receptionist_ref = receptionist_ref.clone();
-    move || Routers::group(key.clone()).build_with_receptionist(receptionist_ref.clone())
+    move || GroupRouter::new(key.clone()).build_with_receptionist(receptionist_ref.clone())
   });
   let router = system.as_untyped().spawn(router_props.to_untyped()).expect("spawn group router");
 

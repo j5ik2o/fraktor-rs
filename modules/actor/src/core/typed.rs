@@ -10,6 +10,10 @@ mod actor_ref;
 mod actor_ref_resolver;
 /// Setup wrapper for replacing the default actor-ref resolver extension.
 mod actor_ref_resolver_setup;
+/// Typed metadata tags facade for actor props.
+mod actor_tags;
+/// Typed backoff supervision strategy facade.
+mod backoff_supervisor_strategy;
 /// Typed behavior representation.
 mod behavior;
 /// Cross-cutting concern interceptor for typed behaviors.
@@ -44,10 +48,14 @@ pub mod pubsub;
 pub mod receptionist;
 /// Common recipient abstraction for typed and untyped actor references.
 mod recipient_ref;
+/// Typed restart supervision strategy facade.
+mod restart_supervisor_strategy;
 /// Typed scheduler facade.
 mod scheduler;
 /// Pekko-inspired spawn protocol for typed actors.
 mod spawn_protocol;
+/// Typed supervisor strategy factory facade.
+mod supervisor_strategy;
 /// Typed actor system interface.
 mod system;
 /// System-level log handle for typed actor systems.
@@ -58,6 +66,8 @@ pub use abstract_extension_setup::AbstractExtensionSetup;
 pub use actor_ref::TypedActorRef;
 pub use actor_ref_resolver::ActorRefResolver;
 pub use actor_ref_resolver_setup::ActorRefResolverSetup;
+pub use actor_tags::ActorTags;
+pub use backoff_supervisor_strategy::BackoffSupervisorStrategy;
 pub use behavior::Behavior;
 pub use behavior_interceptor::BehaviorInterceptor;
 pub use dispatcher_selector::DispatcherSelector;
@@ -67,8 +77,10 @@ pub use log_options::LogOptions;
 pub use mailbox_selector::MailboxSelector;
 pub use props::TypedProps;
 pub use recipient_ref::RecipientRef;
+pub use restart_supervisor_strategy::RestartSupervisorStrategy;
 pub use scheduler::Scheduler;
 pub use spawn_protocol::SpawnProtocol;
+pub use supervisor_strategy::SupervisorStrategy;
 pub use system::TypedActorSystem;
 pub use typed_actor_system_log::TypedActorSystemLog;
 pub use typed_actor_system_settings::TypedActorSystemSettings;

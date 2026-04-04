@@ -1,7 +1,4 @@
-//! Builder for configuring and constructing group routers.
-
-#[cfg(test)]
-mod tests;
+//! Public group router type for typed routing DSL.
 
 use alloc::{format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -20,26 +17,32 @@ use crate::core::{
   },
 };
 
-/// Configures and builds a group router behavior.
+#[cfg(test)]
+mod tests;
+
+/// Configures a group router behavior.
 ///
 /// Unlike a pool router that spawns its own children, a group router discovers
-/// routees dynamically via the Receptionist service.  It subscribes to listing
+/// routees dynamically via the Receptionist service. It subscribes to listing
 /// changes for the provided [`ServiceKey`] and updates its routee set
 /// accordingly.
-pub struct GroupRouterBuilder<M>
+pub struct GroupRouter<M>
 where
   M: Send + Sync + Clone + 'static, {
   service_key: ServiceKey<M>,
   strategy:    GroupRouteStrategy<M>,
 }
 
-impl<M> GroupRouterBuilder<M>
+impl<M> GroupRouter<M>
 where
   M: Send + Sync + Clone + 'static,
 {
   /// Creates a new group router builder for the given service key.
-  pub(crate) const fn new(service_key: ServiceKey<M>) -> Self {
-    Self { service_key, strategy: GroupRouteStrategy::RoundRobin }
+  ///
+  /// Messages are routed using random selection by default.
+  #[must_use]
+  pub const fn new(service_key: ServiceKey<M>) -> Self {
+    Self { service_key, strategy: GroupRouteStrategy::Random { seed: 0 } }
   }
 
   /// Routes messages by random selection across the available routees.
@@ -65,13 +68,7 @@ where
     self
   }
 
-  /// Builds the group router as a [`Behavior`].
-  ///
-  /// The router subscribes to listing changes for the configured service key
-  /// via the Receptionist and routes messages to discovered actors using
-  /// round-robin selection by default.
-  #[must_use]
-  pub fn build(self) -> Behavior<M> {
+  fn into_behavior(self) -> Behavior<M> {
     self.build_with_optional_receptionist(None)
   }
 
@@ -89,7 +86,7 @@ where
     let strategy = self.strategy;
     let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(RuntimeMutex::new(Vec::new()));
     let routees_for_listing = routees.clone();
-    let routees_for_msg = routees;
+    let routees_for_message = routees;
 
     Behaviors::setup(move |ctx| {
       let key_for_signal = key.clone();
@@ -99,10 +96,9 @@ where
       };
       let receptionist = ArcShared::new(RuntimeMutex::new(receptionist_ref));
 
-      // Create a child actor to receive Listing updates and refresh the routee set.
       let routees_updater = routees_for_listing.clone();
       let listing_factory = ArcShared::new(move || -> Behavior<Listing> {
-        let ru = routees_updater.clone();
+        let routees_updater = routees_updater.clone();
         Behaviors::receive_message(move |ctx, listing: &Listing| {
           let typed_refs = match listing.typed_refs::<M>() {
             | Ok(typed_refs) => typed_refs,
@@ -116,7 +112,7 @@ where
               return Ok(Behaviors::same());
             },
           };
-          let mut guard = ru.lock();
+          let mut guard = routees_updater.lock();
           *guard = typed_refs;
           Ok(Behaviors::same())
         })
@@ -133,7 +129,7 @@ where
       if let Err(error) = receptionist.lock().try_tell(subscribe_cmd) {
         ctx.system().emit_log(
           LogLevel::Warn,
-          alloc::format!("group router failed to subscribe to receptionist: {:?}", error),
+          format!("group router failed to subscribe to receptionist: {:?}", error),
           Some(ctx.pid()),
           None,
         );
@@ -141,16 +137,17 @@ where
       let receptionist_for_signal = receptionist;
       let listing_ref_for_signal = listing_ref;
 
-      let rfm = routees_for_msg.clone();
       let strategy_for_message = strategy.clone();
       let round_robin_index = AtomicUsize::new(0);
       let random_seed = AtomicU64::new(match &strategy_for_message {
         | GroupRouteStrategy::Random { seed } => *seed,
         | _ => 0,
       });
+      let routees_for_receive = routees_for_message.clone();
+
       Behaviors::receive_message(move |ctx, message: &M| {
         let targets = {
-          let guard = rfm.lock();
+          let guard = routees_for_receive.lock();
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
@@ -168,7 +165,7 @@ where
           if let Err(error) = target.try_tell(message.clone()) {
             ctx.system().emit_log(
               LogLevel::Warn,
-              alloc::format!("group router failed to deliver message to routee: {:?}", error),
+              format!("group router failed to deliver message to routee: {:?}", error),
               Some(ctx.pid()),
               None,
             );
@@ -182,7 +179,7 @@ where
           if let Err(error) = receptionist_for_signal.lock().try_tell(unsubscribe) {
             ctx.system().emit_log(
               LogLevel::Warn,
-              alloc::format!("group router failed to unsubscribe from receptionist: {:?}", error),
+              format!("group router failed to unsubscribe from receptionist: {:?}", error),
               Some(ctx.pid()),
               None,
             );
@@ -191,6 +188,15 @@ where
         Ok(Behaviors::same())
       })
     })
+  }
+}
+
+impl<M> From<GroupRouter<M>> for Behavior<M>
+where
+  M: Send + Sync + Clone + 'static,
+{
+  fn from(router: GroupRouter<M>) -> Self {
+    router.into_behavior()
   }
 }
 
@@ -208,7 +214,7 @@ const fn pseudo_random_index(seed: u64, len: usize) -> usize {
   (mixed as usize) % len
 }
 
-fn rendezvous_hash_index<M>(value: &str, routees: &[TypedActorRef<M>]) -> usize
+pub(super) fn rendezvous_hash_index<M>(value: &str, routees: &[TypedActorRef<M>]) -> usize
 where
   M: Send + Sync + Clone + 'static, {
   let key_hash = stable_hash(value.as_bytes());

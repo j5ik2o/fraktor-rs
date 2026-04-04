@@ -80,7 +80,6 @@
 
 | 項目 | 実装先層 | 根拠 |
 |------|----------|------|
-| `ActorRef.! / RecipientRef.!` | core/typed | 既存 `tell` の薄い alias 追加で済む。 |
 | `BehaviorInterceptor.isSame` | core/typed | 既存 trait にデフォルトメソッドを足すだけで閉じる。 |
 | `Props.withMailboxFromConfig` | core/typed | `MailboxSelector::from_config` への shorthand を追加するだけで済む。 |
 | `Receptionist` extension façade (`ref/get/createExtension`) | core/typed | 既存 `TypedActorSystem::receptionist_ref/receptionist` の薄いラッパーで実装できる。 |

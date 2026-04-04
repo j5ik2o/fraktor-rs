@@ -55,13 +55,12 @@ fn router_guardian(
         })
       }
     };
-    Routers::pool::<Command, _>(2, routee_factory).with_round_robin().build()
+    Routers::pool::<Command, _>(2, routee_factory).with_round_robin()
   })
 }
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::thread;
 
@@ -88,7 +87,7 @@ fn main() {
     thread::sleep(Duration::from_millis(10));
   }
   let records = future.try_take().expect("ready").expect("ok");
-  println!("round robin records = {records:?}");
+  assert_eq!(records.len(), 4, "all work items should be routed");
 
   system.terminate().expect("terminate");
 }
