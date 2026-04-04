@@ -38,7 +38,7 @@ fn accepts(pid: fraktor_actor_rs::core::kernel::actor::Pid) {
 ```
 
 ## 修正ガイド
-1. ファイル冒頭の `use` ブロックへ `use crate::sample::domain::{Mode, Widget};` のような import を追加する。
+1. そのパスが現れる位置と同じ lexical module scope の `use` ブロックへ `use crate::sample::domain::{Mode, Widget};` のような import を追加する。トップレベルならファイル冒頭、ネストした `mod` の中ならその `mod` の中に置く。
 2. 本文中の `crate::...` プレフィックスを取り除き、`Widget::new()` や `Mode::Idle` のような短い表記へ置き換える。
 3. 同じファイル内の同種の FQCN をまとめて統一する。
 4. `use` 宣言と対象箇所以外のコードは変更しない。
