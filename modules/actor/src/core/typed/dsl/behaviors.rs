@@ -257,7 +257,7 @@ impl Behaviors {
   }
 
   /// Wraps a behavior so that spawned children inherit a declarative
-  /// [`SupervisorStrategy`](crate::core::kernel::actor::supervision::SupervisorStrategy).
+  /// [`SupervisorStrategy`](crate::core::typed::SupervisorStrategy).
   #[must_use]
   pub const fn supervise<M>(behavior: Behavior<M>) -> Supervise<M>
   where

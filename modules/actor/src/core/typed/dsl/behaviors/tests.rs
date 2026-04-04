@@ -16,8 +16,12 @@ use crate::core::{
     system::ActorSystem,
   },
   typed::{
-    TypedActorRef, actor::TypedActorContext, behavior::Behavior, behavior_interceptor::BehaviorInterceptor,
-    internal::ReceiveTimeoutConfig, message_and_signals::BehaviorSignal,
+    TypedActorRef,
+    actor::TypedActorContext,
+    behavior::Behavior,
+    behavior_interceptor::BehaviorInterceptor,
+    internal::ReceiveTimeoutConfig,
+    message_and_signals::{BehaviorSignal, PostStop, PreRestart},
   },
 };
 
@@ -599,6 +603,47 @@ fn stopped_with_post_stop_ignores_non_post_stop_signals() {
   });
 
   let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::PreRestart).expect("should handle PreRestart");
+  assert!(
+    matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same),
+    "non-PostStop signals should return Same"
+  );
+  assert!(!*called.lock(), "callback should not be invoked for PreRestart signal");
+}
+
+#[test]
+fn stopped_with_post_stop_accepts_public_post_stop_conversion() {
+  let called = ArcShared::new(NoStdMutex::new(false));
+  let called_clone = called.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(move || {
+    *called_clone.lock() = true;
+  });
+
+  behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::from(PostStop)).expect("should handle PostStop signal");
+
+  assert!(*called.lock(), "post_stop callback should have been invoked");
+}
+
+#[test]
+fn stopped_with_post_stop_ignores_public_pre_restart_conversion() {
+  let called = ArcShared::new(NoStdMutex::new(false));
+  let called_clone = called.clone();
+
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let mut context = ActorContext::new(&system, pid);
+  let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
+
+  let mut behavior = Behaviors::stopped_with_post_stop::<u32, _>(move || {
+    *called_clone.lock() = true;
+  });
+
+  let result = behavior.handle_signal(&mut typed_ctx, &BehaviorSignal::from(PreRestart)).expect("should handle");
   assert!(
     matches!(result.directive(), crate::core::typed::behavior::BehaviorDirective::Same),
     "non-PostStop signals should return Same"

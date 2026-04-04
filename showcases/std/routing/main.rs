@@ -55,13 +55,12 @@ fn router_guardian(
         })
       }
     };
-    Routers::pool::<Command, _>(2, routee_factory).with_round_robin().build()
+    Routers::pool::<Command, _>(2, routee_factory).with_round_robin()
   })
 }
 
 // --- エントリーポイント ---
 
-#[allow(clippy::print_stdout)]
 fn main() {
   use std::thread;
 
@@ -79,16 +78,24 @@ fn main() {
   }
   thread::sleep(Duration::from_millis(30));
 
-  // 結果を読み取る
-  let response = router.ask::<Vec<(usize, u32)>, _>(|reply_to| Command::Read { reply_to });
-  let mut future = response.future().clone();
-  let deadline = Instant::now() + Duration::from_secs(1);
-  while !future.is_ready() {
-    assert!(Instant::now() < deadline, "ask timeout");
-    thread::sleep(Duration::from_millis(10));
+  // 結果を読み取り、全ワークが反映されるまで短時間ポーリングする
+  let deadline = Instant::now() + Duration::from_secs(3);
+  loop {
+    let response = router.ask::<Vec<(usize, u32)>, _>(|reply_to| Command::Read { reply_to });
+    let mut future = response.future().clone();
+    let ask_deadline = Instant::now() + Duration::from_secs(1);
+    while !future.is_ready() {
+      assert!(Instant::now() < ask_deadline, "ask timeout");
+      thread::sleep(Duration::from_millis(10));
+    }
+    let records = future.try_take().expect("ready").expect("ok");
+    let observed_count = records.len();
+    if observed_count == 4 {
+      break;
+    }
+    assert!(Instant::now() < deadline, "all work items should be routed within 3 seconds, observed {}", observed_count);
+    thread::sleep(Duration::from_millis(20));
   }
-  let records = future.try_take().expect("ready").expect("ok");
-  println!("round robin records = {records:?}");
 
   system.terminate().expect("terminate");
 }

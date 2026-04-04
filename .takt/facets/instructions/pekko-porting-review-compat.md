@@ -2,8 +2,8 @@
 
 ## やらないこと (Do Not)
 
-- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このムーブメントはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ムーブメントの責務。
-AI特有の問題はレビューしないでください（ai_reviewムーブメントで実施済み）。
+- `cargo check` / `cargo build` / `cargo test` など、ビルドを伴うコマンドを実行しないこと。このステップはビルド権限がなく `Operation not permitted` で失敗する。ビルド検証は `fix` / `implement` ステップの責務。
+AI特有の問題はレビューしないでください（ai_reviewステップで実施済み）。
 
 **レビュー観点:**
 - Pekko参照実装とのAPI対応関係の正確性

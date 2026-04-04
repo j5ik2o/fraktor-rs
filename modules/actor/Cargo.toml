@@ -96,6 +96,11 @@ name = "classic_logging"
 path = "examples/classic_logging.rs"
 required-features = ["std", "test-support"]
 
+[[example]]
+name = "typed_receptionist_router"
+path = "examples/typed_receptionist_router.rs"
+required-features = ["std", "test-support"]
+
 [lints]
 workspace = true
 

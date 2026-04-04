@@ -6,8 +6,7 @@ mod tests;
 use core::time::Duration;
 
 use super::{
-  balancing_pool_router_builder::BalancingPoolRouterBuilder, group_router_builder::GroupRouterBuilder,
-  pool_router_builder::PoolRouterBuilder,
+  balancing_pool_router_builder::BalancingPoolRouterBuilder, group_router::GroupRouter, pool_router::PoolRouter,
   scatter_gather_first_completed_router_builder::ScatterGatherFirstCompletedRouterBuilder,
   tail_chopping_router_builder::TailChoppingRouterBuilder,
 };
@@ -21,11 +20,11 @@ impl Routers {
   ///
   /// Messages are distributed using round-robin by default.
   #[must_use]
-  pub fn pool<M, F>(pool_size: usize, behavior_factory: F) -> PoolRouterBuilder<M>
+  pub fn pool<M, F>(pool_size: usize, behavior_factory: F) -> PoolRouter<M>
   where
     M: Send + Sync + Clone + 'static,
     F: Fn() -> Behavior<M> + Send + Sync + 'static, {
-    PoolRouterBuilder::new(pool_size, behavior_factory)
+    PoolRouter::new(pool_size, behavior_factory)
   }
 
   /// Creates a group router that discovers routees via the Receptionist.
@@ -34,10 +33,10 @@ impl Routers {
   /// and routes messages to discovered actors using random selection by
   /// default.
   #[must_use]
-  pub const fn group<M>(key: ServiceKey<M>) -> GroupRouterBuilder<M>
+  pub const fn group<M>(key: ServiceKey<M>) -> GroupRouter<M>
   where
     M: Send + Sync + Clone + 'static, {
-    GroupRouterBuilder::new(key)
+    GroupRouter::new(key)
   }
 
   /// Creates a scatter-gather-first-completed pool router.

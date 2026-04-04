@@ -1,5 +1,8 @@
 //! Typed props.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::string::String;
 use core::marker::PhantomData;
 
@@ -153,6 +156,12 @@ where
   #[must_use]
   pub fn with_mailbox_unbounded(self) -> Self {
     self.with_mailbox_selector(MailboxSelector::unbounded())
+  }
+
+  /// Shorthand: use a mailbox resolved from configuration.
+  #[must_use]
+  pub fn with_mailbox_from_config(self, id: impl Into<String>) -> Self {
+    self.with_mailbox_selector(MailboxSelector::from_config(id))
   }
 
   /// Attaches metadata tags to the actor for observability and routing.

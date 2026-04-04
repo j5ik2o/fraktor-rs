@@ -474,6 +474,18 @@ impl ActorSystem {
     self.spawn(props)
   }
 
+  /// Spawns a detached actor without requiring bootstrap guardians.
+  ///
+  /// This is intended for internal support actors that still need a real actor
+  /// cell in empty test systems.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError`] when the actor cannot be created.
+  pub(crate) fn spawn_detached(&self, props: &Props) -> Result<ChildRef, SpawnError> {
+    self.spawn_with_parent(None, props)
+  }
+
   /// Spawns a new named top-level actor under the user guardian.
   ///
   /// Corresponds to classic `ActorRefFactory.actorOf(props, name)`.

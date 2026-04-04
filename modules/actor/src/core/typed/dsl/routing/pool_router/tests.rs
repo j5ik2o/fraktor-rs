@@ -19,7 +19,7 @@ use crate::core::{
     behavior::Behavior,
     dsl::{
       Behaviors,
-      routing::{DefaultResizer, Routers},
+      routing::{DefaultResizer, PoolRouter, Routers},
     },
     props::TypedProps,
     system::TypedActorSystem,
@@ -82,13 +82,13 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
           recording_routee_behavior(routee_index, records.clone())
         }
       };
-      let builder = Routers::pool::<u32, _>(pool_size, routee_factory);
+      let builder = PoolRouter::new(pool_size, routee_factory);
       let builder = match strategy {
         | PoolTestStrategy::Broadcast => builder.with_broadcast(),
         | PoolTestStrategy::Random { seed } => builder.with_random(seed),
         | PoolTestStrategy::ConsistentHash => builder.with_consistent_hash(|message| *message as u64),
       };
-      builder.build()
+      builder
     }
   });
 
@@ -108,55 +108,48 @@ fn register_routee_cell(system: &ActorSystem, pid: Pid, name: &str) -> ArcShared
 }
 
 #[test]
-fn pool_router_builder_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore);
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_builds_behavior() {
+  let _router: PoolRouter<u32> = Routers::pool::<u32, _>(3, Behaviors::ignore);
 }
 
 #[test]
-fn pool_router_builder_with_pool_size_override() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_pool_size(5);
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_pool_size_override() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_pool_size(5);
 }
 
 #[test]
-fn pool_router_builder_with_broadcast_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_broadcast();
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_broadcast_builds_behavior() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_broadcast();
 }
 
 #[test]
-fn pool_router_builder_with_round_robin_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_round_robin();
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_round_robin_builds_behavior() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_round_robin();
 }
 
 #[test]
-fn pool_router_builder_with_random_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_random(42);
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_random_builds_behavior() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_random(42);
 }
 
 #[test]
-fn pool_router_builder_with_consistent_hash_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_consistent_hash(|message| *message as u64);
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_consistent_hash_builds_behavior() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_consistent_hash(|message| *message as u64);
 }
 
 #[test]
-fn pool_router_builder_with_smallest_mailbox_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_smallest_mailbox();
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_smallest_mailbox_builds_behavior() {
+  let _router: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_smallest_mailbox();
 }
 
 #[test]
-fn pool_router_builder_with_broadcast_predicate_builds_behavior() {
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_broadcast_predicate(|message| *message == 0);
-  let _behavior: Behavior<u32> = builder.build();
+fn pool_router_with_broadcast_predicate_builds_behavior() {
+  let _router: PoolRouter<u32> =
+    PoolRouter::new(3, Behaviors::ignore).with_broadcast_predicate(|message| *message == 0);
 }
 
 #[test]
-fn pool_router_builder_with_broadcast_delivers_to_all_routees() {
+fn pool_router_with_broadcast_delivers_to_all_routees() {
   let pool_size = 3_usize;
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::Broadcast);
 
@@ -172,7 +165,7 @@ fn pool_router_builder_with_broadcast_delivers_to_all_routees() {
 }
 
 #[test]
-fn pool_router_builder_with_broadcast_predicate_only_broadcasts_matching_messages() {
+fn pool_router_public_type_with_broadcast_delivers_to_all_routees() {
   let pool_size = 3_usize;
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
@@ -194,7 +187,52 @@ fn pool_router_builder_with_broadcast_predicate_only_broadcasts_matching_message
           recording_routee_behavior(routee_index, records.clone())
         }
       };
-      Routers::pool::<u32, _>(pool_size, routee_factory).with_broadcast_predicate(|message| *message == 99).build()
+      let router: PoolRouter<u32> = PoolRouter::new(pool_size, routee_factory).with_broadcast();
+      router
+    }
+  });
+
+  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  );
+  let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
+  let mut router = system.user_guardian_ref();
+
+  router.tell(11);
+  wait_until(|| records.lock().len() == pool_size);
+
+  let mut routees: Vec<usize> =
+    records.lock().iter().filter_map(|(routee_index, message)| (*message == 11).then_some(*routee_index)).collect();
+  routees.sort_unstable();
+  assert_eq!(routees, vec![0, 1, 2]);
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
+fn pool_router_with_broadcast_predicate_only_broadcasts_matching_messages() {
+  let pool_size = 3_usize;
+  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+
+  let props = TypedProps::<u32>::from_behavior_factory({
+    let records = records.clone();
+    let next_routee_index = next_routee_index.clone();
+    move || {
+      let routee_factory = {
+        let records = records.clone();
+        let next_routee_index = next_routee_index.clone();
+        move || {
+          let routee_index = {
+            let mut guard = next_routee_index.lock();
+            let current = *guard;
+            *guard += 1;
+            current
+          };
+          recording_routee_behavior(routee_index, records.clone())
+        }
+      };
+      PoolRouter::new(pool_size, routee_factory).with_broadcast_predicate(|message| *message == 99)
     }
   });
 
@@ -215,7 +253,7 @@ fn pool_router_builder_with_broadcast_predicate_only_broadcasts_matching_message
 }
 
 #[test]
-fn pool_router_builder_with_random_routes_reproducibly_from_seed() {
+fn pool_router_with_random_routes_reproducibly_from_seed() {
   let seed = 42_u64;
   let pool_size = 3_usize;
   let message_count = 9_usize;
@@ -242,7 +280,7 @@ fn pool_router_builder_with_random_routes_reproducibly_from_seed() {
 }
 
 #[test]
-fn pool_router_builder_with_consistent_hash_routes_to_hash_bucket() {
+fn pool_router_with_consistent_hash_routes_to_hash_bucket() {
   let pool_size = 3_usize;
   let messages = [0_u32, 3, 1, 4, 2, 5, 0, 3, 1];
   let (system, mut router, records) = spawn_router_system(pool_size, PoolTestStrategy::ConsistentHash);
@@ -260,7 +298,7 @@ fn pool_router_builder_with_consistent_hash_routes_to_hash_bucket() {
 }
 
 #[test]
-fn pool_router_builder_with_smallest_mailbox_selects_lowest_queue() {
+fn pool_router_with_smallest_mailbox_selects_lowest_queue() {
   let system = ActorSystem::new_empty();
 
   let pid0 = system.allocate_pid();
@@ -287,25 +325,25 @@ fn pool_router_builder_with_smallest_mailbox_selects_lowest_queue() {
 
 #[test]
 #[should_panic(expected = "pool size must be positive")]
-fn pool_router_builder_rejects_zero_pool_size() {
-  let _builder = Routers::pool::<u32, _>(0, Behaviors::ignore);
+fn pool_router_rejects_zero_pool_size() {
+  let _builder: PoolRouter<u32> = PoolRouter::new(0, Behaviors::ignore);
 }
 
 #[test]
 #[should_panic(expected = "pool size must be positive")]
-fn pool_router_builder_with_pool_size_rejects_zero() {
-  let _ = Routers::pool::<u32, _>(3, Behaviors::ignore).with_pool_size(0);
+fn pool_router_with_pool_size_rejects_zero() {
+  let _: PoolRouter<u32> = PoolRouter::new(3, Behaviors::ignore).with_pool_size(0);
 }
 
 #[test]
-fn pool_router_builder_with_resizer_builds_behavior() {
+fn pool_router_with_resizer_builds_behavior() {
   let resizer = DefaultResizer::new(2, 5, 1);
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore).with_resizer(resizer);
-  let _behavior: Behavior<u32> = builder.build();
+  let builder = PoolRouter::new(3, Behaviors::ignore).with_resizer(resizer);
+  let _behavior: Behavior<u32> = builder.into();
 }
 
 #[test]
-fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
+fn pool_router_with_resizer_scales_up_to_lower_bound() {
   let initial_pool_size = 2_usize;
   let lower_bound = 4_usize;
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -330,7 +368,7 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
       };
       // 初期2台、resizer下限4 ⇒ 最初のメッセージでさらに2台追加される
       let resizer = DefaultResizer::new(lower_bound, 10, 1);
-      Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
+      PoolRouter::new(initial_pool_size, routee_factory).with_resizer(resizer)
     }
   });
 
@@ -359,7 +397,7 @@ fn pool_router_builder_with_resizer_scales_up_to_lower_bound() {
 }
 
 #[test]
-fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
+fn pool_router_with_resizer_scales_down_to_upper_bound() {
   let initial_pool_size = 5_usize;
   let upper_bound = 3_usize;
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -384,7 +422,7 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
       };
       // 初期5台、resizer上限3 ⇒ 最初のメッセージで2台削除される
       let resizer = DefaultResizer::new(1, upper_bound, 1);
-      Routers::pool::<u32, _>(initial_pool_size, routee_factory).with_resizer(resizer).build()
+      PoolRouter::new(initial_pool_size, routee_factory).with_resizer(resizer)
     }
   });
 
@@ -420,19 +458,19 @@ fn pool_router_builder_with_resizer_scales_down_to_upper_bound() {
 // --- T2: with_routee_props tests ---
 
 #[test]
-fn pool_router_builder_with_routee_props_builds_behavior() {
+fn pool_router_with_routee_props_builds_behavior() {
   // Given: a pool router builder
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore);
+  let builder = PoolRouter::new(3, Behaviors::ignore);
 
   // When: with_routee_props is called with an identity mapper
   let builder = builder.with_routee_props(|props| props);
 
   // Then: build succeeds
-  let _behavior: Behavior<u32> = builder.build();
+  let _behavior: Behavior<u32> = builder.into();
 }
 
 #[test]
-fn pool_router_builder_with_routee_props_applies_tags_to_routees() {
+fn pool_router_with_routee_props_applies_tags_to_routees() {
   let pool_size = 2_usize;
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
   let child_tags: ArcShared<NoStdMutex<Vec<alloc::collections::BTreeSet<String>>>> =
@@ -462,9 +500,7 @@ fn pool_router_builder_with_routee_props_applies_tags_to_routees() {
         }
       };
       // When: with_routee_props adds a tag to each routee's props
-      Routers::pool::<u32, _>(pool_size, routee_factory)
-        .with_routee_props(|props| props.with_tag("pool-member"))
-        .build()
+      PoolRouter::new(pool_size, routee_factory).with_routee_props(|props| props.with_tag("pool-member"))
     }
   });
 
@@ -489,13 +525,13 @@ fn pool_router_builder_with_routee_props_applies_tags_to_routees() {
 }
 
 #[test]
-fn pool_router_builder_with_routee_props_can_chain_with_other_builders() {
+fn pool_router_with_routee_props_can_chain_with_other_builders() {
   // Given: a pool router builder with multiple configuration steps
-  let builder = Routers::pool::<u32, _>(3, Behaviors::ignore)
+  let builder = PoolRouter::new(3, Behaviors::ignore)
     .with_round_robin()
     .with_routee_props(|props| props.with_tag("tagged"))
     .with_pool_size(5);
 
   // Then: build succeeds (all builder steps compose)
-  let _behavior: Behavior<u32> = builder.build();
+  let _behavior: Behavior<u32> = builder.into();
 }

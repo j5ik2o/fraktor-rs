@@ -28,7 +28,7 @@ use crate::core::{
     behavior_interceptor::BehaviorInterceptor,
     dsl::{Behaviors, StashBuffer, TypedAskError},
     message_adapter::{AdapterEnvelope, AdapterError, AdapterPayload},
-    message_and_signals::BehaviorSignal,
+    message_and_signals::{BehaviorSignal, PostStop, PreRestart, Signal},
     props::TypedProps,
     system::TypedActorSystem,
   },
@@ -932,4 +932,19 @@ fn read_stash_order_log(actor: &mut TypedActorRef<StashOrderCommand>) -> Vec<Str
   let mut future = response.future().clone();
   wait_until(|| future.is_ready());
   future.try_take().expect("result").expect("payload")
+}
+
+fn assert_signal_type<T: Signal>() {}
+
+#[test]
+fn public_signal_types_implement_signal_marker_trait() {
+  assert_signal_type::<BehaviorSignal>();
+  assert_signal_type::<PreRestart>();
+  assert_signal_type::<PostStop>();
+}
+
+#[test]
+fn dedicated_signal_types_convert_into_behavior_signal_variants() {
+  assert_eq!(BehaviorSignal::from(PreRestart), BehaviorSignal::PreRestart);
+  assert_eq!(BehaviorSignal::from(PostStop), BehaviorSignal::PostStop);
 }

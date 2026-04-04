@@ -27,8 +27,8 @@ where
   /// Applies the provided supervisor strategy to the wrapped behavior so that any children
   /// spawned from it inherit the declared supervision policy.
   ///
-  /// Accepts [`SupervisorStrategy`](crate::core::kernel::actor::supervision::SupervisorStrategy),
-  /// [`BackoffSupervisorStrategy`](crate::core::kernel::actor::supervision::BackoffSupervisorStrategy),
+  /// Accepts [`SupervisorStrategy`](crate::core::typed::SupervisorStrategy),
+  /// [`BackoffSupervisorStrategy`](crate::core::typed::BackoffSupervisorStrategy),
   /// or [`SupervisorStrategyConfig`] directly.
   #[must_use]
   pub fn on_failure(self, strategy: impl Into<SupervisorStrategyConfig>) -> Behavior<M> {

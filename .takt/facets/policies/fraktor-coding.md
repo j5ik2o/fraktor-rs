@@ -9,7 +9,7 @@
 
 mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, cfg-std-forbid, ambiguous-suffix
 
-編集前に対象範囲のlintを実行すること。実行コマンドは各ピースの instruction 指示を優先する。
+編集前に対象範囲のlintを実行すること。実行コマンドは各ワークフローの instruction 指示を優先する。
 
 ## CQS 原則
 
@@ -38,16 +38,16 @@ mod-file, module-wiring, type-per-file, tests-location, use-placement, rustdoc, 
 
 - テストは `{type}/tests.rs` に配置
 - テストをコメントアウトや無視しない
-- 全タスク完了時は各ピースで定義された最終CIゲートを通す
+- 全タスク完了時は各ワークフローで定義された最終CIゲートを通す
 
 ## CI 実行制限
 
-- `./scripts/ci-check.sh ai all` は `final-ci` ムーブメント専用。他のムーブメントでは実行禁止
+- `./scripts/ci-check.sh ai all` は `final-ci` ステップ専用。他のステップでは実行禁止
 - 変更範囲に限定した単体版（例: `./scripts/ci-check.sh ai dylint -m モジュール名`）は許可
 
 ## アーティファクト配置ルール
 
-- takt ピース実行中に生成するレポート・計画・分析・決定ログ等の中間アーティファクトは **`.takt/` 配下にのみ**配置すること
+- takt ワークフロー実行中に生成するレポート・計画・分析・決定ログ等の中間アーティファクトは **`.takt/` 配下にのみ**配置すること
 - プロジェクトルート直下やソースツリー内（`reports/`, `docs/plans/` 等）に中間アーティファクトを書き出してはならない
 - ソースコードの編集（`modules/`, `showcases-std/` 等）はこの制約の対象外
 

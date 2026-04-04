@@ -1,4 +1,4 @@
-supervise と pekko-compat-fix のサイクルが {cycle_count} 回繰り返されました。
+supervise と review-fix のサイクルが {cycle_count} 回繰り返されました。
 
 各サイクルのレポートを確認し、このループが健全（進捗がある）か、
 非生産的（同じ問題を繰り返している）かを判断してください。
