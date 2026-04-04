@@ -14,25 +14,23 @@
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_rs::{
-  core::kernel::{
-    actor::{
-      Actor, ActorContext,
-      actor_ref::ActorRef,
-      error::ActorError,
-      extension::ExtensionInstallers,
-      messaging::{AnyMessage, AnyMessageView},
-      props::Props,
-      setup::ActorSystemConfig,
-    },
-    serialization::SerializationExtensionInstaller,
-    system::remote::RemotingConfig,
-    util::futures::ActorFutureListener,
+use fraktor_actor_adaptor_rs::std::{
+  dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
+  system::ActorSystem,
+};
+use fraktor_actor_rs::core::kernel::{
+  actor::{
+    Actor, ActorContext,
+    actor_ref::ActorRef,
+    error::ActorError,
+    extension::ExtensionInstallers,
+    messaging::{AnyMessage, AnyMessageView},
+    props::Props,
+    setup::ActorSystemConfig,
   },
-  std::{
-    dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-    system::ActorSystem,
-  },
+  serialization::SerializationExtensionInstaller,
+  system::remote::RemotingConfig,
+  util::futures::ActorFutureListener,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionInstaller,

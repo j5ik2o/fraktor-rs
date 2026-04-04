@@ -23,7 +23,14 @@ anyhow = { workspace = true, optional = true }
 
 [features]
 default = []
-advanced = ["dep:fraktor-persistence-rs", "dep:fraktor-remote-rs", "dep:fraktor-cluster-rs", "dep:tokio", "dep:anyhow"]
+advanced = [
+    "dep:fraktor-persistence-rs",
+    "dep:fraktor-remote-rs",
+    "dep:fraktor-cluster-rs",
+    "dep:tokio",
+    "dep:anyhow",
+    "fraktor-actor-adaptor-rs/tokio-executor",
+]
 
 [lib]
 name = "fraktor_showcases_std"
