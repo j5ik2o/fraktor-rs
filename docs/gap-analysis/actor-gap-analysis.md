@@ -1,114 +1,129 @@
 # actor モジュール ギャップ分析
 
-集計注記:
-- 集計対象は `actor-typed` の typed root / `scaladsl` / `receptionist` / `eventstream` / `delivery` / `routing` と、typed API が参照する classic bridge (`ActorPath`, `Address`, `Cancellable`)。
-- `javadsl` 重複、`internal` 実装、deprecated、JVM 専用 util は除外した。
-- `fraktor-rs` 側の件数は「Pekko parity surface に対応する公開契約」の数であり、crate 全体の公開型総数ではない。
+## 前提
+
+- 比較対象:
+  - fraktor-rs: `modules/actor/src/`
+  - Pekko: `references/pekko/actor/src/main/scala/org/apache/pekko/actor`
+  - Pekko typed: `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed`
+- カバレッジ数値は、`private` / `protected` / `internal` を除いた **主要公開契約** を型単位で数えたもの
+- classic の Java 継承 DSL (`AbstractActor`, `ReceiveBuilder`, `AbstractActorWithTimers` など) は、Rust ではそのまま移植しにくいため、必要に応じて `n/a` 判定を使う
 
 ## サマリー
 
 | 指標 | 値 |
 |------|-----|
-| Pekko 公開型数 | 56 |
-| fraktor-rs parity 実装数 | 40（core: 36, std: 4） |
-| カバレッジ（型単位） | 40/56 (71%) |
-| ギャップ数 | 16（core: 16, std: 0） |
+| Pekko 公開型数 | 79 |
+| fraktor-rs 対応実装数 | 69 |
+| カバレッジ（型単位） | 69/79 (87%) |
+| ギャップ数 | 10（core/kernel: 3, core/typed: 5, std: 2） |
 
 ## 層別カバレッジ
 
 | 層 | Pekko対応数 | fraktor-rs実装数 | カバレッジ |
 |----|-------------|------------------|-----------|
-| core / untyped kernel | 6 | 6 | 100% |
-| core / typed ラッパー | 46 | 30 | 65% |
-| std / アダプタ | 4 | 4 | 100% |
+| core / untyped kernel | 26 | 22 | 85% |
+| core / typed ラッパー | 53 | 47 | 89% |
+| std / アダプタ | 6 | 6 | 100% |
+
+`std` は Pekko の JVM 依存ランタイム補助（ロギング、スレッド実行器、協調停止、時計/回路遮断器相当）に対応づけている。
 
 ## カテゴリ別ギャップ
 
-### 基盤 DSL / 型　✅ 実装済み 15/22 (68%)
+### classic actor surface ✅ 実装済み 22/26 (85%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `ExtensibleBehavior[T]` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Behavior.scala:106` | 未対応 | core/typed | hard | `AbstractBehavior` はあるが、`receive/receiveSignal` を持つ独立拡張点がない。 |
-| `ActorRef.!` / `RecipientRef.!` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/ActorRef.scala:77`, `:143` | 未対応 | core/typed | trivial | `tell` はある (`modules/actor/src/core/typed/actor_ref.rs:61`) が演算子エイリアスがない。 |
-| `BehaviorInterceptor.isSame` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/BehaviorInterceptor.scala:92` | 未対応 | core/typed | trivial | fraktor の `BehaviorInterceptor` は `around_start/around_receive/around_signal` のみ (`modules/actor/src/core/typed/behavior_interceptor.rs:21`)。 |
-| `Props.withMailboxFromConfig` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Props.scala:90` | 別経路のみ | core/typed | trivial | `MailboxSelector::from_config` (`modules/actor/src/core/typed/mailbox_selector.rs:40`) と `TypedProps::with_mailbox_selector` (`modules/actor/src/core/typed/props.rs:111`) はあるが、shorthand がない。 |
-| `SupervisorStrategy.resume/restart/stop` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/SupervisorStrategy.scala:35`, `:44`, `:50` | 部分実装 | core/typed | medium | kernel の `SupervisorStrategy` はある (`modules/actor/src/core/kernel/actor/supervision/base.rs:23`) が、typed ルートの定数ファクトリがない。 |
-| `RestartSupervisorStrategy` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/SupervisorStrategy.scala:266` | 部分実装 | core/typed | medium | `with_stop_children` / `with_stash_capacity` は kernel 側にある (`modules/actor/src/core/kernel/actor/supervision/base.rs:186`, `:193`) が、typed 専用型と `withLimit` がない。 |
-| `BackoffSupervisorStrategy` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/SupervisorStrategy.scala:320` | 部分実装 | core/typed | medium | `BackoffSupervisorStrategy` 自体はある (`modules/actor/src/core/kernel/actor/supervision/backoff_supervisor_strategy.rs:18`) が、typed façade と Pekko と同じ builder surface ではない。 |
+| `AbstractActor` / `ReceiveBuilder` | `AbstractActor.scala` | `n/a` | - | n/a | Java 継承 DSL。Rust 側は `Actor` trait と関数/クロージャ中心 |
+| `AbstractActorWithTimers` | `AbstractActor.scala` | `n/a` | - | n/a | Java mixin API。意味的には `ActorContext::timers()` で代替 |
+| `ActorSystem.registerOnTermination` | `ActorSystem.scala` | 未対応 | core/kernel | easy | `when_terminated` 相当はあるが callback 登録 API はない |
+| `PoisonPill` / `Kill` の classic 名前付き surface | `ActorRef.scala` | 部分実装 | core/kernel | easy | 内部 `SystemMessage::{PoisonPill,Kill}` と `ActorRef` helper はあるが、Pekko と同じ公開面ではない |
 
-### ライフサイクル / Signals　✅ 実装済み 3/7 (43%)
+### typed core surface ✅ 実装済み 47/53 (89%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `Signal` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:33` | 未対応 | core/typed | medium | fraktor は `BehaviorSignal` enum で一括表現しており、marker trait がない (`modules/actor/src/core/typed/message_and_signals/signal.rs:10`)。 |
-| `PreRestart` / `PostStop` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:42`, `:52` | 部分実装 | core/typed | medium | enum variant としてはあるが、個別公開型ではない (`modules/actor/src/core/typed/message_and_signals/signal.rs:13`, `:21`)。 |
-| `Terminated` / `ChildFailed` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:81`, `:104` | 部分実装 | core/typed | medium | `Pid` ベースの enum variant で吸収しており、Pekko の dedicated wrapper 型ではない (`modules/actor/src/core/typed/message_and_signals/signal.rs:15`, `:19`)。 |
-| `MessageAdaptionFailure` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/MessageAndSignals.scala:125` | 部分実装 | core/typed | easy | variant はあるが、独立公開型ではない (`modules/actor/src/core/typed/message_and_signals/signal.rs:17`)。 |
+| `ExtensibleBehavior` | `Behavior.scala` | 未対応 | core/typed | easy | `Behavior` と interceptor はあるが公開型としての段階分離がない |
+| `Terminated` 公開 signal 型 | `MessageAndSignals.scala` | 部分実装 | core/typed | easy | 現在は `BehaviorSignal::Terminated(Pid)` のみ |
+| `ChildFailed` 公開 signal 型 | `MessageAndSignals.scala` | 部分実装 | core/typed | easy | 現在は `BehaviorSignal::ChildFailed { pid, error }` のみ |
+| `BehaviorBuilder` | `javadsl/BehaviorBuilder.scala` | `n/a` | - | n/a | Java DSL 専用 builder。Rust では `Behaviors::*` + closure で代替 |
+| `ReceiveBuilder` | `javadsl/ReceiveBuilder.scala` | `n/a` | - | n/a | Java DSL 専用 builder |
+| `ActorContext.ask` の classic `Try` 直結表現 | `scaladsl/ActorContext.scala` | 別名で実装済み | core/typed | - | `ask` / `ask_with_status` / `pipe_to_self` は実装済みだが `Try` モデルではない |
 
-### Receptionist / EventStream　✅ 実装済み 10/12 (83%)
-
-| Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
-|-----------|-----------|-------------|----------|--------|------|
-| `Receptionist` extension façade (`ref`, `createExtension`, `get`) | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/receptionist/Receptionist.scala:33`, `:107`, `:108` | 部分実装 | core/typed | easy | fraktor は plain actor と `TypedActorSystem::receptionist_ref/receptionist` で提供 (`modules/actor/src/core/typed/receptionist.rs:42`, `modules/actor/src/core/typed/system.rs:252`)。ExtensionId としては公開していない。 |
-| `ServiceKey.Listing` / `ServiceKey.Registered` extractor | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/receptionist/Receptionist.scala:81`, `:90` | 未対応 | core/typed | easy | `Listing` (`modules/actor/src/core/typed/receptionist/listing.rs:14`) と `Registered` (`modules/actor/src/core/typed/receptionist/registered.rs:16`) はあるが、`ServiceKey` に紐づく extractor helper がない。 |
-
-### Routing / Delivery　✅ 実装済み 7/9 (78%)
+### supervision / watch ✅ 実装済み 8/10 (80%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `GroupRouter[T]` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/Routers.scala:58` | 未対応 | core/typed | medium | `GroupRouterBuilder` はある (`modules/actor/src/core/typed/dsl/routing/group_router_builder.rs:29`) が、Pekko のような公開 Behavior 型はない。 |
-| `PoolRouter[T]` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/scaladsl/Routers.scala:131` | 未対応 | core/typed | medium | `PoolRouterBuilder` はある (`modules/actor/src/core/typed/dsl/routing/pool_router_builder.rs:26`) が、公開 Behavior 型がない。 |
+| classic `watch` 失敗時の完全 rollback 契約 | `ActorContext.scala`, `ActorRef.scala` | 部分実装 | core/typed | medium | 今回 `Receptionist` は修正済みだが、watch を使う他の facade でも同様の整理余地がある |
+| typed `DeathPactException` 公開型名 | `MessageAndSignals.scala` | 別名で実装済み | core/typed | trivial | `DeathPactError` として提供。機能は実装済みだが名称差あり |
 
-### クラシック橋渡し　✅ 実装済み 5/6 (83%)
+### routing ✅ 実装済み 14/15 (93%)
 
 | Pekko API | Pekko参照 | fraktor対応 | 実装先層 | 難易度 | 備考 |
 |-----------|-----------|-------------|----------|--------|------|
-| `ActorTags` | `references/pekko/actor-typed/src/main/scala/org/apache/pekko/actor/typed/Props.scala:241`, `:255` | 別経路のみ | core/typed | trivial | fraktor は `TypedProps::with_tags/with_tag` (`modules/actor/src/core/typed/props.rs:162`, `:171`) で吸収しており、独立型を持たない。 |
+| `BalancingPool` typed parity | `Routers.scala` | 部分実装 | core/typed | medium | `BalancingPoolRouterBuilder` はあるが Pekko の surface と完全一致ではない |
+
+### discovery / receptionist ✅ 実装済み 9/9 (100%)
+
+ギャップなし。`Receptionist`, `ServiceKey`, `Register`, `Deregister`, `Subscribe`, `Find`, `Listing`, `Registered`, `Deregistered` は主要契約を概ねカバーしている。
+
+### scheduling / timers ✅ 実装済み 8/8 (100%)
+
+ギャップなし。classic `Scheduler` / `ClassicTimerScheduler` 相当、typed `Scheduler` / `TimerScheduler` 相当は実装済み。
+
+### ref / resolution ✅ 実装済み 6/6 (100%)
+
+ギャップなし。`ActorRef`, `ActorSelection`, `ActorPath`, `ActorRefResolver`, `narrow`, `unsafe_upcast`, `to/from serialization format` まで揃っている。
+
+### delivery / pubsub ✅ 実装済み 8/8 (100%)
+
+ギャップなし。`ProducerController`, `ConsumerController`, `DurableProducerQueue`, `Topic`, `TopicStats`, `WorkPullingProducerController` まで揃っている。
 
 ## 内部モジュール構造ギャップ
 
-今回は API ギャップが支配的なため省略。
+API ギャップが 87% まで詰まっており、主要カテゴリの致命的欠落は限定的なので、内部構造ギャップも分析対象に含める。
 
-省略理由:
-- 型単位カバレッジが 71% に留まる
-- `medium` 以上の未実装ギャップが 8 件ある
-- 特に typed supervision と signal surface の不足が、内部責務分割より先に parity を阻害している
+| 構造ギャップ | Pekko側の根拠 | fraktor-rs側の現状 | 推奨アクション | 難易度 | 緊急度 | 備考 |
+|-------------|---------------|--------------------|----------------|--------|--------|------|
+| receptionist の facade / protocol / runtime 実装がまだ粗く同居 | `actor-typed/receptionist/Receptionist.scala`, `actor-typed/internal/receptionist/ReceptionistMessages.scala` | `modules/actor/src/core/typed/receptionist.rs` が facade + behavior を保持し、protocol 型だけ `receptionist/` 配下に分割 | `core/typed/receptionist/` に behavior 実装も寄せ、公開 facade と内部実装の境界を明確化 | medium | high | 今後 serializer / cluster receptionist 拡張を入れると 1 ファイル集中が重くなる |
+| typed delivery に `internal` 層がなく、公開型と制御ロジックが同じ階層に並ぶ | `actor-typed/delivery/*`, `actor-typed/delivery/internal/ProducerControllerImpl.scala` | `modules/actor/src/core/typed/delivery/` 直下に command / settings / behavior / state が並列 | `delivery/internal/` を新設し、controller 実装詳細と公開 DTO を分離 | medium | medium | 現時点で API は揃っているが、再送・永続キュー拡張時に責務が散りやすい |
+| classic kernel の public surface が広く、内部補助型まで `pub` に露出しやすい | Pekko classic は package-private / internal API が多い | `modules/actor/src/core/kernel/**` に利用者向けでない `pub` 型が広く存在 | `pub(crate)` へ寄せられるものを継続的に縮小し、入口 facade からの再公開を基準に露出制御 | medium | medium | fraktor は `pub` 露出が多く、型数だけで見ると Pekko を上回る |
 
 ## 実装優先度
 
 ### Phase 1
 
-| 項目 | 実装先層 | 根拠 |
+| 項目 | 実装先層 | 理由 |
 |------|----------|------|
-| `BehaviorInterceptor.isSame` | core/typed | 既存 trait にデフォルトメソッドを足すだけで閉じる。 |
-| `Props.withMailboxFromConfig` | core/typed | `MailboxSelector::from_config` への shorthand を追加するだけで済む。 |
-| `Receptionist` extension façade (`ref/get/createExtension`) | core/typed | 既存 `TypedActorSystem::receptionist_ref/receptionist` の薄いラッパーで実装できる。 |
-| `ActorTags` façade | core/typed | `TypedProps::with_tags/with_tag` の薄い補助型で済む。 |
+| `ExtensibleBehavior` 相当の公開 surface 追加 | core/typed | 既存 `Behavior` の薄い公開 alias / trait で吸収しやすい |
+| `Terminated` 公開 signal wrapper | core/typed | 既存 `BehaviorSignal::Terminated` の薄い wrapper で済む |
+| `ChildFailed` 公開 signal wrapper | core/typed | 既存 `BehaviorSignal::ChildFailed` の薄い wrapper で済む |
+| `ActorSystem.registerOnTermination` 相当 convenience | core/kernel, core/typed | 既存 `when_terminated` の wrapper 追加で済む |
 
 ### Phase 2
 
-| 項目 | 実装先層 | 根拠 |
+| 項目 | 実装先層 | 理由 |
 |------|----------|------|
-| `SupervisorStrategy.resume/restart/stop` | core/typed | kernel 戦略型を typed ルートに持ち上げる作業。 |
-| `RestartSupervisorStrategy` | core/typed | `withLimit` を含む façade 追加が必要。 |
-| `BackoffSupervisorStrategy` | core/typed | kernel 実装はあるため、typed parity surface の整備が中心。 |
-| `Signal` | core/typed | 既存 `BehaviorSignal` を public wrapper 群へ分解する作業。 |
-| `PreRestart` / `PostStop` | core/typed | enum variant を dedicated public type へ切り出す必要がある。 |
-| `Terminated` / `ChildFailed` | core/typed | `Pid` だけでなく wrapper 型の追加が必要。 |
-| `MessageAdaptionFailure` | core/typed | variant を公開型へ昇格する作業。 |
-| `ServiceKey.Listing` / `ServiceKey.Registered` extractor | core/typed | 既存 `Listing` / `Registered` の helper 追加で閉じる。 |
-| `GroupRouter[T]` | core/typed | builder 返しではなく public Behavior 型を持たせる必要がある。 |
-| `PoolRouter[T]` | core/typed | 同上。 |
+| receptionist 実装の `receptionist/` 配下への再配置 | core/typed | API を壊さず責務を整理できるが、ファイル分割は複数箇所に波及する |
+| delivery の `internal` 分離 | core/typed | 既存 controller 群の責務整理が必要 |
+| classic control message surface (`PoisonPill` / `Kill`) の Pekko 互換 facade 明確化 | core/kernel | 既存内部機構はあるが、公開面の寄せ方を設計する必要がある |
 
 ### Phase 3
 
-| 項目 | 実装先層 | 根拠 |
+| 項目 | 実装先層 | 理由 |
 |------|----------|------|
-| `ExtensibleBehavior[T]` | core/typed | 既存 `Behavior` / `AbstractBehavior` / interceptors の契約に横断的に触れるため、型設計の再整理が必要。 |
+| classic `AbstractActor` / `ReceiveBuilder` 相当の Rust 向け互換 layer | core/kernel or std | Rust では Java 継承 DSL をそのまま移植できず、新規 facade 設計が必要 |
+| typed Java DSL (`BehaviorBuilder`, `ReceiveBuilder`) の parity 層 | core/typed | Rust らしさと Pekko 表面互換の折衷が必要 |
+
+### 対象外（n/a）
+
+| 項目 | 理由 |
+|------|------|
+| `AbstractActorWithTimers` など Java mixin 群 | JVM / Java 継承モデル依存。意味的には既存 timer API でカバー可能 |
 
 ## まとめ
 
-- 全体評価: actor モジュールは receptionist / eventstream / delivery / router builder までかなり前進しているが、**typed の公開契約を Pekko と同じ粒度で見たときに signals と supervision が手薄**。
-- parity を低コストで前進できる代表例: `!` alias、`BehaviorInterceptor.isSame`、`withMailboxFromConfig`、`Receptionist` extension façade。
-- parity 上の主要ギャップ: `ExtensibleBehavior`、typed `SupervisorStrategy` façade、signal の dedicated public types、`GroupRouter` / `PoolRouter` の公開 Behavior 型。
-- 次のボトルネック: まだ API ギャップが支配的であり、現時点では内部モジュール構造より **typed surface の整理** が優先。
+- actor モジュールの parity は **主要 typed 契約がかなり埋まっている**。特に routing / receptionist / typed delivery / ref resolver は強い。
+- 低コストで前進できるのは、`ExtensibleBehavior`、`Terminated` / `ChildFailed` の公開 wrapper、`registerOnTermination` 相当 convenience の追加。
+- 主要ギャップは、Java 継承 DSL 系と、公開 facade に対する内部責務分離の不足。
+- 次のボトルネックは API 不足そのものよりも、**receptionist / delivery の内部責務の切り方** に移りつつある。API gap はまだ残るが、構造整理を並行して進めないと以後の parity 実装速度が落ちる。
