@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::graph_dsl_builder::GraphDslBuilder;
+use super::{graph_dsl_builder::GraphDslBuilder, stream_graph::StreamGraph};
 use crate::core::{
   dsl::{Flow, Sink, Source},
   materialization::StreamNotUsed,
@@ -47,7 +47,7 @@ impl GraphDsl {
     In: Send + Sync + 'static,
     Out: Send + Sync + 'static,
     F: FnOnce(&mut GraphDslBuilder<In, Out, Mat>), {
-    let mut builder = GraphDslBuilder::from_graph(super::stream_graph::StreamGraph::new(), mat);
+    let mut builder = GraphDslBuilder::from_graph(StreamGraph::new(), mat);
     build_block(&mut builder);
     builder.build()
   }
@@ -64,7 +64,7 @@ impl GraphDsl {
   where
     Out: Send + Sync + 'static,
     F: FnOnce(&mut GraphDslBuilder<(), Out, StreamNotUsed>), {
-    let mut builder = GraphDslBuilder::from_graph(super::stream_graph::StreamGraph::new(), StreamNotUsed::new());
+    let mut builder = GraphDslBuilder::from_graph(StreamGraph::new(), StreamNotUsed::new());
     build_block(&mut builder);
     let (graph, mat) = builder.into_parts();
     Source::from_graph(graph, mat)
@@ -82,7 +82,7 @@ impl GraphDsl {
   where
     In: Send + Sync + 'static,
     F: FnOnce(&mut GraphDslBuilder<In, (), StreamNotUsed>), {
-    let mut builder = GraphDslBuilder::from_graph(super::stream_graph::StreamGraph::new(), StreamNotUsed::new());
+    let mut builder = GraphDslBuilder::from_graph(StreamGraph::new(), StreamNotUsed::new());
     build_block(&mut builder);
     let (graph, mat) = builder.into_parts();
     Sink::from_graph(graph, mat)

@@ -8,7 +8,7 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
   actor::messaging::AnyMessage,
-  event::stream::EventStreamShared,
+  event::stream::{EventStreamEvent, EventStreamShared},
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{
@@ -92,19 +92,13 @@ impl ClusterPubSubImpl {
 
   fn publish_pubsub_event(&self, event: PubSubEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
-      name: String::from("cluster-pubsub"),
-      payload,
-    };
+    let stream_event = EventStreamEvent::Extension { name: String::from("cluster-pubsub"), payload };
     self.event_stream.publish(&stream_event);
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
-      name: String::from("cluster"),
-      payload,
-    };
+    let stream_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&stream_event);
   }
 

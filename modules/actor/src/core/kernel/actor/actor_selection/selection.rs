@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use super::ActorSelectionError;
+use super::{ActorSelectionError, ActorSelectionResolver};
 use crate::core::kernel::{
   actor::{
     actor_path::{
@@ -109,7 +109,7 @@ impl ActorSelection {
     if self.selection.starts_with('/') {
       return Self::resolve_absolute(&self.base_path, &self.selection).map_err(ActorSelectionError::from);
     }
-    super::ActorSelectionResolver::resolve_relative(&self.base_path, &self.selection).map_err(ActorSelectionError::from)
+    ActorSelectionResolver::resolve_relative(&self.base_path, &self.selection).map_err(ActorSelectionError::from)
   }
 
   fn ensure_authority_state(&self, path: &ActorPath, message: Option<&AnyMessage>) -> Result<(), ActorSelectionError> {

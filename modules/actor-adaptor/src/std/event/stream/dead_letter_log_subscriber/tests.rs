@@ -5,7 +5,10 @@ use fraktor_actor_rs::core::kernel::{
     actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
     messaging::AnyMessage,
   },
-  event::stream::EventStreamEvent,
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::EventStreamEvent,
+  },
 };
 
 use super::DeadLetterLogSubscriber;
@@ -23,13 +26,7 @@ fn listener_handles_dead_letter_event_without_panic() {
 #[test]
 fn listener_ignores_non_dead_letter_events() {
   let mut listener = DeadLetterLogSubscriber::new();
-  let event = EventStreamEvent::Log(fraktor_actor_rs::core::kernel::event::logging::LogEvent::new(
-    fraktor_actor_rs::core::kernel::event::logging::LogLevel::Info,
-    "test".into(),
-    Duration::from_secs(0),
-    None,
-    None,
-  ));
+  let event = EventStreamEvent::Log(LogEvent::new(LogLevel::Info, "test".into(), Duration::from_secs(0), None, None));
   listener.on_event(&event);
 }
 

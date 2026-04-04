@@ -8,9 +8,10 @@ use core::{
 };
 
 use super::{
-  DynValue, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision, SinkDefinition, SinkLogic,
-  StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, SupervisionStrategy, downcast_value,
+  DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, RestartBackoff, RestartSettings, SinkDecision,
+  SinkDefinition, SinkLogic, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
+  StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, downcast_value,
+  flow::Flow,
   shape::{Inlet, Outlet, StreamShape},
   source::Source,
   validate_positive_argument,
@@ -458,7 +459,7 @@ where
       return sinks.remove(0);
     }
     let first = sinks.remove(0);
-    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, super::KeepLeft))
+    sinks.into_iter().fold(first, |combined, sink| Sink::combine_mat(combined, sink, KeepLeft))
   }
 }
 
@@ -522,8 +523,8 @@ where
   where
     In2: Send + Sync + 'static,
     F: Fn(In2) -> In + Send + Sync + 'static, {
-    let flow = super::flow::Flow::<In2, In, StreamNotUsed>::from_function(func);
-    flow.into_mat(self, super::KeepRight)
+    let flow = Flow::<In2, In, StreamNotUsed>::from_function(func);
+    flow.into_mat(self, KeepRight)
   }
 
   /// Enables restart semantics with backoff for this sink.

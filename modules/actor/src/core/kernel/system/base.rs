@@ -16,7 +16,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ExtendedActorSystem,
+  ActorSystemWeak, ExtendedActorSystem,
   guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
@@ -294,8 +294,8 @@ impl ActorSystem {
   /// themselves owned by the system (such as extensions or remoting components)
   /// to avoid circular reference issues.
   #[must_use]
-  pub fn downgrade(&self) -> super::ActorSystemWeak {
-    super::ActorSystemWeak { state: self.state.downgrade() }
+  pub fn downgrade(&self) -> ActorSystemWeak {
+    ActorSystemWeak { state: self.state.downgrade() }
   }
 
   /// Returns the canonical host/port when remoting is configured.

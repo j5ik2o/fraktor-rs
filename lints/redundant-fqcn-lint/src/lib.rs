@@ -197,15 +197,19 @@ fn build_occurrence(path: &SynPath) -> Option<PathOccurrence> {
 
   let segments = path.segments.iter().collect::<Vec<_>>();
   let first = segments.first()?;
-  if first.ident != "crate" || segments.len() < 2 {
+  let first_name = first.ident.to_string();
+  if !is_supported_root(&first_name) {
     return None;
   }
 
   let type_like_index = segments
     .iter()
     .enumerate()
-    .skip(1)
+    .skip(usize::from(first_name == "crate" || first_name == "self" || first_name == "super"))
     .find_map(|(index, segment)| is_type_like_ident(segment.ident.to_string().as_str()).then_some(index))?;
+  if type_like_index == 0 {
+    return None;
+  }
 
   let display_path = join_segment_idents(&segments);
   let import_path = join_segment_idents(&segments[..=type_like_index]);
@@ -217,6 +221,10 @@ fn build_occurrence(path: &SynPath) -> Option<PathOccurrence> {
 
 fn is_type_like_ident(name: &str) -> bool {
   name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+}
+
+fn is_supported_root(name: &str) -> bool {
+  matches!(name, "crate" | "self" | "super") || name.starts_with("fraktor_")
 }
 
 fn join_segment_idents(segments: &[&syn::PathSegment]) -> String {

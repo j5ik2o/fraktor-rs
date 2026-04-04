@@ -8,12 +8,12 @@ use core::{
 };
 
 use super::{
-  BoundedSourceQueue, DynValue, MatCombine, MatCombineRule, Materialized, Materializer, OverflowStrategy,
-  RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue, SourceQueueWithComplete,
-  StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, SupervisionStrategy,
+  BoundedSourceQueue, DynValue, KeepLeft, KeepRight, MatCombine, MatCombineRule, Materialized, Materializer,
+  OverflowStrategy, RestartBackoff, RestartSettings, RunnableGraph, SourceDefinition, SourceLogic, SourceQueue,
+  SourceQueueWithComplete, StageContext, StageDefinition, StageKind, StreamCompletion, StreamDone, StreamDslError,
+  StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy,
   flow::{
-    async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
+    Flow, async_boundary_definition, balance_definition, batch_definition, broadcast_definition, buffer_definition,
     concat_definition, concat_lazy_definition, concat_substreams_definition, debounce_definition, delay_definition,
     drop_definition, drop_while_definition, filter_definition, flat_map_concat_definition, flat_map_merge_definition,
     flat_map_prefix_definition, group_by_definition, grouped_definition, initial_delay_definition,
@@ -31,6 +31,7 @@ use super::{
   sink::Sink,
   source_group_by_sub_flow::SourceGroupBySubFlow,
   source_sub_flow::SourceSubFlow,
+  source_with_context::SourceWithContext,
   validate_positive_argument,
 };
 use crate::core::{
@@ -175,11 +176,11 @@ where
 
   /// Converts this source into a context-carrying source by attaching unit context.
   #[must_use]
-  pub fn into_source_with_context(self) -> super::source_with_context::SourceWithContext<(), Out, StreamNotUsed>
+  pub fn into_source_with_context(self) -> SourceWithContext<(), Out, StreamNotUsed>
   where
     Out: Sync, {
     let inner = self.map(|value| ((), value));
-    super::source_with_context::SourceWithContext::from_source(inner)
+    SourceWithContext::from_source(inner)
   }
 
   /// Creates a sink endpoint that can be paired with a source subscriber bridge.
@@ -713,15 +714,15 @@ where
 
   /// Composes this source with a flow.
   #[must_use]
-  pub fn via<T, Mat2>(self, flow: super::flow::Flow<Out, T, Mat2>) -> Source<T, Mat>
+  pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> Source<T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, super::KeepLeft)
+    self.via_mat(flow, KeepLeft)
   }
 
   /// Composes this source with a flow using a custom materialized rule.
   #[must_use]
-  pub fn via_mat<T, Mat2, C>(self, flow: super::flow::Flow<Out, T, Mat2>, _combine: C) -> Source<T, C::Out>
+  pub fn via_mat<T, Mat2, C>(self, flow: Flow<Out, T, Mat2>, _combine: C) -> Source<T, C::Out>
   where
     T: Send + Sync + 'static,
     C: MatCombineRule<Mat, Mat2>, {
@@ -765,7 +766,7 @@ where
   /// Connects this source to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> RunnableGraph<Mat> {
-    self.into_mat(sink, super::KeepLeft)
+    self.into_mat(sink, KeepLeft)
   }
 
   /// Connects this source to a sink using a custom materialized rule.
@@ -800,7 +801,7 @@ where
   ) -> Result<Materialized<Mat2>, StreamError>
   where
     M: Materializer, {
-    self.into_mat(sink, super::KeepRight).run(materializer)
+    self.into_mat(sink, KeepRight).run(materializer)
   }
 
   /// Runs this source with a folding sink shortcut.
@@ -2429,13 +2430,13 @@ where
   pub fn map_error<F>(self, mapper: F) -> Source<Out, Mat>
   where
     F: FnMut(StreamError) -> StreamError + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().map_error(mapper))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().map_error(mapper))
   }
 
   /// Resumes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_continue(self) -> Source<Out, Mat> {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue())
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_continue())
   }
 
   /// Resumes the stream and invokes `error_consumer` when the failure matches.
@@ -2443,7 +2444,7 @@ where
   pub fn on_error_continue_with<C>(self, error_consumer: C) -> Source<Out, Mat>
   where
     C: FnMut(&StreamError) + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_with(error_consumer))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_with(error_consumer))
   }
 
   /// Resumes the stream when the upstream failure matches `predicate`.
@@ -2451,7 +2452,7 @@ where
   pub fn on_error_continue_if<P>(self, predicate: P) -> Source<Out, Mat>
   where
     P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if(predicate))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if(predicate))
   }
 
   /// Resumes the stream and invokes `error_consumer` when the failure matches `predicate`.
@@ -2460,7 +2461,7 @@ where
   where
     P: FnMut(&StreamError) -> bool + Send + Sync + 'static,
     C: FnMut(&StreamError) + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if_with(predicate, error_consumer))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_continue_if_with(predicate, error_consumer))
   }
 
   /// Alias of [`Source::on_error_continue`].
@@ -2472,7 +2473,7 @@ where
   /// Completes the stream when the upstream failure matches.
   #[must_use]
   pub fn on_error_complete(self) -> Source<Out, Mat> {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_complete())
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_complete())
   }
 
   /// Completes the stream when the upstream failure matches `predicate`.
@@ -2480,7 +2481,7 @@ where
   pub fn on_error_complete_if<P>(self, predicate: P) -> Source<Out, Mat>
   where
     P: FnMut(&StreamError) -> bool + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().on_error_complete_if(predicate))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().on_error_complete_if(predicate))
   }
 
   /// Recovers an upstream failure with a single replacement element.
@@ -2488,7 +2489,7 @@ where
   pub fn recover<F>(self, recover: F) -> Source<Out, Mat>
   where
     F: FnMut(StreamError) -> Option<Out> + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().recover(recover))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().recover(recover))
   }
 
   /// Recovers upstream failures by switching to alternate sources.
@@ -2496,7 +2497,7 @@ where
   pub fn recover_with_retries<F>(self, max_retries: isize, recover: F) -> Source<Out, Mat>
   where
     F: FnMut(StreamError) -> Option<Source<Out, StreamNotUsed>> + Send + Sync + 'static, {
-    self.via(super::flow::Flow::<Out, Out, StreamNotUsed>::new().recover_with_retries(max_retries, recover))
+    self.via(Flow::<Out, Out, StreamNotUsed>::new().recover_with_retries(max_retries, recover))
   }
 
   /// Alias of [`Source::recover_with_retries`] with infinite retries.
