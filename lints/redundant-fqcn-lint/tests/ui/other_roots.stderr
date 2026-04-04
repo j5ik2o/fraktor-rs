@@ -5,7 +5,7 @@ LL |   pub fn build_widget() -> super::fraktor_sample::domain::Widget {
    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: `use super::fraktor_sample::domain::Widget;` を追加し、本文では `Widget` から始まる短い名前へ置き換えてください
-   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use super::fraktor_sample::domain::Widget;` を追加する 2. この箇所の `super::fraktor_sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+   = note: AI向けアドバイス: 1. このパスと同じモジュールスコープの `use` ブロックに `use super::fraktor_sample::domain::Widget;` を追加する 2. この箇所の `super::fraktor_sample::domain::Widget` を `Widget` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
    = note: `#[warn(redundant_fqcn)]` on by default
 
 warning: `fraktor_sample::domain::Widget::new` は `use` 以外で不要な FQCN です
@@ -24,7 +24,7 @@ LL |       self::domain::Mode::Idle => true,
    |       ^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: `use self::domain::Mode;` を追加し、本文では `Mode::Idle` から始まる短い名前へ置き換えてください
-   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use self::domain::Mode;` を追加する 2. この箇所の `self::domain::Mode::Idle` を `Mode::Idle` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+   = note: AI向けアドバイス: 1. このパスと同じモジュールスコープの `use` ブロックに `use self::domain::Mode;` を追加する 2. この箇所の `self::domain::Mode::Idle` を `Mode::Idle` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
 
 warning: 3 warnings emitted
 

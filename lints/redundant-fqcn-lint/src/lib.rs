@@ -73,6 +73,11 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
 }
 
 fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
+  let import_scope_help = match occurrence.import_scope {
+    | ImportScope::FileTop => "ファイル冒頭の `use` ブロック",
+    | ImportScope::CurrentModule => "このパスと同じモジュールスコープの `use` ブロック",
+  };
+
   cx.span_lint(REDUNDANT_FQCN, span, |diag| {
     diag.primary_message(format!(
       "`{}` は `use` 以外で不要な FQCN です",
@@ -83,8 +88,8 @@ fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
       occurrence.import_path, occurrence.short_path
     ));
     diag.note(format!(
-      "AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use {};` を追加する 2. この箇所の `{}` を `{}` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない",
-      occurrence.import_path, occurrence.display_path, occurrence.short_path
+      "AI向けアドバイス: 1. {}に `use {};` を追加する 2. この箇所の `{}` を `{}` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない",
+      import_scope_help, occurrence.import_path, occurrence.display_path, occurrence.short_path
     ));
   });
 }
@@ -94,8 +99,15 @@ struct PathOccurrence {
   span:         ProcSpan,
   display_path: String,
   import_path:  String,
+  import_scope: ImportScope,
   root_name:    String,
   short_path:   String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImportScope {
+  FileTop,
+  CurrentModule,
 }
 
 struct PathCollector {
@@ -208,6 +220,10 @@ fn build_occurrence(path: &SynPath) -> Option<PathOccurrence> {
   if !is_supported_root(&first_name) {
     return None;
   }
+  let import_scope = match first_name.as_str() {
+    | "self" | "super" => ImportScope::CurrentModule,
+    | _ => ImportScope::FileTop,
+  };
 
   let type_like_index = segments
     .iter()
@@ -223,7 +239,7 @@ fn build_occurrence(path: &SynPath) -> Option<PathOccurrence> {
   let root_name = segments.get(type_like_index)?.ident.to_string();
   let short_path = join_segment_idents(&segments[type_like_index..]);
 
-  Some(PathOccurrence { span: path.span(), display_path, import_path, root_name, short_path })
+  Some(PathOccurrence { span: path.span(), display_path, import_path, import_scope, root_name, short_path })
 }
 
 fn is_type_like_ident(name: &str) -> bool {
