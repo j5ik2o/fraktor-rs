@@ -1490,11 +1490,11 @@ impl<In> SinkLogic for TakeLastSinkLogic<In>
 where
   In: Send + Sync + 'static,
 {
-  fn on_start(&mut self, demand: &mut super::DemandTracker) -> Result<(), StreamError> {
+  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     demand.request(1)
   }
 
-  fn on_push(&mut self, input: DynValue, demand: &mut super::DemandTracker) -> Result<SinkDecision, StreamError> {
+  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError> {
     let value = downcast_value::<In>(input)?;
     if self.limit > 0 {
       self.values.push_back(value);

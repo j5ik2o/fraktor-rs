@@ -54,5 +54,8 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+mod tests;
+
 /// Core actor runtime module containing all actor system components.
 pub mod core;

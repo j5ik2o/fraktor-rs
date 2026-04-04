@@ -318,7 +318,7 @@ where
   /// called when the upstream completes, allowing trailing elements to be
   /// emitted.
   ///
-  /// [`StatefulMapConcatAccumulator`]: crate::core::dsl::StatefulMapConcatAccumulator
+  /// [`StatefulMapConcatAccumulator`]: StatefulMapConcatAccumulator
   #[must_use]
   pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Flow<In, T, Mat>
   where
@@ -1864,11 +1864,11 @@ where
   /// strategy.  Unlike [`delay`](Self::delay), the delay can vary
   /// per element depending on the strategy implementation.
   ///
-  /// [`DelayStrategy`]: crate::core::dsl::DelayStrategy
+  /// [`DelayStrategy`]: DelayStrategy
   #[must_use]
   pub fn delay_with<S>(mut self, strategy: S) -> Flow<In, Out, Mat>
   where
-    S: crate::core::dsl::DelayStrategy<Out> + 'static, {
+    S: DelayStrategy<Out> + 'static, {
     let definition = strategy_delay_definition::<Out, S>(strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -3456,7 +3456,7 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Factory: FnMut() -> Acc + Send + Sync + 'static,
-  Acc: crate::core::dsl::StatefulMapConcatAccumulator<In, Out> + 'static, {
+  Acc: StatefulMapConcatAccumulator<In, Out> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Out> = Outlet::new();
   let accumulator = factory();

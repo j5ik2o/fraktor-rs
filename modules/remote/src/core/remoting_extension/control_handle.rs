@@ -36,8 +36,10 @@ use super::{
 };
 #[cfg(feature = "tokio-transport")]
 use crate::core::instrument::RemoteInstrument;
+#[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
+use crate::core::transport::TransportBind;
 #[cfg(feature = "tokio-transport")]
-use crate::core::transport::{TransportBind, TransportChannel, TransportEndpoint};
+use crate::core::transport::{TransportChannel, TransportEndpoint};
 #[cfg(feature = "tokio-transport")]
 use crate::core::watcher::{Heartbeat, RemoteWatcherCommand};
 use crate::core::{

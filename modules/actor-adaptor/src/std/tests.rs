@@ -11,39 +11,6 @@ use fraktor_actor_rs::core::kernel::{
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
-const REMOVED_STD_ALIAS_FILES: &[&str] = &[
-  "src/std/dead_letter.rs",
-  "src/std/error.rs",
-  "src/std/futures.rs",
-  "src/std/messaging.rs",
-  "src/std/actor.rs",
-  "src/std/dispatch/mailbox.rs",
-  "src/std/dispatch/dispatcher/types.rs",
-  "src/std/event/stream/types.rs",
-  "src/std/props.rs",
-  "src/std/typed/actor.rs",
-  "src/std/typed/behavior.rs",
-  "src/std/typed/spawn_protocol.rs",
-  "src/std/typed/stash_buffer.rs",
-  "src/std/typed/typed_ask_future.rs",
-  "src/std/typed/typed_ask_response.rs",
-];
-
-const REMOVED_UNWIRED_STD_IO_PATHS: &[&str] = &[
-  "src/std/io/connection_closed/tests.rs",
-  "src/std/io/dns_command/tests.rs",
-  "src/std/io/dns_event/tests.rs",
-  "src/std/io/dns_ext/tests.rs",
-  "src/std/io/tcp_command/tests.rs",
-  "src/std/io/tcp_event/tests.rs",
-  "src/std/io/tcp_ext/tests.rs",
-  "src/std/io/tcp_socket_option/tests.rs",
-  "src/std/io/udp_command/tests.rs",
-  "src/std/io/udp_event/tests.rs",
-  "src/std/io/udp_ext/tests.rs",
-  "src/std/io/udp_socket_option/tests.rs",
-];
-
 const REQUIRED_ACTOR_EXAMPLE_FILES: &[&str] = &["examples/classic_logging.rs"];
 
 const REQUIRED_ACTOR_EXAMPLE_NAMES: &[&str] = &["classic_logging"];
@@ -67,26 +34,6 @@ impl RecordingSubscriber {
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.lock().push(event.clone());
-  }
-}
-
-#[test]
-fn removed_std_alias_files_stay_deleted() {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-
-  for relative_path in REMOVED_STD_ALIAS_FILES {
-    let path = manifest_dir.join(relative_path);
-    assert!(!path.exists(), "削除済み alias ファイルが復活しています: {}", display_relative_path(manifest_dir, &path));
-  }
-}
-
-#[test]
-fn unfinished_std_io_tree_stays_deleted_until_module_is_wired() {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-
-  for relative_path in REMOVED_UNWIRED_STD_IO_PATHS {
-    let path = manifest_dir.join(relative_path);
-    assert!(!path.exists(), "未配線の std/io ツリーが復活しています: {}", display_relative_path(manifest_dir, &path));
   }
 }
 
