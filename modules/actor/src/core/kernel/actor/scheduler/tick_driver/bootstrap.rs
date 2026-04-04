@@ -44,27 +44,18 @@ impl TickDriverBootstrap {
     config: &TickDriverConfig,
     ctx: &TickDriverProvisioningContext,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
-    match config {
-      #[cfg(any(test, feature = "test-support"))]
-      | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
-      | TickDriverConfig::Builder { builder } => {
-        let start_instant = {
-          let scheduler = ctx.scheduler();
-          scheduler.with_read(|s| s.clock().now())
-        };
-        let bundle = builder(ctx)?;
-        let handle = bundle.driver();
-        let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-        let auto_metadata = bundle.auto_metadata().cloned();
-        let snapshot = TickDriverSnapshot::new(metadata, handle.kind(), handle.resolution(), auto_metadata);
-        ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
-        Ok((bundle, snapshot))
-      },
-    }
+    Self::provision_impl(config, ctx)
   }
 
   #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn provision(
+    config: &TickDriverConfig,
+    ctx: &TickDriverProvisioningContext,
+  ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
+    Self::provision_impl(config, ctx)
+  }
+
+  fn provision_impl(
     config: &TickDriverConfig,
     ctx: &TickDriverProvisioningContext,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
