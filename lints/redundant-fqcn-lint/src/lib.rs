@@ -100,9 +100,9 @@ struct PathOccurrence {
 
 struct PathCollector {
   current_path: PathBuf,
-  occurrences: Vec<PathOccurrence>,
-  seen:        HashSet<SpanKey>,
-  bindings:    Vec<UseBinding>,
+  occurrences:  Vec<PathOccurrence>,
+  seen:         HashSet<SpanKey>,
+  bindings:     Vec<UseBinding>,
 }
 
 impl PathCollector {
@@ -157,7 +157,9 @@ impl<'ast> Visit<'ast> for PathCollector {
   }
 
   fn visit_expr_struct(&mut self, node: &'ast ExprStruct) {
-    self.record_path(&node.path);
+    if node.qself.is_none() {
+      self.record_path(&node.path);
+    }
     visit::visit_expr_struct(self, node);
   }
 
@@ -169,12 +171,16 @@ impl<'ast> Visit<'ast> for PathCollector {
   }
 
   fn visit_pat_struct(&mut self, node: &'ast PatStruct) {
-    self.record_path(&node.path);
+    if node.qself.is_none() {
+      self.record_path(&node.path);
+    }
     visit::visit_pat_struct(self, node);
   }
 
   fn visit_pat_tuple_struct(&mut self, node: &'ast PatTupleStruct) {
-    self.record_path(&node.path);
+    if node.qself.is_none() {
+      self.record_path(&node.path);
+    }
     visit::visit_pat_tuple_struct(self, node);
   }
 }
