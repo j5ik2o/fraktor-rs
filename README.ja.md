@@ -12,24 +12,26 @@
 
 [English](README.md)
 
-fraktor-rs は、Pekko と Proto.Actor 由来のアクターモデルを `no_std` ターゲットとホストランタイムの両方で扱うための、仕様駆動のアクターランタイムです。utilities、actor、persistence、Remoting、Cluster、Streams を `core` / `std` の共通構造でそろえ、組み込み向け実装と Tokio 向け実装を別コードベースに分断せずに運用できます。
+fraktor-rs は、Pekko と Proto.Actor に着想を得たアクターモデルを、`no_std` ターゲットとホストランタイムの両方で扱うための、仕様駆動のアクターランタイムです。
 
-## Highlights
+組み込み向けの軽量な実行環境から、標準ライブラリを利用できるホスト環境まで、同じ設計思想とワークスペース構成のもとで一貫したアクターモデルを提供することを目指しています。
 
-- ワークスペース全体で `core` / `std` の構造を共有し、同じアクターモデルを組み込み環境とホスト環境で扱える
-- utils / actor / persistence / remote / cluster / stream の 6 クレートと、主要ユースケースを試せる showcase 群を持つ
-- ライフサイクル、supervision、death watch、actor path、remoting、typed/untyped bridge で Pekko / Proto.Actor の意味論を取り込んでいる
-- spec-driven workflow、steering、custom dylint、CI スクリプトで変更を一貫して管理できる
+## 特徴
 
-## Quickstart
+- ワークスペース全体で `core` / `std` の構造を共有し、同じアクターモデルを組み込み環境とホスト環境の両方で扱えます
+- `utils` / `actor` / `persistence` / `remote` / `cluster` / `stream` の 6 つのクレートと、主要な利用シナリオを試せる showcase 群を備えています
+- ライフサイクル、supervision、death watch、actor path、remoting、typed/untyped bridge など、Pekko / Proto.Actor 由来の主要な意味論を取り込んでいます
+- steering、カスタム dylint ルール、CI スクリプトを含む仕様駆動ワークフローにより、変更を一貫した形で管理できます
 
-### Requirements
+## クイックスタート
+
+### 必要なもの
 
 - `rustup`
 - Rust toolchain `nightly-2025-12-01`
-- フルチェックを回す場合は `cargo-dylint`、`rustc-dev`、`llvm-tools-preview`
+- フルチェックを実行する場合は `cargo-dylint`、`rustc-dev`、`llvm-tools-preview`
 
-### Install
+### インストール
 
 ```bash
 rustup toolchain install nightly-2025-12-01 --component rustfmt --component clippy
@@ -37,45 +39,45 @@ git clone git@github.com:j5ik2o/fraktor-rs.git
 cd fraktor-rs
 ```
 
-### Run
+### 実行
 
 ```bash
 cargo run -p fraktor-showcases-std --example getting_started
 ```
 
-### Verify
+### 検証
 
 ```bash
 cargo test -p fraktor-actor-rs --features "std test-support tokio-executor"
 ./scripts/ci-check.sh all
 ```
 
-## Usage
+## ワークスペース構成
 
-ワークスペースは次のクレートで構成されています。
+ワークスペースは以下のクレートで構成されています。
 
 | クレート | 役割 |
 | --- | --- |
-| [`modules/utils`](modules/utils) | portable primitives、runtime toolbox、atomics、同期、timer |
-| [`modules/actor`](modules/actor) | ActorSystem、mailbox、supervision、typed API、scheduler、EventStream |
-| [`modules/persistence`](modules/persistence) | event sourcing、journal、snapshot store、persistent actor support |
-| [`modules/remote`](modules/remote) | Remoting 拡張、endpoint 管理、transport adapter、failure detection |
-| [`modules/cluster`](modules/cluster) | membership、identity lookup、placement、topology、pub-sub、ECS 統合 |
+| [`modules/utils`](modules/utils) | 可搬性の高い基本プリミティブ、ランタイム補助ユーティリティ、アトミック操作、同期機構、タイマー |
+| [`modules/actor`](modules/actor) | ActorSystem、メールボックス、supervision、型付き API、スケジューラ、EventStream |
+| [`modules/persistence`](modules/persistence) | Event Sourcing、ジャーナル、スナップショットストア、永続アクター支援 |
+| [`modules/remote`](modules/remote) | Remoting 拡張、エンドポイント管理、トランスポートアダプタ、障害検知 |
+| [`modules/cluster`](modules/cluster) | メンバーシップ管理、ID 解決、配置、トポロジー、pub-sub、ECS 統合 |
 | [`modules/stream`](modules/stream) | アクターシステム上に構築されたリアクティブストリーム |
-| [`modules/actor/examples`](modules/actor/examples) | typed event stream、classic timers、classic logging などの actor 例 |
-| [`showcases/std`](showcases/std) | getting started、request/reply、timers、routing、persistence、remoting、clustering などの end-to-end 実行例 |
+| [`modules/actor/examples`](modules/actor/examples) | typed event stream、classic timers、classic logging などのアクター利用例 |
+| [`showcases/std`](showcases/std) | getting started、request/reply、timers、routing、persistence、remoting、clustering などの統合サンプル |
 
 よく使う実行例:
 
 ```bash
-# 標準 showcase
+# 標準的な showcase
 cargo run -p fraktor-showcases-std --example request_reply
 
-# advanced showcase
+# 高度な showcase
 cargo run -p fraktor-showcases-std --example remote_messaging --features advanced
 ```
 
-## Documentation
+## ドキュメント
 
 - API ドキュメント: [docs.rs/fraktor-rs](https://docs.rs/fraktor-rs)
 - リポジトリ知識ベース: [DeepWiki](https://deepwiki.com/j5ik2o/fraktor-rs)
@@ -86,18 +88,18 @@ cargo run -p fraktor-showcases-std --example remote_messaging --features advance
   - [Persistence](docs/gap-analysis/persistence-gap-analysis.md)
   - [Stream](docs/gap-analysis/stream-gap-analysis.md)
 
-## Getting help
+## サポート
 
 - Issues: [GitHub Issues](https://github.com/j5ik2o/fraktor-rs/issues)
 - 実装ルールの基準: [AGENTS.md](AGENTS.md)
 
-## Contributing
+## コントリビューション
 
-- 実装前に、このリポジトリで採用している spec-driven workflow に従って要求と設計を固めてください
+- 実装前に、このリポジトリの仕様駆動ワークフローに従って要件と設計を整理してください
 - プロジェクト全体のルールは [`.kiro/steering`](.kiro/steering) と [AGENTS.md](AGENTS.md) を参照してください
-- PR 前に `./scripts/ci-check.sh all` を実行してください
-- runtime / remoting / cluster / stream への影響がある場合は PR 説明に明記してください
+- PR の前に `./scripts/ci-check.sh all` を実行してください
+- runtime、remoting、cluster、stream に影響がある場合は、PR 説明に明記してください
 
-## License
+## ライセンス
 
 Apache-2.0 / MIT のデュアルライセンスです。[LICENSE-APACHE](LICENSE-APACHE) と [LICENSE-MIT](LICENSE-MIT) を参照してください。

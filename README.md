@@ -12,14 +12,16 @@
 
 [日本語版](README.ja.md)
 
-fraktor-rs is a specification-driven actor runtime that brings Pekko and Proto.Actor-style semantics to both `no_std` targets and host runtimes. It gives you one workspace with shared `core`/`std` layering for utilities, actors, persistence, remoting, clustering, and streams instead of maintaining separate embedded and host codebases.
+fraktor-rs is a specification-driven actor runtime that brings Pekko- and Proto.Actor-inspired semantics to both `no_std` targets and host runtimes.
+
+It is designed to let you work with a consistent actor model across embedded-friendly environments and standard host environments, while sharing the same overall architecture and workspace structure.
 
 ## Highlights
 
 - Shared `core`/`std` module structure across the workspace, so the same actor model can be used on embedded targets and on Tokio-based hosts.
-- Six focused crates for utils, actors, persistence, remoting, clustering, and streams, plus runnable showcases for the common scenarios.
-- Pekko / Proto.Actor inspired semantics for lifecycle, supervision, death watch, actor paths, remoting, and typed/untyped bridging.
-- Specification-driven workflow with project steering, custom dylint rules, and reproducible CI entrypoints.
+- Six focused crates for `utils`, `actor`, `persistence`, `remote`, `cluster`, and `stream`, plus runnable showcases for common scenarios.
+- Pekko / Proto.Actor-inspired semantics for lifecycle, supervision, death watch, actor paths, remoting, and typed/untyped bridging.
+- A specification-driven workflow supported by steering, custom dylint rules, and CI scripts for consistent change management.
 
 ## Quickstart
 
@@ -50,28 +52,28 @@ cargo test -p fraktor-actor-rs --features "std test-support tokio-executor"
 ./scripts/ci-check.sh all
 ```
 
-## Usage
+## Workspace layout
 
-The workspace is organized around these crates:
+The workspace is organized around the following crates:
 
 | Crate | Purpose |
 | --- | --- |
-| [`modules/utils`](modules/utils) | Portable primitives, runtime toolbox, atomics, synchronization, timers |
-| [`modules/actor`](modules/actor) | ActorSystem, mailboxes, supervision, typed APIs, scheduler, EventStream |
-| [`modules/persistence`](modules/persistence) | Event sourcing, journals, snapshot stores, persistent actor support |
-| [`modules/remote`](modules/remote) | Remoting extension, endpoint management, transport adapters, failure detection |
-| [`modules/cluster`](modules/cluster) | Membership, identity lookup, placement, topology, pub-sub, ECS integration |
-| [`modules/stream`](modules/stream) | Reactive stream primitives built on the actor system |
-| [`modules/actor/examples`](modules/actor/examples) | Focused actor examples such as typed event stream, classic timers, and classic logging |
-| [`showcases/std`](showcases/std) | Runnable end-to-end showcases such as getting started, request/reply, timers, routing, persistence, remoting, and clustering |
+| [`modules/utils`](modules/utils) | Portable primitives, runtime helper utilities, atomics, synchronization, and timers |
+| [`modules/actor`](modules/actor) | ActorSystem, mailboxes, supervision, typed APIs, scheduler, and EventStream |
+| [`modules/persistence`](modules/persistence) | Event sourcing, journals, snapshot stores, and persistent actor support |
+| [`modules/remote`](modules/remote) | Remoting extensions, endpoint management, transport adapters, and failure detection |
+| [`modules/cluster`](modules/cluster) | Membership, identity lookup, placement, topology, pub-sub, and ECS integration |
+| [`modules/stream`](modules/stream) | Reactive stream primitives built on top of the actor system |
+| [`modules/actor/examples`](modules/actor/examples) | Focused actor examples such as typed event streams, classic timers, and classic logging |
+| [`showcases/std`](showcases/std) | Runnable integrated examples including getting started, request/reply, timers, routing, persistence, remoting, and clustering |
 
 Common entrypoints:
 
 ```bash
-# Run a standard showcase
+# Standard showcase
 cargo run -p fraktor-showcases-std --example request_reply
 
-# Run an advanced showcase
+# Advanced showcase
 cargo run -p fraktor-showcases-std --example remote_messaging --features advanced
 ```
 
@@ -93,10 +95,10 @@ cargo run -p fraktor-showcases-std --example remote_messaging --features advance
 
 ## Contributing
 
-- Follow the repository's spec-driven workflow before implementation.
-- Respect the project-wide rules in [`.kiro/steering`](.kiro/steering) and [AGENTS.md](AGENTS.md).
+- Follow the repository's specification-driven workflow before implementation.
+- Refer to [`.kiro/steering`](.kiro/steering) and [AGENTS.md](AGENTS.md) for project-wide rules.
 - Run `./scripts/ci-check.sh all` before opening a PR.
-- Use a focused branch and describe runtime, remoting, cluster, or stream impact in the PR.
+- Clearly describe any impact on runtime, remoting, cluster, or stream behavior in the PR.
 
 ## License
 
