@@ -346,9 +346,12 @@ impl AwsEcsClusterProvider {
               current_members = new_members;
             }
           },
-          | Err(_e) => {
-            // ポーリングエラーは無視して次のサイクルを待つ（MVP実装）
-            // 本番環境ではログ出力やリトライロジックを追加
+          | Err(error) => {
+            tracing::warn!(
+              cluster = %config.cluster_name,
+              service = ?config.service_name,
+              "ECS polling failed: {error:?}"
+            );
           },
         }
 
