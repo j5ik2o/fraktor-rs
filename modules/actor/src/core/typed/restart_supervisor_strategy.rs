@@ -38,18 +38,21 @@ impl RestartSupervisorStrategy {
   /// Sets the restart limit and rolling time window.
   ///
   /// `max_restarts = -1` mirrors Pekko's unlimited restart contract.
+  /// `max_restarts = 0` is rejected to avoid silently selecting the same
+  /// unlimited restart behavior; use `-1` for unlimited restarts.
   ///
   /// # Panics
   ///
-  /// Panics when `max_restarts` is less than `-1`.
+  /// Panics when `max_restarts` is `0` or less than `-1`.
   #[must_use]
   pub fn with_limit(self, max_restarts: i32, within: Duration) -> Self {
     let max_restarts = if max_restarts == -1 {
       0
     } else {
+      assert!(max_restarts != 0, "max_restarts must be -1 or at least 1");
       match u32::try_from(max_restarts) {
         | Ok(max_restarts) => max_restarts,
-        | Err(_) => panic!("max_restarts must be -1 or greater"),
+        | Err(_) => panic!("max_restarts must be -1 or at least 1"),
       }
     };
     Self {

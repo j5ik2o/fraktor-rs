@@ -12,6 +12,7 @@ initial_step: plan
 personas:
   pekko-porting-qa-reviewer: ../facets/personas/pekko-porting-qa-reviewer.md
   pekko-porting-compat-reviewer: ../facets/personas/pekko-porting-compat-reviewer.md
+  testing-reviewer: ../facets/personas/testing-reviewer.md
 
 knowledge:
   pekko-porting: ../facets/knowledge/pekko-porting.md
@@ -29,6 +30,7 @@ instructions:
   pekko-porting-ai-fix: ../facets/instructions/pekko-porting-ai-fix.md
   pekko-porting-review-compat: ../facets/instructions/pekko-porting-review-compat.md
   pekko-porting-review-qa: ../facets/instructions/pekko-porting-review-qa.md
+  review-test: ../facets/instructions/review-test.md
   ai-review: ../facets/instructions/ai-review.md
   ai-fix: ../facets/instructions/ai-fix.md
   arbitrate: ../facets/instructions/arbitrate.md
@@ -42,6 +44,7 @@ report_formats:
   pekko-porting-plan: ../facets/output-contracts/pekko-porting-plan.md
   pekko-porting-qa-review: ../facets/output-contracts/pekko-porting-qa-review.md
   pekko-compat-review: ../facets/output-contracts/pekko-compat-review.md
+  testing-review: ../facets/output-contracts/testing-review.md
 
 loop_monitors:
   - cycle:

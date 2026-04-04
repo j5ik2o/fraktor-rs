@@ -36,9 +36,15 @@ fn with_limit_maps_negative_one_to_unlimited_without_mutating_source_strategy() 
 }
 
 #[test]
-#[should_panic(expected = "max_restarts must be -1 or greater")]
+#[should_panic(expected = "max_restarts must be -1 or at least 1")]
 fn with_limit_rejects_values_smaller_than_negative_one() {
   let _ = TypedSupervisorStrategy::restart().with_limit(-2, Duration::from_secs(1));
+}
+
+#[test]
+#[should_panic(expected = "max_restarts must be -1 or at least 1")]
+fn with_limit_rejects_zero_to_avoid_ambiguous_unlimited_semantics() {
+  let _ = TypedSupervisorStrategy::restart().with_limit(0, Duration::from_secs(1));
 }
 
 #[test]
