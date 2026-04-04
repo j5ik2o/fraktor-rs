@@ -61,7 +61,8 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
   };
 
   let line_starts = compute_line_starts(&source);
-  let mut collector = PathCollector::new();
+  let bindings = collect_use_bindings(&file);
+  let mut collector = PathCollector::new(bindings);
   collector.visit_file(&file);
 
   for occurrence in collector.occurrences {
@@ -129,8 +130,8 @@ struct PathCollector {
 }
 
 impl PathCollector {
-  fn new() -> Self {
-    Self { occurrences: Vec::new(), seen: HashSet::new(), bindings: Vec::new(), module_scope: ModuleScope::default() }
+  fn new(bindings: Vec<UseBinding>) -> Self {
+    Self { occurrences: Vec::new(), seen: HashSet::new(), bindings, module_scope: ModuleScope::default() }
   }
 
   fn record_path(&mut self, path: &SynPath) {
@@ -153,41 +154,12 @@ impl PathCollector {
         && binding.source_path != occurrence.import_path
     })
   }
-
-  fn collect_use_tree(&mut self, tree: &UseTree, prefix: String) {
-    match tree {
-      | UseTree::Path(path) => {
-        let next_prefix = append_path_segment(&prefix, path.ident.to_string().as_str());
-        self.collect_use_tree(&path.tree, next_prefix);
-      },
-      | UseTree::Name(name) => {
-        self.bindings.push(UseBinding {
-          local_name:  name.ident.to_string(),
-          source_path: append_path_segment(&prefix, name.ident.to_string().as_str()),
-          module_scope: self.module_scope.clone(),
-        });
-      },
-      | UseTree::Rename(rename) => {
-        self.bindings.push(UseBinding {
-          local_name:  rename.rename.to_string(),
-          source_path: append_path_segment(&prefix, rename.ident.to_string().as_str()),
-          module_scope: self.module_scope.clone(),
-        });
-      },
-      | UseTree::Group(group) => {
-        for item in &group.items {
-          self.collect_use_tree(item, prefix.clone());
-        }
-      },
-      | UseTree::Glob(_) => {},
-    }
-  }
 }
 
 impl<'ast> Visit<'ast> for PathCollector {
   fn visit_item(&mut self, item: &'ast Item) {
     match item {
-      | Item::Use(item_use) => self.collect_use_tree(&item_use.tree, String::new()),
+      | Item::Use(_) => {},
       | Item::Mod(item_mod) => {
         if let Some((_, items)) = &item_mod.content {
           self.module_scope.push(item_mod.ident.to_string());
@@ -306,6 +278,70 @@ struct UseBinding {
   local_name:  String,
   source_path: String,
   module_scope: ModuleScope,
+}
+
+struct UseBindingCollector {
+  bindings:     Vec<UseBinding>,
+  module_scope: ModuleScope,
+}
+
+impl UseBindingCollector {
+  fn new() -> Self {
+    Self { bindings: Vec::new(), module_scope: ModuleScope::default() }
+  }
+
+  fn collect_use_tree(&mut self, tree: &UseTree, prefix: String) {
+    match tree {
+      | UseTree::Path(path) => {
+        let next_prefix = append_path_segment(&prefix, path.ident.to_string().as_str());
+        self.collect_use_tree(&path.tree, next_prefix);
+      },
+      | UseTree::Name(name) => {
+        self.bindings.push(UseBinding {
+          local_name:  name.ident.to_string(),
+          source_path: append_path_segment(&prefix, name.ident.to_string().as_str()),
+          module_scope: self.module_scope.clone(),
+        });
+      },
+      | UseTree::Rename(rename) => {
+        self.bindings.push(UseBinding {
+          local_name:  rename.rename.to_string(),
+          source_path: append_path_segment(&prefix, rename.ident.to_string().as_str()),
+          module_scope: self.module_scope.clone(),
+        });
+      },
+      | UseTree::Group(group) => {
+        for item in &group.items {
+          self.collect_use_tree(item, prefix.clone());
+        }
+      },
+      | UseTree::Glob(_) => {},
+    }
+  }
+}
+
+impl<'ast> Visit<'ast> for UseBindingCollector {
+  fn visit_item(&mut self, item: &'ast Item) {
+    match item {
+      | Item::Use(item_use) => self.collect_use_tree(&item_use.tree, String::new()),
+      | Item::Mod(item_mod) => {
+        if let Some((_, items)) = &item_mod.content {
+          self.module_scope.push(item_mod.ident.to_string());
+          for item in items {
+            self.visit_item(item);
+          }
+          self.module_scope.pop();
+        }
+      },
+      | _ => {},
+    }
+  }
+}
+
+fn collect_use_bindings(file: &syn::File) -> Vec<UseBinding> {
+  let mut collector = UseBindingCollector::new();
+  collector.visit_file(file);
+  collector.bindings
 }
 
 fn append_path_segment(prefix: &str, segment: &str) -> String {

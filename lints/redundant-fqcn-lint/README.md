@@ -11,6 +11,7 @@
 - 関数呼び出し、構築式、`match` パターン、関数シグネチャ、型注釈、フィールド型など、`use` 以外に現れる完全修飾パスのうち、型名や enum 名を含むパスを警告します。
 - `pub(in crate::...)` と `QSelf` を使った完全修飾は対象外にして、必要な完全修飾の誤検知を抑えます。
 - すでに同名の別 import があり、短い名前にすると衝突する場合は許可します。例: `use domain::UserAccount;` がある状態で `crate::infra::UserAccount(ua)` を呼ぶケース。
+- import の衝突判定と修正案は file-wide ではなく lexical module scope 単位で判定します。ネストした `mod` の中にある FQCN は、その `mod` の `use` とだけ比較します。
 
 ## 違反例
 ```rust
