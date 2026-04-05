@@ -1,30 +1,41 @@
 # actor-std-adapter-surface Specification
 
 ## Purpose
-TBD - created by archiving change shrink-actor-std-wrappers. Update Purpose after archive.
+`modules/actor-adaptor/src/std` の公開面を adapter と std 固有 helper のみに制限し、core 横流し façade を排除する。
+
 ## Requirements
 ### Requirement: `std` 公開面は adapter と std 固有 helper のみに限定される
-`modules/actor/src/std` は、`core` の port を std/tokio/tracing に接続する adapter 実装、または std 固有 helper のみを公開しなければならない。`core` 型を包み直しただけの façade / wrapper は外部公開してはならず、公開面に現れてはならない。公開面は adapter と std 固有 helper のみに MUST 制限される。
+`modules/actor-adaptor/src/std` は、`core` の port を std/tokio/tracing に接続する adapter 実装、または std 固有 helper のみを公開しなければならない。`core` 型を包み直しただけの façade / wrapper は外部公開してはならず、公開面に現れてはならない。classic logging family、event stream shim、core 横流し helper は `std` 公開面に残存してはならず、公開面は adapter と std 固有 helper のみに MUST 制限される。
 
-#### Scenario: 純粋 wrapper が `std` 公開面から除外される
-- **WHEN** 利用者が `crate::std` 配下の actor / typed / props / system API を参照する
-- **THEN** `TypedActorContext`、`TypedActorContextRef`、`TypedActorRef`、`TypedChildRef`、`TypedProps`、`TypedActorSystem`、`ActorContext`、`Props`、`ActorSystemConfig` のような pure wrapper は公開面に現れない
+#### Scenario: classic logging facade が `std` 公開面から除外される
+- **WHEN** 利用者が `fraktor_actor_adaptor_rs::std::event::logging` を参照する
+- **THEN** `ActorLogMarker`、`ActorLogging`、`DiagnosticActorLogging`、`LoggingReceive`、`NoLogging`、`LoggingAdapter`、`BusLogging` は公開されない
+- **AND** `TracingLoggerSubscriber` のような runtime adapter だけが live entry point として残る
+
+#### Scenario: event stream shim が `std` 公開面から除外される
+- **WHEN** 利用者が `fraktor_actor_adaptor_rs::std::event::stream` を参照する
+- **THEN** `EventStreamSubscriberShared` や `subscriber_handle` のような `core` 横流し shim は公開されない
+- **AND** `std::event::stream` に残る public 型は `DeadLetterLogSubscriber` のみである
+
+#### Scenario: pattern wrapper が `std` 公開面から除外される
+- **WHEN** 利用者が `fraktor_actor_adaptor_rs::std::pattern` を参照する
+- **THEN** `ask_with_timeout`、`graceful_stop`、`graceful_stop_with_message`、`retry` のような core 横流し helper は公開されない
+- **AND** `std::pattern` に残る public API は `StdClock`、`CircuitBreaker`、`CircuitBreakerShared`、`circuit_breaker`、`circuit_breaker_shared` のみである
 
 ### Requirement: examples と tests は pure wrapper ではなく core API に依存する
-`modules/actor/examples` と `modules/actor/src/std/tests.rs`、および削除対象 wrapper に依存している内部コードは、pure wrapper ではなく `core` API に依存しなければならない。この依存は `std` façade ではなく `core` API へ MUST 向かなければならない。
+`showcases/std/*`、`modules/actor-adaptor/src/std/tests.rs`、`modules/actor-adaptor/src/std/pattern/tests.rs`、および削除対象 wrapper に依存している内部コードは、pure wrapper ではなく `core` API に依存しなければならない。この依存は `std` façade ではなく `core` API へ MUST 向かなければならない。
 
-#### Scenario: typed examples が core typed API を使う
-- **WHEN** `modules/actor/examples/*_std/main.rs` の typed example を確認する
-- **THEN** typed actor system、typed props、typed actor ref、typed actor context には `core::typed` 側の型が使われ、`std::typed::actor::*` への依存は存在しない
+#### Scenario: std showcase が core logging API を使う
+- **WHEN** `showcases/std/classic_logging/main.rs` を確認する
+- **THEN** classic logging capability は `core` 側の型と API を使って表現される
+- **AND** `fraktor_actor_adaptor_rs::std::event::logging` の facade には依存しない
 
-#### Scenario: `std/tests.rs` が残すべき std API だけを固定する
-- **WHEN** `modules/actor/src/std/tests.rs` を実行する
-- **THEN** adapter subsystem と std 固有 helper だけが公開面として確認され、pure wrapper の公開を前提とした assertion は存在しない
+#### Scenario: event stream 利用コードが core subscriber 型を使う
+- **WHEN** showcase または `modules/actor-adaptor/src/std/tests.rs` が event stream subscriber を使う
+- **THEN** `core::kernel::event::stream::EventStreamSubscriberShared` と `subscriber_handle` を使う
+- **AND** `std::event::stream` の shim を前提としない
 
-### Requirement: façade 依存の shim は依存消滅後に削除される
-pure wrapper のみを成立させるために存在していた shim は、その依存が `core` 側に置き換わった後に削除されなければならない。依存消滅後に `std` へ残存してはならず、`std` から MUST 除去される。
-
-#### Scenario: `ActorAdapter` と `TypedActorAdapter` が façade 依存消滅後に不要化される
-- **WHEN** `std::actor::Actor` / `std::props::Props` および `std::typed::TypedProps` / `std::typed::actor::TypedActor` への依存がなくなる
-- **THEN** `ActorAdapter` と `TypedActorAdapter` は `std` から削除され、runtime adapter として残存しない
-
+#### Scenario: std pattern tests は残存 API だけを前提にする
+- **WHEN** `modules/actor-adaptor/src/std/pattern/tests.rs` を確認する
+- **THEN** test は `StdClock`、`CircuitBreaker`、`CircuitBreakerShared`、`circuit_breaker`、`circuit_breaker_shared` だけを参照する
+- **AND** 削除対象の `ask_with_timeout`、`graceful_stop`、`graceful_stop_with_message`、`retry` を前提にしない
