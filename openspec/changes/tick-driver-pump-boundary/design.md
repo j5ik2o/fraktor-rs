@@ -11,6 +11,27 @@ tick driver まわりには 2 種類の abstraction が同居している。
 
 本来 `core` は scheduler runtime の構成主体であり、platform adapter は「tick をどう発生させるか」「executor をどう駆動するか」だけ知っていればよい。この change はその責務分離を回復する。
 
+### 現行利用箇所の棚卸し
+
+`TickDriverConfig::Builder` による complete bundle builder の利用は、現時点では以下に限られる。
+
+- production
+  - `modules/actor-adaptor/src/std/scheduler/tick.rs`
+    - `TickDriverConfig::default_config()`
+    - `TickDriverConfig::with_resolution(...)`
+  - `showcases/std/src/support/tick_driver.rs`
+    - `hardware_tick_driver_config_with_handle(...)`
+    - `tokio_tick_driver_config_with_resolution(...)`
+- test-only
+  - `modules/actor/src/core/kernel/actor/scheduler/tick_driver/tests.rs`
+    - `hardware_test_config(...)`
+  - `modules/actor/src/core/kernel/actor/scheduler/tick_driver/tick_driver_config/tests.rs`
+    - `test_tick_driver_config_builder()`
+  - `modules/actor/src/core/kernel/system/base/tests.rs`
+  - `modules/actor/src/core/kernel/system/state/system_state/tests.rs`
+
+また、`TickDriverBundle::with_executor_shutdown(...)` の production 利用は `showcases/std/src/support/tick_driver.rs` の hardware path のみで、`TickDriverFactory` の非テスト参照は存在しない。
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -37,6 +58,7 @@ tick driver まわりには 2 種類の abstraction が同居している。
   - 役割: hardware / 割り込み系 source を `TickDriver` 化する低レベル helper
 - `TickDriverFactory` は正規の注入点から外す
   - builder closure 時代の周辺 abstraction であり、runtime 境界の主契約にはしない
+  - 現行実装では定義ファイルと `tick_driver.rs` の再公開以外に参照がないため、この change の最初のバッチで削除する
 - `TickExecutorPump` を新設する
   - 役割: `TickExecutorSignal` を待機し、`SchedulerTickExecutor` を platform runtime 上で駆動する
 

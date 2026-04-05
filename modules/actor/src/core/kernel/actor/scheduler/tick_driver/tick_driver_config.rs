@@ -5,19 +5,20 @@ mod tests;
 
 use alloc::boxed::Box;
 
+use fraktor_utils_rs::core::sync::RuntimeMutex;
+
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
-use super::{TickDriverBundle, TickDriverError};
-use crate::core::kernel::actor::scheduler::tick_driver::TickDriverProvisioningContext;
-type TickDriverBuilderFn =
-  Box<dyn Fn(&TickDriverProvisioningContext) -> Result<TickDriverBundle, TickDriverError> + Send + Sync>;
+use super::{TickDriver, TickExecutorPump};
 
 /// Configuration for tick driver creation.
 pub enum TickDriverConfig {
-  /// Builder function-based configuration (standard approach).
-  Builder {
-    /// Builder function that creates a complete tick driver bundle.
-    builder: TickDriverBuilderFn,
+  /// Runtime-wired configuration built from a driver and executor pump.
+  Runtime {
+    /// Driver source that publishes ticks into the core feed.
+    driver:        RuntimeMutex<Box<dyn TickDriver>>,
+    /// Runtime pump that drives the core scheduler executor.
+    executor_pump: RuntimeMutex<Box<dyn TickExecutorPump>>,
   },
   /// Manual test driver (test-only).
   #[cfg(any(test, feature = "test-support"))]
@@ -25,15 +26,10 @@ pub enum TickDriverConfig {
 }
 
 impl TickDriverConfig {
-  /// Creates a tick driver configuration with a user-provided builder function.
-  ///
-  /// The builder function receives the provisioning context and must return a complete
-  /// `TickDriverBundle` that includes both the tick driver and scheduler executor.
+  /// Creates a runtime-wired tick driver configuration.
   #[must_use]
-  pub fn new<F>(builder: F) -> Self
-  where
-    F: Fn(&TickDriverProvisioningContext) -> Result<TickDriverBundle, TickDriverError> + Send + Sync + 'static, {
-    Self::Builder { builder: Box::new(builder) }
+  pub fn runtime(driver: Box<dyn TickDriver>, executor_pump: Box<dyn TickExecutorPump>) -> Self {
+    Self::Runtime { driver: RuntimeMutex::new(driver), executor_pump: RuntimeMutex::new(executor_pump) }
   }
 
   /// Creates a manual test driver configuration.
@@ -47,7 +43,7 @@ impl TickDriverConfig {
 impl core::fmt::Debug for TickDriverConfig {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     match self {
-      | Self::Builder { .. } => f.debug_struct("Builder").finish_non_exhaustive(),
+      | Self::Runtime { .. } => f.debug_struct("Runtime").finish_non_exhaustive(),
       #[cfg(any(test, feature = "test-support"))]
       | Self::ManualTest(_) => f.debug_tuple("ManualTest").finish(),
     }
