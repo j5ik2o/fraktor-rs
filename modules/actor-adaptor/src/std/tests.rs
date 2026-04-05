@@ -1,5 +1,5 @@
 use alloc::vec::Vec;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use fraktor_actor_rs::core::kernel::{
   actor::ActorContext,
@@ -10,10 +10,6 @@ use fraktor_actor_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-const REQUIRED_ACTOR_EXAMPLE_FILES: &[&str] = &["examples/classic_logging.rs"];
-
-const REQUIRED_ACTOR_EXAMPLE_NAMES: &[&str] = &["classic_logging"];
 
 struct NoopSubscriber;
 
@@ -95,23 +91,14 @@ fn classic_actor_context_log_emits_context_bound_log_event() {
 }
 
 #[test]
-fn actor_examples_cover_phase2_and_classic_logging_surfaces() {
+fn module_examples_are_moved_to_showcases_std() {
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let cargo_toml = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).expect("Cargo.toml should be readable");
+  let legacy_example = manifest_dir.join("examples/classic_logging.rs");
 
-  for relative_path in REQUIRED_ACTOR_EXAMPLE_FILES {
-    let path = manifest_dir.join(relative_path);
-    assert!(path.exists(), "必須 example が不足しています: {}", display_relative_path(manifest_dir, &path));
-  }
-
-  for example_name in REQUIRED_ACTOR_EXAMPLE_NAMES {
-    assert!(
-      cargo_toml.contains(&format!("name = \"{example_name}\"")),
-      "Cargo.toml に example 定義がありません: {example_name}"
-    );
-  }
-}
-
-fn display_relative_path(base: &Path, path: &Path) -> String {
-  path.strip_prefix(base).map(PathBuf::from).unwrap_or_else(|_| path.to_path_buf()).display().to_string()
+  assert!(!legacy_example.exists(), "module example must not exist: {}", legacy_example.display());
+  assert!(
+    !cargo_toml.contains("name = \"classic_logging\""),
+    "module Cargo.toml must not define classic_logging example anymore",
+  );
 }

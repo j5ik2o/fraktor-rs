@@ -74,6 +74,22 @@ path = "serialization/main.rs"
 name = "stream_pipeline"
 path = "stream_pipeline/main.rs"
 
+[[example]]
+name = "classic_logging"
+path = "classic_logging/main.rs"
+
+[[example]]
+name = "classic_timers"
+path = "classic_timers/main.rs"
+
+[[example]]
+name = "typed_event_stream"
+path = "typed_event_stream/main.rs"
+
+[[example]]
+name = "typed_receptionist_router"
+path = "typed_receptionist_router/main.rs"
+
 # --- Advanced examples ---
 
 [[example]]

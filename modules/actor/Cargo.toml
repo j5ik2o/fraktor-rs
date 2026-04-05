@@ -76,20 +76,5 @@ name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
 required-features = ["test-support"]
 
-[[example]]
-name = "typed_event_stream"
-path = "examples/typed_event_stream.rs"
-required-features = ["test-support"]
-
-[[example]]
-name = "classic_timers"
-path = "examples/classic_timers.rs"
-required-features = ["test-support"]
-
-[[example]]
-name = "typed_receptionist_router"
-path = "examples/typed_receptionist_router.rs"
-required-features = ["test-support"]
-
 [lints]
 workspace = true

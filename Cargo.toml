@@ -42,6 +42,7 @@ edition = "2024"
 [workspace.metadata.dylint]
 libraries = [
     { path = "lints/mod-file-lint" },
+    { path = "lints/module-examples-lint" },
     { path = "lints/module-wiring-lint" },
     { path = "lints/type-per-file-lint" },
     { path = "lints/tests-location-lint" },
@@ -49,6 +50,7 @@ libraries = [
     { path = "lints/redundant-fqcn-lint" },
     { path = "lints/rustdoc-lint" },
     { path = "lints/cfg-std-forbid-lint" },
+    { path = "lints/ambiguous-suffix-lint" },
 ]
 
 [workspace.lints.rust]

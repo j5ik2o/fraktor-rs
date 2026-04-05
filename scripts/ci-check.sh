@@ -616,6 +616,7 @@ run_dylint() {
 
   local -a lint_entries=(
     "mod-file-lint:lints/mod-file-lint"
+    "module-examples-lint:lints/module-examples-lint"
     "module-wiring-lint:lints/module-wiring-lint"
     "type-per-file-lint:lints/type-per-file-lint"
     "tests-location-lint:lints/tests-location-lint"
