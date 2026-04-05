@@ -21,7 +21,12 @@ fn library_path() -> Result<PathBuf, Box<dyn Error>> {
   let plain_name = format!("{}{}{}", std::env::consts::DLL_PREFIX, crate_name, std::env::consts::DLL_SUFFIX);
   let plain_path = target_dir.join(&plain_name);
 
-  let status = Command::new("cargo").args(["build"]).current_dir(&manifest_dir).status()?;
+  let mut command = Command::new("cargo");
+  command.args(["build"]).current_dir(&manifest_dir);
+  if let Ok(target_dir_env) = std::env::var("CARGO_TARGET_DIR") {
+    command.env("CARGO_TARGET_DIR", target_dir_env);
+  }
+  let status = command.status()?;
   if !status.success() {
     return Err("cargo build failed".into());
   }
