@@ -1,31 +1,38 @@
-//! Tokio-based tick driver implementations for std runtimes.
+//! Tokio-based tick driver implementations for standard runtimes.
 
 extern crate std;
 
+#[cfg(feature = "tokio-executor")]
 use alloc::boxed::Box;
+#[cfg(feature = "tokio-executor")]
 use core::time::Duration;
 
+#[cfg(feature = "tokio-executor")]
 use fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverConfig as CoreTickDriverConfig,
   TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
   next_tick_driver_id,
 };
+#[cfg(feature = "tokio-executor")]
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+#[cfg(feature = "tokio-executor")]
 use tokio::{
   runtime::Handle,
   time::{MissedTickBehavior, interval},
 };
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tokio-executor"))]
 mod tests;
 
 /// Creates a ready-to-use tick driver configuration with the default 10ms resolution.
+#[cfg(feature = "tokio-executor")]
 #[must_use]
 pub fn default_tick_driver_config() -> CoreTickDriverConfig {
   tick_driver_config_with_resolution(Duration::from_millis(10))
 }
 
 /// Creates a Tokio tick driver configuration with custom resolution.
+#[cfg(feature = "tokio-executor")]
 #[must_use]
 pub fn tick_driver_config_with_resolution(resolution: Duration) -> CoreTickDriverConfig {
   CoreTickDriverConfig::runtime(
@@ -34,17 +41,20 @@ pub fn tick_driver_config_with_resolution(resolution: Duration) -> CoreTickDrive
   )
 }
 
+#[cfg(feature = "tokio-executor")]
 struct TokioTickDriver {
   id:         TickDriverId,
   resolution: Duration,
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TokioTickDriver {
   fn new(resolution: Duration) -> Self {
     Self { id: next_tick_driver_id(), resolution }
   }
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TickDriver for TokioTickDriver {
   fn id(&self) -> TickDriverId {
     self.id
@@ -76,26 +86,31 @@ impl TickDriver for TokioTickDriver {
   }
 }
 
+#[cfg(feature = "tokio-executor")]
 struct TokioTickDriverControl {
   tick_task: tokio::task::JoinHandle<()>,
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TickDriverControl for TokioTickDriverControl {
   fn shutdown(&self) {
     self.tick_task.abort();
   }
 }
 
+#[cfg(feature = "tokio-executor")]
 struct TokioTickExecutorPump {
   resolution: Duration,
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TokioTickExecutorPump {
   const fn new(resolution: Duration) -> Self {
     Self { resolution }
   }
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TickExecutorPump for TokioTickExecutorPump {
   fn spawn(&mut self, mut executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
@@ -114,10 +129,12 @@ impl TickExecutorPump for TokioTickExecutorPump {
   }
 }
 
+#[cfg(feature = "tokio-executor")]
 struct TokioTickExecutorControl {
   executor_task: tokio::task::JoinHandle<()>,
 }
 
+#[cfg(feature = "tokio-executor")]
 impl TickDriverControl for TokioTickExecutorControl {
   fn shutdown(&self) {
     self.executor_task.abort();

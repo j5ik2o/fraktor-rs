@@ -25,7 +25,7 @@ use tokio::{
   time::{MissedTickBehavior, interval},
 };
 
-use crate::std::{default_tick_driver_config, tick_driver_config_with_resolution};
+use super::{default_tick_driver_config, tick_driver_config_with_resolution};
 
 fn tokio_quickstart_with_event_stream(
   resolution: Duration,
