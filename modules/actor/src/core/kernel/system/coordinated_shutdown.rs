@@ -1,30 +1,36 @@
 //! Coordinated shutdown orchestration with phased task execution.
 
-extern crate std;
-
 use alloc::{
   boxed::Box,
-  collections::BTreeMap,
+  collections::{BTreeMap, BTreeSet},
   string::{String, ToString},
   vec,
   vec::Vec,
 };
 use core::{
+  future::Future,
   pin::Pin,
   sync::atomic::{AtomicBool, Ordering},
+  task::Poll,
   time::Duration,
 };
-use std::collections::{HashMap, HashSet};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, RuntimeMutex},
+  timing::delay::DelayProvider,
+};
+use futures::{
+  FutureExt,
+  future::{Either, join_all, poll_fn, select},
+};
+
+use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
+use crate::core::kernel::{
   actor::extension::Extension,
   system::{ActorSystem, CoordinatedShutdownPhase, CoordinatedShutdownReason},
 };
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
-
-#[cfg(all(test, feature = "tokio-executor"))]
+#[cfg(test)]
 mod tests;
 
 /// Async task closure type for shutdown phases.
@@ -60,13 +66,14 @@ const DEFAULT_PHASE_TIMEOUT: Duration = Duration::from_secs(5);
 /// 7. [`PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE)
 /// 8. [`PHASE_ACTOR_SYSTEM_TERMINATE`](Self::PHASE_ACTOR_SYSTEM_TERMINATE)
 pub struct CoordinatedShutdown {
-  phases:       BTreeMap<String, CoordinatedShutdownPhase>,
-  ordered:      Vec<String>,
-  known_phases: HashSet<String>,
-  tasks:        RuntimeMutex<HashMap<String, Vec<ShutdownTask>>>,
-  run_started:  AtomicBool,
-  run_done:     AtomicBool,
-  reason:       RuntimeMutex<Option<CoordinatedShutdownReason>>,
+  phases:         BTreeMap<String, CoordinatedShutdownPhase>,
+  ordered:        Vec<String>,
+  known_phases:   BTreeSet<String>,
+  tasks:          RuntimeMutex<BTreeMap<String, Vec<ShutdownTask>>>,
+  run_started:    AtomicBool,
+  run_done:       AtomicBool,
+  reason:         RuntimeMutex<Option<CoordinatedShutdownReason>>,
+  delay_provider: Option<RuntimeMutex<Box<dyn DelayProvider>>>,
 }
 
 impl CoordinatedShutdown {
@@ -105,6 +112,25 @@ impl CoordinatedShutdown {
   /// Returns [`CoordinatedShutdownError::CyclicDependency`] if the default
   /// phase graph contains a cycle (should not happen with the built-in phases).
   pub fn with_default_phases() -> Result<Self, CoordinatedShutdownError> {
+    Self::with_default_phases_and_delay_provider(None)
+  }
+
+  /// Creates a new coordinated shutdown with the default phase graph and
+  /// a delay provider used for phase timeouts.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`CoordinatedShutdownError::CyclicDependency`] if the default
+  /// phase graph contains a cycle (should not happen with the built-in phases).
+  pub fn with_default_phases_with_delay_provider(
+    delay_provider: impl DelayProvider,
+  ) -> Result<Self, CoordinatedShutdownError> {
+    Self::with_default_phases_and_delay_provider(Some(Box::new(delay_provider)))
+  }
+
+  fn with_default_phases_and_delay_provider(
+    delay_provider: Option<Box<dyn DelayProvider>>,
+  ) -> Result<Self, CoordinatedShutdownError> {
     let mut phases = BTreeMap::new();
     phases.insert(
       Self::PHASE_BEFORE_SERVICE_UNBIND.to_string(),
@@ -138,7 +164,7 @@ impl CoordinatedShutdown {
       Self::PHASE_ACTOR_SYSTEM_TERMINATE.to_string(),
       CoordinatedShutdownPhase::new(vec![Self::PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE.to_string()], DEFAULT_PHASE_TIMEOUT),
     );
-    Self::new(phases)
+    Self::new_with_optional_delay_provider(phases, delay_provider)
   }
 
   /// Creates a new coordinated shutdown with the provided phase definitions.
@@ -148,6 +174,27 @@ impl CoordinatedShutdown {
   /// Returns [`CoordinatedShutdownError::CyclicDependency`] if the phase
   /// dependency graph contains a cycle.
   pub fn new(phases: BTreeMap<String, CoordinatedShutdownPhase>) -> Result<Self, CoordinatedShutdownError> {
+    Self::new_with_optional_delay_provider(phases, None)
+  }
+
+  /// Creates a new coordinated shutdown with the provided phase definitions
+  /// and a delay provider used for phase timeouts.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`CoordinatedShutdownError::CyclicDependency`] if the phase
+  /// dependency graph contains a cycle.
+  pub fn new_with_delay_provider(
+    phases: BTreeMap<String, CoordinatedShutdownPhase>,
+    delay_provider: impl DelayProvider,
+  ) -> Result<Self, CoordinatedShutdownError> {
+    Self::new_with_optional_delay_provider(phases, Some(Box::new(delay_provider)))
+  }
+
+  fn new_with_optional_delay_provider(
+    phases: BTreeMap<String, CoordinatedShutdownPhase>,
+    delay_provider: Option<Box<dyn DelayProvider>>,
+  ) -> Result<Self, CoordinatedShutdownError> {
     // 全ての depends_on 参照先が定義済みフェーズであることを検証する
     for (name, phase) in &phases {
       for dep in phase.depends_on() {
@@ -166,10 +213,11 @@ impl CoordinatedShutdown {
       phases,
       ordered,
       known_phases,
-      tasks: RuntimeMutex::new(HashMap::new()),
+      tasks: RuntimeMutex::new(BTreeMap::new()),
       run_started: AtomicBool::new(false),
       run_done: AtomicBool::new(false),
       reason: RuntimeMutex::new(None),
+      delay_provider: delay_provider.map(RuntimeMutex::new),
     })
   }
 
@@ -244,10 +292,15 @@ impl CoordinatedShutdown {
   /// completion future and does not re-run the sequence.
   pub async fn run(&self, reason: CoordinatedShutdownReason) {
     if self.run_started.swap(true, Ordering::AcqRel) {
-      // シャットダウンは既に開始済み — 完了を待機する
-      while !self.run_done.load(Ordering::Acquire) {
-        tokio::task::yield_now().await;
-      }
+      poll_fn(|cx| {
+        if self.run_done.load(Ordering::Acquire) {
+          Poll::Ready(())
+        } else {
+          cx.waker().wake_by_ref();
+          Poll::Pending
+        }
+      })
+      .await;
       return;
     }
 
@@ -285,7 +338,7 @@ impl CoordinatedShutdown {
       let recover = phase_config.recover();
       let timeout = phase_config.timeout();
 
-      let phase_failed = Self::run_phase_tasks(phase_tasks, recover, timeout).await;
+      let phase_failed = self.run_phase_tasks(phase_tasks, timeout).await;
 
       if phase_failed && !recover {
         break;
@@ -294,58 +347,31 @@ impl CoordinatedShutdown {
     // run_done は DoneGuard の drop で設定される
   }
 
-  /// Spawns phase tasks and awaits them with timeout.
+  /// Runs phase tasks concurrently and optionally awaits them with timeout.
   ///
-  /// Returns `true` if the phase experienced a failure (timeout or task panic).
-  async fn run_phase_tasks(tasks: Vec<ShutdownTask>, recover: bool, timeout: Duration) -> bool {
-    let handles: Vec<tokio::task::JoinHandle<()>> = tasks
-      .into_iter()
-      .map(|t| {
-        let fut = (t.task)();
-        tokio::spawn(async move {
-          fut.await;
-        })
-      })
-      .collect();
+  /// Returns `true` if the phase timed out.
+  async fn run_phase_tasks(&self, tasks: Vec<ShutdownTask>, timeout: Duration) -> bool {
+    let task_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> = tasks.into_iter().map(|t| (t.task)()).collect();
+    let phase_future = join_all(task_futures).map(|_| false).boxed();
 
-    // JoinHandle を消費する前に abort ハンドルを収集する（タイムアウトや
-    // 回復不可能な失敗時に残タスクを中断するため）
-    let abort_handles: Vec<_> = handles.iter().map(|h| h.abort_handle()).collect();
+    let Some(delay_provider) = &self.delay_provider else {
+      return phase_future.await;
+    };
 
-    let timed_out = tokio::time::timeout(timeout, async {
-      let mut failed = false;
-      for handle in handles {
-        match handle.await {
-          | Ok(()) => {},
-          | Err(_join_error) => {
-            failed = true;
-            if !recover {
-              // 回復不可能な失敗のため残タスクを中断する
-              for ah in &abort_handles {
-                ah.abort();
-              }
-              return true;
-            }
-          },
-        }
-      }
-      failed
-    })
-    .await;
+    let timeout_future = {
+      let mut provider = delay_provider.lock();
+      provider.delay(timeout)
+    }
+    .map(|_| true)
+    .boxed();
 
-    match timed_out {
-      | Ok(failed) => failed,
-      | Err(_elapsed) => {
-        // タイムアウト: 残タスクをすべて中断する
-        for ah in &abort_handles {
-          ah.abort();
-        }
-        true
-      },
+    match select(phase_future, timeout_future).await {
+      | Either::Left((completed, _)) => completed,
+      | Either::Right((timed_out, _)) => timed_out,
     }
   }
 
-  fn collect_known_phases(phases: &BTreeMap<String, CoordinatedShutdownPhase>) -> HashSet<String> {
+  fn collect_known_phases(phases: &BTreeMap<String, CoordinatedShutdownPhase>) -> BTreeSet<String> {
     phases.keys().cloned().collect()
   }
 
@@ -353,9 +379,9 @@ impl CoordinatedShutdown {
   fn topological_sort(
     phases: &BTreeMap<String, CoordinatedShutdownPhase>,
   ) -> Result<Vec<String>, CoordinatedShutdownError> {
-    let mut all_nodes = HashSet::new();
-    let mut in_degree: HashMap<String, usize> = HashMap::new();
-    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+    let mut all_nodes = BTreeSet::new();
+    let mut in_degree: BTreeMap<String, usize> = BTreeMap::new();
+    let mut adjacency: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (name, phase) in phases {
       all_nodes.insert(name.clone());

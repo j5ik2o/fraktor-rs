@@ -1,10 +1,6 @@
 //! Extension identifier for the coordinated shutdown subsystem.
-
-extern crate std;
-
-use fraktor_actor_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
-
 use super::coordinated_shutdown::CoordinatedShutdown;
+use crate::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
 
 /// Identifier used to register the coordinated shutdown extension.
 pub struct CoordinatedShutdownId;
@@ -18,8 +14,8 @@ impl ExtensionId for CoordinatedShutdownId {
   ///
   /// Panics if the default phase graph contains a cycle. This should never
   /// happen with the built-in phase definitions.
-  fn create_extension(&self, _system: &ActorSystem) -> Self::Ext {
-    match CoordinatedShutdown::with_default_phases() {
+  fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
+    match CoordinatedShutdown::with_default_phases_with_delay_provider(system.delay_provider()) {
       | Ok(cs) => cs,
       | Err(error) => {
         panic!("default phase graph must not contain cycles: {error}")

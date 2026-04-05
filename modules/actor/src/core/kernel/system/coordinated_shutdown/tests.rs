@@ -4,11 +4,33 @@ use core::{
   time::Duration,
 };
 
-use fraktor_actor_rs::core::kernel::system::{ActorSystem, CoordinatedShutdownPhase, CoordinatedShutdownReason};
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, RuntimeMutex},
+  timing::delay::{DelayFuture, DelayProvider, ManualDelayProvider},
+};
 
 use super::*;
-use crate::std::system::CoordinatedShutdownError;
+
+#[derive(Clone)]
+struct SharedManualDelayProvider {
+  inner: ArcShared<RuntimeMutex<ManualDelayProvider>>,
+}
+
+impl SharedManualDelayProvider {
+  fn new() -> Self {
+    Self { inner: ArcShared::new(RuntimeMutex::new(ManualDelayProvider::new())) }
+  }
+
+  fn trigger_all(&self) {
+    self.inner.lock().trigger_all();
+  }
+}
+
+impl DelayProvider for SharedManualDelayProvider {
+  fn delay(&mut self, duration: Duration) -> DelayFuture {
+    self.inner.lock().delay(duration)
+  }
+}
 
 fn default_shutdown() -> CoordinatedShutdown {
   CoordinatedShutdown::with_default_phases().expect("default phases should be valid")
@@ -188,17 +210,26 @@ async fn phase_timeout_is_respected() {
   let mut phases = BTreeMap::new();
   phases.insert("fast-phase".to_string(), CoordinatedShutdownPhase::new(vec![], Duration::from_millis(50)));
 
-  let cs = CoordinatedShutdown::new(phases).unwrap();
+  let delay_provider = SharedManualDelayProvider::new();
+  let cs = ArcShared::new(CoordinatedShutdown::new_with_delay_provider(phases, delay_provider.clone()).unwrap());
   let completed = ArcShared::new(AtomicU32::new(0));
 
   let c = completed.clone();
   cs.add_task("fast-phase", "slow-task", move || async move {
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    core::future::pending::<()>().await;
     c.fetch_add(1, Ordering::SeqCst);
   })
   .unwrap();
 
-  cs.run(CoordinatedShutdownReason::Unknown).await;
+  let cs_for_run = cs.clone();
+  let run_task = tokio::spawn(async move {
+    cs_for_run.run(CoordinatedShutdownReason::Unknown).await;
+  });
+
+  tokio::task::yield_now().await;
+  delay_provider.trigger_all();
+  run_task.await.expect("run task");
+
   assert_eq!(completed.load(Ordering::SeqCst), 0);
 }
 
@@ -225,8 +256,6 @@ fn error_display() {
 /// `get` returns `None` when the extension has not been registered.
 #[test]
 fn get_returns_none_when_extension_not_registered() {
-  use fraktor_actor_rs::core::kernel::system::ActorSystem;
-
   let system = ActorSystem::new_empty();
   let result = CoordinatedShutdown::get(&system);
   assert!(result.is_none(), "should return None when extension is not registered");
@@ -235,8 +264,6 @@ fn get_returns_none_when_extension_not_registered() {
 /// `get` returns `Some` after the extension has been registered via `ExtendedActorSystem`.
 #[test]
 fn get_returns_some_after_extension_registered() {
-  use crate::std::system::CoordinatedShutdownId;
-
   let system = ActorSystem::new_empty();
   let extended = system.extended();
   extended.register_extension(&CoordinatedShutdownId);
@@ -248,8 +275,6 @@ fn get_returns_some_after_extension_registered() {
 /// `get` returns a functional `CoordinatedShutdown` instance that supports adding tasks.
 #[test]
 fn get_returns_functional_instance() {
-  use crate::std::system::CoordinatedShutdownId;
-
   let system = ActorSystem::new_empty();
   let extended = system.extended();
   extended.register_extension(&CoordinatedShutdownId);

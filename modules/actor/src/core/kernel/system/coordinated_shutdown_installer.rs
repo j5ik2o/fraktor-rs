@@ -1,13 +1,10 @@
 //! Installer for the coordinated shutdown extension.
 
-extern crate std;
-
-use fraktor_actor_rs::core::kernel::{
+use super::coordinated_shutdown_id::CoordinatedShutdownId;
+use crate::core::kernel::{
   actor::extension::{ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
-
-use super::coordinated_shutdown_id::CoordinatedShutdownId;
 
 /// Installs the coordinated shutdown extension during actor system bootstrap.
 pub struct CoordinatedShutdownInstaller;

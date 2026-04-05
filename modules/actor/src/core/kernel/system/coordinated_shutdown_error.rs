@@ -1,7 +1,5 @@
 //! Errors from coordinated shutdown operations.
 
-extern crate std;
-
 use alloc::string::String;
 use core::fmt;
 
@@ -30,5 +28,3 @@ impl fmt::Display for CoordinatedShutdownError {
     }
   }
 }
-
-impl std::error::Error for CoordinatedShutdownError {}
