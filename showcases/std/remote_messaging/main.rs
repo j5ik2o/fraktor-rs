@@ -16,7 +16,6 @@ use std::time::Duration;
 use anyhow::{Result, anyhow};
 use fraktor_actor_adaptor_rs::std::{
   dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor},
-  system::ActorSystem,
 };
 use fraktor_actor_rs::core::kernel::{
   actor::{
@@ -29,6 +28,7 @@ use fraktor_actor_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   serialization::SerializationExtensionInstaller,
+  system::ActorSystem,
   system::remote::RemotingConfig,
   util::futures::ActorFutureListener,
 };
