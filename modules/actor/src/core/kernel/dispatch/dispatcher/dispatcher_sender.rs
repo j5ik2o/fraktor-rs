@@ -55,49 +55,29 @@ impl DispatcherSender {
       }
     }
   }
+
+  fn schedule_user_execution(&self) -> SendOutcome {
+    let dispatcher = self.dispatcher.clone();
+    let schedule = move || {
+      dispatcher.register_for_execution(ScheduleHints {
+        has_system_messages: false,
+        has_user_messages:   true,
+        backpressure_active: false,
+      });
+    };
+    SendOutcome::Schedule(Box::new(schedule))
+  }
 }
 
 impl ActorRefSender for DispatcherSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     match self.mailbox.enqueue_user(message) {
-      | Ok(EnqueueOutcome::Enqueued) => {
-        if self.mailbox.is_running() {
-          self.dispatcher.register_for_execution(ScheduleHints {
-            has_system_messages: false,
-            has_user_messages:   true,
-            backpressure_active: false,
-          });
-          return Ok(SendOutcome::Delivered);
-        }
-
-        let dispatcher = self.dispatcher.clone();
-        let schedule = move || {
-          dispatcher.register_for_execution(ScheduleHints {
-            has_system_messages: false,
-            has_user_messages:   true,
-            backpressure_active: false,
-          });
-        };
-        Ok(SendOutcome::Schedule(Box::new(schedule)))
-      },
+      | Ok(EnqueueOutcome::Enqueued) => Ok(self.schedule_user_execution()),
       | Ok(EnqueueOutcome::Pending(mut future)) => {
         let adapter = self.dispatcher.schedule_adapter();
         adapter.with_write(|a| a.on_pending());
-        if self.mailbox.is_running() {
-          self.poll_pending(&adapter, &mut future)?;
-          return Ok(SendOutcome::Delivered);
-        }
-
         self.poll_pending(&adapter, &mut future)?;
-        let dispatcher = self.dispatcher.clone();
-        let schedule = move || {
-          dispatcher.register_for_execution(ScheduleHints {
-            has_system_messages: false,
-            has_user_messages:   true,
-            backpressure_active: false,
-          });
-        };
-        Ok(SendOutcome::Schedule(Box::new(schedule)))
+        Ok(self.schedule_user_execution())
       },
       | Err(error) => Err(error),
     }

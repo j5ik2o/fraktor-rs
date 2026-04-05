@@ -305,12 +305,6 @@ impl Mailbox {
     self.state.set_idle()
   }
 
-  /// Indicates whether the mailbox is currently in a running state.
-  #[must_use]
-  pub(crate) fn is_running(&self) -> bool {
-    self.state.is_running()
-  }
-
   /// Computes schedule hints from the current queue lengths and suspension state.
   #[must_use]
   pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {

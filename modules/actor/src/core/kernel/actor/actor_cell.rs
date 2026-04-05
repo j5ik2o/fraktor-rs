@@ -4,10 +4,11 @@
 mod tests;
 
 use alloc::{
+  borrow::ToOwned,
   boxed::Box,
   collections::{BTreeSet, VecDeque},
   format,
-  string::String,
+  string::{String, ToString},
   vec,
   vec::Vec,
 };
@@ -36,7 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DispatcherConfig, DispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherProvisionRequest, DispatcherShared, Dispatchers},
       mailbox::{
         BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
         metrics_event::MailboxPressureEvent,
@@ -87,26 +88,26 @@ impl ActorCellState {
 /// ```compile_fail
 /// use fraktor_actor_rs::core::kernel::actor::ActorCell;
 ///
-/// fn read_dispatcher_config(cell: &ActorCell) {
-///   let _ = cell.dispatcher_config();
+/// fn read_dispatcher_id(cell: &ActorCell) {
+///   let _ = cell.dispatcher_id();
 /// }
 /// ```
 pub struct ActorCell {
-  pid:               Pid,
-  parent:            Option<Pid>,
-  name:              String,
-  tags:              BTreeSet<String>,
-  system:            SystemStateWeak,
-  factory:           ActorFactoryShared,
-  actor:             ActorShared,
-  pipeline:          MessageInvokerPipeline,
-  mailbox:           ArcShared<Mailbox>,
-  dispatcher_config: DispatcherConfig,
-  dispatcher:        DispatcherShared,
-  sender:            ActorRefSenderShared,
-  receive_timeout:   RuntimeMutex<Option<ReceiveTimeoutState>>,
-  state:             RuntimeMutex<ActorCellState>,
-  terminated:        AtomicBool,
+  pid:             Pid,
+  parent:          Option<Pid>,
+  name:            String,
+  tags:            BTreeSet<String>,
+  system:          SystemStateWeak,
+  factory:         ActorFactoryShared,
+  actor:           ActorShared,
+  pipeline:        MessageInvokerPipeline,
+  mailbox:         ArcShared<Mailbox>,
+  dispatcher_id:   String,
+  dispatcher:      DispatcherShared,
+  sender:          ActorRefSenderShared,
+  receive_timeout: RuntimeMutex<Option<ReceiveTimeoutState>>,
+  state:           RuntimeMutex<ActorCellState>,
+  terminated:      AtomicBool,
 }
 
 unsafe impl Send for ActorCell {}
@@ -171,8 +172,12 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let dispatcher_config = props.dispatcher_config().clone();
-    let dispatcher = dispatcher_config.build_dispatcher(mailbox.clone())?;
+    let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
+    let dispatcher_entry =
+      system.resolve_dispatcher(&dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+    let request = DispatcherProvisionRequest::new(dispatcher_id.clone()).with_actor_name(name.clone());
+    let provisioned_dispatcher = dispatcher_entry.provider().provision(dispatcher_entry.settings(), &request)?;
+    let dispatcher = provisioned_dispatcher.build_dispatcher(mailbox.clone())?;
     mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
     let sender = dispatcher.into_sender();
     let Some(factory) = props.factory().cloned() else {
@@ -193,7 +198,7 @@ impl ActorCell {
       actor,
       pipeline: MessageInvokerPipeline::new(),
       mailbox,
-      dispatcher_config,
+      dispatcher_id,
       dispatcher,
       sender,
       receive_timeout,
@@ -218,6 +223,25 @@ impl ActorCell {
     self.actor.with_write(|actor| {
       *actor = self.factory.with_write(|f| f.create());
     });
+  }
+
+  fn resolve_dispatcher_id(
+    system: &SystemStateShared,
+    parent: Option<Pid>,
+    props: &Props,
+  ) -> Result<String, SpawnError> {
+    if props.dispatcher_same_as_parent() {
+      if let Some(parent_pid) = parent {
+        let parent_cell = system.cell(&parent_pid).ok_or_else(|| SpawnError::invalid_props("parent cell missing"))?;
+        return Ok(parent_cell.dispatcher_id().to_owned());
+      }
+      return Ok(DEFAULT_DISPATCHER_ID.to_owned());
+    }
+
+    let dispatcher_id = props.dispatcher_id().unwrap_or(DEFAULT_DISPATCHER_ID);
+    let normalized = Dispatchers::normalize_dispatcher_id(dispatcher_id);
+    system.resolve_dispatcher(normalized).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+    Ok(normalized.to_owned())
   }
 
   /// Returns the pid associated with the cell.
@@ -257,10 +281,10 @@ impl ActorCell {
     self.dispatcher.clone()
   }
 
-  /// Returns the dispatcher configuration associated with this cell.
+  /// Returns the resolved dispatcher identifier associated with this cell.
   #[must_use]
-  pub(crate) fn dispatcher_config(&self) -> DispatcherConfig {
-    self.dispatcher_config.clone()
+  pub(crate) fn dispatcher_id(&self) -> &str {
+    &self.dispatcher_id
   }
 
   /// Returns a sender handle targeting this actor cell's mailbox.

@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor};
+use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::DefaultDispatcher;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -93,15 +93,11 @@ impl Actor for ReceiverGuardian {
 // --- Tokio TCP ベースの ActorSystem 構築 ---
 
 fn build_system(system_name: &str, canonical_port: u16, guardian: Props) -> Result<ActorSystem> {
-  let tokio_handle = tokio::runtime::Handle::current();
-  let tokio_executor = TokioExecutor::new(tokio_handle);
-  let default_dispatcher = DispatcherConfig::from_executor(Box::new(tokio_executor));
-
   let transport_config = RemotingExtensionConfig::default().with_transport_scheme("fraktor.tcp");
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(tokio_tick_driver_config())
-    .with_default_dispatcher(default_dispatcher.into_core())
+    .with_default_dispatcher_entry(DefaultDispatcher::new().into_entry())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(canonical_port))
     .with_extension_installers(

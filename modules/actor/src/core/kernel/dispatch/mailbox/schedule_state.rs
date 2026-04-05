@@ -69,12 +69,6 @@ impl MailboxScheduleState {
     }
   }
 
-  /// Returns `true` when the mailbox is currently being drained by a dispatcher.
-  #[must_use]
-  pub(crate) fn is_running(&self) -> bool {
-    self.state.load(Ordering::Acquire) & FLAG_RUNNING != 0
-  }
-
   /// Clears the running flag. Returns `true` if mailbox should re-schedule immediately.
   pub(crate) fn set_idle(&self) -> bool {
     loop {

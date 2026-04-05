@@ -30,7 +30,10 @@ use crate::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::{
-    dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
+    dispatcher::{
+      DispatchError, DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig, DispatcherProvider,
+      DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+    },
     mailbox::MailboxMessage,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
@@ -100,6 +103,11 @@ fn build_state() -> SystemState {
 
 fn build_shared_state() -> SystemStateShared {
   SystemStateShared::new(build_state())
+}
+
+fn build_shared_state_with_noop_dispatcher() -> SystemStateShared {
+  let config = base_config().with_dispatcher_entry("noop", noop_dispatcher_entry());
+  SystemStateShared::new(SystemState::build_from_config(&config).expect("state"))
 }
 
 struct NoopControl;
@@ -645,12 +653,11 @@ fn booting_into_running_fails_when_guardian_missing() {
 
 #[test]
 fn watch_on_missing_guardian_sends_terminated_to_watcher() {
-  let state = build_shared_state();
+  let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
-  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_id("noop");
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -668,12 +675,11 @@ fn watch_on_missing_guardian_sends_terminated_to_watcher() {
 
 #[test]
 fn remote_watch_hook_consumes_watch_skips_fallback() {
-  let state = build_shared_state();
+  let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
-  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_id("noop");
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -693,12 +699,11 @@ fn remote_watch_hook_consumes_watch_skips_fallback() {
 
 #[test]
 fn remote_watch_hook_non_consuming_watch_runs_fallback() {
-  let state = build_shared_state();
+  let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
-  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_id("noop");
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -739,12 +744,11 @@ fn remote_watch_hook_consumes_unwatch_is_invoked() {
 
 #[test]
 fn remote_watch_hook_replaces_previous_registration() {
-  let state = build_shared_state();
+  let state = build_shared_state_with_noop_dispatcher();
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
-  let noop_dispatcher = DispatcherConfig::from_executor(Box::new(NoopExecutor));
-  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_config(noop_dispatcher);
+  let props = Props::from_fn(|| RestartProbeActor).with_dispatcher_id("noop");
   let watcher_cell =
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
@@ -873,6 +877,22 @@ impl DispatchExecutor for NoopExecutor {
   fn supports_blocking(&self) -> bool {
     false
   }
+}
+
+struct NoopDispatcherProvider;
+
+impl DispatcherProvider for NoopDispatcherProvider {
+  fn provision(
+    &self,
+    settings: &DispatcherSettings,
+    _request: &DispatcherProvisionRequest,
+  ) -> Result<Box<dyn Dispatcher>, crate::core::kernel::actor::spawn::SpawnError> {
+    Ok(Box::new(DispatcherConfig::from_executor_with_settings(Box::new(NoopExecutor), settings.clone())))
+  }
+}
+
+fn noop_dispatcher_entry() -> DispatcherRegistryEntry {
+  DispatcherRegistryEntry::new(NoopDispatcherProvider, DispatcherSettings::default())
 }
 
 struct LogRecorder {

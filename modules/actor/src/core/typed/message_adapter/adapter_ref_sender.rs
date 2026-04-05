@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::format;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::{
   kernel::{
@@ -60,8 +60,8 @@ impl ActorRefSender for AdapterRefSender {
     // アダプタ境界を越えても control フラグを保持する
     let adapted = if is_control { AnyMessage::control(envelope) } else { AnyMessage::new(envelope) };
 
-    match self.target.send(adapted) {
-      | Ok(()) => Ok(SendOutcome::Delivered),
+    match self.target.with_write(|target| target.send(adapted)) {
+      | Ok(outcome) => Ok(outcome),
       | Err(error) => {
         self.system.record_send_error(Some(self.pid), &error);
         Err(error)

@@ -47,6 +47,7 @@ fn dispatcher_sender_sets_need_reschedule_when_running() {
   mailbox.set_running();
   let outcome = <DispatcherSender as ActorRefSender>::send(&mut sender, AnyMessage::new(99_u32)).expect("send");
 
-  assert!(matches!(outcome, SendOutcome::Delivered));
+  assert!(matches!(outcome, SendOutcome::Schedule(_)));
+  <DispatcherSender as ActorRefSender>::apply_outcome(&mut sender, outcome);
   assert!(mailbox.set_idle());
 }

@@ -3,18 +3,23 @@ use alloc::{borrow::ToOwned, string::String};
 use ahash::RandomState;
 use hashbrown::{HashMap, hash_map::Entry};
 
-use crate::core::kernel::dispatch::dispatcher::{DispatcherConfig, DispatcherRegistryError};
+use crate::core::kernel::dispatch::dispatcher::{
+  DispatcherRegistryEntry, DispatcherRegistryError, DispatcherSettings, InlineDispatcherProvider,
+};
 
 #[cfg(test)]
 mod tests;
 
-const DEFAULT_DISPATCHER_ID: &str = "default";
+/// Reserved kernel registry identifier for the default dispatcher entry.
+pub const DEFAULT_DISPATCHER_ID: &str = "default";
+const PEKKO_DEFAULT_DISPATCHER_ID: &str = "pekko.actor.default-dispatcher";
+const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 /// Reserved dispatcher id for blocking workloads (Pekko compatibility).
 pub const DEFAULT_BLOCKING_DISPATCHER_ID: &str = "pekko.actor.default-blocking-io-dispatcher";
 
-/// Registry that resolves dispatcher identifiers to configurations.
+/// Registry that resolves dispatcher identifiers to provider/settings entries.
 pub struct Dispatchers {
-  entries: HashMap<String, DispatcherConfig, RandomState>,
+  entries: HashMap<String, DispatcherRegistryEntry, RandomState>,
 }
 
 impl Clone for Dispatchers {
@@ -30,42 +35,58 @@ impl Dispatchers {
     Self { entries: HashMap::with_hasher(RandomState::new()) }
   }
 
-  /// Registers a dispatcher configuration for the provided identifier.
+  /// Registers a dispatcher registry entry for the provided identifier.
   ///
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Duplicate`] when the identifier already exists.
-  pub fn register(&mut self, id: impl Into<String>, config: DispatcherConfig) -> Result<(), DispatcherRegistryError> {
+  pub fn register(
+    &mut self,
+    id: impl Into<String>,
+    entry: DispatcherRegistryEntry,
+  ) -> Result<(), DispatcherRegistryError> {
     let id = id.into();
     match self.entries.entry(id) {
-      | Entry::Occupied(entry) => Err(DispatcherRegistryError::duplicate(entry.key())),
-      | Entry::Vacant(entry) => {
-        entry.insert(config);
+      | Entry::Occupied(existing) => Err(DispatcherRegistryError::duplicate(existing.key())),
+      | Entry::Vacant(vacant) => {
+        vacant.insert(entry);
         Ok(())
       },
     }
   }
 
-  /// Registers or updates a dispatcher configuration for the provided identifier.
+  /// Registers or updates a dispatcher registry entry for the provided identifier.
   ///
   /// If the identifier already exists, the configuration is updated.
-  pub fn register_or_update(&mut self, id: impl Into<String>, config: DispatcherConfig) {
-    self.entries.insert(id.into(), config);
+  pub fn register_or_update(&mut self, id: impl Into<String>, entry: DispatcherRegistryEntry) {
+    self.entries.insert(id.into(), entry);
   }
 
-  /// Resolves the dispatcher configuration for the identifier.
+  /// Resolves the dispatcher registry entry for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve(&self, id: &str) -> Result<DispatcherConfig, DispatcherRegistryError> {
+  pub fn resolve(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
+    let id = Self::normalize_dispatcher_id(id);
     self.entries.get(id).cloned().ok_or_else(|| DispatcherRegistryError::unknown(id))
   }
 
   /// Ensures the default dispatcher entry exists.
   pub fn ensure_default(&mut self) {
-    let default_config = self.entries.entry(DEFAULT_DISPATCHER_ID.to_owned()).or_default().clone();
-    self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(default_config);
+    let default_entry = self
+      .entries
+      .entry(DEFAULT_DISPATCHER_ID.to_owned())
+      .or_insert_with(|| DispatcherRegistryEntry::new(InlineDispatcherProvider::new(), DispatcherSettings::default()))
+      .clone();
+    self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(default_entry);
+  }
+
+  pub(crate) fn normalize_dispatcher_id(id: &str) -> &str {
+    match id {
+      | PEKKO_DEFAULT_DISPATCHER_ID | PEKKO_INTERNAL_DISPATCHER_ID => DEFAULT_DISPATCHER_ID,
+      | _ => id,
+    }
   }
 }
 

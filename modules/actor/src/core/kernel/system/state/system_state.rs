@@ -55,7 +55,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{DispatcherConfig, DispatcherRegistryError, Dispatchers},
+    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError, Dispatchers},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
@@ -786,12 +786,12 @@ impl SystemState {
     Duration::from_millis(ticks)
   }
 
-  /// Resolves the dispatcher configuration for the identifier.
+  /// Resolves the dispatcher registry entry for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfig, DispatcherRegistryError> {
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
     self.dispatchers.resolve(id)
   }
 

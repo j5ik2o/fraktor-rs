@@ -14,7 +14,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{DispatcherConfig, Dispatchers},
+    dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, Dispatchers},
     mailbox::Mailboxes,
   },
   system::remote::RemotingConfig,
@@ -25,17 +25,16 @@ mod tests;
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name:               String,
-  default_guardian:          PathGuardianKind,
-  remoting_config:           Option<RemotingConfig>,
-  scheduler_config:          SchedulerConfig,
-  tick_driver_config:        Option<TickDriverConfig>,
-  extension_installers:      Option<ExtensionInstallers>,
-  provider_installer:        Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  default_dispatcher_config: Option<DispatcherConfig>,
-  dispatchers:               Dispatchers,
-  mailboxes:                 Mailboxes,
-  start_time:                Option<Duration>,
+  system_name:          String,
+  default_guardian:     PathGuardianKind,
+  remoting_config:      Option<RemotingConfig>,
+  scheduler_config:     SchedulerConfig,
+  tick_driver_config:   Option<TickDriverConfig>,
+  extension_installers: Option<ExtensionInstallers>,
+  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  dispatchers:          Dispatchers,
+  mailboxes:            Mailboxes,
+  start_time:           Option<Duration>,
 }
 
 impl ActorSystemConfig {
@@ -90,18 +89,17 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Sets the default dispatcher configuration used when Props don't specify a dispatcher.
+  /// Sets the reserved default dispatcher entry used when props don't specify a dispatcher.
   #[must_use]
-  pub fn with_default_dispatcher(mut self, config: DispatcherConfig) -> Self {
-    self.dispatchers.register_or_update("default", config.clone());
-    self.default_dispatcher_config = Some(config);
+  pub fn with_default_dispatcher_entry(mut self, entry: DispatcherRegistryEntry) -> Self {
+    self.dispatchers.register_or_update(DEFAULT_DISPATCHER_ID, entry);
     self
   }
 
-  /// Registers or updates a dispatcher configuration.
+  /// Registers or updates a dispatcher registry entry.
   #[must_use]
-  pub fn with_dispatcher(mut self, id: impl Into<String>, config: DispatcherConfig) -> Self {
-    self.dispatchers.register_or_update(id, config);
+  pub fn with_dispatcher_entry(mut self, id: impl Into<String>, entry: DispatcherRegistryEntry) -> Self {
+    self.dispatchers.register_or_update(id, entry);
     self
   }
 
@@ -183,12 +181,6 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the default dispatcher configuration if set.
-  #[must_use]
-  pub const fn default_dispatcher_config(&self) -> Option<&DispatcherConfig> {
-    self.default_dispatcher_config.as_ref()
-  }
-
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
   pub const fn dispatchers(&self) -> &Dispatchers {
@@ -224,7 +216,6 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      default_dispatcher_config: None,
       dispatchers,
       mailboxes,
       start_time: None,
