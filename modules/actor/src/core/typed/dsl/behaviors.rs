@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, collections::BTreeMap, string::String};
 use core::marker::PhantomData;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
@@ -11,11 +11,11 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{
   kernel::{
-    actor::{error::ActorError, messaging::AnyMessage},
+    actor::{Pid, error::ActorError, messaging::AnyMessage},
     event::logging::LogLevel,
   },
   typed::{
-    TypedActorRef,
+    LogOptions, TypedActorRef,
     actor::TypedActorContext,
     behavior::{Behavior, BehaviorDirective},
     behavior_interceptor::BehaviorInterceptor,
@@ -45,6 +45,26 @@ where
   M: Send + Sync + 'static, {
   interceptor: Box<dyn BehaviorSignalInterceptor<M>>,
   _message:    PhantomData<fn() -> M>,
+}
+
+/// Interceptor that logs every received message through `tracing`.
+struct LogMessagesInterceptor {
+  options: LogOptions,
+}
+
+/// Computes per-message MDC entries for [`WithMdcInterceptor`].
+type MdcForMessageFn<M> = dyn Fn(&M) -> BTreeMap<String, String> + Send + Sync;
+
+/// Interceptor that sets tracing span fields for each message and signal.
+///
+/// Corresponds to Pekko's `WithMdcBehaviorInterceptor`. Static MDC entries
+/// are applied to every message and signal. Per-message MDC entries are
+/// computed from each message and merged with the static entries.
+struct WithMdcInterceptor<M>
+where
+  M: Send + Sync + 'static, {
+  static_mdc:      BTreeMap<String, String>,
+  mdc_for_message: Option<Box<MdcForMessageFn<M>>>,
 }
 
 impl<M> BehaviorInterceptor<M, M> for MonitorInterceptor<M>
@@ -90,6 +110,52 @@ where
     target: &mut (dyn FnMut(&mut TypedActorContext<'_, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError> + '_),
   ) -> Result<Behavior<M>, ActorError> {
     self.interceptor.around_signal(ctx, signal, target)
+  }
+}
+
+impl<M> BehaviorInterceptor<M, M> for LogMessagesInterceptor
+where
+  M: Send + Sync + core::fmt::Debug + 'static,
+{
+  fn around_receive(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    log_received_message(&self.options, ctx.pid(), message);
+    target(ctx, message)
+  }
+}
+
+impl<M> BehaviorInterceptor<M, M> for WithMdcInterceptor<M>
+where
+  M: Send + Sync + 'static,
+{
+  fn around_receive(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    message: &M,
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &M) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let mut mdc = self.static_mdc.clone();
+    if let Some(ref f) = self.mdc_for_message {
+      mdc.extend(f(message));
+    }
+    let span = tracing::info_span!("actor_mdc", actor = %ctx.pid(), mdc = ?mdc);
+    let _guard = span.enter();
+    target(ctx, message)
+  }
+
+  fn around_signal(
+    &mut self,
+    ctx: &mut TypedActorContext<'_, M>,
+    signal: &BehaviorSignal,
+    target: &mut dyn FnMut(&mut TypedActorContext<'_, M>, &BehaviorSignal) -> Result<Behavior<M>, ActorError>,
+  ) -> Result<Behavior<M>, ActorError> {
+    let span = tracing::info_span!("actor_mdc", actor = %ctx.pid(), mdc = ?self.static_mdc);
+    let _guard = span.enter();
+    target(ctx, signal)
   }
 }
 
@@ -259,6 +325,73 @@ impl Behaviors {
     Behavior::from_signal_handler(handler)
   }
 
+  /// Wraps a behavior so that every received message is logged via
+  /// `tracing::debug!`.
+  ///
+  /// This mirrors Pekko's `Behaviors.logMessages`. The message type must
+  /// implement [`Debug`](core::fmt::Debug) so it can be formatted in the log
+  /// output.
+  #[must_use]
+  pub fn log_messages<M>(behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + core::fmt::Debug + 'static, {
+    Self::log_messages_with_opts(LogOptions::default(), behavior)
+  }
+
+  /// Wraps a behavior so that every received message is logged using `opts`.
+  #[must_use]
+  pub fn log_messages_with_opts<M>(opts: LogOptions, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + core::fmt::Debug + 'static, {
+    Self::intercept_behavior(move || Box::new(LogMessagesInterceptor { options: opts.clone() }), behavior)
+  }
+
+  /// Wraps a behavior with MDC (Mapped Diagnostic Context) support.
+  ///
+  /// Static MDC entries are applied to all messages and signals. Per-message
+  /// MDC entries are computed from each message and override static entries
+  /// with the same key.
+  ///
+  /// In Rust, MDC values are emitted as a `tracing::Span` field, which
+  /// subscribers can extract for structured logging. This mirrors Pekko's
+  /// `Behaviors.withMdc`.
+  #[must_use]
+  pub fn with_mdc<M, F>(
+    static_mdc: BTreeMap<String, String>,
+    mdc_for_message: F,
+    behavior: Behavior<M>,
+  ) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn(&M) -> BTreeMap<String, String> + Send + Sync + 'static, {
+    let shared_fn: ArcShared<MdcForMessageFn<M>> = ArcShared::new(mdc_for_message);
+    Self::intercept_behavior(
+      move || {
+        let fn_clone = shared_fn.clone();
+        Box::new(WithMdcInterceptor {
+          static_mdc:      static_mdc.clone(),
+          mdc_for_message: Some(Box::new(move |msg: &M| fn_clone(msg))),
+        })
+      },
+      behavior,
+    )
+  }
+
+  /// Wraps a behavior with static-only MDC entries.
+  ///
+  /// The provided entries are applied as tracing span fields on every
+  /// message and signal delivery. This is a convenience shorthand for
+  /// [`with_mdc`](Self::with_mdc) without per-message MDC.
+  #[must_use]
+  pub fn with_static_mdc<M>(static_mdc: BTreeMap<String, String>, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + 'static, {
+    Self::intercept_behavior(
+      move || Box::new(WithMdcInterceptor::<M> { static_mdc: static_mdc.clone(), mdc_for_message: None }),
+      behavior,
+    )
+  }
+
   /// Wraps a behavior so that spawned children inherit a declarative
   /// [`SupervisorStrategy`](crate::core::typed::SupervisorStrategy).
   #[must_use]
@@ -393,6 +526,19 @@ impl Behaviors {
     })
   }
 
+  /// Wraps a behavior with per-message MDC entries only.
+  ///
+  /// This is a convenience shorthand for [`with_mdc`](Self::with_mdc)
+  /// without static MDC entries. Corresponds to Pekko's
+  /// `Behaviors.withMdc(mdcForMessage)(behavior)`.
+  #[must_use]
+  pub fn with_message_mdc<M, F>(mdc_for_message: F, behavior: Behavior<M>) -> Behavior<M>
+  where
+    M: Send + Sync + 'static,
+    F: Fn(&M) -> BTreeMap<String, String> + Send + Sync + 'static, {
+    Self::with_mdc(BTreeMap::new(), mdc_for_message, behavior)
+  }
+
   /// Creates a behavior from an [`AbstractBehavior`] factory.
   ///
   /// The factory receives the actor context and returns the initial
@@ -492,6 +638,31 @@ where
     | BehaviorDirective::Active => {
       *inner = next;
       Behaviors::same()
+    },
+  }
+}
+
+fn log_received_message<M>(options: &LogOptions, pid: Pid, message: &M)
+where
+  M: core::fmt::Debug, {
+  if !options.enabled() {
+    return;
+  }
+
+  match options.logger_name() {
+    | Some(logger_name) => match options.level() {
+      | LogLevel::Trace => tracing::trace!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Debug => tracing::debug!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Info => tracing::info!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Warn => tracing::warn!(actor = %pid, logger_name, ?message, "received message"),
+      | LogLevel::Error => tracing::error!(actor = %pid, logger_name, ?message, "received message"),
+    },
+    | None => match options.level() {
+      | LogLevel::Trace => tracing::trace!(actor = %pid, ?message, "received message"),
+      | LogLevel::Debug => tracing::debug!(actor = %pid, ?message, "received message"),
+      | LogLevel::Info => tracing::info!(actor = %pid, ?message, "received message"),
+      | LogLevel::Warn => tracing::warn!(actor = %pid, ?message, "received message"),
+      | LogLevel::Error => tracing::error!(actor = %pid, ?message, "received message"),
     },
   }
 }

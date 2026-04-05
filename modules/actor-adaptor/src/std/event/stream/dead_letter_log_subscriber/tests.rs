@@ -7,12 +7,11 @@ use fraktor_actor_rs::core::kernel::{
   },
   event::{
     logging::{LogEvent, LogLevel},
-    stream::EventStreamEvent,
+    stream::{EventStreamEvent, EventStreamSubscriber},
   },
 };
 
 use super::DeadLetterLogSubscriber;
-use crate::std::event::stream::EventStreamSubscriber;
 
 #[test]
 fn listener_handles_dead_letter_event_without_panic() {

@@ -13,7 +13,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct NoopSubscriber;
 
-impl crate::std::event::stream::EventStreamSubscriber for NoopSubscriber {
+impl EventStreamSubscriber for NoopSubscriber {
   fn on_event(&mut self, _event: &EventStreamEvent) {}
 }
 
@@ -35,7 +35,6 @@ impl EventStreamSubscriber for RecordingSubscriber {
 
 #[test]
 fn std_public_modules_expose_only_live_entry_points() {
-  let _behaviors = core::marker::PhantomData::<crate::std::typed::Behaviors>;
   let _log_options = core::marker::PhantomData::<fraktor_actor_rs::core::typed::LogOptions>;
   let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
   let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;

@@ -8,8 +8,6 @@ pub mod pattern;
 mod scheduler;
 /// Actor system bindings for the standard toolbox.
 pub mod system;
-/// Typed actor utilities specialised for the standard toolbox runtime.
-pub mod typed;
 
 #[cfg(test)]
 mod tests;

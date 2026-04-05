@@ -15,16 +15,13 @@ use fraktor_actor_rs::core::kernel::{
   },
   event::{
     logging::LogLevel,
-    stream::{
-      EventStreamEvent, EventStreamShared, EventStreamSubscription, TickDriverSnapshot,
-      subscriber_handle as core_subscriber_handle,
-    },
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscription, TickDriverSnapshot},
   },
   system::{ActorSystem as CoreActorSystem, ExtendedActorSystem, state::SystemStateShared as CoreSystemStateShared},
   util::futures::ActorFutureShared,
 };
 
-use crate::std::event::stream::{EventStreamSubscriberAdapter, EventStreamSubscriberShared};
+use crate::std::event::stream::EventStreamSubscriberShared;
 #[cfg(feature = "tokio-executor")]
 use crate::std::{dispatch::dispatcher::DispatcherConfig, scheduler::TickDriverConfig as StdTickDriverConfig};
 
@@ -159,8 +156,7 @@ impl ActorSystem {
   /// Subscribes the provided observer to the event stream.
   #[must_use]
   pub fn subscribe_event_stream(&self, subscriber: &StdSubscriberHandle) -> EventStreamSubscription {
-    let adapter = core_subscriber_handle(EventStreamSubscriberAdapter::new(subscriber.clone()));
-    self.inner.subscribe_event_stream(&adapter)
+    self.inner.subscribe_event_stream(subscriber)
   }
 
   /// Returns a snapshot of recorded deadletters.
