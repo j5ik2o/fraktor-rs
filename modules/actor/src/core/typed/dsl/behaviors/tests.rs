@@ -691,7 +691,9 @@ fn ensure_tracing_interest_cache_permissive() {
       fn exit(&self, _: &Id) {}
     }
 
-    let _ = tracing::subscriber::set_global_default(PermissiveGlobalSubscriber);
+    if let Err(error) = tracing::subscriber::set_global_default(PermissiveGlobalSubscriber) {
+      panic!("failed to set permissive global tracing subscriber: {error}");
+    }
   });
 }
 
@@ -728,11 +730,10 @@ impl Subscriber for RecordingTracingSubscriber {
   fn event(&self, event: &Event<'_>) {
     let mut visitor = EventVisitor::default();
     event.record(&mut visitor);
-    self
-      .events
-      .lock()
-      .expect("lock")
-      .push(CapturedEvent { level: *event.metadata().level(), logger_name: visitor.logger_name });
+    self.events.lock().expect("lock").push(CapturedEvent {
+      level:       *event.metadata().level(),
+      logger_name: visitor.logger_name,
+    });
   }
 
   fn enter(&self, _: &Id) {}

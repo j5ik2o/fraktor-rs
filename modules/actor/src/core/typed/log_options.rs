@@ -36,7 +36,7 @@ impl LogOptions {
     self
   }
 
-  /// Replaces the configured logger target name.
+  /// Replaces the configured logger name field emitted by tracing logs.
   #[must_use]
   pub fn with_logger_name(mut self, logger_name: impl Into<String>) -> Self {
     self.logger_name = Some(logger_name.into());
@@ -55,7 +55,7 @@ impl LogOptions {
     self.level
   }
 
-  /// Returns the configured logger target name.
+  /// Returns the configured logger name field.
   #[must_use]
   pub fn logger_name(&self) -> Option<&str> {
     self.logger_name.as_deref()
