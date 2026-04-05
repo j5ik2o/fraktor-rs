@@ -25,7 +25,7 @@ use tokio::{
   time::{MissedTickBehavior, interval},
 };
 
-use crate::std::scheduler::TickDriverConfig;
+use crate::std::{default_tick_driver_config, tick_driver_config_with_resolution};
 
 fn tokio_quickstart_with_event_stream(
   resolution: Duration,
@@ -172,7 +172,7 @@ impl TickDriverControl for TokioMetricsPumpControl {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn tokio_interval_driver_produces_ticks() {
-  let config = TickDriverConfig::with_resolution(Duration::from_millis(5));
+  let config = tick_driver_config_with_resolution(Duration::from_millis(5));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
@@ -232,7 +232,7 @@ async fn tokio_interval_driver_publishes_tick_metrics_events() {
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn default_config_provisions_driver() {
-  let config = TickDriverConfig::default_config();
+  let config = default_tick_driver_config();
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
   let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");

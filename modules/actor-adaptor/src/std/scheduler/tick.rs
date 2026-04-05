@@ -19,24 +19,19 @@ use tokio::{
 #[cfg(test)]
 mod tests;
 
-/// Config helpers for std tick drivers.
-pub(crate) struct TickDriverConfig;
+/// Creates a ready-to-use tick driver configuration with the default 10ms resolution.
+#[must_use]
+pub fn default_tick_driver_config() -> CoreTickDriverConfig {
+  tick_driver_config_with_resolution(Duration::from_millis(10))
+}
 
-impl TickDriverConfig {
-  /// Creates a ready-to-use tick driver configuration with the default 10ms resolution.
-  #[must_use]
-  pub(crate) fn default_config() -> CoreTickDriverConfig {
-    Self::with_resolution(Duration::from_millis(10))
-  }
-
-  /// Creates a Tokio tick driver configuration with custom resolution.
-  #[must_use]
-  pub(crate) fn with_resolution(resolution: Duration) -> CoreTickDriverConfig {
-    CoreTickDriverConfig::runtime(
-      Box::new(TokioTickDriver::new(resolution)),
-      Box::new(TokioTickExecutorPump::new(resolution)),
-    )
-  }
+/// Creates a Tokio tick driver configuration with custom resolution.
+#[must_use]
+pub fn tick_driver_config_with_resolution(resolution: Duration) -> CoreTickDriverConfig {
+  CoreTickDriverConfig::runtime(
+    Box::new(TokioTickDriver::new(resolution)),
+    Box::new(TokioTickExecutorPump::new(resolution)),
+  )
 }
 
 struct TokioTickDriver {
