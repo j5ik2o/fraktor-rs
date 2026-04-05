@@ -14,6 +14,10 @@ mod kill_switch;
 mod kill_switches;
 /// Overflow strategy for bounded queues.
 mod overflow_strategy;
+/// Decision returned from sink logic callbacks.
+mod sink_decision;
+/// Sink-stage callback contract.
+mod sink_logic;
 // framing moved to dsl/framing
 /// IO operation result type.
 mod io_result;
@@ -36,6 +40,8 @@ pub mod shape;
 mod shared_kill_switch;
 /// Materializer state snapshot support.
 pub mod snapshot;
+/// Source-stage callback contract.
+mod source_logic;
 /// Stage definitions for source, flow, and sink.
 pub mod stage;
 /// Unique kill switch for single-stream control.
@@ -58,7 +64,10 @@ pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use dsl::Compression;
 use fraktor_utils_rs::core::sync::ArcShared;
-use r#impl::{RestartBackoff, fusing::DemandTracker, validate_positive_argument};
+use r#impl::{
+  RestartBackoff, fusing::DemandTracker as InternalDemandTracker,
+  validate_positive_argument as internal_validate_positive_argument,
+};
 pub use io_result::IOResult;
 pub use kill_switch::KillSwitch;
 pub use kill_switches::KillSwitches;
@@ -70,9 +79,16 @@ pub use restart_log_settings::RestartLogSettings;
 pub use restart_settings::RestartSettings;
 use shape::PortId;
 pub use shared_kill_switch::SharedKillSwitch;
+pub use sink_decision::SinkDecision;
+pub use sink_logic::SinkLogic;
+pub use source_logic::SourceLogic;
 use stage::StageKind;
-pub(crate) type StreamDslError = r#impl::StreamDslError;
-pub(crate) type StreamError = r#impl::StreamError;
+/// Tracks downstream demand for sink stages.
+pub type DemandTracker = InternalDemandTracker;
+/// Public alias for stream DSL construction errors.
+pub type StreamDslError = r#impl::StreamDslError;
+/// Public alias for stream execution errors.
+pub type StreamError = r#impl::StreamError;
 // StatefulMapConcatAccumulator re-exported via dsl::StatefulMapConcatAccumulator
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
@@ -81,7 +97,17 @@ pub use unique_kill_switch::UniqueKillSwitch;
 pub(in crate::core) use unique_kill_switch::{KillSwitchState, KillSwitchStateHandle};
 
 use self::attributes::Attributes;
-pub(crate) type DynValue = Box<dyn Any + Send + 'static>;
+/// Type-erased value passed between runtime stages.
+pub type DynValue = Box<dyn Any + Send + 'static>;
+
+/// Validates that the provided argument is greater than zero.
+///
+/// # Errors
+///
+/// Returns [`StreamDslError::InvalidArgument`] when `value == 0`.
+pub const fn validate_positive_argument(name: &'static str, value: usize) -> Result<usize, StreamDslError> {
+  internal_validate_positive_argument(name, value)
+}
 
 pub(crate) enum StageDefinition {
   Source(SourceDefinition),
@@ -383,18 +409,6 @@ pub(crate) struct StreamPlanEdge {
   pub(crate) mat:       MatCombine,
 }
 
-pub(crate) trait SourceLogic: Send {
-  fn pull(&mut self) -> Result<Option<DynValue>, StreamError>;
-
-  fn on_cancel(&mut self) -> Result<(), StreamError> {
-    Ok(())
-  }
-
-  fn on_restart(&mut self) -> Result<(), StreamError> {
-    Ok(())
-  }
-}
-
 pub(crate) trait FlowLogic: Send {
   fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError>;
 
@@ -482,42 +496,10 @@ pub(crate) enum DownstreamCancelAction {
   Propagate,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SinkDecision {
-  Continue,
-  Complete,
-}
-
 pub(crate) enum FailureAction {
   Propagate(StreamError),
   Resume,
   Complete,
-}
-
-pub(crate) trait SinkLogic: Send {
-  fn can_accept_input(&self) -> bool {
-    true
-  }
-
-  fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError>;
-  fn on_push(&mut self, input: DynValue, demand: &mut DemandTracker) -> Result<SinkDecision, StreamError>;
-  fn on_complete(&mut self) -> Result<(), StreamError>;
-  fn on_error(&mut self, error: StreamError);
-  fn on_tick(&mut self, _demand: &mut DemandTracker) -> Result<bool, StreamError> {
-    Ok(false)
-  }
-
-  fn on_upstream_finish(&mut self) -> Result<bool, StreamError> {
-    Ok(false)
-  }
-
-  fn has_pending_work(&self) -> bool {
-    false
-  }
-
-  fn on_restart(&mut self) -> Result<(), StreamError> {
-    Ok(())
-  }
 }
 
 fn downcast_value<In>(value: DynValue) -> Result<In, StreamError>

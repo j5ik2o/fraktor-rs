@@ -3,13 +3,13 @@ extern crate std;
 use alloc::boxed::Box;
 use std::{panic, string::ToString, thread};
 
-use crate::core::{
+use fraktor_stream_rs::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, dsl::Source,
-  r#impl::validate_positive_argument, materialization::StreamNotUsed, stage::StageKind,
+  stage::StageKind, validate_positive_argument,
 };
 
-#[cfg(test)]
-mod tests;
+/// Factory for std-backed sources driven by a background producer thread.
+pub struct SourceFactory;
 
 struct CreateSourceLogic<T, F> {
   queue:    BoundedSourceQueue<T>,
@@ -35,16 +35,16 @@ impl<T, F> CreateSourceLogic<T, F> {
       let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
       match result {
         | Ok(()) => {
-          let _ = termination_queue.complete_if_open();
+          let _completed = termination_queue.complete_if_open();
         },
         | Err(_) => {
-          let _ = termination_queue.fail_if_open(StreamError::Failed);
+          let _failed = termination_queue.fail_if_open(StreamError::Failed);
         },
       }
     });
 
     if spawn_result.is_err() {
-      let _ = self.queue.fail_if_open(StreamError::Failed);
+      let _queue_failed = self.queue.fail_if_open(StreamError::Failed);
       return Err(StreamError::Failed);
     }
 
@@ -73,10 +73,7 @@ where
   }
 }
 
-impl<Out> Source<Out, StreamNotUsed>
-where
-  Out: Send + Sync + 'static,
-{
+impl SourceFactory {
   /// Creates a source backed by a bounded source queue and runs the producer asynchronously.
   ///
   /// The producer starts lazily when the source is materialized, but it is executed on a
@@ -90,8 +87,9 @@ where
   ///
   /// Panics if the internally created queue cannot be constructed after
   /// `capacity` has already been validated.
-  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, BoundedSourceQueue<Out>>, StreamDslError>
+  pub fn create<Out, F>(capacity: usize, producer: F) -> Result<Source<Out, BoundedSourceQueue<Out>>, StreamDslError>
   where
+    Out: Send + Sync + 'static,
     F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
     let capacity = validate_positive_argument("capacity", capacity)?;
     let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);

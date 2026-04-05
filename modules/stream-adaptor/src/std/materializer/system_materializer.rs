@@ -2,12 +2,8 @@
 
 extern crate std;
 
-#[cfg(test)]
-mod tests;
-
 use fraktor_actor_rs::core::kernel::actor::extension::Extension;
-
-use crate::core::materialization::ActorMaterializer;
+use fraktor_stream_rs::core::materialization::ActorMaterializer;
 
 /// Per-ActorSystem shared materializer (Pekko `SystemMaterializer` equivalent).
 ///

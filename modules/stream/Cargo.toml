@@ -2,7 +2,7 @@
 name = "fraktor-stream-rs"
 version = "0.2.11"
 edition = "2024"
-description = "fraktor stream core for no_std and std environments"
+description = "fraktor stream core for no_std environments"
 license = "MIT OR Apache-2.0"
 keywords = ["fraktor", "stream", "runtime", "no_std"]
 categories = ["concurrency", "embedded", "no-std"]
@@ -14,7 +14,6 @@ autoexamples = false
 
 [features]
 default = []
-std = ["fraktor-utils-rs/std", "fraktor-actor-rs/test-support"]
 compression = ["dep:miniz_oxide"]
 
 [dependencies]
@@ -28,4 +27,3 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
-tempfile = "3"

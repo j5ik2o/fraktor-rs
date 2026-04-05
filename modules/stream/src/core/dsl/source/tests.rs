@@ -27,7 +27,86 @@ use crate::core::{
     StreamNotUsed,
   },
   stage::StageKind,
+  validate_positive_argument,
 };
+
+struct CreateSourceTestLogic<T, F> {
+  queue:    crate::core::BoundedSourceQueue<T>,
+  producer: Option<F>,
+}
+
+impl<T, F> CreateSourceTestLogic<T, F> {
+  const fn new(queue: crate::core::BoundedSourceQueue<T>, producer: F) -> Self {
+    Self { queue, producer: Some(producer) }
+  }
+
+  fn start_producer_if_needed(&mut self) -> Result<(), StreamError>
+  where
+    T: Send + Sync + 'static,
+    F: FnOnce(crate::core::BoundedSourceQueue<T>) + Send + 'static, {
+    let Some(producer) = self.producer.take() else {
+      return Ok(());
+    };
+
+    let producer_queue = self.queue.clone();
+    let termination_queue = self.queue.clone();
+    let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
+      let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| producer(producer_queue)));
+      match result {
+        | Ok(()) => {
+          let _ = termination_queue.complete_if_open();
+        },
+        | Err(_) => {
+          let _ = termination_queue.fail_if_open(StreamError::Failed);
+        },
+      }
+    });
+
+    if spawn_result.is_err() {
+      let _ = self.queue.fail_if_open(StreamError::Failed);
+      return Err(StreamError::Failed);
+    }
+
+    Ok(())
+  }
+}
+
+impl<T, F> SourceLogic for CreateSourceTestLogic<T, F>
+where
+  T: Send + Sync + 'static,
+  F: FnOnce(crate::core::BoundedSourceQueue<T>) + Send + 'static,
+{
+  fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
+    self.start_producer_if_needed()?;
+    match self.queue.poll_or_drain()? {
+      | Some(value) => Ok(Some(Box::new(value) as DynValue)),
+      | None => Ok(None),
+    }
+  }
+
+  fn on_cancel(&mut self) -> Result<(), StreamError> {
+    self.queue.close_for_cancel();
+    Ok(())
+  }
+}
+
+impl<Out> Source<Out, StreamNotUsed>
+where
+  Out: Send + Sync + 'static,
+{
+  /// 単体テスト用にバックグラウンド producer から source を構築する。
+  pub fn create<F>(
+    capacity: usize,
+    producer: F,
+  ) -> Result<Source<Out, crate::core::BoundedSourceQueue<Out>>, StreamDslError>
+  where
+    F: FnOnce(crate::core::BoundedSourceQueue<Out>) + Send + 'static, {
+    let capacity = validate_positive_argument("capacity", capacity)?;
+    let queue = crate::core::BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
+    let logic = CreateSourceTestLogic::new(queue.clone(), producer);
+    Ok(Source::from_logic(StageKind::Custom, logic).map_materialized_value(move |_| queue))
+  }
+}
 
 struct RecordingMaterializer {
   calls: usize,

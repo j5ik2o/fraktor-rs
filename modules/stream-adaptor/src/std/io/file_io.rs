@@ -1,22 +1,19 @@
 extern crate std;
 
-#[cfg(test)]
-mod tests;
-
 use std::{
   fs,
   io::{BufWriter, Read, Seek, SeekFrom, Write},
   path::{Path, PathBuf},
 };
 
-use super::super::io_error_to_stream_error;
-use crate::core::{
-  DynValue, IOResult, SinkDecision, SinkLogic, StreamError,
+use fraktor_stream_rs::core::{
+  DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, StreamError,
   dsl::{Sink, Source},
-  r#impl::fusing::DemandTracker,
   materialization::StreamCompletion,
   stage::StageKind,
 };
+
+use super::super::io_error_to_stream_error;
 
 /// File IO utilities for reading and writing byte streams from/to files.
 ///

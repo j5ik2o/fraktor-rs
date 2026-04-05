@@ -1,19 +1,16 @@
 extern crate std;
 
-#[cfg(test)]
-mod tests;
-
 use alloc::boxed::Box;
 use std::io::{BufReader, BufWriter, Read, Write};
 
-use super::super::io_error_to_stream_error;
-use crate::core::{
-  DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
+use fraktor_stream_rs::core::{
+  DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Sink, Source},
-  r#impl::fusing::DemandTracker,
   materialization::StreamCompletion,
   stage::StageKind,
 };
+
+use super::super::io_error_to_stream_error;
 
 /// Adapters for converting between Rust IO types and stream stages.
 ///

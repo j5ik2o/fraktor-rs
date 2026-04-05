@@ -3,9 +3,9 @@
 extern crate std;
 
 use fraktor_actor_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
+use fraktor_stream_rs::core::materialization::{ActorMaterializer, ActorMaterializerConfig};
 
 use super::system_materializer::SystemMaterializer;
-use crate::core::materialization::{ActorMaterializer, ActorMaterializerConfig};
 
 /// Extension ID for [`SystemMaterializer`].
 ///

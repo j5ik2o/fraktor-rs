@@ -730,10 +730,11 @@ impl Subscriber for RecordingTracingSubscriber {
   fn event(&self, event: &Event<'_>) {
     let mut visitor = EventVisitor::default();
     event.record(&mut visitor);
-    self.events.lock().expect("lock").push(CapturedEvent {
-      level:       *event.metadata().level(),
-      logger_name: visitor.logger_name,
-    });
+    self
+      .events
+      .lock()
+      .expect("lock")
+      .push(CapturedEvent { level: *event.metadata().level(), logger_name: visitor.logger_name });
   }
 
   fn enter(&self, _: &Id) {}
@@ -895,7 +896,7 @@ fn with_static_mdc_creates_span_on_signal() {
     let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
     let mut inner = behavior.handle_start(&mut typed_ctx).expect("started");
-    let _ = inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop);
+    inner.handle_signal(&mut typed_ctx, &BehaviorSignal::PostStop).expect("handle_signal PostStop failed");
 
     let spans = collector.spans();
     assert!(!spans.is_empty());
@@ -904,7 +905,7 @@ fn with_static_mdc_creates_span_on_signal() {
 }
 
 #[test]
-fn with_mdc_merges_static_and_per_message_entries() {
+fn with_mdc_delegates_to_inner_behavior() {
   let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 

@@ -71,7 +71,8 @@ impl<T> StreamCompletion<T> {
     guard.result.take()
   }
 
-  pub(crate) fn complete(&self, result: Result<T, StreamError>) {
+  /// Completes the tracked result if it has not already been resolved.
+  pub fn complete(&self, result: Result<T, StreamError>) {
     let wakers = {
       let mut guard = self.inner.lock();
       // 既存結果の上書きを防止

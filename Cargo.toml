@@ -33,6 +33,7 @@ members = [
     "modules/remote",
     "modules/cluster",
     "modules/stream",
+    "modules/stream-adaptor",
     "showcases/std",
 ]
 
@@ -70,6 +71,7 @@ alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-rs = { path = "modules/utils", version = "0.2.11", default-features = false }
 fraktor-stream-rs = { path = "modules/stream", version = "0.2.11", default-features = false }
+fraktor-stream-adaptor-rs = { path = "modules/stream-adaptor", version = "0.2.11" }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 criterion = "0.8"

@@ -260,9 +260,9 @@ impl Sink<u8, StreamCompletion<Vec<u8>>> {
   /// Creates a sink that collects bytes for path-compatible output.
   ///
   /// This stub ignores the path and simply collects bytes.
-  /// For actual file IO, use `FileIO::to_path` in the `std` module.
+  /// For actual file IO, use `fraktor_stream_adaptor_rs::std::io::FileIO::to_path`.
   #[must_use]
-  #[deprecated(note = "Use FileIO::to_path from the std module for actual file writing")]
+  #[deprecated(note = "Use fraktor_stream_adaptor_rs::std::io::FileIO::to_path for actual file writing")]
   pub fn to_path(path: &str) -> Self {
     let _ = path;
     Self::collect()
@@ -582,7 +582,8 @@ where
     self.add_attributes(Attributes::named(name))
   }
 
-  pub(crate) fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
+  /// Builds a sink directly from custom stage logic and a materialized value.
+  pub fn from_definition<L>(kind: StageKind, logic: L, mat: Mat) -> Self
   where
     L: SinkLogic + 'static, {
     let inlet: Inlet<In> = Inlet::new();
