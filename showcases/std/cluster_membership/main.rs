@@ -13,7 +13,7 @@
 #![allow(clippy::print_stdout)]
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::{DispatcherConfig, dispatch_executor::TokioExecutor};
+use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::DefaultDispatcher;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -81,10 +81,6 @@ impl Actor for GuardianActor {
 // --- クラスタノードの構築 ---
 
 fn build_cluster_node(system_name: &str, port: u16, static_topology: ClusterTopology) -> Result<ClusterNode> {
-  let tokio_handle = tokio::runtime::Handle::current();
-  let tokio_executor = TokioExecutor::new(tokio_handle);
-  let default_dispatcher = DispatcherConfig::from_executor(Box::new(tokio_executor));
-
   let advertised = format!("{HOST}:{port}");
   let cluster_config = ClusterExtensionConfig::default()
     .with_advertised_address(&advertised)
@@ -95,7 +91,7 @@ fn build_cluster_node(system_name: &str, port: u16, static_topology: ClusterTopo
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(tokio_tick_driver_config())
-    .with_default_dispatcher(default_dispatcher.into_core())
+    .with_default_dispatcher_entry(DefaultDispatcher::new().into_entry())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(

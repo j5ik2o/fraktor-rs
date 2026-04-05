@@ -5,7 +5,7 @@ use std::{
 };
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_rs::std::{dispatch::dispatcher::DispatcherConfig, tick_driver::default_tick_driver_config};
+use fraktor_actor_adaptor_rs::std::{dispatch::dispatcher::DefaultDispatcher, tick_driver::default_tick_driver_config};
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -130,7 +130,7 @@ impl TokioBenchSystem {
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::default()
         .with_tick_driver(default_tick_driver_config())
-        .with_default_dispatcher(DispatcherConfig::default_config().into_core());
+        .with_default_dispatcher_entry(DefaultDispatcher::new().into_entry());
       ActorSystem::new_with_config(props, &config).expect("actor system")
     });
     Self { runtime, system }

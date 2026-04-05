@@ -46,27 +46,26 @@ where
     Self { pending: VecDeque::new(), idle_workers: Vec::new() }
   }
 
-  /// Enqueue a message. If an idle worker exists, dispatch immediately.
-  fn enqueue(&mut self, message: M) {
-    if let Some(mut worker) = self.idle_workers.pop() {
-      if worker.try_tell(message.clone()).is_err() {
-        self.pending.push_front(message);
-      }
+  fn take_worker_for_message(&mut self, message: M) -> Option<(TypedActorRef<M>, M)> {
+    if let Some(worker) = self.idle_workers.pop() {
+      return Some((worker, message));
+    }
+    self.pending.push_back(message);
+    None
+  }
+
+  fn take_message_for_worker(&mut self, worker: TypedActorRef<M>) -> Option<(TypedActorRef<M>, M)> {
+    if let Some(msg) = self.pending.pop_front() {
+      Some((worker, msg))
     } else {
-      self.pending.push_back(message);
+      self.idle_workers.push(worker);
+      None
     }
   }
 
   /// Register a worker as idle. If pending work exists, dispatch it.
-  fn register_idle(&mut self, worker: TypedActorRef<M>) {
-    if let Some(msg) = self.pending.pop_front() {
-      let mut w = worker;
-      if w.try_tell(msg.clone()).is_err() {
-        self.pending.push_front(msg);
-      }
-    } else {
-      self.idle_workers.push(worker);
-    }
+  fn register_idle(&mut self, worker: TypedActorRef<M>) -> Option<(TypedActorRef<M>, M)> {
+    self.take_message_for_worker(worker)
   }
 
   /// Remove a worker from the idle list (e.g. on termination).
@@ -74,6 +73,19 @@ where
     if let Some(pos) = self.idle_workers.iter().position(|w| w.pid() == *pid) {
       self.idle_workers.remove(pos);
     }
+  }
+}
+
+fn try_dispatch_or_requeue<M>(
+  queue: &ArcShared<RuntimeMutex<SharedWorkQueue<M>>>,
+  dispatch: Option<(TypedActorRef<M>, M)>,
+) where
+  M: Send + Sync + Clone + 'static, {
+  let Some((mut worker, message)) = dispatch else {
+    return;
+  };
+  if worker.try_tell(message.clone()).is_err() {
+    queue.lock().pending.push_front(message);
   }
 }
 
@@ -101,7 +113,8 @@ where
     // Only register as idle if the inner behavior did NOT return Stopped.
     // A routee that returns Stopped on start must not appear in the idle queue.
     if result.directive() != BehaviorDirective::Stopped {
-      self.queue.lock().register_idle(ctx.self_ref());
+      let dispatch = self.queue.lock().register_idle(ctx.self_ref());
+      try_dispatch_or_requeue(&self.queue, dispatch);
     }
     Ok(result)
   }
@@ -116,7 +129,8 @@ where
     // Only re-register as idle if the routee is NOT stopping.
     // A routee that returned Stopped must not receive further work.
     if result.directive() != BehaviorDirective::Stopped {
-      self.queue.lock().register_idle(ctx.self_ref());
+      let dispatch = self.queue.lock().register_idle(ctx.self_ref());
+      try_dispatch_or_requeue(&self.queue, dispatch);
     } else {
       // Remove from idle list in case it was previously registered.
       self.queue.lock().remove_worker(&ctx.self_ref().pid());
@@ -220,7 +234,8 @@ where
       let routee_pids_for_sig = routee_pids;
 
       Behaviors::receive_message(move |_ctx, message: &M| {
-        queue_for_msg.lock().enqueue(message.clone());
+        let dispatch = queue_for_msg.lock().take_worker_for_message(message.clone());
+        try_dispatch_or_requeue(&queue_for_msg, dispatch);
         Ok(Behaviors::same())
       })
       .receive_signal(move |_ctx, signal| match signal {

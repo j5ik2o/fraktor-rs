@@ -21,7 +21,7 @@ fn lookup_default_selector_resolves_default_dispatcher() {
   // When: lookup is called with DispatcherSelector::Default
   let result = dispatchers.lookup(&DispatcherSelector::Default);
 
-  // Then: a valid DispatcherConfig is returned
+  // Then: a valid dispatcher registry entry is returned
   assert!(result.is_ok(), "Default selector should resolve to the default dispatcher");
 }
 
@@ -41,7 +41,7 @@ fn lookup_from_config_selector_resolves_registered_dispatcher() {
 }
 
 #[test]
-fn lookup_from_config_selector_keeps_internal_dispatcher_id_distinct() {
+fn lookup_from_config_selector_normalizes_internal_dispatcher_id_to_default() {
   // Given: a Dispatchers facade backed by a system with default dispatchers
   let dispatchers = new_dispatchers_with_defaults();
 
@@ -49,11 +49,8 @@ fn lookup_from_config_selector_keeps_internal_dispatcher_id_distinct() {
   let selector = DispatcherSelector::from_config(Dispatchers::INTERNAL_DISPATCHER_ID);
   let result = dispatchers.lookup(&selector);
 
-  // Then: default dispatcher には正規化されず、未登録なら Unknown になる
-  assert!(
-    matches!(result, Err(DispatcherRegistryError::Unknown(_))),
-    "FromConfig(InternalDispatcherId) should stay distinct from the default dispatcher"
-  );
+  // Then: internal id も reserved default entry へ正規化される
+  assert!(result.is_ok(), "FromConfig(InternalDispatcherId) should resolve to the default dispatcher");
 }
 
 #[test]
@@ -135,21 +132,21 @@ fn shutdown_is_callable_as_a_noop() {
   assert!(result.is_ok(), "shutdown() should not invalidate dispatcher lookup");
 }
 
-// --- lookup consistency: Default and SameAsParent resolve to same config ----
+// --- lookup consistency: Default and SameAsParent resolve to same entry ----
 
 #[test]
-fn lookup_default_and_same_as_parent_resolve_to_equivalent_config() {
+fn lookup_default_and_same_as_parent_resolve_to_equivalent_entry() {
   // Given: a Dispatchers facade
   let dispatchers = new_dispatchers_with_defaults();
 
   // When: both Default and SameAsParent are looked up
-  let default_config = dispatchers.lookup(&DispatcherSelector::Default).expect("Default");
-  let same_as_parent_config = dispatchers.lookup(&DispatcherSelector::SameAsParent).expect("SameAsParent");
+  let default_entry = dispatchers.lookup(&DispatcherSelector::Default).expect("Default");
+  let same_as_parent_entry = dispatchers.lookup(&DispatcherSelector::SameAsParent).expect("SameAsParent");
 
-  // Then: both resolve to the same configuration
+  // Then: both resolve to the same settings snapshot
   assert_eq!(
-    default_config.starvation_deadline(),
-    same_as_parent_config.starvation_deadline(),
-    "Default and SameAsParent should resolve to equivalent configs"
+    default_entry.settings().starvation_deadline(),
+    same_as_parent_entry.settings().starvation_deadline(),
+    "Default and SameAsParent should resolve to equivalent entries"
   );
 }

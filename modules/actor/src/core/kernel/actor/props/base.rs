@@ -9,10 +9,7 @@ use super::{
   factory::ActorFactory, factory_shared::ActorFactoryShared, mailbox_config::MailboxConfig,
   mailbox_requirement::MailboxRequirement,
 };
-use crate::core::kernel::{
-  actor::Actor,
-  dispatch::{dispatcher::DispatcherConfig, mailbox::MailboxPolicy},
-};
+use crate::core::kernel::{actor::Actor, dispatch::mailbox::MailboxPolicy};
 
 /// Immutable configuration describing how to construct an actor.
 pub struct Props {
@@ -22,9 +19,7 @@ pub struct Props {
   mailbox_config: MailboxConfig,
   mailbox_id: Option<String>,
   middleware: Vec<String>,
-  dispatcher_config: DispatcherConfig,
   dispatcher_id: Option<String>,
-  dispatcher_custom: bool,
   dispatcher_same_as_parent: bool,
 }
 
@@ -39,9 +34,7 @@ impl Props {
       mailbox_config: MailboxConfig::default(),
       mailbox_id: None,
       middleware: Vec::new(),
-      dispatcher_config: DispatcherConfig::default(),
       dispatcher_id: None,
-      dispatcher_custom: false,
       dispatcher_same_as_parent: false,
     }
   }
@@ -59,9 +52,7 @@ impl Props {
       mailbox_config: MailboxConfig::default(),
       mailbox_id: None,
       middleware: Vec::new(),
-      dispatcher_config: DispatcherConfig::default(),
       dispatcher_id: None,
-      dispatcher_custom: false,
       dispatcher_same_as_parent: false,
     }
   }
@@ -127,16 +118,6 @@ impl Props {
     &self.middleware
   }
 
-  /// Returns the configured dispatcher settings.
-  #[must_use]
-  pub const fn dispatcher_config(&self) -> &DispatcherConfig {
-    &self.dispatcher_config
-  }
-
-  pub(crate) const fn has_custom_dispatcher(&self) -> bool {
-    self.dispatcher_custom
-  }
-
   /// Returns true when the dispatcher should be inherited from the parent actor.
   #[must_use]
   pub(crate) const fn dispatcher_same_as_parent(&self) -> bool {
@@ -200,21 +181,10 @@ impl Props {
     self
   }
 
-  /// Overrides the dispatcher configuration used when constructing actors.
-  #[must_use]
-  pub fn with_dispatcher_config(mut self, dispatcher_config: DispatcherConfig) -> Self {
-    self.dispatcher_config = dispatcher_config;
-    self.dispatcher_id = None;
-    self.dispatcher_custom = true;
-    self.dispatcher_same_as_parent = false;
-    self
-  }
-
   /// Overrides the dispatcher by identifier.
   #[must_use]
   pub fn with_dispatcher_id(mut self, id: impl Into<String>) -> Self {
     self.dispatcher_id = Some(id.into());
-    self.dispatcher_custom = false;
     self.dispatcher_same_as_parent = false;
     self
   }
@@ -223,7 +193,6 @@ impl Props {
   #[must_use]
   pub fn with_dispatcher_same_as_parent(mut self) -> Self {
     self.dispatcher_id = None;
-    self.dispatcher_custom = false;
     self.dispatcher_same_as_parent = true;
     self
   }
@@ -250,14 +219,6 @@ impl Props {
     self
   }
 
-  pub(crate) fn with_resolved_dispatcher_config(mut self, dispatcher_config: DispatcherConfig) -> Self {
-    self.dispatcher_config = dispatcher_config;
-    self.dispatcher_id = None;
-    self.dispatcher_custom = true;
-    self.dispatcher_same_as_parent = false;
-    self
-  }
-
   pub(crate) fn with_resolved_mailbox_config(mut self, mailbox_config: MailboxConfig) -> Self {
     self.mailbox_config = mailbox_config;
     self
@@ -273,9 +234,7 @@ impl Clone for Props {
       mailbox_config: self.mailbox_config.clone(),
       mailbox_id: self.mailbox_id.clone(),
       middleware: self.middleware.clone(),
-      dispatcher_config: self.dispatcher_config.clone(),
       dispatcher_id: self.dispatcher_id.clone(),
-      dispatcher_custom: self.dispatcher_custom,
       dispatcher_same_as_parent: self.dispatcher_same_as_parent,
     }
   }

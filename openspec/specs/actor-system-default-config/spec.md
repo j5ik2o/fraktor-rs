@@ -1,37 +1,29 @@
 # actor-system-default-config Specification
 
 ## Purpose
-TBD - created by archiving change actor-core-std-separation-improvement. Update Purpose after archive.
+`ActorSystem` のデフォルト dispatcher 要件を public config 型ではなく、system が解決可能な reserved default dispatcher entry の存在として定義する。
+
 ## Requirements
-### Requirement: ActorSystem::new() が feature gate に応じたデフォルト構成を提供する
+### Requirement: actor system の default dispatcher は public config 型なしで解決できる
 
-`ActorSystem::new(&props)` が `tokio-executor` feature 有効時に `TickDriverConfig::default()` と `DispatcherConfig::default()` を使って自動構成する。ユーザーは明示的な設定なしで ActorSystem を起動できる。
+actor system の default dispatcher 要件は、`DispatcherConfig::default()` のような public config 型ではなく、system が解決可能な default dispatcher entry の存在として定義されなければならない。
 
-#### Scenario: tokio-executor 有効時に new() がデフォルトで動作する
-- **WHEN** `#[cfg(feature = "tokio-executor")]` が有効な環境で `ActorSystem::new(&props)` を呼び出す
-- **THEN** 10ms resolution の TickDriver と現在の Tokio runtime handle を使った Dispatcher でシステムが起動する
+#### Scenario: dispatcher 未指定の actor は default entry から解決される
+- **WHEN** actor が dispatcher を明示せずに起動する
+- **THEN** bootstrap は system に登録された default dispatcher entry を解決する
+- **AND** caller が `DispatcherConfig` を構築しなくても default dispatcher が適用される
 
-#### Scenario: カスタム設定が必要な場合は new_with_config を使用する
-- **WHEN** デフォルトと異なる TickDriver resolution や Dispatcher を指定したい
-- **THEN** `ActorSystem::new_with_config(&props, &config)` で任意の `ActorSystemConfig` を渡せる
+#### Scenario: system default config は caller の明示登録なしで default entry を提供する
+- **WHEN** caller が dispatcher registry を追加設定せずに actor system default config を使う
+- **THEN** system は reserved default dispatcher entry を保持して起動できる
+- **AND** caller に default dispatcher の明示登録を要求しない
 
-### Requirement: TickDriverConfig::default() がデフォルト構成を返す
+#### Scenario: default dispatcher 要件は provider registry ベースで説明される
+- **WHEN** actor system の default dispatcher 要件を確認する
+- **THEN** その要件は default dispatcher entry と provider registry の存在で説明される
+- **AND** `DispatcherConfig::default()` の存在を前提にしない
 
-`TickDriverConfig` に `Default` trait を実装する。`tokio-executor` feature 有効時は 10ms resolution の Tokio ベース TickDriver 構成を返す。
-
-#### Scenario: tokio-executor 有効時のデフォルト
-- **WHEN** `TickDriverConfig::default()` を呼び出す
-- **THEN** 10ms resolution の Tokio TickDriver 構成が返される（現在の `tokio_quickstart()` と同等）
-
-### Requirement: DispatcherConfig::default() がデフォルト構成を返す
-
-`DispatcherConfig` に `Default` trait を実装する。`tokio-executor` feature 有効時は現在の Tokio runtime handle を自動検出して Dispatcher を構成する。
-
-#### Scenario: tokio-executor 有効時のデフォルト
-- **WHEN** Tokio runtime 内で `DispatcherConfig::default()` を呼び出す
-- **THEN** 現在の runtime handle を使った TokioExecutor ベースの構成が返される（現在の `tokio_auto()` と同等）
-
-#### Scenario: Tokio runtime 外で呼び出した場合のエラー
-- **WHEN** Tokio runtime 外で `DispatcherConfig::default()` を呼び出す
-- **THEN** panic する（現在の `tokio_auto()` と同じ挙動）
-
+#### Scenario: feature 差は runtime fallback ではなく提供面の差として現れる
+- **WHEN** `tokio-executor` feature の有無で std adapter の dispatcher 公開面を確認する
+- **THEN** `DefaultDispatcher` の提供有無は feature で明示される
+- **AND** thread backend への暗黙 fallback で default 要件を満たしたことにしない

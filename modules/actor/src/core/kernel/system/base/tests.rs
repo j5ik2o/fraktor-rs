@@ -34,7 +34,10 @@ use crate::core::{
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
-    dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared, DispatcherConfig},
+    dispatch::dispatcher::{
+      DispatchError, DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig, DispatcherProvider,
+      DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+    },
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     system::{
       remote::RemotingConfig,
@@ -150,6 +153,22 @@ impl DispatchExecutor for NoopExecutor {
   fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
     Ok(())
   }
+}
+
+struct NoopDispatcherProvider;
+
+impl DispatcherProvider for NoopDispatcherProvider {
+  fn provision(
+    &self,
+    settings: &DispatcherSettings,
+    _request: &DispatcherProvisionRequest,
+  ) -> Result<Box<dyn Dispatcher>, SpawnError> {
+    Ok(Box::new(DispatcherConfig::from_executor_with_settings(Box::new(NoopExecutor::new()), settings.clone())))
+  }
+}
+
+fn noop_dispatcher_entry() -> DispatcherRegistryEntry {
+  DispatcherRegistryEntry::new(NoopDispatcherProvider, DispatcherSettings::default())
 }
 
 struct NoopControl;
@@ -632,15 +651,14 @@ fn actor_system_terminate_when_already_terminated() {
 #[test]
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
-  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher("noop", noop_config));
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let log = log.clone();
     move || SpawnRecorderActor::new(log.clone())
   })
-  .with_dispatcher_id("noop"); // Use dispatcher_id instead of with_dispatcher
+  .with_dispatcher_id("noop");
 
   let child = system.spawn_with_parent(None, &props).expect("spawn succeeds");
   assert!(log.lock().is_empty());
@@ -648,9 +666,8 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 }
 
 #[test]
-fn spawn_child_same_as_parent_inherits_dispatcher_executor() {
-  let noop_config = DispatcherConfig::from_executor(Box::new(NoopExecutor::new()));
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher("noop", noop_config));
+fn spawn_child_same_as_parent_inherits_dispatcher_selection_result() {
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
 
   let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
@@ -660,10 +677,7 @@ fn spawn_child_same_as_parent_inherits_dispatcher_executor() {
 
   let parent_cell = system.state().cell(&parent.pid()).expect("parent cell");
   let child_cell = system.state().cell(&child.pid()).expect("child cell");
-  let parent_executor = parent_cell.dispatcher_config().executor();
-  let child_executor = child_cell.dispatcher_config().executor();
-
-  assert!(ArcShared::ptr_eq(&parent_executor, &child_executor));
+  assert_eq!(parent_cell.dispatcher_id(), child_cell.dispatcher_id());
 }
 
 #[test]
@@ -701,9 +715,8 @@ fn create_send_failure_triggers_rollback() {
 
 #[test]
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
-  let system = ActorSystem::new_empty();
-  let props =
-    Props::from_fn(|| TestActor).with_dispatcher_config(DispatcherConfig::from_executor(Box::new(NoopExecutor::new())));
+  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let result = system.spawn_with_parent(None, &props);
 
   assert!(result.is_ok());

@@ -21,11 +21,17 @@ mod dispatch_executor_runner;
 mod dispatch_shared;
 mod dispatcher_core;
 mod dispatcher_dump_event;
+mod dispatcher_provider;
+mod dispatcher_provision_request;
+mod dispatcher_registry_entry;
 mod dispatcher_registry_error;
 mod dispatcher_sender;
+mod dispatcher_settings;
 mod dispatcher_shared;
 mod dispatcher_state;
+mod dispatcher_trait;
 mod dispatchers;
+mod inline_dispatcher_provider;
 mod inline_executor;
 mod inline_schedule_adapter;
 mod schedule_adapter;
@@ -33,20 +39,35 @@ mod schedule_adapter_shared;
 mod schedule_waker;
 mod tick_executor;
 
+#[doc(hidden)]
 pub use dispatch_error::DispatchError;
+#[doc(hidden)]
 pub use dispatch_executor::DispatchExecutor;
+#[doc(hidden)]
 pub use dispatch_executor_runner::DispatchExecutorRunner;
+#[doc(hidden)]
 pub use dispatch_shared::DispatchShared;
+#[doc(hidden)]
 pub use dispatcher_config::DispatcherConfig;
 pub use dispatcher_dump_event::DispatcherDumpEvent;
+pub use dispatcher_provider::DispatcherProvider;
+pub use dispatcher_provision_request::DispatcherProvisionRequest;
+pub use dispatcher_registry_entry::DispatcherRegistryEntry;
 pub use dispatcher_registry_error::DispatcherRegistryError;
-pub use dispatcher_sender::DispatcherSender;
+pub(crate) use dispatcher_sender::DispatcherSender;
+pub use dispatcher_settings::DispatcherSettings;
+#[doc(hidden)]
 pub use dispatcher_shared::DispatcherShared;
-pub use dispatchers::{DEFAULT_BLOCKING_DISPATCHER_ID, Dispatchers};
-pub use inline_executor::InlineExecutor;
+pub use dispatcher_trait::Dispatcher;
+pub use dispatchers::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers};
+pub(crate) use inline_dispatcher_provider::InlineDispatcherProvider;
+pub(crate) use inline_executor::InlineExecutor;
+#[doc(hidden)]
 pub use inline_schedule_adapter::InlineScheduleAdapter;
 pub use schedule_adapter::ScheduleAdapter;
+#[doc(hidden)]
 pub use schedule_adapter_shared::ScheduleAdapterShared;
+#[doc(hidden)]
 pub use tick_executor::TickExecutor;
 
 /// Dispatcher configuration module.

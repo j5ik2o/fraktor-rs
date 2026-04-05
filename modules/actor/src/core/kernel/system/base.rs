@@ -714,27 +714,8 @@ impl ActorSystem {
     }
   }
 
-  fn resolve_props(&self, parent: Option<Pid>, props: &Props) -> Result<Props, SpawnError> {
+  fn resolve_props(&self, _parent: Option<Pid>, props: &Props) -> Result<Props, SpawnError> {
     let mut resolved = props.clone();
-    if resolved.dispatcher_same_as_parent() {
-      if let Some(parent_pid) = parent {
-        let parent_cell = self.state.cell(&parent_pid).ok_or_else(|| SpawnError::invalid_props(PARENT_MISSING))?;
-        resolved = resolved.with_resolved_dispatcher_config(parent_cell.dispatcher_config());
-      } else if !resolved.has_custom_dispatcher()
-        && let Ok(default_config) = self.state.resolve_dispatcher("default")
-      {
-        resolved = resolved.with_resolved_dispatcher_config(default_config);
-      }
-    } else if let Some(dispatcher_id) = resolved.dispatcher_id() {
-      let config =
-        self.state.resolve_dispatcher(dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-      resolved = resolved.with_resolved_dispatcher_config(config);
-    } else if !resolved.has_custom_dispatcher() {
-      // If no dispatcher_id is specified, use the system's default dispatcher
-      if let Ok(default_config) = self.state.resolve_dispatcher("default") {
-        resolved = resolved.with_resolved_dispatcher_config(default_config);
-      }
-    }
     if let Some(mailbox_id) = resolved.mailbox_id() {
       let config =
         self.state.resolve_mailbox(mailbox_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;

@@ -14,12 +14,6 @@ impl ThreadedExecutor {
   pub const fn new() -> Self {
     Self { name: None }
   }
-
-  /// Assigns a thread name to future spawns.
-  #[must_use]
-  pub fn with_name(name: impl Into<String>) -> Self {
-    Self { name: Some(name.into()) }
-  }
 }
 
 impl Default for ThreadedExecutor {

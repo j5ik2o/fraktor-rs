@@ -1,7 +1,7 @@
 //! Typed dispatcher lookup facade.
 //!
 //! Corresponds to `org.apache.pekko.actor.typed.Dispatchers` in the Pekko
-//! reference implementation. Resolves a [`DispatcherConfig`] from a
+//! reference implementation. Resolves a [`DispatcherRegistryEntry`] from a
 //! [`DispatcherSelector`] by delegating to the kernel dispatcher registry
 //! via [`SystemStateShared`].
 
@@ -10,7 +10,7 @@ mod tests;
 
 use crate::core::{
   kernel::{
-    dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatcherConfig, DispatcherRegistryError},
+    dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatcherRegistryEntry, DispatcherRegistryError},
     system::state::SystemStateShared,
   },
   typed::DispatcherSelector,
@@ -51,7 +51,7 @@ impl Dispatchers {
     Self { state }
   }
 
-  /// Resolves a dispatcher configuration for the given selector.
+  /// Resolves a dispatcher registry entry for the given selector.
   ///
   /// # Selector mapping
   ///
@@ -67,7 +67,7 @@ impl Dispatchers {
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the resolved identifier
   /// has not been registered in the kernel dispatcher registry.
-  pub fn lookup(&self, selector: &DispatcherSelector) -> Result<DispatcherConfig, DispatcherRegistryError> {
+  pub fn lookup(&self, selector: &DispatcherSelector) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
     let id = match selector {
       | DispatcherSelector::Default | DispatcherSelector::SameAsParent => REGISTERED_DEFAULT_DISPATCHER_ID,
       | DispatcherSelector::FromConfig(id) => Self::normalize_dispatcher_id(id),
@@ -84,7 +84,7 @@ impl Dispatchers {
 
   fn normalize_dispatcher_id(id: &str) -> &str {
     match id {
-      | Self::DEFAULT_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
+      | Self::DEFAULT_DISPATCHER_ID | Self::INTERNAL_DISPATCHER_ID => REGISTERED_DEFAULT_DISPATCHER_ID,
       | _ => id,
     }
   }

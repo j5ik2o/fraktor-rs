@@ -1,26 +1,32 @@
 use core::time::Duration;
 
 use super::*;
+use crate::core::kernel::dispatch::dispatcher::{
+  DispatcherRegistryEntry, DispatcherSettings, InlineDispatcherProvider,
+};
 
 #[test]
 fn register_and_resolve_dispatcher_by_id() {
   let mut registry = Dispatchers::new();
   registry.ensure_default();
 
-  let config = DispatcherConfig::default().with_starvation_deadline(Some(Duration::from_millis(5)));
-  registry.register("custom", config.clone()).expect("register dispatcher");
+  let entry = DispatcherRegistryEntry::new(
+    InlineDispatcherProvider::new(),
+    DispatcherSettings::default().with_starvation_deadline(Some(Duration::from_millis(5))),
+  );
+  registry.register("custom", entry).expect("register dispatcher");
 
   let resolved = registry.resolve("custom").expect("resolve dispatcher");
-  assert_eq!(resolved.starvation_deadline(), Some(Duration::from_millis(5)));
+  assert_eq!(resolved.settings().starvation_deadline(), Some(Duration::from_millis(5)));
 }
 
 #[test]
 fn register_duplicate_dispatcher_fails() {
   let mut registry = Dispatchers::new();
   registry.ensure_default();
-  let config = DispatcherConfig::default();
-  registry.register("dup", config.clone()).expect("first register");
-  assert!(matches!(registry.register("dup", config), Err(DispatcherRegistryError::Duplicate(_))));
+  let entry = DispatcherRegistryEntry::new(InlineDispatcherProvider::new(), DispatcherSettings::default());
+  registry.register("dup", entry.clone()).expect("first register");
+  assert!(matches!(registry.register("dup", entry), Err(DispatcherRegistryError::Duplicate(_))));
 }
 
 #[test]

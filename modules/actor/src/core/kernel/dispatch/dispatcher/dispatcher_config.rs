@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-use core::time::Duration;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
@@ -10,29 +9,22 @@ use crate::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{
-      DispatchExecutor, DispatchExecutorRunner, DispatcherShared, InlineExecutor, InlineScheduleAdapter,
+      DispatchExecutor, DispatchExecutorRunner, Dispatcher, DispatcherSettings, DispatcherShared, InlineExecutor,
       ScheduleAdapterShared,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy},
   },
 };
 
-/// Dispatcher configuration attached to [`Props`](crate::core::kernel::actor::props::Props).
+/// Internal backend configuration produced by dispatcher providers.
 pub struct DispatcherConfig {
-  executor:            ArcShared<DispatchExecutorRunner>,
-  throughput_deadline: Option<Duration>,
-  starvation_deadline: Option<Duration>,
-  schedule_adapter:    ScheduleAdapterShared,
+  executor: ArcShared<DispatchExecutorRunner>,
+  settings: DispatcherSettings,
 }
 
 impl Clone for DispatcherConfig {
   fn clone(&self) -> Self {
-    Self {
-      executor:            self.executor.clone(),
-      throughput_deadline: self.throughput_deadline,
-      starvation_deadline: self.starvation_deadline,
-      schedule_adapter:    self.schedule_adapter.clone(),
-    }
+    Self { executor: self.executor.clone(), settings: self.settings.clone() }
   }
 }
 
@@ -40,12 +32,13 @@ impl DispatcherConfig {
   /// Creates a configuration from an executor.
   #[must_use]
   pub fn from_executor(executor: Box<dyn DispatchExecutor>) -> Self {
-    Self {
-      executor:            ArcShared::new(DispatchExecutorRunner::new(executor)),
-      throughput_deadline: None,
-      starvation_deadline: None,
-      schedule_adapter:    InlineScheduleAdapter::shared(),
-    }
+    Self::from_executor_with_settings(executor, DispatcherSettings::default())
+  }
+
+  /// Creates a configuration from an executor and immutable settings snapshot.
+  #[must_use]
+  pub fn from_executor_with_settings(executor: Box<dyn DispatchExecutor>, settings: DispatcherSettings) -> Self {
+    Self { executor: ArcShared::new(DispatchExecutorRunner::new(executor)), settings }
   }
 
   /// Returns the current executor runner handle.
@@ -56,58 +49,65 @@ impl DispatcherConfig {
 
   /// Returns the configured throughput deadline.
   #[must_use]
-  pub const fn throughput_deadline(&self) -> Option<Duration> {
-    self.throughput_deadline
+  pub const fn throughput_deadline(&self) -> Option<core::time::Duration> {
+    self.settings.throughput_deadline()
   }
 
   /// Returns the configured starvation deadline.
   #[must_use]
-  pub const fn starvation_deadline(&self) -> Option<Duration> {
-    self.starvation_deadline
+  pub const fn starvation_deadline(&self) -> Option<core::time::Duration> {
+    self.settings.starvation_deadline()
   }
 
   /// Overrides the throughput deadline.
   #[must_use]
-  pub const fn with_throughput_deadline(mut self, deadline: Option<Duration>) -> Self {
-    self.throughput_deadline = deadline;
+  pub fn with_throughput_deadline(mut self, deadline: Option<core::time::Duration>) -> Self {
+    self.settings = self.settings.with_throughput_deadline(deadline);
     self
   }
 
   /// Overrides the starvation deadline.
   #[must_use]
-  pub const fn with_starvation_deadline(mut self, deadline: Option<Duration>) -> Self {
-    self.starvation_deadline = deadline;
+  pub fn with_starvation_deadline(mut self, deadline: Option<core::time::Duration>) -> Self {
+    self.settings = self.settings.with_starvation_deadline(deadline);
     self
   }
 
   /// Overrides both throughput and starvation deadlines.
   #[must_use]
-  pub const fn with_deadlines(mut self, throughput: Option<Duration>, starvation: Option<Duration>) -> Self {
-    self.throughput_deadline = throughput;
-    self.starvation_deadline = starvation;
+  pub fn with_deadlines(
+    mut self,
+    throughput: Option<core::time::Duration>,
+    starvation: Option<core::time::Duration>,
+  ) -> Self {
+    self.settings = self.settings.with_deadlines(throughput, starvation);
     self
   }
 
   /// Overrides the scheduler adapter used for creating wakers and pending hooks.
   #[must_use]
   pub fn with_schedule_adapter(mut self, adapter: ScheduleAdapterShared) -> Self {
-    self.schedule_adapter = adapter;
+    self.settings = self.settings.with_schedule_adapter(adapter);
     self
   }
 
   /// Returns the configured schedule adapter.
   #[must_use]
   pub fn schedule_adapter(&self) -> ScheduleAdapterShared {
-    self.schedule_adapter.clone()
+    self.settings.schedule_adapter()
   }
 
-  /// Builds a dispatcher using the configured executor.
-  ///
-  /// # Errors
-  ///
-  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox uses
-  /// [`MailboxOverflowStrategy::Block`] with an executor that doesn't support blocking operations.
-  pub fn build_dispatcher(&self, mailbox: ArcShared<Mailbox>) -> Result<DispatcherShared, SpawnError> {
+  /// Returns the immutable settings snapshot.
+  #[must_use]
+  pub const fn settings(&self) -> &DispatcherSettings {
+    &self.settings
+  }
+
+  fn build(&self, mailbox: ArcShared<Mailbox>) -> Result<DispatcherShared, SpawnError> {
+    let schedule_adapter = self.settings.schedule_adapter();
+    let throughput_deadline = self.settings.throughput_deadline();
+    let starvation_deadline = self.settings.starvation_deadline();
+
     // Validate mailbox configuration against executor capabilities
     let policy = mailbox.policy();
     if policy.overflow() == MailboxOverflowStrategy::Block && !self.executor.supports_blocking() {
@@ -120,10 +120,26 @@ impl DispatcherConfig {
     Ok(DispatcherShared::with_adapter(
       mailbox,
       self.executor.clone(),
-      self.schedule_adapter(),
-      self.throughput_deadline,
-      self.starvation_deadline,
+      schedule_adapter,
+      throughput_deadline,
+      starvation_deadline,
     ))
+  }
+}
+
+impl Dispatcher for DispatcherConfig {
+  fn settings(&self) -> &DispatcherSettings {
+    &self.settings
+  }
+
+  /// Builds a dispatcher using the configured executor.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox uses
+  /// [`MailboxOverflowStrategy::Block`] with an executor that doesn't support blocking operations.
+  fn build_dispatcher(&self, mailbox: ArcShared<Mailbox>) -> Result<DispatcherShared, SpawnError> {
+    self.build(mailbox)
   }
 }
 

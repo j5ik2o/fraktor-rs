@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use core::time::Duration;
 
 use crate::core::kernel::{
@@ -8,12 +7,17 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemSetup, BootstrapSetup},
   },
-  dispatch::dispatcher::{DispatcherConfig, InlineExecutor},
+  dispatch::dispatcher::{
+    DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, DispatcherSettings, InlineDispatcherProvider,
+  },
 };
 
 #[test]
 fn actor_system_setup_composes_bootstrap_and_runtime_settings() {
-  let dispatcher = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()));
+  let dispatcher = DispatcherRegistryEntry::new(
+    InlineDispatcherProvider::new(),
+    DispatcherSettings::default().with_starvation_deadline(Some(Duration::from_millis(5))),
+  );
   let tick_driver =
     TickDriverConfig::manual(crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new());
   let setup = ActorSystemSetup::new(BootstrapSetup::default().with_system_name("setup-system"))
@@ -21,19 +25,22 @@ fn actor_system_setup_composes_bootstrap_and_runtime_settings() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(ExtensionInstallers::default())
     .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default())
-    .with_default_dispatcher(dispatcher);
+    .with_default_dispatcher_entry(dispatcher);
 
   let config = setup.as_actor_system_config();
   assert_eq!(config.system_name(), "setup-system");
   assert!(config.tick_driver_config().is_some());
   assert!(config.extension_installers().is_some());
   assert!(config.provider_installer().is_some());
-  assert!(config.default_dispatcher_config().is_some());
+  assert!(config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).is_ok());
 }
 
 #[test]
 fn with_bootstrap_setup_preserves_runtime_settings() {
-  let dispatcher = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()));
+  let dispatcher = DispatcherRegistryEntry::new(
+    InlineDispatcherProvider::new(),
+    DispatcherSettings::default().with_starvation_deadline(Some(Duration::from_millis(5))),
+  );
   let tick_driver =
     TickDriverConfig::manual(crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new());
   let setup =
@@ -42,7 +49,7 @@ fn with_bootstrap_setup_preserves_runtime_settings() {
       .with_tick_driver(tick_driver)
       .with_extension_installers(ExtensionInstallers::default())
       .with_actor_ref_provider_installer(LocalActorRefProviderInstaller::default())
-      .with_default_dispatcher(dispatcher)
+      .with_default_dispatcher_entry(dispatcher)
       .with_bootstrap_setup(BootstrapSetup::default().with_system_name("after"));
 
   let config = setup.as_actor_system_config();
@@ -51,5 +58,5 @@ fn with_bootstrap_setup_preserves_runtime_settings() {
   assert!(config.tick_driver_config().is_some());
   assert!(config.extension_installers().is_some());
   assert!(config.provider_installer().is_some());
-  assert!(config.default_dispatcher_config().is_some());
+  assert!(config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).is_ok());
 }

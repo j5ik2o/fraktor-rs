@@ -19,7 +19,7 @@ use crate::core::kernel::{
     spawn::SpawnError,
   },
   dispatch::{
-    dispatcher::{DispatcherConfig, DispatcherRegistryError},
+    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError},
     mailbox::MailboxRegistryError,
   },
 };
@@ -49,12 +49,12 @@ impl ExtendedActorSystem {
     self.inner
   }
 
-  /// Resolves the dispatcher configuration for the identifier.
+  /// Resolves the dispatcher registry entry for the identifier.
   ///
   /// # Errors
   ///
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherConfig, DispatcherRegistryError> {
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
     self.inner.state().resolve_dispatcher(id)
   }
 
