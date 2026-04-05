@@ -60,11 +60,11 @@ impl FileIO {
       return Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&error)));
     }
 
-    let result = (|| -> Result<alloc::vec::Vec<u8>, std::io::Error> {
+    let result = (|| -> Result<Vec<u8>, std::io::Error> {
       let mut file = fs::File::open(path.as_ref())?;
       file.seek(SeekFrom::Start(start_position))?;
-      let mut all_bytes = alloc::vec::Vec::new();
-      let mut buf = alloc::vec![0u8; chunk_size];
+      let mut all_bytes = Vec::new();
+      let mut buf = vec![0u8; chunk_size];
       loop {
         let n = file.read(&mut buf)?;
         if n == 0 {

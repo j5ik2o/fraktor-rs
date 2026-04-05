@@ -1,7 +1,6 @@
 extern crate std;
 
-use alloc::boxed::Box;
-use std::{panic, string::ToString, thread};
+use std::{boxed::Box, panic, string::ToString, thread};
 
 use fraktor_stream_rs::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, dsl::Source,

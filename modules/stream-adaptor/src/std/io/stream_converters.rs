@@ -1,7 +1,10 @@
 extern crate std;
 
-use alloc::boxed::Box;
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::{
+  boxed::Box,
+  io::{BufReader, BufWriter, Read, Write},
+  vec::Vec,
+};
 
 use fraktor_stream_rs::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
@@ -29,7 +32,7 @@ impl StreamConverters {
   /// The materialized value is a [`StreamCompletion<IOResult>`] that completes
   /// with the total number of bytes read and the completion status.
   #[must_use]
-  pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<alloc::vec::Vec<u8>, StreamCompletion<IOResult>>
+  pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<Vec<u8>, StreamCompletion<IOResult>>
   where
     F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static, {
     let completion = StreamCompletion::new();
@@ -111,7 +114,7 @@ where
       return Ok(None);
     };
 
-    let mut buf = alloc::vec![0u8; self.chunk_size];
+    let mut buf = vec![0u8; self.chunk_size];
     match reader.read(&mut buf) {
       | Ok(0) => {
         self.done = true;
