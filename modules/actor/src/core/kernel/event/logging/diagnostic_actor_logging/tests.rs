@@ -1,17 +1,15 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::kernel::{
   actor::ActorContext,
   event::{
-    logging::LogLevel,
+    logging::{ActorLogMarker, DiagnosticActorLogging, LogLevel, tests::RecordingSubscriber},
     stream::{EventStreamEvent, subscriber_handle},
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-use super::DiagnosticActorLogging;
-use crate::std::event::logging::{ActorLogMarker, tests::RecordingSubscriber};
 
 #[test]
 fn diagnostic_actor_logging_emits_marker_and_mdc_metadata() {

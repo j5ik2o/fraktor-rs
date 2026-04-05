@@ -3,9 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_rs::core::kernel::actor::ActorContext;
+use alloc::string::String;
 
-use super::{actor_log_marker::ActorLogMarker, logging_adapter::LoggingAdapter};
+use crate::core::kernel::{
+  actor::ActorContext,
+  event::logging::{ActorLogMarker, LoggingAdapter},
+};
 
 /// Provides a context-bound logging adapter with MDC and marker helpers.
 #[derive(Clone)]
@@ -37,7 +40,7 @@ impl DiagnosticActorLogging {
   }
 
   /// Adds an MDC entry to future log messages.
-  pub fn insert_mdc(&mut self, key: impl Into<alloc::string::String>, value: impl Into<alloc::string::String>) {
+  pub fn insert_mdc(&mut self, key: impl Into<String>, value: impl Into<String>) {
     self.adapter.insert_mdc(key, value);
   }
 

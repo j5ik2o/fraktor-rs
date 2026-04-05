@@ -5,19 +5,17 @@ mod tests;
 
 use alloc::{borrow::ToOwned, collections::BTreeMap, string::String};
 
-use fraktor_actor_rs::core::kernel::{
+use crate::core::kernel::{
   actor::{ActorContext, Pid},
   event::{
-    logging::{LogEvent, LogLevel},
+    logging::{ActorLogMarker, LogEvent, LogLevel},
     stream::EventStreamEvent,
   },
   system::ActorSystem,
 };
 
-use super::actor_log_marker::ActorLogMarker;
-
 /// Thin classic logging adapter that emits runtime
-/// [`fraktor_actor_rs::core::kernel::event::logging::LogEvent`]s.
+/// [`crate::core::kernel::event::logging::LogEvent`]s.
 #[derive(Clone)]
 pub struct LoggingAdapter {
   system:      ActorSystem,

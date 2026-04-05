@@ -1,17 +1,15 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::kernel::{
   actor::ActorContext,
   event::{
-    logging::LogLevel,
+    logging::{LogLevel, LoggingReceive, tests::RecordingSubscriber},
     stream::{EventStreamEvent, subscriber_handle},
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-use super::LoggingReceive;
-use crate::std::event::logging::tests::RecordingSubscriber;
 
 #[test]
 fn logging_receive_logs_handled_message_with_label() {

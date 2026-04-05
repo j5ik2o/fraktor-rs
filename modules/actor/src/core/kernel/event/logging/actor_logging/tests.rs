@@ -1,17 +1,15 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::kernel::{
   actor::ActorContext,
   event::{
-    logging::LogLevel,
+    logging::{ActorLogging, LogLevel, tests::RecordingSubscriber},
     stream::{EventStreamEvent, subscriber_handle},
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-use super::ActorLogging;
-use crate::std::event::logging::tests::RecordingSubscriber;
 
 #[test]
 fn actor_logging_uses_context_pid_and_logger_name() {

@@ -6,9 +6,10 @@ mod tests;
 use alloc::{format, string::String};
 use core::fmt::Debug;
 
-use fraktor_actor_rs::core::kernel::{actor::ActorContext, event::logging::LogLevel};
-
-use super::logging_adapter::LoggingAdapter;
+use crate::core::kernel::{
+  actor::ActorContext,
+  event::logging::{LogLevel, LoggingAdapter},
+};
 
 /// Logs receive attempts using a classic actor context.
 #[derive(Clone, Debug)]

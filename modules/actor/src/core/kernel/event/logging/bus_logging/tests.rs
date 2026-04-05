@@ -1,17 +1,15 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::kernel::{
   actor::Pid,
   event::{
-    logging::LogLevel,
+    logging::{BusLogging, LogLevel, tests::RecordingSubscriber},
     stream::{EventStreamEvent, subscriber_handle},
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-use super::BusLogging;
-use crate::std::event::logging::tests::RecordingSubscriber;
 
 #[test]
 fn bus_logging_emits_event_without_actor_context() {

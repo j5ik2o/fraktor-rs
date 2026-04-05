@@ -1,6 +1,4 @@
-use fraktor_actor_rs::core::kernel::event::logging::LogLevel;
-
-use super::NoLogging;
+use crate::core::kernel::event::logging::{LogLevel, NoLogging};
 
 #[test]
 fn no_logging_accepts_all_log_calls() {

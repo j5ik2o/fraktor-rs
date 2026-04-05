@@ -15,13 +15,14 @@ use fraktor_actor_rs::core::kernel::{
   },
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscription, TickDriverSnapshot},
+    stream::{
+      EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription, TickDriverSnapshot,
+    },
   },
   system::{ActorSystem as CoreActorSystem, ExtendedActorSystem, state::SystemStateShared as CoreSystemStateShared},
   util::futures::ActorFutureShared,
 };
 
-use crate::std::event::stream::EventStreamSubscriberShared;
 #[cfg(feature = "tokio-executor")]
 use crate::std::{dispatch::dispatcher::DispatcherConfig, scheduler::TickDriverConfig as StdTickDriverConfig};
 

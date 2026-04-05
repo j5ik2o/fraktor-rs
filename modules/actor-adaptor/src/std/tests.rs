@@ -4,18 +4,15 @@ use std::path::Path;
 use fraktor_actor_rs::core::kernel::{
   actor::ActorContext,
   event::{
-    logging::LogLevel,
+    logging::{
+      ActorLogMarker, ActorLogging, BusLogging, DiagnosticActorLogging, LogLevel, LoggingAdapter, LoggingReceive,
+      NoLogging,
+    },
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
   system::ActorSystem,
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-struct NoopSubscriber;
-
-impl EventStreamSubscriber for NoopSubscriber {
-  fn on_event(&mut self, _event: &EventStreamEvent) {}
-}
 
 struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
@@ -36,29 +33,47 @@ impl EventStreamSubscriber for RecordingSubscriber {
 #[test]
 fn std_public_modules_expose_only_live_entry_points() {
   let _log_options = core::marker::PhantomData::<fraktor_actor_rs::core::typed::LogOptions>;
-  let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
-  let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;
-  let _diagnostic_actor_logging = core::marker::PhantomData::<crate::std::event::logging::DiagnosticActorLogging>;
-  let _bus_logging = core::marker::PhantomData::<crate::std::event::logging::BusLogging>;
-  let _logging_adapter = core::marker::PhantomData::<crate::std::event::logging::LoggingAdapter>;
-  let _logging_receive = core::marker::PhantomData::<crate::std::event::logging::LoggingReceive>;
-  let _no_logging = core::marker::PhantomData::<crate::std::event::logging::NoLogging>;
+  let _core_actor_log_marker = core::marker::PhantomData::<ActorLogMarker>;
+  let _core_actor_logging = core::marker::PhantomData::<ActorLogging>;
+  let _core_diagnostic_actor_logging = core::marker::PhantomData::<DiagnosticActorLogging>;
+  let _core_bus_logging = core::marker::PhantomData::<BusLogging>;
+  let _core_logging_adapter = core::marker::PhantomData::<LoggingAdapter>;
+  let _core_logging_receive = core::marker::PhantomData::<LoggingReceive>;
+  let _core_no_logging = core::marker::PhantomData::<NoLogging>;
   let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
-  let _shared = core::marker::PhantomData::<crate::std::event::stream::EventStreamSubscriberShared>;
-
-  let _subscriber = crate::std::event::stream::subscriber_handle(NoopSubscriber);
+  let _dead_letter_subscriber = core::marker::PhantomData::<crate::std::event::stream::DeadLetterLogSubscriber>;
+  let _std_clock = core::marker::PhantomData::<crate::std::pattern::StdClock>;
+  let _circuit_breaker = core::marker::PhantomData::<crate::std::pattern::CircuitBreaker>;
+  let _circuit_breaker_shared = core::marker::PhantomData::<crate::std::pattern::CircuitBreakerShared>;
 }
 
 #[test]
-fn std_logging_module_exposes_classic_logging_family() {
-  let _actor_log_marker = core::marker::PhantomData::<crate::std::event::logging::ActorLogMarker>;
-  let _actor_logging = core::marker::PhantomData::<crate::std::event::logging::ActorLogging>;
-  let _diagnostic_actor_logging = core::marker::PhantomData::<crate::std::event::logging::DiagnosticActorLogging>;
-  let _bus_logging = core::marker::PhantomData::<crate::std::event::logging::BusLogging>;
-  let _logging_adapter = core::marker::PhantomData::<crate::std::event::logging::LoggingAdapter>;
-  let _logging_receive = core::marker::PhantomData::<crate::std::event::logging::LoggingReceive>;
-  let _no_logging = core::marker::PhantomData::<crate::std::event::logging::NoLogging>;
-  let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
+fn std_public_source_files_stay_adapter_only() {
+  let logging_source = include_str!("event/logging.rs");
+  assert!(logging_source.contains("pub use tracing_logger_subscriber::TracingLoggerSubscriber;"));
+  assert!(!logging_source.contains("ActorLogMarker"));
+  assert!(!logging_source.contains("ActorLogging"));
+  assert!(!logging_source.contains("DiagnosticActorLogging"));
+  assert!(!logging_source.contains("BusLogging"));
+  assert!(!logging_source.contains("LoggingAdapter"));
+  assert!(!logging_source.contains("LoggingReceive"));
+  assert!(!logging_source.contains("NoLogging"));
+
+  let stream_source = include_str!("event/stream.rs");
+  assert!(stream_source.contains("pub use dead_letter_log_subscriber::DeadLetterLogSubscriber;"));
+  assert!(!stream_source.contains("EventStreamSubscriberShared"));
+  assert!(!stream_source.contains("subscriber_handle"));
+
+  let pattern_source = include_str!("pattern.rs");
+  assert!(pattern_source.contains("pub use std_clock::StdClock;"));
+  assert!(pattern_source.contains("pub type CircuitBreaker ="));
+  assert!(pattern_source.contains("pub type CircuitBreakerShared ="));
+  assert!(pattern_source.contains("pub fn circuit_breaker("));
+  assert!(pattern_source.contains("pub fn circuit_breaker_shared("));
+  assert!(!pattern_source.contains("pub fn ask_with_timeout("));
+  assert!(!pattern_source.contains("pub async fn graceful_stop("));
+  assert!(!pattern_source.contains("pub async fn graceful_stop_with_message("));
+  assert!(!pattern_source.contains("pub async fn retry<"));
 }
 
 #[test]

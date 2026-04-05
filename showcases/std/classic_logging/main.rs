@@ -2,9 +2,6 @@
 
 use std::{string::String, thread, vec::Vec};
 
-use fraktor_actor_adaptor_rs::std::event::logging::{
-  ActorLogMarker, ActorLogging, DiagnosticActorLogging, LoggingReceive,
-};
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -14,7 +11,7 @@ use fraktor_actor_rs::core::kernel::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   event::{
-    logging::LogLevel,
+    logging::{ActorLogMarker, ActorLogging, DiagnosticActorLogging, LogLevel, LoggingReceive},
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
   system::ActorSystem,

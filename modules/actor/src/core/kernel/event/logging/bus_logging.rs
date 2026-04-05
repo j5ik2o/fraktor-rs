@@ -5,9 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::kernel::{actor::Pid, system::ActorSystem};
-
-use super::logging_adapter::LoggingAdapter;
+use crate::core::kernel::{actor::Pid, event::logging::LoggingAdapter, system::ActorSystem};
 
 /// Classic logging facade for non-actor event-bus style publishers.
 #[derive(Clone)]

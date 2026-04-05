@@ -1,7 +1,8 @@
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+
+use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 
 pub(crate) struct RecordingSubscriber {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,

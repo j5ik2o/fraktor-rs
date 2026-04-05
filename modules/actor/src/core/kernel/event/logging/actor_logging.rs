@@ -3,9 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_rs::core::kernel::actor::ActorContext;
-
-use super::logging_adapter::LoggingAdapter;
+use crate::core::kernel::{actor::ActorContext, event::logging::LoggingAdapter};
 
 /// Provides a context-bound classic logging adapter under the name `log`.
 #[derive(Clone)]
