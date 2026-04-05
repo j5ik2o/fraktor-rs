@@ -5,7 +5,5 @@
 
 //! Standard adaptors for the fraktor stream runtime.
 
-extern crate alloc;
-
 /// Standard library stream bindings and utilities.
 pub mod std;
