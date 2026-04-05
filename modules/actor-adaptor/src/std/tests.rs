@@ -42,7 +42,7 @@ fn std_public_modules_expose_only_live_entry_points() {
   let _core_no_logging = core::marker::PhantomData::<NoLogging>;
   let _tracing_subscriber = core::marker::PhantomData::<crate::std::event::logging::TracingLoggerSubscriber>;
   let _dead_letter_subscriber = core::marker::PhantomData::<crate::std::event::stream::DeadLetterLogSubscriber>;
-  let _std_clock = core::marker::PhantomData::<crate::std::pattern::StdClock>;
+  let _std_clock = core::marker::PhantomData::<crate::std::time::StdClock>;
   let _circuit_breaker = core::marker::PhantomData::<crate::std::pattern::CircuitBreaker>;
   let _circuit_breaker_shared = core::marker::PhantomData::<crate::std::pattern::CircuitBreakerShared>;
 }
@@ -65,15 +65,21 @@ fn std_public_source_files_stay_adapter_only() {
   assert!(!stream_source.contains("subscriber_handle"));
 
   let pattern_source = include_str!("pattern.rs");
-  assert!(pattern_source.contains("pub use std_clock::StdClock;"));
-  assert!(pattern_source.contains("pub type CircuitBreaker ="));
-  assert!(pattern_source.contains("pub type CircuitBreakerShared ="));
-  assert!(pattern_source.contains("pub fn circuit_breaker("));
-  assert!(pattern_source.contains("pub fn circuit_breaker_shared("));
+  assert!(pattern_source.contains("mod circuit_breaker_bindings;"));
+  assert!(pattern_source.contains("pub use circuit_breaker_bindings::{"));
   assert!(!pattern_source.contains("pub fn ask_with_timeout("));
   assert!(!pattern_source.contains("pub async fn graceful_stop("));
   assert!(!pattern_source.contains("pub async fn graceful_stop_with_message("));
   assert!(!pattern_source.contains("pub async fn retry<"));
+
+  let bindings_source = include_str!("pattern/circuit_breaker_bindings.rs");
+  assert!(bindings_source.contains("pub type CircuitBreaker ="));
+  assert!(bindings_source.contains("pub type CircuitBreakerShared ="));
+  assert!(bindings_source.contains("pub fn circuit_breaker("));
+  assert!(bindings_source.contains("pub fn circuit_breaker_shared("));
+
+  let time_source = include_str!("time.rs");
+  assert!(time_source.contains("pub use std_clock::StdClock;"));
 }
 
 #[test]
