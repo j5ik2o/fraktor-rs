@@ -1,8 +1,14 @@
 use crate::core::{DynValue, StreamError};
 
 /// Source-stage callback contract used by adaptor implementations.
+///
+/// [`pull`](SourceLogic::pull) returns `Ok(Some(value))` for each produced
+/// element and `Ok(None)` to signal stream completion.  The returned
+/// [`DynValue`] must hold the concrete type expected by the downstream
+/// `Source<Out, _>` (i.e. the same `Out` type parameter).  A type mismatch
+/// will result in a `TypeMismatch` error at the adaptor boundary.
 pub trait SourceLogic: Send {
-  /// Produces the next output element.
+  /// Produces the next output element, or `None` to signal completion.
   ///
   /// # Errors
   ///

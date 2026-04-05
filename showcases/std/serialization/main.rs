@@ -13,7 +13,6 @@ use std::{
   borrow::Cow,
 };
 
-use fraktor_actor_adaptor_rs::std::system::ActorSystem;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -24,6 +23,7 @@ use fraktor_actor_rs::core::kernel::{
     SerializationExtensionShared, SerializationSetup, SerializationSetupBuilder, SerializedMessage, Serializer,
     SerializerId, SerializerWithStringManifest, TransportInformation,
   },
+  system::ActorSystem,
 };
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};

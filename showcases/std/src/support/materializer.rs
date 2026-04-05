@@ -5,17 +5,19 @@
 
 use std::time::Duration;
 
-use fraktor_actor_adaptor_rs::std::system::ActorSystem;
-use fraktor_actor_rs::core::kernel::actor::{
-  Actor, ActorContext,
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::Props,
-  scheduler::{
-    SchedulerConfig,
-    tick_driver::{ManualTestDriver, TickDriverConfig},
+use fraktor_actor_rs::core::kernel::{
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::Props,
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
+    setup::ActorSystemConfig,
   },
-  setup::ActorSystemConfig,
+  system::ActorSystem,
 };
 use fraktor_stream_rs::core::{
   r#impl::StreamError,
@@ -41,10 +43,8 @@ pub fn start_materializer() -> (ActorMaterializer, ManualTestDriver) {
   let tick_driver = TickDriverConfig::manual(driver.clone());
   let config = ActorSystemConfig::default().with_scheduler_config(scheduler).with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config(&props, &config).expect("actor system");
-  let mut materializer = ActorMaterializer::new(
-    system.into_core(),
-    ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)),
-  );
+  let mut materializer =
+    ActorMaterializer::new(system, ActorMaterializerConfig::default().with_drive_interval(Duration::from_millis(1)));
   materializer.start().expect("materializer start");
   (materializer, driver)
 }

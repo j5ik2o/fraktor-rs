@@ -1,5 +1,5 @@
 /// Indicates whether a sink should continue consuming or complete.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SinkDecision {
   /// Continue processing incoming elements.
   Continue,

@@ -906,6 +906,7 @@ fn with_static_mdc_creates_span_on_signal() {
 
 #[test]
 fn with_mdc_delegates_to_inner_behavior() {
+  ensure_tracing_interest_cache_permissive();
   let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 

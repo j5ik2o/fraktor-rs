@@ -94,7 +94,7 @@ impl<Out> Source<Out, StreamNotUsed>
 where
   Out: Send + Sync + 'static,
 {
-  /// 単体テスト用にバックグラウンド producer から source を構築する。
+  /// Construct a source from a background producer for unit tests.
   pub fn create<F>(
     capacity: usize,
     producer: F,

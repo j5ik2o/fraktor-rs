@@ -1,6 +1,13 @@
 use crate::core::{DemandTracker, DynValue, SinkDecision, StreamError};
 
 /// Sink-stage callback contract used by adaptor implementations.
+///
+/// Implementations must manage demand through the provided [`DemandTracker`]:
+///
+/// - [`on_start`](SinkLogic::on_start) must enqueue the initial demand via [`DemandTracker`] before
+///   the first element arrives.
+/// - [`on_push`](SinkLogic::on_push) must restore demand via [`DemandTracker`] as needed before
+///   returning [`SinkDecision::Continue`] so the stream keeps flowing.
 pub trait SinkLogic: Send {
   /// Returns whether the sink can accept another input element.
   fn can_accept_input(&self) -> bool {
@@ -9,11 +16,17 @@ pub trait SinkLogic: Send {
 
   /// Initializes sink state before the first element arrives.
   ///
+  /// The implementation must enqueue the initial demand via [`DemandTracker`]
+  /// so the source begins producing elements.
+  ///
   /// # Errors
   ///
   /// Returns a [`StreamError`] when initialization fails.
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError>;
   /// Consumes one input element.
+  ///
+  /// After processing, the implementation should top-up demand via
+  /// [`DemandTracker`] before returning [`SinkDecision::Continue`].
   ///
   /// # Errors
   ///

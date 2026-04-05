@@ -5,7 +5,7 @@ use std::{
 };
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_rs::std::system::ActorSystem;
+use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::DispatcherConfig};
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -13,8 +13,10 @@ use fraktor_actor_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    setup::ActorSystemConfig,
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  system::ActorSystem,
   util::futures::ActorFutureListener,
 };
 use tokio::runtime::{Builder, Runtime};
@@ -125,7 +127,12 @@ struct TokioBenchSystem {
 impl TokioBenchSystem {
   fn new(props: &Props) -> Self {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
-    let system = runtime.block_on(async { ActorSystem::new(props).expect("actor system") });
+    let system = runtime.block_on(async {
+      let config = ActorSystemConfig::default()
+        .with_tick_driver(default_tick_driver_config())
+        .with_default_dispatcher(DispatcherConfig::default_config().into_core());
+      ActorSystem::new_with_config(props, &config).expect("actor system")
+    });
     Self { runtime, system }
   }
 

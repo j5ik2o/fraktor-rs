@@ -5,4 +5,4 @@
 mod tick;
 
 #[cfg(feature = "tokio-executor")]
-pub(crate) use tick::TickDriverConfig;
+pub use tick::{default_tick_driver_config, tick_driver_config_with_resolution};
