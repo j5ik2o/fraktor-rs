@@ -113,7 +113,7 @@ where
   where
     Combine: FnOnce(Mat, Mat2) -> MatC, {
     let (flow_graph, mat2) = flow.into_parts();
-    let flow_no_mat = Flow::from_graph(flow_graph, super::StreamNotUsed::new());
+    let flow_no_mat = Flow::from_graph(flow_graph, StreamNotUsed::new());
     let (graph, _) = self.top.via(flow_no_mat).via(self.bottom).into_parts();
     Flow::from_graph(graph, combine(self.mat, mat2))
   }

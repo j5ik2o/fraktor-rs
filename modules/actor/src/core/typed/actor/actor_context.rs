@@ -14,6 +14,7 @@ use crate::core::{
       ActorContext, ChildRef, Pid,
       error::{ActorError, PipeSpawnError, SendError},
       messaging::{AnyMessage, AskError},
+      scheduler::{SchedulerError, SchedulerHandle},
       spawn::SpawnError,
     },
     event::logging::LogLevel,
@@ -46,7 +47,18 @@ where
   M: Send + Sync + 'static,
 {
   /// Creates a typed wrapper from the provided untyped context.
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
+    Self::from_untyped_impl(inner, adapters)
+  }
+
+  /// Creates a typed wrapper from the provided untyped context.
+  #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn from_untyped(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
+    Self::from_untyped_impl(inner, adapters)
+  }
+
+  fn from_untyped_impl(inner: &mut ActorContext<'a>, adapters: Option<&mut MessageAdapterRegistry<M>>) -> Self {
     Self {
       inner:           NonNull::from(inner),
       adapters:        adapters.map(NonNull::from),
@@ -312,11 +324,7 @@ where
   /// # Errors
   ///
   /// Returns an error if forwarding fails synchronously while enqueueing.
-  pub fn try_forward<C>(
-    &mut self,
-    target: &mut TypedActorRef<C>,
-    message: C,
-  ) -> Result<(), crate::core::kernel::actor::error::SendError>
+  pub fn try_forward<C>(&mut self, target: &mut TypedActorRef<C>, message: C) -> Result<(), SendError>
   where
     C: Send + Sync + 'static, {
     self.inner_mut().try_forward(target.as_untyped_mut(), AnyMessage::new(message))
@@ -335,10 +343,7 @@ where
     delay: Duration,
     target: TypedActorRef<C>,
     message: C,
-  ) -> Result<
-    crate::core::kernel::actor::scheduler::SchedulerHandle,
-    crate::core::kernel::actor::scheduler::SchedulerError,
-  >
+  ) -> Result<SchedulerHandle, SchedulerError>
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();

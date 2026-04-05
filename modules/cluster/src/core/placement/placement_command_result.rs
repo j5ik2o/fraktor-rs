@@ -1,7 +1,7 @@
 //! Results returned by placement command execution.
 
 use super::{
-  activation_entry::ActivationEntry, activation_error::ActivationError,
+  activation_entry::ActivationEntry, activation_error::ActivationError, activation_record::ActivationRecord,
   activation_storage_error::ActivationStorageError, placement_lease::PlacementLease,
   placement_lock_error::PlacementLockError, placement_request_id::PlacementRequestId,
 };
@@ -28,7 +28,7 @@ pub enum PlacementCommandResult {
     /// Correlation identifier.
     request_id: PlacementRequestId,
     /// Ensure result.
-    result:     Result<super::activation_record::ActivationRecord, ActivationError>,
+    result:     Result<ActivationRecord, ActivationError>,
   },
   /// Activation entry stored.
   ActivationStored {

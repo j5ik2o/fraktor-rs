@@ -17,9 +17,12 @@ pub use i32_serializer::I32Serializer;
 pub use null_serializer::NullSerializer;
 pub use string_serializer::StringSerializer;
 
-use crate::core::kernel::serialization::{
-  error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
-  serializer_id::SerializerId,
+use crate::core::kernel::{
+  serialization::{
+    error::SerializationError, serialization_registry::SerializationRegistry, serializer::Serializer,
+    serializer_id::SerializerId,
+  },
+  util::ByteString,
 };
 
 /// Serializer ID for null/unit type.
@@ -93,7 +96,7 @@ where
     BYTE_STRING_ID,
     ByteStringSerializer::new(BYTE_STRING_ID),
     "byte_string",
-    Some((core::any::TypeId::of::<crate::core::kernel::util::ByteString>(), "ByteString".into())),
+    Some((core::any::TypeId::of::<ByteString>(), "ByteString".into())),
     &mut on_collision,
   )?;
   Ok(())

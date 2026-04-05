@@ -13,7 +13,8 @@ use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
   persistence_context::PersistenceContext, persistent_actor_state::PersistentActorState,
   persistent_repr::PersistentRepr, snapshot_message::SnapshotMessage, snapshot_metadata::SnapshotMetadata,
-  snapshot_response::SnapshotResponse, stash_overflow_strategy::StashOverflowStrategy,
+  snapshot_response::SnapshotResponse, snapshot_selection_criteria::SnapshotSelectionCriteria,
+  stash_overflow_strategy::StashOverflowStrategy,
 };
 
 const DEFER_DURING_RECOVERY_PANIC: &str =
@@ -167,7 +168,7 @@ where
   fn delete_snapshots(
     &mut self,
     ctx: &mut ActorContext<'_>,
-    criteria: crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria,
+    criteria: SnapshotSelectionCriteria,
   ) -> Result<(), ActorError> {
     let persistence_id = self.persistence_id().to_string();
     let message = SnapshotMessage::DeleteSnapshots { persistence_id, criteria, sender: ctx.self_ref() };

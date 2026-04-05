@@ -2,7 +2,8 @@ use alloc::vec::Vec;
 use core::{future::Future, marker::PhantomData};
 
 use super::{
-  MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values, flow::Flow, sink::Sink,
+  KeepLeft, KeepRight, MatCombineRule, StreamDslError, StreamNotUsed, ThrottleMode, extract_last_ctx_and_values,
+  flow::Flow, sink::Sink,
 };
 use crate::core::r#impl::StreamError;
 
@@ -71,7 +72,7 @@ where
       Flow::from_function(move |(ctx2, value)| (reverse(ctx2), value));
     let remap_output: Flow<(Ctx, Out), (Ctx2, Out), StreamNotUsed> =
       Flow::from_function(move |(ctx, value)| (forward(ctx), value));
-    let inner = remap_input.via_mat(self.inner, super::KeepRight).via(remap_output);
+    let inner = remap_input.via_mat(self.inner, KeepRight).via(remap_output);
     FlowWithContext { inner, _pd: PhantomData }
   }
 
@@ -206,7 +207,7 @@ where
   where
     Ctx: Clone,
     Out: Clone, {
-    let inner = self.inner.wire_tap_mat(sink.contramap(|(_, value): (Ctx, Out)| value), super::KeepLeft);
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(_, value): (Ctx, Out)| value), KeepLeft);
     FlowWithContext { inner, _pd: PhantomData }
   }
 
@@ -216,7 +217,7 @@ where
   where
     Ctx: Clone,
     Out: Clone, {
-    let inner = self.inner.wire_tap_mat(sink.contramap(|(ctx, _): (Ctx, Out)| ctx), super::KeepLeft);
+    let inner = self.inner.wire_tap_mat(sink.contramap(|(ctx, _): (Ctx, Out)| ctx), KeepLeft);
     FlowWithContext { inner, _pd: PhantomData }
   }
 

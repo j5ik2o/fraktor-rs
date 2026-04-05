@@ -16,7 +16,7 @@ use fraktor_utils_rs::core::{
 };
 
 use super::{
-  ExtendedActorSystem,
+  ActorSystemWeak, ExtendedActorSystem,
   guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
@@ -34,7 +34,10 @@ use crate::core::{
       error::SendError,
       messaging::{AnyMessage, AskResult, system_message::SystemMessage},
       props::Props,
-      scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
+      scheduler::{
+        SchedulerBackedDelayProvider, SchedulerShared,
+        tick_driver::{TickDriverBundle, TickDriverConfig},
+      },
       setup::{ActorSystemConfig, ActorSystemSetup},
       spawn::SpawnError,
     },
@@ -294,8 +297,8 @@ impl ActorSystem {
   /// themselves owned by the system (such as extensions or remoting components)
   /// to avoid circular reference issues.
   #[must_use]
-  pub fn downgrade(&self) -> super::ActorSystemWeak {
-    super::ActorSystemWeak { state: self.state.downgrade() }
+  pub fn downgrade(&self) -> ActorSystemWeak {
+    ActorSystemWeak { state: self.state.downgrade() }
   }
 
   /// Returns the canonical host/port when remoting is configured.
@@ -345,13 +348,13 @@ impl ActorSystem {
 
   /// Returns the shared scheduler handle.
   #[must_use]
-  pub fn scheduler(&self) -> crate::core::kernel::actor::scheduler::SchedulerShared {
+  pub fn scheduler(&self) -> SchedulerShared {
     self.state.scheduler()
   }
 
   /// Returns the tick driver bundle when initialized.
   #[must_use]
-  pub fn tick_driver_bundle(&self) -> crate::core::kernel::actor::scheduler::tick_driver::TickDriverBundle {
+  pub fn tick_driver_bundle(&self) -> TickDriverBundle {
     self.state.tick_driver_bundle()
   }
 
@@ -386,7 +389,7 @@ impl ActorSystem {
 
   /// Resolves the pid registered for the provided actor path.
   #[must_use]
-  pub fn pid_by_path(&self, path: &crate::core::kernel::actor::actor_path::ActorPath) -> Option<Pid> {
+  pub fn pid_by_path(&self, path: &ActorPath) -> Option<Pid> {
     self.state.with_actor_path_registry(|registry| registry.pid_for(path))
   }
 

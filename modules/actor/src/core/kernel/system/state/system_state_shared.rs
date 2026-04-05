@@ -16,7 +16,8 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess, sync_
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderShared, AuthorityState, CellsShared, GuardianKind,
-  RemoteAuthorityError, RemoteWatchHookDynShared, RemotingConfig, system_state::SystemState,
+  RemoteAuthorityError, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
+  system_state::{FailureOutcome, SystemState},
 };
 use crate::core::kernel::{
   actor::{
@@ -179,8 +180,8 @@ impl SystemStateShared {
 
   /// Creates a weak reference to this system state.
   #[must_use]
-  pub fn downgrade(&self) -> super::SystemStateWeak {
-    super::SystemStateWeak { inner: self.inner.downgrade() }
+  pub fn downgrade(&self) -> SystemStateWeak {
+    SystemStateWeak { inner: self.inner.downgrade() }
   }
 
   // ====== SystemState の委譲メソッド ======
@@ -453,7 +454,7 @@ impl SystemStateShared {
   }
 
   /// Unregisters a temporary actor by pid when present.
-  pub fn unregister_temp_actor_by_pid(&self, pid: &crate::core::kernel::actor::Pid) {
+  pub fn unregister_temp_actor_by_pid(&self, pid: &Pid) {
     self.inner.write().unregister_temp_actor_by_pid(pid);
   }
 
@@ -881,7 +882,7 @@ impl SystemStateShared {
       if self.send_system_message(parent_pid, SystemMessage::Failure(payload.clone())).is_ok() {
         return;
       }
-      self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
+      self.record_failure_outcome(child_pid, FailureOutcome::Stop, &payload);
       if let Err(e) = self.send_system_message(child_pid, SystemMessage::Stop) {
         self.record_send_error(Some(child_pid), &e);
       }
@@ -890,19 +891,14 @@ impl SystemStateShared {
 
     let message = format!("actor {:?} failed: {}", child_pid, payload.reason().as_str());
     self.emit_log(LogLevel::Error, message, Some(child_pid), None);
-    self.record_failure_outcome(child_pid, super::system_state::FailureOutcome::Stop, &payload);
+    self.record_failure_outcome(child_pid, FailureOutcome::Stop, &payload);
     if let Err(e) = self.send_system_message(child_pid, SystemMessage::Stop) {
       self.record_send_error(Some(child_pid), &e);
     }
   }
 
   /// Records the outcome of a previously reported failure (restart/stop/escalate).
-  pub fn record_failure_outcome(
-    &self,
-    child: Pid,
-    outcome: super::system_state::FailureOutcome,
-    payload: &FailurePayload,
-  ) {
+  pub fn record_failure_outcome(&self, child: Pid, outcome: FailureOutcome, payload: &FailurePayload) {
     self.inner.read().record_failure_outcome(child, outcome, payload);
   }
 

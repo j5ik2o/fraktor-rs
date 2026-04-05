@@ -64,9 +64,11 @@ pub mod core;
 pub mod std;
 #[cfg(not(feature = "std"))]
 mod std {
-  pub(crate) type StdSyncMutex<T> = crate::core::sync::sync_mutex_like::SpinSyncMutex<T>;
-  pub(crate) type StdSyncRwLock<T> = crate::core::sync::sync_rwlock_like::SpinSyncRwLock<T>;
+  use crate::core::sync::{sync_mutex_like::SpinSyncMutex, sync_rwlock_like::SpinSyncRwLock};
+
+  pub(crate) type StdSyncMutex<T> = SpinSyncMutex<T>;
+  pub(crate) type StdSyncRwLock<T> = SpinSyncRwLock<T>;
 }
 
-pub(crate) type RuntimeMutexBackend<T> = crate::std::StdSyncMutex<T>;
-pub(crate) type RuntimeRwLockBackend<T> = crate::std::StdSyncRwLock<T>;
+pub(crate) type RuntimeMutexBackend<T> = std::StdSyncMutex<T>;
+pub(crate) type RuntimeRwLockBackend<T> = std::StdSyncRwLock<T>;

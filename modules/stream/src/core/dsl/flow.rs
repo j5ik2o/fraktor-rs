@@ -7,12 +7,13 @@ use core::{
 };
 
 use super::{
-  FlowDefinition, FlowLogic, KeepRight, MatCombine, MatCombineRule, OverflowStrategy, RestartBackoff, RestartSettings,
-  StageDefinition, StageKind, StreamBufferConfig, StreamCompletion, StreamDslError, StreamError, StreamGraph,
-  StreamNotUsed, SupervisionStrategy,
+  DelayStrategy, FlowDefinition, FlowLogic, KeepLeft, KeepRight, MatCombine, MatCombineRule, OverflowStrategy,
+  RestartBackoff, RestartSettings, StageDefinition, StageKind, StatefulMapConcatAccumulator, StreamBufferConfig,
+  StreamCompletion, StreamDslError, StreamError, StreamGraph, StreamNotUsed, SupervisionStrategy, ThrottleMode,
   flow_group_by_sub_flow::FlowGroupBySubFlow,
   flow_monitor_impl::FlowMonitorImpl,
   flow_sub_flow::FlowSubFlow,
+  flow_with_context::FlowWithContext,
   shape::{Inlet, Outlet, StreamShape},
   sink::Sink,
   source::Source,
@@ -159,7 +160,7 @@ where
   pub fn via<T, Mat2>(self, flow: Flow<Out, T, Mat2>) -> Flow<In, T, Mat>
   where
     T: Send + Sync + 'static, {
-    self.via_mat(flow, super::KeepLeft)
+    self.via_mat(flow, KeepLeft)
   }
 
   /// Composes this flow with a custom materialized value rule.
@@ -187,7 +188,7 @@ where
   /// Connects this flow to a sink.
   #[must_use]
   pub fn to<Mat2>(self, sink: Sink<Out, Mat2>) -> Sink<In, Mat> {
-    self.into_mat(sink, super::KeepLeft)
+    self.into_mat(sink, KeepLeft)
   }
 
   /// Connects this flow to a sink with a custom materialized value rule.
@@ -317,13 +318,13 @@ where
   /// called when the upstream completes, allowing trailing elements to be
   /// emitted.
   ///
-  /// [`StatefulMapConcatAccumulator`]: crate::core::dsl::StatefulMapConcatAccumulator
+  /// [`StatefulMapConcatAccumulator`]: StatefulMapConcatAccumulator
   #[must_use]
   pub fn stateful_map_concat_with_accumulator<T, Factory, Acc>(mut self, factory: Factory) -> Flow<In, T, Mat>
   where
     T: Send + Sync + 'static,
     Factory: FnMut() -> Acc + Send + Sync + 'static,
-    Acc: crate::core::dsl::StatefulMapConcatAccumulator<Out, T> + 'static, {
+    Acc: StatefulMapConcatAccumulator<Out, T> + 'static, {
     let definition = stateful_map_concat_accumulator_definition::<Out, T, Factory, Acc>(factory);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -631,7 +632,7 @@ where
   /// # Errors
   ///
   /// Returns [`StreamDslError`] when `capacity` is zero.
-  pub fn throttle(mut self, capacity: usize, mode: super::ThrottleMode) -> Result<Flow<In, Out, Mat>, StreamDslError> {
+  pub fn throttle(mut self, capacity: usize, mode: ThrottleMode) -> Result<Flow<In, Out, Mat>, StreamDslError> {
     let capacity = validate_positive_argument("capacity", capacity)?;
     let definition = throttle_definition::<Out>(capacity, mode);
     let inlet_id = definition.inlet;
@@ -1361,11 +1362,11 @@ where
 {
   /// Wraps this flow with unit context propagation.
   #[must_use]
-  pub fn into_flow_with_context(self) -> super::flow_with_context::FlowWithContext<(), In, Out, Mat> {
+  pub fn into_flow_with_context(self) -> FlowWithContext<(), In, Out, Mat> {
     let unwrap: Flow<((), In), In, StreamNotUsed> = Flow::from_function(|(_, value)| value);
     let rewrap: Flow<Out, ((), Out), StreamNotUsed> = Flow::from_function(|value| ((), value));
-    let inner = unwrap.via_mat(self, super::KeepRight).via(rewrap);
-    super::flow_with_context::FlowWithContext::from_flow(inner)
+    let inner = unwrap.via_mat(self, KeepRight).via(rewrap);
+    FlowWithContext::from_flow(inner)
   }
 
   /// Keeps only the first element matching `predicate`.
@@ -1863,11 +1864,11 @@ where
   /// strategy.  Unlike [`delay`](Self::delay), the delay can vary
   /// per element depending on the strategy implementation.
   ///
-  /// [`DelayStrategy`]: crate::core::dsl::DelayStrategy
+  /// [`DelayStrategy`]: DelayStrategy
   #[must_use]
   pub fn delay_with<S>(mut self, strategy: S) -> Flow<In, Out, Mat>
   where
-    S: crate::core::dsl::DelayStrategy<Out> + 'static, {
+    S: DelayStrategy<Out> + 'static, {
     let definition = strategy_delay_definition::<Out, S>(strategy);
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -2773,7 +2774,7 @@ where
   pub fn also_to<Mat2>(self, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     Out: Clone, {
-    self.also_to_mat(sink, super::KeepLeft)
+    self.also_to_mat(sink, KeepLeft)
   }
 
   /// Adds an also-to stage and combines materialized values.
@@ -2826,7 +2827,7 @@ where
   pub fn divert_to<Mat2, F>(self, predicate: F, sink: Sink<Out, Mat2>) -> Flow<In, Out, Mat>
   where
     F: FnMut(&Out) -> bool + Send + Sync + 'static, {
-    self.divert_to_mat(predicate, sink, super::KeepLeft)
+    self.divert_to_mat(predicate, sink, KeepLeft)
   }
 
   /// Adds a divert-to stage and combines materialized values.
@@ -2944,8 +2945,8 @@ where
   #[must_use]
   pub fn watch_termination_mat<C>(mut self, _combine: C) -> Flow<In, Out, C::Out>
   where
-    C: MatCombineRule<Mat, super::StreamCompletion<()>>, {
-    let completion = super::StreamCompletion::<()>::new();
+    C: MatCombineRule<Mat, StreamCompletion<()>>, {
+    let completion = StreamCompletion::<()>::new();
     let definition = watch_termination_definition::<Out>(completion.clone());
     let inlet_id = definition.inlet;
     let from = self.graph.tail_outlet();
@@ -2953,7 +2954,7 @@ where
     if let Some(from) = from {
       self.graph.connect_or_panic(&Outlet::<Out>::from_id(from), &Inlet::<Out>::from_id(inlet_id), MatCombine::Left);
     }
-    let mat = combine_mat::<Mat, super::StreamCompletion<()>, C>(self.mat, completion);
+    let mat = combine_mat::<Mat, StreamCompletion<()>, C>(self.mat, completion);
     Flow { graph: self.graph, mat, _pd: PhantomData }
   }
 
@@ -3455,7 +3456,7 @@ where
   In: Send + Sync + 'static,
   Out: Send + Sync + 'static,
   Factory: FnMut() -> Acc + Send + Sync + 'static,
-  Acc: crate::core::dsl::StatefulMapConcatAccumulator<In, Out> + 'static, {
+  Acc: StatefulMapConcatAccumulator<In, Out> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<Out> = Outlet::new();
   let accumulator = factory();
@@ -4086,12 +4087,12 @@ where
   }
 }
 
-pub(in crate::core) fn throttle_definition<In>(capacity: usize, mode: super::ThrottleMode) -> FlowDefinition
+pub(in crate::core) fn throttle_definition<In>(capacity: usize, mode: ThrottleMode) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
-  let enforcing = matches!(mode, super::ThrottleMode::Enforcing);
+  let enforcing = matches!(mode, ThrottleMode::Enforcing);
   let logic = AsyncBoundaryLogic::<In> { pending: VecDeque::new(), capacity, enforcing };
   FlowDefinition {
     kind:        StageKind::FlowThrottle,
@@ -4134,7 +4135,7 @@ where
 fn strategy_delay_definition<In, S>(strategy: S) -> FlowDefinition
 where
   In: Send + Sync + 'static,
-  S: crate::core::dsl::DelayStrategy<In> + 'static, {
+  S: DelayStrategy<In> + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<In> = Outlet::new();
   let logic = StrategyDelayLogic::new(strategy);
@@ -4945,7 +4946,7 @@ where
   }
 }
 
-pub(in crate::core) fn watch_termination_definition<In>(completion: super::StreamCompletion<()>) -> FlowDefinition
+pub(in crate::core) fn watch_termination_definition<In>(completion: StreamCompletion<()>) -> FlowDefinition
 where
   In: Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();

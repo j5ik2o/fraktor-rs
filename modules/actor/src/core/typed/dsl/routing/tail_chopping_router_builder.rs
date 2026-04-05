@@ -11,7 +11,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 use crate::core::{
   kernel::event::logging::LogLevel,
   typed::{
-    TypedActorRef, behavior::Behavior, dsl::Behaviors, message_adapter::AdapterError,
+    TypedActorRef, actor::TypedActorContext, behavior::Behavior, dsl::Behaviors, message_adapter::AdapterError,
     message_and_signals::BehaviorSignal, props::TypedProps,
   },
 };
@@ -222,10 +222,8 @@ where
 ///
 /// On spawn failure the `timeout_reply` is sent back to the caller so that the
 /// ask side does not hang indefinitely.
-fn spawn_chop_coordinator<'a, M, R>(
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'a, M>,
-  params: ChopCoordinatorParams<M, R>,
-) where
+fn spawn_chop_coordinator<'a, M, R>(ctx: &mut TypedActorContext<'a, M>, params: ChopCoordinatorParams<M, R>)
+where
   M: Send + Sync + Clone + 'static,
   R: Send + Sync + Clone + 'static, {
   // spawn 失敗時に timeout_reply を返すため、事前に控えておく

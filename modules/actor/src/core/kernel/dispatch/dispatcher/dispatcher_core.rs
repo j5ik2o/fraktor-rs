@@ -15,7 +15,7 @@ use portable_atomic::{AtomicU8, AtomicU64};
 
 use super::{
   dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
-  dispatcher_dump_event::DispatcherDumpEvent, dispatcher_state::DispatcherState,
+  dispatcher_dump_event::DispatcherDumpEvent, dispatcher_shared::DispatcherShared, dispatcher_state::DispatcherState,
   schedule_adapter_shared::ScheduleAdapterShared,
 };
 use crate::core::kernel::{
@@ -293,7 +293,7 @@ impl DispatcherCore {
   #[allow(dead_code)]
   fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
     let adapter = self_arc.schedule_adapter();
-    let dispatcher = super::dispatcher_shared::DispatcherShared::from_core(self_arc.clone());
+    let dispatcher = DispatcherShared::from_core(self_arc.clone());
     let waker = adapter.with_write(|a| a.create_waker(dispatcher));
     let mut cx = Context::from_waker(&waker);
 
@@ -328,7 +328,7 @@ impl DispatcherCore {
       return;
     }
     if self_arc.mailbox.request_schedule(hints) {
-      super::dispatcher_shared::DispatcherShared::from_core(self_arc.clone()).spawn_execution();
+      DispatcherShared::from_core(self_arc.clone()).spawn_execution();
     } else {
       self_arc.handle_starvation(hints);
     }

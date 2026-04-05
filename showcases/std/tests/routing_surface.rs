@@ -1,7 +1,5 @@
-use fraktor_actor_rs::{
-  core::typed::{TypedProps, dsl::routing::Routers},
-  std::typed::Behaviors,
-};
+use fraktor_actor_adaptor_rs::std::typed::Behaviors;
+use fraktor_actor_rs::core::typed::{TypedProps, dsl::routing::Routers};
 
 #[derive(Clone)]
 struct Command(u32);

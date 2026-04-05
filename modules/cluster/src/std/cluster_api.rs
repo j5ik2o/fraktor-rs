@@ -2,15 +2,13 @@
 
 use core::time::Duration;
 
-use fraktor_actor_rs::{
-  core::kernel::{
-    actor::{
-      actor_ref::ActorRef,
-      messaging::{AnyMessage, AskResponse, AskResult},
-    },
-    util::futures::ActorFutureShared,
+use fraktor_actor_adaptor_rs::std::system::ActorSystem;
+use fraktor_actor_rs::core::kernel::{
+  actor::{
+    actor_ref::ActorRef,
+    messaging::{AnyMessage, AskResponse, AskResult},
   },
-  std::system::ActorSystem,
+  util::futures::ActorFutureShared,
 };
 
 use crate::core::{

@@ -2,7 +2,12 @@
 
 use super::{ActorRefProvider, RemoteWatchHook};
 use crate::core::kernel::{
-  actor::{Pid, actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError},
+  actor::{
+    Pid,
+    actor_path::{ActorPath, ActorPathScheme},
+    actor_ref::ActorRef,
+    error::ActorError,
+  },
   util::futures::ActorFutureShared,
 };
 
@@ -62,7 +67,7 @@ where
     self.supported_schemes()
   }
 
-  fn actor_ref(&mut self, path: crate::core::kernel::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> {
+  fn actor_ref(&mut self, path: ActorPath) -> Result<ActorRef, ActorError> {
     self.provider.actor_ref(path)
   }
 

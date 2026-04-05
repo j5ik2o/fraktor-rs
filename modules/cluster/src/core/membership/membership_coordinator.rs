@@ -518,7 +518,7 @@ impl MembershipCoordinator {
 
   fn register_membership_change(
     &mut self,
-    record: &super::NodeRecord,
+    record: &NodeRecord,
     before: Option<NodeStatus>,
     now: TimerInstant,
     outcome: &mut MembershipCoordinatorOutcome,

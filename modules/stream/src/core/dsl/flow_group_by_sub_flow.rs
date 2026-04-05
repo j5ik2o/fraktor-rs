@@ -5,7 +5,7 @@ mod tests;
 
 /// Substream surface returned by `group_by`.
 pub struct FlowGroupBySubFlow<In, Key, Out, Mat> {
-  flow: super::flow::Flow<In, (Key, Out), Mat>,
+  flow: Flow<In, (Key, Out), Mat>,
 }
 
 impl<In, Key, Out, Mat> FlowGroupBySubFlow<In, Key, Out, Mat>

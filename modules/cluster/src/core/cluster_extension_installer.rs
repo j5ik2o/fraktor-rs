@@ -11,7 +11,7 @@ use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  ClusterExtensionConfig,
+  ClusterExtension, ClusterExtensionConfig,
   cluster_extension_id::ClusterExtensionId,
   cluster_provider::{ClusterProvider, LocalClusterProvider},
   downing_provider::{DowningProvider, NoopDowningProvider},
@@ -158,44 +158,6 @@ impl ClusterExtensionInstaller {
     })
   }
 
-  /// Creates a new installer with `AwsEcsClusterProvider`.
-  ///
-  /// This is a convenience constructor for AWS ECS environments where task discovery
-  /// is performed via the ECS API (ListTasks + DescribeTasks).
-  ///
-  /// Requires the `aws-ecs` feature to be enabled.
-  ///
-  /// # Example
-  ///
-  /// ```text
-  /// use fraktor_cluster_rs::core::{ClusterExtensionConfig, ClusterExtensionInstaller};
-  /// use fraktor_cluster_rs::std::EcsClusterConfig;
-  /// use std::time::Duration;
-  ///
-  /// let ecs_config = EcsClusterConfig::new()
-  ///     .with_cluster_name("my-cluster")
-  ///     .with_service_name("my-service")
-  ///     .with_poll_interval(Duration::from_secs(10));
-  ///
-  /// let installer = ClusterExtensionInstaller::new_with_ecs(
-  ///     ClusterExtensionConfig::default().with_advertised_address("10.0.0.1:8080"),
-  ///     ecs_config,
-  /// );
-  /// ```
-  #[cfg(feature = "aws-ecs")]
-  #[must_use]
-  pub fn new_with_ecs(
-    config: ClusterExtensionConfig,
-    ecs_config: crate::std::EcsClusterConfig,
-  ) -> ClusterExtensionInstaller {
-    ClusterExtensionInstaller::new(config, move |event_stream, block_list_provider, advertised_address| {
-      Box::new(
-        crate::std::AwsEcsClusterProvider::new(event_stream, block_list_provider, advertised_address)
-          .with_ecs_config(ecs_config.clone()),
-      )
-    })
-  }
-
   /// Sets a custom block list provider.
   #[must_use]
   pub fn with_block_list_provider(mut self, provider: ArcShared<dyn BlockListProvider>) -> Self {
@@ -263,10 +225,7 @@ impl ClusterExtensionInstaller {
   /// # Panics
   ///
   /// Panics if the extension is already installed with different configuration.
-  pub fn install(
-    &self,
-    system: &ActorSystem,
-  ) -> Result<ArcShared<crate::core::ClusterExtension>, ActorSystemBuildError> {
+  pub fn install(&self, system: &ActorSystem) -> Result<ArcShared<ClusterExtension>, ActorSystemBuildError> {
     // システムの RemotingConfig から advertised address を取得（設定で未指定の場合）
     let mut config = self.config.clone();
     if config.advertised_address().is_empty()

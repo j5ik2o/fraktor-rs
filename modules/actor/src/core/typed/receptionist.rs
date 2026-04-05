@@ -31,7 +31,10 @@ use crate::core::{
     event::logging::LogLevel,
     system::ActorSystem,
   },
-  typed::{TypedActorRef, TypedProps, behavior::Behavior, dsl::Behaviors, message_and_signals::BehaviorSignal},
+  typed::{
+    TypedActorRef, TypedActorSystem, TypedProps, behavior::Behavior, dsl::Behaviors,
+    message_and_signals::BehaviorSignal,
+  },
 };
 
 /// Composite key for internal registry lookups.
@@ -113,7 +116,7 @@ impl Receptionist {
     })
   }
 
-  fn ensure_extension<M>(system: &crate::core::typed::TypedActorSystem<M>) -> ArcShared<Self>
+  fn ensure_extension<M>(system: &TypedActorSystem<M>) -> ArcShared<Self>
   where
     M: Send + Sync + 'static, {
     system.register_extension(&ReceptionistExtensionId::new())
@@ -121,7 +124,7 @@ impl Receptionist {
 
   /// Returns the receptionist extension for the provided system.
   #[must_use]
-  pub fn get<M>(system: &crate::core::typed::TypedActorSystem<M>) -> Self
+  pub fn get<M>(system: &TypedActorSystem<M>) -> Self
   where
     M: Send + Sync + 'static, {
     let registered = Self::ensure_extension(system);
@@ -134,7 +137,7 @@ impl Receptionist {
 
   /// Creates the receptionist extension for the provided system.
   #[must_use]
-  pub fn create_extension<M>(system: &crate::core::typed::TypedActorSystem<M>) -> Self
+  pub fn create_extension<M>(system: &TypedActorSystem<M>) -> Self
   where
     M: Send + Sync + 'static, {
     Self::ensure_extension(system).with_ref(|receptionist: &Receptionist| receptionist.clone())

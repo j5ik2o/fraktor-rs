@@ -5,10 +5,8 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example getting_started`
 
-use fraktor_actor_rs::{
-  core::typed::{Behavior, TypedActorSystem, TypedProps},
-  std::typed::Behaviors,
-};
+use fraktor_actor_adaptor_rs::std::typed::Behaviors;
+use fraktor_actor_rs::core::typed::{Behavior, TypedActorSystem, TypedProps};
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::SharedAccess;
 

@@ -4,10 +4,13 @@ use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
-use crate::core::kernel::actor::{actor_path::ActorPathScheme, actor_ref::ActorRef, error::ActorError};
-pub(crate) type ActorRefProviderCaller = ArcShared<
-  dyn Fn(crate::core::kernel::actor::actor_path::ActorPath) -> Result<ActorRef, ActorError> + Send + Sync + 'static,
->;
+use crate::core::kernel::actor::{
+  actor_path::{ActorPath, ActorPathScheme},
+  actor_ref::ActorRef,
+  error::ActorError,
+};
+pub(crate) type ActorRefProviderCaller =
+  ArcShared<dyn Fn(ActorPath) -> Result<ActorRef, ActorError> + Send + Sync + 'static>;
 
 /// Registry of actor reference provider callers by scheme.
 pub(crate) struct ActorRefProviderCallers {

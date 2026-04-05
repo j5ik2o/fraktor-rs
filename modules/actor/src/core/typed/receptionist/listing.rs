@@ -7,24 +7,23 @@ use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::any::TypeId;
 
 use super::service_key::ServiceKey;
-use crate::core::{kernel::actor::error::ActorError, typed::TypedActorRef};
+use crate::core::{
+  kernel::actor::{actor_ref::ActorRef, error::ActorError},
+  typed::TypedActorRef,
+};
 
 /// A snapshot of actor references registered under a service key.
 #[derive(Clone, Debug)]
 pub struct Listing {
   service_id: String,
   type_id:    TypeId,
-  refs:       Vec<crate::core::kernel::actor::actor_ref::ActorRef>,
+  refs:       Vec<ActorRef>,
 }
 
 impl Listing {
   /// Creates a new listing.
   #[must_use]
-  pub fn new(
-    service_id: impl Into<String>,
-    type_id: TypeId,
-    refs: Vec<crate::core::kernel::actor::actor_ref::ActorRef>,
-  ) -> Self {
+  pub fn new(service_id: impl Into<String>, type_id: TypeId, refs: Vec<ActorRef>) -> Self {
     Self { service_id: service_id.into(), type_id, refs }
   }
 
@@ -42,7 +41,7 @@ impl Listing {
 
   /// Returns the registered actor references.
   #[must_use]
-  pub fn refs(&self) -> &[crate::core::kernel::actor::actor_ref::ActorRef] {
+  pub fn refs(&self) -> &[ActorRef] {
     &self.refs
   }
 

@@ -14,7 +14,7 @@ autoexamples = false
 
 [features]
 default = []
-std = ["fraktor-utils-rs/std", "fraktor-actor-rs/std"]
+std = ["fraktor-utils-rs/std"]
 
 [dependencies]
 fraktor-actor-rs = { workspace = true }

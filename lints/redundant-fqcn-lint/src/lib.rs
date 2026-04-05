@@ -16,7 +16,7 @@ use rustc_span::{source_map::SourceMap, BytePos, FileName, RealFileName, SourceF
 use syn::{
   spanned::Spanned,
   visit::{self, Visit},
-  ExprPath, ExprStruct, File, Item, Pat, PatStruct, PatTupleStruct, Path as SynPath, UseTree,
+  ExprPath, ExprStruct, Item, Pat, PatStruct, PatTupleStruct, Path as SynPath, TypePath, UseTree,
 };
 
 dylint_linting::impl_late_lint! {
@@ -62,7 +62,7 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
 
   let line_starts = compute_line_starts(&source);
   let bindings = collect_use_bindings(&file);
-  let mut collector = PathCollector::new(path.to_path_buf(), bindings);
+  let mut collector = PathCollector::new(bindings);
   collector.visit_file(&file);
 
   for occurrence in collector.occurrences {
@@ -73,6 +73,12 @@ fn analyze_file(cx: &LateContext<'_>, path: &Path) {
 }
 
 fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
+  let import_scope_help = if occurrence.module_scope.is_root() {
+    "ファイル冒頭の `use` ブロック"
+  } else {
+    "このパスと同じモジュールスコープの `use` ブロック"
+  };
+
   cx.span_lint(REDUNDANT_FQCN, span, |diag| {
     diag.primary_message(format!(
       "`{}` は `use` 以外で不要な FQCN です",
@@ -83,8 +89,8 @@ fn emit_warning(cx: &LateContext<'_>, span: Span, occurrence: &PathOccurrence) {
       occurrence.import_path, occurrence.short_path
     ));
     diag.note(format!(
-      "AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use {};` を追加する 2. この箇所の `{}` を `{}` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない",
-      occurrence.import_path, occurrence.display_path, occurrence.short_path
+      "AI向けアドバイス: 1. {}に `use {};` を追加する 2. この箇所の `{}` を `{}` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない",
+      import_scope_help, occurrence.import_path, occurrence.display_path, occurrence.short_path
     ));
   });
 }
@@ -94,27 +100,42 @@ struct PathOccurrence {
   span:         ProcSpan,
   display_path: String,
   import_path:  String,
+  module_scope: ModuleScope,
   root_name:    String,
   short_path:   String,
 }
 
+#[derive(Clone, Default, PartialEq, Eq)]
+struct ModuleScope(Vec<String>);
+
+impl ModuleScope {
+  fn push(&mut self, segment: String) {
+    self.0.push(segment);
+  }
+
+  fn pop(&mut self) {
+    let _ = self.0.pop();
+  }
+
+  fn is_root(&self) -> bool {
+    self.0.is_empty()
+  }
+}
+
 struct PathCollector {
-  current_path: PathBuf,
-  occurrences:  Vec<PathOccurrence>,
-  seen:         HashSet<SpanKey>,
-  bindings:     Vec<UseBinding>,
+  occurrences: Vec<PathOccurrence>,
+  seen:        HashSet<SpanKey>,
+  bindings:    Vec<UseBinding>,
+  module_scope: ModuleScope,
 }
 
 impl PathCollector {
-  fn new(current_path: PathBuf, bindings: Vec<UseBinding>) -> Self {
-    Self { current_path, occurrences: Vec::new(), seen: HashSet::new(), bindings }
+  fn new(bindings: Vec<UseBinding>) -> Self {
+    Self { occurrences: Vec::new(), seen: HashSet::new(), bindings, module_scope: ModuleScope::default() }
   }
 
   fn record_path(&mut self, path: &SynPath) {
-    if self.is_core_to_std_bridge(path) {
-      return;
-    }
-    let Some(occurrence) = build_occurrence(path) else {
+    let Some(occurrence) = build_occurrence(path, self.module_scope.clone()) else {
       return;
     };
     if self.has_conflicting_import(&occurrence) {
@@ -127,24 +148,27 @@ impl PathCollector {
   }
 
   fn has_conflicting_import(&self, occurrence: &PathOccurrence) -> bool {
-    self
-      .bindings
-      .iter()
-      .any(|binding| binding.local_name == occurrence.root_name && binding.source_path != occurrence.import_path)
-  }
-
-  fn is_core_to_std_bridge(&self, path: &SynPath) -> bool {
-    self.current_path.to_string_lossy().contains("/src/core/")
-      && path.leading_colon.is_none()
-      && path.segments.first().is_some_and(|segment| segment.ident == "crate")
-      && path.segments.iter().nth(1).is_some_and(|segment| segment.ident == "std")
+    self.bindings.iter().any(|binding| {
+      binding.module_scope == occurrence.module_scope
+        && binding.local_name == occurrence.root_name
+        && binding.source_path != occurrence.import_path
+    })
   }
 }
 
 impl<'ast> Visit<'ast> for PathCollector {
   fn visit_item(&mut self, item: &'ast Item) {
     match item {
-      | Item::Use(_) | Item::Type(_) => {},
+      | Item::Use(_) => {},
+      | Item::Mod(item_mod) => {
+        if let Some((_, items)) = &item_mod.content {
+          self.module_scope.push(item_mod.ident.to_string());
+          for item in items {
+            self.visit_item(item);
+          }
+          self.module_scope.pop();
+        }
+      },
       | _ => visit::visit_item(self, item),
     }
   }
@@ -183,6 +207,13 @@ impl<'ast> Visit<'ast> for PathCollector {
     }
     visit::visit_pat_tuple_struct(self, node);
   }
+
+  fn visit_type_path(&mut self, node: &'ast TypePath) {
+    if node.qself.is_none() {
+      self.record_path(&node.path);
+    }
+    visit::visit_type_path(self, node);
+  }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -201,33 +232,41 @@ impl SpanKey {
   }
 }
 
-fn build_occurrence(path: &SynPath) -> Option<PathOccurrence> {
+fn build_occurrence(path: &SynPath, module_scope: ModuleScope) -> Option<PathOccurrence> {
   if path.leading_colon.is_some() {
     return None;
   }
 
   let segments = path.segments.iter().collect::<Vec<_>>();
   let first = segments.first()?;
-  if first.ident != "crate" || segments.len() < 2 {
+  let first_name = first.ident.to_string();
+  if !is_supported_root(&first_name) {
     return None;
   }
 
   let type_like_index = segments
     .iter()
     .enumerate()
-    .skip(1)
+    .skip(usize::from(first_name == "crate" || first_name == "self" || first_name == "super"))
     .find_map(|(index, segment)| is_type_like_ident(segment.ident.to_string().as_str()).then_some(index))?;
+  if type_like_index == 0 {
+    return None;
+  }
 
   let display_path = join_segment_idents(&segments);
   let import_path = join_segment_idents(&segments[..=type_like_index]);
   let root_name = segments.get(type_like_index)?.ident.to_string();
   let short_path = join_segment_idents(&segments[type_like_index..]);
 
-  Some(PathOccurrence { span: path.span(), display_path, import_path, root_name, short_path })
+  Some(PathOccurrence { span: path.span(), display_path, import_path, module_scope, root_name, short_path })
 }
 
 fn is_type_like_ident(name: &str) -> bool {
   name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+}
+
+fn is_supported_root(name: &str) -> bool {
+  matches!(name, "crate" | "self" | "super") || name.starts_with("fraktor_")
 }
 
 fn join_segment_idents(segments: &[&syn::PathSegment]) -> String {
@@ -238,43 +277,71 @@ fn join_segment_idents(segments: &[&syn::PathSegment]) -> String {
 struct UseBinding {
   local_name:  String,
   source_path: String,
+  module_scope: ModuleScope,
 }
 
-fn collect_use_bindings(file: &File) -> Vec<UseBinding> {
-  let mut bindings = Vec::new();
-  for item in &file.items {
-    if let Item::Use(item_use) = item {
-      collect_use_tree(&item_use.tree, String::new(), &mut bindings);
+struct UseBindingCollector {
+  bindings:     Vec<UseBinding>,
+  module_scope: ModuleScope,
+}
+
+impl UseBindingCollector {
+  fn new() -> Self {
+    Self { bindings: Vec::new(), module_scope: ModuleScope::default() }
+  }
+
+  fn collect_use_tree(&mut self, tree: &UseTree, prefix: String) {
+    match tree {
+      | UseTree::Path(path) => {
+        let next_prefix = append_path_segment(&prefix, path.ident.to_string().as_str());
+        self.collect_use_tree(&path.tree, next_prefix);
+      },
+      | UseTree::Name(name) => {
+        self.bindings.push(UseBinding {
+          local_name:  name.ident.to_string(),
+          source_path: append_path_segment(&prefix, name.ident.to_string().as_str()),
+          module_scope: self.module_scope.clone(),
+        });
+      },
+      | UseTree::Rename(rename) => {
+        self.bindings.push(UseBinding {
+          local_name:  rename.rename.to_string(),
+          source_path: append_path_segment(&prefix, rename.ident.to_string().as_str()),
+          module_scope: self.module_scope.clone(),
+        });
+      },
+      | UseTree::Group(group) => {
+        for item in &group.items {
+          self.collect_use_tree(item, prefix.clone());
+        }
+      },
+      | UseTree::Glob(_) => {},
     }
   }
-  bindings
 }
 
-fn collect_use_tree(tree: &UseTree, prefix: String, bindings: &mut Vec<UseBinding>) {
-  match tree {
-    | UseTree::Path(path) => {
-      let next_prefix = append_path_segment(&prefix, path.ident.to_string().as_str());
-      collect_use_tree(&path.tree, next_prefix, bindings);
-    },
-    | UseTree::Name(name) => {
-      bindings.push(UseBinding {
-        local_name:  name.ident.to_string(),
-        source_path: append_path_segment(&prefix, name.ident.to_string().as_str()),
-      });
-    },
-    | UseTree::Rename(rename) => {
-      bindings.push(UseBinding {
-        local_name:  rename.rename.to_string(),
-        source_path: append_path_segment(&prefix, rename.ident.to_string().as_str()),
-      });
-    },
-    | UseTree::Group(group) => {
-      for item in &group.items {
-        collect_use_tree(item, prefix.clone(), bindings);
-      }
-    },
-    | UseTree::Glob(_) => {},
+impl<'ast> Visit<'ast> for UseBindingCollector {
+  fn visit_item(&mut self, item: &'ast Item) {
+    match item {
+      | Item::Use(item_use) => self.collect_use_tree(&item_use.tree, String::new()),
+      | Item::Mod(item_mod) => {
+        if let Some((_, items)) = &item_mod.content {
+          self.module_scope.push(item_mod.ident.to_string());
+          for item in items {
+            self.visit_item(item);
+          }
+          self.module_scope.pop();
+        }
+      },
+      | _ => {},
+    }
   }
+}
+
+fn collect_use_bindings(file: &syn::File) -> Vec<UseBinding> {
+  let mut collector = UseBindingCollector::new();
+  collector.visit_file(file);
+  collector.bindings
 }
 
 fn append_path_segment(prefix: &str, segment: &str) -> String {

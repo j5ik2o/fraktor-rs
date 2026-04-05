@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::core::{
-  kernel::actor::{error::ActorError, messaging::AnyMessage},
+  kernel::actor::{ActorCell, error::ActorError, messaging::AnyMessage},
   typed::actor::TypedActorContext,
 };
 
@@ -187,10 +187,7 @@ where
     })?
   }
 
-  fn with_cell<R>(
-    ctx: &TypedActorContext<'_, M>,
-    f: impl FnOnce(&crate::core::kernel::actor::ActorCell) -> R,
-  ) -> Result<R, ActorError> {
+  fn with_cell<R>(ctx: &TypedActorContext<'_, M>, f: impl FnOnce(&ActorCell) -> R) -> Result<R, ActorError> {
     let cell = ctx
       .system()
       .state()

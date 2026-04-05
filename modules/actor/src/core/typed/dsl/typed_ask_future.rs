@@ -5,7 +5,10 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::sync::{SharedAccess, shared::Shared};
 
 use crate::core::{
-  kernel::{actor::messaging::AskResult, util::futures::ActorFutureShared},
+  kernel::{
+    actor::messaging::{AnyMessage, AskResult},
+    util::futures::ActorFutureShared,
+  },
   typed::dsl::TypedAskError,
 };
 
@@ -60,7 +63,7 @@ where
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  fn map_message(message: crate::core::kernel::actor::messaging::AnyMessage) -> Result<R, TypedAskError> {
+  fn map_message(message: AnyMessage) -> Result<R, TypedAskError> {
     let payload = message.payload_arc();
     drop(message);
     match payload.downcast::<R>() {

@@ -31,6 +31,9 @@ mod tick_pulse_source;
 mod tests;
 
 pub use auto_driver_metadata::{AutoDriverMetadata, AutoProfileKind};
+#[cfg(any(test, feature = "test-support"))]
+pub use bootstrap::TickDriverBootstrap;
+#[cfg(not(any(test, feature = "test-support")))]
 pub(crate) use bootstrap::TickDriverBootstrap;
 pub use hardware_driver::HardwareTickDriver;
 #[cfg(any(test, feature = "test-support"))]

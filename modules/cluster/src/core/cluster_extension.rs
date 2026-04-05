@@ -20,6 +20,7 @@ use crate::core::{
   identity::IdentitySetupError,
   membership::NodeStatus,
   placement::ActivatedKind,
+  pub_sub::ClusterPubSubShared,
 };
 
 const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
@@ -225,7 +226,7 @@ impl ClusterExtension {
 
   /// Returns the shared pub/sub handle.
   #[must_use]
-  pub(crate) fn pub_sub_shared(&self) -> crate::core::pub_sub::ClusterPubSubShared {
+  pub(crate) fn pub_sub_shared(&self) -> ClusterPubSubShared {
     self.core.lock().pub_sub_shared()
   }
 

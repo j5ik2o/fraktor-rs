@@ -124,7 +124,7 @@ impl LoopbackActorRefProvider {
 
   /// Returns the latest remote authority snapshots recorded by the control plane.
   #[must_use]
-  pub fn connections_snapshot(&self) -> Vec<crate::core::remote_authority_snapshot::RemoteAuthoritySnapshot> {
+  pub fn connections_snapshot(&self) -> Vec<RemoteAuthoritySnapshot> {
     self.control.lock().connections_snapshot()
   }
 

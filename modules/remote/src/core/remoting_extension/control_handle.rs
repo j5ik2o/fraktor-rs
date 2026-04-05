@@ -36,6 +36,8 @@ use super::{
 };
 #[cfg(feature = "tokio-transport")]
 use crate::core::instrument::RemoteInstrument;
+#[cfg(any(feature = "tokio-transport", test, feature = "test-support"))]
+use crate::core::transport::TransportBind;
 #[cfg(feature = "tokio-transport")]
 use crate::core::transport::{TransportChannel, TransportEndpoint};
 #[cfg(feature = "tokio-transport")]
@@ -52,7 +54,9 @@ use crate::core::{
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
 };
 #[cfg(feature = "tokio-transport")]
-use crate::std::endpoint_transport_bridge::{EndpointTransportBridge, EndpointTransportBridgeConfig};
+use crate::std::endpoint_transport_bridge::{
+  EndpointTransportBridge, EndpointTransportBridgeConfig, EndpointTransportBridgeHandle,
+};
 
 /// Shared handle used by endpoints and providers to drive remoting.
 pub struct RemotingControlHandle {
@@ -234,10 +238,7 @@ impl RemotingControlHandle {
 
   /// Binds a transport listener for tests using the currently registered transport.
   #[cfg(any(test, feature = "test-support"))]
-  pub fn bind_transport_listener_for_test(
-    &self,
-    bind: &crate::core::transport::TransportBind,
-  ) -> Result<(), RemotingError> {
+  pub fn bind_transport_listener_for_test(&self, bind: &TransportBind) -> Result<(), RemotingError> {
     let transport = self
       .inner
       .transport_ref
@@ -342,7 +343,7 @@ struct RemotingControlInner {
   #[cfg(feature = "tokio-transport")]
   remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
   #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:        RuntimeMutex<Option<crate::std::endpoint_transport_bridge::EndpointTransportBridgeHandle>>,
+  endpoint_bridge:        RuntimeMutex<Option<EndpointTransportBridgeHandle>>,
   #[cfg(feature = "tokio-transport")]
   heartbeat_channels:     RuntimeMutex<BTreeMap<String, TransportChannel>>,
 }

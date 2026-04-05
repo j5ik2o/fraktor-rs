@@ -5,22 +5,21 @@
 
 use std::time::Duration;
 
-use fraktor_actor_rs::{
-  core::kernel::actor::{
-    Actor, ActorContext,
-    error::ActorError,
-    messaging::AnyMessageView,
-    props::Props,
-    scheduler::{
-      SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
-    },
-    setup::ActorSystemConfig,
+use fraktor_actor_adaptor_rs::std::system::ActorSystem;
+use fraktor_actor_rs::core::kernel::actor::{
+  Actor, ActorContext,
+  error::ActorError,
+  messaging::AnyMessageView,
+  props::Props,
+  scheduler::{
+    SchedulerConfig,
+    tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  std::system::ActorSystem,
+  setup::ActorSystemConfig,
 };
-use fraktor_stream_rs::core::materialization::{
-  ActorMaterializer, ActorMaterializerConfig, Completion, StreamCompletion,
+use fraktor_stream_rs::core::{
+  r#impl::StreamError,
+  materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamCompletion},
 };
 
 struct GuardianActor;
@@ -55,7 +54,7 @@ pub fn drive_until_ready<T: Clone>(
   driver: &ManualTestDriver,
   completion: &StreamCompletion<T>,
   max_ticks: usize,
-) -> Option<Result<T, fraktor_stream_rs::core::r#impl::StreamError>> {
+) -> Option<Result<T, StreamError>> {
   let controller = driver.controller();
   for _ in 0..max_ticks {
     controller.inject_and_drive(1);

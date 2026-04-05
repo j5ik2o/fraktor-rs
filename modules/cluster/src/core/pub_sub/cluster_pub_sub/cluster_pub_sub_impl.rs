@@ -8,7 +8,7 @@ use core::time::Duration;
 
 use fraktor_actor_rs::core::kernel::{
   actor::messaging::AnyMessage,
-  event::stream::EventStreamShared,
+  event::stream::{EventStreamEvent, EventStreamShared},
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_rs::core::{
@@ -18,7 +18,7 @@ use fraktor_utils_rs::core::{
 
 use super::ClusterPubSub;
 use crate::core::{
-  ClusterEvent, StartupMode,
+  ClusterEvent, StartupMode, TopologyUpdate,
   grain::{KindRegistry, TOPIC_ACTOR_KIND},
   pub_sub::{
     DeliverBatchRequest, DeliveryEndpointShared, DeliveryReport, PubSubBatch, PubSubBroker, PubSubConfig,
@@ -92,19 +92,13 @@ impl ClusterPubSubImpl {
 
   fn publish_pubsub_event(&self, event: PubSubEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
-      name: String::from("cluster-pubsub"),
-      payload,
-    };
+    let stream_event = EventStreamEvent::Extension { name: String::from("cluster-pubsub"), payload };
     self.event_stream.publish(&stream_event);
   }
 
   fn publish_cluster_event(&self, event: ClusterEvent) {
     let payload = AnyMessage::new(event);
-    let stream_event = fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent::Extension {
-      name: String::from("cluster"),
-      payload,
-    };
+    let stream_event = EventStreamEvent::Extension { name: String::from("cluster"), payload };
     self.event_stream.publish(&stream_event);
   }
 
@@ -306,7 +300,7 @@ impl ClusterPubSub for ClusterPubSubImpl {
     Ok(PublishAck::accepted())
   }
 
-  fn on_topology(&mut self, update: &crate::core::TopologyUpdate) {
+  fn on_topology(&mut self, update: &TopologyUpdate) {
     self.last_observed_at = Some(update.observed_at);
     for topic in self.broker.topics() {
       if let Ok(removed) =

@@ -12,15 +12,13 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_rs::{
-  core::{
-    kernel::actor::{
-      error::ActorError,
-      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
-    },
-    typed::{Behavior, TypedActorSystem, TypedProps, message_and_signals::BehaviorSignal},
+use fraktor_actor_adaptor_rs::std::typed::Behaviors;
+use fraktor_actor_rs::core::{
+  kernel::actor::{
+    error::ActorError,
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
   },
-  std::typed::Behaviors,
+  typed::{Behavior, TypedActorSystem, TypedProps, message_and_signals::BehaviorSignal},
 };
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::SharedAccess;

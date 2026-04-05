@@ -11,6 +11,7 @@ use crate::core::{
   kernel::event::logging::LogLevel,
   typed::{
     TypedActorRef,
+    actor::TypedActorContext,
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, ConsumerControllerConfirmed, ConsumerControllerDelivery, ConsumerControllerSettings,
@@ -327,10 +328,8 @@ fn collect_send_request<A>(
   }
 }
 
-fn execute_deferred<A>(
-  actions: Vec<DeferredAction<A>>,
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, ConsumerControllerCommand<A>>,
-) where
+fn execute_deferred<A>(actions: Vec<DeferredAction<A>>, ctx: &mut TypedActorContext<'_, ConsumerControllerCommand<A>>)
+where
   A: Clone + Send + Sync + 'static, {
   for action in actions {
     match action {

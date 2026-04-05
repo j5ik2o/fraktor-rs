@@ -7,7 +7,10 @@ use alloc::string::String;
 use core::any::TypeId;
 
 use super::service_key::ServiceKey;
-use crate::core::{kernel::actor::error::ActorError, typed::TypedActorRef};
+use crate::core::{
+  kernel::actor::{actor_ref::ActorRef, error::ActorError},
+  typed::TypedActorRef,
+};
 
 /// Acknowledgement sent when an actor is successfully registered with the receptionist.
 ///
@@ -16,17 +19,13 @@ use crate::core::{kernel::actor::error::ActorError, typed::TypedActorRef};
 pub struct Registered {
   service_id: String,
   type_id:    TypeId,
-  actor_ref:  crate::core::kernel::actor::actor_ref::ActorRef,
+  actor_ref:  ActorRef,
 }
 
 impl Registered {
   /// Creates a new `Registered` acknowledgement.
   #[must_use]
-  pub fn new(
-    service_id: impl Into<String>,
-    type_id: TypeId,
-    actor_ref: crate::core::kernel::actor::actor_ref::ActorRef,
-  ) -> Self {
+  pub fn new(service_id: impl Into<String>, type_id: TypeId, actor_ref: ActorRef) -> Self {
     Self { service_id: service_id.into(), type_id, actor_ref }
   }
 

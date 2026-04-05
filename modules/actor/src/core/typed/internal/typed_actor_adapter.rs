@@ -7,11 +7,11 @@ use fraktor_utils_rs::core::sync::SharedAccess;
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorContext,
+      Actor, ActorContext, Pid,
       actor_ref::{ActorRef, dead_letter::DeadLetterReason},
       error::{ActorError, ActorErrorReason},
       messaging::{AnyMessage, AnyMessageView},
-      scheduler::SchedulerCommand,
+      scheduler::{SchedulerCommand, SchedulerHandle},
       supervision::SupervisorStrategyConfig,
     },
     dispatch::mailbox::metrics_event::MailboxPressureEvent,
@@ -167,10 +167,7 @@ where
     }
   }
 
-  fn cancel_timer_handle(
-    ctx: &ActorContext<'_>,
-    handle: &mut Option<crate::core::kernel::actor::scheduler::SchedulerHandle>,
-  ) {
+  fn cancel_timer_handle(ctx: &ActorContext<'_>, handle: &mut Option<SchedulerHandle>) {
     if let Some(h) = handle.take() {
       let scheduler = ctx.system().scheduler();
       scheduler.with_write(|guard| {
@@ -229,11 +226,7 @@ where
     self.actor.post_stop(&mut typed_ctx)
   }
 
-  fn on_terminated(
-    &mut self,
-    ctx: &mut ActorContext<'_>,
-    terminated: crate::core::kernel::actor::Pid,
-  ) -> Result<(), ActorError> {
+  fn on_terminated(&mut self, ctx: &mut ActorContext<'_>, terminated: Pid) -> Result<(), ActorError> {
     self.adapters.clear();
     let mut typed_ctx = Self::make_typed_ctx(ctx, &mut self.adapters, &mut self.receive_timeout);
     self.actor.on_terminated(&mut typed_ctx, terminated)
@@ -259,12 +252,7 @@ where
     self.actor.pre_restart(&mut typed_ctx)
   }
 
-  fn on_child_failed(
-    &mut self,
-    ctx: &mut ActorContext<'_>,
-    child: crate::core::kernel::actor::Pid,
-    error: &ActorError,
-  ) -> Result<(), ActorError> {
+  fn on_child_failed(&mut self, ctx: &mut ActorContext<'_>, child: Pid, error: &ActorError) -> Result<(), ActorError> {
     let mut typed_ctx = TypedActorContext::from_untyped(ctx, Some(&mut self.adapters));
     self.actor.on_child_failed(&mut typed_ctx, child, error)
   }

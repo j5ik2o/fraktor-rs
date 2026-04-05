@@ -11,6 +11,7 @@ use crate::core::{
   kernel::event::logging::LogLevel,
   typed::{
     TypedActorRef,
+    actor::TypedActorContext,
     behavior::Behavior,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, DurableProducerQueueState, MessageSent, NO_QUALIFIER,
@@ -426,7 +427,7 @@ fn maybe_schedule_resend_first<A>(
   state: &mut ProducerControllerState<A>,
   settings: &ProducerControllerSettings,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,
-  ctx: &crate::core::typed::actor::TypedActorContext<'_, ProducerControllerCommand<A>>,
+  ctx: &TypedActorContext<'_, ProducerControllerCommand<A>>,
 ) where
   A: Clone + Send + Sync + 'static, {
   let Some(first_seq_nr) = state.unconfirmed.first().map(SequencedMessage::seq_nr) else {
@@ -582,7 +583,7 @@ fn collect_on_durable_queue_message_stored<A>(
 }
 
 fn execute_deferred<A>(
-  ctx: &mut crate::core::typed::actor::TypedActorContext<'_, ProducerControllerCommand<A>>,
+  ctx: &mut TypedActorContext<'_, ProducerControllerCommand<A>>,
   actions: Vec<DeferredAction<A>>,
   settings: &ProducerControllerSettings,
   self_ref: &TypedActorRef<ProducerControllerCommand<A>>,

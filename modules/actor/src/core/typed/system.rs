@@ -19,6 +19,7 @@ use crate::core::{
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::{AnyMessage, AskResult},
+      scheduler::{SchedulerBackedDelayProvider, tick_driver::TickDriverConfig},
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
@@ -131,7 +132,7 @@ impl ExtensionId for EventStreamRefId {
 }
 
 impl ActorRefSender for IgnoreRefSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Ok(SendOutcome::Delivered)
   }
 }
@@ -196,10 +197,7 @@ where
   /// # Errors
   ///
   /// Returns an error if the guardian actor cannot be spawned or tick driver setup fails.
-  pub fn new(
-    guardian: &TypedProps<M>,
-    tick_driver_config: crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig,
-  ) -> Result<Self, SpawnError> {
+  pub fn new(guardian: &TypedProps<M>, tick_driver_config: TickDriverConfig) -> Result<Self, SpawnError> {
     let inner = ActorSystem::new(guardian.to_untyped(), tick_driver_config)?;
     let cached_address = Address::local(inner.name());
     let event_stream_ref = build_event_stream_ref(&inner);
@@ -269,7 +267,7 @@ where
 
   /// Allocates a new pid (testing helper).
   #[must_use]
-  pub fn allocate_pid(&self) -> crate::core::kernel::actor::Pid {
+  pub fn allocate_pid(&self) -> Pid {
     self.inner.allocate_pid()
   }
 
@@ -333,7 +331,7 @@ where
     &self,
     level: LogLevel,
     message: impl Into<String>,
-    origin: Option<crate::core::kernel::actor::Pid>,
+    origin: Option<Pid>,
     logger_name: Option<String>,
   ) {
     self.inner.emit_log(level, message, origin, logger_name)
@@ -495,7 +493,7 @@ where
 
   /// Returns a delay provider backed by the scheduler.
   #[must_use]
-  pub fn delay_provider(&self) -> crate::core::kernel::actor::scheduler::SchedulerBackedDelayProvider {
+  pub fn delay_provider(&self) -> SchedulerBackedDelayProvider {
     self.inner.delay_provider()
   }
 

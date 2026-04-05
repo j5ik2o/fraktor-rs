@@ -6,9 +6,12 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use crate::core::typed::{
-  TypedActorRef,
-  receptionist::{Deregistered, Listing, Registered},
+use crate::core::{
+  kernel::actor::actor_ref::ActorRef,
+  typed::{
+    TypedActorRef,
+    receptionist::{Deregistered, Listing, Registered},
+  },
 };
 
 /// Commands accepted by the Receptionist actor.
@@ -24,7 +27,7 @@ pub enum ReceptionistCommand {
     /// Type identifier of the message type associated with the key.
     type_id:    TypeId,
     /// Erased actor reference to register.
-    actor_ref:  crate::core::kernel::actor::actor_ref::ActorRef,
+    actor_ref:  ActorRef,
     /// Optional acknowledgement target.
     reply_to:   Option<TypedActorRef<Registered>>,
   },
@@ -35,7 +38,7 @@ pub enum ReceptionistCommand {
     /// Type identifier of the message type associated with the key.
     type_id:    TypeId,
     /// Erased actor reference to deregister.
-    actor_ref:  crate::core::kernel::actor::actor_ref::ActorRef,
+    actor_ref:  ActorRef,
     /// Optional acknowledgement target.
     reply_to:   Option<TypedActorRef<Deregistered>>,
   },
