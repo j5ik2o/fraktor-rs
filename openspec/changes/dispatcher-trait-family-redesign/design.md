@@ -1,175 +1,139 @@
 ## Context
 
-現在の dispatcher まわりは、概念としての `Dispatcher` よりも `DispatcherConfig` が主語になっている。
+dispatcher redesign で必要なのは、構成要素の作り方の指示ではなく、公開面・選択面・runtime 面で満たされるべき境界条件の固定である。
 
-- `DispatchExecutor` は runtime primitive である
-- `DispatcherShared` は runtime handle である
-- `DispatcherConfig` は設定オブジェクトである
-- しかし actor / system の接続点では `DispatcherConfig` が直接使われており、policy 抽象が存在しない
+この change は次の曖昧さを解消対象とする。
 
-このため、`PinnedDispatcher` は Pekko の policy concept ではなく、`ThreadedExecutor` を包む config factory として表現されている。結果として `XXXDispatcher` family の拡張点がなく、Tokio / embassy など runtime ごとの差分も policy と primitive の 2 層に分離されていない。
+- dispatcher public abstraction が `DispatcherConfig` 主体になっている
+- `DispatchExecutor` / `DispatcherShared` / `DispatchExecutorRunner` が public surface に近すぎる
+- `PinnedDispatcher` の意味論が dedicated lane policy として固定されていない
+- default / blocking / same-as-parent / typed selector の対応関係が仕様化されていない
+- archived capability に `DispatcherConfig` 前提が残っている
 
-本 change は、dispatcher family を trait/provider 中心で再定義し、legacy abstraction を互換ブリッジなしで置き換える。
+## Design Constraints
 
-## Goals / Non-Goals
+### 1. Public Abstraction
 
-**Goals:**
-- `Dispatcher` 概念を trait として明示する
-- `PinnedDispatcher` を dispatcher family の一員として正規化する
-- `XXXDispatcher` を追加可能な拡張点を設ける
-- `DispatchExecutor` を backend primitive へ後退させるか、不要なら除去する
-- actor / system の接続点を policy/provider 中心へ置き換える
-- Tokio / embassy への伸びしろを阻害しない
+#### 満たすべき条件
 
-**Non-Goals:**
-- mailbox アルゴリズム自体の変更
-- dispatcher throughput / starvation の意味論変更
-- すべての runtime backend をこの change で同時実装すること
-- 後方互換ブリッジの維持
+- dispatcher public abstraction は `Dispatcher` trait と `DispatcherProvider` trait を中心に説明できなければならない
+- `DispatcherSettings` は provider へ渡される確定済み snapshot として扱われなければならない
+- actor / system 利用者が dispatcher を選択するとき、公開概念として触れるのは policy 名、dispatcher id、selector 意味論のいずれかに限られなければならない
 
-## Target Model
+#### 満たしてはいけない条件
 
-完成形の責務分割は以下とする。
+- `DispatcherConfig`、`DispatcherShared`、`DispatchExecutor`、`DispatchExecutorRunner` を public concept の主語にしてはならない
+- runtime backend primitive を使わないと dispatcher が説明できない API であってはならない
 
-```text
-core
-  Dispatcher              // actor mailbox を駆動する公開抽象
-  DispatcherProvider      // Dispatcher を provision する公開抽象
-  DispatcherSettings      // throughput / starvation 等の設定値
-  Dispatchers             // id -> DispatcherProvider registry
-  Props / ActorSystemConfig
-                          // dispatcher selection API
+### 2. Registry And Selection Semantics
 
-adapter
-  TokioDispatcher         // Tokio runtime 向け provider
-  PinnedDispatcher        // dedicated lane policy を表す provider
-  BlockingDispatcher      // blocking workload policy を表す provider
-  EmbassyDispatcher       // 将来の embedded runtime 向け provider
-```
+#### 満たすべき条件
 
-`DispatchExecutor`、`DispatchExecutorRunner`、`DispatcherShared`、既存 `DispatcherConfig` は完成状態に残さない。必要な意味論は `Dispatcher` / `DispatcherProvider` / `DispatcherSettings` へ再配置する。
+- system 側には dispatcher registry entry が存在し、各 entry は少なくとも provider と settings を束ねなければならない
+- actor 起動時の dispatcher 決定は、registry entry を起点に一意に説明できなければならない
+- `Props` は dispatcher 選択情報のみを保持し、provider や settings 実体を保持してはならない
+- dispatcher 選択には少なくとも次の 3 種類の意味論が存在しなければならない
+  - 明示的な dispatcher id 選択
+  - default dispatcher への解決
+  - same-as-parent による親 dispatcher 継承
 
-## Decisions
+#### 満たしてはいけない条件
 
-### 1. `Dispatcher` を public trait として導入する
+- provider を bootstrap 側へ裸で返し、そこで settings merge や優先順位判断を再度行う設計であってはならない
+- `Props` が provider / settings / runtime handle を直接保持する設計であってはならない
+- same-as-parent を default id への単純な別名として潰してはならない
 
-`Dispatcher` は actor mailbox を駆動する runtime object を表す。`DispatcherShared` が現在持つ責務を概念として昇格させる。
+### 3. Reserved IDs And Typed Mapping
 
-少なくとも以下の責務を持つ。
+#### 満たすべき条件
 
-- user/system message の enqueue
-- 実行要求の登録
-- mailbox pressure / diagnostic publish の反映
-- actor ref sender への変換に必要な送信責務
+- registry には default dispatcher を識別する予約済み entry が存在しなければならない
+- blocking workload 用の予約済み dispatcher id は redesign 後も解決可能でなければならない
+- typed 側の dispatcher selector は redesign 後も dispatcher id へ正規化できなければならない
+- Pekko 互換の public identifier を保持する場合、その public identifier から kernel registry id への対応関係は仕様で明示されなければならない
+- redesign で維持する identifier 対応は少なくとも次に固定されなければならない
+  - typed `Default` は kernel registry id `"default"` へ解決される
+  - typed `Blocking` は kernel registry id `"pekko.actor.default-blocking-io-dispatcher"` へ解決される
+  - `FromConfig("pekko.actor.default-dispatcher")` は kernel registry id `"default"` へ正規化される
+  - `Dispatchers::INTERNAL_DISPATCHER_ID` を公開し続ける場合は kernel registry id `"default"` への別名として解決される
 
-実装表現は `ArcShared<dyn Dispatcher>` を基本とし、shared handle を前提にする。これにより、`DispatcherShared` という concrete wrapper を概念の主語にしない。
+#### 満たしてはいけない条件
 
-### 2. `DispatcherProvider` を dispatcher family の正式境界とする
+- default dispatcher の存在有無が実装依存になってはならない
+- typed / untyped で同じ selector が異なる dispatcher へ解決されてはならない
+- feature 差によって reserved id の意味が暗黙に変わってはならない
 
-`DispatcherProvider` は actor ごとに `Dispatcher` を供給する。`PinnedDispatcher` や `TokioDispatcher` はこの trait を実装する policy provider とする。
+### 4. Parent Inheritance
 
-責務は以下に固定する。
+#### 満たすべき条件
 
-- `DispatcherProvisionRequest` を受け取って actor 用 `Dispatcher` を生成する
-- actor 単位に fresh instance を返す必要がある policy (`PinnedDispatcher`) を表現できる
-- runtime-specific backend を内部に閉じ込める
+- same-as-parent を選んだ actor は、親 actor が存在する場合に親の dispatcher selection 結果を継承しなければならない
+- 親が存在しない bootstrap 文脈で same-as-parent が指定された場合は reserved default entry へ解決されなければならない
+- parent 継承は actor 起動時に解決される意味論として扱われなければならない
 
-`DispatcherProvisionRequest` には最低限以下を含める。
+#### 満たしてはいけない条件
 
-- mailbox
-- dispatcher settings
-- actor 識別子（thread 名や observability に使える情報）
+- same-as-parent の扱いを未定義のまま public API から削除してはならない
+- parent 継承時に provider や settings の追加 merge 規則をその場で再発明してはならない
 
-### 3. `DispatcherConfig` は public abstraction から除去する
+### 5. Pinned Policy
 
-既存 `DispatcherConfig` は公開 API の中心から外す。throughput / starvation / schedule adapter のような設定値は `DispatcherSettings` へ移す。
+#### 満たすべき条件
 
-`ActorSystemConfig` と `Props` の public API は以下へ置き換える。
+- `PinnedDispatcher` は dedicated lane policy を表さなければならない
+- dedicated lane は actor 単位で分離され、他 actor と共有されてはならない
+- lane の存続期間は actor lifecycle に追従しなければならない
+- actor 停止後に lane が停止・解放されることを仕様で要求しなければならない
 
-- `with_default_dispatcher_provider(...)`
-- `with_dispatcher(id, provider)`
-- `with_dispatcher_provider(...)`
-- `with_dispatcher_id(...)`
+#### 満たしてはいけない条件
 
-`with_dispatcher_config(...)` と `with_default_dispatcher(DispatcherConfig)` は削除対象とする。
+- `PinnedDispatcher` を config factory として定義してはならない
+- dispatch ごとの thread spawn を pinned semantics と見なしてはならない
+- registry や actor system が pinned lane を共有・再利用する前提を置いてはならない
 
-### 4. `Dispatchers` registry は provider registry へ置き換える
+### 6. Std Adapter Surface
 
-現在の `Dispatchers` は `id -> DispatcherConfig` を保持しているが、完成形では `id -> DispatcherProvider` を保持する。
+#### 満たすべき条件
 
-解決フローは以下に統一する。
+- std adapter の dispatcher 公開面は policy family と std 固有 helper のみに限定されなければならない
+- public policy 名としては `DefaultDispatcher`、`PinnedDispatcher`、`BlockingDispatcher` を用い、backend 名は internal detail に留めなければならない
+- std adapter は core の `ActorSystem` を包み直した façade を公開してはならない
 
-```text
-Props / ActorSystemConfig
-  -> dispatcher id or direct provider
-  -> Dispatchers registry resolves provider
-  -> provider provisions Dispatcher for the actor
-```
+#### 満たしてはいけない条件
 
-この方式により、Pekko 的な named dispatcher selection と Rust 的な provider abstraction を両立する。
+- `DispatcherConfig`、`DispatchExecutor`、`DispatchExecutorRunner`、`TokioExecutor`、`ThreadedExecutor` を std adapter の public policy surface に出してはならない
+- `std.rs` に leaf helper の中継用 wrapper を追加してはならない
 
-### 5. `PinnedDispatcher` は dedicated lane policy として再定義する
+### 7. Feature Gating
 
-`PinnedDispatcher` は config factory ではなく、actor ごとに dedicated execution lane を provision する provider とする。
+#### 満たすべき条件
 
-ここでいう dedicated lane は「同一 actor の execution が他 actor と lane を共有しない」ことを意味する。現状の `ThreadedExecutor::execute()` のような「dispatch ごとに thread を spawn する」構造は、Pekko の `PinnedDispatcher` としては不十分であるため採用しない。
+- `DefaultDispatcher` の提供有無は `tokio-executor` feature によって明示的に切り替わらなければならない
+- feature 差により提供されない policy は「存在しない」として扱われなければならない
 
-この change では `PinnedDispatcher` の意味論を以下に固定する。
+#### 満たしてはいけない条件
 
-- actor ごとに専用 lane を持つ
-- lane は actor lifecycle に紐づいて破棄される
-- 他 actor と executor queue を共有しない
+- `tokio-executor` 無効時に thread backend へ fallback して `DefaultDispatcher` を同名のまま提供してはならない
+- feature 差を runtime 分岐で隠蔽してはならない
 
-標準 runtime では dedicated OS thread を基本形とする。Tokio runtime 上で同名 policy を提供するかどうかは別 policy type として扱い、同一名の曖昧な overloading は行わない。
+### 8. Archived Capability Alignment
 
-### 6. runtime-specific family は provider 群として adapter に置く
+#### 満たすべき条件
 
-adapter 側は runtime ごとの差分を provider family として提供する。
+- archived capability のうち dispatcher redesign と衝突するものは、この change 内で同時に更新されなければならない
+- とくに actor system の default dispatcher 要件は、`DispatcherConfig::default()` 前提ではなく「default dispatcher entry が解決可能であること」で記述し直されなければならない
+- `ActorSystemConfig::default()` 相当の system default config は、caller の明示登録なしで reserved default dispatcher entry を提供しなければならない
 
-この change で正規化する family は以下とする。
+#### 満たしてはいけない条件
 
-- `PinnedDispatcher`
-- `BlockingDispatcher`
-- `TokioDispatcher`
+- redesign 完了後も archived spec に `DispatcherConfig` 前提の requirement を残してはならない
+- change spec と archived spec が同時に成立しない状態を受け入れてはならない
 
-`EmbassyDispatcher` は設計上の拡張先として想定するが、この change では interface compatibility のみ確保し、実装は含めない。
+## Acceptance Checklist
 
-### 7. 互換ブリッジは導入しない
-
-後方互換不要の前提に従い、旧 abstraction を新 abstraction の上に載せる bridge は作らない。
-
-移行方針は単一バッチ置換とする。
-
-- 新しい `Dispatcher` / `DispatcherProvider` / `DispatcherSettings` を導入
-- 既存接続点を同一 change 内で付け替え
-- 旧 abstraction を同一 change 内で削除
-
-完成状態で legacy 型が残存してはならない。
-
-## Risks / Trade-offs
-
-- 置換範囲は `core` dispatch / actor setup / std adapter にまたがるため、変更面は広い
-- `Dispatcher` trait の責務を広く取りすぎると、再び巨大抽象になり得る
-- `PinnedDispatcher` の dedicated lane semantics を厳密にやると、runtime resource 管理が増える
-- Tokio / embassy を同一 policy 名で雑にまとめると、runtime ごとの差異が隠蔽しきれず設計が壊れる
-
-## Migration Plan
-
-1. `Dispatcher` / `DispatcherProvider` / `DispatcherSettings` / `DispatcherProvisionRequest` を core に導入する
-2. `Dispatchers` registry と `ActorSystemConfig` / `Props` の接続点を provider ベースへ置き換える
-3. std adapter に `PinnedDispatcher` / `BlockingDispatcher` / `TokioDispatcher` provider 群を追加する
-4. actor bootstrap が provider を resolve して actor 用 dispatcher を provision する流れへ置き換える
-5. `DispatchExecutor` / `DispatchExecutorRunner` / `DispatcherShared` / `DispatcherConfig` への依存を除去する
-6. showcase / cluster / remote / bench など dispatcher 利用箇所を新 API に追随させる
-7. 旧 abstraction を削除し、関連 spec / tests / examples を更新する
-
-## Acceptance Shape
-
-完成状態では以下を満たす。
-
-- `Dispatcher` trait が公開 API として存在する
-- `DispatcherProvider` が actor/system の dispatcher provisioning 境界として存在する
-- `Props` と `ActorSystemConfig` が `DispatcherConfig` を public には受け取らない
-- `PinnedDispatcher` が dedicated lane policy として provider family に含まれる
-- std adapter は core の `ActorSystem` や façade wrapper を再公開しない
-- `DispatchExecutor`、`DispatchExecutorRunner`、`DispatcherShared`、既存 `DispatcherConfig` は完成状態に残らない
+- dispatcher public surface が trait/provider 主体で説明できる
+- registry / default / blocking / same-as-parent の意味論が仕様として明示されている
+- `Props` が provider / settings 実体を保持しない
+- `PinnedDispatcher` が dedicated lane policy として要求されている
+- std adapter の公開面から config / executor / wrapper 主語が排除されている
+- `actor-system-default-config` との整合が change に含まれている

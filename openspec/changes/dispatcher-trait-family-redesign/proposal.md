@@ -1,37 +1,45 @@
 ## Why
 
-現在の dispatcher 設計は、概念の主語と型の主語がずれている。
+現在の dispatcher まわりは、公開概念・選択 API・runtime 実体の境界が曖昧である。
 
-利用者と設計者が語りたい概念は `Dispatcher` であるにもかかわらず、公開 API の中心には `DispatcherConfig` が置かれ、実装境界では `DispatchExecutor` と `DispatcherShared` が前面に現れている。この結果、dispatcher policy を追加・選択する設計になっておらず、`PinnedDispatcher` も「policy」ではなく「config factory」としてしか表現されていない。
+- 公開面では `DispatcherConfig` が主語になっている
+- runtime primitive である `DispatchExecutor` / `DispatcherShared` が利用者の目に触れる
+- `PinnedDispatcher` が policy ではなく config factory として扱われている
+- named dispatcher selection、parent 継承、blocking 用予約 ID といった選択意味論が `Config` 主体の設計に埋もれている
 
-この構造は以下の問題を生む。
+この change の目的は、dispatcher まわりを「どう実装するか」ではなく「何が成立していなければならないか」で定義し直すことである。
 
-- `Dispatcher` という概念が trait として表現されていない
-- `DispatcherConfig` が actor / system 接続点の主語になり、設定オブジェクトが責務を吸い込んでいる
-- `PinnedDispatcher` を含む `XXXDispatcher` family を policy として拡張しにくい
-- Tokio / embassy など runtime ごとの差分を「dispatcher policy」と「backend primitive」に分離できていない
-- 後方互換不要な段階にもかかわらず、legacy abstraction を温存しやすい
+## What Must Hold
 
-この change では、dispatcher を trait 中心の設計へ置き換え、`PinnedDispatcher` を含む dispatcher family を policy として拡張できる構造へ再設計する。
+- dispatcher の公開抽象は `Dispatcher` / `DispatcherProvider` を主語とする
+- actor / system の dispatcher 選択は registry entry と selector 意味論で説明できる
+- `Props` は provider や settings を直接保持しない
+- `PinnedDispatcher` は dedicated lane policy として観測できる
+- std adapter の公開面は policy family と helper に限定される
+- default dispatcher、blocking dispatcher、parent 継承の意味論が仕様として明示される
+- bootstrap 文脈で `same-as-parent` が指定された場合は reserved default entry へ解決される
+- Pekko 互換 public identifier と kernel registry id の対応が具体的に固定される
+- 利用者が dispatcher を明示登録しなくても system default config が default dispatcher entry を提供する
+- 既存 capability のうち dispatcher redesign と衝突するものは、この change 内で同時に更新される
 
-## What Changes
+## What Must Not Hold
 
-- `Dispatcher` を公開概念として trait で導入する
-- `DispatcherProvider` を導入し、actor / system へ dispatcher を供給する正式な境界とする
-- `Dispatchers` registry は `DispatcherConfig` ではなく dispatcher provider を保持する
-- `ActorSystemConfig` と `Props` は config ではなく dispatcher provider / dispatcher id を主語にする
-- `PinnedDispatcher` を config factory ではなく dispatcher family の一員として再定義する
-- `DispatchExecutor`、`DispatchExecutorRunner`、`DispatcherShared`、既存 `DispatcherConfig` は legacy abstraction とみなし、この change 内で公開面から除去する
-- adapter は runtime-specific dispatcher family の実装を提供し、`core` の `ActorSystem` や `ClusterApi` を再ラップしない
+- `DispatcherConfig` を dispatcher public concept の主語として残してはならない
+- runtime backend 名を public policy 名へ昇格させてはならない
+- `Props` に provider / settings / runtime handle を直接持たせてはならない
+- `PinnedDispatcher` を config factory や dispatch ごとの thread spawn として扱ってはならない
+- `DefaultDispatcher` の feature 差を runtime fallback で吸収してはならない
+- archived spec に `DispatcherConfig` 前提の要件を残したまま redesign を完了扱いにしてはならない
 
 ## Capabilities
 
 ### Modified Capabilities
-- `dispatch-executor-unification`: `DispatchExecutor` を public abstraction の中心から外し、dispatcher trait/provider 中心へ置き換える
-- `actor-std-adapter-surface`: std adapter の公開面を runtime-specific dispatcher family と helper に限定し、config/wrapper 主体の façade を除去する
+- `dispatch-executor-unification`: executor 系を internal backend primitive としてのみ扱う
+- `actor-std-adapter-surface`: std adapter 公開面から config / wrapper 主体の façade を除去する
+- `actor-system-default-config`: default dispatcher 要件を `DispatcherConfig` 前提から切り離す
 
 ### New Capabilities
-- `dispatcher-trait-provider-abstraction`: dispatcher family を trait/provider ベースで定義し、`PinnedDispatcher` を含む `XXXDispatcher` policy を追加可能にする
+- `dispatcher-trait-provider-abstraction`: dispatcher family を trait/provider と selection semantics で定義する
 
 ## Impact
 
@@ -39,8 +47,8 @@
   - `modules/actor/src/core/kernel/dispatch/dispatcher/*`
   - `modules/actor/src/core/kernel/actor/props/*`
   - `modules/actor/src/core/kernel/actor/setup/*`
+  - `modules/actor/src/core/typed/dispatchers*`
   - `modules/actor-adaptor/src/std/dispatch/*`
-  - dispatcher を選択・登録している showcase / cluster / remote まわり
 - 影響 API:
   - `Dispatcher`
   - `DispatcherProvider`
@@ -50,5 +58,4 @@
   - `PinnedDispatcher`
 - 互換性:
   - 後方互換は不要
-  - 互換ブリッジは導入しない
-  - 旧 abstraction は同一 change で除去する
+  - ただし、default / blocking / same-as-parent の意味論は未定義のまま削除してはならない
