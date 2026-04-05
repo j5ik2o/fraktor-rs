@@ -14,8 +14,6 @@ use fraktor_actor_rs::core::kernel::event::{
 };
 use tracing::{Level, event, field};
 
-use crate::std::event::stream::EventStreamSubscriber;
-
 /// Event stream subscriber that forwards runtime log events to the `tracing` crate.
 pub struct TracingLoggerSubscriber {
   inner: LoggerSubscriber,
@@ -39,7 +37,7 @@ impl TracingLoggerSubscriber {
   }
 }
 
-impl EventStreamSubscriber for TracingLoggerSubscriber {
+impl CoreEventStreamSubscriber for TracingLoggerSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     CoreEventStreamSubscriber::on_event(&mut self.inner, event);
   }

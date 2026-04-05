@@ -616,6 +616,7 @@ run_dylint() {
 
   local -a lint_entries=(
     "mod-file-lint:lints/mod-file-lint"
+    "module-examples-lint:lints/module-examples-lint"
     "module-wiring-lint:lints/module-wiring-lint"
     "type-per-file-lint:lints/type-per-file-lint"
     "tests-location-lint:lints/tests-location-lint"
@@ -985,9 +986,9 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --lib -F fraktor-stream-rs/std" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --lib -F fraktor-stream-rs/std
+    test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 

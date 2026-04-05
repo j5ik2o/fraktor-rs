@@ -24,6 +24,10 @@ mod reservation_policy;
 pub mod state;
 mod temp_actors;
 
+mod coordinated_shutdown;
+mod coordinated_shutdown_error;
+mod coordinated_shutdown_id;
+mod coordinated_shutdown_installer;
 mod coordinated_shutdown_phase;
 mod coordinated_shutdown_reason;
 
@@ -32,6 +36,10 @@ pub use actor_path_registry::ActorPathRegistry;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use actor_system_weak::ActorSystemWeak;
 pub use base::ActorSystem;
+pub use coordinated_shutdown::CoordinatedShutdown;
+pub use coordinated_shutdown_error::CoordinatedShutdownError;
+pub use coordinated_shutdown_id::CoordinatedShutdownId;
+pub use coordinated_shutdown_installer::CoordinatedShutdownInstaller;
 pub use coordinated_shutdown_phase::CoordinatedShutdownPhase;
 pub use coordinated_shutdown_reason::CoordinatedShutdownReason;
 pub use extended_actor_system::ExtendedActorSystem;

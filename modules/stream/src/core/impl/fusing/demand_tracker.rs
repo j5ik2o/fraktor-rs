@@ -4,20 +4,20 @@ use super::{StreamError, demand::Demand};
 mod tests;
 
 /// Tracks aggregated demand and handles saturation.
-pub(crate) struct DemandTracker {
+pub struct DemandTracker {
   demand: Demand,
 }
 
 impl DemandTracker {
   /// Creates a new tracker with zero demand.
   #[must_use]
-  pub(crate) const fn new() -> Self {
+  pub const fn new() -> Self {
     Self { demand: Demand::Finite(0) }
   }
 
   /// Returns `true` if demand is available.
   #[must_use]
-  pub(crate) const fn has_demand(&self) -> bool {
+  pub const fn has_demand(&self) -> bool {
     self.demand.has_demand()
   }
 
@@ -26,7 +26,7 @@ impl DemandTracker {
   /// # Errors
   ///
   /// Returns [`StreamError::InvalidDemand`] when `amount` is zero.
-  pub(crate) const fn request(&mut self, amount: u64) -> Result<(), StreamError> {
+  pub const fn request(&mut self, amount: u64) -> Result<(), StreamError> {
     if amount == 0 {
       return Err(StreamError::InvalidDemand { requested: amount });
     }
@@ -50,7 +50,7 @@ impl DemandTracker {
   /// # Errors
   ///
   /// Returns [`StreamError::DemandExceeded`] when `amount` exceeds the remaining demand.
-  pub(crate) const fn consume(&mut self, amount: u64) -> Result<(), StreamError> {
+  pub const fn consume(&mut self, amount: u64) -> Result<(), StreamError> {
     match self.demand {
       | Demand::Unbounded => Ok(()),
       | Demand::Finite(current) => {

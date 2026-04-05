@@ -1,7 +1,10 @@
 //! Tick driver bootstrap integration tests.
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_utils_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess, sync_mutex_like::SpinSyncMutex},
@@ -13,8 +16,10 @@ use crate::core::kernel::{
   actor::scheduler::{
     ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
     tick_driver::{
-      HardwareKind, ManualTestDriver, SchedulerTickExecutor, TickDriverConfig, TickDriverError, TickDriverKind,
-      TickDriverProvisioningContext, TickExecutorSignal, TickFeed, TickPulseHandler, TickPulseSource,
+      AutoDriverMetadata, AutoProfileKind, HardwareKind, HardwareTickDriver, ManualTestDriver, SchedulerTickExecutor,
+      TickDriver, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+      TickDriverProvisioningContext, TickExecutorPump, TickExecutorSignal, TickFeed, TickFeedHandle, TickPulseHandler,
+      TickPulseSource,
     },
   },
   event::{
@@ -181,6 +186,96 @@ impl TickPulseSource for TestPulseSource {
   }
 }
 
+struct NoopTickDriverControl;
+
+impl TickDriverControl for NoopTickDriverControl {
+  fn shutdown(&self) {}
+}
+
+struct RuntimeTestDriver {
+  id:           TickDriverId,
+  resolution:   Duration,
+  started_feed: ArcShared<SpinSyncMutex<Option<TickFeedHandle>>>,
+}
+
+impl RuntimeTestDriver {
+  fn new(resolution: Duration, started_feed: ArcShared<SpinSyncMutex<Option<TickFeedHandle>>>) -> Self {
+    Self { id: TickDriverId::new(77), resolution, started_feed }
+  }
+}
+
+impl TickDriver for RuntimeTestDriver {
+  fn id(&self) -> TickDriverId {
+    self.id
+  }
+
+  fn kind(&self) -> TickDriverKind {
+    TickDriverKind::Auto
+  }
+
+  fn resolution(&self) -> Duration {
+    self.resolution
+  }
+
+  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+    *self.started_feed.lock() = Some(feed.clone());
+    let control: Box<dyn TickDriverControl> = Box::new(NoopTickDriverControl);
+    let control = ArcShared::new(NoStdMutex::new(control));
+    Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
+  }
+}
+
+struct RuntimeTestPump {
+  spawn_calls:    ArcShared<AtomicUsize>,
+  shutdown_calls: ArcShared<AtomicUsize>,
+}
+
+impl RuntimeTestPump {
+  fn new(spawn_calls: ArcShared<AtomicUsize>, shutdown_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { spawn_calls, shutdown_calls }
+  }
+}
+
+impl TickExecutorPump for RuntimeTestPump {
+  fn spawn(&mut self, mut executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
+    self.spawn_calls.fetch_add(1, Ordering::SeqCst);
+    executor.drive_pending();
+    Ok(Box::new(RuntimePumpControl::new(self.shutdown_calls.clone())))
+  }
+
+  fn auto_metadata(&self, driver_id: TickDriverId, resolution: Duration) -> Option<AutoDriverMetadata> {
+    Some(AutoDriverMetadata { profile: AutoProfileKind::Custom, driver_id, resolution })
+  }
+}
+
+struct RuntimePumpControl {
+  shutdown_calls: ArcShared<AtomicUsize>,
+  did_shutdown:   AtomicBool,
+}
+
+impl RuntimePumpControl {
+  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
+  }
+}
+
+impl TickDriverControl for RuntimePumpControl {
+  fn shutdown(&self) {
+    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
+      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
+    }
+  }
+}
+
+struct HardwareTestPump;
+
+impl TickExecutorPump for HardwareTestPump {
+  fn spawn(&mut self, mut executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
+    executor.drive_pending();
+    Ok(Box::new(NoopTickDriverControl))
+  }
+}
+
 fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
   let handler = TestPulseHandlerState::new();
   let handle = TestPulseHandle { handler: handler.clone() };
@@ -188,23 +283,22 @@ fn spawn_test_handler() -> (TestPulseHandlerState, TestPulseHandle) {
 }
 
 fn hardware_test_config(handler: TestPulseHandlerState, pulse_resolution: Duration) -> TickDriverConfig {
-  TickDriverConfig::new(move |ctx| {
-    use super::{HardwareKind, HardwareTickDriver, TickDriver, TickDriverBundle, TickExecutorSignal, TickFeed};
+  TickDriverConfig::runtime(
+    Box::new(HardwareTickDriver::new(Box::new(TestPulseSource::new(pulse_resolution, handler)), HardwareKind::Custom)),
+    Box::new(HardwareTestPump),
+  )
+}
 
-    let scheduler = ctx.scheduler();
-    let (resolution, capacity) = scheduler.with_read(|s| {
-      let cfg = s.config();
-      (cfg.resolution(), cfg.profile().tick_buffer_quota())
-    });
-
-    let source = TestPulseSource::new(pulse_resolution, handler.clone());
-    let mut driver = HardwareTickDriver::new(Box::new(source), HardwareKind::Custom);
-    let signal = TickExecutorSignal::new();
-    let feed = TickFeed::new(resolution, capacity, signal);
-    let handle = driver.start(feed.clone())?;
-
-    Ok(TickDriverBundle::new(handle, feed))
-  })
+fn runtime_test_config(
+  resolution: Duration,
+  started_feed: ArcShared<SpinSyncMutex<Option<TickFeedHandle>>>,
+  spawn_calls: ArcShared<AtomicUsize>,
+  shutdown_calls: ArcShared<AtomicUsize>,
+) -> TickDriverConfig {
+  TickDriverConfig::runtime(
+    Box::new(RuntimeTestDriver::new(resolution, started_feed)),
+    Box::new(RuntimeTestPump::new(spawn_calls, shutdown_calls)),
+  )
 }
 
 fn run_hardware_driver_enqueues_isr_pulses() {
@@ -443,5 +537,46 @@ fn manual_driver_disabled_emits_warning() {
   assert!(
     events.iter().any(|event| matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn)),
     "warning log not observed"
+  );
+}
+
+#[test]
+fn bootstrap_runtime_wiring_path_builds_core_tick_components() {
+  let started_feed = ArcShared::new(SpinSyncMutex::new(None));
+  let spawn_calls = ArcShared::new(AtomicUsize::new(0));
+  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
+  let resolution = Duration::from_millis(3);
+  let config = runtime_test_config(resolution, started_feed.clone(), spawn_calls.clone(), shutdown_calls.clone());
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
+
+  let (mut bundle, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
+
+  assert_eq!(spawn_calls.load(Ordering::SeqCst), 1);
+  assert_eq!(snapshot.kind, TickDriverKind::Auto);
+  assert_eq!(snapshot.resolution, resolution);
+  assert_eq!(snapshot.auto.as_ref().map(|metadata| metadata.profile), Some(AutoProfileKind::Custom));
+  assert!(bundle.feed().is_some(), "runtime path must provision a core feed");
+
+  bundle.shutdown();
+  assert_eq!(shutdown_calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn bootstrap_runtime_wiring_path_starts_driver_with_core_feed() {
+  let started_feed = ArcShared::new(SpinSyncMutex::new(None));
+  let spawn_calls = ArcShared::new(AtomicUsize::new(0));
+  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
+  let config = runtime_test_config(Duration::from_millis(5), started_feed.clone(), spawn_calls, shutdown_calls);
+  let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
+  let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
+
+  let (bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime bundle");
+  let captured_feed = started_feed.lock().clone().expect("driver feed");
+  let bundle_feed = bundle.feed().expect("bundle feed");
+
+  assert!(
+    ArcShared::ptr_eq(&captured_feed, bundle_feed),
+    "TickDriverBootstrap は Runtime 経路で core 側の TickFeed を driver に渡す必要があります"
   );
 }

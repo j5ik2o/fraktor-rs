@@ -1,0 +1,23 @@
+[package]
+name = "fraktor-stream-adaptor-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor standard adaptor bindings for stream runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "stream", "adaptor", "std"]
+categories = ["concurrency"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-stream-adaptor-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+
+[dependencies]
+fraktor-actor-rs = { workspace = true }
+fraktor-stream-rs = { workspace = true }
+
+[lints]
+workspace = true

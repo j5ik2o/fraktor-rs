@@ -93,7 +93,9 @@ impl<T> BoundedSourceQueue<T> {
     assert!(self.complete_if_open(), "bounded source queue already terminated: complete");
   }
 
-  pub(crate) fn complete_if_open(&self) -> bool {
+  /// Completes the queue unless it has already been terminated.
+  #[must_use]
+  pub fn complete_if_open(&self) -> bool {
     let mut guard = self.inner.lock();
     if guard.closed || guard.failure.is_some() {
       return false;
@@ -102,7 +104,8 @@ impl<T> BoundedSourceQueue<T> {
     true
   }
 
-  pub(crate) fn close_for_cancel(&self) {
+  /// Closes the queue for downstream cancellation and drops buffered elements.
+  pub fn close_for_cancel(&self) {
     let mut guard = self.inner.lock();
     if guard.failure.is_some() {
       return;
@@ -120,7 +123,9 @@ impl<T> BoundedSourceQueue<T> {
     assert!(self.fail_if_open(error), "bounded source queue already terminated: fail");
   }
 
-  pub(crate) fn fail_if_open(&self, error: StreamError) -> bool {
+  /// Fails the queue unless it has already been terminated.
+  #[must_use]
+  pub fn fail_if_open(&self, error: StreamError) -> bool {
     let mut guard = self.inner.lock();
     if guard.closed || guard.failure.is_some() {
       return false;
@@ -189,7 +194,12 @@ impl<T> BoundedSourceQueue<T> {
   /// Unlike calling `poll()` followed by `is_drained()`, this method performs
   /// both checks under a single lock acquisition, avoiding TOCTOU races where
   /// a concurrent producer thread sets `closed = true` between the two calls.
-  pub(crate) fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
+  ///
+  /// # Errors
+  ///
+  /// Returns [`StreamError::WouldBlock`] while the queue remains open but empty,
+  /// or the stored failure when the producer has already failed the queue.
+  pub fn poll_or_drain(&self) -> Result<Option<T>, StreamError> {
     let mut guard = self.inner.lock();
     if let Some(error) = &guard.failure {
       return Err(error.clone());

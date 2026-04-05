@@ -2,12 +2,12 @@
 
 use core::time::Duration;
 
-use fraktor_actor_adaptor_rs::std::system::ActorSystem;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     actor_ref::ActorRef,
     messaging::{AnyMessage, AskResponse, AskResult},
   },
+  system::ActorSystem,
   util::futures::ActorFutureShared,
 };
 
@@ -28,7 +28,7 @@ impl ClusterApi {
   ///
   /// Returns an error if the cluster extension has not been installed.
   pub fn try_from_system(system: &ActorSystem) -> Result<Self, ClusterApiError> {
-    CoreClusterApi::try_from_system(system.as_core()).map(Self::from_core)
+    CoreClusterApi::try_from_system(system).map(Self::from_core)
   }
 
   /// Creates a wrapper from the core cluster API.

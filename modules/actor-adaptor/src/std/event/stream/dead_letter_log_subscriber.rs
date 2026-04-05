@@ -5,10 +5,8 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
-use fraktor_actor_rs::core::kernel::event::stream::EventStreamEvent;
+use fraktor_actor_rs::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 use tracing::{Level, event};
-
-use crate::std::event::stream::EventStreamSubscriber;
 
 /// Default target name used in emitted dead letter events.
 const DEAD_LETTER_TARGET: &str = "fraktor::event::stream::dead_letter";

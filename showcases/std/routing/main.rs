@@ -7,8 +7,10 @@
 
 use std::time::{Duration, Instant};
 
-use fraktor_actor_adaptor_rs::std::typed::Behaviors;
-use fraktor_actor_rs::core::typed::{TypedActorRef, TypedActorSystem, TypedProps, dsl::routing::Routers};
+use fraktor_actor_rs::core::typed::{
+  TypedActorRef, TypedActorSystem, TypedProps,
+  dsl::{Behaviors, routing::Routers},
+};
 use fraktor_showcases_std::support;
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 

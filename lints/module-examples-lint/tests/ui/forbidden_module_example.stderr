@@ -1,0 +1,17 @@
+warning: modules/**/examples 配下に runnable example を置いてはいけません
+  --> $DIR/auxiliary/modules/actor-adaptor/examples/classic_logging.rs:1:1
+   |
+LL | pub fn value() -> u32 {
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: 対象ファイル: $DIR/auxiliary/modules/actor-adaptor/examples/classic_logging.rs
+   = help: example は `showcases/std/<example-name>/main.rs` へ移動してください
+   = note: AI向けアドバイス: 1. 対象ファイルを `showcases/std` 配下へ移動 2. module crate の `Cargo.toml` から `[[example]]` を削除 3. `showcases/std/Cargo.toml` に example を登録しましょう。
+note: the lint level is defined here
+  --> $DIR/forbidden_module_example.rs:3:9
+   |
+LL | #![warn(module_examples_forbid)]
+   |         ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: 1 warning emitted
+

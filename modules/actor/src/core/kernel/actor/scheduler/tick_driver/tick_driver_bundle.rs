@@ -1,7 +1,5 @@
 //! Bundle of assets produced after provisioning a tick driver.
 
-use alloc::boxed::Box;
-
 #[cfg(test)]
 mod tests;
 
@@ -11,12 +9,11 @@ use super::{AutoDriverMetadata, TickDriverHandle, TickFeedHandle};
 
 /// Bundle of assets produced after provisioning a tick driver.
 pub struct TickDriverBundle {
-  driver:            TickDriverHandle,
-  feed:              Option<TickFeedHandle>,
-  executor_shutdown: Option<Box<dyn FnOnce() + Send + Sync>>,
-  auto_metadata:     Option<AutoDriverMetadata>,
+  driver:        TickDriverHandle,
+  feed:          Option<TickFeedHandle>,
+  auto_metadata: Option<AutoDriverMetadata>,
   #[cfg(any(test, feature = "test-support"))]
-  manual:            Option<ManualTickController>,
+  manual:        Option<ManualTickController>,
 }
 
 impl Clone for TickDriverBundle {
@@ -24,7 +21,6 @@ impl Clone for TickDriverBundle {
     Self {
       driver: self.driver.clone(),
       feed: self.feed.clone(),
-      executor_shutdown: None, // Executor shutdown is owned by the original instance
       auto_metadata: self.auto_metadata.clone(),
       #[cfg(any(test, feature = "test-support"))]
       manual: self.manual.clone(),
@@ -39,20 +35,10 @@ impl TickDriverBundle {
     Self {
       driver,
       feed: Some(feed),
-      executor_shutdown: None,
       auto_metadata: None,
       #[cfg(any(test, feature = "test-support"))]
       manual: None,
     }
-  }
-
-  /// Adds an executor shutdown callback to this bundle.
-  #[must_use]
-  pub fn with_executor_shutdown<F>(mut self, shutdown: F) -> Self
-  where
-    F: FnOnce() + Send + Sync + 'static, {
-    self.executor_shutdown = Some(Box::new(shutdown));
-    self
   }
 
   /// Annotates the bundle with auto driver metadata.
@@ -66,7 +52,7 @@ impl TickDriverBundle {
   #[cfg(any(test, feature = "test-support"))]
   #[must_use]
   pub const fn new_manual(driver: TickDriverHandle, controller: ManualTickController) -> Self {
-    Self { driver, feed: None, executor_shutdown: None, auto_metadata: None, manual: Some(controller) }
+    Self { driver, feed: None, auto_metadata: None, manual: Some(controller) }
   }
 
   /// Returns the driver handle.
@@ -97,8 +83,5 @@ impl TickDriverBundle {
   /// Shuts down the underlying driver.
   pub fn shutdown(&mut self) {
     self.driver.shutdown();
-    if let Some(shutdown) = self.executor_shutdown.take() {
-      shutdown();
-    }
   }
 }

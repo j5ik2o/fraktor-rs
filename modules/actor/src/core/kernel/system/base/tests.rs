@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format, vec, vec::Vec};
 use core::{
   pin::Pin,
-  sync::atomic::{AtomicUsize, Ordering},
+  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
   time::Duration,
 };
@@ -27,9 +27,8 @@ use crate::core::{
       scheduler::{
         SchedulerConfig,
         tick_driver::{
-          AutoDriverMetadata, AutoProfileKind, ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl,
-          TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext,
-          TickExecutorSignal, TickFeed,
+          AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig,
+          TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump,
         },
       },
       setup::ActorSystemConfig,
@@ -153,6 +152,87 @@ impl DispatchExecutor for NoopExecutor {
   }
 }
 
+struct NoopControl;
+
+impl TickDriverControl for NoopControl {
+  fn shutdown(&self) {}
+}
+
+struct StaticTickDriver {
+  id:         TickDriverId,
+  kind:       TickDriverKind,
+  resolution: Duration,
+}
+
+impl StaticTickDriver {
+  const fn new(id: TickDriverId, kind: TickDriverKind, resolution: Duration) -> Self {
+    Self { id, kind, resolution }
+  }
+}
+
+impl TickDriver for StaticTickDriver {
+  fn id(&self) -> TickDriverId {
+    self.id
+  }
+
+  fn kind(&self) -> TickDriverKind {
+    self.kind
+  }
+
+  fn resolution(&self) -> Duration {
+    self.resolution
+  }
+
+  fn start(
+    &mut self,
+    _feed: crate::core::kernel::actor::scheduler::tick_driver::TickFeedHandle,
+  ) -> Result<TickDriverHandle, TickDriverError> {
+    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
+    let control = ArcShared::new(RuntimeMutex::new(control));
+    Ok(TickDriverHandle::new(self.id, self.kind, self.resolution, control))
+  }
+}
+
+struct ShutdownRecordingControl {
+  shutdown_calls: ArcShared<AtomicUsize>,
+  did_shutdown:   AtomicBool,
+}
+
+impl ShutdownRecordingControl {
+  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
+  }
+}
+
+impl TickDriverControl for ShutdownRecordingControl {
+  fn shutdown(&self) {
+    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
+      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
+    }
+  }
+}
+
+struct ShutdownRecordingPump {
+  shutdown_calls: ArcShared<AtomicUsize>,
+  profile:        Option<AutoProfileKind>,
+}
+
+impl ShutdownRecordingPump {
+  fn new(shutdown_calls: ArcShared<AtomicUsize>, profile: Option<AutoProfileKind>) -> Self {
+    Self { shutdown_calls, profile }
+  }
+}
+
+impl TickExecutorPump for ShutdownRecordingPump {
+  fn spawn(&mut self, _executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
+    Ok(Box::new(ShutdownRecordingControl::new(self.shutdown_calls.clone())))
+  }
+
+  fn auto_metadata(&self, driver_id: TickDriverId, resolution: Duration) -> Option<AutoDriverMetadata> {
+    self.profile.map(|profile| AutoDriverMetadata { profile, driver_id, resolution })
+  }
+}
+
 #[test]
 fn actor_system_new_empty() {
   let system = ActorSystem::new_empty();
@@ -169,28 +249,11 @@ fn actor_system_new_empty_provides_manual_tick_driver_and_runner_api() {
 
 #[test]
 fn actor_system_drop_shuts_down_executor_once() {
-  struct NoopControl;
-
-  impl TickDriverControl for NoopControl {
-    fn shutdown(&self) {}
-  }
-
   let executor_calls = ArcShared::new(AtomicUsize::new(0));
-  let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext| {
-    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
-    let resolution = Duration::from_millis(1);
-    let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
-    let feed = TickFeed::new(resolution, 1, TickExecutorSignal::new());
-    let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
-      let executor_calls = executor_calls_for_builder.clone();
-      move || {
-        executor_calls.fetch_add(1, Ordering::SeqCst);
-      }
-    });
-    Ok::<_, TickDriverError>(bundle)
-  });
+  let tick_driver = TickDriverConfig::runtime(
+    Box::new(StaticTickDriver::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1))),
+    Box::new(ShutdownRecordingPump::new(executor_calls.clone(), None)),
+  );
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
 
   let state = SystemState::build_from_config(&config).expect("state");
@@ -336,23 +399,12 @@ fn actor_system_when_terminated() {
 
 #[test]
 fn actor_system_reports_tick_driver_snapshot() {
-  struct NoopControl;
-
-  impl TickDriverControl for NoopControl {
-    fn shutdown(&self) {}
-  }
-
   let driver_id = TickDriverId::new(99);
   let resolution = Duration::from_millis(5);
-  let tick_driver = TickDriverConfig::new(move |_ctx: &TickDriverProvisioningContext| {
-    let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
-    let handle = TickDriverHandle::new(driver_id, TickDriverKind::Auto, resolution, control);
-    let feed = TickFeed::new(resolution, 1, TickExecutorSignal::new());
-    let auto = AutoDriverMetadata { profile: AutoProfileKind::Tokio, driver_id, resolution };
-    let bundle = TickDriverBundle::new(handle, feed).with_auto_metadata(auto);
-    Ok::<_, TickDriverError>(bundle)
-  });
+  let tick_driver = TickDriverConfig::runtime(
+    Box::new(StaticTickDriver::new(driver_id, TickDriverKind::Auto, resolution)),
+    Box::new(ShutdownRecordingPump::new(ArcShared::new(AtomicUsize::new(0)), Some(AutoProfileKind::Tokio))),
+  );
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let state = SystemState::build_from_config(&config).expect("state");
   let system = ActorSystem::from_state(SystemStateShared::new(state));

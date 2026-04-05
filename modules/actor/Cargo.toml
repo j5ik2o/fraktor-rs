@@ -33,6 +33,7 @@ serde = { workspace = true }
 erased-serde = { workspace = true }
 bincode = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
+tracing = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -40,6 +41,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "te
 proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
 
 [[test]]
 name = "actor_path_e2e"
@@ -74,21 +76,6 @@ required-features = ["test-support"]
 [[test]]
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
-required-features = ["test-support"]
-
-[[example]]
-name = "typed_event_stream"
-path = "examples/typed_event_stream.rs"
-required-features = ["test-support"]
-
-[[example]]
-name = "classic_timers"
-path = "examples/classic_timers.rs"
-required-features = ["test-support"]
-
-[[example]]
-name = "typed_receptionist_router"
-path = "examples/typed_receptionist_router.rs"
 required-features = ["test-support"]
 
 [lints]

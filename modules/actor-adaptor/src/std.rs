@@ -2,14 +2,10 @@
 pub mod dispatch;
 /// Event bindings for the standard toolbox.
 pub mod event;
-/// Pekko-inspired helper patterns for the standard toolbox.
-pub mod pattern;
-/// Scheduler bindings for the standard toolbox.
-mod scheduler;
-/// Actor system bindings for the standard toolbox.
-pub mod system;
-/// Typed actor utilities specialised for the standard toolbox runtime.
-pub mod typed;
+/// Tick driver bindings for the standard toolbox.
+mod tick_driver;
+/// Time bindings for the standard toolbox.
+pub mod time;
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "tokio-executor")]
+pub use tick_driver::{default_tick_driver_config, tick_driver_config_with_resolution};

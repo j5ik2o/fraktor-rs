@@ -2,63 +2,65 @@
 
 use alloc::boxed::Box;
 use core::{
-  sync::atomic::{AtomicUsize, Ordering},
+  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
   time::Duration,
 };
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
-  TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverId,
+  TickDriverKind, TickExecutorSignal, TickFeed,
 };
 
 struct RecordingControl {
   shutdown_calls: ArcShared<AtomicUsize>,
+  did_shutdown:   AtomicBool,
+}
+
+impl RecordingControl {
+  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
+  }
 }
 
 impl TickDriverControl for RecordingControl {
   fn shutdown(&self) {
-    self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
+    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
+      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
+    }
   }
 }
 
-fn runtime_with_executor_shutdown(
-  executor_calls: ArcShared<AtomicUsize>,
-  driver_calls: ArcShared<AtomicUsize>,
-) -> TickDriverBundle {
-  let control: Box<dyn TickDriverControl> = Box::new(RecordingControl { shutdown_calls: driver_calls });
+fn runtime_bundle(shutdown_calls: ArcShared<AtomicUsize>) -> TickDriverBundle {
+  let control: Box<dyn TickDriverControl> = Box::new(RecordingControl::new(shutdown_calls));
   let control = ArcShared::new(RuntimeMutex::new(control));
   let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
   let feed = TickFeed::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
-
-  TickDriverBundle::new(handle, feed).with_executor_shutdown(move || {
-    executor_calls.fetch_add(1, Ordering::SeqCst);
-  })
+  let metadata = AutoDriverMetadata {
+    profile:    AutoProfileKind::Custom,
+    driver_id:  TickDriverId::new(1),
+    resolution: Duration::from_millis(1),
+  };
+  TickDriverBundle::new(handle, feed).with_auto_metadata(metadata)
 }
 
 #[test]
-fn shutdown_invokes_executor_shutdown_only_once() {
-  let executor_calls = ArcShared::new(AtomicUsize::new(0));
-  let driver_calls = ArcShared::new(AtomicUsize::new(0));
-  let mut bundle = runtime_with_executor_shutdown(executor_calls.clone(), driver_calls.clone());
+fn shutdown_delegates_to_driver_control() {
+  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
+  let mut bundle = runtime_bundle(shutdown_calls.clone());
 
   bundle.shutdown();
-  bundle.shutdown();
 
-  assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
-  assert!(driver_calls.load(Ordering::SeqCst) >= 1);
+  assert_eq!(shutdown_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]
-fn shutdown_on_clone_does_not_invoke_executor_shutdown() {
-  let executor_calls = ArcShared::new(AtomicUsize::new(0));
-  let driver_calls = ArcShared::new(AtomicUsize::new(0));
-  let mut bundle = runtime_with_executor_shutdown(executor_calls.clone(), driver_calls.clone());
+fn clone_preserves_feed_and_auto_metadata() {
+  let shutdown_calls = ArcShared::new(AtomicUsize::new(0));
+  let bundle = runtime_bundle(shutdown_calls);
+  let cloned = bundle.clone();
 
-  let mut cloned = bundle.clone();
-  cloned.shutdown();
-  assert_eq!(executor_calls.load(Ordering::SeqCst), 0);
-
-  bundle.shutdown();
-  assert_eq!(executor_calls.load(Ordering::SeqCst), 1);
+  assert!(cloned.feed().is_some());
+  assert_eq!(cloned.auto_metadata().map(|metadata| metadata.profile), Some(AutoProfileKind::Custom));
 }

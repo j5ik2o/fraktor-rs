@@ -9,7 +9,7 @@ publish = false
 fraktor-actor-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-rs = { workspace = true, features = ["std"] }
-fraktor-stream-rs = { workspace = true, features = ["std"] }
+fraktor-stream-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }
@@ -73,6 +73,22 @@ path = "serialization/main.rs"
 [[example]]
 name = "stream_pipeline"
 path = "stream_pipeline/main.rs"
+
+[[example]]
+name = "classic_logging"
+path = "classic_logging/main.rs"
+
+[[example]]
+name = "classic_timers"
+path = "classic_timers/main.rs"
+
+[[example]]
+name = "typed_event_stream"
+path = "typed_event_stream/main.rs"
+
+[[example]]
+name = "typed_receptionist_router"
+path = "typed_receptionist_router/main.rs"
 
 # --- Advanced examples ---
 

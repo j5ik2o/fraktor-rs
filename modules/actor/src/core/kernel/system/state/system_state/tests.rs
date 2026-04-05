@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::{
-  sync::atomic::{AtomicUsize, Ordering},
+  sync::atomic::{AtomicBool, AtomicUsize, Ordering},
   time::Duration,
 };
 
@@ -23,8 +23,8 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
-        TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
+        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump,
       },
     },
     setup::ActorSystemConfig,
@@ -102,30 +102,76 @@ fn build_shared_state() -> SystemStateShared {
   SystemStateShared::new(build_state())
 }
 
-#[test]
-fn system_state_drop_shuts_down_executor_once() {
-  struct NoopControl;
+struct NoopControl;
 
-  impl TickDriverControl for NoopControl {
-    fn shutdown(&self) {}
+impl TickDriverControl for NoopControl {
+  fn shutdown(&self) {}
+}
+
+struct StaticTickDriver {
+  id:         TickDriverId,
+  resolution: Duration,
+}
+
+impl TickDriver for StaticTickDriver {
+  fn id(&self) -> TickDriverId {
+    self.id
   }
 
-  let executor_calls = ArcShared::new(AtomicUsize::new(0));
-  let executor_calls_for_builder = executor_calls.clone();
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::new(move |_ctx| {
+  fn kind(&self) -> TickDriverKind {
+    TickDriverKind::Auto
+  }
+
+  fn resolution(&self) -> Duration {
+    self.resolution
+  }
+
+  fn start(
+    &mut self,
+    _feed: crate::core::kernel::actor::scheduler::tick_driver::TickFeedHandle,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(RuntimeMutex::new(control));
-    let resolution = Duration::from_millis(1);
-    let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, resolution, control);
-    let feed = TickFeed::new(resolution, 1, TickExecutorSignal::new());
-    let bundle = TickDriverBundle::new(handle, feed).with_executor_shutdown({
-      let executor_calls = executor_calls_for_builder.clone();
-      move || {
-        executor_calls.fetch_add(1, Ordering::SeqCst);
-      }
-    });
-    Ok::<_, TickDriverError>(bundle)
-  });
+    Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
+  }
+}
+
+struct ShutdownRecordingControl {
+  shutdown_calls: ArcShared<AtomicUsize>,
+  did_shutdown:   AtomicBool,
+}
+
+impl ShutdownRecordingControl {
+  fn new(shutdown_calls: ArcShared<AtomicUsize>) -> Self {
+    Self { shutdown_calls, did_shutdown: AtomicBool::new(false) }
+  }
+}
+
+impl TickDriverControl for ShutdownRecordingControl {
+  fn shutdown(&self) {
+    if !self.did_shutdown.swap(true, Ordering::SeqCst) {
+      self.shutdown_calls.fetch_add(1, Ordering::SeqCst);
+    }
+  }
+}
+
+struct ShutdownRecordingPump {
+  shutdown_calls: ArcShared<AtomicUsize>,
+}
+
+impl TickExecutorPump for ShutdownRecordingPump {
+  fn spawn(&mut self, _executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
+    Ok(Box::new(ShutdownRecordingControl::new(self.shutdown_calls.clone())))
+  }
+}
+
+#[test]
+fn system_state_drop_shuts_down_executor_once() {
+  let executor_calls = ArcShared::new(AtomicUsize::new(0));
+  let tick_driver = TickDriverConfig::runtime(
+    Box::new(StaticTickDriver { id: TickDriverId::new(1), resolution: Duration::from_millis(1) }),
+    Box::new(ShutdownRecordingPump { shutdown_calls: executor_calls.clone() }),
+  );
 
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let state = SystemState::build_from_config(&config).expect("state");

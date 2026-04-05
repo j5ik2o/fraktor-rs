@@ -56,7 +56,3 @@ extern crate alloc;
 
 /// Core stream primitives.
 pub mod core;
-/// Runtime-specific stream adapters for std environments.
-#[allow(cfg_std_forbid)]
-#[cfg(any(test, feature = "std"))]
-pub mod std;

@@ -122,3 +122,64 @@ async fn half_open_failure_reopens() {
   assert!(matches!(result, Err(CircuitBreakerCallError::Failed("still broken"))));
   assert_eq!(cb.state(), CircuitBreakerState::Open);
 }
+
+#[tokio::test]
+async fn open_error_contains_remaining_duration() {
+  let clock = FakeClock::new();
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock.clone());
+
+  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+
+  let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
+  match result {
+    | Err(CircuitBreakerCallError::Open(err)) => {
+      assert!(err.remaining() > Duration::ZERO);
+      assert!(err.remaining() <= Duration::from_secs(10));
+    },
+    | other => panic!("expected Open error, got {:?}", other),
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cancel_during_half_open_records_failure() {
+  let clock = FakeClock::new();
+  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+
+  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert_eq!(cb.state(), CircuitBreakerState::Open);
+
+  clock.advance(Duration::from_millis(20));
+
+  tokio::select! {
+    biased;
+    _ = tokio::task::yield_now() => {},
+    _ = cb.call(|| async {
+      tokio::time::sleep(Duration::from_secs(3600)).await;
+      Ok::<_, &str>(42)
+    }) => unreachable!(),
+  }
+
+  assert_eq!(cb.state(), CircuitBreakerState::Open);
+}
+
+#[tokio::test]
+async fn successful_calls_do_not_leak_guard_resources() {
+  let cb = CircuitBreakerShared::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
+
+  for _ in 0..100 {
+    let result = cb.call(|| async { Ok::<_, &str>(1) }).await;
+    assert!(result.is_ok());
+  }
+  assert_eq!(cb.state(), CircuitBreakerState::Closed);
+  assert_eq!(cb.failure_count(), 0);
+
+  let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
+  assert_eq!(cb.failure_count(), 1);
+
+  let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
+  match result {
+    | Ok(value) => assert_eq!(value, 42),
+    | Err(err) => panic!("expected Ok(42), got Err({err:?})"),
+  }
+  assert_eq!(cb.failure_count(), 0);
+}

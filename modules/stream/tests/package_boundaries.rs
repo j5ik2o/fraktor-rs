@@ -1,17 +1,9 @@
-#[cfg(feature = "std")]
-use core::any::TypeId;
-
 use fraktor_stream_rs::core::{
   attributes::{
     AsyncBoundaryAttr, Attributes, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
   },
   dsl::{Flow, Sink, Source},
   materialization::{KeepBoth, KeepLeft, KeepNone, KeepRight, RunnableGraph, StreamCompletion, StreamNotUsed},
-};
-#[cfg(feature = "std")]
-use fraktor_stream_rs::std::{
-  io::{FileIO, StreamConverters},
-  materializer::{SystemMaterializer, SystemMaterializerId},
 };
 
 #[test]
@@ -49,13 +41,4 @@ fn dsl_package_exports_primary_stream_surface() {
     .into_mat(Sink::<u32, StreamCompletion<u32>>::head(), KeepRight);
 
   let _ = graph;
-}
-
-#[cfg(feature = "std")]
-#[test]
-fn std_packages_export_io_and_materializer_adapters() {
-  assert_eq!(TypeId::of::<FileIO>(), TypeId::of::<FileIO>());
-  assert_eq!(TypeId::of::<StreamConverters>(), TypeId::of::<StreamConverters>());
-  assert_eq!(TypeId::of::<SystemMaterializer>(), TypeId::of::<SystemMaterializer>());
-  assert_eq!(TypeId::of::<SystemMaterializerId>(), TypeId::of::<SystemMaterializerId>());
 }

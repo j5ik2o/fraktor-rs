@@ -58,6 +58,11 @@ impl TickDriverHandle {
     self.resolution
   }
 
+  #[must_use]
+  pub(crate) fn control(&self) -> ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>> {
+    self.control.clone()
+  }
+
   /// Stops the underlying driver.
   pub fn shutdown(&mut self) {
     self.control.lock().shutdown();

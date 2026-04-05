@@ -1,19 +1,20 @@
 //! Tick driver bootstrap orchestrates driver provisioning.
 
 #[cfg(any(test, feature = "test-support"))]
-use alloc::{borrow::ToOwned, boxed::Box};
+use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
 
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_rs::core::time::TimerInstant;
-#[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::{sync::ArcShared, sync::RuntimeMutex};
-use fraktor_utils_rs::core::{sync::SharedAccess, time::MonotonicClock};
+use fraktor_utils_rs::core::{
+  sync::{ArcShared, RuntimeMutex, SharedAccess},
+  time::MonotonicClock,
+};
 
-#[cfg(any(test, feature = "test-support"))]
-use super::TickDriverControl;
-#[cfg(any(test, feature = "test-support"))]
-use super::TickDriverHandle;
-use super::{TickDriverBundle, TickDriverConfig, TickDriverError, TickDriverMetadata};
+use super::{
+  SchedulerTickExecutor, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
+  TickDriverMetadata, TickExecutorSignal, TickFeed,
+};
 #[cfg(any(test, feature = "test-support"))]
 use super::{
   TickDriverKind,
@@ -62,15 +63,48 @@ impl TickDriverBootstrap {
     match config {
       #[cfg(any(test, feature = "test-support"))]
       | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
-      | TickDriverConfig::Builder { builder } => {
+      | TickDriverConfig::Runtime { driver, executor_pump } => {
         let start_instant = {
           let scheduler = ctx.scheduler();
           scheduler.with_read(|s| s.clock().now())
         };
-        let bundle = builder(ctx)?;
+        let resolution = {
+          let driver = driver.lock();
+          driver.resolution()
+        };
+        let capacity = {
+          let scheduler = ctx.scheduler();
+          scheduler.with_read(|s| s.config().profile().tick_buffer_quota())
+        };
+        let signal = TickExecutorSignal::new();
+        let feed = TickFeed::new(resolution, capacity, signal.clone());
+        let handle = {
+          let mut driver = driver.lock();
+          driver.start(feed.clone())?
+        };
+        let auto_metadata = {
+          let executor_pump = executor_pump.lock();
+          executor_pump.auto_metadata(handle.id(), handle.resolution())
+        };
+        let executor = SchedulerTickExecutor::new(ctx.scheduler(), feed.clone(), signal);
+        let executor_control = {
+          let mut executor_pump = executor_pump.lock();
+          match executor_pump.spawn(executor) {
+            | Ok(control) => control,
+            | Err(error) => {
+              let mut handle = handle;
+              handle.shutdown();
+              return Err(error);
+            },
+          }
+        };
+        let handle = compose_runtime_handle(&handle, executor_control);
+        let mut bundle = TickDriverBundle::new(handle, feed);
+        if let Some(metadata) = auto_metadata.clone() {
+          bundle = bundle.with_auto_metadata(metadata);
+        }
         let handle = bundle.driver();
         let metadata = TickDriverMetadata::new(handle.id(), start_instant);
-        let auto_metadata = bundle.auto_metadata().cloned();
         let snapshot = TickDriverSnapshot::new(metadata, handle.kind(), handle.resolution(), auto_metadata);
         ctx.event_stream().publish(&EventStreamEvent::TickDriver(snapshot.clone()));
         Ok((bundle, snapshot))
@@ -122,4 +156,32 @@ fn publish_driver_warning(ctx: &TickDriverProvisioningContext, message: &str) {
 fn instant_to_duration(instant: TimerInstant) -> core::time::Duration {
   let nanos = instant.resolution().as_nanos().saturating_mul(u128::from(instant.ticks()));
   core::time::Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
+}
+
+struct CompositeTickDriverControl {
+  driver_control:   ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+  executor_control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+}
+
+impl CompositeTickDriverControl {
+  fn new(
+    driver_control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+    executor_control: Box<dyn TickDriverControl>,
+  ) -> Self {
+    Self { driver_control, executor_control: ArcShared::new(RuntimeMutex::new(executor_control)) }
+  }
+}
+
+impl TickDriverControl for CompositeTickDriverControl {
+  fn shutdown(&self) {
+    self.driver_control.lock().shutdown();
+    self.executor_control.lock().shutdown();
+  }
+}
+
+fn compose_runtime_handle(handle: &TickDriverHandle, executor_control: Box<dyn TickDriverControl>) -> TickDriverHandle {
+  let control: Box<dyn TickDriverControl> =
+    Box::new(CompositeTickDriverControl::new(handle.control(), executor_control));
+  let control = ArcShared::new(RuntimeMutex::new(control));
+  TickDriverHandle::new(handle.id(), handle.kind(), handle.resolution(), control)
 }

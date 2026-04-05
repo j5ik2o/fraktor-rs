@@ -28,11 +28,6 @@ criterion = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 serde_json = { workspace = true }
 
-[[example]]
-name = "classic_logging"
-path = "examples/classic_logging.rs"
-required-features = ["test-support"]
-
 [[bench]]
 name = "actor_baseline"
 path = "benches/actor_baseline.rs"
