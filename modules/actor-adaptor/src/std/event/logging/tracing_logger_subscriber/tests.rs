@@ -107,7 +107,7 @@ impl Subscriber for RecordingSubscriber {
   }
 
   fn new_span(&self, _: &Attributes<'_>) -> Id {
-    Id::from_u64(0)
+    Id::from_u64(1)
   }
 
   fn record(&self, _: &Id, _: &Record<'_>) {}
