@@ -26,6 +26,7 @@ mod tests;
 
 mod association_registry;
 mod association_shared;
+mod effect_application;
 mod handshake_driver;
 mod inbound_dispatch;
 mod outbound_loop;
@@ -33,6 +34,7 @@ mod system_message_delivery;
 
 pub use association_registry::AssociationRegistry;
 pub use association_shared::AssociationShared;
+pub(crate) use effect_application::apply_effects_in_place;
 pub use handshake_driver::HandshakeDriver;
 pub use inbound_dispatch::run_inbound_dispatch;
 pub use outbound_loop::run_outbound_loop;

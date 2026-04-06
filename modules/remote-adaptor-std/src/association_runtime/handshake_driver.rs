@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use tokio::task::JoinHandle;
 
-use crate::association_runtime::association_shared::AssociationShared;
+use crate::association_runtime::{apply_effects_in_place, association_shared::AssociationShared};
 
 /// Drives the handshake-timeout deadline for one `Association`.
 ///
@@ -46,7 +46,12 @@ impl HandshakeDriver {
       tokio::time::sleep(timeout).await;
       let now_ms = monotonic_millis_since(started_at);
       shared.with_write(|assoc| {
-        let _effects = assoc.handshake_timed_out(now_ms, None);
+        let effects = assoc.handshake_timed_out(now_ms, None);
+        // Discarding `effects` here would silently drop the `Gated`
+        // lifecycle event and the `DiscardEnvelopes` notice that contains
+        // every envelope buffered during the handshake. apply_effects_in_place
+        // logs both so the operator can observe the loss.
+        apply_effects_in_place(assoc, effects);
       });
     });
     self.task = Some(task);

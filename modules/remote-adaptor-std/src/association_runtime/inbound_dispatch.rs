@@ -5,7 +5,7 @@ use fraktor_remote_core_rs::address::RemoteNodeId;
 use tokio::sync::mpsc;
 
 use crate::{
-  association_runtime::association_shared::AssociationShared,
+  association_runtime::{apply_effects_in_place, association_shared::AssociationShared},
   tcp_transport::{InboundFrameEvent, WireFrame},
 };
 
@@ -36,7 +36,13 @@ pub async fn run_inbound_dispatch(
         let now = now_ms_provider();
         let remote_node = RemoteNodeId::new("remote", event.peer.as_str(), None, 0);
         target.with_write(|assoc| {
-          let _effects = assoc.handshake_accepted(remote_node, now);
+          let effects = assoc.handshake_accepted(remote_node, now);
+          // The state is now Active. apply_effects_in_place re-enqueues any
+          // deferred envelopes through `assoc.enqueue` so the outbound loop
+          // drains them, and logs the lifecycle event. Discarding `effects`
+          // here would silently lose every message buffered during the
+          // handshake.
+          apply_effects_in_place(assoc, effects);
         });
       },
       | WireFrame::Envelope(_pdu) => {

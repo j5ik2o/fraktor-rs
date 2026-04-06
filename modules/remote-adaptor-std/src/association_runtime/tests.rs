@@ -15,8 +15,8 @@ use fraktor_remote_core_rs::{
 };
 
 use crate::association_runtime::{
-  association_registry::AssociationRegistry, association_shared::AssociationShared, handshake_driver::HandshakeDriver,
-  system_message_delivery::SystemMessageDeliveryState,
+  apply_effects_in_place, association_registry::AssociationRegistry, association_shared::AssociationShared,
+  handshake_driver::HandshakeDriver, system_message_delivery::SystemMessageDeliveryState,
 };
 
 // ---------------------------------------------------------------------------
@@ -284,4 +284,81 @@ async fn outbound_loop_drains_active_association() {
 
   let sent = sent.lock().unwrap();
   assert_eq!(sent.len(), 1, "outbound loop should have drained one envelope");
+}
+
+// ---------------------------------------------------------------------------
+// effect_application — verifies that deferred envelopes are NOT lost when the
+// handshake completes (regression coverage for the discarded-effects bug).
+// ---------------------------------------------------------------------------
+
+fn deferred_envelope() -> OutboundEnvelope {
+  let path = ActorPathParser::parse("fraktor.tcp://remote-sys@10.0.0.1:2552/user/buffered").unwrap();
+  OutboundEnvelope::new(
+    path,
+    None,
+    AnyMessage::new(()),
+    OutboundPriority::User,
+    RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1),
+    CorrelationId::nil(),
+  )
+}
+
+#[test]
+fn handshake_accepted_effects_re_enqueue_deferred_envelopes() {
+  // Build an association that has been associated and has a deferred envelope
+  // queued (because the handshake hasn't completed yet).
+  let mut association = sample_association();
+  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let _ = association.associate(endpoint, 0);
+  let _ = association.enqueue(deferred_envelope());
+  let _ = association.enqueue(deferred_envelope());
+  // Sanity: the envelopes should not yet be drainable from the send queue.
+  assert!(association.next_outbound().is_none(), "deferred envelopes must not be drainable before handshake_accepted");
+
+  // Complete the handshake and immediately apply the returned effects in
+  // place. This is the contract that production sites
+  // (`inbound_dispatch::run_inbound_dispatch`) must honour.
+  let effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
+  apply_effects_in_place(&mut association, effects);
+
+  // Both deferred envelopes must now be drainable through next_outbound,
+  // proving they were re-enqueued into the active send queue rather than
+  // silently lost.
+  assert!(association.next_outbound().is_some(), "first deferred envelope must be re-enqueued");
+  assert!(association.next_outbound().is_some(), "second deferred envelope must be re-enqueued");
+  assert!(association.next_outbound().is_none(), "no further envelopes expected");
+}
+
+#[test]
+fn handshake_timed_out_effects_drop_deferred_envelopes_observably() {
+  // Build an association that has been associated and has a deferred envelope
+  // queued (because the handshake never completed).
+  let mut association = sample_association();
+  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let _ = association.associate(endpoint, 0);
+  let _ = association.enqueue(deferred_envelope());
+
+  // Trigger the timeout transition and apply effects in place. This is the
+  // contract that `handshake_driver::HandshakeDriver` must honour.
+  let effects = association.handshake_timed_out(0, None);
+  apply_effects_in_place(&mut association, effects);
+
+  // The state must now be Gated, and the send queue must be empty (the
+  // deferred envelopes were intentionally discarded by the timeout path).
+  assert!(association.state().is_gated(), "handshake_timed_out should have moved the association to Gated");
+  assert!(association.next_outbound().is_none(), "Gated state must not surface envelopes from next_outbound");
+}
+
+#[test]
+fn handshake_accepted_with_no_deferred_envelopes_is_a_noop() {
+  // Regression coverage: even when there is nothing to flush, applying the
+  // effects must not panic and must not produce phantom envelopes.
+  let mut association = sample_association();
+  let endpoint = TransportEndpoint::new("remote-sys@10.0.0.1:2552");
+  let _ = association.associate(endpoint, 0);
+
+  let effects = association.handshake_accepted(RemoteNodeId::new("remote-sys", "10.0.0.1", Some(2552), 1), 1);
+  apply_effects_in_place(&mut association, effects);
+
+  assert!(association.next_outbound().is_none());
 }
