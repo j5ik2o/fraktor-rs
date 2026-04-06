@@ -1,7 +1,7 @@
 extern crate std;
 use std::{string::String, thread};
 
-use fraktor_actor_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
 
 /// Executor that runs dispatcher batches on newly spawned OS threads.
 pub struct ThreadedExecutor {

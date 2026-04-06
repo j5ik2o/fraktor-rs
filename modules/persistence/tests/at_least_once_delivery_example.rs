@@ -9,7 +9,7 @@
 
 use core::{any::Any, time::Duration};
 
-use fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef;
+use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_persistence_rs::core::{
   AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery,
 };

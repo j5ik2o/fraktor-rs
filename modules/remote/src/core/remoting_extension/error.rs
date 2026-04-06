@@ -3,7 +3,7 @@
 use alloc::string::{String, ToString};
 use core::fmt;
 
-use fraktor_actor_rs::core::kernel::{actor::spawn::SpawnError, system::ActorSystemBuildError};
+use fraktor_actor_core_rs::core::kernel::{actor::spawn::SpawnError, system::ActorSystemBuildError};
 
 use crate::core::transport::TransportError;
 

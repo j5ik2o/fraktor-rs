@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_core_rs::core::{
   kernel::{
     actor::{
       ChildRef,

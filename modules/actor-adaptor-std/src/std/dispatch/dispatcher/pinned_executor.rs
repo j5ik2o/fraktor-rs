@@ -5,7 +5,7 @@ use std::{
   thread::{self, JoinHandle, ThreadId},
 };
 
-use fraktor_actor_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
 
 /// Dedicated single-lane executor used by `PinnedDispatcher`.
 pub struct PinnedExecutor {

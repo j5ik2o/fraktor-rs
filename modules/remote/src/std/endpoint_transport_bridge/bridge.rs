@@ -12,7 +12,7 @@ use core::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   event::{
     logging::LogLevel,
     stream::{CorrelationId, RemotingLifecycleEvent},

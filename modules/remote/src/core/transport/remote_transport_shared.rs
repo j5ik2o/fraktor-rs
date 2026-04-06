@@ -2,7 +2,7 @@
 
 use alloc::{boxed::Box, string::String};
 
-use fraktor_actor_rs::core::kernel::event::stream::CorrelationId;
+use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{

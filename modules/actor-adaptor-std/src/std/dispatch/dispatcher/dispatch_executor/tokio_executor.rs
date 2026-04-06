@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
 use tokio::runtime::Handle;
 
 /// Executor that drives a dispatcher on a Tokio runtime handle.

@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::{boxed::Box, format, string::String};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
     Dispatcher, DispatcherConfig, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,

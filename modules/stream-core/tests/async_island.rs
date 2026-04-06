@@ -6,7 +6,7 @@
 //! NOTE: These tests will not compile until the production implementation is in place.
 //! They define the expected behavioral contract for Gate 0.
 
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   attributes::Attributes,
   dsl::{Flow, Source},
   materialization::StreamNotUsed,

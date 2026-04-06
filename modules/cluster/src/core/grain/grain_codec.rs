@@ -1,6 +1,6 @@
 //! Codec abstraction for grain messages.
 
-use fraktor_actor_rs::core::kernel::{actor::messaging::AnyMessage, serialization::SerializedMessage};
+use fraktor_actor_core_rs::core::kernel::{actor::messaging::AnyMessage, serialization::SerializedMessage};
 
 use super::GrainCodecError;
 

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::ToString};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::actor::{
+use fraktor_actor_core_rs::core::kernel::actor::{
   Actor, ActorContext,
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},

@@ -2,7 +2,7 @@
 
 use std::{string::String, thread, vec::Vec};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,

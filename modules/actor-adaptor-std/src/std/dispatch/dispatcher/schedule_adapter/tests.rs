@@ -1,7 +1,7 @@
 extern crate std;
 use std::sync::atomic::Ordering;
 
-use fraktor_actor_rs::core::kernel::dispatch::{
+use fraktor_actor_core_rs::core::kernel::dispatch::{
   dispatcher::DispatcherShared,
   mailbox::{Mailbox, MailboxPolicy},
 };

@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::kernel::serialization::{
+use fraktor_actor_core_rs::core::kernel::serialization::{
   SerializationCallScope, SerializationSetup, SerializationSetupBuilder, Serializer, SerializerId,
   builtin::StringSerializer,
 };

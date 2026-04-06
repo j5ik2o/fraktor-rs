@@ -1,5 +1,5 @@
 //! Trait implemented by all remoting transports.
-use fraktor_actor_rs::core::kernel::event::stream::CorrelationId;
+use fraktor_actor_core_rs::core::kernel::event::stream::CorrelationId;
 
 use super::{
   backpressure_hook_shared::TransportBackpressureHookShared, inbound::TransportInboundShared,

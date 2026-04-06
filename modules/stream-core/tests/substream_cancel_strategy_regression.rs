@@ -1,4 +1,4 @@
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   SubstreamCancelStrategy,
   dsl::{Flow, Source},
   materialization::StreamNotUsed,

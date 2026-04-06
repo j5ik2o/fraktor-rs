@@ -14,7 +14,7 @@ mod tests;
 ///
 /// ```compile_fail
 /// // FlowFragment is internal and not accessible from the public API.
-/// use fraktor_stream_rs::core::r#impl::flow_fragment::FlowFragment;
+/// use fraktor_stream_core_rs::core::r#impl::flow_fragment::FlowFragment;
 /// ```
 pub(crate) struct FlowFragment<In, Out, Mat> {
   flow: Flow<In, Out, Mat>,

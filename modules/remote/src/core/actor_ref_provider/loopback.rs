@@ -10,7 +10,7 @@ use alloc::{
 };
 
 use ahash::RandomState;
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Address, Pid,
     actor_path::{ActorPath, ActorPathParts, ActorPathScheme},

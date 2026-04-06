@@ -810,7 +810,7 @@ where
   /// returned surface.
   ///
   /// ```compile_fail
-  /// use fraktor_stream_rs::core::{StreamNotUsed, SubstreamCancelStrategy, dsl::Flow};
+  /// use fraktor_stream_core_rs::core::{StreamNotUsed, SubstreamCancelStrategy, dsl::Flow};
   ///
   /// let _ = Flow::<u32, u32, StreamNotUsed>::new()
   ///   .group_by(2, |value: &u32| value % 2, SubstreamCancelStrategy::default())

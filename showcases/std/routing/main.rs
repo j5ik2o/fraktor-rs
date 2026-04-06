@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use fraktor_actor_rs::core::typed::{
+use fraktor_actor_core_rs::core::typed::{
   TypedActorRef, TypedActorSystem, TypedProps,
   dsl::{Behaviors, routing::Routers},
 };

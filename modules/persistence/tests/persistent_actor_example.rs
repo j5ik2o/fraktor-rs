@@ -6,7 +6,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -123,7 +123,7 @@ fn batch_flow_applies_all_events() {
   let value = shared_mutex(0);
   let child_refs = shared_mutex(Vec::new());
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
-  let installers = fraktor_actor_rs::core::kernel::actor::extension::ExtensionInstallers::default()
+  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
     .with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());

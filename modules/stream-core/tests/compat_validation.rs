@@ -1,4 +1,4 @@
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   SubstreamCancelStrategy,
   dsl::{BroadcastHub, Source},
   r#impl::{OperatorKey, StreamError},

@@ -18,7 +18,7 @@ struct SourceQueueState<T> {
 /// Internal dequeue helpers stay crate-private.
 ///
 /// ```compile_fail
-/// use fraktor_stream_rs::core::r#impl::queue::SourceQueue;
+/// use fraktor_stream_core_rs::core::r#impl::queue::SourceQueue;
 ///
 /// let queue = SourceQueue::<u32>::new();
 /// let _ = queue.poll();

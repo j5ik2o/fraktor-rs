@@ -3,7 +3,7 @@
 use alloc::string::ToString;
 use core::convert::TryFrom;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::actor_path::{ActorPath, ActorPathParts, GuardianKind},
   event::stream::CorrelationId,
   serialization::{SerializedMessage, SerializerId},

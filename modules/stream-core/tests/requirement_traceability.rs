@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, time::Duration};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   RestartSettings, SharedKillSwitch, SubstreamCancelStrategy, UniqueKillSwitch,
   dsl::{BroadcastHub, Flow, MergeHub, PartitionHub, Sink, Source},
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError, StreamError},

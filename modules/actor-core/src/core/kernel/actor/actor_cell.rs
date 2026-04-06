@@ -86,7 +86,7 @@ impl ActorCellState {
 /// Runtime container responsible for executing an actor instance.
 ///
 /// ```compile_fail
-/// use fraktor_actor_rs::core::kernel::actor::ActorCell;
+/// use fraktor_actor_core_rs::core::kernel::actor::ActorCell;
 ///
 /// fn read_dispatcher_id(cell: &ActorCell) {
 ///   let _ = cell.dispatcher_id();

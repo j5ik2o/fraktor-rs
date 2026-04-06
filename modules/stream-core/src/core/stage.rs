@@ -1,7 +1,7 @@
 //! GraphStage primitives and stage helpers.
 //!
 //! ```compile_fail
-//! use fraktor_stream_rs::core::stage::{flow::Flow, sink::Sink, source::Source};
+//! use fraktor_stream_core_rs::core::stage::{flow::Flow, sink::Sink, source::Source};
 //! ```
 
 use alloc::vec::Vec;

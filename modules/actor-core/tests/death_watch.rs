@@ -5,7 +5,7 @@ use std::{
   time::{Duration, Instant},
 };
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, ChildRef, Pid,
     error::ActorError,
@@ -264,8 +264,8 @@ fn death_watch_notifies_parent_on_child_stop() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -290,8 +290,8 @@ fn death_watch_unwatch_suppresses_notifications() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -315,8 +315,8 @@ fn death_watch_handles_multiple_watchers() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(primary_log.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -343,8 +343,8 @@ fn watch_after_stop_triggers_immediate_notification() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -367,8 +367,8 @@ fn spawn_child_watched_notifies_on_stop() {
     let terminated = terminated.clone();
     move || SpawnWatchedGuardian::new(terminated.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -395,8 +395,8 @@ fn terminated_and_user_messages_are_both_processed() {
     let child_slot = child_slot.clone();
     move || HarnessWatcher::new(terminated.clone(), order.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -420,8 +420,8 @@ fn cyclic_watchers_do_not_deadlock() {
     let log_b = log_b.clone();
     move || CycleGuardian::new(log_a.clone(), log_b.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -504,8 +504,8 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
     let child_slot = child_slot.clone();
     move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
@@ -530,8 +530,8 @@ fn watch_with_unwatch_clears_custom_message_registration() {
     let child_slot = child_slot.clone();
     move || WatchWithHarness::new(custom_log.clone(), terminated_log.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 

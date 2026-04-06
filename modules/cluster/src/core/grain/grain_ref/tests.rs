@@ -1,6 +1,6 @@
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
@@ -80,7 +80,7 @@ fn request_retries_on_timeout_until_policy_exhausted() {
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
   let ask_error = result.unwrap_err();
-  assert_eq!(ask_error, fraktor_actor_rs::core::kernel::actor::messaging::AskError::Timeout);
+  assert_eq!(ask_error, fraktor_actor_core_rs::core::kernel::actor::messaging::AskError::Timeout);
 
   let sends = *send_counter.lock();
   assert_eq!(sends, 3);
@@ -224,8 +224,8 @@ struct TestGuardian;
 impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
+    _context: &mut fraktor_actor_core_rs::core::kernel::actor::ActorContext<'_>,
+    _message: fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -283,8 +283,8 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_signal(&self) -> fraktor_actor_rs::core::kernel::system::TerminationSignal {
-    fraktor_actor_rs::core::kernel::system::TerminationSignal::already_terminated()
+  fn termination_signal(&self) -> fraktor_actor_core_rs::core::kernel::system::TerminationSignal {
+    fraktor_actor_core_rs::core::kernel::system::TerminationSignal::already_terminated()
   }
 }
 
@@ -297,7 +297,7 @@ impl ActorRefSender for TestSender {
   fn send(
     &mut self,
     message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
+  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
     if matches!(self.behavior, SendBehavior::Fail) {
       return Err(SendError::timeout(AnyMessage::new(())));
     }
@@ -370,7 +370,7 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("future ready");
   let ask_error = result.expect_err("expect send failed");
-  assert!(matches!(ask_error, fraktor_actor_rs::core::kernel::actor::messaging::AskError::SendFailed(_)));
+  assert!(matches!(ask_error, fraktor_actor_core_rs::core::kernel::actor::messaging::AskError::SendFailed(_)));
 
   let events = recorder.events();
   assert!(events.iter().any(|event| matches!(event, GrainEvent::CallFailed { identity: id, .. } if id == &identity)));
@@ -425,7 +425,7 @@ impl ActorRefSender for RecordingSender {
   fn send(
     &mut self,
     message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
+  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
@@ -437,7 +437,7 @@ impl ActorRefSender for FailingSender {
   fn send(
     &mut self,
     _message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
+  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
     Err(SendError::timeout(AnyMessage::new(())))
   }
 }

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::kernel::actor::actor_ref::ActorRef;
+use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 
 use crate::core::persistent_repr::PersistentRepr;
 

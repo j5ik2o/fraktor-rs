@@ -7,7 +7,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example stash`
 
-use fraktor_actor_rs::core::typed::{
+use fraktor_actor_core_rs::core::typed::{
   Behavior, TypedActorRef, TypedActorSystem, TypedProps,
   dsl::{Behaviors, StashBuffer},
 };

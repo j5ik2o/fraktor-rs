@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use std::{thread, time::Duration};
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -21,13 +21,13 @@ struct Start;
 #[test]
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  system.run_until_terminated(&fraktor_actor_rs::core::kernel::system::SpinBlocker);
+  system.run_until_terminated(&fraktor_actor_core_rs::core::kernel::system::SpinBlocker);
   assert!(termination.is_terminated());
 }
 
@@ -39,8 +39,8 @@ fn stop_self_propagates_to_children() {
     move || ParentGuardian::new(child_states.clone())
   });
 
-  let tick_driver = fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
+  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
+    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));

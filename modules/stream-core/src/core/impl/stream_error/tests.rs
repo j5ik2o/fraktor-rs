@@ -1,4 +1,4 @@
-use fraktor_actor_rs::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use fraktor_actor_core_rs::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
 use crate::core::r#impl::StreamError;
 

@@ -1,6 +1,6 @@
 //! Hook invoked by transports when they need to signal throttling or release.
 
-use fraktor_actor_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_core_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
 
 /// Receives transport-level backpressure notifications.
 ///

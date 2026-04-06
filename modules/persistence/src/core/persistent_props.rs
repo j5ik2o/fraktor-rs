@@ -1,6 +1,6 @@
 //! Public entry points for persistent actor construction.
 
-use fraktor_actor_rs::core::kernel::actor::{
+use fraktor_actor_core_rs::core::kernel::actor::{
   ActorContext, ChildRef, actor_ref::ActorRef, props::Props, spawn::SpawnError,
 };
 

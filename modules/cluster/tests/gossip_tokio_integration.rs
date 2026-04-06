@@ -3,7 +3,7 @@
 use core::time::Duration;
 use std::sync::{Arc, Mutex};
 
-use fraktor_actor_rs::core::kernel::event::stream::{
+use fraktor_actor_core_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
 };
 use fraktor_cluster_rs::{

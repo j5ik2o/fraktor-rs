@@ -4,7 +4,7 @@
 //! flows, and sinks without exposing the internal package layout.
 //!
 //! ```compile_fail
-//! use fraktor_stream_rs::core::{
+//! use fraktor_stream_core_rs::core::{
 //!   StreamNotUsed,
 //!   stage::{Flow, Sink, Source},
 //! };

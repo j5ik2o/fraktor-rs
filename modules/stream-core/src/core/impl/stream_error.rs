@@ -4,7 +4,7 @@ mod tests;
 use alloc::{borrow::Cow, format};
 use core::{any::TypeId, fmt};
 
-use fraktor_actor_rs::core::kernel::actor::error::SendError;
+use fraktor_actor_core_rs::core::kernel::actor::error::SendError;
 
 /// Errors returned by stream operations.
 #[derive(Debug, Clone, PartialEq, Eq)]

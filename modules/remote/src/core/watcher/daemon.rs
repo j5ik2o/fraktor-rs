@@ -9,7 +9,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid, actor_path::ActorPathParts, actor_ref::ActorRef, error::ActorError,
     messaging::AnyMessageView, props::Props,

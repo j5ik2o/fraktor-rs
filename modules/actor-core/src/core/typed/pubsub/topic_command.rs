@@ -15,7 +15,7 @@ use crate::core::{
 /// factory methods only. Internal coordination messages stay crate-private.
 ///
 /// ```compile_fail
-/// use fraktor_actor_rs::core::typed::pubsub::TopicCommand;
+/// use fraktor_actor_core_rs::core::typed::pubsub::TopicCommand;
 ///
 /// let _ = TopicCommand::MessagePublished(1_u32);
 /// ```

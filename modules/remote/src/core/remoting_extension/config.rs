@@ -8,7 +8,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_core_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
 
 use crate::core::{
   backpressure::{FnRemotingBackpressureListener, RemotingBackpressureListener},

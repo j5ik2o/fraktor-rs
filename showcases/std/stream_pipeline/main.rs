@@ -8,7 +8,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --example stream_pipeline`
 
 use fraktor_showcases_std::support;
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   dsl::{Sink, Source},
   materialization::KeepRight,
 };

@@ -6,7 +6,7 @@ use std::{
   vec::Vec,
 };
 
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   DemandTracker, DynValue, IOResult, SinkDecision, SinkLogic, SourceLogic, StreamError,
   dsl::{Sink, Source},
   materialization::StreamCompletion,

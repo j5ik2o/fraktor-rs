@@ -7,7 +7,7 @@ use std::{
   thread,
 };
 
-use fraktor_actor_rs::core::kernel::dispatch::{
+use fraktor_actor_core_rs::core::kernel::dispatch::{
   dispatcher::{DispatcherShared, ScheduleAdapter},
   mailbox::ScheduleHints,
 };

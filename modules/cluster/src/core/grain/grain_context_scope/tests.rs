@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, Pid,
     actor_path::{ActorPath, ActorPathScheme},
@@ -78,8 +78,8 @@ struct TestGuardian;
 impl Actor for TestGuardian {
   fn receive(
     &mut self,
-    _context: &mut fraktor_actor_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
+    _context: &mut fraktor_actor_core_rs::core::kernel::actor::ActorContext<'_>,
+    _message: fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
   ) -> Result<(), ActorError> {
     Ok(())
   }
@@ -135,8 +135,8 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_signal(&self) -> fraktor_actor_rs::core::kernel::system::TerminationSignal {
-    fraktor_actor_rs::core::kernel::system::TerminationSignal::already_terminated()
+  fn termination_signal(&self) -> fraktor_actor_core_rs::core::kernel::system::TerminationSignal {
+    fraktor_actor_core_rs::core::kernel::system::TerminationSignal::already_terminated()
   }
 }
 
@@ -146,7 +146,7 @@ impl ActorRefSender for TestSender {
   fn send(
     &mut self,
     _message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_rs::core::kernel::actor::error::SendError> {
+  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

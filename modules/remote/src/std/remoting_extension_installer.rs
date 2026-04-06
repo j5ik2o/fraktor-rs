@@ -1,6 +1,6 @@
 //! Installer for the remoting extension.
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::extension::{ExtensionInstaller, install_extension_id},
   system::{ActorSystem, ActorSystemBuildError},
 };
