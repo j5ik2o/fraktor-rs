@@ -38,8 +38,9 @@ impl ActorRefSender for FailingSender {
 
 fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
-  let sender =
-    ActorRef::new(fraktor_actor_core_rs::core::kernel::actor::Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = ActorRef::new(fraktor_actor_core_rs::core::kernel::actor::Pid::new(1, 1), TestSender {
+    messages: messages.clone(),
+  });
   (sender, messages)
 }
 

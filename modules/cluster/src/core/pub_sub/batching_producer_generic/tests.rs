@@ -59,7 +59,9 @@ fn make_registry()
 -> ArcShared<fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry> {
   let setup = fraktor_actor_core_rs::core::kernel::serialization::default_serialization_setup();
   let registry = ArcShared::new(
-    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
+    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(
+      &setup,
+    ),
   );
   let _ = fraktor_actor_core_rs::core::kernel::serialization::builtin::register_defaults(&registry, |_name, _id| {});
   registry

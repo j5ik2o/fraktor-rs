@@ -16,10 +16,10 @@
 ```text
 modules/
 ├── utils/       # fraktor-utils-rs: 共有ユーティリティ
-├── actor/       # fraktor-actor-rs: アクターシステムコア
+├── actor/       # fraktor-actor-core-rs: アクターシステムコア
 ├── remote/      # fraktor-remote-rs: リモーティング
 ├── cluster/     # fraktor-cluster-rs: クラスタリング
-└── streams/     # fraktor-stream-rs: ストリーム処理
+└── streams/     # fraktor-stream-core-rs: ストリーム処理
 ```
 
 各モジュールの内部構造:

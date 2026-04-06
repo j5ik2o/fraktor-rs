@@ -24,8 +24,8 @@ fn is_idle(mode: crate::sample::domain::Mode) -> bool {
 }
 
 fn log() {
-  fraktor_actor_rs::core::kernel::event::logging::LogEvent::new(
-    fraktor_actor_rs::core::kernel::event::logging::LogLevel::Info,
+  fraktor_actor_core_rs::core::kernel::event::logging::LogEvent::new(
+    fraktor_actor_core_rs::core::kernel::event::logging::LogLevel::Info,
     "test".into(),
     core::time::Duration::from_secs(0),
     None,
@@ -33,7 +33,7 @@ fn log() {
   );
 }
 
-fn accepts(pid: fraktor_actor_rs::core::kernel::actor::Pid) {
+fn accepts(pid: fraktor_actor_core_rs::core::kernel::actor::Pid) {
   let _ = pid;
 }
 ```

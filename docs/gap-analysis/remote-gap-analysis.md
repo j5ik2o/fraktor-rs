@@ -57,7 +57,7 @@
 
 別名で実装済み:
 
-- `QuarantinedEvent` 相当 → `fraktor_actor_rs::core::event::stream::RemotingLifecycleEvent::Quarantined`
+- `QuarantinedEvent` 相当 → `fraktor_actor_core_rs::core::event::stream::RemotingLifecycleEvent::Quarantined`
   - authority / reason / correlation_id を保持する汎用 lifecycle event として公開済み
   - Pekko の `UniqueAddress` 専用イベントクラスとは形が異なるが、quarantine 発生通知というセマンティクスは満たしている
 

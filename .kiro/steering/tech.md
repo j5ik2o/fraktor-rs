@@ -3,11 +3,11 @@
 updated_at: 2026-02-22T14:07:25Z
 
 ## アーキテクチャ
-ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）、`modules/cluster`（crate: `fraktor-cluster-rs`）、`modules/stream`（crate: `fraktor-stream-rs`）、`modules/persistence`（crate: `fraktor-persistence-rs`）の 6 クレート構成です。5 クレート（utils/actor/remote/cluster/streams）は `core.rs` / `std.rs` の 2 階層で、`feature = "std"`/`"tokio-executor"` などで std 機能を有効化します。`fraktor-persistence-rs` は現時点で `core` モジュールを公開面に持つ構成です。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointReader/EndpointWriter/RemotingExtension とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。`fraktor-cluster-rs` はクラスタ管理・ゴシップ・プレースメントを、`fraktor-stream-rs` はストリーム処理を、`fraktor-persistence-rs` は永続化ランタイムを提供します。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
+ワークスペースは `modules/utils`（crate: `fraktor-utils-rs`）、`modules/actor`（crate: `fraktor-actor-core-rs`）、`modules/remote`（crate: `fraktor-remote-rs`）、`modules/cluster`（crate: `fraktor-cluster-rs`）、`modules/stream`（crate: `fraktor-stream-core-rs`）、`modules/persistence`（crate: `fraktor-persistence-rs`）の 6 クレート構成です。5 クレート（utils/actor/remote/cluster/streams）は `core.rs` / `std.rs` の 2 階層で、`feature = "std"`/`"tokio-executor"` などで std 機能を有効化します。`fraktor-persistence-rs` は現時点で `core` モジュールを公開面に持つ構成です。`fraktor-utils-rs::core` が `RuntimeToolbox` / `NoStdToolbox` / `StdToolbox` を提供し、`fraktor-actor-core-rs::core` が ActorSystem・SystemMailbox・EventStream を no_std で構築、`std` モジュールが Tokio/ホスト固有の Dispatcher・TickDriver・Builder を後掛けします。`fraktor-remote-rs::core` は RemoteActorRefProvider/EndpointReader/EndpointWriter/RemotingExtension とトランスポート抽象を actor/core 上に積み、`std` モジュールが Tokio TCP・Loopback などの具体的トランスポートを束ねます。`fraktor-cluster-rs` はクラスタ管理・ゴシップ・プレースメントを、`fraktor-stream-core-rs` はストリーム処理を、`fraktor-persistence-rs` は永続化ランタイムを提供します。supervisor/DeathWatch/EventStream は引き続き system mailbox で `SystemMessage` を先行処理します。
 
 ## コア技術
 - **言語**: Rust 2024 edition（`rust-toolchain.toml` で `nightly-2025-12-01` を固定し、`core` 側は `#![no_std]` を前提）。
-- **フレームワーク / ランタイム**: `fraktor-actor-rs::core` が embassy/裸メタル環境を、`fraktor-actor-rs::std` + `StdToolbox` が Tokio マルチスレッド実行器を担当し、`tokio-executor` feature で TickDriver/Dispatcher/ログ連携をまとめて有効化。
+- **フレームワーク / ランタイム**: `fraktor-actor-core-rs::core` が embassy/裸メタル環境を、`fraktor-actor-core-rs::std` + `StdToolbox` が Tokio マルチスレッド実行器を担当し、`tokio-executor` feature で TickDriver/Dispatcher/ログ連携をまとめて有効化。
 - **同期基盤**: `portable-atomic(+critical-section)` と `spin` による lock-free/lock-based 混在戦略、`ArcShared` 系の共有所有権プリミティブ。
 - **Tick Driver / Scheduler**: `TickDriverBootstrap` + `SchedulerTickExecutor` がハードウェア/手動/Tokio driver を共通 API で駆動し、`TickDriverConfig::tokio_quickstart*` がホスト側のデフォルト構成を 1 行で提供します。
 
@@ -68,7 +68,7 @@ scripts/ci-check.sh all                  # CI と同等フルスイート
 - 設計における価値観は "Less is more" と "YAGNI"
 - Queue,Stack を独自実装しない。必ず `modules/utils/src/core/collections/{queue, stack}` にある共通キュー実装を再利用すること。
 - `Arc` 相当の共有所有権は独自に実装せず、`modules/utils/src/core/sync/arc_shared.rs` にある `ArcShared`（および関連ヘルパ）を必ず用いること。外部クレートの `Arc` を直接使うのは std 層に限定し、core 層は `ArcShared` を経由する。
-- **no_std ファースト**: `fraktor-actor-rs::core`/`fraktor-utils-rs::core` は `#![no_std]` で固定し、`pub mod std` 自体を feature で丸ごと切り替える。`cfg-std-forbid` lint により core 内部での `#[cfg(feature = "std")]` 分岐を禁止し、標準依存コードは `std` モジュールへ隔離。
+- **no_std ファースト**: `fraktor-actor-core-rs::core`/`fraktor-utils-rs::core` は `#![no_std]` で固定し、`pub mod std` 自体を feature で丸ごと切り替える。`cfg-std-forbid` lint により core 内部での `#[cfg(feature = "std")]` 分岐を禁止し、標準依存コードは `std` モジュールへ隔離。
 - **SystemMessage 先行処理**: `Create/Recreate/Failure/Terminated` をユーザメッセージより先に処理することで、Supervisor 戦略と DeathWatch を deterministic に制御。
 - **Std ActorSystemBuilder**: `modules/actor/src/std/system/actor_system_builder.rs` が TickDriver/Scheduler 設定を受け取り、`ActorSystem::from_core` に渡す前に TickDriver をブートストラップする。std 側でのビルドフローは必ずこのビルダー経由で行う。
 - **Pekko 互換 actor path**: `ActorPathScheme` + `ActorPathFormatter` によって `fraktor://` URI を canonical に生成し、guardian（`cellactor/system|user`）を暗黙付与します。権限情報は `PathAuthority` で host/port を保持し、Typed/Untyped いずれの API でも同じ表現を使用します。

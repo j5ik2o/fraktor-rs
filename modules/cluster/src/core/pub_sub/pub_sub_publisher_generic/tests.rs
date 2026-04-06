@@ -57,7 +57,9 @@ struct CustomPayload;
 fn publish_rejects_when_not_serializable() {
   let setup = fraktor_actor_core_rs::core::kernel::serialization::default_serialization_setup();
   let registry = ArcShared::new(
-    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
+    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(
+      &setup,
+    ),
   );
   let stub = StubPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(stub.clone()));

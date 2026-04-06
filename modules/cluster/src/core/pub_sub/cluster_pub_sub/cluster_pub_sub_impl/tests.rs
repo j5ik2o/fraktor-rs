@@ -108,7 +108,9 @@ fn make_pubsub(
 ) -> ClusterPubSubImpl {
   let setup = fraktor_actor_core_rs::core::kernel::serialization::default_serialization_setup();
   let serialization_registry = ArcShared::new(
-    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(&setup),
+    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(
+      &setup,
+    ),
   );
   let endpoint = DeliveryEndpointShared::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)

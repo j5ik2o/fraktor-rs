@@ -1070,7 +1070,7 @@ fraktor-rs はアクターフレームワークであり、Pekko / protoactor-go
 | ファイル | `snake_case.rs` | `actor_cell.rs` |
 | ディレクトリ | `snake_case/` | `actor_cell/` |
 | 型 / trait | `PascalCase` | `ActorCell` |
-| クレート | `fraktor-<domain>-rs` | `fraktor-actor-rs` |
+| クレート | `fraktor-<domain>-rs` | `fraktor-actor-core-rs` |
 | Cargo features | `kebab-case` | `tokio-executor` |
 
 ## ドキュメント言語
