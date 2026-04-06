@@ -1,5 +1,3 @@
-use fraktor_utils_rs::core::sync::SharedAccess;
-
 use crate::core::kernel::{
   actor::{
     Actor, ActorContext, Address, Pid,
