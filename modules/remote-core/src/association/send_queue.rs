@@ -1,6 +1,6 @@
 //! Dual-priority queue owned by an [`crate::association::Association`].
 
-use alloc::vec::Vec;
+use alloc::{collections::VecDeque, vec::Vec};
 use core::mem;
 
 use crate::{
@@ -21,8 +21,8 @@ const DEFAULT_CAPACITY: usize = 16;
 /// starving system signalling.
 #[derive(Debug)]
 pub struct SendQueue {
-  system:      Vec<OutboundEnvelope>,
-  user:        Vec<OutboundEnvelope>,
+  system:      VecDeque<OutboundEnvelope>,
+  user:        VecDeque<OutboundEnvelope>,
   user_paused: bool,
 }
 
@@ -38,14 +38,14 @@ impl SendQueue {
   /// Phase A and will grow as needed.
   #[must_use]
   pub fn with_capacity(system: usize, user: usize) -> Self {
-    Self { system: Vec::with_capacity(system), user: Vec::with_capacity(user), user_paused: false }
+    Self { system: VecDeque::with_capacity(system), user: VecDeque::with_capacity(user), user_paused: false }
   }
 
   /// Enqueues `envelope` into the lane that matches its priority.
   pub fn offer(&mut self, envelope: OutboundEnvelope) -> OfferOutcome {
     match envelope.priority() {
-      | OutboundPriority::System => self.system.push(envelope),
-      | OutboundPriority::User => self.user.push(envelope),
+      | OutboundPriority::System => self.system.push_back(envelope),
+      | OutboundPriority::User => self.user.push_back(envelope),
     }
     OfferOutcome::Accepted
   }
@@ -55,13 +55,13 @@ impl SendQueue {
   /// System-priority envelopes are drained first. User-priority envelopes are
   /// skipped while [`BackpressureSignal::Apply`] is in effect.
   pub fn next_outbound(&mut self) -> Option<OutboundEnvelope> {
-    if !self.system.is_empty() {
-      return Some(self.system.remove(0));
+    if let Some(env) = self.system.pop_front() {
+      return Some(env);
     }
-    if self.user_paused || self.user.is_empty() {
+    if self.user_paused {
       return None;
     }
-    Some(self.user.remove(0))
+    self.user.pop_front()
   }
 
   /// Applies a backpressure signal from the transport layer.
@@ -80,21 +80,21 @@ impl SendQueue {
 
   /// Returns the combined length of the system and user lanes.
   #[must_use]
-  pub const fn len(&self) -> usize {
+  pub fn len(&self) -> usize {
     self.system.len() + self.user.len()
   }
 
   /// Returns `true` when both lanes are empty.
   #[must_use]
-  pub const fn is_empty(&self) -> bool {
+  pub fn is_empty(&self) -> bool {
     self.system.is_empty() && self.user.is_empty()
   }
 
   /// Drains the queue, returning all pending envelopes in priority order
   /// (system first, then user).
   pub fn drain_all(&mut self) -> Vec<OutboundEnvelope> {
-    let mut out = mem::take(&mut self.system);
-    out.append(&mut self.user);
+    let mut out: Vec<OutboundEnvelope> = mem::take(&mut self.system).into();
+    out.extend(mem::take(&mut self.user));
     out
   }
 }
