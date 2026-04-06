@@ -7,7 +7,5 @@
 
 extern crate alloc;
 
-/// Embedded runtime adaptors.
-mod embedded;
 /// Standard library runtime bindings and utilities.
 pub mod std;
