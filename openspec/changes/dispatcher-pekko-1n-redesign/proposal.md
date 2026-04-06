@@ -11,7 +11,7 @@
 結果として現行実装は:
 
 - `DispatcherCore` / `DispatcherShared` / `DispatchShared` の三重ラッパが同じ `ArcShared<DispatcherCore>` の別名として存在
-- `DispatchExecutor::execute(&mut self, ...)` の制約から `DispatchExecutorRunner`（queue + mutex + running AtomicBool）を再発明
+- `DispatchExecutor::execute(&mut self, dispatcher: DispatchShared)` が closure ではなく dispatcher 全体を受け取る設計のため、`DispatchExecutorRunner`（queue + mutex + running AtomicBool）を再発明
 - 1 dispatcher = 1 mailbox の結合により `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` の 5 型が actor 毎に dispatcher を組み立てるためだけに存在
 - `ScheduleAdapter` / `ScheduleAdapterShared` / `InlineScheduleAdapter` / `ScheduleWaker` / std 側 `StdScheduleAdapter` の 5 層で Waker 1 個を表現
 - drain ループが `DispatcherCore::drive` / `process_batch` に存在し、Mailbox 側の `schedule_state` と二重管理
@@ -27,11 +27,13 @@
   - **Command / Hook**（状態を変える）は `&mut self`（`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `register_for_execution`, `suspend`, `resume`, `execute_task`, `shutdown` 等）
   - `create_mailbox` は状態を変えない factory として `&self`
 - 内部可変性は使用しない。`MessageDispatcher` を複数スレッド・複数所有者で共有する経路は `MessageDispatcherShared` を通じてのみ提供する
-- `MessageDispatcherShared` は `ActorRefSenderShared` と同じ AShared パターンに従い、`ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>` を内包し、`SharedAccess<Box<dyn MessageDispatcher>>` を実装する（`with_read` / `with_write`）
+- `MessageDispatcherShared` は既存の AShared 系 (`ActorFactoryShared` など) と同じパターンに従い、`ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>` を内包し、`SharedAccess<Box<dyn MessageDispatcher>>` を実装する（`with_read` / `with_write`）
 - 1 つの dispatcher は同時に複数の actor を収容できる（1 : N）
 - `MessageDispatcherShared::attach(actor)` は `inhabitants` を加算し、`MessageDispatcherShared::detach(actor)` は減算する
+- `detach` は mailbox を terminal 状態へ遷移させて clean up してから shutdown 判定へ進む
 - 全 actor が detach された後、`shutdown_timeout` 経過で executor を自動停止する
 - delayed shutdown の実行予約は `MessageDispatcherShared::detach` が actor の system scheduler を使って行い、`DispatcherCore` は state machine だけを保持する
+- delayed shutdown 用の scheduler handle は `detach(actor)` の引数から `actor.system().scheduler()` を辿って取得する。`DispatcherCore` / `MessageDispatcherShared` は scheduler を field として保持しない
 - `MessageDispatcher` の具象型として `DefaultDispatcher` と `PinnedDispatcher` を独立した型として提供する
 - `PinnedDispatcher` は 1 actor 専有の dedicated lane を提供し、owner check を register 時に行う
 - `PinnedDispatcherConfigurator::dispatcher()` は呼び出しのたびに新しい `PinnedDispatcher` を返す（Pekko と同じ）
@@ -39,6 +41,8 @@
 - dispatcher の共通 state と private helper は `DispatcherCore` （pub struct）に集約し、各具象型が `core: DispatcherCore` として保持する
 - `DispatcherCore` 自身も CQS 原則に従う（commands は `&mut self`、queries は `&self`）
 - `DispatcherCore::schedule_shutdown_if_sensible` は delayed shutdown を即実行せず、`shutdown_schedule` の遷移だけを担う
+- `DispatcherCore::mark_detach` は inhabitants の減算だけを担い、shutdown 判定は `MessageDispatcherShared::detach` の orchestration で行う
+- dispatcher 単位の mutex による 1:N 共有時の contention は既知のトレードオフとして受け入れ、bench / diagnostics で観測する
 - `Executor` trait も CQS 原則に従う:
   - `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>)` は command
   - `fn shutdown(&mut self)` は command
@@ -93,6 +97,9 @@
   - `modules/actor-core/src/core/kernel/system/*`（dispatcher 自動 shutdown のスケジューラ連携）
   - `modules/actor-adaptor-std/src/std/dispatch/*`（具象 executor の `&self` 移行、`StdScheduleAdapter` 削除）
   - `modules/actor-core` 内の showcase / bench / tests
+- 影響設計:
+  - `ActorCell` は 2-phase init が必要になる可能性が高い。cell 本体の確保と mailbox / dispatcher / sender の install を分離する設計判断が必要
+  - `MessageDispatcher::create_mailbox` は public trait method だが、運用規律として `MessageDispatcherShared::attach` 経由以外から直接呼ばない前提で扱う
 - 影響 API:
   - `MessageDispatcher` trait (new, CQS 準拠)
   - `MessageDispatcherShared` struct (new, AShared パターン)

@@ -1,4 +1,10 @@
-## MODIFIED Requirements
+## REMOVED Requirements
+
+### Requirement: executor 系は internal backend primitive としてのみ扱われる
+
+先行 change が定義した `DispatchExecutor` / `DispatchExecutorRunner` 中心の backend primitive 契約は、この redesign では維持しない。
+
+## ADDED Requirements
 
 ### Requirement: `Executor` trait は CQS 準拠の internal primitive として再定義される
 
@@ -18,7 +24,7 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 - **AND** `Clone` を実装する（`ArcShared::clone` ベース）
 - **AND** `SharedAccess<Box<dyn Executor>>` を実装し、`with_read` / `with_write` を提供する
 - **AND** convenience メソッド `execute(&self, task)` / `shutdown(&self)` / `supports_blocking(&self) -> bool` を提供する
-- **AND** 既存 `ActorRefSenderShared` と同じパターンに従っている
+- **AND** 既存の AShared 系 (`ActorFactoryShared` など) と同じパターンに従っている
 
 #### Scenario: DispatchExecutorRunner は存在しない
 - **WHEN** `core::kernel::dispatch` 配下を確認する
