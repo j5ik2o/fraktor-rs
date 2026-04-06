@@ -50,13 +50,13 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
   // Client A → Server A
   let (client_inbound_a, _) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let client_a = TcpClient::connect(addr_a.to_string(), client_inbound_a).await.unwrap();
-  let pdu_a = EnvelopePdu::new("/user/svc-a".into(), None, 1, 1, Bytes::from_static(b"to-a"));
+  let pdu_a = EnvelopePdu::new("/user/svc-a".into(), None, 1, 0, 1, Bytes::from_static(b"to-a"));
   client_a.send(WireFrame::Envelope(pdu_a.clone())).unwrap();
 
   // Client B → Server B
   let (client_inbound_b, _) = mpsc::unbounded_channel::<InboundFrameEvent>();
   let client_b = TcpClient::connect(addr_b.to_string(), client_inbound_b).await.unwrap();
-  let pdu_b = EnvelopePdu::new("/user/svc-b".into(), None, 2, 1, Bytes::from_static(b"to-b"));
+  let pdu_b = EnvelopePdu::new("/user/svc-b".into(), None, 2, 0, 1, Bytes::from_static(b"to-b"));
   client_b.send(WireFrame::Envelope(pdu_b.clone())).unwrap();
 
   // Wait for both servers to receive their frames.
@@ -66,9 +66,9 @@ async fn two_independent_servers_route_frames_to_distinct_remotes() {
   assert_eq!(event_a.frame, WireFrame::Envelope(pdu_a));
   assert_eq!(event_b.frame, WireFrame::Envelope(pdu_b));
 
-  // Suppress the unused TcpServer reference; we used the manual accept loop
-  // above so the server type itself only needs a smoke construction.
-  let _ = TcpServer::new("127.0.0.1:0".into());
+  // Smoke-construct the unused TcpServer; we used the manual accept loop
+  // above so the server type itself only needs to compile.
+  drop(TcpServer::new("127.0.0.1:0".into()));
 
   accept_a.await.unwrap();
   accept_b.await.unwrap();

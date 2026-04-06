@@ -6,7 +6,7 @@ use crate::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
 
 #[test]
 fn wire_frame_codec_roundtrips_envelope() {
-  let pdu = EnvelopePdu::new("/user/a".into(), None, 42, 1, Bytes::from_static(b"hello"));
+  let pdu = EnvelopePdu::new("/user/a".into(), None, 42, 0, 1, Bytes::from_static(b"hello"));
   let frame = WireFrame::Envelope(pdu.clone());
 
   let mut codec = WireFrameCodec::new();
@@ -59,7 +59,7 @@ fn wire_frame_codec_roundtrips_ack() {
 
 #[test]
 fn wire_frame_codec_returns_none_on_incomplete_frame() {
-  let pdu = EnvelopePdu::new("/user/a".into(), None, 1, 0, Bytes::new());
+  let pdu = EnvelopePdu::new("/user/a".into(), None, 1, 0, 0, Bytes::new());
   let frame = WireFrame::Envelope(pdu);
 
   let mut codec = WireFrameCodec::new();
@@ -75,8 +75,8 @@ fn wire_frame_codec_returns_none_on_incomplete_frame() {
 
 #[test]
 fn wire_frame_codec_handles_multiple_frames_in_one_buffer() {
-  let a = WireFrame::Envelope(EnvelopePdu::new("/a".into(), None, 1, 0, Bytes::new()));
-  let b = WireFrame::Envelope(EnvelopePdu::new("/b".into(), None, 2, 1, Bytes::new()));
+  let a = WireFrame::Envelope(EnvelopePdu::new("/a".into(), None, 1, 0, 0, Bytes::new()));
+  let b = WireFrame::Envelope(EnvelopePdu::new("/b".into(), None, 2, 0, 1, Bytes::new()));
 
   let mut codec = WireFrameCodec::new();
   let mut buf = BytesMut::new();
@@ -127,7 +127,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
   let client = TcpClient::connect(bind_addr.to_string(), client_inbound_tx).await.unwrap();
 
   // Send a frame.
-  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 1, Bytes::from_static(b"hi"));
+  let pdu = EnvelopePdu::new("/user/echo".into(), None, 0x1234, 0, 1, Bytes::from_static(b"hi"));
   client.send(WireFrame::Envelope(pdu.clone())).unwrap();
 
   // Wait for the frame to land on the server side.

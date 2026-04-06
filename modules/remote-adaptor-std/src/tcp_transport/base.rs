@@ -213,10 +213,11 @@ fn build_envelope_frame(envelope: &OutboundEnvelope) -> WireFrame {
   let recipient_path = envelope.recipient().to_string();
   let sender_path = envelope.sender().map(ToString::to_string);
   let priority = envelope.priority().to_wire();
-  let correlation_id = envelope.correlation_id().to_u128() as u64;
+  let correlation = envelope.correlation_id();
   // Phase B minimum: an empty payload placeholder. The actual serialisation
   // of `AnyMessage` is a responsibility of the association_runtime layer
   // added in Section 19, which will invoke the serialization extension.
-  let pdu = EnvelopePdu::new(recipient_path, sender_path, correlation_id, priority, bytes::Bytes::new());
+  let pdu =
+    EnvelopePdu::new(recipient_path, sender_path, correlation.hi(), correlation.lo(), priority, bytes::Bytes::new());
   WireFrame::Envelope(pdu)
 }

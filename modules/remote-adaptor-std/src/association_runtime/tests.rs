@@ -94,7 +94,7 @@ fn registry_iter_yields_all_entries() {
 // ---------------------------------------------------------------------------
 
 fn sample_envelope_pdu(seq_for_payload: u64) -> EnvelopePdu {
-  EnvelopePdu::new("/user/x".into(), None, seq_for_payload, 0, Bytes::from_static(b"data"))
+  EnvelopePdu::new("/user/x".into(), None, seq_for_payload, 0, 0, Bytes::from_static(b"data"))
 }
 
 #[test]
