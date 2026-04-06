@@ -14,7 +14,7 @@ use crate::core::kernel::{
     deploy::Deployer,
     error::ActorError,
   },
-  util::futures::ActorFutureShared,
+  system::TerminationSignal,
 };
 
 /// Shared wrapper that provides thread-safe access to an [`ActorRefProvider`]
@@ -193,9 +193,9 @@ impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<
     guard.temp_actor(name)
   }
 
-  fn termination_future(&self) -> ActorFutureShared<()> {
+  fn termination_signal(&self) -> TerminationSignal {
     let guard = self.inner.lock();
-    guard.termination_future()
+    guard.termination_signal()
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {

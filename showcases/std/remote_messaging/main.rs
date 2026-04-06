@@ -27,7 +27,6 @@ use fraktor_actor_rs::core::kernel::{
   },
   serialization::SerializationExtensionInstaller,
   system::{ActorSystem, remote::RemotingConfig},
-  util::futures::ActorFutureListener,
 };
 use fraktor_remote_rs::core::{
   RemotingExtensionInstaller,
@@ -147,8 +146,8 @@ async fn main() -> Result<()> {
   println!("\n--- シャットダウン ---");
   sender.terminate().map_err(|e| anyhow!("terminate sender: {e:?}"))?;
   receiver.terminate().map_err(|e| anyhow!("terminate receiver: {e:?}"))?;
-  ActorFutureListener::new(sender.when_terminated()).await;
-  ActorFutureListener::new(receiver.when_terminated()).await;
+  sender.when_terminated().await;
+  receiver.when_terminated().await;
 
   println!("=== Demo complete ===");
   Ok(())

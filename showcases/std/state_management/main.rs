@@ -9,9 +9,9 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example state_management`
 
+use fraktor_actor_adaptor_rs::std::StdBlocker;
 use fraktor_actor_rs::core::typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
 use fraktor_showcases_std::support;
-use fraktor_utils_rs::core::sync::SharedAccess;
 
 // =============================================================================
 // パート 1: カウンターアクター（イミュータブルな状態遷移）
@@ -125,9 +125,7 @@ fn run_counter() {
   }
 
   system.terminate().expect("terminate");
-  while !termination.with_read(|af| af.is_ready()) {
-    thread::yield_now();
-  }
+  termination.wait_blocking(&StdBlocker::new());
 }
 
 fn run_gate() {
@@ -163,7 +161,5 @@ fn run_gate() {
   gate.tell(GateCommand::Shutdown);
 
   system.terminate().expect("terminate");
-  while !termination.with_read(|af| af.is_ready()) {
-    thread::yield_now();
-  }
+  termination.wait_blocking(&StdBlocker::new());
 }

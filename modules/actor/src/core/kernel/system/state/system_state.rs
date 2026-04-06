@@ -23,10 +23,10 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::PathIdentity;
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle,
-  ActorRefProviderShared, ActorRefProviders, AskFutures, AuthorityState, CellsShared, Extensions, ExtraTopLevels,
-  GuardianKind, GuardiansState, Registries, RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHookDynShared,
-  RemotingConfig, TempActors,
+  super::termination_state::TerminationState, ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller,
+  ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared, ActorRefProviders, AskFutures,
+  AuthorityState, CellsShared, Extensions, ExtraTopLevels, GuardianKind, GuardiansState, Registries,
+  RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHookDynShared, RemotingConfig, TempActors,
 };
 use crate::core::kernel::{
   actor::{
@@ -85,9 +85,7 @@ pub struct SystemState {
   system_guardian_alive: AtomicBool,
   user_guardian_alive: AtomicBool,
   ask_futures: AskFutures,
-  termination: ActorFutureShared<()>,
-  terminated: AtomicBool,
-  terminating: AtomicBool,
+  termination_state: ArcShared<TerminationState>,
   root_started: AtomicBool,
   event_stream: EventStreamShared,
   dead_letter: DeadLetterShared,
@@ -140,9 +138,7 @@ impl SystemState {
       system_guardian_alive: AtomicBool::new(false),
       user_guardian_alive: AtomicBool::new(false),
       ask_futures: AskFutures::default(),
-      termination: ActorFutureShared::<()>::new(),
-      terminated: AtomicBool::new(false),
-      terminating: AtomicBool::new(false),
+      termination_state: ArcShared::new(TerminationState::new()),
       root_started: AtomicBool::new(false),
       event_stream,
       dead_letter,
@@ -561,13 +557,13 @@ impl SystemState {
   /// Returns `true` if this call initiated termination, `false` if another caller has already done
   /// so.
   pub fn begin_termination(&self) -> bool {
-    !self.terminating.swap(true, Ordering::AcqRel)
+    self.termination_state.begin_termination()
   }
 
   /// Indicates whether the system is currently terminating.
   #[must_use]
   pub fn is_terminating(&self) -> bool {
-    self.terminating.load(Ordering::Acquire)
+    self.termination_state.is_terminating()
   }
 
   #[must_use]
@@ -754,29 +750,21 @@ impl SystemState {
     self.dead_letter.record_send_error(recipient, error, timestamp);
   }
 
-  /// Marks the system as terminated and completes the termination future.
+  /// Marks the system as terminated and wakes all observers.
   pub(crate) fn mark_terminated(&self) {
-    self.terminating.store(true, Ordering::Release);
-    if self.terminated.swap(true, Ordering::AcqRel) {
-      return;
-    }
-    // ロック中に完了させ、wake はロック外で行ってデッドロックを避ける
-    let waker = self.termination.with_write(|af| af.complete(()));
-    if let Some(w) = waker {
-      w.wake();
-    }
+    self.termination_state.mark_terminated();
   }
 
-  /// Returns a future that resolves once the actor system terminates.
+  /// Returns a shared reference to the termination state.
   #[must_use]
-  pub(crate) fn termination_future(&self) -> ActorFutureShared<()> {
-    self.termination.clone()
+  pub(crate) fn termination_state(&self) -> ArcShared<TerminationState> {
+    self.termination_state.clone()
   }
 
   /// Indicates whether the actor system has terminated.
   #[must_use]
   pub fn is_terminated(&self) -> bool {
-    self.terminated.load(Ordering::Acquire)
+    self.termination_state.is_terminated()
   }
 
   /// Returns a monotonic timestamp for instrumentation.

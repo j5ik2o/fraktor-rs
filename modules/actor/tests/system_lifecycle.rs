@@ -14,7 +14,7 @@ use fraktor_actor_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct Start;
 
@@ -27,8 +27,8 @@ fn terminate_signals_future() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  system.run_until_terminated();
-  assert!(termination.with_read(|af| af.is_ready()));
+  system.run_until_terminated(&fraktor_actor_rs::core::kernel::system::SpinBlocker);
+  assert!(termination.is_terminated());
 }
 
 #[test]

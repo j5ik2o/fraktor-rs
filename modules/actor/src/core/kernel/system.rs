@@ -23,6 +23,12 @@ mod reservation_policy;
 /// System state related types.
 pub mod state;
 mod temp_actors;
+mod termination_state;
+
+mod blocker;
+mod spin_blocker;
+mod termination_future;
+mod termination_signal;
 
 mod coordinated_shutdown;
 mod coordinated_shutdown_error;
@@ -36,6 +42,7 @@ pub use actor_path_registry::ActorPathRegistry;
 pub use actor_system_build_error::ActorSystemBuildError;
 pub use actor_system_weak::ActorSystemWeak;
 pub use base::ActorSystem;
+pub use blocker::Blocker;
 pub use coordinated_shutdown::CoordinatedShutdown;
 pub use coordinated_shutdown_error::CoordinatedShutdownError;
 pub use coordinated_shutdown_id::CoordinatedShutdownId;
@@ -45,3 +52,6 @@ pub use coordinated_shutdown_reason::CoordinatedShutdownReason;
 pub use extended_actor_system::ExtendedActorSystem;
 pub use register_extra_top_level_error::RegisterExtraTopLevelError;
 pub use reservation_policy::ReservationPolicy;
+pub use spin_blocker::SpinBlocker;
+pub use termination_future::TerminationFuture;
+pub use termination_signal::TerminationSignal;

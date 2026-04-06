@@ -332,7 +332,7 @@ fn typed_behaviors_receive_signal_notifications() {
   );
   let system = TypedActorSystem::<LifecycleCommand>::new(&props, tick_driver).expect("system");
   system.terminate().expect("terminate");
-  system.as_untyped().run_until_terminated();
+  system.as_untyped().run_until_terminated(&crate::core::kernel::system::SpinBlocker);
 
   assert_eq!(started.load(Ordering::SeqCst), 1);
   assert_eq!(post_stop.load(Ordering::SeqCst), 1);

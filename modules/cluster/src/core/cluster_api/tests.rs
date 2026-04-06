@@ -769,8 +769,8 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_future(&self) -> fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared<()> {
-    fraktor_actor_rs::core::kernel::util::futures::ActorFutureShared::new()
+  fn termination_signal(&self) -> fraktor_actor_rs::core::kernel::system::TerminationSignal {
+    fraktor_actor_rs::core::kernel::system::TerminationSignal::already_terminated()
   }
 }
 

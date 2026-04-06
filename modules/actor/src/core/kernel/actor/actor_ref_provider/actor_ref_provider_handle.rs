@@ -11,7 +11,7 @@ use crate::core::kernel::{
     deploy::Deployer,
     error::ActorError,
   },
-  util::futures::ActorFutureShared,
+  system::TerminationSignal,
 };
 
 /// Handle wrapper that combines a provider with its supported schemes.
@@ -125,8 +125,8 @@ where
     self.provider.temp_actor(name)
   }
 
-  fn termination_future(&self) -> ActorFutureShared<()> {
-    self.provider.termination_future()
+  fn termination_signal(&self) -> TerminationSignal {
+    self.provider.termination_signal()
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {

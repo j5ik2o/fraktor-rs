@@ -21,10 +21,9 @@ use fraktor_actor_rs::core::kernel::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   system::{
-    ActorSystem, ActorSystemWeak,
+    ActorSystem, ActorSystemWeak, TerminationSignal,
     remote::{RemoteAuthorityError, RemoteWatchHook},
   },
-  util::futures::ActorFutureShared,
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 use hashbrown::HashMap;
@@ -414,8 +413,8 @@ impl ActorRefProvider for LoopbackActorRefProvider {
     <Self as SharedRemoteActorRefProvider>::temp_actor(self, name)
   }
 
-  fn termination_future(&self) -> ActorFutureShared<()> {
-    <Self as SharedRemoteActorRefProvider>::termination_future(self)
+  fn termination_signal(&self) -> TerminationSignal {
+    <Self as SharedRemoteActorRefProvider>::termination_signal(self)
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {

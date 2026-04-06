@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   kernel::{
@@ -557,19 +557,21 @@ fn log_returns_facade_that_emits_log_events() {
 
 #[test]
 fn get_when_terminated_tracks_same_lifecycle_as_when_terminated() {
-  // Given: a typed actor system and both termination futures
+  // Given: a typed actor system and both termination signals
   let system = new_test_system();
-  let scala_future = system.when_terminated();
-  let _java_future = system.get_when_terminated();
+  let signal = system.when_terminated();
+  let alias_signal = system.get_when_terminated();
 
-  // When/Then: the Scala future is not ready before termination
-  assert!(!scala_future.with_read(|future| future.is_ready()));
+  // When/Then: neither signal is terminated before termination
+  assert!(!signal.is_terminated());
+  assert!(!alias_signal.is_terminated());
 
   // When: the actor system is terminated
   system.terminate().expect("terminate");
 
-  // Then: the Scala future becomes ready and the Java alias remains callable
-  assert!(scala_future.with_read(|future| future.is_ready()));
+  // Then: both signals observe the same terminated state
+  assert!(signal.is_terminated());
+  assert!(alias_signal.is_terminated());
 }
 
 // --- T13: TypedActorSystem parity surface for Phase 2 system endpoints ---

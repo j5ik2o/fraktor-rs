@@ -103,7 +103,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");
-  system.run_until_terminated();
+  system.run_until_terminated(&fraktor_actor_rs::core::kernel::system::SpinBlocker);
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

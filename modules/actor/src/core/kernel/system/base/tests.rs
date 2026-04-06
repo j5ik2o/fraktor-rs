@@ -412,8 +412,8 @@ fn actor_system_emit_log() {
 #[test]
 fn actor_system_when_terminated() {
   let system = ActorSystem::new_empty();
-  let future = system.when_terminated();
-  assert!(!future.with_read(|af| af.is_ready()));
+  let signal = system.when_terminated();
+  assert!(!signal.is_terminated());
 }
 
 #[test]
@@ -857,8 +857,8 @@ impl ActorRefProvider for DummyActorRefProvider {
     Ok(ActorRef::null())
   }
 
-  fn termination_future(&self) -> crate::core::kernel::util::futures::ActorFutureShared<()> {
-    crate::core::kernel::util::futures::ActorFutureShared::new()
+  fn termination_signal(&self) -> crate::core::kernel::system::TerminationSignal {
+    crate::core::kernel::system::TerminationSignal::already_terminated()
   }
 }
 

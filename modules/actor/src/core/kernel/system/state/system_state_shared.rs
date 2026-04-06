@@ -48,7 +48,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{ActorSystemBuildError, RegisterExtraTopLevelError},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
   util::futures::ActorFutureShared,
 };
 
@@ -66,7 +66,7 @@ pub struct SystemStateShared {
   event_stream:        EventStreamShared,
   dead_letter:         DeadLetterShared,
   cells:               CellsShared,
-  termination:         ActorFutureShared<()>,
+  termination_signal:  TerminationSignal,
   remote_watch_hook:   RemoteWatchHookDynShared,
   scheduler:           SchedulerShared,
   delay_provider:      SchedulerBackedDelayProvider,
@@ -86,7 +86,7 @@ impl Clone for SystemStateShared {
       event_stream:        self.event_stream.clone(),
       dead_letter:         self.dead_letter.clone(),
       cells:               self.cells.clone(),
-      termination:         self.termination.clone(),
+      termination_signal:  self.termination_signal.clone(),
       remote_watch_hook:   self.remote_watch_hook.clone(),
       scheduler:           self.scheduler.clone(),
       delay_provider:      self.delay_provider.clone(),
@@ -108,7 +108,7 @@ impl SystemStateShared {
     let event_stream = state.event_stream();
     let dead_letter = state.dead_letter_store();
     let cells = state.cells_handle();
-    let termination = state.termination_future();
+    let termination_signal = TerminationSignal::new(state.termination_state());
     let remote_watch_hook = state.remote_watch_hook_handle();
     let scheduler = state.scheduler();
     let delay_provider = state.delay_provider();
@@ -125,7 +125,7 @@ impl SystemStateShared {
       event_stream,
       dead_letter,
       cells,
-      termination,
+      termination_signal,
       remote_watch_hook,
       scheduler,
       delay_provider,
@@ -146,7 +146,7 @@ impl SystemStateShared {
     let event_stream = guard.event_stream();
     let dead_letter = guard.dead_letter_store();
     let cells = guard.cells_handle();
-    let termination = guard.termination_future();
+    let termination_signal = TerminationSignal::new(guard.termination_state());
     let remote_watch_hook = guard.remote_watch_hook_handle();
     let scheduler = guard.scheduler();
     let delay_provider = guard.delay_provider();
@@ -163,7 +163,7 @@ impl SystemStateShared {
       event_stream,
       dead_letter,
       cells,
-      termination,
+      termination_signal,
       remote_watch_hook,
       scheduler,
       delay_provider,
@@ -767,10 +767,10 @@ impl SystemStateShared {
     self.inner.read().mark_terminated();
   }
 
-  /// Returns a future that resolves once the actor system terminates.
+  /// Returns a signal that resolves once the actor system terminates.
   #[must_use]
-  pub fn termination_future(&self) -> ActorFutureShared<()> {
-    self.termination.clone()
+  pub fn termination_signal(&self) -> TerminationSignal {
+    self.termination_signal.clone()
   }
 
   /// Drains ask futures that have completed since the previous inspection.

@@ -74,7 +74,7 @@ fn lifecycle_and_log_events_are_published() {
   });
 
   system.terminate().expect("terminate");
-  system.run_until_terminated();
+  system.run_until_terminated(&fraktor_actor_rs::core::kernel::system::SpinBlocker);
 
   wait_until(|| {
     events.lock().iter().any(

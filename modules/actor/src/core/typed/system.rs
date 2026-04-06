@@ -27,7 +27,7 @@ use crate::core::{
       logging::LogLevel,
       stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
     },
-    system::{ActorSystem, state::SystemStateShared},
+    system::{ActorSystem, TerminationSignal, state::SystemStateShared},
     util::futures::ActorFutureShared,
   },
   typed::{
@@ -432,17 +432,17 @@ where
     Ok(TypedActorRef::from_untyped(child.into_actor_ref()))
   }
 
-  /// Returns a future that resolves once the actor system terminates.
+  /// Returns a signal that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ActorFutureShared<()> {
+  pub fn when_terminated(&self) -> TerminationSignal {
     self.inner.when_terminated()
   }
 
-  /// Returns a future that resolves once the actor system terminates.
+  /// Returns a signal that resolves once the actor system terminates.
   ///
   /// Corresponds to Pekko's Java API alias `ActorSystem.getWhenTerminated`.
   #[must_use]
-  pub fn get_when_terminated(&self) -> ActorFutureShared<()> {
+  pub fn get_when_terminated(&self) -> TerminationSignal {
     self.when_terminated()
   }
 

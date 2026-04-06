@@ -8,8 +8,7 @@ use fraktor_actor_rs::core::kernel::{
     deploy::Deployer,
     error::ActorError,
   },
-  system::{ActorSystemWeak, state::SystemStateShared},
-  util::futures::ActorFutureShared,
+  system::{ActorSystemWeak, TerminationSignal, state::SystemStateShared},
 };
 
 use super::remote_error::RemoteActorRefProviderError;
@@ -129,8 +128,8 @@ pub(crate) trait SharedRemoteActorRefProvider {
     self.provider_state()?.temp_actor(name)
   }
 
-  fn termination_future(&self) -> ActorFutureShared<()> {
-    self.provider_state().map_or_else(ActorFutureShared::new, |state| state.termination_future())
+  fn termination_signal(&self) -> TerminationSignal {
+    self.provider_state().map_or_else(TerminationSignal::already_terminated, |state| state.termination_signal())
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {
