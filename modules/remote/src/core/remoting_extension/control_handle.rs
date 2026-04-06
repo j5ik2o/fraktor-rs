@@ -30,9 +30,15 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_utils_rs::core::sync::SharedAccess;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
+#[cfg(feature = "tokio-transport")]
+use super::endpoint_bridge::EndpointBridgeConfig;
 use super::{
-  config::RemotingExtensionConfig, control::RemotingControl, control_backpressure_hook::ControlBackpressureHook,
-  error::RemotingError, lifecycle_state::RemotingLifecycleState,
+  config::RemotingExtensionConfig,
+  control::RemotingControl,
+  control_backpressure_hook::ControlBackpressureHook,
+  endpoint_bridge::{EndpointBridgeFactory, EndpointBridgeHandle},
+  error::RemotingError,
+  lifecycle_state::RemotingLifecycleState,
 };
 #[cfg(feature = "tokio-transport")]
 use crate::core::instrument::RemoteInstrument;
@@ -52,10 +58,6 @@ use crate::core::{
   instrument::flight_recorder::{RemotingFlightRecorder, RemotingFlightRecorderSnapshot},
   remote_authority_snapshot::RemoteAuthoritySnapshot,
   transport::{RemoteTransport, RemoteTransportShared, TransportBackpressureHookShared},
-};
-#[cfg(feature = "tokio-transport")]
-use crate::std::endpoint_transport_bridge::{
-  EndpointTransportBridge, EndpointTransportBridgeConfig, EndpointTransportBridgeHandle,
 };
 
 /// Shared handle used by endpoints and providers to drive remoting.
@@ -106,7 +108,7 @@ impl RemotingControlHandle {
       transport_ref: RuntimeMutex::new(None),
       #[cfg(feature = "tokio-transport")]
       remote_instruments: config.remote_instruments().to_vec(),
-      #[cfg(feature = "tokio-transport")]
+      bridge_factory: RuntimeMutex::new(None),
       endpoint_bridge: RuntimeMutex::new(None),
       #[cfg(feature = "tokio-transport")]
       heartbeat_channels: RuntimeMutex::new(BTreeMap::new()),
@@ -138,6 +140,21 @@ impl RemotingControlHandle {
   fn ensure_can_run(&self) -> Result<(), RemotingError> {
     let guard = self.inner.state.lock();
     guard.ensure_running()
+  }
+
+  /// Registers the bridge factory that bootstraps the endpoint transport bridge.
+  ///
+  /// Adapter crates (e.g. the std adapter) call this before registering the
+  /// transport so that [`try_bootstrap_runtime`](RemotingControlInner::try_bootstrap_runtime)
+  /// can spawn the bridge as soon as the remaining runtime references are wired up.
+  pub fn set_bridge_factory(&self, factory: Box<dyn EndpointBridgeFactory>) {
+    *self.inner.bridge_factory.lock() = Some(factory);
+    if let Err(error) = self.inner.try_bootstrap_runtime(self.clone()) {
+      let msg = format!("failed to bootstrap runtime after bridge factory registration: {error:?}");
+      if let Some(system) = self.inner.system.upgrade() {
+        system.emit_log(LogLevel::Warn, msg, None, None);
+      }
+    }
   }
 
   /// Registers the transport instance used by the runtime.
@@ -342,8 +359,10 @@ struct RemotingControlInner {
   transport_ref:          RuntimeMutex<Option<RemoteTransportShared>>,
   #[cfg(feature = "tokio-transport")]
   remote_instruments:     Vec<Arc<dyn RemoteInstrument>>,
-  #[cfg(feature = "tokio-transport")]
-  endpoint_bridge:        RuntimeMutex<Option<EndpointTransportBridgeHandle>>,
+  #[cfg_attr(not(feature = "tokio-transport"), allow(dead_code))]
+  bridge_factory:         RuntimeMutex<Option<Box<dyn EndpointBridgeFactory>>>,
+  #[cfg_attr(not(feature = "tokio-transport"), allow(dead_code))]
+  endpoint_bridge:        RuntimeMutex<Option<Box<dyn EndpointBridgeHandle>>>,
   #[cfg(feature = "tokio-transport")]
   heartbeat_channels:     RuntimeMutex<BTreeMap<String, TransportChannel>>,
 }
@@ -418,6 +437,10 @@ impl RemotingControlInner {
       if bridge_guard.is_some() {
         return Ok(());
       }
+      let factory_guard = self.bridge_factory.lock();
+      let Some(factory) = factory_guard.as_ref() else {
+        return Ok(());
+      };
       let Some(system) = self.system.upgrade() else {
         return Err(RemotingError::TransportUnavailable("actor system has been dropped".into()));
       };
@@ -428,7 +451,7 @@ impl RemotingControlInner {
         .canonical_port
         .ok_or_else(|| RemotingError::TransportUnavailable("canonical port not configured".into()))?;
       let system_name = system.state().system_name();
-      let config = EndpointTransportBridgeConfig {
+      let config = EndpointBridgeConfig {
         system: system.downgrade(),
         control,
         writer,
@@ -439,15 +462,12 @@ impl RemotingControlInner {
         canonical_port: port,
         system_name,
         remote_instruments: self.remote_instruments.clone(),
-        #[cfg(feature = "tokio-transport")]
         handshake_timeout: self.handshake_timeout,
-        #[cfg(feature = "tokio-transport")]
         shutdown_flush_timeout: self.shutdown_flush_timeout,
         ack_send_window: self.ack_send_window,
         ack_receive_window: self.ack_receive_window,
       };
-      let handle = EndpointTransportBridge::spawn(config)
-        .map_err(|error| RemotingError::TransportUnavailable(format!("{error:?}")))?;
+      let handle = factory.spawn(config)?;
       *bridge_guard = Some(handle);
     }
     #[cfg(not(feature = "tokio-transport"))]

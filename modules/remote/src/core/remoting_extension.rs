@@ -4,6 +4,8 @@ mod config;
 mod control;
 mod control_backpressure_hook;
 mod control_handle;
+/// Bridge configuration and factory/handle traits used by transport adapters.
+pub mod endpoint_bridge;
 mod error;
 mod lifecycle_state;
 #[cfg(all(test, feature = "std"))]

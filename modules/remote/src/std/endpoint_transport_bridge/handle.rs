@@ -1,5 +1,7 @@
 use tokio::task::JoinHandle;
 
+use crate::core::remoting_extension::endpoint_bridge::EndpointBridgeHandle;
+
 /// Handle controlling bridge background tasks.
 pub struct EndpointTransportBridgeHandle {
   pub(super) send_task: JoinHandle<()>,
@@ -12,6 +14,8 @@ impl EndpointTransportBridgeHandle {
     self.send_task.await
   }
 }
+
+impl EndpointBridgeHandle for EndpointTransportBridgeHandle {}
 
 #[cfg(test)]
 mod tests {
