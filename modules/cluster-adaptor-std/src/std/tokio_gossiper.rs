@@ -1,8 +1,5 @@
 //! Tokio-based gossiper implementation.
 
-#[cfg(test)]
-mod tests;
-
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
@@ -11,8 +8,12 @@ use fraktor_utils_rs::core::time::TimerInstant;
 use tokio::sync::oneshot;
 
 use crate::std::{
-  MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport, tokio_gossiper_config::TokioGossiperConfig,
+  membership_coordinator_driver::MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport,
+  tokio_gossiper_config::TokioGossiperConfig,
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Tokio-based gossiper.
 pub struct TokioGossiper {

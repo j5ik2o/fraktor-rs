@@ -1,12 +1,12 @@
 //! Wire representation of a membership node record.
 
-#[cfg(test)]
-mod tests;
-
 use alloc::{string::String, vec::Vec};
 
 use fraktor_cluster_core_rs::core::membership::{MembershipVersion, NodeRecord, NodeStatus};
 use serde::{Deserialize, Serialize};
+
+#[cfg(test)]
+mod tests;
 
 /// Wire representation of a node record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,8 +1,5 @@
 //! Tokio-based gossip transport.
 
-#[cfg(test)]
-mod tests;
-
 use alloc::{
   string::{String, ToString},
   vec::Vec,
@@ -16,6 +13,9 @@ use fraktor_cluster_core_rs::core::membership::{
 use tokio::{net::UdpSocket, sync::mpsc};
 
 use crate::std::{gossip_wire_delta_v1::GossipWireDeltaV1, tokio_gossip_transport_config::TokioGossipTransportConfig};
+
+#[cfg(test)]
+mod tests;
 
 struct OutboundPacket {
   target:  SocketAddr,

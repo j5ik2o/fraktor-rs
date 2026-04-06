@@ -10,8 +10,8 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_cluster_core_rs::core::{
   ClusterApi,
   pub_sub::{
-    DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubConfig,
-    PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
+    DeliverBatchRequest, DeliveryEndpoint, DeliveryReport, DeliveryStatus, PubSubAutoRespondBatch, PubSubBatch,
+    PubSubConfig, PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
   },
 };
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -71,7 +71,7 @@ impl DeliveryEndpoint for PubSubDeliveryActor {
 
 fn deserialize_batch(
   registry: &ArcShared<SerializationRegistry>,
-  batch: &fraktor_cluster_core_rs::core::pub_sub::PubSubBatch,
+  batch: &PubSubBatch,
 ) -> Result<Vec<AnyMessage>, SerializationError> {
   let mut messages = Vec::with_capacity(batch.envelopes.len());
   for envelope in &batch.envelopes {

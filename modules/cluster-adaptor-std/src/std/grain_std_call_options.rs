@@ -4,6 +4,9 @@ use core::time::Duration;
 
 use fraktor_cluster_core_rs::core::grain::{GrainCallOptions, GrainRetryPolicy};
 
+#[cfg(test)]
+mod tests;
+
 /// Returns the std default call options (mirrors core defaults).
 #[must_use]
 pub fn default_grain_call_options() -> GrainCallOptions {
@@ -21,6 +24,3 @@ pub fn call_options_with_timeout(timeout: Duration) -> GrainCallOptions {
 pub fn call_options_with_retry(timeout: Duration, retry: GrainRetryPolicy) -> GrainCallOptions {
   GrainCallOptions::new(Some(timeout), retry)
 }
-
-#[cfg(test)]
-mod tests;
