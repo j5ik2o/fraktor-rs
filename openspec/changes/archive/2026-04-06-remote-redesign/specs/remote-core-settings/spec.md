@@ -14,10 +14,10 @@
 - **WHEN** Phase A 完了時点の `RemoteSettings` のフィールドを検査する
 - **THEN** `canonical_host: String`・`canonical_port: Option<u16>`・`handshake_timeout: Duration`・`shutdown_flush_timeout: Duration`・`flight_recorder_capacity: usize` を含む
 
-#### Scenario: ack 関連フィールドの Phase A 時点での不在
+#### Scenario: Phase B で追加される ack 関連フィールド
 
-- **WHEN** Phase A 完了時点の `RemoteSettings` のフィールドを検査する
-- **THEN** `ack_send_window`・`ack_receive_window` 等の ack-based redelivery 関連フィールドは存在しない (Phase B で adapter 側に `system_message_delivery` 機構が追加されるタイミングで、本 capability の後続 delta として追加する)
+- **WHEN** Phase B 完了時点の `RemoteSettings` のフィールドを検査する
+- **THEN** `ack_send_window: u32`・`ack_receive_window: u32` が追加されており、それぞれ `with_ack_send_window` / `with_ack_receive_window` builder メソッドと accessor を持つ。adapter 側 `system_message_delivery` 機構と組み合わせて使う
 
 ### Requirement: コンストラクタ
 
