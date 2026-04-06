@@ -10,7 +10,7 @@
 use core::{any::Any, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
-use fraktor_persistence_rs::core::{
+use fraktor_persistence_core_rs::core::{
   AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery,
 };
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};

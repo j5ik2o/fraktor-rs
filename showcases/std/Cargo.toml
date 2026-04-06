@@ -15,7 +15,7 @@ bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }
 
 # advanced 依存（cross-module examples 用）
-fraktor-persistence-rs = { workspace = true, features = ["std"], optional = true }
+fraktor-persistence-core-rs = { workspace = true, features = ["std"], optional = true }
 fraktor-remote-rs = { workspace = true, features = ["std", "tokio-transport", "tokio-executor", "test-support"], optional = true }
 fraktor-cluster-rs = { workspace = true, features = ["std", "test-support"], optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
@@ -24,7 +24,7 @@ anyhow = { workspace = true, optional = true }
 [features]
 default = []
 advanced = [
-    "dep:fraktor-persistence-rs",
+    "dep:fraktor-persistence-core-rs",
     "dep:fraktor-remote-rs",
     "dep:fraktor-cluster-rs",
     "dep:tokio",
