@@ -1,9 +1,9 @@
 use alloc::boxed::Box;
 
 use super::{
-  dispatcher_config::DispatcherConfig, dispatcher_provider::DispatcherProvider,
+  configured_dispatcher_builder::ConfiguredDispatcherBuilder, dispatcher_provider::DispatcherProvider,
   dispatcher_provision_request::DispatcherProvisionRequest, dispatcher_settings::DispatcherSettings,
-  dispatcher_trait::Dispatcher, inline_executor::InlineExecutor,
+  dispatcher_builder::DispatcherBuilder, inline_executor::InlineExecutor,
 };
 use crate::core::kernel::actor::spawn::SpawnError;
 
@@ -22,7 +22,7 @@ impl DispatcherProvider for InlineDispatcherProvider {
     &self,
     settings: &DispatcherSettings,
     _request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn Dispatcher>, SpawnError> {
-    Ok(Box::new(DispatcherConfig::from_executor_with_settings(Box::new(InlineExecutor::new()), settings.clone())))
+  ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(Box::new(InlineExecutor::new()), settings.clone())))
   }
 }

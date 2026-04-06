@@ -6,14 +6,14 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use crate::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::{
-    dispatcher::{Dispatcher, DispatcherConfig, InlineExecutor},
+    dispatcher::{DispatcherBuilder, ConfiguredDispatcherBuilder, InlineExecutor},
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
 };
 
 #[test]
 fn dispatcher_config_records_deadlines() {
-  let config = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()))
+  let config = ConfiguredDispatcherBuilder::from_executor(Box::new(InlineExecutor::new()))
     .with_throughput_deadline(Some(Duration::from_millis(1)))
     .with_starvation_deadline(Some(Duration::from_millis(5)));
 
@@ -24,7 +24,7 @@ fn dispatcher_config_records_deadlines() {
 #[test]
 fn dispatcher_config_builds_dispatcher_with_deadlines() {
   let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-  let config = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()))
+  let config = ConfiguredDispatcherBuilder::from_executor(Box::new(InlineExecutor::new()))
     .with_throughput_deadline(Some(Duration::from_micros(1)))
     .with_starvation_deadline(Some(Duration::from_micros(2)));
 
@@ -36,7 +36,7 @@ fn dispatcher_config_builds_dispatcher_with_deadlines() {
 #[test]
 fn dispatcher_config_rejects_block_strategy_with_inline_executor() {
   // InlineExecutor does not support blocking operations
-  let config = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()));
+  let config = ConfiguredDispatcherBuilder::from_executor(Box::new(InlineExecutor::new()));
 
   // Create a bounded mailbox with Block overflow strategy
   let capacity = NonZeroUsize::new(10).expect("capacity should be non-zero");
@@ -61,7 +61,7 @@ fn dispatcher_config_rejects_block_strategy_with_inline_executor() {
 #[test]
 fn dispatcher_config_accepts_drop_strategy_with_inline_executor() {
   // InlineExecutor でも DropNewest/DropOldest は使用可能
-  let config = DispatcherConfig::from_executor(Box::new(InlineExecutor::new()));
+  let config = ConfiguredDispatcherBuilder::from_executor(Box::new(InlineExecutor::new()));
 
   let capacity = NonZeroUsize::new(10).expect("capacity should be non-zero");
   let policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);

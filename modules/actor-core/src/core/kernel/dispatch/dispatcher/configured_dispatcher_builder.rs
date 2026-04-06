@@ -9,7 +9,7 @@ use crate::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{
-      DispatchExecutor, DispatchExecutorRunner, Dispatcher, DispatcherSettings, DispatcherShared, InlineExecutor,
+      DispatchExecutor, DispatchExecutorRunner, DispatcherBuilder, DispatcherSettings, DispatcherShared, InlineExecutor,
       ScheduleAdapterShared,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy},
@@ -17,18 +17,18 @@ use crate::core::kernel::{
 };
 
 /// Internal backend configuration produced by dispatcher providers.
-pub struct DispatcherConfig {
+pub struct ConfiguredDispatcherBuilder {
   executor: ArcShared<DispatchExecutorRunner>,
   settings: DispatcherSettings,
 }
 
-impl Clone for DispatcherConfig {
+impl Clone for ConfiguredDispatcherBuilder {
   fn clone(&self) -> Self {
     Self { executor: self.executor.clone(), settings: self.settings.clone() }
   }
 }
 
-impl DispatcherConfig {
+impl ConfiguredDispatcherBuilder {
   /// Creates a configuration from an executor.
   #[must_use]
   pub fn from_executor(executor: Box<dyn DispatchExecutor>) -> Self {
@@ -127,7 +127,7 @@ impl DispatcherConfig {
   }
 }
 
-impl Dispatcher for DispatcherConfig {
+impl DispatcherBuilder for ConfiguredDispatcherBuilder {
   fn settings(&self) -> &DispatcherSettings {
     &self.settings
   }
@@ -143,7 +143,7 @@ impl Dispatcher for DispatcherConfig {
   }
 }
 
-impl Default for DispatcherConfig {
+impl Default for ConfiguredDispatcherBuilder {
   fn default() -> Self {
     Self::from_executor(Box::new(InlineExecutor::new()))
   }

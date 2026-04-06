@@ -9,30 +9,30 @@ use fraktor_actor_core_rs::core::kernel::dispatch::{
 };
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use crate::std::dispatch::dispatcher::PinnedDispatcher;
+use crate::std::dispatch::dispatcher::PinnedDispatcherProvider;
 
 #[test]
 fn default_prefix_is_fraktor_pinned() {
-  let pd = PinnedDispatcher::new();
+  let pd = PinnedDispatcherProvider::new();
   assert_eq!(pd.thread_name_prefix(), "fraktor-pinned");
 }
 
 #[test]
 fn custom_prefix_is_preserved() {
-  let pd = PinnedDispatcher::with_thread_name_prefix("my-actor");
+  let pd = PinnedDispatcherProvider::with_thread_name_prefix("my-actor");
   assert_eq!(pd.thread_name_prefix(), "my-actor");
 }
 
 #[test]
 fn default_trait_matches_new() {
-  let a = PinnedDispatcher::new();
-  let b = PinnedDispatcher::default();
+  let a = PinnedDispatcherProvider::new();
+  let b = PinnedDispatcherProvider::default();
   assert_eq!(a.thread_name_prefix(), b.thread_name_prefix());
 }
 
 #[test]
 fn provision_returns_dispatcher_that_builds_runtime_dispatcher() {
-  let pd = PinnedDispatcher::new();
+  let pd = PinnedDispatcherProvider::new();
   let request = DispatcherProvisionRequest::new("pinned").with_actor_name("worker");
   let dispatcher = pd.provision(&DispatcherSettings::default(), &request).expect("provision");
   let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
@@ -42,7 +42,7 @@ fn provision_returns_dispatcher_that_builds_runtime_dispatcher() {
 
 #[test]
 fn each_provision_creates_independent_dispatchers() {
-  let pd = PinnedDispatcher::new();
+  let pd = PinnedDispatcherProvider::new();
   let settings = DispatcherSettings::default();
   let a = pd
     .provision(&settings, &DispatcherProvisionRequest::new("pinned").with_actor_name("worker-a"))
@@ -61,6 +61,6 @@ fn each_provision_creates_independent_dispatchers() {
 #[test]
 fn string_into_prefix() {
   let owned: String = String::from("owned-prefix");
-  let pd = PinnedDispatcher::with_thread_name_prefix(owned);
+  let pd = PinnedDispatcherProvider::with_thread_name_prefix(owned);
   assert_eq!(pd.thread_name_prefix(), "owned-prefix");
 }

@@ -31,7 +31,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DispatchError, DispatchExecutor, DispatchShared, Dispatcher, DispatcherConfig, DispatcherProvider,
+      DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider,
       DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
     },
     mailbox::MailboxMessage,
@@ -886,8 +886,8 @@ impl DispatcherProvider for NoopDispatcherProvider {
     &self,
     settings: &DispatcherSettings,
     _request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn Dispatcher>, crate::core::kernel::actor::spawn::SpawnError> {
-    Ok(Box::new(DispatcherConfig::from_executor_with_settings(Box::new(NoopExecutor), settings.clone())))
+  ) -> Result<Box<dyn DispatcherBuilder>, crate::core::kernel::actor::spawn::SpawnError> {
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(Box::new(NoopExecutor), settings.clone())))
   }
 }
 

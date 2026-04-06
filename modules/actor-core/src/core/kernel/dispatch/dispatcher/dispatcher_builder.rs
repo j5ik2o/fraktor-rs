@@ -7,7 +7,7 @@ use crate::core::kernel::{
 };
 
 /// Provisioned dispatcher instance for a single actor bootstrap.
-pub trait Dispatcher: Send + Sync {
+pub trait DispatcherBuilder: Send + Sync {
   /// Returns the immutable settings snapshot captured for this dispatcher.
   fn settings(&self) -> &DispatcherSettings;
 

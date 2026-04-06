@@ -13,7 +13,7 @@
 #![allow(clippy::print_stdout)]
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::DefaultDispatcher;
+use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::DefaultDispatcherProvider;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -92,7 +92,7 @@ fn build_cluster_node(system_name: &str, port: u16, static_topology: ClusterTopo
   let system_config = ActorSystemConfig::default()
     .with_system_name(system_name.to_string())
     .with_tick_driver(tokio_tick_driver_config())
-    .with_default_dispatcher_entry(DefaultDispatcher::new().into_entry())
+    .with_default_dispatcher_entry(DefaultDispatcherProvider::new().into_entry())
     .with_actor_ref_provider_installer(TokioActorRefProviderInstaller::default())
     .with_remoting_config(RemotingConfig::default().with_canonical_host(HOST).with_canonical_port(port))
     .with_extension_installers(

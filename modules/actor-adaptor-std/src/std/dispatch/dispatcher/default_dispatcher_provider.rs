@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
-    Dispatcher, DispatcherConfig, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
+    DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
     DispatcherSettings, ScheduleAdapterShared,
   },
 };
@@ -15,11 +15,11 @@ use super::{StdScheduleAdapter, dispatch_executor::TokioExecutor};
 
 /// Default std runtime dispatcher policy backed by the current Tokio handle.
 #[derive(Clone)]
-pub struct DefaultDispatcher {
+pub struct DefaultDispatcherProvider {
   handle: Handle,
 }
 
-impl DefaultDispatcher {
+impl DefaultDispatcherProvider {
   /// Creates the default dispatcher policy from the current Tokio runtime.
   ///
   /// # Panics
@@ -48,13 +48,13 @@ impl DefaultDispatcher {
   }
 }
 
-impl DispatcherProvider for DefaultDispatcher {
+impl DispatcherProvider for DefaultDispatcherProvider {
   fn provision(
     &self,
     settings: &DispatcherSettings,
     _request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn Dispatcher>, SpawnError> {
-    Ok(Box::new(DispatcherConfig::from_executor_with_settings(
+  ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(
       Box::new(TokioExecutor::new(self.handle.clone())),
       settings.clone(),
     )))

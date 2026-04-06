@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
-    Dispatcher, DispatcherConfig, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
+    DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
     DispatcherSettings, ScheduleAdapterShared,
   },
 };
@@ -20,11 +20,11 @@ use super::{StdScheduleAdapter, pinned_executor::PinnedExecutor};
 static PINNED_THREAD_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Dispatcher policy that dedicates a single execution lane to each actor.
-pub struct PinnedDispatcher {
+pub struct PinnedDispatcherProvider {
   thread_name_prefix: String,
 }
 
-impl PinnedDispatcher {
+impl PinnedDispatcherProvider {
   /// Default thread-name prefix used when none is specified.
   const DEFAULT_PREFIX: &'static str = "fraktor-pinned";
 
@@ -57,22 +57,22 @@ impl PinnedDispatcher {
   }
 }
 
-impl Default for PinnedDispatcher {
+impl Default for PinnedDispatcherProvider {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl DispatcherProvider for PinnedDispatcher {
+impl DispatcherProvider for PinnedDispatcherProvider {
   fn provision(
     &self,
     settings: &DispatcherSettings,
     request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn Dispatcher>, SpawnError> {
+  ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
     let seq = PINNED_THREAD_COUNTER.fetch_add(1, Ordering::Relaxed);
     let actor_name = request.actor_name().unwrap_or(request.dispatcher_id());
     let name = format!("{}-{}-{seq}", self.thread_name_prefix, actor_name);
-    Ok(Box::new(DispatcherConfig::from_executor_with_settings(
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(
       Box::new(PinnedExecutor::with_name(name)),
       settings.clone(),
     )))
