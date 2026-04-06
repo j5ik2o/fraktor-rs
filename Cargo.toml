@@ -29,9 +29,10 @@ members = [
     "modules/utils",
     "modules/actor-core",
     "modules/actor-adaptor-std",
-    "modules/persistence",
+    "modules/persistence-core",
     "modules/remote",
-    "modules/cluster",
+    "modules/cluster-core",
+    "modules/cluster-adaptor-std",
     "modules/stream-core",
     "modules/stream-adaptor-std",
     "showcases/std",
@@ -64,8 +65,9 @@ let_underscore_must_use = "deny"
 [workspace.dependencies]
 fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.11" }
 fraktor-actor-adaptor-rs = { path = "modules/actor-adaptor-std", version = "0.2.11" }
-fraktor-cluster-rs = { path = "modules/cluster", version = "0.2.11", default-features = false }
-fraktor-persistence-rs = { path = "modules/persistence", version = "0.2.11", default-features = false }
+fraktor-cluster-core-rs = { path = "modules/cluster-core", version = "0.2.11", default-features = false }
+fraktor-cluster-adaptor-rs = { path = "modules/cluster-adaptor-std", version = "0.2.11" }
+fraktor-persistence-core-rs = { path = "modules/persistence-core", version = "0.2.11", default-features = false }
 fraktor-remote-rs = { path = "modules/remote", version = "0.2.11", default-features = false }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }

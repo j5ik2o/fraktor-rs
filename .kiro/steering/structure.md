@@ -3,7 +3,7 @@
 updated_at: 2026-02-22T14:07:25Z
 
 ## 組織方針
-- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-core-rs`）、`modules/remote`（`fraktor-remote-rs`）、`modules/cluster`（`fraktor-cluster-rs`）、`modules/stream`（`fraktor-stream-core-rs`）、`modules/persistence`（`fraktor-persistence-rs`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（default `#![no_std]`）と `std` モジュールを持ち、persistence は現時点で `core` 中心の公開構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std → cluster/core → cluster/std の一方通行に固定します。streams と persistence は actor に依存します。
+- ワークスペースは `modules/utils`（`fraktor-utils-rs`）、`modules/actor`（`fraktor-actor-core-rs`）、`modules/remote`（`fraktor-remote-rs`）、`modules/cluster`（`fraktor-cluster-core-rs`）、`modules/stream`（`fraktor-stream-core-rs`）、`modules/persistence`（`fraktor-persistence-core-rs`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（default `#![no_std]`）と `std` モジュールを持ち、persistence は現時点で `core` 中心の公開構成です。依存方向は utils/core → actor/core → actor/std → remote/core → remote/std → cluster/core → cluster/std の一方通行に固定します。streams と persistence は actor に依存します。
 - 各モジュールは Rust 2024 edition 上で、2018 スタイルのファイルツリー（`foo.rs` + `foo/` ディレクトリ）を維持し、`mod.rs` を使用しません。
 - `type-per-file-lint` により 1 ファイル 1 構造体/trait を原則とし、テストは `hoge/tests.rs` へ分離します。
 - 公開 API に限り `prelude` を許容し、内部は FQCN (`crate::...`) で明示的に依存をたどります。
@@ -12,7 +12,7 @@ updated_at: 2026-02-22T14:07:25Z
 ## ディレクトリパターン
 ### ランタイムクレート階層
 **Location**: `modules/utils/src/{core,std}`, `modules/actor/src/{core,std}`, `modules/remote/src/{core,std}`, `modules/cluster/src/{core,std}`, `modules/stream/src/{core,std}`, `modules/persistence/src/core`
-**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-core-rs::core` が ActorSystem/Mailbox/Remoting の基盤を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けします。`fraktor-remote-rs::core` は Remoting 拡張・EndpointReader/Writer/Transport 抽象を actor/core の上に載せ、`std` 側が Tokio TCP などホスト固有のトランスポートを束ねる直列構造です。`fraktor-cluster-rs::core` はクラスタ管理・ゴシップ・プレースメントの基盤を提供し、`std` 側が Tokio 統合を担います。`fraktor-stream-core-rs` はストリーム処理、`fraktor-persistence-rs` は永続化ランタイムを提供します。
+**Purpose**: `fraktor-utils-rs::core` が RuntimeToolbox/Atomic/Timer を提供し、`fraktor-actor-core-rs::core` が ActorSystem/Mailbox/Remoting の基盤を no_std で構築、`std` モジュールが Tokio 実行器・ログ・Dispatcher を後掛けします。`fraktor-remote-rs::core` は Remoting 拡張・EndpointReader/Writer/Transport 抽象を actor/core の上に載せ、`std` 側が Tokio TCP などホスト固有のトランスポートを束ねる直列構造です。`fraktor-cluster-core-rs::core` はクラスタ管理・ゴシップ・プレースメントの基盤を提供し、`std` 側が Tokio 統合を担います。`fraktor-stream-core-rs` はストリーム処理、`fraktor-persistence-core-rs` は永続化ランタイムを提供します。
 **Example**: `modules/actor/src/core/messaging/*.rs` がコアメッセージング、`modules/actor/src/std/messaging/*.rs` がホスト固有の同名モジュールを実装。`modules/remote/src/core/transport/*.rs` がトランスポート抽象、`modules/remote/src/std/` が std 向けトランスポート実装。
 
 ### ドメインモジュール
@@ -55,7 +55,7 @@ updated_at: 2026-02-22T14:07:25Z
 - **ディレクトリ**: `snake_case/`。`foo.rs` に対応する `foo/` を置き、サブモジュールを格納。
 - **型 / トレイト**: `PascalCase`。trait 名は `*Ext` や `*Service` 等の役割語尾を避け、ドメイン名を直截に記述。
 - **モジュール境界**: 1 ファイル 1 型（構造体または trait）を基本とし、補助型は `tests.rs` かサブモジュールへ退避。
-- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-core-rs`, `fraktor-remote-rs`, `fraktor-cluster-rs`, `fraktor-stream-core-rs`, `fraktor-persistence-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
+- **クレート名**: 既存は `fraktor-utils-rs`, `fraktor-actor-core-rs`, `fraktor-remote-rs`, `fraktor-cluster-core-rs`, `fraktor-stream-core-rs`, `fraktor-persistence-core-rs`, `fraktor-rs`。新規クレートも `fraktor-<domain>-rs` を踏襲し、Cargo features は `kebab-case`（例: `alloc-metrics`, `tokio-executor`）。
 - **ドキュメント言語**: rustdoc は英語、それ以外のコメント・Markdown は日本語。
 - **ActorPath 初期値**: `ActorPath::root()` は system 名に `cellactor` を用い、guardian は `GuardianKind::User/System` から自動付与するため、手動で `/cellactor` を記述しないこと。
 - **Authority 表記**: リモート authority は `host:port` 文字列で `RemoteAuthorityRegistry` のキーにし、`PathAuthority` 経由で host/port を保持する。命名は小文字 + `-` を基本とし、実ホスト名を抽象化します。

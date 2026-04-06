@@ -36,6 +36,3 @@ pub use block_list_provider::BlockListProvider;
 pub use event_publisher::EventPublisher;
 pub use remote_authority_snapshot::RemoteAuthoritySnapshot;
 pub use remote_node_id::RemoteNodeId;
-
-#[cfg(feature = "std")]
-pub use crate::std::{RemotingExtensionId, RemotingExtensionInstaller};
