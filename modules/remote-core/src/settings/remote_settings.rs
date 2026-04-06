@@ -12,13 +12,18 @@ const DEFAULT_SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default flight recorder ring buffer capacity.
 const DEFAULT_FLIGHT_RECORDER_CAPACITY: usize = 1024;
 
+/// Default ack-based redelivery send window (Pekko Artery default).
+const DEFAULT_ACK_SEND_WINDOW: u32 = 1024;
+
+/// Default ack-based redelivery receive window (Pekko Artery default).
+const DEFAULT_ACK_RECEIVE_WINDOW: u32 = 1024;
+
 /// Typed remote subsystem configuration.
 ///
 /// Modeled after Pekko Artery's `RemoteSettings`, but expressed as a pure Rust
-/// struct with a `self`-consuming builder API (see Decision 11). Only the fields
-/// required by Phase A are declared here; `ack_send_window` / `ack_receive_window`
-/// will be added in Phase B together with the ack-based redelivery runtime in the
-/// `std` adapter.
+/// struct with a `self`-consuming builder API (see Decision 11). The
+/// `ack_send_window` / `ack_receive_window` fields were added in Phase B
+/// together with the ack-based redelivery runtime in the `std` adapter.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoteSettings {
   canonical_host:           String,
@@ -26,6 +31,8 @@ pub struct RemoteSettings {
   handshake_timeout:        Duration,
   shutdown_flush_timeout:   Duration,
   flight_recorder_capacity: usize,
+  ack_send_window:          u32,
+  ack_receive_window:       u32,
 }
 
 impl RemoteSettings {
@@ -39,6 +46,8 @@ impl RemoteSettings {
       handshake_timeout:        DEFAULT_HANDSHAKE_TIMEOUT,
       shutdown_flush_timeout:   DEFAULT_SHUTDOWN_FLUSH_TIMEOUT,
       flight_recorder_capacity: DEFAULT_FLIGHT_RECORDER_CAPACITY,
+      ack_send_window:          DEFAULT_ACK_SEND_WINDOW,
+      ack_receive_window:       DEFAULT_ACK_RECEIVE_WINDOW,
     }
   }
 
@@ -70,6 +79,20 @@ impl RemoteSettings {
     self
   }
 
+  /// Returns a copy with the given ack send window (Phase B addition).
+  #[must_use]
+  pub const fn with_ack_send_window(mut self, window: u32) -> Self {
+    self.ack_send_window = window;
+    self
+  }
+
+  /// Returns a copy with the given ack receive window (Phase B addition).
+  #[must_use]
+  pub const fn with_ack_receive_window(mut self, window: u32) -> Self {
+    self.ack_receive_window = window;
+    self
+  }
+
   /// Returns the canonical host name.
   #[must_use]
   pub fn canonical_host(&self) -> &str {
@@ -98,5 +121,17 @@ impl RemoteSettings {
   #[must_use]
   pub const fn flight_recorder_capacity(&self) -> usize {
     self.flight_recorder_capacity
+  }
+
+  /// Returns the ack send window (Phase B addition).
+  #[must_use]
+  pub const fn ack_send_window(&self) -> u32 {
+    self.ack_send_window
+  }
+
+  /// Returns the ack receive window (Phase B addition).
+  #[must_use]
+  pub const fn ack_receive_window(&self) -> u32 {
+    self.ack_receive_window
   }
 }

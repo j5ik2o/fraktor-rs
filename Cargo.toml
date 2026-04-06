@@ -30,8 +30,8 @@ members = [
     "modules/actor-core",
     "modules/actor-adaptor-std",
     "modules/persistence-core",
-    "modules/remote",
     "modules/remote-core",
+    "modules/remote-adaptor-std",
     "modules/cluster-core",
     "modules/cluster-adaptor-std",
     "modules/stream-core",
@@ -69,8 +69,8 @@ fraktor-actor-adaptor-rs = { path = "modules/actor-adaptor-std", version = "0.2.
 fraktor-cluster-core-rs = { path = "modules/cluster-core", version = "0.2.11", default-features = false }
 fraktor-cluster-adaptor-rs = { path = "modules/cluster-adaptor-std", version = "0.2.11" }
 fraktor-persistence-core-rs = { path = "modules/persistence-core", version = "0.2.11", default-features = false }
-fraktor-remote-rs = { path = "modules/remote", version = "0.2.11", default-features = false }
 fraktor-remote-core-rs = { path = "modules/remote-core", version = "0.2.11", default-features = false }
+fraktor-remote-adaptor-std-rs = { path = "modules/remote-adaptor-std", version = "0.2.11" }
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-rs = { path = "modules/utils", version = "0.2.11", default-features = false }

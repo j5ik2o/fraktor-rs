@@ -1,17 +1,14 @@
 //! Canonical remote address (`host + port + system`).
 
 use alloc::string::String;
-use core::{
-  fmt,
-  hash::{Hash, Hasher},
-};
+use core::fmt;
 
 /// Canonical remote address identifying an actor system endpoint.
 ///
 /// Modeled after Apache Pekko's `Address`, but without the `protocol` field — the
 /// scheme is expressed separately through [`crate::address::ActorPathScheme`] when
 /// a full URI is needed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Address {
   host:   String,
   port:   u16,
@@ -41,22 +38,6 @@ impl Address {
   #[must_use]
   pub const fn port(&self) -> u16 {
     self.port
-  }
-}
-
-impl PartialEq for Address {
-  fn eq(&self, other: &Self) -> bool {
-    self.port == other.port && self.system == other.system && self.host == other.host
-  }
-}
-
-impl Eq for Address {}
-
-impl Hash for Address {
-  fn hash<H: Hasher>(&self, state: &mut H) {
-    self.system.hash(state);
-    self.host.hash(state);
-    self.port.hash(state);
   }
 }
 

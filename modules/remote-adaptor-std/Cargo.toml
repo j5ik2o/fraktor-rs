@@ -1,0 +1,41 @@
+[package]
+name = "fraktor-remote-adaptor-std-rs"
+version = "0.2.11"
+edition = "2024"
+description = "fraktor standard adaptor bindings for the remote runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "remote", "adaptor", "std"]
+categories = ["concurrency", "network-programming"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-remote-adaptor-std-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+test-support = [
+  "fraktor-remote-core-rs/test-support",
+  "fraktor-actor-core-rs/test-support",
+]
+
+[dependencies]
+fraktor-remote-core-rs = { workspace = true }
+fraktor-actor-core-rs = { workspace = true }
+fraktor-actor-adaptor-rs = { workspace = true }
+fraktor-utils-rs = { workspace = true, features = ["alloc", "std", "unsize"] }
+bytes = { workspace = true }
+futures = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tracing = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+fraktor-remote-core-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-adaptor-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util", "test-util"] }
+anyhow = { workspace = true }
