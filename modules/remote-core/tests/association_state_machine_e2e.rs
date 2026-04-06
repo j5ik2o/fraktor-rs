@@ -10,10 +10,7 @@ use alloc::vec::Vec;
 extern crate alloc;
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::{
-    actor_path::ActorPathParser,
-    messaging::AnyMessage,
-  },
+  actor::{actor_path::ActorPathParser, messaging::AnyMessage},
   event::stream::CorrelationId,
 };
 use fraktor_remote_core_rs::{

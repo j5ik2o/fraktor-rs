@@ -38,7 +38,11 @@ impl SendQueue {
   /// Phase A and will grow as needed.
   #[must_use]
   pub fn with_capacity(system: usize, user: usize) -> Self {
-    Self { system: VecDeque::with_capacity(system), user: VecDeque::with_capacity(user), user_paused: false }
+    Self {
+      system:      VecDeque::with_capacity(system),
+      user:        VecDeque::with_capacity(user),
+      user_paused: false,
+    }
   }
 
   /// Enqueues `envelope` into the lane that matches its priority.
