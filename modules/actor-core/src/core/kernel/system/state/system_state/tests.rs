@@ -31,8 +31,8 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider,
-      DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+      ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
+      DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
     },
     mailbox::MailboxMessage,
   },

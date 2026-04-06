@@ -5,8 +5,8 @@ use alloc::boxed::Box;
 use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
-    DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
-    DispatcherSettings, ScheduleAdapterShared,
+    ConfiguredDispatcherBuilder, DispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest,
+    DispatcherRegistryEntry, DispatcherSettings, ScheduleAdapterShared,
   },
 };
 
@@ -43,6 +43,9 @@ impl DispatcherProvider for BlockingDispatcherProvider {
     settings: &DispatcherSettings,
     _request: &DispatcherProvisionRequest,
   ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
-    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(Box::new(ThreadedExecutor::new()), settings.clone())))
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(
+      Box::new(ThreadedExecutor::new()),
+      settings.clone(),
+    )))
   }
 }

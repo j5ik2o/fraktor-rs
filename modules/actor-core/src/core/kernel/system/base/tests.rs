@@ -35,8 +35,8 @@ use crate::core::{
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider,
-      DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+      ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
+      DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     system::{
@@ -163,7 +163,10 @@ impl DispatcherProvider for NoopDispatcherProvider {
     settings: &DispatcherSettings,
     _request: &DispatcherProvisionRequest,
   ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
-    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(Box::new(NoopExecutor::new()), settings.clone())))
+    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(
+      Box::new(NoopExecutor::new()),
+      settings.clone(),
+    )))
   }
 }
 

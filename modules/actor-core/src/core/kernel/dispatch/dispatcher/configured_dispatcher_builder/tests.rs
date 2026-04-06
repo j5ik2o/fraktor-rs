@@ -6,7 +6,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use crate::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::{
-    dispatcher::{DispatcherBuilder, ConfiguredDispatcherBuilder, InlineExecutor},
+    dispatcher::{ConfiguredDispatcherBuilder, DispatcherBuilder, InlineExecutor},
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
 };

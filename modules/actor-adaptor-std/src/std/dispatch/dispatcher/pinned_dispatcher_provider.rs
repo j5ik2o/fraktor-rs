@@ -6,8 +6,8 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
-    DispatcherBuilder, ConfiguredDispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,
-    DispatcherSettings, ScheduleAdapterShared,
+    ConfiguredDispatcherBuilder, DispatcherBuilder, DispatcherProvider, DispatcherProvisionRequest,
+    DispatcherRegistryEntry, DispatcherSettings, ScheduleAdapterShared,
   },
 };
 

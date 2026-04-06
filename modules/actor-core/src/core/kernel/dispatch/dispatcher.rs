@@ -19,6 +19,7 @@ mod dispatch_error;
 mod dispatch_executor;
 mod dispatch_executor_runner;
 mod dispatch_shared;
+mod dispatcher_builder;
 mod dispatcher_core;
 mod dispatcher_dump_event;
 mod dispatcher_provider;
@@ -29,7 +30,6 @@ mod dispatcher_sender;
 mod dispatcher_settings;
 mod dispatcher_shared;
 mod dispatcher_state;
-mod dispatcher_builder;
 mod dispatchers;
 mod inline_dispatcher_provider;
 mod inline_executor;
@@ -40,6 +40,8 @@ mod schedule_waker;
 mod tick_executor;
 
 #[doc(hidden)]
+pub use configured_dispatcher_builder::ConfiguredDispatcherBuilder;
+#[doc(hidden)]
 pub use dispatch_error::DispatchError;
 #[doc(hidden)]
 pub use dispatch_executor::DispatchExecutor;
@@ -47,8 +49,7 @@ pub use dispatch_executor::DispatchExecutor;
 pub use dispatch_executor_runner::DispatchExecutorRunner;
 #[doc(hidden)]
 pub use dispatch_shared::DispatchShared;
-#[doc(hidden)]
-pub use configured_dispatcher_builder::ConfiguredDispatcherBuilder;
+pub use dispatcher_builder::DispatcherBuilder;
 pub use dispatcher_dump_event::DispatcherDumpEvent;
 pub use dispatcher_provider::DispatcherProvider;
 pub use dispatcher_provision_request::DispatcherProvisionRequest;
@@ -58,7 +59,6 @@ pub(crate) use dispatcher_sender::DispatcherSender;
 pub use dispatcher_settings::DispatcherSettings;
 #[doc(hidden)]
 pub use dispatcher_shared::DispatcherShared;
-pub use dispatcher_builder::DispatcherBuilder;
 pub use dispatchers::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers};
 pub(crate) use inline_dispatcher_provider::InlineDispatcherProvider;
 pub(crate) use inline_executor::InlineExecutor;

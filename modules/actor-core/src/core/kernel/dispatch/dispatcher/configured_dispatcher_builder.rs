@@ -9,8 +9,8 @@ use crate::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::{
     dispatcher::{
-      DispatchExecutor, DispatchExecutorRunner, DispatcherBuilder, DispatcherSettings, DispatcherShared, InlineExecutor,
-      ScheduleAdapterShared,
+      DispatchExecutor, DispatchExecutorRunner, DispatcherBuilder, DispatcherSettings, DispatcherShared,
+      InlineExecutor, ScheduleAdapterShared,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy},
   },

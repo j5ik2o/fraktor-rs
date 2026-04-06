@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 
 use super::{
-  dispatcher_provision_request::DispatcherProvisionRequest, dispatcher_settings::DispatcherSettings,
-  dispatcher_builder::DispatcherBuilder,
+  dispatcher_builder::DispatcherBuilder, dispatcher_provision_request::DispatcherProvisionRequest,
+  dispatcher_settings::DispatcherSettings,
 };
 use crate::core::kernel::actor::spawn::SpawnError;
 
