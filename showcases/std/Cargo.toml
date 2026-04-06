@@ -6,10 +6,10 @@ publish = false
 
 [dependencies]
 # 基本依存（全 example 共通）
-fraktor-actor-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-rs = { workspace = true, features = ["std"] }
-fraktor-stream-rs = { workspace = true }
+fraktor-stream-core-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
 serde = { workspace = true, features = ["derive"] }

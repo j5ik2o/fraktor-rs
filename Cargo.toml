@@ -27,12 +27,12 @@ workspace = true
 resolver = "2"
 members = [
     "modules/utils",
-    "modules/actor",
+    "modules/actor-core",
     "modules/actor-adaptor-std",
     "modules/persistence",
     "modules/remote",
     "modules/cluster",
-    "modules/stream",
+    "modules/stream-core",
     "modules/stream-adaptor-std",
     "showcases/std",
 ]
@@ -62,7 +62,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fraktor_disable_tell)'] }
 let_underscore_must_use = "deny"
 
 [workspace.dependencies]
-fraktor-actor-rs = { path = "modules/actor", version = "0.2.11" }
+fraktor-actor-core-rs = { path = "modules/actor-core", version = "0.2.11" }
 fraktor-actor-adaptor-rs = { path = "modules/actor-adaptor-std", version = "0.2.11" }
 fraktor-cluster-rs = { path = "modules/cluster", version = "0.2.11", default-features = false }
 fraktor-persistence-rs = { path = "modules/persistence", version = "0.2.11", default-features = false }
@@ -70,7 +70,7 @@ fraktor-remote-rs = { path = "modules/remote", version = "0.2.11", default-featu
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-rs = { path = "modules/utils", version = "0.2.11", default-features = false }
-fraktor-stream-rs = { path = "modules/stream", version = "0.2.11", default-features = false }
+fraktor-stream-core-rs = { path = "modules/stream-core", version = "0.2.11", default-features = false }
 fraktor-stream-adaptor-rs = { path = "modules/stream-adaptor-std", version = "0.2.11" }
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
