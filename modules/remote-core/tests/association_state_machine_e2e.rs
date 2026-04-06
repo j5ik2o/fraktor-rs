@@ -11,7 +11,7 @@ extern crate alloc;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    actor_path::{ActorPath, ActorPathParser},
+    actor_path::ActorPathParser,
     messaging::AnyMessage,
   },
   event::stream::CorrelationId,
