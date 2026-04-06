@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
 };
 use fraktor_cluster_core_rs::core::{
-  ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
+  BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
   cluster_provider::NoopClusterProvider,
   downing_provider::NoopDowningProvider,
   grain::KindRegistry,
@@ -25,7 +25,6 @@ use fraktor_cluster_core_rs::core::{
     cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
   },
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess},
   time::TimerInstant,

@@ -11,7 +11,6 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_remote_rs::core::failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorRegistry};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::{
@@ -22,6 +21,7 @@ use super::{
 };
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig, ClusterTopology, ConfigValidation, JoinConfigCompatChecker, TopologyUpdate,
+  failure_detector::{DefaultFailureDetectorRegistry, FailureDetectorRegistry},
 };
 
 /// Membership/Gossip coordinator (no_std).

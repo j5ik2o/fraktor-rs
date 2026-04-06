@@ -16,7 +16,6 @@ serde = { workspace = true, features = ["derive"] }
 
 # advanced 依存（cross-module examples 用）
 fraktor-persistence-core-rs = { workspace = true, features = ["std"], optional = true }
-fraktor-remote-rs = { workspace = true, features = ["std", "tokio-transport", "tokio-executor", "test-support"], optional = true }
 fraktor-cluster-core-rs = { workspace = true, features = ["test-support"], optional = true }
 fraktor-cluster-adaptor-rs = { workspace = true, features = ["test-support"], optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
@@ -26,7 +25,6 @@ anyhow = { workspace = true, optional = true }
 default = []
 advanced = [
     "dep:fraktor-persistence-core-rs",
-    "dep:fraktor-remote-rs",
     "dep:fraktor-cluster-core-rs",
     "dep:fraktor-cluster-adaptor-rs",
     "dep:tokio",
@@ -101,13 +99,3 @@ required-features = ["advanced"]
 
 [lints]
 workspace = true
-
-[[example]]
-name = "cluster_membership"
-path = "cluster_membership/main.rs"
-required-features = ["advanced"]
-
-[[example]]
-name = "remote_messaging"
-path = "remote_messaging/main.rs"
-required-features = ["advanced"]

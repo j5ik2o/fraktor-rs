@@ -16,15 +16,14 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   sync::{ArcShared, RuntimeMutex, SharedAccess},
   time::TimerInstant,
 };
 
 use crate::core::{
-  ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot, ClusterProviderError,
-  ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
+  BlockListProvider, ClusterError, ClusterEvent, ClusterExtensionConfig, ClusterMetrics, ClusterMetricsSnapshot,
+  ClusterProviderError, ClusterProviderShared, MetricsError, StartupMode, TopologyApplyError, TopologyUpdate,
   downing_provider::DowningProvider,
   grain::{GrainKey, KindRegistry},
   identity::{IdentityLookupShared, IdentitySetupError, LookupError, PidCache},

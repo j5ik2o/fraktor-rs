@@ -8,14 +8,14 @@ use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_adaptor_rs::std::MembershipCoordinatorDriver;
 use fraktor_cluster_core_rs::core::{
   ClusterExtensionConfig,
+  failure_detector::{
+    DefaultFailureDetectorRegistry,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
   membership::{
     GossipOutbound, GossipTransport, GossipTransportError, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipSnapshot, MembershipTable, NodeStatus,
   },
-};
-use fraktor_remote_rs::core::failure_detector::{
-  DefaultFailureDetectorRegistry,
-  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
 use fraktor_utils_rs::core::{sync::SharedAccess, time::TimerInstant};
 

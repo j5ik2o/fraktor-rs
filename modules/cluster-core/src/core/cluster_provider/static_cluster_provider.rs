@@ -8,11 +8,10 @@ use alloc::string::String;
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
-use crate::core::{ClusterProviderError, ClusterTopology, TopologyUpdate};
+use crate::core::{BlockListProvider, ClusterProviderError, ClusterTopology, TopologyUpdate};
 
 #[cfg(test)]
 mod tests;

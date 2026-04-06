@@ -7,7 +7,6 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   sync::{ArcShared, NoStdMutex},
   time::TimerInstant,
@@ -15,8 +14,8 @@ use fraktor_utils_rs::core::{
 
 use super::*;
 use crate::core::{
-  ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError, StartupMode,
-  TopologyUpdate,
+  BlockListProvider, ClusterEvent, ClusterProviderError, ClusterProviderShared, ClusterTopology, MetricsError,
+  StartupMode, TopologyUpdate,
   cluster_provider::ClusterProvider,
   downing_provider::{DowningProvider, NoopDowningProvider},
   grain::{GrainKey, KindRegistry, TOPIC_ACTOR_KIND},

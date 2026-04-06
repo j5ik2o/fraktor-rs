@@ -3,13 +3,13 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_core_rs::core::{
   ClusterExtensionConfig,
+  failure_detector::{
+    DefaultFailureDetectorRegistry,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
   membership::{
     Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
   },
-};
-use fraktor_remote_rs::core::failure_detector::{
-  DefaultFailureDetectorRegistry,
-  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
 
 use crate::std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};
