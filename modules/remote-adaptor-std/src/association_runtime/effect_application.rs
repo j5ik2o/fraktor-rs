@@ -18,18 +18,16 @@ use fraktor_remote_core_rs::association::{Association, AssociationEffect};
 ///
 /// # Effect handling
 ///
-/// - **`SendEnvelopes`**: each envelope is re-enqueued via `assoc.enqueue` so
-///   the outbound loop drains it through `next_outbound`. After
-///   `handshake_accepted` the state is `Active`, so the envelopes land in the
-///   internal send queue. If the state is anything else, `enqueue` either
-///   defers them again or surfaces a recursive `DiscardEnvelopes` effect,
-///   which is logged below.
-/// - **`DiscardEnvelopes`**: the discarded count and reason are logged via
-///   `tracing` so the operator can observe the loss.
-/// - **`PublishLifecycle`**: logged via `tracing`. Wiring the actor-system
-///   event stream is a Phase B/C concern (Section 22's `StdRemoting`).
-/// - **`StartHandshake`**: logged. The transport-driven start path lives on
-///   the caller side; this helper is not the place to launch a handshake.
+/// - **`SendEnvelopes`**: each envelope is re-enqueued via `assoc.enqueue` so the outbound loop
+///   drains it through `next_outbound`. After `handshake_accepted` the state is `Active`, so the
+///   envelopes land in the internal send queue. If the state is anything else, `enqueue` either
+///   defers them again or surfaces a recursive `DiscardEnvelopes` effect, which is logged below.
+/// - **`DiscardEnvelopes`**: the discarded count and reason are logged via `tracing` so the
+///   operator can observe the loss.
+/// - **`PublishLifecycle`**: logged via `tracing`. Wiring the actor-system event stream is a Phase
+///   B/C concern (Section 22's `StdRemoting`).
+/// - **`StartHandshake`**: logged. The transport-driven start path lives on the caller side; this
+///   helper is not the place to launch a handshake.
 pub fn apply_effects_in_place(assoc: &mut Association, effects: Vec<AssociationEffect>) {
   for effect in effects {
     apply_one(assoc, effect);
