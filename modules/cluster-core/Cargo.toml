@@ -1,0 +1,33 @@
+[package]
+name = "fraktor-cluster-core-rs"
+version = "0.2.11"
+edition = "2024"
+description = "protoactor-go compatible cluster core for fraktor runtime"
+license = "MIT OR Apache-2.0"
+keywords = ["fraktor", "cluster", "actor", "no_std"]
+categories = ["concurrency", "embedded", "no-std"]
+repository = "https://github.com/j5ik2o/fraktor-rs"
+homepage = "https://github.com/j5ik2o/fraktor-rs"
+documentation = "https://docs.rs/fraktor-cluster-core-rs"
+readme = "../../README.md"
+autoexamples = false
+
+[features]
+default = []
+test-support = ["fraktor-actor-core-rs/test-support", "fraktor-remote-rs/test-support"]
+
+[dependencies]
+fraktor-actor-core-rs = { workspace = true }
+fraktor-utils-rs = { workspace = true }
+fraktor-remote-rs = { workspace = true }
+serde = { workspace = true }
+postcard = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
+fraktor-remote-rs = { workspace = true, features = ["test-support"] }
+fraktor-utils-rs = { workspace = true, features = ["std"] }

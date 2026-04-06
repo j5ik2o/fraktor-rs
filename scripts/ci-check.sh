@@ -944,9 +944,9 @@ PY
 run_clippy() {
   # --all-targets は dev-dep 解決時に ahash/proptest のトランジティブ依存が
   # 壊れるため --lib --bins に限定する（テストコードは run_tests で検証される）。
-  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-rs を一時的に除外する。
-  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-rs --lib --bins -- -D warnings"
-  run_cargo clippy --workspace --exclude fraktor-cluster-rs --lib --bins -- -D warnings || return 1
+  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-rs / fraktor-cluster-adaptor-rs を一時的に除外する。
+  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings"
+  run_cargo clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings || return 1
 }
 
 run_no_std() {
@@ -1070,10 +1070,13 @@ check_unit_sleep() {
     return 1
   fi
   local -a scan_dirs=(
-    modules/actor/src/
-    modules/stream/src/
+    modules/actor-core/src/
+    modules/actor-adaptor-std/src/
+    modules/stream-core/src/
+    modules/stream-adaptor-std/src/
     modules/remote/src/
-    modules/cluster/src/
+    modules/cluster-core/src/
+    modules/cluster-adaptor-std/src/
   )
   local -a rg_globs=(
     --glob '**/tests.rs'
@@ -1082,9 +1085,9 @@ check_unit_sleep() {
   local -a rg_excludes=(
     --glob '!modules/remote/src/std/transport/**'
     --glob '!modules/remote/tests/**'
-    --glob '!modules/cluster/src/std/tokio_gossip_transport/**'
-    --glob '!modules/actor/src/std/system/coordinated_shutdown/tests.rs'
-    --glob '!modules/actor/src/core/dispatch/dispatcher/tests.rs'
+    --glob '!modules/cluster-adaptor-std/src/std/tokio_gossip_transport/**'
+    --glob '!modules/actor-core/src/core/kernel/system/coordinated_shutdown/tests.rs'
+    --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
   )
 
   local violations=""

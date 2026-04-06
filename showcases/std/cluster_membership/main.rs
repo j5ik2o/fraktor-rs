@@ -23,7 +23,7 @@ use fraktor_actor_core_rs::core::kernel::{
   serialization::SerializationExtensionInstaller,
   system::{ActorSystem, remote::RemotingConfig},
 };
-use fraktor_cluster_rs::core::{
+use fraktor_cluster_core_rs::core::{
   ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
 };
 use fraktor_remote_rs::core::{

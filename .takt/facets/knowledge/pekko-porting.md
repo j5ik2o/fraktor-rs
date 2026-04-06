@@ -18,7 +18,7 @@ modules/
 ├── utils/       # fraktor-utils-rs: 共有ユーティリティ
 ├── actor/       # fraktor-actor-core-rs: アクターシステムコア
 ├── remote/      # fraktor-remote-rs: リモーティング
-├── cluster/     # fraktor-cluster-rs: クラスタリング
+├── cluster/     # fraktor-cluster-core-rs: クラスタリング
 └── streams/     # fraktor-stream-core-rs: ストリーム処理
 ```
 

@@ -2,7 +2,7 @@
 > 最終更新: 2026-02-22
 updated_at: 2026-02-22T14:07:25Z
 
-fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。ワークスペースは `fraktor-utils-rs`（`modules/utils`）、`fraktor-actor-core-rs`（`modules/actor`）、`fraktor-remote-rs`（`modules/remote`）、`fraktor-cluster-rs`（`modules/cluster`）、`fraktor-stream-core-rs`（`modules/stream`）、`fraktor-persistence-core-rs`（`modules/persistence`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（no_std）/`std` モジュールを feature で切り替え、persistence は現時点で `core` を中心に提供されます。これにより、DeathWatch を強化した監視 API、system mailbox によるライフサイクル制御、EventStream/DeadLetter の可観測性、Remoting 拡張、クラスタリング、ストリーム処理、永続化を埋め込みボードからホスト OS まで一貫した体験で提供します。
+fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。ワークスペースは `fraktor-utils-rs`（`modules/utils`）、`fraktor-actor-core-rs`（`modules/actor`）、`fraktor-remote-rs`（`modules/remote`）、`fraktor-cluster-core-rs`（`modules/cluster`）、`fraktor-stream-core-rs`（`modules/stream`）、`fraktor-persistence-core-rs`（`modules/persistence`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（no_std）/`std` モジュールを feature で切り替え、persistence は現時点で `core` を中心に提供されます。これにより、DeathWatch を強化した監視 API、system mailbox によるライフサイクル制御、EventStream/DeadLetter の可観測性、Remoting 拡張、クラスタリング、ストリーム処理、永続化を埋め込みボードからホスト OS まで一貫した体験で提供します。
 
 ## コア機能
 - **ライフサイクル制御**: `SystemMessage::Create/Recreate/Failure` を system mailbox で優先処理し、SupervisorStrategy／再起動ポリシーを deterministic に適用して actor の生成・停止シーケンスを安定化します。
@@ -32,7 +32,7 @@ fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計
 - **`typed/`**: `Behavior`, `TypedActorContext`, `TypedActorRef` を提供し、Untyped API との safe bridge (`into_untyped/as_untyped`) を担う。
 
 ### 追加モジュール
-- **`modules/cluster`** (`fraktor-cluster-rs`): protoactor-go 互換のクラスタコアを提供。`core`/`std` 構造を持ち、メンバーシップ管理、ゴシッププロトコル、障害検出、アイデンティティルックアップ、プレースメントを実装。AWS ECS 統合オプションあり。
+- **`modules/cluster`** (`fraktor-cluster-core-rs`): protoactor-go 互換のクラスタコアを提供。`core`/`std` 構造を持ち、メンバーシップ管理、ゴシッププロトコル、障害検出、アイデンティティルックアップ、プレースメントを実装。AWS ECS 統合オプションあり。
 - **`modules/stream`** (`fraktor-stream-core-rs`): ストリーム処理のコアを提供。`core`/`std` 構造を持つ。
 - **`modules/persistence`** (`fraktor-persistence-core-rs`): Untyped 永続化ランタイムを提供。イベントソーシングと at-least-once デリバリーをサポートし、現時点では `core` モジュールを公開面とする。
 
