@@ -48,6 +48,12 @@ impl DefaultDispatcherProvider {
   }
 }
 
+impl Default for DefaultDispatcherProvider {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl DispatcherProvider for DefaultDispatcherProvider {
   fn provision(
     &self,
