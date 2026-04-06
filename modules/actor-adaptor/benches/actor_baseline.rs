@@ -17,7 +17,6 @@ use fraktor_actor_rs::core::kernel::{
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
-  util::futures::ActorFutureListener,
 };
 use tokio::runtime::{Builder, Runtime};
 
@@ -139,7 +138,7 @@ impl TokioBenchSystem {
   fn terminate(self) {
     self.runtime.block_on(async {
       self.system.terminate().expect("terminate system");
-      ActorFutureListener::new(self.system.when_terminated()).await;
+      self.system.when_terminated().await;
     });
   }
 }
