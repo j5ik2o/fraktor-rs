@@ -1,5 +1,3 @@
-#![cfg(feature = "std")]
-
 use core::time::Duration;
 use std::sync::{Arc, Mutex};
 
