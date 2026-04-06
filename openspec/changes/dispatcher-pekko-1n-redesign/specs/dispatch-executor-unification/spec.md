@@ -41,7 +41,7 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 #### Scenario: TokioExecutor / ThreadedExecutor / PinnedExecutor は std 層に置かれる
 - **WHEN** 各 std 側 executor 具象の定義ファイルを確認する
 - **THEN** これらは `modules/actor-adaptor-std` 配下にある
-- **AND** すべて `Executor` trait を `&self` で実装する
+- **AND** すべて `Executor` trait を `&mut self` command / `&self` query の契約で実装する
 - **AND** `TokioExecutor` は `tokio-executor` feature 下でのみ提供される
 
 ### Requirement: `DispatcherWaker` は core 層に 1 実装で提供される
@@ -63,6 +63,31 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 - **WHEN** `core::kernel::dispatch` 配下を確認する
 - **THEN** `ScheduleAdapter` trait、`ScheduleAdapterShared`、`InlineScheduleAdapter`、`ScheduleWaker`、`StdScheduleAdapter` は存在しない
 - **AND** Waker 生成経路は `DispatcherWaker` に一本化されている
+
+### Requirement: 並走期間中 `dispatcher_new/` は旧 `dispatcher/` に依存してはならない
+
+新旧の dispatcher 実装が並走している期間中、新側の実装は旧側のいかなる型・関数・trait・モジュールも `use` / 参照してはならない (MUST NOT)。両者は完全に独立した tree として共存し、最終的に旧側を `rm -rf` するだけで完了できる構造を維持しなければならない (MUST)。
+
+#### Scenario: dispatcher_new は旧 dispatcher を import しない
+- **WHEN** `modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` 配下のすべての `.rs` ファイルを確認する
+- **THEN** `use crate::core::kernel::dispatch::dispatcher::` で始まる import 文は存在しない
+- **AND** `super::super::dispatcher::` などの相対パスでの旧モジュール参照も存在しない
+- **AND** 旧 `DispatcherCore` / 旧 `DispatcherShared` / 旧 `DispatchShared` / 旧 `DispatchExecutor` / 旧 `DispatcherSettings` / 旧 `DispatcherProvider` などの型を新側から参照していない
+
+#### Scenario: std/dispatch_new は旧 std/dispatch を import しない
+- **WHEN** `modules/actor-adaptor-std/src/std/dispatch_new/` 配下のすべての `.rs` ファイルを確認する
+- **THEN** `use crate::std::dispatch::` で始まる import 文は存在しない
+- **AND** 旧 `TokioExecutor` / 旧 `ThreadedExecutor` / 旧 `PinnedExecutor` / 旧 `StdScheduleAdapter` などの型を新側から参照していない
+
+#### Scenario: 同じ概念は新側に独立して再実装される
+- **WHEN** 新旧両方で同じ概念（例: `DispatchError` 相当）が必要となる
+- **THEN** 新側は旧側を import せず、独立して新側に同等の型を定義する
+- **AND** 共通基盤を作って両側から参照させる「中間層」は新設しない（中間層は最終削除のブロッカーになる）
+
+#### Scenario: 旧側のテストヘルパは新側のテストから流用されない
+- **WHEN** `dispatcher_new/` 配下の test モジュールを確認する
+- **THEN** 旧 `dispatcher/` 配下の `tests` モジュールや helper 関数を `use` していない
+- **AND** 新側のテストヘルパは新側で完結している
 
 ### Requirement: dispatcher の drain ループは mailbox 側に配置される
 

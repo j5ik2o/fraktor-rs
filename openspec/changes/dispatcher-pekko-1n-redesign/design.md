@@ -36,13 +36,13 @@
 - actor 起動時に dispatcher を毎回新規構築する経路を唯一の経路として残してはならない
 - `PinnedDispatcher` 以外の configurator が呼び出しごとに dispatcher を新規生成してはならない
 
-### 2. `MessageDispatcher` trait（CQS 準拠）
+### 2. `MessageDispatcher` trait（CQS 準拠の query / hook 面）
 
 #### 満たすべき条件
 
-- `MessageDispatcher` trait は dispatcher 公開抽象の単一の主語でなければならない
-- trait メソッドは CQS 原則に従って `&self`（query）と `&mut self`（command）を厳密に分ける
-- trait は Pekko の `MessageDispatcher` 抽象クラスの契約を Rust へ写した次のメソッド群を要求する（`Send + Sync` を含む）:
+- `MessageDispatcher` trait は dispatcher 公開抽象の中心となる hook/query 面でなければならない
+- trait メソッドは CQS 原則に従って `&self`（query）と `&mut self`（command / hook）を厳密に分ける
+- trait は Pekko の `MessageDispatcher` 抽象クラスの契約を Rust へ写すが、**lock 解放後に副作用を起こす orchestration は `MessageDispatcherShared` に置く**。trait 自身は次の query / hook 群を要求する（`Send + Sync` を含む）:
 
   **Queries (`&self`, 戻り値あり)**
   - `id(&self) -> &str`
@@ -52,30 +52,22 @@
   - `inhabitants(&self) -> i64`
   - `executor(&self) -> ExecutorShared`（clone を返す。`MessageDispatcherShared::register_for_execution` の再スケジュール経路が短時間の read lock 越しにこれを取り出す）
 
-  **Template methods (trait default impl、具象は override しない)**
-  - `attach(&mut self, actor: &ActorCell) -> Result<(), SpawnError>`
-    - default impl: `self.register_actor(actor)?` → `self.create_mailbox(actor, ...)` を呼んで mailbox を作り actor に設定 → `self.register_for_execution(&mbox, false, true)` を呼ぶ
-    - Pekko の `MessageDispatcher.attach`（`final`）に対応
-  - `detach(&mut self, actor: &ActorCell)`
-    - default impl: `self.unregister_actor(actor)`（この中で `DispatcherCore::add_inhabitants(-1)` と `schedule_shutdown_if_sensible` を呼ぶ）
-    - Pekko の `MessageDispatcher.detach`（`final`）に対応
-
   **Overridable hooks (protected 相当、具象型が override 可能)**
   - `register_actor(&mut self, actor: &ActorCell) -> Result<(), SpawnError>`
-    - default impl: `self.core_mut().add_inhabitants(1)` を呼ぶ
+    - default impl: `self.core_mut().mark_attach()` を呼ぶ
     - `PinnedDispatcher` は owner check + owner 設定を追加する
     - 将来の `BalancingDispatcher` は `team.add(actor)` を追加する
     - Pekko の `register(actorCell)` に対応
   - `unregister_actor(&mut self, actor: &ActorCell)`
-    - default impl: `self.core_mut().add_inhabitants(-1)` → `self.core_mut().schedule_shutdown_if_sensible()` を呼ぶ
+    - default impl: `self.core_mut().mark_detach()` を呼ぶ
     - `PinnedDispatcher` は owner を `None` に戻す
     - 将来の `BalancingDispatcher` は `team.remove(actor)` + `team_work()` を追加する
     - Pekko の `unregister(actor)` に対応
   - `dispatch(&mut self, receiver: &ActorCell, envelope: Envelope) -> Result<(), SendError>`
-    - default impl: `receiver.mailbox().enqueue_user(envelope)?` → `self.register_for_execution(&mbox, true, false)`
+    - default impl: `receiver.mailbox().enqueue_user(envelope)?`
     - 将来の `BalancingDispatcher` は shared queue へ直接 enqueue する形で override する
   - `system_dispatch(&mut self, receiver: &ActorCell, msg: SystemMessage) -> Result<(), SendError>`
-    - default impl: `receiver.mailbox().enqueue_system(msg)?` → `self.register_for_execution(&mbox, false, true)`
+    - default impl: `receiver.mailbox().enqueue_system(msg)?`
   - `register_for_execution(&mut self, mbox: &ArcShared<Mailbox>, has_message_hint: bool, has_system_hint: bool) -> bool`
     - default impl: mailbox の `can_be_scheduled_for_execution` / `set_as_scheduled` の CAS 判定のみを行う。実際の closure 組み立てと executor submit は `MessageDispatcherShared::register_for_execution` 側で行う
     - Pekko 契約に合わせ、実行可否の戻り値あり（CQS 許容例外として人間許可済みと扱う）
@@ -99,7 +91,6 @@
 #### 満たしてはいけない条件
 
 - command メソッドに `&self` を要求してはならない（内部可変性ポリシー違反。ただし `create_mailbox` は状態を変えない factory なので `&self` が正しい）
-- `attach` / `detach` を具象型が override してはならない（Pekko の `final` に相当する規律。Rust は `final` を表現できないため、trait doc と review での運用規約として扱う）
 - `Dispatcher` という単純名を trait 名として残してはならない（Pekko の抽象クラス名に合わせる）
 - trait method を通じてガードやロックを外部へ返してはならない（ロック区間は `MessageDispatcherShared` 内部に閉じる）
 
@@ -126,14 +117,34 @@
       fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R;
   }
   ```
+- `MessageDispatcherShared` は公開 lifecycle/orchestration API を持つ:
+  - `attach(&self, actor: &ActorCell) -> Result<(), SpawnError>`
+  - `detach(&self, actor: &ActorCell)`
+  - `dispatch(&self, receiver: &ActorCell, envelope: Envelope) -> Result<(), SendError>`
+  - `system_dispatch(&self, receiver: &ActorCell, msg: SystemMessage) -> Result<(), SendError>`
+  - `register_for_execution(&self, mbox: &ArcShared<Mailbox>, has_message_hint: bool, has_system_hint: bool) -> bool`
+- `MessageDispatcherShared::attach` は次の順で動作する:
+  1. `with_write` で `register_actor(actor)` を呼ぶ
+  2. 同じ `with_write` の中で `create_mailbox(actor, ...)` を呼び、生成した mailbox を actor へ設定する
+  3. ロック解放後に `self.register_for_execution(&mbox, false, true)` を呼ぶ
+- `MessageDispatcherShared::dispatch` / `system_dispatch` は次の順で動作する:
+  1. `with_write` で trait hook の `dispatch` / `system_dispatch` を呼ぶ（enqueue まで）
+  2. ロック解放後に `receiver.mailbox()` を使って `self.register_for_execution(...)` を呼ぶ
+- `MessageDispatcherShared::detach` は次の順で動作する:
+  1. `with_write` で `unregister_actor(actor)` を呼ぶ
+  2. ロック解放後、`inhabitants == 0` なら actor の system scheduler に delayed shutdown closure を登録する
+  3. delayed closure 発火時に `with_write` で `shutdown_schedule` と `inhabitants` を再確認し、`SCHEDULED && inhabitants == 0` の場合のみ `shutdown()` を呼ぶ
+  4. 発火時に `RESCHEDULED` または `inhabitants > 0` なら `shutdown_schedule` を `UNSCHEDULED` に戻して何もしない
 - `MessageDispatcherShared::register_for_execution` は次の順で動作する:
   1. mailbox の `can_be_scheduled_for_execution` / `set_as_scheduled` を（ロック外で）評価する
-  2. CAS 成功時、`with_read` で throughput / throughput_deadline / executor_shared を一度に取り出す（短時間の read lock）
-  3. ロックを解放した状態で closure を組み立てる（`self.clone()` と `mbox.clone()` を capture）
-  4. closure 内では `mbox.run(throughput, deadline)` → `mbox.set_as_idle()` → `self.register_for_execution(&mbox, false, false)` の順で実行
-  5. 組み立てた closure を `ExecutorShared::execute` 経由で submit する
-- `MessageDispatcherShared` は便利メソッドとして trait の主要 command / query を委譲する（`attach` / `detach` / `dispatch` / `system_dispatch` / `id` / `throughput` 等）
-- 再入デッドロック防止のため、`ActorRefSenderShared::send` と同様にロック区間を最小化する: 副作用を伴う closure の実行は `with_write` のブロックを抜けた後で行う
+  2. CAS 成功後、`with_write` で trait hook `register_for_execution` を呼び、dispatcher policy 固有の追加判定を行う
+  3. hook が `false` を返したら `mbox.set_as_idle()` して `false` を返す
+  4. hook が `true` を返した場合のみ、`with_read` で throughput / throughput_deadline / executor_shared を一度に取り出す（短時間の read lock）
+  5. ロックを解放した状態で closure を組み立てる（`self.clone()` と `mbox.clone()` を capture）
+  6. closure 内では `mbox.run(throughput, deadline)` → `mbox.set_as_idle()` → `self.register_for_execution(&mbox, false, false)` の順で実行
+  7. 組み立てた closure を `ExecutorShared::execute` 経由で submit する
+- `MessageDispatcherShared` は query 系の便利メソッドとして trait の主要 query を委譲する（`id` / `throughput` 等）
+- 再入デッドロック防止のため、`ActorRefSenderShared::send` と同様にロック区間を最小化する: executor submit、delayed shutdown の登録、closure の実行は `with_write` のブロックを抜けた後で行う
 
 #### 満たしてはいけない条件
 
@@ -166,11 +177,13 @@
   - `executor(&self) -> &ExecutorShared`（参照返し。trait 側の同名メソッドは clone 返しなので、trait impl 内で `self.core.executor().clone()` を呼ぶ）
 
   **Commands (`&mut self`)**
-  - `add_inhabitants(&mut self, delta: i64) -> i64`（CQS 許容例外: Pekko の `addInhabitants: Long` と合わせて合成後カウントを返す。`ifSensibleToDoSoThenScheduleShutdown` の判定に必要）
+  - `mark_attach(&mut self) -> i64`（CQS 許容例外。`inhabitants += 1` し、`shutdown_schedule == SCHEDULED` なら `RESCHEDULED` に遷移させる）
+  - `mark_detach(&mut self) -> i64`（CQS 許容例外。`inhabitants -= 1` し、`inhabitants == 0` なら `schedule_shutdown_if_sensible()` を呼ぶ）
   - `schedule_shutdown_if_sensible(&mut self)`
   - `shutdown(&mut self)`（内部で `self.executor.shutdown()` を呼び、`shutdown_schedule` を UNSCHEDULED に戻す）
 
 - `DispatcherCore` は atomic field を field として公開しない（内部可変性を封じる）。inhabitants とスケジュール状態は `&mut self` ロック越しに更新する
+- delayed shutdown の実行予約そのものは `DispatcherCore` ではなく `MessageDispatcherShared::detach` が actor の system scheduler を使って行う
 - inhabitants カウンタのロックフリー性が要求されるのは `MessageDispatcherShared` のロック越しの経路のみであり、ロックを取得している文脈内では `&mut self` で十分である
 - `DispatcherCore` は pub 公開され、fraktor 外部の独自 `MessageDispatcher` 実装から共通 state として利用可能でなければならない
 - 各具象型（`DefaultDispatcher` / `PinnedDispatcher`）は `core: DispatcherCore` として `DispatcherCore` を field に保持し、自身が実装する `MessageDispatcher` trait の query / command メソッドを `self.core` へ委譲する
@@ -190,7 +203,6 @@
 - `DefaultDispatcher` は次を満たす:
   - `core: DispatcherCore` を保持する
   - `MessageDispatcher` trait の default impl をほぼそのまま使う（`core()` / `core_mut()` / `create_mailbox` のみ実装）
-  - `attach` / `detach` は trait default impl を使う
   - hook メソッド (`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `register_for_execution`, `shutdown`) も trait default impl を使う
 - `PinnedDispatcher` は次を満たす:
   - `core: DispatcherCore` と `owner: Option<ActorCellId>` を保持する（内部可変性は使わない）
@@ -198,7 +210,6 @@
   - `register_actor` hook を override: owner が `None` か同一 actor のときのみ owner をセットして default 処理を実行、別 actor が既に owner なら `SpawnError::DispatcherAlreadyOwned` を返す
   - `unregister_actor` hook を override: owner を `None` に戻してから default 処理を実行
   - 同一 actor の再 attach を許容する（Pekko の `register` override と同じ挙動）
-  - `attach` / `detach` 本体は trait default impl をそのまま使う（override しない）
 - 両具象型は `MessageDispatcherShared::new(concrete)` 経由で `MessageDispatcherShared` へ格納可能でなければならない（直接 `ArcShared<dyn MessageDispatcher>` のような形で多所有化しない）
 - **blocking workload 向け dispatcher は `DefaultDispatcher` の別 id + 別 `ExecutorShared` 構成で表現する**。`BlockingDispatcher` という具象型は作らない（Pekko にも存在しない。Pekko では `reference.conf` で `pekko.actor.default-blocking-io-dispatcher` を `type = "Dispatcher"` として別 pool 設定で登録するだけ）
 
@@ -325,12 +336,67 @@
   5. `Mailbox::new(actor, queue)` のように message queue を外部から注入可能なコンストラクタを持つ
   6. `MessageQueue` trait は multi-consumer を許容するシグネチャ（`&self` のみ、`&mut` を要求しない）— 既存の mailbox 実装でこのポリシーは既に成立しており、project 全体の例外扱いとして維持される
 - 上記 seam の存在を tests ではなく trait / struct のシグネチャ上で担保する
-- `attach` / `detach` 自体は Pekko の `final` と同じく trait の default impl として提供され、`BalancingDispatcher` を含めいかなる具象型も override しない（override するのは上記 hooks 側）
+- `attach` / `detach` 自体は `MessageDispatcherShared` 側の orchestration として提供され、`BalancingDispatcher` を含め具象型差分は上記 hooks 側だけで表現する
 
 #### 満たしてはいけない条件
 
 - Balancing を初期リリースに含めてはならない（YAGNI）
 - 上記 seam のどれか 1 つでも塞ぐ設計を選んではならない
+
+### 9.5. `DispatcherSettings`（新版、immutable settings snapshot）
+
+#### 満たすべき条件
+
+- `DispatcherSettings` は `DefaultDispatcher` / `PinnedDispatcher` / `DispatcherCore` / `DefaultDispatcherConfigurator` / `PinnedDispatcherConfigurator` に渡すための **immutable な settings bundle** として再定義する
+- 旧版 `DispatcherSettings`（`throughput_deadline` / `starvation_deadline` / `schedule_adapter` を持っていたもの）とは **別物** であり、新版は次のフィールドのみを持つ:
+  ```rust
+  #[derive(Clone)]
+  pub struct DispatcherSettings {
+      pub id: String,
+      pub throughput: NonZeroUsize,
+      pub throughput_deadline: Option<Duration>,
+      pub shutdown_timeout: Duration,
+  }
+  ```
+- `DispatcherSettings` は core 層に配置し（`modules/actor-core/.../dispatcher_new/dispatcher_settings.rs`）、`no_std` 対応とする
+- builder 風の更新メソッド（`with_throughput`, `with_throughput_deadline`, `with_shutdown_timeout` 等）を提供してよいが、各メソッドは `self` を消費する `Self` 返しか `&mut self` のいずれかで CQS に従う
+- `DispatcherSettings` は `Clone` 可能で、複数の configurator から同じ settings を共有できる
+- `DispatcherCore::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` のシグネチャで使用する
+- `DefaultDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` も同様
+- `PinnedDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` の場合、`settings.throughput` と `settings.throughput_deadline` は **構築時に Pinned 固有値（`NonZeroUsize::MAX` / `None`）に上書き** される（呼び出し側は何を渡しても良いが、結果として Pinned の固定値になる）
+
+#### 満たしてはいけない条件
+
+- 旧版 `DispatcherSettings` の `schedule_adapter` フィールドを残してはならない
+- 旧版 `DispatcherSettings` の `starvation_deadline` フィールドを残してはならない（Pekko になく、YAGNI で初期版から除外。必要になったら orthogonal に追加）
+- `DispatcherSettings` を mutable な共有 state として扱ってはならない（immutable snapshot として渡す）
+- `DispatcherSettings` を dispatcher 公開抽象の **主語** として残してはならない（主語は `MessageDispatcher` trait と `MessageDispatcherShared`）。`DispatcherSettings` はあくまで構築時のパラメータ bundle
+
+### 9.6. `dispatcher_new/` は旧 `dispatcher/` に依存してはならない
+
+#### 満たすべき条件
+
+- `modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` 配下の実装は、旧 `modules/actor-core/src/core/kernel/dispatch/dispatcher/` 配下のいかなる型・関数・trait・モジュールも `use` / 参照してはならない (MUST NOT)
+- 同様に `modules/actor-adaptor-std/src/std/dispatch_new/` 配下は旧 `modules/actor-adaptor-std/src/std/dispatch/` 配下を `use` / 参照してはならない
+- 並走期間中、両者は **完全に独立した tree** として共存し、共通の helper や型を共有しない
+- 同じ概念で同じロジックが必要な場合は、新側に独立して再実装する（コードの重複を許容してでも依存を切る）
+- レビュー時には `grep -rn "use crate::core::kernel::dispatch::dispatcher::" modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` で旧モジュールへの参照がないことを確認する
+
+#### 満たしてはいけない条件
+
+- 並走期間中に新側が旧側の型を再利用して短絡してはならない（例: 旧 `DispatchError` を新側が import する等）
+- 旧側 helper 関数を「動くから」という理由で新側から呼んではならない
+- 共通基盤を作って両側から参照させる「中間層」を新設してはならない（その中間層が削除タイミングのブロッカーになる）
+- 旧側のテスト ユーティリティを新側のテストから流用してはならない
+
+#### Why
+
+並走期間中に新側が旧側に依存すると:
+1. 旧側を一括削除する瞬間に circular な dependency が露呈する
+2. 削除 PR が膨大になり、レビューと CI 通過が困難になる
+3. 「気づかぬうちに新側が旧側のセマンティクスを引き継いでいる」という設計上の汚染が起きる
+
+そのため、**並走期間中は両者が無関係**である状態を厳守し、最終的に旧側を `rm -rf` するだけで完了できる構造を維持する。
 
 ### 10. Feature Gating と並走
 
@@ -338,7 +404,7 @@
 
 - `tokio-executor` feature 無効時は `TokioExecutor` 系 dispatcher が存在しない扱いになる（先行 change の要件を維持）
 - redesign 期間中、旧 `dispatcher/` モジュールと新 `dispatcher_new/` モジュールは並走する
-- 並走期間中、fraktor 外部に公開される dispatcher 主語は新 `MessageDispatcher` trait のみに統一される（旧 `DispatcherBuilder` 等は `#[doc(hidden)]` 扱いとして段階的に削除する）
+- 並走期間中、fraktor 外部に公開される dispatcher 主語は新 `MessageDispatcher` trait と `MessageDispatcherShared` に統一される（旧 `DispatcherBuilder` 等は `#[doc(hidden)]` 扱いとして段階的に削除する）
 - 並走終了条件: fraktor 内部の呼び出し元が全て新 API へ移行した時点で旧 `dispatcher/` を一括削除する
 
 #### 満たしてはいけない条件
@@ -348,15 +414,16 @@
 
 ## Acceptance Checklist
 
-- `MessageDispatcher` trait が dispatcher 公開抽象の単一の主語として存在する
-- `MessageDispatcher` trait の command メソッドはすべて `&mut self`、query メソッドはすべて `&self` である（CQS 準拠）
+- `MessageDispatcher` trait と `MessageDispatcherShared` が dispatcher 公開抽象の中心として存在する
+- `MessageDispatcher` trait の command / hook メソッドはすべて `&mut self`、query メソッドはすべて `&self` である（CQS 準拠）
 - `MessageDispatcherShared` が既存 `ActorRefSenderShared` と同じ AShared パターンで定義され、`ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>` を内包する
+- `MessageDispatcherShared` が `attach` / `detach` / `dispatch` / `system_dispatch` / `register_for_execution` の orchestration を担当する
 - `DefaultDispatcher` と `PinnedDispatcher` が独立した具象型として存在する
 - `DispatcherCore` が pub で公開され、両具象型の共通 state を保持する
 - `DispatcherCore` の command メソッドはすべて `&mut self`、query メソッドはすべて `&self` である
 - `DispatcherCore` の field に `AtomicI64` / `AtomicU8` / `Mutex<T>` などの内部可変性が存在しない
 - 1 dispatcher が複数 actor を同時に収容できる
-- `attach` / `detach` が `inhabitants` を増減し、0 到達後 `shutdown_timeout` で auto-shutdown が発火する
+- `MessageDispatcherShared::attach` / `detach` が `inhabitants` を増減し、0 到達後 `shutdown_timeout` で auto-shutdown が発火する
 - `PinnedDispatcher` が actor 単位の専用 lane を持ち、owner check で共有を拒否する
 - `Executor` trait が `execute(&mut self, ...)` / `shutdown(&mut self)` / `supports_blocking(&self)` の CQS 分類で定義されている
 - `ExecutorShared` が `ArcShared<RuntimeMutex<Box<dyn Executor>>>` を内包する AShared wrapper として定義されている
@@ -366,6 +433,11 @@
 - `DispatcherWaker` 1 実装だけで async backpressure が維持される
 - `MessageDispatcherConfigurator` trait と `DefaultDispatcherConfigurator` / `PinnedDispatcherConfigurator` の 2 具象が存在する
 - registry が `ArcShared<Box<dyn MessageDispatcherConfigurator>>` を id 引きで解決し、`MessageDispatcherShared` を返す
-- 旧 `DispatcherShared` / `DispatchShared` / `DispatcherCore`（旧）/ `DispatchExecutorRunner` / `ScheduleAdapter*` / `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` が削除されている
+- 新版 `DispatcherSettings` が `id` / `throughput` / `throughput_deadline` / `shutdown_timeout` のみを持つ pub struct として core に存在する
+- 旧版 `DispatcherSettings` の `schedule_adapter` / `starvation_deadline` フィールドが新版に引き継がれていない
+- `DispatcherCore::new` / `DefaultDispatcher::new` / `PinnedDispatcher::new` / `DefaultDispatcherConfigurator::new` がすべて `DispatcherSettings` を受け取る形で統一されている
+- 旧 `DispatcherShared` / `DispatchShared` / `DispatcherCore`（旧）/ 旧 `DispatcherSettings` / `DispatchExecutorRunner` / `ScheduleAdapter*` / `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` が削除されている
+- 並走期間中 `dispatcher_new/` 配下が旧 `dispatcher/` 配下のいかなる型・関数も `use` していない（`grep -rn "use crate::core::kernel::dispatch::dispatcher::" modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` がゼロヒット）
+- 並走期間中 `std/dispatch_new/` 配下が旧 `std/dispatch/` 配下のいかなる型・関数も `use` していない（同様の grep がゼロヒット）
 - Balancing 拡張 seam 5 項目が trait / struct のシグネチャ上で確認できる
 - `./scripts/ci-check.sh ai all` が成功する

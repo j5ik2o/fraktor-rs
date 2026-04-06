@@ -1,3 +1,13 @@
+## 0. 並走期間中の依存ルール（全タスクに適用される事前条件）
+
+- [ ] 0.1 **`modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` 配下のいかなるファイルも、旧 `modules/actor-core/src/core/kernel/dispatch/dispatcher/` 配下の型・関数・trait・モジュールを `use` / 参照してはならない**
+- [ ] 0.2 **`modules/actor-adaptor-std/src/std/dispatch_new/` 配下のいかなるファイルも、旧 `modules/actor-adaptor-std/src/std/dispatch/` 配下の型・関数・trait・モジュールを `use` / 参照してはならない**
+- [ ] 0.3 同じ概念を新旧両側で必要とする場合は、新側に独立して再実装する（コードの重複を許容してでも依存を切る）。旧側 helper 関数を「動くから」という理由で新側から呼ばない
+- [ ] 0.4 PR レビュー時に `grep -rn "use crate::core::kernel::dispatch::dispatcher::" modules/actor-core/src/core/kernel/dispatch/dispatcher_new/` および `grep -rn "use crate::std::dispatch::" modules/actor-adaptor-std/src/std/dispatch_new/` を実行し、ヒットがゼロであることを確認する
+- [ ] 0.5 旧側のテスト ユーティリティを新側のテストから流用しない。新側のテストヘルパは新側で完結する
+
+**Why**: 並走期間中に新側が旧側に依存すると、旧側を一括削除する瞬間に circular な依存が露呈し、削除 PR が膨大になる。`rm -rf` で旧側を削除するだけで完了できる構造を維持するため。
+
 ## 1. core: Executor trait / ExecutorShared / InlineExecutor
 
 - [ ] 1.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher_new/executor.rs` に CQS 準拠 `trait Executor { fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>); fn supports_blocking(&self) -> bool { true }; fn shutdown(&mut self); }` を定義する
@@ -7,17 +17,26 @@
 - [ ] 1.5 `dispatcher_new/inline_executor.rs` に `InlineExecutor` を定義し、`execute(&mut self, task)` で現スレッド同期実行する。再入対策（trampoline）は `InlineExecutor` 自身の内部状態として持つ
 - [ ] 1.6 executor trait / ExecutorShared / factory / InlineExecutor の unit test を追加する
 
+## 1.5 core: DispatcherSettings（新版、immutable settings bundle）
+
+- [ ] 1.5.1 `dispatcher_new/dispatcher_settings.rs` に `pub struct DispatcherSettings { pub id: String, pub throughput: NonZeroUsize, pub throughput_deadline: Option<Duration>, pub shutdown_timeout: Duration }` を定義する
+- [ ] 1.5.2 旧版 `DispatcherSettings` が持っていた `schedule_adapter` / `starvation_deadline` フィールドを新版には**含めない**ことを確認する（前者は `ScheduleAdapter` 自体削除に伴って、後者は YAGNI で初期版から除外）
+- [ ] 1.5.3 `DispatcherSettings::new(id, throughput, throughput_deadline, shutdown_timeout) -> Self` と `with_throughput`, `with_throughput_deadline`, `with_shutdown_timeout` 等の builder 風メソッドを実装する。各メソッドは `self` 消費の `Self` 返しか `&mut self` のいずれかで CQS に従う
+- [ ] 1.5.4 `DispatcherSettings` を `Clone` 可能にする
+- [ ] 1.5.5 `DispatcherSettings` の unit test を追加する（builder メソッドの挙動、Clone、フィールド値の保持）
+
 ## 2. core: DispatcherCore（pub 共通 state、CQS 準拠、内部可変性なし）
 
 - [ ] 2.1 `dispatcher_new/dispatcher_core.rs` に pub struct `DispatcherCore` を定義し、以下 field を保持する: `id: String`, `throughput: NonZeroUsize`, `throughput_deadline: Option<Duration>`, `shutdown_timeout: Duration`, `executor: ExecutorShared`, `inhabitants: i64`, `shutdown_schedule: ShutdownSchedule` (enum)
 - [ ] 2.2 `DispatcherCore` の field には `AtomicI64` / `AtomicU8` / `Mutex<T>` / `UnsafeCell<T>` などの内部可変性を導入しないことを確認する
-- [ ] 2.3 `DispatcherCore::new(id, config, executor: ExecutorShared) -> Self` を実装する
+- [ ] 2.3 `DispatcherCore::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` を実装する。`settings.id` / `settings.throughput` / `settings.throughput_deadline` / `settings.shutdown_timeout` を field にコピーする
 - [ ] 2.4 `DispatcherCore` の query メソッドを `&self` で実装する: `id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants`, `executor`（`&ExecutorShared` を返す）
 - [ ] 2.5 `DispatcherCore` の command メソッドを `&mut self` で実装する:
-  - `add_inhabitants(&mut self, delta: i64) -> i64`: CQS 許容例外（Pekko `addInhabitants: Long` と等価、合成後の値を返す必要あり）
-  - `schedule_shutdown_if_sensible(&mut self)`: inhabitants が 0 の時のみ shutdown_schedule を遷移
+  - `mark_attach(&mut self) -> i64`: CQS 許容例外。inhabitants を加算し、`SCHEDULED` なら `RESCHEDULED` へ遷移
+  - `mark_detach(&mut self) -> i64`: CQS 許容例外。inhabitants を減算し、0 到達時に `schedule_shutdown_if_sensible()` を呼ぶ
+  - `schedule_shutdown_if_sensible(&mut self)`: inhabitants が 0 の時のみ `UNSCHEDULED -> SCHEDULED` へ遷移
   - `shutdown(&mut self)`: `self.executor.shutdown()` を呼び、`shutdown_schedule` を UNSCHEDULED に戻す
-- [ ] 2.6 `schedule_shutdown_if_sensible` は inhabitants が 0 になった時に `shutdown_schedule` を UNSCHEDULED → SCHEDULED → RESCHEDULED の順で Pekko 準拠に遷移させる（すべて `&mut self` で操作）
+- [ ] 2.6 `mark_attach` / `mark_detach` / `schedule_shutdown_if_sensible` の state machine を Pekko 準拠で実装する（`UNSCHEDULED -> SCHEDULED`、再 attach 時の `SCHEDULED -> RESCHEDULED`、`shutdown()` 後の `UNSCHEDULED` 復帰）
 - [ ] 2.7 DispatcherCore の unit test を追加する（inhabitants カウンタの加減算、shutdown_schedule の状態遷移、CQS 分類の確認）
 
 ## 2.5 core: MessageDispatcherShared（AShared パターン）
@@ -26,59 +45,61 @@
 - [ ] 2.5.2 `impl Clone for MessageDispatcherShared` を実装する（`ArcShared::clone`）
 - [ ] 2.5.3 `MessageDispatcherShared::new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self` を実装する
 - [ ] 2.5.4 `impl SharedAccess<Box<dyn MessageDispatcher>> for MessageDispatcherShared` を実装する（`with_read` / `with_write`）
-- [ ] 2.5.5 convenience delegation methods を実装する: `attach`, `detach`, `dispatch`, `system_dispatch`, `suspend`, `resume`, `execute_task`, `shutdown`, `id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants`。いずれも `with_write` / `with_read` を通じて内部 trait object へ委譲する
+- [ ] 2.5.5 orchestration methods を実装する:
+  - `attach(&self, actor)`: `with_write` で `register_actor` + `create_mailbox` + actor への mailbox 設定を行い、ロック解放後に `register_for_execution`
+  - `detach(&self, actor)`: `with_write` で `unregister_actor` を行い、ロック解放後に delayed shutdown を actor の system scheduler に登録
+  - `dispatch(&self, receiver, env)` / `system_dispatch(&self, receiver, msg)`: `with_write` で enqueue を行い、ロック解放後に `register_for_execution`
+  - `suspend`, `resume`, `execute_task`, `shutdown`, `id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants` は `with_write` / `with_read` で委譲する
 - [ ] 2.5.6 `register_for_execution(&self, mbox: &ArcShared<Mailbox>, has_message_hint: bool, has_system_hint: bool) -> bool` を実装する。ロック区間を最小化するため次の順で動作する:
   1. `mbox.can_be_scheduled_for_execution` / `mbox.set_as_scheduled` をロック外で評価
-  2. CAS 成功時、`with_read` で throughput / throughput_deadline / executor_shared を 1 回だけ取得
-  3. ロックを解放した状態で closure を構築（`self.clone()` と `mbox.clone()` を capture）
-  4. `ExecutorShared::execute` に submit
-  5. closure 実行時は `mbox.run(throughput, deadline)` → `mbox.set_as_idle` → `self.register_for_execution(&mbox, false, false)` の順で再スケジュール
-- [ ] 2.5.7 `MessageDispatcherShared` の unit test を追加する（ロック区間の最小化、再入時のデッドロック回避、register_for_execution の Pekko 契約に沿った挙動）
+  2. CAS 成功後、`with_write` で trait hook `register_for_execution` を呼ぶ
+  3. hook が `false` を返した場合は `mbox.set_as_idle()` を呼んで `false` を返す
+  4. hook が `true` を返した場合のみ、`with_read` で throughput / throughput_deadline / executor_shared を 1 回だけ取得
+  5. ロックを解放した状態で closure を構築（`self.clone()` と `mbox.clone()` を capture）
+  6. `ExecutorShared::execute` に submit
+  7. closure 実行時は `mbox.run(throughput, deadline)` → `mbox.set_as_idle` → `self.register_for_execution(&mbox, false, false)` の順で再スケジュール
+- [ ] 2.5.7 `MessageDispatcherShared` の unit test を追加する（ロック区間の最小化、再入時のデッドロック回避、detach 後の delayed shutdown 登録、register_for_execution の Pekko 契約に沿った挙動）
 
 ## 3. core: MessageDispatcher trait（CQS 準拠）
 
 - [ ] 3.1 `dispatcher_new/message_dispatcher.rs` に `trait MessageDispatcher: Send + Sync` を定義する
 - [ ] 3.2 query メソッドを `&self` で宣言する: `id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants`, `executor`（clone 返しの `ExecutorShared`）, `core(&self) -> &DispatcherCore`
 - [ ] 3.3 `create_mailbox(&self, actor, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox>` を `&self` で宣言する（factory メソッドなので状態を変えない）
-- [ ] 3.4 template method `attach(&mut self, actor) -> Result<(), SpawnError>` を default impl で宣言する。default impl は `self.register_actor(actor)?` → `self.create_mailbox(actor, ...)` → `self.register_for_execution(&mbox, false, true)` の順で動く
-- [ ] 3.5 template method `detach(&mut self, actor)` を default impl で宣言する。default impl は `self.unregister_actor(actor)` を呼ぶ
+- [ ] 3.4 hook `register_actor(&mut self, actor) -> Result<(), SpawnError>` を default impl 付きで宣言する。default impl は `self.core_mut().mark_attach()` を呼んで `Ok(())`
+- [ ] 3.5 hook `unregister_actor(&mut self, actor)` を default impl 付きで宣言する。default impl は `self.core_mut().mark_detach()` を呼ぶ
 - [ ] 3.6 hook メソッドを default impl 付きで宣言する（具象型は必要な時だけ override）:
-  - `register_actor(&mut self, actor) -> Result<(), SpawnError>`: default は `self.core_mut().add_inhabitants(1)` を呼んで `Ok(())`
-  - `unregister_actor(&mut self, actor)`: default は `self.core_mut().add_inhabitants(-1)` → `self.core_mut().schedule_shutdown_if_sensible()`
-  - `dispatch(&mut self, receiver, env) -> Result<(), SendError>`: default は `receiver.mailbox().enqueue_user(env)?` → `self.register_for_execution(&mbox, true, false)`
+  - `dispatch(&mut self, receiver, env) -> Result<(), SendError>`: default は `receiver.mailbox().enqueue_user(env)?`
   - `system_dispatch(&mut self, receiver, msg) -> Result<(), SendError>`: default は system 経路で同様
   - `register_for_execution(&mut self, mbox, h1, h2) -> bool`: default は mailbox CAS 判定のみ
   - `shutdown(&mut self)`: default は `self.core_mut().shutdown()`
 - [ ] 3.7 `core_mut(&mut self) -> &mut DispatcherCore` を必須メソッドとして宣言する（default impl から `DispatcherCore` へ到達するため）
 - [ ] 3.8 その他の command (`suspend`, `resume`, `execute_task`) を `&mut self` で宣言する
 - [ ] 3.9 trait method で `Box<dyn MessageDispatcher>` を trait object として扱えるようにする（object-safe 保証）
-- [ ] 3.10 trait doc に「command メソッドを `&self` + 内部可変性で偽装してはならない」「`attach` / `detach` は default impl であり具象型は override してはならない」「`register_actor` / `unregister_actor` / `dispatch` / `register_for_execution` / `create_mailbox` は override 可能な hook」旨を明記する
+- [ ] 3.10 trait doc に「command メソッドを `&self` + 内部可変性で偽装してはならない」「`attach` / `detach` の orchestration は `MessageDispatcherShared` 側が担う」「`register_actor` / `unregister_actor` / `dispatch` / `register_for_execution` / `create_mailbox` は override 可能な hook」旨を明記する
 
 ## 4. core: DefaultDispatcher 具象型
 
 - [ ] 4.1 `dispatcher_new/default_dispatcher.rs` に `pub struct DefaultDispatcher { core: DispatcherCore }` を定義する
-- [ ] 4.2 `DefaultDispatcher::new(id, config, executor: ExecutorShared) -> Self` を実装する
+- [ ] 4.2 `DefaultDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` を実装する。内部で `DispatcherCore::new(settings, executor)` を呼ぶ
 - [ ] 4.3 `impl MessageDispatcher for DefaultDispatcher` を実装する:
   - 必須メソッド: `core(&self) -> &DispatcherCore` / `core_mut(&mut self) -> &mut DispatcherCore`
   - query メソッド (`id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants`, `executor`) は `self.core` へ委譲する
   - `create_mailbox(&self, actor, ty)` は新規 `ArcShared<Mailbox>` を返す（default impl でそのまま使える場合は override 不要）
   - hook メソッド (`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `register_for_execution`, `shutdown`) は trait の default impl をそのまま使う（`DefaultDispatcher` 固有の追加処理はない）
-  - `attach` / `detach` は trait default impl のまま override しない
-- [ ] 4.4 `DefaultDispatcher` の unit test を追加する（attach / detach が inhabitants を増減すること、複数 actor を同時 attach できること、auto-shutdown の挙動、trait default impl が意図通り呼ばれること）
+- [ ] 4.4 `DefaultDispatcher` の unit test を追加する（shared wrapper 経由の attach / detach が inhabitants を増減すること、複数 actor を同時 attach できること、auto-shutdown の挙動、default hook が意図通り呼ばれること）
 
 ## 5. core: PinnedDispatcher 具象型
 
 - [ ] 5.1 `dispatcher_new/pinned_dispatcher.rs` に `pub struct PinnedDispatcher { core: DispatcherCore, owner: Option<ActorCellId> }` を定義する（通常の `Option`、内部可変性は使わない）
-- [ ] 5.2 `PinnedDispatcher::new(id, shutdown_timeout, executor: ExecutorShared) -> Self` を実装する。`DispatcherCore::new` 呼び出し時に `throughput = NonZeroUsize::MAX`, `throughput_deadline = None` を固定で渡すことで、query メソッドの override を不要にする
+- [ ] 5.2 `PinnedDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` を実装する。引数で受け取った `settings` を `settings.with_throughput(NonZeroUsize::MAX).with_throughput_deadline(None)` で **Pinned 固有値に上書き** してから `DispatcherCore::new` に渡す（呼び出し側が何を渡しても結果として Pinned の固定値になる）
 - [ ] 5.3 `impl MessageDispatcher for PinnedDispatcher` を実装する:
   - 必須メソッド: `core(&self)` / `core_mut(&mut self)` を `self.core` / `&mut self.core` で実装
   - query メソッドはすべて `self.core` 委譲（Pinned 固有の固定値は `new` で既に core に埋め込み済み）
   - `create_mailbox` は default impl のまま
   - hook メソッドのうち **`register_actor` と `unregister_actor` のみ** override:
-    - `register_actor(&mut self, actor)`: `self.owner` が `None` か同一 actor なら owner をセットし、`self.core.add_inhabitants(1)` を呼んで `Ok(())` を返す。別 actor が既に owner なら `SpawnError::DispatcherAlreadyOwned` を返す
-    - `unregister_actor(&mut self, actor)`: owner を `None` に戻してから `self.core.add_inhabitants(-1)` → `self.core.schedule_shutdown_if_sensible()` を呼ぶ
+    - `register_actor(&mut self, actor)`: `self.owner` が `None` か同一 actor なら owner をセットし、`self.core.mark_attach()` を呼んで `Ok(())` を返す。別 actor が既に owner なら `SpawnError::DispatcherAlreadyOwned` を返す
+    - `unregister_actor(&mut self, actor)`: owner を `None` に戻してから `self.core.mark_detach()` を呼ぶ
   - それ以外の hook (`dispatch`, `system_dispatch`, `register_for_execution`, `shutdown`) は default impl
-  - `attach` / `detach` は trait default impl のまま override しない
 - [ ] 5.4 `PinnedDispatcher` の unit test を追加する（1 actor 専有、2 体目拒否、同一 actor の再 attach 許容、detach 後の再利用、Pinned 固有値が query で返ること）
 
 ## 6. core: MailboxOfferFuture Waker (core/no_std)
@@ -91,9 +112,19 @@
 ## 7. core: MessageDispatcherConfigurator trait と 具象
 
 - [ ] 7.1 `dispatcher_new/message_dispatcher_configurator.rs` に `trait MessageDispatcherConfigurator: Send + Sync { fn dispatcher(&self) -> MessageDispatcherShared; }` を定義する。引数なし（Pekko 準拠）、戻り値は Clone 安全な `MessageDispatcherShared`
-- [ ] 7.2 `dispatcher_new/default_dispatcher_configurator.rs` に `DefaultDispatcherConfigurator { shared: MessageDispatcherShared }` を定義する。`new` で eager に `DefaultDispatcher` と `MessageDispatcherShared` を構築し、`dispatcher(&self)` では `self.shared.clone()` を返す（OnceLock 等の内部可変性を使わず、eager init で immutable に保つ）
-- [ ] 7.3 `dispatcher_new/pinned_dispatcher_configurator.rs` に `PinnedDispatcherConfigurator { id: String, shutdown_timeout: Duration, executor_factory: ArcShared<Box<dyn ExecutorFactory>>, thread_name_prefix: String }` を定義し、`dispatcher(&self)` で毎回新規 `PinnedDispatcher` を構築して `MessageDispatcherShared::new` で包んで返す（thread 番号採番は `static AtomicUsize` を用いる既存慣習に従う）
-- [ ] 7.4 Blocking 用は `DefaultDispatcherConfigurator` を blocking 対応 `ExecutorFactory` で構築する経路を fraktor 内部に用意する（別 type は作らない）。具体的には `ActorSystemConfig` の bootstrap で `DefaultDispatcherConfigurator::new("pekko.actor.default-blocking-io-dispatcher", blocking_executor_factory.create(id))` として登録する
+- [ ] 7.2 `dispatcher_new/default_dispatcher_configurator.rs` に `DefaultDispatcherConfigurator { shared: MessageDispatcherShared }` を定義する。`DefaultDispatcherConfigurator::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` で eager に `DefaultDispatcher::new(settings, executor)` を構築し、`MessageDispatcherShared::new` で包んでフィールドに保持する。`dispatcher(&self)` では `self.shared.clone()` を返す（OnceLock 等の内部可変性を使わず、eager init で immutable に保つ）
+- [ ] 7.3 `dispatcher_new/pinned_dispatcher_configurator.rs` に `PinnedDispatcherConfigurator { settings: DispatcherSettings, executor_factory: ArcShared<Box<dyn ExecutorFactory>>, thread_name_prefix: String }` を定義する。`dispatcher(&self)` で `executor_factory.create(...)` を呼んで新規 `ExecutorShared` を作り、`PinnedDispatcher::new(self.settings.clone(), executor)` で新規 dispatcher を構築して `MessageDispatcherShared::new` で包んで返す（thread 番号採番は `static AtomicUsize` を用いる既存慣習に従う）
+- [ ] 7.4 Blocking 用は `DefaultDispatcherConfigurator` を blocking 対応 `ExecutorFactory` で構築する経路を fraktor 内部に用意する（別 type は作らない）。具体的には `ActorSystemConfig` の bootstrap で次のように登録する:
+  ```rust
+  let blocking_settings = DispatcherSettings::new(
+      "pekko.actor.default-blocking-io-dispatcher",
+      NonZeroUsize::new(1).unwrap(),
+      None,
+      Duration::from_secs(1),
+  );
+  let blocking_executor = blocking_executor_factory.create("pekko.actor.default-blocking-io-dispatcher");
+  let cfg = DefaultDispatcherConfigurator::new(blocking_settings, blocking_executor);
+  ```
 - [ ] 7.5 configurator の unit test を追加する（Default は同じ `MessageDispatcherShared` clone を返す、Pinned は毎回新規、Blocking は id 違いで別 instance、configurator には内部可変性が存在しない）
 
 ## 8. core: Dispatchers registry の置換
@@ -130,9 +161,10 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 
 並走戦略: `dispatcher_new/` と旧 `dispatcher/` を同時に存在させ、`ActorSystem` / `ActorSystemConfig` は **新 `Dispatchers` のみ** を保持する。旧 dispatcher の呼び出し元（`ActorCell` / `ActorRefSender` / bootstrap 等）を sub-task 単位で一つずつ新 API へ切り替え、切り替え済みの箇所から旧 re-export を削除していく。両方の型が同時に生きるのは fraktor 内部の一時状態のみで、公開 API 上は新型のみが見える状態を保つ。
 
+- [ ] 11.0 `ActorCell` の生成順を 2-phase init に変更し、dispatcher attach 前に cell を確保できるようにする。必要なら mailbox / dispatcher / sender の install メソッドまたは builder 分割を追加する
 - [ ] 11.1 `ActorSystemConfig` を新 `Dispatchers`（`HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>>`）を保持する形に変更する。旧 `DispatcherRegistryEntry` を保持するフィールドはこの時点で削除する
 - [ ] 11.2 `ActorSystem::new` / `start` で新 `Dispatchers` を構築し、reserved default / blocking / internal id の正規化を先行 change の要件通りに設定する
-- [ ] 11.3 `ActorCell::start` などの bootstrap が `MessageDispatcherShared::attach(actor)` を呼ぶように修正する
+- [ ] 11.3 `ActorCell::start` などの bootstrap が `MessageDispatcherShared::attach(actor)` を呼ぶように修正する。attach が mailbox を生成して actor に install する前提で生成順を組み替える
 - [ ] 11.4 `ActorCell::stop` / termination 経路が `MessageDispatcherShared::detach(actor)` を呼ぶように修正する
 - [ ] 11.5 `ActorRefSender` 経路を新 `MessageDispatcherShared::dispatch` / `system_dispatch` に繋ぎ替える
 - [ ] 11.6 旧 `DispatcherSender` を削除し、`ActorRef` の送信経路から `MessageDispatcherShared::dispatch` を直接呼ぶ形に整理する
