@@ -85,6 +85,8 @@ impl TerminationState {
       waker.wake_by_ref();
       return;
     }
-    guard.push(waker.clone());
+    if !guard.iter().any(|registered| registered.will_wake(waker)) {
+      guard.push(waker.clone());
+    }
   }
 }
