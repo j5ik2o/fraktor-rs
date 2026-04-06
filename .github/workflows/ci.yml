@@ -22,7 +22,7 @@ jobs:
   # Format check (fastest, prerequisite for other jobs)
   format:
     name: Format Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -39,7 +39,7 @@ jobs:
   # Lint checks
   lint:
     name: Lint Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: format
     strategy:
       matrix:
@@ -67,7 +67,7 @@ jobs:
   # Build and test
   test:
     name: Test (${{ matrix.target.name }})
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: format
     env:
       TEST_TIME_FACTOR: "2.0"
@@ -98,7 +98,7 @@ jobs:
   # Documentation build
   docs:
     name: Documentation
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: format
     steps:
       - name: Checkout source
@@ -117,7 +117,7 @@ jobs:
   # Examples build
   examples:
     name: Examples
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: format
     steps:
       - name: Checkout source
@@ -136,7 +136,7 @@ jobs:
   # All jobs completion check
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs:
       - format
       - lint
