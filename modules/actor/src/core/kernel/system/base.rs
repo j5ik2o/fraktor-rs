@@ -10,13 +10,10 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{
-  collections::queue::capabilities::QueueCapability,
-  sync::{ArcShared, SharedAccess},
-};
+use fraktor_utils_rs::core::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
 use super::{
-  ActorSystemWeak, ExtendedActorSystem,
+  ActorSystemWeak, Blocker, ExtendedActorSystem, TerminationSignal,
   guardian::{RootGuardianActor, SystemGuardianActor, SystemGuardianProtocol},
   remote::RemotingConfig,
 };
@@ -598,18 +595,17 @@ impl ActorSystem {
     }
   }
 
-  /// Returns a future that resolves once the actor system terminates.
+  /// Returns a signal that resolves once the actor system terminates.
   #[must_use]
-  pub fn when_terminated(&self) -> ActorFutureShared<()> {
-    self.state.termination_future()
+  pub fn when_terminated(&self) -> TerminationSignal {
+    self.state.termination_signal()
   }
 
   /// Blocks the current thread until the actor system has fully terminated.
-  pub fn run_until_terminated(&self) {
-    let future = self.when_terminated();
-    while !future.with_read(|af| af.is_ready()) {
-      core::hint::spin_loop();
-    }
+  ///
+  /// Uses the provided [`Blocker`](super::Blocker) to avoid busy-wait spin loops.
+  pub fn run_until_terminated(&self, blocker: &dyn Blocker) {
+    self.when_terminated().wait_blocking(blocker);
   }
 
   fn spawn_with_parent(&self, parent: Option<Pid>, props: &Props) -> Result<ChildRef, SpawnError> {

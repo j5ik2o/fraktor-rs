@@ -22,7 +22,6 @@ use fraktor_actor_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
   serialization::SerializationExtensionInstaller,
   system::{ActorSystem, remote::RemotingConfig},
-  util::futures::ActorFutureListener,
 };
 use fraktor_cluster_rs::core::{
   ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
@@ -152,8 +151,8 @@ async fn main() -> Result<()> {
   // ActorSystem の終了待機
   node_a.system.terminate().map_err(|e| anyhow!("terminate node-a: {e:?}"))?;
   node_b.system.terminate().map_err(|e| anyhow!("terminate node-b: {e:?}"))?;
-  ActorFutureListener::new(node_a.system.when_terminated()).await;
-  ActorFutureListener::new(node_b.system.when_terminated()).await;
+  node_a.system.when_terminated().await;
+  node_b.system.when_terminated().await;
 
   println!("\n=== Demo complete ===");
   Ok(())

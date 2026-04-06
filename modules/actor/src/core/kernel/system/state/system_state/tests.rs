@@ -38,7 +38,7 @@ use crate::core::kernel::{
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::{
-    RegisterExtraTopLevelError,
+    RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
     remote::RemotingConfig,
     state::{AuthorityState, SystemStateShared},
@@ -218,10 +218,10 @@ fn system_state_event_stream() {
 }
 
 #[test]
-fn system_state_termination_future() {
+fn system_state_termination_signal() {
   let state = build_state();
-  let future = state.termination_future();
-  assert!(!future.with_read(|af| af.is_ready()));
+  let signal = TerminationSignal::new(state.termination_state());
+  assert!(!signal.is_terminated());
 }
 
 #[test]
@@ -769,17 +769,17 @@ fn remote_watch_hook_replaces_previous_registration() {
 }
 
 #[test]
-fn termination_future_completes_after_root_marked_terminated() {
+fn termination_signal_completes_after_root_marked_terminated() {
   let state = build_shared_state();
   let root_pid = state.allocate_pid();
   state.register_guardian_pid(GuardianKind::Root, root_pid);
 
-  assert!(!state.termination_future().with_read(|f| f.is_ready()));
+  assert!(!state.termination_signal().is_terminated());
   assert_eq!(state.guardian_kind_by_pid(root_pid), Some(GuardianKind::Root));
   state.mark_guardian_stopped(GuardianKind::Root);
   state.mark_terminated();
 
-  assert!(state.termination_future().with_read(|f| f.is_ready()));
+  assert!(state.termination_signal().is_terminated());
 }
 
 #[test]

@@ -10,7 +10,7 @@ use crate::core::kernel::{
     deploy::Deployer,
     error::ActorError,
   },
-  util::futures::ActorFutureShared,
+  system::TerminationSignal,
 };
 
 /// Trait for all ActorRef providers to implement.
@@ -144,9 +144,9 @@ pub trait ActorRefProvider: Send + Sync {
     None
   }
 
-  /// Returns a future that completes when the backing actor system terminates.
+  /// Returns a signal that resolves when the backing actor system terminates.
   #[must_use]
-  fn termination_future(&self) -> ActorFutureShared<()>;
+  fn termination_signal(&self) -> TerminationSignal;
 
   /// Returns the external address to use when communicating with the given address.
   #[must_use]

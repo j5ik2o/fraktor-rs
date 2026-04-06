@@ -127,10 +127,10 @@ fn local_actor_ref_provider_exposes_classic_contract_helpers() {
     Some(Address::local("provider-helpers"))
   );
 
-  let future = provider.termination_future();
-  assert!(!future.with_read(|inner| inner.is_ready()));
+  let signal = provider.termination_signal();
+  assert!(!signal.is_terminated());
   system.state().mark_terminated();
-  assert!(future.with_read(|inner| inner.is_ready()));
+  assert!(signal.is_terminated());
 }
 
 #[test]

@@ -12,6 +12,7 @@ use core::{
 };
 use std::sync::Arc;
 
+use fraktor_actor_adaptor_rs::std::StdBlocker;
 use fraktor_actor_rs::core::{
   kernel::actor::{
     error::ActorError,
@@ -20,7 +21,6 @@ use fraktor_actor_rs::core::{
   typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors, message_and_signals::BehaviorSignal},
 };
 use fraktor_showcases_std::support;
-use fraktor_utils_rs::core::sync::SharedAccess;
 
 // --- メッセージ定義 ---
 
@@ -124,7 +124,5 @@ fn main() {
   thread::sleep(std::time::Duration::from_millis(300));
 
   system.terminate().expect("terminate");
-  while !termination.with_read(|af| af.is_ready()) {
-    thread::yield_now();
-  }
+  termination.wait_blocking(&StdBlocker::new());
 }

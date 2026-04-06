@@ -6,6 +6,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
+use fraktor_actor_adaptor_rs::std::StdBlocker;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -22,7 +23,6 @@ use fraktor_persistence_rs::core::{
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };
 use fraktor_showcases_std::support;
-use fraktor_utils_rs::core::sync::SharedAccess;
 
 // --- メッセージ定義 ---
 
@@ -139,7 +139,5 @@ fn main() {
   thread::sleep(std::time::Duration::from_millis(500));
 
   system.terminate().expect("terminate");
-  while !termination.with_read(|af| af.is_ready()) {
-    thread::yield_now();
-  }
+  termination.wait_blocking(&StdBlocker::new());
 }

@@ -186,10 +186,10 @@ fn remote_provider_exposes_classic_contract_helpers() {
   provider.unregister_temp_actor_path(&provider.temp_path().child(&temp_name)).expect("unregister temp actor path");
   assert!(provider.temp_actor(&temp_name).is_none());
 
-  let future = provider.termination_future();
-  assert!(!future.with_read(|inner| inner.is_ready()));
+  let signal = provider.termination_signal();
+  assert!(!signal.is_terminated());
   system.state().mark_terminated();
-  assert!(future.with_read(|inner| inner.is_ready()));
+  assert!(signal.is_terminated());
 }
 
 #[test]

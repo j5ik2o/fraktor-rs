@@ -13,6 +13,7 @@ use std::{
   borrow::Cow,
 };
 
+use fraktor_actor_adaptor_rs::std::StdBlocker;
 use fraktor_actor_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -287,7 +288,5 @@ fn main() {
 
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  while !termination.with_read(|af| af.is_ready()) {
-    std::thread::yield_now();
-  }
+  termination.wait_blocking(&StdBlocker::new());
 }

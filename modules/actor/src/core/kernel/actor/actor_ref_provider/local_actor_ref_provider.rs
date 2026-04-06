@@ -12,8 +12,10 @@ use crate::core::kernel::{
     error::{ActorError, SendError},
     messaging::AnyMessage,
   },
-  system::state::{SystemStateShared, SystemStateWeak},
-  util::futures::ActorFutureShared,
+  system::{
+    TerminationSignal,
+    state::{SystemStateShared, SystemStateWeak},
+  },
 };
 
 #[cfg(test)]
@@ -235,8 +237,8 @@ impl ActorRefProvider for LocalActorRefProvider {
     self.state()?.temp_actor(name)
   }
 
-  fn termination_future(&self) -> ActorFutureShared<()> {
-    self.state().map_or_else(ActorFutureShared::new, |state| state.termination_future())
+  fn termination_signal(&self) -> TerminationSignal {
+    self.state().map_or_else(TerminationSignal::already_terminated, |state| state.termination_signal())
   }
 
   fn get_external_address_for(&self, addr: &Address) -> Option<Address> {

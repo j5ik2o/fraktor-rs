@@ -65,7 +65,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   });
 
   system.terminate().expect("terminate");
-  system.run_until_terminated();
+  system.run_until_terminated(&crate::core::kernel::system::SpinBlocker);
 }
 
 #[test]
