@@ -26,10 +26,12 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_cluster_core_rs::core::{
   ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterTopology,
 };
-use fraktor_remote_rs::core::{
-  RemotingExtensionInstaller,
-  actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
-  remoting_extension::RemotingExtensionConfig,
+use fraktor_remote_rs::{
+  core::{
+    actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
+    remoting_extension::RemotingExtensionConfig,
+  },
+  std::RemotingExtensionInstaller,
 };
 use fraktor_showcases_std::support::tokio_tick_driver_config;
 use fraktor_utils_rs::core::sync::ArcShared;
