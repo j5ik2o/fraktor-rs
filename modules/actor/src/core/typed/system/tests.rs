@@ -560,16 +560,18 @@ fn get_when_terminated_tracks_same_lifecycle_as_when_terminated() {
   // Given: a typed actor system and both termination signals
   let system = new_test_system();
   let signal = system.when_terminated();
-  let _java_signal = system.get_when_terminated();
+  let java_signal = system.get_when_terminated();
 
-  // When/Then: the signal is not terminated before termination
+  // When/Then: neither signal is terminated before termination
   assert!(!signal.is_terminated());
+  assert!(!java_signal.is_terminated());
 
   // When: the actor system is terminated
   system.terminate().expect("terminate");
 
-  // Then: the signal becomes terminated and the Java alias remains callable
+  // Then: both signals observe the same terminated state
   assert!(signal.is_terminated());
+  assert!(java_signal.is_terminated());
 }
 
 // --- T13: TypedActorSystem parity surface for Phase 2 system endpoints ---

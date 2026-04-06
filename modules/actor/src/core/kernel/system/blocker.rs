@@ -9,7 +9,9 @@
 pub trait Blocker: Send + Sync {
   /// Blocks the current thread until `condition` returns `true`.
   ///
-  /// The implementation should avoid busy-wait spin loops and instead use
-  /// platform-appropriate sleeping or parking mechanisms.
+  /// Platform-appropriate sleeping or parking mechanisms are preferred
+  /// over busy-wait spin loops. A spin-based fallback
+  /// ([`SpinBlocker`](super::SpinBlocker)) exists for no_std and test
+  /// environments where parking is unavailable.
   fn block_until(&self, condition: &dyn Fn() -> bool);
 }

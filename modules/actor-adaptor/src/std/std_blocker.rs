@@ -9,6 +9,9 @@ use std::{
 
 use fraktor_actor_rs::core::kernel::system::Blocker;
 
+/// Minimum poll interval to prevent tight spinning.
+const MIN_POLL_INTERVAL: Duration = Duration::from_millis(1);
+
 /// [`Blocker`] implementation using [`Condvar`] with periodic timeout wakeups.
 ///
 /// Blocks the calling thread with minimal CPU usage by sleeping between
@@ -23,12 +26,16 @@ impl StdBlocker {
   /// Creates a blocker with the default 1 ms poll interval.
   #[must_use]
   pub fn new() -> Self {
-    Self::with_poll_interval(Duration::from_millis(1))
+    Self::with_poll_interval(MIN_POLL_INTERVAL)
   }
 
   /// Creates a blocker with a custom poll interval.
+  ///
+  /// Values below [`MIN_POLL_INTERVAL`] (1 ms) are clamped to prevent
+  /// tight spinning.
   #[must_use]
   pub fn with_poll_interval(poll_interval: Duration) -> Self {
+    let poll_interval = if poll_interval < MIN_POLL_INTERVAL { MIN_POLL_INTERVAL } else { poll_interval };
     Self { poll_interval, pair: (Mutex::new(()), Condvar::new()) }
   }
 }
