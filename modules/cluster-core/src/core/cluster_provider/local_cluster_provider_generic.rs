@@ -15,11 +15,12 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
-use crate::core::{ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate};
+use crate::core::{
+  BlockListProvider, ClusterEvent, ClusterProviderError, ClusterTopology, StartupMode, TopologyUpdate,
+};
 
 #[cfg(test)]
 mod tests;

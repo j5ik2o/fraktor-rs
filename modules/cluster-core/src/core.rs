@@ -1,5 +1,6 @@
 //! Cluster core domain modules (no_std).
 
+mod block_list_provider;
 mod cluster_api;
 mod cluster_api_error;
 mod cluster_core;
@@ -27,6 +28,10 @@ mod cluster_topology;
 mod config_validation;
 /// Downing strategy abstractions and default implementations.
 pub mod downing_provider;
+/// Failure detector traits, registry, and the legacy `PhiFailureDetector`
+/// implementation moved here from the legacy `fraktor-remote-rs` during the
+/// `remote-redesign` change.
+pub mod failure_detector;
 /// Virtual actor (grain) API, RPC routing, and codec abstraction.
 pub mod grain;
 /// PID resolution, identity lookup, and rendezvous hashing.
@@ -45,6 +50,7 @@ mod startup_mode;
 mod topology_apply_error;
 mod topology_update;
 
+pub use block_list_provider::BlockListProvider;
 pub use cluster_api::ClusterApi;
 pub use cluster_api_error::ClusterApiError;
 pub use cluster_core::ClusterCore;

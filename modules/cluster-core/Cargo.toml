@@ -14,12 +14,11 @@ autoexamples = false
 
 [features]
 default = []
-test-support = ["fraktor-actor-core-rs/test-support", "fraktor-remote-rs/test-support"]
+test-support = ["fraktor-actor-core-rs/test-support"]
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
 fraktor-utils-rs = { workspace = true }
-fraktor-remote-rs = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true }
@@ -29,5 +28,4 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
-fraktor-remote-rs = { workspace = true, features = ["test-support"] }
 fraktor-utils-rs = { workspace = true, features = ["std"] }

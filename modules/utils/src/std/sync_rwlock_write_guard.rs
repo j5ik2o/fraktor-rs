@@ -8,7 +8,7 @@ use std::sync::RwLockWriteGuard;
 #[cfg(test)]
 mod tests;
 
-/// Guard returned by [`StdSyncRwLock::write`](crate::std::sync_rwlock::StdSyncRwLock::write).
+/// Guard returned by `StdSyncRwLock::write`.
 pub struct StdSyncRwLockWriteGuard<'a, T> {
   guard: RwLockWriteGuard<'a, T>,
 }

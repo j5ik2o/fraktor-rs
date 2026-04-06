@@ -1,15 +1,15 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_remote_rs::core::failure_detector::{
-  DefaultFailureDetectorRegistry,
-  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
-};
 use fraktor_utils_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinator;
 use crate::core::{
   ClusterEvent, ClusterExtensionConfig,
+  failure_detector::{
+    DefaultFailureDetectorRegistry,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
   membership::{
     MembershipCoordinatorConfig, MembershipCoordinatorError, MembershipCoordinatorState, MembershipDelta,
     MembershipError, MembershipEvent, MembershipTable, MembershipVersion, NodeStatus, QuarantineEvent,

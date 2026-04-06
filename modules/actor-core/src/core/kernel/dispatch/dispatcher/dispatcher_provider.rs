@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 
 use super::{
-  dispatcher_provision_request::DispatcherProvisionRequest, dispatcher_settings::DispatcherSettings,
-  dispatcher_trait::Dispatcher,
+  dispatcher_builder::DispatcherBuilder, dispatcher_provision_request::DispatcherProvisionRequest,
+  dispatcher_settings::DispatcherSettings,
 };
 use crate::core::kernel::actor::spawn::SpawnError;
 
@@ -18,5 +18,5 @@ pub trait DispatcherProvider: Send + Sync {
     &self,
     settings: &DispatcherSettings,
     request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn Dispatcher>, SpawnError>;
+  ) -> Result<Box<dyn DispatcherBuilder>, SpawnError>;
 }

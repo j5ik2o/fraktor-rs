@@ -5,8 +5,7 @@ use std::sync::Mutex;
 use fraktor_actor_core_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
-use fraktor_cluster_core_rs::core::{ClusterEvent, StartupMode, cluster_provider::ClusterProvider};
-use fraktor_remote_rs::core::BlockListProvider;
+use fraktor_cluster_core_rs::core::{BlockListProvider, ClusterEvent, StartupMode, cluster_provider::ClusterProvider};
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{AwsEcsClusterProvider, EcsClusterConfig};

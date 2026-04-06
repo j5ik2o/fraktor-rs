@@ -8,7 +8,7 @@ use std::sync::MutexGuard;
 #[cfg(test)]
 mod tests;
 
-/// Guard returned by [`StdSyncMutex`](crate::StdSyncMutex).
+/// Guard returned by `StdSyncMutex`.
 pub struct StdSyncMutexGuard<'a, T> {
   /// Underlying mutex guard.
   pub guard: MutexGuard<'a, T>,

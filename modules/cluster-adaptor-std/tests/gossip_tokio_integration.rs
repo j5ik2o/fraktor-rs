@@ -9,14 +9,14 @@ use fraktor_cluster_adaptor_rs::std::{
 };
 use fraktor_cluster_core_rs::core::{
   ClusterEvent, ClusterExtensionConfig,
+  failure_detector::{
+    DefaultFailureDetectorRegistry,
+    phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
+  },
   membership::{
     GossipOutbound, GossipTransport, Gossiper, MembershipCoordinator, MembershipCoordinatorConfig,
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
-};
-use fraktor_remote_rs::core::failure_detector::{
-  DefaultFailureDetectorRegistry,
-  phi_failure_detector::{PhiFailureDetector, PhiFailureDetectorConfig},
 };
 
 struct EventSink {

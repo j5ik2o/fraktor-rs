@@ -19,7 +19,7 @@ use crate::core::{
 pub struct ClusterExtensionId {
   config:              ClusterExtensionConfig,
   provider:            ClusterProviderShared,
-  block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
+  block_list_provider: ArcShared<dyn crate::core::BlockListProvider>,
   downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
   gossiper:            GossiperShared,
   pubsub:              ClusterPubSubShared,
@@ -49,7 +49,7 @@ impl ClusterExtensionId {
   pub fn new(
     config: ClusterExtensionConfig,
     provider: Box<dyn ClusterProvider>,
-    block_list_provider: ArcShared<dyn fraktor_remote_rs::core::BlockListProvider>,
+    block_list_provider: ArcShared<dyn crate::core::BlockListProvider>,
     downing_provider: Box<dyn DowningProvider>,
     gossiper: Box<dyn Gossiper>,
     pubsub: Box<dyn ClusterPubSub>,

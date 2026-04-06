@@ -49,10 +49,9 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamShared},
 };
 use fraktor_cluster_core_rs::core::{
-  ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterProviderError, ClusterTopology, StartupMode,
-  TopologyUpdate, cluster_provider::ClusterProvider,
+  BlockListProvider, ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterProviderError,
+  ClusterTopology, StartupMode, TopologyUpdate, cluster_provider::ClusterProvider,
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
 use tokio::task::JoinHandle;
 

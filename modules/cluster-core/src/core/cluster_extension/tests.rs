@@ -8,15 +8,14 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::{
   sync::{ArcShared, NoStdMutex},
   time::TimerInstant,
 };
 
 use crate::core::{
-  ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId, ClusterProviderError,
-  ClusterTopology, TopologyUpdate,
+  BlockListProvider, ClusterError, ClusterEvent, ClusterExtension, ClusterExtensionConfig, ClusterExtensionId,
+  ClusterProviderError, ClusterTopology, TopologyUpdate,
   cluster_provider::{ClusterProvider, StaticClusterProvider},
   downing_provider::NoopDowningProvider,
   grain::GrainKey,
@@ -194,7 +193,7 @@ impl IdentityLookup for StubIdentity {
 }
 
 struct StubBlockList;
-impl fraktor_remote_rs::core::BlockListProvider for StubBlockList {
+impl crate::core::BlockListProvider for StubBlockList {
   fn blocked_members(&self) -> Vec<String> {
     Vec::new()
   }

@@ -7,11 +7,10 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::EventStreamShared,
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_remote_rs::core::BlockListProvider;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use crate::core::{
-  ClusterExtension, ClusterExtensionConfig,
+  BlockListProvider, ClusterExtension, ClusterExtensionConfig,
   cluster_extension_id::ClusterExtensionId,
   cluster_provider::{ClusterProvider, LocalClusterProvider},
   downing_provider::{DowningProvider, NoopDowningProvider},
