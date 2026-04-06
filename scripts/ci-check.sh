@@ -68,7 +68,7 @@ usage() {
   test                   : unit-test + integration-test を順に実行します
   check-unit-sleep       : unit テストパスに実時間 sleep が残っていないことを検査します
   perf                   : Scheduler ストレスと actor ベンチマークを実行します
-  actor-path-e2e         : fraktor-actor-rs の actor_path_e2e テストを単体実行します
+  actor-path-e2e         : fraktor-actor-core-rs の actor_path_e2e テストを単体実行します
   all                    : AI 向けの標準フルチェックを順番に実行します (引数なし時と同じ)
 複数指定で部分実行が可能です (例: scripts/ci-check.sh lint dylint module-wiring-lint)
 
@@ -599,7 +599,7 @@ run_dylint() {
         break
         ;;
       -h|--help)
-        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-rs" >&2
+        echo "利用例: scripts/ci-check.sh dylint -n mod-file-lint -m fraktor-actor-core-rs" >&2
         return 0
         ;;
       *)
@@ -944,9 +944,9 @@ PY
 run_clippy() {
   # --all-targets は dev-dep 解決時に ahash/proptest のトランジティブ依存が
   # 壊れるため --lib --bins に限定する（テストコードは run_tests で検証される）。
-  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-rs を一時的に除外する。
-  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-rs --lib --bins -- -D warnings"
-  run_cargo clippy --workspace --exclude fraktor-cluster-rs --lib --bins -- -D warnings || return 1
+  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-rs / fraktor-cluster-adaptor-rs を一時的に除外する。
+  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings"
+  run_cargo clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings || return 1
 }
 
 run_no_std() {
@@ -957,9 +957,9 @@ run_no_std() {
     "no-std-host-utils" \
     check -p fraktor-utils-rs --no-default-features --features alloc
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --no-default-features" \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features" \
     "no-std-host-core" \
-    check -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-rs --no-default-features
+    check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features
   wait_parallel_cargo || return 1
 
   local thumb_target="thumbv8m.main-none-eabi"
@@ -971,9 +971,9 @@ run_no_std() {
       "no-std-thumb-utils" \
       check -p fraktor-utils-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc
     start_parallel_cargo \
-      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs -p fraktor-stream-rs --no-default-features --target ${thumb_target}" \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target ${thumb_target}" \
       "no-std-thumb-core" \
-      check -p fraktor-actor-rs -p fraktor-stream-rs --no-default-features --target "${thumb_target}"
+      check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target "${thumb_target}"
     wait_parallel_cargo || return 1
   fi
 }
@@ -986,15 +986,15 @@ run_std() {
     "std-utils" \
     test -p fraktor-utils-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-rs -p fraktor-stream-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib
+    test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 
 run_doc_tests() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --no-default-features"
-  run_cargo check -p fraktor-actor-rs --no-default-features || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --no-default-features"
+  run_cargo check -p fraktor-actor-core-rs --no-default-features || return 1
 }
 
 # run_embedded() {
@@ -1025,11 +1025,11 @@ run_doc_tests() {
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --target ${target} --no-default-features --features alloc"
 #    run_cargo check -p fraktor-utils-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
-#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-rs --target ${target} --no-default-features --features alloc"
-#    run_cargo check -p fraktor-actor-rs --target "${target}" --no-default-features --features alloc || return 1
+#    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs --target ${target} --no-default-features --features alloc"
+#    run_cargo check -p fraktor-actor-core-rs --target "${target}" --no-default-features --features alloc || return 1
 #
 #    log_step "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-embedded-rs --target ${target} --no-default-features --features alloc,embedded_rc"
 #    run_cargo check -p fraktor-actor-embedded-rs --target "${target}" --no-default-features --features alloc,embedded_rc || return 1
@@ -1070,10 +1070,13 @@ check_unit_sleep() {
     return 1
   fi
   local -a scan_dirs=(
-    modules/actor/src/
-    modules/stream/src/
+    modules/actor-core/src/
+    modules/actor-adaptor-std/src/
+    modules/stream-core/src/
+    modules/stream-adaptor-std/src/
     modules/remote/src/
-    modules/cluster/src/
+    modules/cluster-core/src/
+    modules/cluster-adaptor-std/src/
   )
   local -a rg_globs=(
     --glob '**/tests.rs'
@@ -1082,9 +1085,9 @@ check_unit_sleep() {
   local -a rg_excludes=(
     --glob '!modules/remote/src/std/transport/**'
     --glob '!modules/remote/tests/**'
-    --glob '!modules/cluster/src/std/tokio_gossip_transport/**'
-    --glob '!modules/actor/src/std/system/coordinated_shutdown/tests.rs'
-    --glob '!modules/actor/src/core/dispatch/dispatcher/tests.rs'
+    --glob '!modules/cluster-adaptor-std/src/std/tokio_gossip_transport/**'
+    --glob '!modules/actor-core/src/core/kernel/system/coordinated_shutdown/tests.rs'
+    --glob '!modules/actor-core/src/core/kernel/dispatch/dispatcher/tests.rs'
   )
 
   local violations=""
@@ -1123,8 +1126,8 @@ check_unit_sleep() {
 }
 
 run_actor_path_e2e() {
-  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-rs --test actor_path_e2e --features test-support -- --nocapture"
-  run_cargo test -p fraktor-actor-rs --test actor_path_e2e --features test-support -- --nocapture || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs --test actor_path_e2e --features test-support -- --nocapture"
+  run_cargo test -p fraktor-actor-core-rs --test actor_path_e2e --features test-support -- --nocapture || return 1
 }
 
 run_examples() {
@@ -1210,8 +1213,8 @@ PY
 }
 
 run_perf() {
-  log_step "cargo test -p fraktor-actor-rs stress_scheduler_handles_"
-  run_cargo test -p fraktor-actor-rs stress_scheduler_handles_ || return 1
+  log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
+  run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
 
   log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
   run_cargo bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1

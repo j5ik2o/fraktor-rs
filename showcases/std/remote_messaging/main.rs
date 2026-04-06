@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use fraktor_actor_adaptor_rs::std::dispatch::dispatcher::DefaultDispatcher;
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -28,10 +28,12 @@ use fraktor_actor_rs::core::kernel::{
   serialization::SerializationExtensionInstaller,
   system::{ActorSystem, remote::RemotingConfig},
 };
-use fraktor_remote_rs::core::{
-  RemotingExtensionInstaller,
-  actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
-  remoting_extension::RemotingExtensionConfig,
+use fraktor_remote_rs::{
+  core::{
+    actor_ref_provider::{loopback::default_loopback_setup, tokio::TokioActorRefProviderInstaller},
+    remoting_extension::RemotingExtensionConfig,
+  },
+  std::RemotingExtensionInstaller,
 };
 use fraktor_showcases_std::support::tokio_tick_driver_config;
 

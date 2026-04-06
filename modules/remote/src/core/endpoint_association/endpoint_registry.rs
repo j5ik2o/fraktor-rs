@@ -6,7 +6,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::kernel::system::state::AuthorityState;
+use fraktor_actor_core_rs::core::kernel::system::state::AuthorityState;
 
 use crate::core::{
   endpoint_association::AssociationState, envelope::DeferredEnvelope,

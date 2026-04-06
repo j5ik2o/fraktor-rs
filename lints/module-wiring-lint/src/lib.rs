@@ -180,6 +180,10 @@ impl NoParentReexport {
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
       if let ItemKind::Mod(ident, _) = item.kind {
+        // マクロ展開由来のモジュールはユーザコードの再エクスポート対象ではない
+        if item.span.from_expansion() {
+          continue;
+        }
         if ident.name == target {
           return Some(LocalModDefId::new_unchecked(def_id));
         }
@@ -200,6 +204,10 @@ impl NoParentReexport {
       let node = cx.tcx.hir_node_by_def_id(def_id);
       let item = node.expect_item();
       if matches!(item.kind, ItemKind::Mod(..)) {
+        // マクロ展開由来のモジュール (例: tokio::select! の `__tokio_select_util`) は無視する
+        if item.span.from_expansion() {
+          continue;
+        }
         is_leaf = false;
         break;
       }

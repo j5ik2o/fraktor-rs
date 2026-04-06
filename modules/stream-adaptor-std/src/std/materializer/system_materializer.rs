@@ -2,8 +2,8 @@
 
 extern crate std;
 
-use fraktor_actor_rs::core::kernel::actor::extension::Extension;
-use fraktor_stream_rs::core::materialization::ActorMaterializer;
+use fraktor_actor_core_rs::core::kernel::actor::extension::Extension;
+use fraktor_stream_core_rs::core::materialization::ActorMaterializer;
 
 /// Per-ActorSystem shared materializer (Pekko `SystemMaterializer` equivalent).
 ///

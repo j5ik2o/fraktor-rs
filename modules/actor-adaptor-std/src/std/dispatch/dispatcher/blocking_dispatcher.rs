@@ -2,7 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::spawn::SpawnError,
   dispatch::dispatcher::{
     Dispatcher, DispatcherConfig, DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry,

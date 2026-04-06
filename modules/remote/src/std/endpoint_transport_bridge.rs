@@ -5,8 +5,10 @@ mod tests;
 
 mod bridge;
 mod config;
+mod factory;
 mod handle;
 
 pub(crate) use bridge::EndpointTransportBridge;
 pub use config::EndpointTransportBridgeConfig;
+pub use factory::EndpointTransportBridgeFactory;
 pub use handle::EndpointTransportBridgeHandle;

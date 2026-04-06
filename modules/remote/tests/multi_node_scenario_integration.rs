@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::format;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
@@ -24,11 +24,15 @@ use fraktor_actor_rs::core::kernel::{
     state::AuthorityState,
   },
 };
-use fraktor_remote_rs::core::{
-  RemotingExtensionId, RemotingExtensionInstaller,
-  actor_ref_provider::loopback::{LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup},
-  remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
-  transport::TransportBind,
+use fraktor_remote_rs::{
+  core::{
+    actor_ref_provider::loopback::{
+      LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup,
+    },
+    remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
+    transport::TransportBind,
+  },
+  std::{RemotingExtensionId, RemotingExtensionInstaller},
 };
 use fraktor_utils_rs::core::sync::SharedAccess;
 

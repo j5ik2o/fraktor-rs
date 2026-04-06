@@ -2,7 +2,7 @@
 > 最終更新: 2026-02-22
 updated_at: 2026-02-22T14:07:25Z
 
-fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。ワークスペースは `fraktor-utils-rs`（`modules/utils`）、`fraktor-actor-rs`（`modules/actor`）、`fraktor-remote-rs`（`modules/remote`）、`fraktor-cluster-rs`（`modules/cluster`）、`fraktor-stream-rs`（`modules/stream`）、`fraktor-persistence-rs`（`modules/persistence`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（no_std）/`std` モジュールを feature で切り替え、persistence は現時点で `core` を中心に提供されます。これにより、DeathWatch を強化した監視 API、system mailbox によるライフサイクル制御、EventStream/DeadLetter の可観測性、Remoting 拡張、クラスタリング、ストリーム処理、永続化を埋め込みボードからホスト OS まで一貫した体験で提供します。
+fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計を Rust の no_std 環境へ移植し、標準環境（Tokio など）とも同一 API で運用できるアクターランタイムです。ワークスペースは `fraktor-utils-rs`（`modules/utils`）、`fraktor-actor-core-rs`（`modules/actor`）、`fraktor-remote-rs`（`modules/remote`）、`fraktor-cluster-core-rs`（`modules/cluster`）、`fraktor-stream-core-rs`（`modules/stream`）、`fraktor-persistence-core-rs`（`modules/persistence`）の 6 クレートで構成されます。5 クレート（utils/actor/remote/cluster/streams）は `core`（no_std）/`std` モジュールを feature で切り替え、persistence は現時点で `core` を中心に提供されます。これにより、DeathWatch を強化した監視 API、system mailbox によるライフサイクル制御、EventStream/DeadLetter の可観測性、Remoting 拡張、クラスタリング、ストリーム処理、永続化を埋め込みボードからホスト OS まで一貫した体験で提供します。
 
 ## コア機能
 - **ライフサイクル制御**: `SystemMessage::Create/Recreate/Failure` を system mailbox で優先処理し、SupervisorStrategy／再起動ポリシーを deterministic に適用して actor の生成・停止シーケンスを安定化します。
@@ -11,7 +11,7 @@ fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計
 - **API サーフェスの二層化**: `TypedActor` と `into_untyped/as_untyped` 変換が型付き/非型付き API を橋渡しし、`reply_to` 前提のプロトコルで Classic `sender()` 依存を排除します。
 - **アドレッシング & Remoting**: `ActorPathParts`/`ActorPathFormatter` が Pekko 互換 URI を生成し、`RemoteAuthorityRegistry` が `Unresolved/Connected/Quarantine` と遅延キューを管理してリモート隔離・復旧を統制します。
 - **スケジューラ / Tick Driver**: `TickDriverBootstrap`・`SchedulerTickExecutor` と `TickDriverConfig::tokio_quickstart*` がハードウェア/手動/Tokio driver をテンプレ化し、`docs/guides/tick-driver-quickstart.md` でブート手順を統合します。
-- **Toolbox & Runtime 分離**: `fraktor-utils-rs` の `RuntimeToolbox` が割り込み安全な同期原語・タイマを提供し、`fraktor-actor-rs` の `core`（no_std）と `std`（Tokio/ログ連携）が同一 API を別実装で差し替えます。
+- **Toolbox & Runtime 分離**: `fraktor-utils-rs` の `RuntimeToolbox` が割り込み安全な同期原語・タイマを提供し、`fraktor-actor-core-rs` の `core`（no_std）と `std`（Tokio/ログ連携）が同一 API を別実装で差し替えます。
 
 ### モジュール別要約（`modules/actor/src/core`）
 - **`actor/`**: `Pid`、`ActorRef`、`ActorPathParts`、`ActorSelectionResolver`、`ActorCell`、`ActorContext` などアクター識別・アドレッシング・Typed/Untyped の橋渡しを司る基本語彙を提供。
@@ -32,9 +32,9 @@ fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計
 - **`typed/`**: `Behavior`, `TypedActorContext`, `TypedActorRef` を提供し、Untyped API との safe bridge (`into_untyped/as_untyped`) を担う。
 
 ### 追加モジュール
-- **`modules/cluster`** (`fraktor-cluster-rs`): protoactor-go 互換のクラスタコアを提供。`core`/`std` 構造を持ち、メンバーシップ管理、ゴシッププロトコル、障害検出、アイデンティティルックアップ、プレースメントを実装。AWS ECS 統合オプションあり。
-- **`modules/stream`** (`fraktor-stream-rs`): ストリーム処理のコアを提供。`core`/`std` 構造を持つ。
-- **`modules/persistence`** (`fraktor-persistence-rs`): Untyped 永続化ランタイムを提供。イベントソーシングと at-least-once デリバリーをサポートし、現時点では `core` モジュールを公開面とする。
+- **`modules/cluster`** (`fraktor-cluster-core-rs`): protoactor-go 互換のクラスタコアを提供。`core`/`std` 構造を持ち、メンバーシップ管理、ゴシッププロトコル、障害検出、アイデンティティルックアップ、プレースメントを実装。AWS ECS 統合オプションあり。
+- **`modules/stream`** (`fraktor-stream-core-rs`): ストリーム処理のコアを提供。`core`/`std` 構造を持つ。
+- **`modules/persistence`** (`fraktor-persistence-core-rs`): Untyped 永続化ランタイムを提供。イベントソーシングと at-least-once デリバリーをサポートし、現時点では `core` モジュールを公開面とする。
 
 ## ターゲットユースケース
 - Akka/Pekko/Proto.Actor のデザインを Rust へ移植しつつ、ミッションクリティカルな復旧ポリシーを維持したい分散アプリケーション。
@@ -42,7 +42,7 @@ fraktor-rs は Akka/Pekko および protoactor-go のライフサイクル設計
 - EventStream と DeadLetter メトリクスを軸に、ホスト（Tokio）側でログ集約・監視を行う観測性重視の制御平面。
 
 ## 価値提案
-- **一貫性**: `fraktor-actor-rs` が単一クレート内で `core`（default `#![no_std]`）と `std` モジュールを持ち、feature 切替だけで同じ API を no_std / std のどちらでも再利用可能。
+- **一貫性**: `fraktor-actor-core-rs` が単一クレート内で `core`（default `#![no_std]`）と `std` モジュールを持ち、feature 切替だけで同じ API を no_std / std のどちらでも再利用可能。
 - **復旧容易性**: DeathWatch 強化と `SystemMessage` 優先度により、監視通知と SupervisorStrategy をシンプルに合成できる。
 - **リモート互換性**: Pekko/Proto.Actor と同じ actor path 体系（`fraktor` / `fraktor.tcp` スキーム、guardian 自動挿入、UID suffix）と quarantine ルールを Rust/no_std 上で再現し、異種ホストと埋め込み環境間での remoting を遮断なく延長できる。
 - **観測性即応**: EventStream/DeadLetter と LoggerSubscriber により、RTT/UART からホストログまで最小構成で配信。

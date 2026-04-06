@@ -1,8 +1,10 @@
 //! Standard-library wiring for remoting extension lifecycle.
 
+#[cfg(feature = "tokio-transport")]
+use alloc::boxed::Box;
 use alloc::string::ToString;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
@@ -14,6 +16,8 @@ use fraktor_actor_rs::core::kernel::{
 };
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
+#[cfg(feature = "tokio-transport")]
+use crate::std::endpoint_transport_bridge::EndpointTransportBridgeFactory;
 use crate::{
   core::{
     remoting_extension::{
@@ -40,6 +44,8 @@ impl RemotingExtension {
   /// Attempts to install the extension, returning an error if invariants are violated.
   pub fn try_new(system: &ActorSystem, config: &RemotingExtensionConfig) -> Result<Self, RemotingError> {
     let control_handle = RemotingControlHandle::new(system.clone(), config.clone());
+    #[cfg(feature = "tokio-transport")]
+    control_handle.set_bridge_factory(Box::new(EndpointTransportBridgeFactory::new()));
     let control: RemotingControlShared = ArcShared::new(RuntimeMutex::new(control_handle));
     let mut transport = StdTransportFactory::build(config)?;
     transport.install_backpressure_hook(control.lock().backpressure_hook());

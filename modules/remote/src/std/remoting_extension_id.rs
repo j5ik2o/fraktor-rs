@@ -1,6 +1,6 @@
 //! Extension identifier bridging actor-system registry and remoting implementation.
 
-use fraktor_actor_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
+use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
 
 use crate::core::remoting_extension::{RemotingExtension, RemotingExtensionConfig};
 

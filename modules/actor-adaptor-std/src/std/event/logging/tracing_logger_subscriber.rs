@@ -8,7 +8,7 @@ mod tests;
 use alloc::{boxed::Box, string::ToString};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::event::{
+use fraktor_actor_core_rs::core::kernel::event::{
   logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
   stream::{EventStreamEvent, EventStreamSubscriber as CoreEventStreamSubscriber},
 };

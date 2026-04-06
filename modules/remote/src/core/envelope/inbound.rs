@@ -1,6 +1,6 @@
 //! Deserialized envelope waiting for delivery to the actor system.
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{actor_path::ActorPath, messaging::AnyMessage},
   event::stream::CorrelationId,
 };

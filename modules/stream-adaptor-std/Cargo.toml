@@ -16,8 +16,8 @@ autoexamples = false
 default = []
 
 [dependencies]
-fraktor-actor-rs = { workspace = true }
-fraktor-stream-rs = { workspace = true }
+fraktor-actor-core-rs = { workspace = true }
+fraktor-stream-core-rs = { workspace = true }
 
 [lints]
 workspace = true

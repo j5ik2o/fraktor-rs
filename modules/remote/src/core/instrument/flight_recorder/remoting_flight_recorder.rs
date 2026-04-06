@@ -8,7 +8,7 @@ mod tests;
 
 use alloc::{collections::VecDeque, string::String};
 
-use fraktor_actor_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_core_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
 use metric::RemotingMetric;
 pub use metric_kind::FlightMetricKind;

@@ -4,6 +4,8 @@ mod config;
 mod control;
 mod control_backpressure_hook;
 mod control_handle;
+/// Bridge configuration and factory/handle traits used by transport adapters.
+pub mod endpoint_bridge;
 mod error;
 mod lifecycle_state;
 #[cfg(all(test, feature = "std"))]
@@ -15,7 +17,7 @@ pub use config::RemotingExtensionConfig;
 pub use control::{RemotingControl, RemotingControlShared};
 pub use control_handle::RemotingControlHandle;
 pub use error::RemotingError;
-use fraktor_actor_rs::core::kernel::actor::extension::Extension;
+use fraktor_actor_core_rs::core::kernel::actor::extension::Extension;
 
 use crate::core::transport::RemoteTransportShared;
 

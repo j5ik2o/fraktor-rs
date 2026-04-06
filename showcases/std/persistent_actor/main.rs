@@ -7,7 +7,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --features advanced --example persistent_actor`
 
 use fraktor_actor_adaptor_rs::std::StdBlocker;
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -18,7 +18,7 @@ use fraktor_actor_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_persistence_rs::core::{
+use fraktor_persistence_core_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, persistent_props, spawn_persistent,
 };

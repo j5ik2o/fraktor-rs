@@ -8,7 +8,7 @@ use alloc::boxed::Box;
 use core::time::Duration;
 
 #[cfg(feature = "tokio-executor")]
-use fraktor_actor_rs::core::kernel::actor::scheduler::tick_driver::{
+use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverConfig as CoreTickDriverConfig,
   TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
   next_tick_driver_id,

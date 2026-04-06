@@ -116,11 +116,11 @@
 ## 公開 API 変更
 
 - 追加
-  - `fraktor_actor_rs::core::kernel::actor::ActorContext` の marker / MDC 対応 logging API
-  - `fraktor_actor_rs::core::kernel::system::ActorSystem` の marker / MDC 対応 emit API
-  - `fraktor_actor_rs::core::typed::TypedActorSystem` の marker / MDC 対応 emit API
-  - `fraktor_actor_rs::core::typed::TypedActorSystemLog` の marker / MDC 対応 emit API
-  - `fraktor_actor_rs::core::kernel::event::logging` の receive logging helper
+  - `fraktor_actor_core_rs::core::kernel::actor::ActorContext` の marker / MDC 対応 logging API
+  - `fraktor_actor_core_rs::core::kernel::system::ActorSystem` の marker / MDC 対応 emit API
+  - `fraktor_actor_core_rs::core::typed::TypedActorSystem` の marker / MDC 対応 emit API
+  - `fraktor_actor_core_rs::core::typed::TypedActorSystemLog` の marker / MDC 対応 emit API
+  - `fraktor_actor_core_rs::core::kernel::event::logging` の receive logging helper
 - 削除
   - `fraktor_actor_adaptor_rs::std::event::logging::{ActorLogMarker, LoggingAdapter, ActorLogging, BusLogging, DiagnosticActorLogging, LoggingReceive, NoLogging}`
   - `fraktor_actor_adaptor_rs::std::event::stream` の shim API

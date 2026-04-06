@@ -6,7 +6,7 @@ use alloc::{format, vec::Vec};
 use std::net::TcpListener;
 
 use anyhow::{Result, anyhow};
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::ActorPathParts,
@@ -29,13 +29,17 @@ use fraktor_actor_rs::core::kernel::{
     state::AuthorityState,
   },
 };
-use fraktor_remote_rs::core::{
-  RemotingExtensionId, RemotingExtensionInstaller,
-  actor_ref_provider::loopback::{LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup},
-  backpressure::FnRemotingBackpressureListener,
-  instrument::flight_recorder::remoting_flight_recorder::FlightMetricKind,
-  remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
-  transport::TransportBind,
+use fraktor_remote_rs::{
+  core::{
+    actor_ref_provider::loopback::{
+      LoopbackActorRefProvider, LoopbackActorRefProviderInstaller, default_loopback_setup,
+    },
+    backpressure::FnRemotingBackpressureListener,
+    instrument::flight_recorder::remoting_flight_recorder::FlightMetricKind,
+    remoting_extension::{RemotingControl, RemotingControlShared, RemotingExtensionConfig},
+    transport::TransportBind,
+  },
+  std::{RemotingExtensionId, RemotingExtensionInstaller},
 };
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
@@ -93,8 +97,8 @@ fn alloc_port() -> u16 {
   TcpListener::bind("127.0.0.1:0").expect("bind").local_addr().expect("addr").port()
 }
 
-fn remote_path(port: u16) -> fraktor_actor_rs::core::kernel::actor::actor_path::ActorPath {
-  use fraktor_actor_rs::core::kernel::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
+fn remote_path(port: u16) -> fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath {
+  use fraktor_actor_core_rs::core::kernel::actor::actor_path::{ActorPath, ActorPathParts, GuardianKind};
   let mut parts = ActorPathParts::with_authority("remote-system", Some(("127.0.0.1", port)));
   parts = parts.with_guardian(GuardianKind::User);
   let mut path = ActorPath::from_parts(parts);

@@ -3,7 +3,7 @@ extern crate std;
 
 use alloc::string::String;
 
-use fraktor_actor_rs::core::kernel::dispatch::{
+use fraktor_actor_core_rs::core::kernel::dispatch::{
   dispatcher::{DispatcherProvider, DispatcherProvisionRequest, DispatcherSettings},
   mailbox::{Mailbox, MailboxPolicy},
 };

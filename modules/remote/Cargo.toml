@@ -20,7 +20,7 @@ force-portable-arc = ["fraktor-utils-rs/force-portable-arc"]
 test-support = []
 
 [dependencies]
-fraktor-actor-rs = { workspace = true }
+fraktor-actor-core-rs = { workspace = true }
 fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
 portable-atomic = { workspace = true, default-features = false }
 hashbrown = { workspace = true }
@@ -33,7 +33,7 @@ tracing = { workspace = true, optional = true, features = ["std"] }
 workspace = true
 
 [dev-dependencies]
-fraktor-actor-rs = { workspace = true, features = ["test-support"] }
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 anyhow = { workspace = true }
 

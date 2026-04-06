@@ -10,7 +10,7 @@
 //! Run with: `cargo run -p fraktor-showcases-std --example state_management`
 
 use fraktor_actor_adaptor_rs::std::StdBlocker;
-use fraktor_actor_rs::core::typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
+use fraktor_actor_core_rs::core::typed::{Behavior, TypedActorRef, TypedActorSystem, TypedProps, dsl::Behaviors};
 use fraktor_showcases_std::support;
 
 // =============================================================================

@@ -4,7 +4,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::time::Duration;
 use std::sync::Mutex;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::scheduler::{
     SchedulerConfig, SchedulerContext,
     tick_driver::{

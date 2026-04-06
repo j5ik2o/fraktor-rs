@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Address, Pid,
     actor_path::{ActorPath, ActorPathParts, GuardianKind},
@@ -40,7 +40,7 @@ impl Actor for NoopActor {
 
 fn build_system() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("provider-tests");
-  let remoting = fraktor_actor_rs::core::kernel::system::remote::RemotingConfig::default()
+  let remoting = fraktor_actor_core_rs::core::kernel::system::remote::RemotingConfig::default()
     .with_canonical_host("127.0.0.1")
     .with_canonical_port(4100);
   let system_config = ActorSystemConfig::default()
@@ -181,7 +181,7 @@ fn remote_provider_exposes_classic_contract_helpers() {
   let temp_container = provider.temp_container().expect("temp container");
   assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
 
-  let temp_ref = ActorRef::new(Pid::new(7878, 0), fraktor_actor_rs::core::kernel::actor::actor_ref::NullSender);
+  let temp_ref = ActorRef::new(Pid::new(7878, 0), fraktor_actor_core_rs::core::kernel::actor::actor_ref::NullSender);
   let temp_name = provider.register_temp_actor(temp_ref).expect("temp actor");
   provider.unregister_temp_actor_path(&provider.temp_path().child(&temp_name)).expect("unregister temp actor path");
   assert!(provider.temp_actor(&temp_name).is_none());

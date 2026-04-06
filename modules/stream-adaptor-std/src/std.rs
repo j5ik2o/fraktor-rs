@@ -5,7 +5,7 @@ pub mod io;
 /// Public std-backed materializer adapter surface.
 pub mod materializer;
 
-use fraktor_stream_rs::core::r#impl::StreamError;
+use fraktor_stream_core_rs::core::r#impl::StreamError;
 
 // `std::io::Error` を `StreamError::IoError` に変換する。
 fn io_error_to_stream_error(e: &std::io::Error) -> StreamError {

@@ -3,7 +3,7 @@
 use core::hint::spin_loop;
 use std::vec::Vec;
 
-use fraktor_actor_rs::core::{
+use fraktor_actor_core_rs::core::{
   kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   typed::{
     ActorTags, SupervisorStrategy, TypedActorSystem, TypedProps,

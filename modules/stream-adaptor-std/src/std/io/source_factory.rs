@@ -2,7 +2,7 @@ extern crate std;
 
 use std::{boxed::Box, panic, string::ToString, thread};
 
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, dsl::Source,
   stage::StageKind, validate_positive_argument,
 };

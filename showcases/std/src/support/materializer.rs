@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
@@ -19,7 +19,7 @@ use fraktor_actor_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_stream_rs::core::{
+use fraktor_stream_core_rs::core::{
   r#impl::StreamError,
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamCompletion},
 };

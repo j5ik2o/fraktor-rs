@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_actor_rs::core::kernel::event::stream::RemotingLifecycleEvent;
+use fraktor_actor_core_rs::core::kernel::event::stream::RemotingLifecycleEvent;
 
 use super::quarantine_reason::QuarantineReason;
 use crate::core::{envelope::DeferredEnvelope, transport::TransportEndpoint};

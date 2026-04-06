@@ -7,7 +7,7 @@ use std::{
   time::Duration,
 };
 
-use fraktor_actor_rs::core::kernel::system::Blocker;
+use fraktor_actor_core_rs::core::kernel::system::Blocker;
 
 /// Minimum poll interval to prevent tight spinning.
 const MIN_POLL_INTERVAL: Duration = Duration::from_millis(1);

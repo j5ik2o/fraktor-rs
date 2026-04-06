@@ -184,7 +184,7 @@ set -euo pipefail
 '''
 
 [tasks.actor-tell-disabled-check]
-description = "Build fraktor-actor-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
+description = "Build fraktor-actor-core-rs core targets with tell API disabled via --cfg fraktor_disable_tell"
 workspace = false
 script = '''
 #!/usr/bin/env bash
@@ -199,5 +199,5 @@ if [ -n "${RUSTFLAGS:-}" ]; then
 else
   export RUSTFLAGS="${EXTRA_RUSTFLAGS}"
 fi
-cargo +"${CHANNEL}" check -p fraktor-actor-rs --features test-support,std,tokio-executor
+cargo +"${CHANNEL}" check -p fraktor-actor-core-rs --features test-support,std,tokio-executor
 '''

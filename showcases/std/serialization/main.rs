@@ -14,7 +14,7 @@ use std::{
 };
 
 use fraktor_actor_adaptor_rs::std::StdBlocker;
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
     setup::ActorSystemConfig,
@@ -241,15 +241,15 @@ fn main() {
 
   let installers = ExtensionInstallers::default().with_extension_installer({
     let ext_id = serialization_id.clone();
-    move |system: &fraktor_actor_rs::core::kernel::system::ActorSystem| {
+    move |system: &fraktor_actor_core_rs::core::kernel::system::ActorSystem| {
       let registered = system.extended().register_extension(&ext_id);
       let existing = system.extended().extension(&ext_id).ok_or_else(|| {
-        fraktor_actor_rs::core::kernel::system::ActorSystemBuildError::Configuration(
+        fraktor_actor_core_rs::core::kernel::system::ActorSystemBuildError::Configuration(
           "serialization extension was not retained".into(),
         )
       })?;
       if !fraktor_utils_rs::core::sync::ArcShared::ptr_eq(&registered, &existing) {
-        return Err(fraktor_actor_rs::core::kernel::system::ActorSystemBuildError::Configuration(
+        return Err(fraktor_actor_core_rs::core::kernel::system::ActorSystemBuildError::Configuration(
           "serialization extension identity mismatch".into(),
         ));
       }

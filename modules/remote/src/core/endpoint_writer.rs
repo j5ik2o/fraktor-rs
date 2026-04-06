@@ -9,7 +9,7 @@ use alloc::string::String;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 pub use error::EndpointWriterError;
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   event::stream::{BackpressureSignal, CorrelationId},
   serialization::{SerializationCallScope, SerializationExtensionShared},
   system::{ActorSystem, ActorSystemWeak},

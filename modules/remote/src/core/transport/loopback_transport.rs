@@ -6,7 +6,7 @@ use alloc::{
   vec::Vec,
 };
 
-use fraktor_actor_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
+use fraktor_actor_core_rs::core::kernel::event::stream::{BackpressureSignal, CorrelationId};
 use fraktor_utils_rs::core::sync::SharedAccess;
 
 use super::{

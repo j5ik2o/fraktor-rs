@@ -6,7 +6,7 @@ use std::{
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::DefaultDispatcher};
-use fraktor_actor_rs::core::kernel::{
+use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
     actor_ref::ActorRef,
