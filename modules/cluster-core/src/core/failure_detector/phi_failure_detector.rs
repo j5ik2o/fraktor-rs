@@ -7,6 +7,8 @@
 //! instead.
 
 mod config;
+#[cfg(test)]
+mod tests;
 
 use alloc::collections::VecDeque;
 

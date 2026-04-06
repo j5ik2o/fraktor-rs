@@ -1,5 +1,8 @@
 //! Default factory-based failure detector registry.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::{boxed::Box, collections::BTreeMap};
 
 use crate::core::failure_detector::{
