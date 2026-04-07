@@ -15,6 +15,13 @@ env:
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
   DYLINT_VERSION: "4.1.0"
+  # Pin CARGO_HOME to the per-job workspace so concurrent self-hosted runners
+  # never share the registry / package cache. The default would be the runner
+  # user's `~/.cargo`, which is a single directory across every runner instance
+  # on the same physical machine; that caused intermittent
+  # "could not parse/generate dep info" failures when two parallel jobs raced
+  # on the same itertools / regex_automata / clap_builder build artifacts.
+  CARGO_HOME: ${{ github.workspace }}/.cargo
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -60,7 +67,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-          cache-directories: ~/.cargo/bin
+          cache-directories: ${{ github.workspace }}/.cargo/bin
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
