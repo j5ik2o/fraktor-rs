@@ -33,4 +33,3 @@ fn execute_after_shutdown_returns_error() {
   let result = executor.execute(Box::new(|| {}));
   assert!(matches!(result, Err(ExecuteError::Shutdown)));
 }
-

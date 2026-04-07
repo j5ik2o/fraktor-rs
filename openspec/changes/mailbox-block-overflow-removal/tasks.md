@@ -139,19 +139,22 @@
 - [x] 4.21 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する (1575 passed)
 - [x] 4.22 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する (9 passed)
 - [x] 4.23 `grep -rn "supports_blocking" modules/` がヒット 0 を返すことを確認する
-- [ ] 4.24 commit: `refactor(executor): remove supports_blocking trait method and SpawnError::InvalidMailboxConfig`
+- [x] 4.24 commit: `refactor(executor): remove supports_blocking trait method and SpawnError::InvalidMailboxConfig` (fa7a5fb3)
 
-## 5. openspec spec delta 確認 (commit 5)
+## 5. openspec spec delta 確認 + dead code 整理 (commit 5)
 
-spec delta ファイル (`openspec/changes/mailbox-block-overflow-removal/specs/dispatch-executor-unification/spec.md` と `openspec/changes/mailbox-block-overflow-removal/specs/dispatcher-attach-detach-lifecycle/spec.md`) は proposal 作成時に既に作成済み。本セクションでは検証のみ実施し、必要なら update する。
+spec delta ファイルは proposal 作成時に既に作成済み・push 済み (4d8501a2)。本セクションでは検証と、commit 3 で残した backpressure infra の dead code 整理を実施する。
 
-- [ ] 5.1 `openspec/changes/mailbox-block-overflow-removal/specs/dispatch-executor-unification/spec.md` の内容を確認する:
+- [x] 5.1 `openspec/changes/mailbox-block-overflow-removal/specs/dispatch-executor-unification/spec.md` の内容を確認する:
   - REMOVED: `Requirement: \`DispatcherWaker\` は core 層に 1 実装で提供される`
   - MODIFIED: `Requirement: \`Executor\` trait は CQS 準拠の internal primitive として再定義される` (各 scenario 内の `supports_blocking` 関連行を削除済み)
-- [ ] 5.2 `openspec/changes/mailbox-block-overflow-removal/specs/dispatcher-attach-detach-lifecycle/spec.md` の内容を確認する:
+- [x] 5.2 `openspec/changes/mailbox-block-overflow-removal/specs/dispatcher-attach-detach-lifecycle/spec.md` の内容を確認する:
   - MODIFIED: `Requirement: dispatcher は 1 : N で actor を収容する lifecycle を提供する` (scenario `attach は mailbox overflow strategy と executor の blocking 対応を検証する` を削除済み)
-- [ ] 5.3 `openspec validate mailbox-block-overflow-removal --strict` が valid を返すことを確認する
-- [ ] 5.4 commit: `docs(openspec): mark Block / DispatcherWaker capabilities as removed` (proposal/design/tasks.md と spec delta の最終形を 1 コミットにまとめる)
+- [x] 5.3 `openspec validate mailbox-block-overflow-removal --strict` が valid を返すことを確認する
+- [x] 5.4 dylint dead-code lint で検出される backpressure infra 残骸を削除する:
+  - `mailbox/mailbox_queue_state.rs::register_producer_waiter` (caller ゼロ)
+  - `mailbox/system_queue.rs::len_handle` (caller ゼロ)
+- [ ] 5.5 commit: `chore(mailbox): clean up dead backpressure infrastructure and finalize tasks` (tasks.md の checkbox 確定 + dead code 削除を 1 コミットにまとめる)
 
 ## 6. 最終検証
 

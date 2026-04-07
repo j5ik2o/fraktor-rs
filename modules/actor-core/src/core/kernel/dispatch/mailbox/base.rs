@@ -545,7 +545,6 @@ impl Mailbox {
     current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
-
   fn publish_metrics(&self) {
     let user_len = {
       let _guard = self.user_queue_lock.lock();

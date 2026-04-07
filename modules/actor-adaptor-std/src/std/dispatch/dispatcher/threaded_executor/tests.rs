@@ -25,4 +25,3 @@ fn execute_runs_each_task_on_a_new_thread() {
   barrier.wait();
   assert_eq!(count.load(Ordering::SeqCst), 1);
 }
-

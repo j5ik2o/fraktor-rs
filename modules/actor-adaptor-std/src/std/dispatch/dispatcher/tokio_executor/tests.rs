@@ -21,4 +21,3 @@ async fn execute_runs_task_via_blocking_pool() {
   waited.notified().await;
   assert_eq!(count.load(Ordering::SeqCst), 1);
 }
-
