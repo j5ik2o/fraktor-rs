@@ -1,8 +1,4 @@
-use std::{
-  sync::Arc,
-  thread,
-  time::{Duration, Instant},
-};
+use std::{sync::Arc, thread};
 
 use super::DebugSpinSyncMutex;
 
@@ -49,25 +45,31 @@ fn dropping_guard_clears_owner_so_subsequent_lock_succeeds() {
 }
 
 #[test]
-fn contention_from_other_thread_does_not_panic() {
-  // Thread A holds the lock, thread B waits and acquires after release.
-  // This must NOT panic — only same-thread re-entry is the bug.
+fn heavy_contention_from_many_threads_does_not_panic() {
+  // Verifies that simultaneous lock contention from different threads
+  // never trips the same-thread re-entry assertion. Each worker performs
+  // a tight `lock -> increment -> release` loop, so the lock changes
+  // hands many times across many distinct ThreadIds. If `lock()` ever
+  // mistakenly fired its `assert_ne!(prior, current)` for a different
+  // thread, this test would panic.
+  const WORKERS: u32 = 16;
+  const ITERATIONS: u32 = 200;
   let mutex = Arc::new(DebugSpinSyncMutex::new(0_u32));
-  let a = Arc::clone(&mutex);
-  let handle = thread::spawn(move || {
-    let mut guard = a.lock();
-    thread::sleep(Duration::from_millis(50));
-    *guard = 1;
-  });
-  // Give thread A a chance to acquire first.
-  thread::sleep(Duration::from_millis(10));
-  // This blocks (spin) until thread A releases.
-  let started = Instant::now();
+  let mut handles = Vec::with_capacity(WORKERS as usize);
+  for _ in 0..WORKERS {
+    let m = Arc::clone(&mutex);
+    handles.push(thread::spawn(move || {
+      for _ in 0..ITERATIONS {
+        let mut guard = m.lock();
+        *guard += 1;
+      }
+    }));
+  }
+  for handle in handles {
+    handle.join().expect("worker thread");
+  }
   let guard = mutex.lock();
-  assert!(started.elapsed() >= Duration::from_millis(20));
-  assert_eq!(*guard, 1);
-  drop(guard);
-  handle.join().expect("worker thread");
+  assert_eq!(*guard, WORKERS * ITERATIONS);
 }
 
 #[test]

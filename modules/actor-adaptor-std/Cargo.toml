@@ -35,6 +35,11 @@ criterion = { workspace = true }
 # `critical-section`.
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 critical-section = { workspace = true, features = ["std"] }
+# Pull `spin` in unconditionally for unit tests so that `cfg(test)` items in
+# `std::debug::debug_spin_sync_mutex` (which use `spin::MutexGuard` directly)
+# can compile under `cargo test` even when the `test-support` feature is not
+# explicitly enabled. The production graph still uses the optional dep above.
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 serde_json = { workspace = true }
 
