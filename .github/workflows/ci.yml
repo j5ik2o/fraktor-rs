@@ -15,22 +15,23 @@ env:
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
   DYLINT_VERSION: "4.1.0"
-  # Pin CARGO_HOME to the per-job workspace so concurrent self-hosted runners
-  # never share the registry / package cache. The default would be the runner
-  # user's `~/.cargo`, which is a single directory across every runner instance
-  # on the same physical machine; that caused intermittent
-  # "could not parse/generate dep info" failures when two parallel jobs raced
-  # on the same itertools / regex_automata / clap_builder build artifacts.
-  CARGO_HOME: ${{ github.workspace }}/.cargo
-  # Pin TMPDIR to the per-job workspace as well. The dylint UI tests use
-  # `compiletest_rs`, whose default `build_base` is `env::temp_dir()` (=
-  # `/tmp` on Linux). On self-hosted runners that share `/tmp` with other
-  # services (or that have leftover root-owned stamp files from previous
-  # runs) `compiletest_rs::dump_output_file` panics with `PermissionDenied`
-  # when it tries to overwrite the per-test stdout/stderr dump. Forcing
-  # `TMPDIR` to a workspace-local path keeps every dylint job in its own
-  # isolated scratch dir.
-  TMPDIR: ${{ github.workspace }}/.tmp
+  # NOTE: CARGO_HOME and TMPDIR are set per-job via the
+  # "Setup isolated CARGO_HOME / TMPDIR" step. They are NOT pinned at the
+  # workflow level because:
+  #   1. `${{ github.workspace }}/.cargo` is a *fixed* path inside each
+  #      runner's `_work/<repo>` directory. On self-hosted runners that
+  #      reuse the same workspace between successive jobs, stale state
+  #      from a crashed previous job (broken `.cargo/bin/cargo` symlink,
+  #      half-written registry index, etc.) leaks into the next job.
+  #   2. The cargo binary itself is installed by `dtolnay/rust-toolchain`
+  #      under `${HOME}/.cargo/bin`, not under the workflow-pinned
+  #      `CARGO_HOME`. When PATH lookup happens to land on the workspace
+  #      path first, the shell tries `<workspace>/.cargo/bin/cargo` which
+  #      may not exist, and the job fails with ENOENT.
+  # The per-job step uses `mktemp -d` rooted at `${RUNNER_TEMP}` for true
+  # uniqueness (auto-cleaned by the runner) and symlinks every binary
+  # under `${HOME}/.cargo/bin` into the isolated `${CARGO_HOME}/bin`, so
+  # both PATH lookup and `${CARGO_HOME}/bin/<tool>` resolution agree.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -42,13 +43,29 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-      - name: Prepare workspace TMPDIR
-        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-15
           components: rustfmt
+      - name: Setup isolated CARGO_HOME / TMPDIR
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+          iso_cargo="${iso_root}/cargo"
+          iso_tmp="${iso_root}/tmp"
+          mkdir -p "${iso_cargo}/bin" "${iso_tmp}"
+          if [ -d "${HOME}/.cargo/bin" ]; then
+            for bin in "${HOME}/.cargo/bin/"*; do
+              [ -e "${bin}" ] || continue
+              ln -sf "${bin}" "${iso_cargo}/bin/$(basename "${bin}")"
+            done
+          fi
+          {
+            echo "CARGO_HOME=${iso_cargo}"
+            echo "TMPDIR=${iso_tmp}"
+          } >> "${GITHUB_ENV}"
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
       - name: Check formatting
@@ -69,35 +86,33 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-      - name: Prepare workspace TMPDIR
-        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-15
           components: clippy
+      - name: Setup isolated CARGO_HOME / TMPDIR
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+          iso_cargo="${iso_root}/cargo"
+          iso_tmp="${iso_root}/tmp"
+          mkdir -p "${iso_cargo}/bin" "${iso_tmp}"
+          if [ -d "${HOME}/.cargo/bin" ]; then
+            for bin in "${HOME}/.cargo/bin/"*; do
+              [ -e "${bin}" ] || continue
+              ln -sf "${bin}" "${iso_cargo}/bin/$(basename "${bin}")"
+            done
+          fi
+          {
+            echo "CARGO_HOME=${iso_cargo}"
+            echo "TMPDIR=${iso_tmp}"
+          } >> "${GITHUB_ENV}"
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-          cache-directories: ${{ github.workspace }}/.cargo/bin
-      - name: Bootstrap cargo-dylint binary from runner cache
-        # The workflow pins CARGO_HOME to ${{ github.workspace }}/.cargo so that
-        # concurrent self-hosted runners do not race on a shared registry, but
-        # that also means each fresh job starts without `cargo-dylint`. Building
-        # `cargo-dylint` from source pulls in `openssl-sys`, which fails on
-        # runners that do not have `libssl-dev` / `pkg-config`. Instead reuse
-        # the pre-installed binary that already lives at the runner user's
-        # default cargo home (`~/.cargo/bin/cargo-dylint`) when present.
-        if: matrix.check.name == 'Dylint'
-        run: |
-          mkdir -p "${CARGO_HOME}/bin"
-          if [ -x "${HOME}/.cargo/bin/cargo-dylint" ]; then
-            cp "${HOME}/.cargo/bin/cargo-dylint" "${CARGO_HOME}/bin/cargo-dylint"
-            "${CARGO_HOME}/bin/cargo-dylint" --version || true
-          else
-            echo "::notice::no pre-installed cargo-dylint at ${HOME}/.cargo/bin; ci-check.sh will attempt to install"
-          fi
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
@@ -121,12 +136,28 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-      - name: Prepare workspace TMPDIR
-        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-15
+      - name: Setup isolated CARGO_HOME / TMPDIR
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+          iso_cargo="${iso_root}/cargo"
+          iso_tmp="${iso_root}/tmp"
+          mkdir -p "${iso_cargo}/bin" "${iso_tmp}"
+          if [ -d "${HOME}/.cargo/bin" ]; then
+            for bin in "${HOME}/.cargo/bin/"*; do
+              [ -e "${bin}" ] || continue
+              ln -sf "${bin}" "${iso_cargo}/bin/$(basename "${bin}")"
+            done
+          fi
+          {
+            echo "CARGO_HOME=${iso_cargo}"
+            echo "TMPDIR=${iso_tmp}"
+          } >> "${GITHUB_ENV}"
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -142,12 +173,28 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-      - name: Prepare workspace TMPDIR
-        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-15
+      - name: Setup isolated CARGO_HOME / TMPDIR
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+          iso_cargo="${iso_root}/cargo"
+          iso_tmp="${iso_root}/tmp"
+          mkdir -p "${iso_cargo}/bin" "${iso_tmp}"
+          if [ -d "${HOME}/.cargo/bin" ]; then
+            for bin in "${HOME}/.cargo/bin/"*; do
+              [ -e "${bin}" ] || continue
+              ln -sf "${bin}" "${iso_cargo}/bin/$(basename "${bin}")"
+            done
+          fi
+          {
+            echo "CARGO_HOME=${iso_cargo}"
+            echo "TMPDIR=${iso_tmp}"
+          } >> "${GITHUB_ENV}"
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -163,12 +210,28 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
-      - name: Prepare workspace TMPDIR
-        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-02-15
+      - name: Setup isolated CARGO_HOME / TMPDIR
+        shell: bash
+        run: |
+          set -euo pipefail
+          iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+          iso_cargo="${iso_root}/cargo"
+          iso_tmp="${iso_root}/tmp"
+          mkdir -p "${iso_cargo}/bin" "${iso_tmp}"
+          if [ -d "${HOME}/.cargo/bin" ]; then
+            for bin in "${HOME}/.cargo/bin/"*; do
+              [ -e "${bin}" ] || continue
+              ln -sf "${bin}" "${iso_cargo}/bin/$(basename "${bin}")"
+            done
+          fi
+          {
+            echo "CARGO_HOME=${iso_cargo}"
+            echo "TMPDIR=${iso_tmp}"
+          } >> "${GITHUB_ENV}"
       - name: Setup Cargo cache
         uses: Swatinem/rust-cache@v2
         with:

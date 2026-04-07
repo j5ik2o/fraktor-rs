@@ -1,32 +1,29 @@
 use core::marker::PhantomData;
 
-use crate::core::collections::{
-  PriorityMessage,
-  queue::{
-    QueueError,
-    backend::{SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
-    capabilities::SupportsPeek,
-    offer_outcome::OfferOutcome,
-    type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
-  },
-};
+use crate::core::collections::queue::{QueueError, backend::SyncQueueBackend, offer_outcome::OfferOutcome};
 
-/// Queue API parameterised by element type, type key, backend, and shared guard.
+/// Generic queue API parameterised by element type and backend.
+///
+/// The queue itself is variant-agnostic; ordering and capability semantics
+/// (FIFO / priority / etc.) are entirely determined by the supplied backend
+/// implementation.
 #[derive(Clone)]
-pub struct SyncQueue<T, K, B>
+pub struct SyncQueue<T, B>
 where
-  K: TypeKey,
   B: SyncQueueBackend<T>, {
   backend: B,
-  _pd:     PhantomData<(T, K, B)>,
+  // The where clause `B: SyncQueueBackend<T>` does NOT count as a use of `T`
+  // per rustc's E0392 check (only struct fields do). We have no field whose
+  // type names `T` directly, so `PhantomData<T>` is required to keep `T` in
+  // the struct definition.
+  _pd:     PhantomData<T>,
 }
 
-impl<T, K, B> SyncQueue<T, K, B>
+impl<T, B> SyncQueue<T, B>
 where
-  K: TypeKey,
   B: SyncQueueBackend<T>,
 {
-  /// Creates a new queue from the provided shared backend.
+  /// Creates a new queue from the provided backend.
   #[must_use]
   pub const fn new(backend: B) -> Self {
     Self { backend, _pd: PhantomData }
@@ -86,35 +83,9 @@ where
     self.len() == self.capacity()
   }
 
-  /// Provides access to the underlying shared backend.
+  /// Provides access to the underlying backend.
   #[must_use]
   pub const fn backend(&self) -> &B {
     &self.backend
   }
 }
-
-impl<T, B> SyncQueue<T, PriorityKey, B>
-where
-  T: Clone + PriorityMessage,
-  B: SyncPriorityBackend<T>,
-  PriorityKey: SupportsPeek,
-{
-  /// Retrieves the smallest element without removing it.
-  ///
-  /// # Errors
-  ///
-  /// Returns a `QueueError` when the backend cannot access the next element due to closure,
-  /// disconnection, or backend-specific failures.
-  pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    Ok(self.backend.peek_min().cloned())
-  }
-}
-
-/// Type alias for an MPSC queue.
-pub type SyncMpscQueue<T, B> = SyncQueue<T, MpscKey, B>;
-/// Type alias for an SPSC queue.
-pub type SyncSpscQueue<T, B> = SyncQueue<T, SpscKey, B>;
-/// Type alias for a FIFO queue.
-pub type SyncFifoQueue<T, B> = SyncQueue<T, FifoKey, B>;
-/// Type alias for a priority queue.
-pub type SyncPriorityQueue<T, B> = SyncQueue<T, PriorityKey, B>;

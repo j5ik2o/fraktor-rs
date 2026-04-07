@@ -4,14 +4,6 @@ use core::cmp::Ordering;
 use super::PriorityEntry;
 
 #[test]
-fn priority_entry_new() {
-  let entry = PriorityEntry::new(5, 100, "test");
-  assert_eq!(entry.priority(), 5);
-  assert_eq!(entry.sequence(), 100);
-  assert_eq!(entry.item(), &"test");
-}
-
-#[test]
 fn priority_entry_into_item() {
   let entry = PriorityEntry::new(3, 50, vec![1, 2, 3]);
   let item = entry.into_item();

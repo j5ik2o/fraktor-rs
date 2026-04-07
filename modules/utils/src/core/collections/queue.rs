@@ -3,9 +3,8 @@
 pub mod backend;
 pub mod capabilities;
 mod sync_queue_shared;
-pub mod type_keys;
 
-pub use sync_queue_shared::{SyncFifoQueueShared, SyncQueueShared};
+pub use sync_queue_shared::SyncQueueShared;
 
 mod offer_outcome;
 mod overflow_policy;

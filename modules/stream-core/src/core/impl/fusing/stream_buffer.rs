@@ -1,5 +1,5 @@
 use fraktor_utils_rs::core::{
-  collections::queue::{OfferOutcome, QueueError, SyncFifoQueueShared, SyncQueue, backend::VecDequeBackend},
+  collections::queue::{OfferOutcome, QueueError, SyncQueue, SyncQueueShared, backend::VecDequeBackend},
   sync::{ArcShared, SpinSyncMutex},
 };
 
@@ -10,7 +10,7 @@ mod tests;
 
 /// Queue-backed buffer used for backpressure.
 pub(crate) struct StreamBuffer<T> {
-  queue: SyncFifoQueueShared<T, VecDequeBackend<T>>,
+  queue: SyncQueueShared<T, VecDequeBackend<T>>,
 }
 
 impl<T> StreamBuffer<T> {
@@ -20,7 +20,7 @@ impl<T> StreamBuffer<T> {
     let backend = VecDequeBackend::with_capacity(config.capacity(), config.overflow_policy());
     let queue = SyncQueue::new(backend);
     let shared = ArcShared::new(SpinSyncMutex::new(queue));
-    let queue = SyncFifoQueueShared::new_fifo(shared);
+    let queue = SyncQueueShared::new(shared);
     Self { queue }
   }
 

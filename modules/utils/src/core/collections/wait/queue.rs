@@ -1,6 +1,6 @@
 use super::{WaitError, WaitNodeShared, handle_shared::WaitShared};
 use crate::core::{
-  collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
+  collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
   sync::SharedAccess,
 };
 
@@ -9,7 +9,7 @@ mod tests;
 
 /// FIFO queue managing waiter nodes.
 pub struct WaitQueue<E: Send + 'static> {
-  waiters: SyncFifoQueue<WaitNodeShared<E>, VecDequeBackend<WaitNodeShared<E>>>,
+  waiters: SyncQueue<WaitNodeShared<E>, VecDequeBackend<WaitNodeShared<E>>>,
 }
 
 impl<E: Send + 'static> WaitQueue<E> {
@@ -17,7 +17,7 @@ impl<E: Send + 'static> WaitQueue<E> {
   #[must_use]
   pub fn new() -> Self {
     let backend = VecDequeBackend::with_capacity(16, OverflowPolicy::Grow);
-    Self { waiters: SyncFifoQueue::new(backend) }
+    Self { waiters: SyncQueue::new(backend) }
   }
 
   /// Registers a new waiter and returns a shared future for awaiting completion.

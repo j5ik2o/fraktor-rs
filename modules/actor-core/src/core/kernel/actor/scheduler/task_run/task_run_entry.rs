@@ -7,7 +7,7 @@ use core::cmp::Ordering;
 
 use fraktor_utils_rs::core::collections::{
   PriorityMessage,
-  queue::{SyncPriorityQueue, backend::BinaryHeapPriorityBackend},
+  queue::{SyncQueue, backend::BinaryHeapPriorityBackend},
 };
 
 use crate::core::kernel::actor::scheduler::task_run::TaskRunOnClose;
@@ -112,4 +112,4 @@ impl PriorityMessage for TaskRunEntry {
 }
 
 /// Priority queue storing registered shutdown tasks.
-pub(crate) type TaskRunQueue = SyncPriorityQueue<TaskRunEntry, BinaryHeapPriorityBackend<TaskRunEntry>>;
+pub(crate) type TaskRunQueue = SyncQueue<TaskRunEntry, BinaryHeapPriorityBackend<TaskRunEntry>>;
