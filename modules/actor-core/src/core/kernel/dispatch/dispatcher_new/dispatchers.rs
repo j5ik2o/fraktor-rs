@@ -22,8 +22,9 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
-  dispatchers_error::DispatchersError, message_dispatcher_configurator::MessageDispatcherConfigurator,
-  message_dispatcher_shared::MessageDispatcherShared,
+  default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
+  dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
+  message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
 
 /// Reserved registry identifier for the default dispatcher.
@@ -119,6 +120,24 @@ impl Dispatchers {
       self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
       self.entries.entry(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned()).or_insert(configurator);
     }
+  }
+
+  /// Ensures the default dispatcher entry exists, populating it with an
+  /// [`InlineExecutor`]-backed [`DefaultDispatcherConfigurator`] when missing.
+  ///
+  /// This mirrors the legacy `Dispatchers::ensure_default` shape and is the
+  /// configuration installed by `ActorSystemConfig::default()` so that all
+  /// in-process tests run on the new dispatcher tree without bringing in
+  /// `tokio` or another runtime. Production users override the entry through
+  /// `ActorSystemConfig::with_new_dispatcher_configurator`.
+  pub fn ensure_default_inline(&mut self) {
+    self.ensure_default(|| {
+      let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+      let executor = ExecutorShared::new(InlineExecutor::new());
+      let configurator: Box<dyn MessageDispatcherConfigurator> =
+        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+      ArcShared::new(configurator)
+    });
   }
 
   /// Maps a Pekko-style dispatcher identifier to the canonical kernel id.

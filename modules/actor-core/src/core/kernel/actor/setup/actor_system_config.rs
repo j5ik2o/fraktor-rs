@@ -232,7 +232,8 @@ impl Default for ActorSystemConfig {
   fn default() -> Self {
     let mut dispatchers = Dispatchers::new();
     dispatchers.ensure_default();
-    let new_dispatchers = NewDispatchers::new();
+    let mut new_dispatchers = NewDispatchers::new();
+    new_dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
