@@ -1,11 +1,8 @@
 //! Std adapter helpers for `fraktor-utils-core-rs`.
 //!
-//! This crate hosts std-dependent test/debug instrumentation that complements
-//! the no_std core utilities. Production code should depend on
-//! `fraktor-utils-core-rs` directly; tests and debug builds may pull in this
-//! crate via the `test-support` feature for additional helpers such as
-//! `std::debug::DebugSpinSyncMutex`.
-
-/// Std-only adapter modules.
-#[cfg(any(test, feature = "test-support"))]
-pub mod std;
+//! This crate is currently a placeholder reserving the std adapter slot
+//! for `fraktor-utils-core-rs`. The previous `DebugSpinSyncMutex`
+//! implementation has been removed and will be re-introduced after the
+//! `RuntimeMutex` Port + Adapter (`LockDriver` trait) refactoring lands.
+//! Future contents (test/debug instrumentation, std-only utilities) will
+//! be wired through that port contract.
