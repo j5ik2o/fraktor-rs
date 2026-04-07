@@ -12,30 +12,29 @@
 //! - **Queries** read state and take `&self`.
 //! - **Commands / hooks** mutate state (or any of the actors registered with the dispatcher) and
 //!   take `&mut self`.
-//! - `create_mailbox` is a factory and stays `&self`.
+//! - `try_create_shared_mailbox` is a factory and stays `&self`.
 //!
 //! # Hook conventions
 //!
-//! - `register_actor` / `unregister_actor` / `dispatch` / `system_dispatch` / `create_mailbox` are
-//!   overridable hooks. The default `register_actor` / `unregister_actor` impls just delegate to
-//!   [`DispatcherCore`] inhabitants bookkeeping. `PinnedDispatcher` overrides them to enforce 1:1
-//!   ownership.
+//! - `register_actor` / `unregister_actor` / `dispatch` / `system_dispatch` /
+//!   `try_create_shared_mailbox` are overridable hooks. The default `register_actor` /
+//!   `unregister_actor` impls just delegate to [`DispatcherCore`] inhabitants bookkeeping.
+//!   `PinnedDispatcher` overrides them to enforce 1:1 ownership.
 //! - `dispatch` / `system_dispatch` enqueue the message into a mailbox queue and return the
 //!   **candidate mailbox list** that the shared wrapper should try to schedule for execution. The
 //!   candidate list is ordered by priority; the wrapper stops at the first mailbox that
 //!   successfully transitions from idle to scheduled. `BalancingDispatcher` returns multiple
 //!   candidates so a busy receiver can fall back to a sibling.
+//! - `try_create_shared_mailbox` returns `None` by default, meaning `ActorCell::create` should
+//!   build a per-actor mailbox from `MailboxConfig`. `BalancingDispatcher` overrides it to return a
+//!   sharing mailbox over its shared team queue so every attached actor drains the same queue.
+//!   `ActorCell::create` checks this hook before falling back to config-driven mailbox
+//!   construction.
 //! - `register_for_execution` is **intentionally absent** from this trait. The shared wrapper holds
 //!   the only `register_for_execution` path so that trait hooks cannot accidentally re-enter the
 //!   lock.
 //! - `execute_task` is also absent: it is out of scope for the `dispatcher-pekko-1n-redesign`
 //!   change (YAGNI) and will be added when a concrete caller appears.
-//!
-//! # Actor reference
-//!
-//! Hook arguments take `&ArcShared<ActorCell>` so that
-//! `BalancingDispatcher::create_mailbox` can call `ArcShared::downgrade` to
-//! obtain the `WeakShared<ActorCell>` required by `Mailbox::new_sharing`.
 
 use alloc::{boxed::Box, vec};
 
@@ -44,7 +43,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use super::{dispatcher_core::DispatcherCore, executor_shared::ExecutorShared};
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{Envelope, Mailbox, MailboxType},
+  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox},
 };
 
 /// Hook/query surface of a dispatcher.
@@ -95,21 +94,15 @@ pub trait MessageDispatcher: Send + Sync {
 
   // ---- factory ------------------------------------------------------------------
 
-  /// Builds a new mailbox for `actor`.
+  /// Returns a pre-built shared mailbox for dispatchers that require one, or
+  /// `None` to let `ActorCell::create` build a per-actor mailbox from the
+  /// `MailboxConfig`.
   ///
-  /// The default implementation returns a fresh per-actor mailbox using the
-  /// queue produced by `mailbox_type`. `BalancingDispatcher` overrides this
-  /// to construct a sharing mailbox over the dispatcher's shared queue.
-  ///
-  /// **Operational discipline**: callers must invoke this through
-  /// [`MessageDispatcherShared::attach`](super::MessageDispatcherShared::attach)
-  /// so that inhabitants bookkeeping happens in the same critical section.
-  fn create_mailbox(&self, actor: &ArcShared<ActorCell>, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox> {
-    let _ = (actor, mailbox_type);
-    // Default impl is provided by concrete dispatchers; trait callers must
-    // either supply an override or rely on `MessageDispatcherShared::attach`
-    // which goes through the concrete implementation directly.
-    panic!("MessageDispatcher::create_mailbox must be overridden by concrete dispatchers")
+  /// The default implementation returns `None`. `BalancingDispatcher`
+  /// overrides this to return a sharing mailbox that wraps the dispatcher's
+  /// shared team queue, so every team member drains the same queue.
+  fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+    None
   }
 
   // ---- overridable hooks --------------------------------------------------------
@@ -156,12 +149,24 @@ pub trait MessageDispatcher: Send + Sync {
     envelope: Envelope,
   ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
     let mailbox = receiver.mailbox();
-    // Backpressure: the default impl drops the pending future and leaves the
-    // envelope in-flight. Hot-path callers that care about async backpressure
-    // should go through `DispatcherSender::send`, which polls the future
-    // via `DispatcherWaker` before returning.
-    let _ = mailbox.enqueue_envelope(envelope)?;
-    Ok(vec![mailbox])
+    // The dispatch trait does not support async back-pressure wait: if the
+    // mailbox's bounded queue returns `Pending`, the envelope would be held
+    // inside the future and silently dropped together with the future. Clone
+    // the envelope up-front so we can surface a concrete `SendError::full`
+    // on the back-pressure path instead of losing the message. `Envelope`
+    // clones cheaply (`AnyMessage::clone` is a single atomic bump), so this
+    // only costs one extra ref on the happy path up to the match below.
+    let envelope_for_error = envelope.clone();
+    match mailbox.enqueue_envelope(envelope)? {
+      | EnqueueOutcome::Enqueued => Ok(vec![mailbox]),
+      | EnqueueOutcome::Pending(_future) => {
+        // Dropping `_future` releases the in-flight slot it was waiting for;
+        // the envelope payload that would have been delivered is surfaced
+        // via `envelope_for_error` so the caller can retry, route elsewhere,
+        // or record a dead letter instead of observing a silent drop.
+        Err(SendError::full(envelope_for_error.into_payload()))
+      },
+    }
   }
 
   /// Enqueues a system message for `receiver` and returns the candidate mailbox list.

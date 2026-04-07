@@ -77,6 +77,18 @@ impl MessageDispatcherShared {
     self.with_read(|inner| inner.executor())
   }
 
+  /// Returns a pre-built shared mailbox if the inner dispatcher requires one.
+  ///
+  /// Delegates to
+  /// [`MessageDispatcher::try_create_shared_mailbox`](super::MessageDispatcher::try_create_shared_mailbox).
+  /// Returns `None` for dispatchers that want `ActorCell::create` to build a
+  /// per-actor mailbox from `MailboxConfig`; returns `Some` for dispatchers
+  /// like `BalancingDispatcher` whose team members must drain a shared queue.
+  #[must_use]
+  pub fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+    self.with_read(|inner| inner.try_create_shared_mailbox())
+  }
+
   /// Attaches `actor` to the dispatcher and arranges initial scheduling.
   ///
   /// # Errors
@@ -122,16 +134,73 @@ impl MessageDispatcherShared {
 
   /// Dispatches a user envelope through the inner dispatcher.
   ///
+  /// Acquires the dispatcher write lock briefly to call the trait `dispatch`
+  /// hook (which enqueues the envelope and returns the candidate mailbox
+  /// list), then attempts to schedule the candidates **after** the lock is
+  /// released. The schedule step is not deferred, so this method blocks for
+  /// the entire `register_for_execution` chain (including
+  /// `executor.execute(...)`).
+  ///
+  /// **Re-entrancy warning**: with an inline executor, the `executor.execute`
+  /// call inside `register_for_execution` synchronously runs `mailbox.run(...)`
+  /// on the calling thread. If the caller is itself holding an unrelated
+  /// lock (for example
+  /// [`ActorRefSenderShared`](crate::core::kernel::actor::actor_ref::ActorRefSenderShared)
+  /// keeps the per-actor sender mutex while it invokes `send`), the nested
+  /// `mailbox.run` may try to re-enter the same lock and deadlock. The
+  /// `ActorRef::tell` send path therefore avoids this convenience method and
+  /// uses [`dispatch_enqueue`](Self::dispatch_enqueue) +
+  /// [`register_user_candidates`](Self::register_user_candidates) so the
+  /// scheduling chain runs after the per-actor sender lock is released.
+  ///
   /// # Errors
   ///
   /// Returns [`SendError`] when the inner dispatcher rejects the envelope.
   pub fn dispatch(&self, receiver: &ArcShared<ActorCell>, envelope: Envelope) -> Result<(), SendError> {
-    let candidates = self.with_write(|inner| inner.dispatch(receiver, envelope))?;
-    self.try_register_candidates(&candidates, true, false);
+    let candidates = self.dispatch_enqueue(receiver, envelope)?;
+    self.register_user_candidates(&candidates);
     Ok(())
   }
 
+  /// Enqueues `envelope` for `receiver` via the trait `dispatch` hook and
+  /// returns the candidate mailbox list **without** scheduling them.
+  ///
+  /// This is the lock-safe primitive used by `DispatcherSender::send` so that
+  /// the actual `register_for_execution` chain (which may run
+  /// `mailbox.run(...)` synchronously under an inline executor) happens
+  /// **after** the per-actor `ActorRefSenderShared` lock is released. Doing
+  /// the schedule step inside the sender lock would let a nested
+  /// re-entrant `tell` from the message handler deadlock against the same
+  /// per-actor sender mutex.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`SendError`] when the inner dispatcher rejects the envelope.
+  pub fn dispatch_enqueue(
+    &self,
+    receiver: &ArcShared<ActorCell>,
+    envelope: Envelope,
+  ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
+    self.with_write(|inner| inner.dispatch(receiver, envelope))
+  }
+
+  /// Schedules a user-message candidate list returned by
+  /// [`dispatch_enqueue`](Self::dispatch_enqueue).
+  ///
+  /// Iterates the candidates in priority order and stops at the first
+  /// mailbox that successfully transitioned from idle to scheduled. Intended
+  /// to be called outside any per-actor sender lock to keep the inline
+  /// executor re-entrancy contract intact.
+  pub fn register_user_candidates(&self, candidates: &[ArcShared<Mailbox>]) {
+    self.try_register_candidates(candidates, true, false);
+  }
+
   /// Dispatches a system message through the inner dispatcher.
+  ///
+  /// Like [`dispatch`](Self::dispatch) this acquires the write lock briefly
+  /// and then schedules the returned candidates inline. System message
+  /// senders do not currently route through `ActorRefSenderShared`, so the
+  /// inline schedule path is safe here.
   ///
   /// # Errors
   ///

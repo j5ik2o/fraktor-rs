@@ -1,39 +1,53 @@
-//! `ActorRefSender` implementation backed by the new `MessageDispatcherShared`.
+//! `ActorRefSender` implementation backed by `MessageDispatcherShared`.
 //!
 //! `DispatcherSender` is constructed in `ActorCell::create` whenever the
-//! actor system has a `dispatcher` configurator registered for the
-//! resolved dispatcher id. The sender enqueues envelopes directly into the
-//! receiver mailbox and asks the new dispatcher to schedule it.
+//! actor system has a dispatcher configurator registered for the resolved
+//! dispatcher id. It routes every `ActorRef::tell` through the dispatcher's
+//! own `dispatch` hook (default: enqueue into the receiver mailbox;
+//! `BalancingDispatcher`: enqueue into the shared team queue) so the
+//! dispatcher decides where the envelope lands. Bypassing the trait hook and
+//! enqueuing directly on `receiver.mailbox` would break `BalancingDispatcher`
+//! load balancing.
 //!
-//! Backpressure: when the mailbox is full, `Mailbox::enqueue_envelope`
-//! returns `EnqueueOutcome::Pending(future)`. The sender polls the
-//! future to completion using a [`dispatcher_waker`](super::dispatcher_waker)
-//! so that capacity-available signals trigger a mailbox re-schedule through
-//! the new dispatcher tree.
+//! # Two-phase send (re-entrancy contract)
+//!
+//! The send is split into two phases:
+//!
+//! 1. [`MessageDispatcherShared::dispatch_enqueue`] runs **inside** `ActorRefSenderShared`'s
+//!    per-actor sender lock. It briefly acquires the dispatcher write lock, calls the trait
+//!    `dispatch` hook (which enqueues the envelope into the appropriate queue), releases the
+//!    dispatcher lock, and returns the candidate mailbox list.
+//! 2. The returned [`SendOutcome::Schedule`] closure runs **after** `ActorRefSenderShared` has
+//!    released the per-actor sender lock and invokes
+//!    [`MessageDispatcherShared::register_user_candidates`], which in turn calls
+//!    `register_for_execution` for each candidate. With an inline executor,
+//!    `register_for_execution` synchronously runs `mailbox.run(...)`, so user-supplied message
+//!    handlers execute on the calling thread without holding the per-actor sender lock. This is
+//!    what lets a handler legally re-enter the same actor's `tell` (for example via `ctx.ask(...)`
+//!    + `pipe_to_self`) without deadlocking on the sender mutex.
+//!
+//! The sender holds only the receiver mailbox. The owning [`ActorCell`] is
+//! resolved via `Mailbox::actor()` on each `send`, which avoids an
+//! `ActorCell -> sender -> ActorCell` ownership cycle.
 
 #[cfg(test)]
 mod tests;
 
 use alloc::boxed::Box;
-use core::{
-  future::Future,
-  pin::Pin,
-  task::{Context, Poll},
-};
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::{dispatcher_waker::dispatcher_waker, message_dispatcher_shared::MessageDispatcherShared};
+use super::message_dispatcher_shared::MessageDispatcherShared;
 use crate::core::kernel::{
   actor::{
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,
     messaging::AnyMessage,
   },
-  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxOfferFuture},
+  dispatch::mailbox::{Envelope, Mailbox},
 };
 
-/// Sender that routes user messages through the new dispatcher tree.
+/// Sender that routes user messages through the dispatcher tree.
 pub struct DispatcherSender {
   dispatcher: MessageDispatcherShared,
   mailbox:    ArcShared<Mailbox>,
@@ -45,44 +59,30 @@ impl DispatcherSender {
   pub const fn new(dispatcher: MessageDispatcherShared, mailbox: ArcShared<Mailbox>) -> Self {
     Self { dispatcher, mailbox }
   }
-
-  /// Drives the [`MailboxOfferFuture`] to completion using a [`dispatcher_waker`].
-  ///
-  /// Each `Pending` poll first re-registers the mailbox for execution on the
-  /// new dispatcher so the drain loop has a chance to free capacity. When
-  /// the waker fires (or the queue succeeds) the future completes and we
-  /// return to the send path.
-  fn drive_offer_future(&self, mut future: MailboxOfferFuture) -> Result<(), SendError> {
-    let waker = dispatcher_waker(self.dispatcher.clone(), self.mailbox.clone());
-    let mut cx = Context::from_waker(&waker);
-    loop {
-      match Pin::new(&mut future).poll(&mut cx) {
-        | Poll::Ready(Ok(())) => return Ok(()),
-        | Poll::Ready(Err(error)) => return Err(error),
-        | Poll::Pending => {
-          // Nudge the dispatcher so the drain loop has a chance to free capacity.
-          let _scheduled = self.dispatcher.register_for_execution(&self.mailbox, true, false);
-        },
-      }
-    }
-  }
 }
 
 impl ActorRefSender for DispatcherSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     let envelope = Envelope::new(message);
-    match self.mailbox.enqueue_envelope(envelope)? {
-      | EnqueueOutcome::Enqueued => {},
-      | EnqueueOutcome::Pending(future) => {
-        self.drive_offer_future(future)?;
-      },
-    }
+    // Resolve the owning ActorCell through the mailbox's installed weak
+    // reference. `ActorCell::create` installs the weak handle on the mailbox
+    // before the cell becomes observable externally, so this upgrade only
+    // fails after the cell has been dropped, at which point reporting
+    // `closed` is the correct answer.
+    let Some(cell) = self.mailbox.actor().and_then(|weak| weak.upgrade()) else {
+      return Err(SendError::closed(envelope.into_payload()));
+    };
+    // Phase 1 (inside the per-actor sender lock): enqueue via the trait
+    // dispatch hook so `BalancingDispatcher` can route into its shared team
+    // queue. Returns the candidate mailbox list without scheduling.
+    let candidates = self.dispatcher.dispatch_enqueue(&cell, envelope)?;
+    // Phase 2 (after the sender lock is released by `ActorRefSenderShared`):
+    // schedule the returned candidates. With an inline executor this runs
+    // `mailbox.run(...)` synchronously, so it must execute outside the
+    // sender lock to keep nested same-actor `tell` calls deadlock-free.
     let dispatcher = self.dispatcher.clone();
-    let mailbox = self.mailbox.clone();
     let schedule = move || {
-      // The boolean is best-effort: a busy mailbox is fine, the next send
-      // will retry. A failed submit is already logged by the shared wrapper.
-      let _scheduled = dispatcher.register_for_execution(&mailbox, true, false);
+      dispatcher.register_user_candidates(&candidates);
     };
     Ok(SendOutcome::Schedule(Box::new(schedule)))
   }

@@ -172,7 +172,21 @@ impl ActorCell {
       props.mailbox_config().clone()
     };
 
-    let mailbox = if let Some(id) = mailbox_id {
+    let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
+    // The dispatcher tree owns the ActorRef sender path. A configurator must
+    // be registered for the resolved id (`ActorSystemConfig::default()` seeds
+    // the in-process inline configurator).
+    let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
+      SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
+    })?;
+
+    // Give the dispatcher a chance to supply its own mailbox (e.g.,
+    // `BalancingDispatcher` hands out sharing mailboxes that all wrap its
+    // single team queue). Dispatchers that want per-actor queues return
+    // `None` and `ActorCell` falls back to the `MailboxConfig`-driven path.
+    let mailbox = if let Some(shared_mailbox) = new_dispatcher.try_create_shared_mailbox() {
+      shared_mailbox
+    } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
       ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
@@ -193,13 +207,6 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
-    // The dispatcher tree owns the ActorRef sender path. A configurator must
-    // be registered for the resolved id (`ActorSystemConfig::default()` seeds
-    // the in-process inline configurator).
-    let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
-      SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
-    })?;
     use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
     let sender = ActorRefSenderShared::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
     let Some(factory) = props.factory().cloned() else {

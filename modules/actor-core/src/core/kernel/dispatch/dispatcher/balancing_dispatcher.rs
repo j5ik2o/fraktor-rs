@@ -17,7 +17,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MailboxType, MessageQueue},
+  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MessageQueue},
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
@@ -31,8 +31,8 @@ impl BalancingDispatcher {
   /// Constructs a new `BalancingDispatcher`.
   ///
   /// The dispatcher allocates a fresh [`SharedMessageQueue`] internally; the
-  /// queue is reused by every actor that attaches via the trait `create_mailbox`
-  /// hook.
+  /// queue is reused by every actor that attaches via
+  /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
   pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
     Self {
@@ -102,13 +102,14 @@ impl MessageDispatcher for BalancingDispatcher {
     &mut self.core
   }
 
-  fn create_mailbox(&self, _actor: &ArcShared<ActorCell>, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox> {
-    // Sharing mailboxes use the dispatcher's shared queue regardless of the
-    // requested mailbox type. Other type-specific knobs (capacity, throughput
-    // limit, etc.) still come from `mailbox_type` for diagnostics.
-    let _ = mailbox_type;
+  fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+    // All team members must drain the same queue, so we construct a sharing
+    // mailbox that delegates to `self.shared_queue` rather than letting
+    // `ActorCell::create` build a fresh per-actor queue. The queue is stable
+    // for the dispatcher's lifetime, so every call returns a mailbox that
+    // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    ArcShared::new(Mailbox::new_sharing(MailboxPolicy::unbounded(None), queue))
+    Some(ArcShared::new(Mailbox::new_sharing(MailboxPolicy::unbounded(None), queue)))
   }
 
   fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {

@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::{num::NonZeroUsize, time::Duration};
 
 /// Immutable bundle of dispatcher tunables.
@@ -106,11 +106,5 @@ impl DispatcherSettings {
     // SAFETY: 5 is statically non-zero so `NonZeroUsize::new_unchecked` is sound.
     let throughput = unsafe { NonZeroUsize::new_unchecked(5) };
     Self::new(id, throughput, None, Duration::from_secs(1))
-  }
-
-  /// Convenience helper that converts the identifier to an owned string.
-  #[must_use]
-  pub fn id_string(&self) -> String {
-    self.id.to_string()
   }
 }
