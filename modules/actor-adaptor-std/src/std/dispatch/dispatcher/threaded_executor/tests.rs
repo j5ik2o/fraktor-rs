@@ -26,8 +26,3 @@ fn execute_runs_each_task_on_a_new_thread() {
   assert_eq!(count.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn supports_blocking_returns_true() {
-  let executor = ThreadedExecutor::new();
-  assert!(executor.supports_blocking());
-}

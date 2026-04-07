@@ -98,47 +98,47 @@
 - [x] 3.35 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する (1577 passed)
 - [x] 3.36 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する (11 passed)
 - [x] 3.37 `grep -rn "EnqueueOutcome\|MailboxOfferFuture" modules/` がヒット 0 を返すことを確認する
-- [ ] 3.38 commit: `refactor(mailbox): simplify MessageQueue::enqueue to Result<(), SendError> and drop MailboxOfferFuture`
+- [x] 3.38 commit: `refactor(mailbox): simplify MessageQueue::enqueue to Result<(), SendError> and drop MailboxOfferFuture` (bf29d745)
 
 ## 4. Executor::supports_blocking + SpawnError::InvalidMailboxConfig 撤去 (commit 4)
 
 ### 4.A trait + impl
 
-- [ ] 4.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor.rs` から `supports_blocking()` trait method を削除する
-- [ ] 4.2 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor.rs` の rustdoc (該当箇所: line 6 周辺) から `supports_blocking` 言及を削除する
-- [ ] 4.3 `modules/actor-core/src/core/kernel/dispatch/dispatcher/inline_executor.rs` の `supports_blocking()` impl を削除する
-- [ ] 4.4 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor_shared.rs` の `supports_blocking()` convenience method を削除する (該当箇所: line 150-152)
+- [x] 4.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor.rs` から `supports_blocking()` trait method を削除する
+- [x] 4.2 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor.rs` の rustdoc から `supports_blocking` 言及を削除する
+- [x] 4.3 `modules/actor-core/src/core/kernel/dispatch/dispatcher/inline_executor.rs` の `supports_blocking()` impl を削除する
+- [x] 4.4 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor_shared.rs` の `supports_blocking()` convenience method を削除する
 
 ### 4.B std adapter impl
 
-- [ ] 4.5 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tokio_executor.rs` の `supports_blocking()` impl を削除する
-- [ ] 4.6 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/threaded_executor.rs` の `supports_blocking()` impl を削除する
-- [ ] 4.7 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/pinned_executor.rs` の `supports_blocking()` impl を削除する
+- [x] 4.5 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tokio_executor.rs` の `supports_blocking()` impl を削除する
+- [x] 4.6 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/threaded_executor.rs` の `supports_blocking()` impl を削除する
+- [x] 4.7 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/pinned_executor.rs` の `supports_blocking()` impl を削除する
 
 ### 4.C テスト + mock
 
-- [ ] 4.8 `modules/actor-core/src/core/kernel/dispatch/dispatcher/inline_executor/tests.rs` の `supports_blocking_returns_false` テストを削除し、他テスト内の `assert!(!executor.supports_blocking())` 行も削除する (該当箇所: line 19-21, 48 周辺)
-- [ ] 4.9 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor_shared/tests.rs` の `supports_blocking_query` テスト + mock executor の `supports_blocking` impl 行を削除する (該当箇所: line 19, 61, 64 周辺)
-- [ ] 4.10 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tokio_executor/tests.rs` の `supports_blocking_returns_true` テストを削除する (該当箇所: line 26-29 周辺)
-- [ ] 4.11 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/threaded_executor/tests.rs` の `supports_blocking_returns_true` テストを削除する (該当箇所: line 30-32 周辺)
-- [ ] 4.12 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/pinned_executor/tests.rs` の `supports_blocking_returns_false` テストを削除する (該当箇所: line 38-40 周辺)
-- [ ] 4.13 `modules/actor-core/src/core/kernel/system/state/system_state/tests.rs` の mock executor の `supports_blocking` impl 行を削除する (該当箇所: line 880 周辺)
-- [ ] 4.14 `modules/actor-core/src/core/kernel/system/base/tests.rs` の mock executor の `supports_blocking` impl 行を削除する (該当箇所: line 154 周辺)
+- [x] 4.8 `modules/actor-core/src/core/kernel/dispatch/dispatcher/inline_executor/tests.rs` の `supports_blocking_returns_false` テストと `shutdown_clears_pending_tasks` 内の `assert!(!executor.supports_blocking())` 行を削除する
+- [x] 4.9 `modules/actor-core/src/core/kernel/dispatch/dispatcher/executor_shared/tests.rs` の `supports_blocking_query` テスト + mock executor の `supports_blocking` impl + `blocking` フィールドを削除する
+- [x] 4.10 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/tokio_executor/tests.rs` の `supports_blocking_returns_true` テストを削除する
+- [x] 4.11 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/threaded_executor/tests.rs` の `supports_blocking_returns_true` テストを削除する
+- [x] 4.12 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/pinned_executor/tests.rs` の `supports_blocking_returns_false` テストを削除する
+- [x] 4.13 `modules/actor-core/src/core/kernel/system/state/system_state/tests.rs` の mock executor の `supports_blocking` impl 行を削除する
+- [x] 4.14 `modules/actor-core/src/core/kernel/system/base/tests.rs` の mock executor の `supports_blocking` impl 行を削除する
 
 ### 4.D SpawnError::InvalidMailboxConfig 完全削除
 
-- [ ] 4.15 `modules/actor-core/src/core/kernel/actor/spawn/spawn_error.rs` の `SpawnError::InvalidMailboxConfig(String)` variant を削除する (該当箇所: line 23-28 周辺)
-- [ ] 4.16 `modules/actor-core/src/core/kernel/actor/spawn/spawn_error.rs` の `invalid_mailbox_config()` constructor を削除する (該当箇所: line 60-64 周辺)
-- [ ] 4.17 `modules/actor-core/src/core/kernel/actor/actor_cell.rs::create` の rustdoc 内 `Returns SpawnError::InvalidMailboxConfig if ...` 行を削除する (該当箇所: line 155-158 周辺)
-- [ ] 4.18 `grep -rn "InvalidMailboxConfig\|invalid_mailbox_config" modules/` がヒット 0 を返すことを確認する
+- [x] 4.15 `modules/actor-core/src/core/kernel/actor/spawn/spawn_error.rs` の `SpawnError::InvalidMailboxConfig(String)` variant を削除する
+- [x] 4.16 `modules/actor-core/src/core/kernel/actor/spawn/spawn_error.rs` の `invalid_mailbox_config()` constructor を削除する
+- [x] 4.17 `modules/actor-core/src/core/kernel/actor/actor_cell.rs::create` の rustdoc 内 `Returns SpawnError::InvalidMailboxConfig if ...` 行を削除する
+- [x] 4.18 `grep -rn "InvalidMailboxConfig\|invalid_mailbox_config" modules/` がヒット 0 を返すことを確認する
 
 ### 4.E 検証
 
-- [ ] 4.19 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 4.20 `cargo check -p fraktor-actor-adaptor-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 4.21 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する
-- [ ] 4.22 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する
-- [ ] 4.23 `grep -rn "supports_blocking" modules/` がヒット 0 を返すことを確認する
+- [x] 4.19 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 4.20 `cargo check -p fraktor-actor-adaptor-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 4.21 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する (1575 passed)
+- [x] 4.22 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する (9 passed)
+- [x] 4.23 `grep -rn "supports_blocking" modules/` がヒット 0 を返すことを確認する
 - [ ] 4.24 commit: `refactor(executor): remove supports_blocking trait method and SpawnError::InvalidMailboxConfig`
 
 ## 5. openspec spec delta 確認 (commit 5)

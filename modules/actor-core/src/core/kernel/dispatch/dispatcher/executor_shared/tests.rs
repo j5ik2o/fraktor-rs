@@ -5,8 +5,7 @@ use super::ExecutorShared;
 use crate::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
 
 struct CountingExecutor {
-  count:    Arc<AtomicUsize>,
-  blocking: bool,
+  count: Arc<AtomicUsize>,
 }
 
 impl Executor for CountingExecutor {
@@ -14,10 +13,6 @@ impl Executor for CountingExecutor {
     self.count.fetch_add(1, Ordering::SeqCst);
     task();
     Ok(())
-  }
-
-  fn supports_blocking(&self) -> bool {
-    self.blocking
   }
 
   fn shutdown(&mut self) {
@@ -38,7 +33,7 @@ impl Executor for RejectingExecutor {
 #[test]
 fn execute_delegates_to_inner() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count), blocking: true });
+  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
   let observed = Arc::new(AtomicUsize::new(0));
   let observed_clone = Arc::clone(&observed);
   shared
@@ -58,16 +53,9 @@ fn execute_propagates_errors() {
 }
 
 #[test]
-fn supports_blocking_query() {
-  let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count, blocking: false });
-  assert!(!shared.supports_blocking());
-}
-
-#[test]
 fn shutdown_invokes_inner_shutdown() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count), blocking: true });
+  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 1);
   shared.shutdown();
@@ -77,7 +65,7 @@ fn shutdown_invokes_inner_shutdown() {
 #[test]
 fn clone_shares_inner_state() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count), blocking: true });
+  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
   let cloned = shared.clone();
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   cloned.execute(Box::new(|| {})).expect("execute should succeed");

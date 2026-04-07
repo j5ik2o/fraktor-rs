@@ -76,10 +76,6 @@ impl Executor for InlineExecutor {
     Ok(())
   }
 
-  fn supports_blocking(&self) -> bool {
-    false
-  }
-
   fn shutdown(&mut self) {
     self.state.borrow_mut().pending.clear();
   }

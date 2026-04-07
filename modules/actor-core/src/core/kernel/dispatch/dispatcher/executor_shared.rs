@@ -144,12 +144,6 @@ impl ExecutorShared {
     self.with_write(|inner| inner.shutdown());
     self.trampoline.lock().pending.clear();
   }
-
-  /// Returns whether the inner executor accepts blocking workloads.
-  #[must_use]
-  pub fn supports_blocking(&self) -> bool {
-    self.with_read(|inner| inner.supports_blocking())
-  }
 }
 
 impl Clone for ExecutorShared {

@@ -35,10 +35,6 @@ impl Executor for TokioExecutor {
     Ok(())
   }
 
-  fn supports_blocking(&self) -> bool {
-    true
-  }
-
   fn shutdown(&mut self) {
     // The Tokio runtime owns its lifecycle. There is no per-handle shutdown
     // path; if the dispatcher wants to stop accepting tasks it should drop

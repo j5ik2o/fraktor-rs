@@ -151,10 +151,6 @@ impl Executor for NoopExecutor {
     Ok(())
   }
 
-  fn supports_blocking(&self) -> bool {
-    false
-  }
-
   fn shutdown(&mut self) {}
 }
 

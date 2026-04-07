@@ -154,8 +154,9 @@ impl ActorCell {
   ///
   /// # Errors
   ///
-  /// Returns [`SpawnError::InvalidMailboxConfig`] if the mailbox configuration is incompatible
-  /// with the dispatcher executor (e.g., using Block strategy with a non-blocking executor).
+  /// Returns [`SpawnError`] if the props or system state cannot satisfy the
+  /// requested spawn (for example, missing dispatcher configurator or
+  /// invalid mailbox id).
   #[allow(clippy::needless_pass_by_value)]
   pub fn create(
     system: SystemStateShared,
