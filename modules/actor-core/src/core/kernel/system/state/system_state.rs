@@ -782,6 +782,17 @@ impl SystemState {
     self.dispatchers.resolve(id).ok()
   }
 
+  /// Returns the cumulative number of `Dispatchers::resolve` invocations
+  /// observed by the actor system's dispatcher registry.
+  ///
+  /// Diagnostics-only accessor used by integration tests to verify the
+  /// `Dispatchers::resolve` call-frequency contract: message hot paths must
+  /// not bump the counter once the system has finished bootstrapping.
+  #[must_use]
+  pub fn dispatcher_resolve_call_count(&self) -> usize {
+    self.dispatchers.resolve_call_count()
+  }
+
   /// Resolves the mailbox configuration for the identifier.
   ///
   /// # Errors

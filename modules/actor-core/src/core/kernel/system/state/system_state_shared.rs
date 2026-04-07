@@ -806,6 +806,16 @@ impl SystemStateShared {
     self.inner.read().resolve_dispatcher(id)
   }
 
+  /// Returns the cumulative number of `Dispatchers::resolve` invocations
+  /// observed by the actor system's dispatcher registry.
+  ///
+  /// Diagnostics-only accessor used by integration tests to verify the
+  /// call-frequency contract.
+  #[must_use]
+  pub fn dispatcher_resolve_call_count(&self) -> usize {
+    self.inner.read().dispatcher_resolve_call_count()
+  }
+
   /// Resolves the mailbox configuration for the identifier.
   ///
   /// # Errors

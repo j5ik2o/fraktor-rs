@@ -16,6 +16,7 @@
 mod tests;
 
 use alloc::{borrow::ToOwned, boxed::Box, string::String};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ahash::RandomState;
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -37,12 +38,21 @@ const PEKKO_INTERNAL_DISPATCHER_ID: &str = "pekko.actor.internal-dispatcher";
 
 /// Registry mapping dispatcher identifiers to configurators.
 pub struct Dispatchers {
-  entries: HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+  entries:       HashMap<String, ArcShared<Box<dyn MessageDispatcherConfigurator>>, RandomState>,
+  /// Cumulative `resolve()` invocation counter.
+  ///
+  /// Wrapped in `ArcShared<AtomicUsize>` so that all clones of a single
+  /// `Dispatchers` instance share the same counter. This is the runtime
+  /// observation surface for the call-frequency contract documented on
+  /// [`Dispatchers::resolve`]: tests and diagnostics can read the counter
+  /// before/after a workload to verify that hot-path callers are not
+  /// invoking `resolve` outside the spawn / bootstrap window.
+  resolve_count: ArcShared<AtomicUsize>,
 }
 
 impl Clone for Dispatchers {
   fn clone(&self) -> Self {
-    Self { entries: self.entries.clone() }
+    Self { entries: self.entries.clone(), resolve_count: self.resolve_count.clone() }
   }
 }
 
@@ -56,7 +66,7 @@ impl Dispatchers {
   /// Creates an empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: HashMap::with_hasher(RandomState::new()) }
+    Self { entries: HashMap::with_hasher(RandomState::new()), resolve_count: ArcShared::new(AtomicUsize::new(0)) }
   }
 
   /// Registers a configurator for the supplied identifier.
@@ -96,17 +106,35 @@ impl Dispatchers {
   /// `PinnedDispatcherConfigurator` allocates a new OS thread on every call,
   /// so hot-path resolution leaks threads.
   ///
+  /// Each invocation increments the diagnostic counter exposed by
+  /// [`Dispatchers::resolve_call_count`], regardless of whether the lookup
+  /// succeeded.
+  ///
   /// # Errors
   ///
   /// Returns [`DispatchersError::Unknown`] when the identifier has not been
   /// registered.
   pub fn resolve(&self, id: &str) -> Result<MessageDispatcherShared, DispatchersError> {
+    self.resolve_count.fetch_add(1, Ordering::Relaxed);
     let id = Self::normalize_dispatcher_id(id);
     self
       .entries
       .get(id)
       .map(|configurator| configurator.dispatcher())
       .ok_or_else(|| DispatchersError::Unknown(id.to_owned()))
+  }
+
+  /// Returns the cumulative number of [`Dispatchers::resolve`] invocations
+  /// observed by this registry instance and all of its clones.
+  ///
+  /// Diagnostics-only accessor used by integration tests and benches to
+  /// verify the call-frequency contract: `resolve` should be called from
+  /// spawn / bootstrap paths only, never from message hot paths. Read the
+  /// counter before and after a representative workload and assert that
+  /// the message-only portion of the workload does not change the value.
+  #[must_use]
+  pub fn resolve_call_count(&self) -> usize {
+    self.resolve_count.load(Ordering::Relaxed)
   }
 
   /// Ensures the default dispatcher entry exists.

@@ -162,12 +162,25 @@ impl Mailbox {
   /// closure: the dispatcher submits a closure that calls `mailbox.run(throughput, deadline)` and
   /// the mailbox itself owns the drain loop.
   ///
-  /// Returns immediately if no invoker has been installed (e.g., during the
-  /// parallel period when only the legacy dispatcher path is active).
-  pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) {
+  /// # Returns
+  ///
+  /// Returns `true` when the mailbox state machine reports a pending
+  /// reschedule (i.e. additional work arrived while the drain was in
+  /// progress). The dispatcher closure must observe this signal and call
+  /// `register_for_execution` again, otherwise the late-arriving messages
+  /// would sit in the queue without anyone to wake the mailbox up — the
+  /// `tell()` paths that delivered them already saw the mailbox in the
+  /// `running` state and returned without scheduling.
+  ///
+  /// Returns `false` when no invoker / actor cell is available (no-op
+  /// fallback for legacy `Mailbox::new(policy)` callers that never
+  /// installed an actor) and when the drain finishes cleanly with no
+  /// pending reschedule.
+  #[must_use]
+  pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) -> bool {
     let invoker = self.invoker.lock().clone();
     let Some(invoker) = invoker else {
-      return;
+      return false;
     };
 
     // Phase 9.2: bail out if the owning actor cell has been dropped. The
@@ -178,7 +191,7 @@ impl Mailbox {
       | None => true,
     };
     if !actor_alive {
-      return;
+      return false;
     }
 
     self.set_running();
@@ -211,13 +224,28 @@ impl Mailbox {
         | None => break,
       }
     }
-    // The pending-reschedule signal returned by set_idle is irrelevant here:
-    // the new dispatcher's register_for_execution path will be invoked again
-    // by the next dispatch / wake-up.
-    if self.set_idle() {
-      // No-op: the next register_for_execution call from the dispatcher will
-      // pick up any work that arrived during the drain.
-    }
+    // Surface the "needs reschedule" signal to the caller. The signal is
+    // a union of two independent sources:
+    //
+    // 1. **Producer signal** (`need_reschedule`, consumed by `set_idle`): `request_schedule` sets this
+    //    flag when a `tell()` arrives while the mailbox is busy. Without `set_idle`'s return value the
+    //    dispatcher would never know that work arrived during the drain.
+    //
+    // 2. **Consumer signal** (queue still has messages after the drain): The throughput limit is a
+    //    yield point, not a "queue is empty" signal. When we hit the limit (or even when the limit was
+    //    not reached but envelopes were already in the queue before we started, e.g. if a
+    //    `BalancingDispatcher` team queue holds messages enqueued by tells that scheduled a different
+    //    team member), the queue can still have pending work that no producer will ever announce again
+    //    — the producers may have already finished firing all their tells. Self-reporting via the queue
+    //    state is the only way to keep the drain loop alive in that case.
+    //
+    // The dispatcher closure that wraps `run()` must re-call
+    // `register_for_execution` whenever this combined signal is true,
+    // otherwise late-arriving or already-queued messages would sit in
+    // the mailbox without anyone to wake it up.
+    let pending_reschedule = self.set_idle();
+    let still_has_work = self.user_len() > 0 || self.system_len() > 0;
+    pending_reschedule || still_has_work
   }
 
   /// Returns the cleanup policy configured for this mailbox.

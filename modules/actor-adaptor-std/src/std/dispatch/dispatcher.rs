@@ -5,6 +5,9 @@
 //! migration completes the legacy tree is removed in a single drop and this
 //! module is renamed back to `dispatch/`.
 
+#[cfg(all(test, feature = "tokio-executor"))]
+mod tests;
+
 mod pinned_executor;
 mod pinned_executor_factory;
 mod threaded_executor;
