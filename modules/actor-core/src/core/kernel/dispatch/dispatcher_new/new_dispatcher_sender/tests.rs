@@ -152,6 +152,99 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
 }
 
 #[test]
+fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
+  // Regression test: when actor A processes a message and sends to actor B,
+  // the inline executor must not deadlock on the shared dispatcher mutex.
+  use alloc::{string::ToString, sync::Arc};
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use fraktor_utils_rs::core::sync::RuntimeMutex;
+
+  use crate::core::kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext,
+      actor_ref::ActorRef,
+      error::ActorError,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+    },
+    dispatch::dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct ForwardingActor {
+    forwards_remaining: Arc<AtomicUsize>,
+    downstream:         Arc<RuntimeMutex<Option<ActorRef>>>,
+  }
+
+  impl Actor for ForwardingActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      if self.forwards_remaining.fetch_sub(1, Ordering::SeqCst) > 0
+        && let Some(downstream_ref) = self.downstream.lock().clone()
+      {
+        let mut fwd = downstream_ref;
+        fwd.tell(AnyMessage::new(1_u32));
+      }
+      Ok(())
+    }
+  }
+
+  struct CounterActor {
+    count: Arc<AtomicUsize>,
+  }
+
+  impl Actor for CounterActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      self.count.fetch_add(1, Ordering::SeqCst);
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(16), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+
+  // Create downstream actor (counter).
+  let counter = Arc::new(AtomicUsize::new(0));
+  let counter_clone = counter.clone();
+  let counter_props = Props::from_fn(move || CounterActor { count: counter_clone.clone() });
+  let counter_pid = state.allocate_pid();
+  let counter_cell =
+    ActorCell::create(state.clone(), counter_pid, None, "counter".to_string(), &counter_props).expect("counter cell");
+  state.register_cell(counter_cell.clone());
+  let counter_ref = counter_cell.actor_ref();
+
+  // Create forwarding actor with reference to downstream.
+  let forwards_remaining = Arc::new(AtomicUsize::new(3));
+  let downstream = Arc::new(RuntimeMutex::new(Some(counter_ref)));
+  let forwards_clone = forwards_remaining.clone();
+  let downstream_clone = downstream.clone();
+  let fwd_props = Props::from_fn(move || ForwardingActor {
+    forwards_remaining: forwards_clone.clone(),
+    downstream:         downstream_clone.clone(),
+  });
+  let fwd_pid = state.allocate_pid();
+  let fwd_cell =
+    ActorCell::create(state.clone(), fwd_pid, None, "forwarder".to_string(), &fwd_props).expect("fwd cell");
+  state.register_cell(fwd_cell.clone());
+
+  // Send a trigger message. The forwarder will send to counter from its receive handler.
+  let mut fwd_ref = fwd_cell.actor_ref();
+  fwd_ref.tell(AnyMessage::new(1_u32));
+
+  // Counter should have received at least one forwarded message.
+  // If this deadlocks or panics, the inline executor reentrant case is broken.
+  let seen = counter.load(Ordering::SeqCst);
+  assert!(seen >= 1, "counter should have received at least one forwarded message; got {seen}");
+}
+
+#[test]
 fn new_dispatcher_delivers_messages_to_multiple_actors_independently() {
   use alloc::{string::ToString, sync::Arc};
   use core::sync::atomic::{AtomicUsize, Ordering};
