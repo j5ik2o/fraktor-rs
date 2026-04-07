@@ -154,21 +154,21 @@ spec delta ファイルは proposal 作成時に既に作成済み・push 済み
 - [x] 5.4 dylint dead-code lint で検出される backpressure infra 残骸を削除する:
   - `mailbox/mailbox_queue_state.rs::register_producer_waiter` (caller ゼロ)
   - `mailbox/system_queue.rs::len_handle` (caller ゼロ)
-- [ ] 5.5 commit: `chore(mailbox): clean up dead backpressure infrastructure and finalize tasks` (tasks.md の checkbox 確定 + dead code 削除を 1 コミットにまとめる)
+- [x] 5.5 commit: `chore(mailbox): clean up dead backpressure infrastructure and finalize tasks` (b4c86efc)
 
 ## 6. 最終検証
 
-- [ ] 6.1 `grep -rn "MailboxOverflowStrategy::Block" modules/ showcases/` がヒット 0 を返す
-- [ ] 6.2 `grep -rn "MailboxOfferFuture" modules/ showcases/` がヒット 0 を返す
-- [ ] 6.3 `grep -rn "dispatcher_waker\|DispatcherWaker" modules/ showcases/` がヒット 0 を返す (`openspec/` 配下を除く)
-- [ ] 6.4 `grep -rn "EnqueueOutcome" modules/ showcases/` がヒット 0 を返す
-- [ ] 6.5 `grep -rn "supports_blocking" modules/ showcases/` がヒット 0 を返す
-- [ ] 6.6 `grep -rn "InvalidMailboxConfig\|invalid_mailbox_config" modules/ showcases/` がヒット 0 を返す
-- [ ] 6.7 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass
-- [ ] 6.8 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass
-- [ ] 6.9 `./scripts/ci-check.sh ai dylint` exit 0
-- [ ] 6.10 `./scripts/ci-check.sh ai all` exit 0
-- [ ] 6.11 `openspec validate mailbox-block-overflow-removal --strict` valid
+- [x] 6.1 `grep -rn "MailboxOverflowStrategy::Block" modules/ showcases/` がヒット 0 を返す
+- [x] 6.2 `grep -rn "MailboxOfferFuture" modules/ showcases/` がヒット 0 を返す
+- [x] 6.3 `grep -rn "dispatcher_waker\|DispatcherWaker" modules/ showcases/` がヒット 0 を返す (`openspec/` 配下を除く)
+- [x] 6.4 `grep -rn "EnqueueOutcome" modules/ showcases/` がヒット 0 を返す
+- [x] 6.5 `grep -rn "supports_blocking" modules/ showcases/` がヒット 0 を返す
+- [x] 6.6 `grep -rn "InvalidMailboxConfig\|invalid_mailbox_config" modules/ showcases/` がヒット 0 を返す
+- [x] 6.7 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass
+- [x] 6.8 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass
+- [x] 6.9 `./scripts/ci-check.sh ai dylint` exit 0
+- [x] 6.10 `./scripts/ci-check.sh ai all` exit 0
+- [x] 6.11 `openspec validate mailbox-block-overflow-removal --strict` valid
 
 ## 7. PR 作成
 
