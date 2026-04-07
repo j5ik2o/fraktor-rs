@@ -17,21 +17,19 @@
 //! # Hook conventions
 //!
 //! - `register_actor` / `unregister_actor` / `dispatch` / `system_dispatch` /
-//!   `try_create_shared_mailbox` are overridable hooks. The default
-//!   `register_actor` / `unregister_actor` impls just delegate to
-//!   [`DispatcherCore`] inhabitants bookkeeping. `PinnedDispatcher` overrides
-//!   them to enforce 1:1 ownership.
+//!   `try_create_shared_mailbox` are overridable hooks. The default `register_actor` /
+//!   `unregister_actor` impls just delegate to [`DispatcherCore`] inhabitants bookkeeping.
+//!   `PinnedDispatcher` overrides them to enforce 1:1 ownership.
 //! - `dispatch` / `system_dispatch` enqueue the message into a mailbox queue and return the
 //!   **candidate mailbox list** that the shared wrapper should try to schedule for execution. The
 //!   candidate list is ordered by priority; the wrapper stops at the first mailbox that
 //!   successfully transitions from idle to scheduled. `BalancingDispatcher` returns multiple
 //!   candidates so a busy receiver can fall back to a sibling.
-//! - `try_create_shared_mailbox` returns `None` by default, meaning
-//!   `ActorCell::create` should build a per-actor mailbox from
-//!   `MailboxConfig`. `BalancingDispatcher` overrides it to return a sharing
-//!   mailbox over its shared team queue so every attached actor drains the
-//!   same queue. `ActorCell::create` checks this hook before falling back to
-//!   config-driven mailbox construction.
+//! - `try_create_shared_mailbox` returns `None` by default, meaning `ActorCell::create` should
+//!   build a per-actor mailbox from `MailboxConfig`. `BalancingDispatcher` overrides it to return a
+//!   sharing mailbox over its shared team queue so every attached actor drains the same queue.
+//!   `ActorCell::create` checks this hook before falling back to config-driven mailbox
+//!   construction.
 //! - `register_for_execution` is **intentionally absent** from this trait. The shared wrapper holds
 //!   the only `register_for_execution` path so that trait hooks cannot accidentally re-enter the
 //!   lock.

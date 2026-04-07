@@ -115,7 +115,8 @@ fn dispatch_enqueues_to_shared_queue_and_returns_team_candidates() {
 #[test]
 fn try_create_shared_mailbox_returns_sharing_mailbox() {
   let dispatcher = make_dispatcher();
-  let mailbox = dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
+  let mailbox =
+    dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
   assert_eq!(mailbox.cleanup_policy(), MailboxCleanupPolicy::LeaveSharedQueue);
 }
 
