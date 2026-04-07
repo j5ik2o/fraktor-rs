@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
 use fraktor_persistence_core_rs::core::{
   AtLeastOnceDelivery, AtLeastOnceDeliveryConfig, RedeliveryTick, UnconfirmedDelivery,
 };
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 /// Helper function to create a test payload.
 fn create_payload<T: Any + Send + Sync + 'static>(value: T) -> ArcShared<dyn Any + Send + Sync> {

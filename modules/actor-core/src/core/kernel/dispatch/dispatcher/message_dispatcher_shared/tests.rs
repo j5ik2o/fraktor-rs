@@ -107,7 +107,7 @@ fn dispatch_drives_user_message_through_actor_invoker() {
 fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   use alloc::boxed::Box;
 
-  use fraktor_utils_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::core::sync::ArcShared;
 
   use crate::core::kernel::{
     dispatch::dispatcher::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},

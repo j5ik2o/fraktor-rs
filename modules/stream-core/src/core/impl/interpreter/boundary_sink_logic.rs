@@ -4,7 +4,7 @@
 //! into a shared `IslandBoundaryShared`. When the boundary buffer is full,
 //! the element is held as pending and retried on subsequent ticks.
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::island_boundary::{BoundaryState, IslandBoundaryShared};
 use crate::core::{DynValue, SinkDecision, SinkLogic, StreamError, r#impl::fusing::DemandTracker};

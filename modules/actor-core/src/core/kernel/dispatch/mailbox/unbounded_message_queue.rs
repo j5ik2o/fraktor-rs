@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::collections::queue::QueueError;
+use fraktor_utils_core_rs::core::collections::queue::QueueError;
 
 use super::{QueueStateHandle, envelope::Envelope, message_queue::MessageQueue, policy::MailboxPolicy};
 use crate::core::kernel::actor::error::SendError;

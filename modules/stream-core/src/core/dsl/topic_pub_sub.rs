@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::{
     pubsub::{Topic, TopicCommand},
   },
 };
-use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{
   StageContext, StreamCompletion, StreamDone, actor_sink::ActorSink, actor_source::ActorSource, flow::Flow, sink::Sink,

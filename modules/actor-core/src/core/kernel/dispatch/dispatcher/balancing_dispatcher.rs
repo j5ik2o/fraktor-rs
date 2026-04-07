@@ -9,7 +9,7 @@ mod tests;
 
 use alloc::{boxed::Box, vec::Vec};
 
-use fraktor_utils_rs::core::sync::{ArcShared, WeakShared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, WeakShared};
 
 use super::{
   dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,

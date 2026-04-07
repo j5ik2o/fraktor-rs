@@ -3,7 +3,7 @@
 /// Port contract for blocking the current thread until a condition is met.
 ///
 /// Implementations live in platform-specific adapter crates (e.g.
-/// `fraktor-actor-adaptor-rs` provides a `Condvar`-based `StdBlocker`).
+/// `fraktor-actor-adaptor-std-rs` provides a `Condvar`-based `StdBlocker`).
 /// Core code references only this trait, keeping `std` dependencies out of
 /// the `core` module.
 pub trait Blocker: Send + Sync {

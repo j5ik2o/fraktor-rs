@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::collections::queue::OverflowPolicy;
+use fraktor_utils_core_rs::core::collections::queue::OverflowPolicy;
 
 use super::{StreamBuffer, StreamBufferConfig};
 

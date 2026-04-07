@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::Any;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Converts domain events before they are written to the journal.
 pub trait WriteEventAdapter: Send + Sync + 'static {

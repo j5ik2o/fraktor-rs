@@ -17,7 +17,7 @@ default = []
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
-fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
 ahash = { workspace = true }
 hashbrown = { workspace = true, default-features = false }
 

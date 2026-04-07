@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{supervisor_directive::SupervisorDirective, supervisor_strategy_kind::SupervisorStrategyKind};
 use crate::core::kernel::{

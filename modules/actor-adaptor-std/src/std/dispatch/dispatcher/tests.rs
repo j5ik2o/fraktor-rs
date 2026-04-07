@@ -41,7 +41,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
 

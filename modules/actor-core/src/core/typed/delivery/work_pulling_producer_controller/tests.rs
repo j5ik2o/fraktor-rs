@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex};
 
 use super::{
   PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,

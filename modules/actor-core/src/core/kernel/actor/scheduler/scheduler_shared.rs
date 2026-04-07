@@ -3,7 +3,7 @@
 //! Hides the `ArcShared<RuntimeRwLock<...>>` internals and exposes only
 //! the `with_read` / `with_write` closure API.
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
 
 use super::Scheduler;
 

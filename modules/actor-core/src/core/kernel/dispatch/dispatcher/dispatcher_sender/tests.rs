@@ -5,7 +5,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
@@ -86,7 +86,7 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
 fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
   use alloc::{string::ToString, sync::Arc, vec::Vec};
 
-  use fraktor_utils_rs::core::sync::RuntimeMutex;
+  use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
   use crate::core::kernel::{
     actor::{
@@ -145,7 +145,7 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
   use alloc::{string::ToString, sync::Arc};
   use core::sync::atomic::{AtomicUsize, Ordering};
 
-  use fraktor_utils_rs::core::sync::RuntimeMutex;
+  use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
   use crate::core::kernel::{
     actor::{

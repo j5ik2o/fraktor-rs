@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::sync::{SharedAccess, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, shared::Shared};
 
 use crate::core::{
   kernel::{

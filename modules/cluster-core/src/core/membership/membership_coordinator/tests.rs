@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String};
 use core::time::Duration;
 
-use fraktor_utils_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::core::time::TimerInstant;
 
 use super::MembershipCoordinator;
 use crate::core::{

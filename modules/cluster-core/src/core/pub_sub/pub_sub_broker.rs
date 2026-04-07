@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::core::time::TimerInstant;
 
 use super::{
   DeliveryPolicy, PartitionBehavior, PubSubError, PubSubEvent, PubSubMetrics, PubSubSubscriber, PubSubTopic,

@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_rs::core::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
+use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapability, sync::ArcShared};
 
 use super::{
   ActorSystemWeak, Blocker, ExtendedActorSystem, TerminationSignal,

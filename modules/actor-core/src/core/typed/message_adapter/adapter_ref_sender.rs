@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::format;
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::{
   kernel::{

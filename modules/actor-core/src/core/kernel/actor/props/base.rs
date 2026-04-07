@@ -3,7 +3,7 @@ mod tests;
 
 use alloc::{boxed::Box, collections::BTreeSet, string::String, vec::Vec};
 
-use fraktor_utils_rs::core::collections::queue::capabilities::QueueCapabilityRegistry;
+use fraktor_utils_core_rs::core::collections::queue::capabilities::QueueCapabilityRegistry;
 
 use super::{
   factory::ActorFactory, factory_shared::ActorFactoryShared, mailbox_config::MailboxConfig,

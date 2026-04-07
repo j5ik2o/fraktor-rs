@@ -5,7 +5,7 @@
 //!
 //! Run with: `cargo run -p fraktor-showcases-std --example getting_started`
 
-use fraktor_actor_adaptor_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::StdBlocker;
 use fraktor_actor_core_rs::core::typed::{Behavior, TypedActorSystem, TypedProps, dsl::Behaviors};
 use fraktor_showcases_std::support;
 

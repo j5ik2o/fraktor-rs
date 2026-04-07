@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{format, string::String};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{actor::error::ActorError, event::logging::LogLevel},

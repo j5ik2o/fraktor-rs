@@ -1,5 +1,5 @@
 use fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage;
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::PubSubPublisher;
 use crate::core::{

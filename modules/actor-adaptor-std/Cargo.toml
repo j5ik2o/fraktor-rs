@@ -1,5 +1,5 @@
 [package]
-name = "fraktor-actor-adaptor-rs"
+name = "fraktor-actor-adaptor-std-rs"
 version = "0.2.11"
 edition = "2024"
 description = "fraktor standard adaptor bindings for actor runtime"
@@ -8,19 +8,18 @@ keywords = ["fraktor", "actor", "adaptor", "std"]
 categories = ["concurrency"]
 repository = "https://github.com/j5ik2o/fraktor-rs"
 homepage = "https://github.com/j5ik2o/fraktor-rs"
-documentation = "https://docs.rs/fraktor-actor-adaptor-rs"
+documentation = "https://docs.rs/fraktor-actor-adaptor-std-rs"
 readme = "../../README.md"
 autoexamples = false
 
 [features]
 default = []
-test-support = ["fraktor-actor-core-rs/test-support", "dep:spin"]
+test-support = ["fraktor-actor-core-rs/test-support"]
 tokio-executor = ["dep:tokio"]
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
-fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
-spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"], optional = true }
+fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
 tokio = { workspace = true, optional = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 tracing = { workspace = true, features = ["std"] }
 
@@ -35,11 +34,6 @@ criterion = { workspace = true }
 # `critical-section`.
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 critical-section = { workspace = true, features = ["std"] }
-# Pull `spin` in unconditionally for unit tests so that `cfg(test)` items in
-# `std::debug::debug_spin_sync_mutex` (which use `spin::MutexGuard` directly)
-# can compile under `cargo test` even when the `test-support` feature is not
-# explicitly enabled. The production graph still uses the optional dep above.
-spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 serde_json = { workspace = true }
 

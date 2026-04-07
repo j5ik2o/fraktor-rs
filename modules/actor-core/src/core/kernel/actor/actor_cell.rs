@@ -14,7 +14,7 @@ use alloc::{
 };
 use core::{mem, task::Poll, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{

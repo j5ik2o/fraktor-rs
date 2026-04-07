@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::typed::message_adapter::{AdapterRefHandleId, adapter_lifecycle_state::AdapterLifecycleState};
 

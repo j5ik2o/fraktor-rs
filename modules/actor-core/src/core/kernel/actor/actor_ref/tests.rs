@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::{
   actor::{

@@ -6,7 +6,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
   sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess},
   timing::delay::{DelayFuture, DelayProvider},
@@ -500,7 +500,7 @@ fn spawn_child_fails_when_dispatcher_id_not_registered() {
 
 #[test]
 fn spawn_child_resolves_mailbox_id_with_requirements() {
-  use fraktor_utils_rs::core::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
+  use fraktor_utils_core_rs::core::collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet};
 
   let registry = QueueCapabilityRegistry::new(QueueCapabilitySet::defaults().with_deque(false));
   let constrained =

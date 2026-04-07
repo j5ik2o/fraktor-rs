@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   in_memory_journal::InMemoryJournal, journal_actor::JournalActor, journal_actor_config::JournalActorConfig,

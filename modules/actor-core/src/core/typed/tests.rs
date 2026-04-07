@@ -10,7 +10,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::sync::NoStdMutex;
+use fraktor_utils_core_rs::core::sync::NoStdMutex;
 
 use crate::core::{
   kernel::actor::{

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   kernel::{

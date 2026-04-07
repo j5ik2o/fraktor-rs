@@ -12,7 +12,7 @@ use fraktor_cluster_core_rs::core::{
     GossipTransport, MembershipCoordinatorError, MembershipCoordinatorOutcome, MembershipCoordinatorShared,
   },
 };
-use fraktor_utils_rs::core::{sync::SharedAccess, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::SharedAccess, time::TimerInstant};
 
 /// Driver that applies coordinator outcomes to EventStream and gossip transport.
 pub struct MembershipCoordinatorDriver<TTransport: GossipTransport> {

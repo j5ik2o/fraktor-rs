@@ -1,6 +1,6 @@
 use core::any::Any;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   event_adapters::EventAdapters, event_seq::EventSeq, read_event_adapter::ReadEventAdapter,

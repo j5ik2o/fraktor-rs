@@ -25,7 +25,7 @@ use fraktor_actor_core_rs::core::{
     pubsub::{Topic, TopicCommand, TopicStats},
   },
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   OverflowStrategy,

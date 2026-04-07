@@ -1,7 +1,7 @@
 //! `AShared` wrapper around the pure `Association` state machine.
 
 use fraktor_remote_core_rs::association::Association;
-use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 /// Thread-safe shared handle for an [`Association`].
 ///

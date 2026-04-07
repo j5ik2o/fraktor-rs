@@ -7,7 +7,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::{TypeId, type_name};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use super::{

@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
   ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,

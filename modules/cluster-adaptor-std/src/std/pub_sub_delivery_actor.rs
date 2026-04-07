@@ -14,7 +14,7 @@ use fraktor_cluster_core_rs::core::{
     PubSubConfig, PubSubError, PubSubSubscriber, SubscriberDeliveryReport,
   },
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Delivery endpoint that resolves cluster identities and sends batches.
 pub struct PubSubDeliveryActor {

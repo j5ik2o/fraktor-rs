@@ -7,7 +7,7 @@ use alloc::{format, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::{actor_ref::ActorRef, messaging::AnyMessage};
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use crate::core::{
   at_least_once_delivery_config::AtLeastOnceDeliveryConfig,

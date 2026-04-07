@@ -674,9 +674,9 @@ impl Source<u8, StreamNotUsed> {
   /// Creates a source from a path-compatible value.
   ///
   /// This stub converts a string to its UTF-8 byte representation.
-  /// For actual file IO, use `fraktor_stream_adaptor_rs::std::io::FileIO::from_path`.
+  /// For actual file IO, use `fraktor_stream_adaptor_std_rs::std::io::FileIO::from_path`.
   #[must_use]
-  #[deprecated(note = "Use fraktor_stream_adaptor_rs::std::io::FileIO::from_path for actual file reading")]
+  #[deprecated(note = "Use fraktor_stream_adaptor_std_rs::std::io::FileIO::from_path for actual file reading")]
   pub fn from_path(path: &str) -> Self {
     Self::from_iterator(path.as_bytes().to_vec())
   }

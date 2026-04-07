@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use crate::core::unconfirmed_delivery::UnconfirmedDelivery;
 

@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_utils_rs::core::sync::shared::Shared;
+use fraktor_utils_core_rs::core::sync::shared::Shared;
 
 use crate::core::{
   kernel::actor::{

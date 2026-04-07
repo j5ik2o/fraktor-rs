@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{any::TypeId, hint::spin_loop};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::rendezvous_hash_index;
 use crate::core::typed::{

@@ -2,7 +2,7 @@
 
 use core::{num::NonZeroU32, time::Duration};
 
-use fraktor_utils_rs::core::time::SchedulerCapacityProfile;
+use fraktor_utils_core_rs::core::time::SchedulerCapacityProfile;
 
 use super::policy::{FixedDelayPolicy, FixedRatePolicy, SchedulerPolicyRegistry};
 

@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
-use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartSettings, SourceLogic, StageDefinition,
@@ -1505,7 +1505,8 @@ struct PartitionedYieldFuture {
   partition:     usize,
   poll_count:    u8,
   ready_after:   u8,
-  active_counts: fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::SpinSyncMutex<[u32; 2]>>,
+  active_counts:
+    fraktor_utils_core_rs::core::sync::ArcShared<fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>>,
 }
 
 impl PartitionedYieldFuture {
@@ -1513,7 +1514,9 @@ impl PartitionedYieldFuture {
     value: u32,
     partition: usize,
     ready_after: u8,
-    active_counts: fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::SpinSyncMutex<[u32; 2]>>,
+    active_counts: fraktor_utils_core_rs::core::sync::ArcShared<
+      fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>,
+    >,
   ) -> Self {
     Self::new_with_overlap(value, partition, ready_after, active_counts, None)
   }
@@ -1522,8 +1525,12 @@ impl PartitionedYieldFuture {
     value: u32,
     partition: usize,
     ready_after: u8,
-    active_counts: fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::SpinSyncMutex<[u32; 2]>>,
-    overlap_seen: Option<&fraktor_utils_rs::core::sync::ArcShared<fraktor_utils_rs::core::sync::SpinSyncMutex<bool>>>,
+    active_counts: fraktor_utils_core_rs::core::sync::ArcShared<
+      fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>,
+    >,
+    overlap_seen: Option<
+      &fraktor_utils_core_rs::core::sync::ArcShared<fraktor_utils_core_rs::core::sync::SpinSyncMutex<bool>>,
+    >,
   ) -> Self {
     {
       let mut guard = active_counts.lock();
@@ -1560,8 +1567,9 @@ impl Future for PartitionedYieldFuture {
 
 #[test]
 fn map_async_partitioned_serializes_same_partition_while_preserving_input_order() {
-  let active_counts =
-    fraktor_utils_rs::core::sync::ArcShared::new(fraktor_utils_rs::core::sync::SpinSyncMutex::new([0_u32; 2]));
+  let active_counts = fraktor_utils_core_rs::core::sync::ArcShared::new(
+    fraktor_utils_core_rs::core::sync::SpinSyncMutex::new([0_u32; 2]),
+  );
   let values = Source::from_array([1_u32, 3, 2, 4])
     .via(
       Flow::new()
@@ -1581,10 +1589,11 @@ fn map_async_partitioned_serializes_same_partition_while_preserving_input_order(
 
 #[test]
 fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ordering() {
-  let active_counts =
-    fraktor_utils_rs::core::sync::ArcShared::new(fraktor_utils_rs::core::sync::SpinSyncMutex::new([0_u32; 2]));
+  let active_counts = fraktor_utils_core_rs::core::sync::ArcShared::new(
+    fraktor_utils_core_rs::core::sync::SpinSyncMutex::new([0_u32; 2]),
+  );
   let overlap_seen =
-    fraktor_utils_rs::core::sync::ArcShared::new(fraktor_utils_rs::core::sync::SpinSyncMutex::new(false));
+    fraktor_utils_core_rs::core::sync::ArcShared::new(fraktor_utils_core_rs::core::sync::SpinSyncMutex::new(false));
   let values = Source::from_array([1_u32, 2_u32])
     .via(
       Flow::new()
@@ -2989,7 +2998,7 @@ fn prefix_and_tail_accepts_zero_prefix() {
 fn do_on_first_invokes_callback_on_first_element_only() {
   use core::sync::atomic::{AtomicU32, Ordering};
 
-  use fraktor_utils_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::core::sync::ArcShared;
 
   let counter = ArcShared::new(AtomicU32::new(0));
   let counter_clone = counter.clone();
@@ -3248,7 +3257,7 @@ fn reduce_on_empty_stream_emits_nothing() {
 fn do_on_first_does_not_fire_on_empty_stream() {
   use core::sync::atomic::{AtomicU32, Ordering};
 
-  use fraktor_utils_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::core::sync::ArcShared;
 
   let counter = ArcShared::new(AtomicU32::new(0));
   let counter_clone = counter.clone();

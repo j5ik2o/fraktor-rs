@@ -1,7 +1,7 @@
 use alloc::{string::ToString, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::ActorCell;
 use crate::core::kernel::{

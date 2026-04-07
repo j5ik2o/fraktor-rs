@@ -2,7 +2,7 @@
 
 #![cfg(any(test, feature = "test-support"))]
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::manual_test_driver::ManualDriverState;
 

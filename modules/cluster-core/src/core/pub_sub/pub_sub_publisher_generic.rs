@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   ClusterPubSubShared, PubSubBatch, PubSubEnvelope, PubSubError, PubSubTopic, PublishAck, PublishOptions,

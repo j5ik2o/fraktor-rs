@@ -35,7 +35,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::message_dispatcher_shared::MessageDispatcherShared;
 use crate::core::kernel::{

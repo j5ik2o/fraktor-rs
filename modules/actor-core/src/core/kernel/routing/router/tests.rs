@@ -1,7 +1,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::super::{broadcast::Broadcast, routee::Routee, router::Router, routing_logic::RoutingLogic};
 use crate::core::kernel::actor::{

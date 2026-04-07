@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   kernel::{
@@ -516,7 +516,7 @@ fn forward_preserves_sender_through_typed_context() {
 
 #[test]
 fn schedule_once_registers_command_in_scheduler() {
-  use fraktor_utils_rs::core::sync::SharedAccess;
+  use fraktor_utils_core_rs::core::sync::SharedAccess;
 
   let manual = ManualTestDriver::new();
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);

@@ -2,7 +2,7 @@ use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, vec::Vec};
 use core::time::Duration;
 use std::sync::{Arc, Mutex, Once};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 use tracing::{
   Event, Level, Metadata, Subscriber,
   field::{Field, Visit},

@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 use std::thread::yield_now;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{

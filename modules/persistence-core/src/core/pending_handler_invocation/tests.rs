@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{pending_handler_invocation::PendingHandlerInvocation, persistent_repr::PersistentRepr};
 

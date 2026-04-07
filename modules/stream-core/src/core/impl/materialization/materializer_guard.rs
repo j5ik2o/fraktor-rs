@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{StreamHandleId, StreamState, materializer_session::StreamShared};
 use crate::core::{SharedKillSwitch, StreamError, UniqueKillSwitch, materialization::DriveOutcome};

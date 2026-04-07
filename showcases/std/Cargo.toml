@@ -7,8 +7,8 @@ publish = false
 [dependencies]
 # 基本依存（全 example 共通）
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
-fraktor-actor-adaptor-rs = { workspace = true, features = ["test-support"] }
-fraktor-utils-rs = { workspace = true }
+fraktor-actor-adaptor-std-rs = { workspace = true, features = ["test-support"] }
+fraktor-utils-core-rs = { workspace = true }
 fraktor-stream-core-rs = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true, features = ["alloc", "serde"] }
@@ -17,7 +17,7 @@ serde = { workspace = true, features = ["derive"] }
 # advanced 依存（cross-module examples 用）
 fraktor-persistence-core-rs = { workspace = true, optional = true }
 fraktor-cluster-core-rs = { workspace = true, features = ["test-support"], optional = true }
-fraktor-cluster-adaptor-rs = { workspace = true, features = ["test-support"], optional = true }
+fraktor-cluster-adaptor-std-rs = { workspace = true, features = ["test-support"], optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"], optional = true }
 anyhow = { workspace = true, optional = true }
 
@@ -26,10 +26,10 @@ default = []
 advanced = [
     "dep:fraktor-persistence-core-rs",
     "dep:fraktor-cluster-core-rs",
-    "dep:fraktor-cluster-adaptor-rs",
+    "dep:fraktor-cluster-adaptor-std-rs",
     "dep:tokio",
     "dep:anyhow",
-    "fraktor-actor-adaptor-rs/tokio-executor",
+    "fraktor-actor-adaptor-std-rs/tokio-executor",
 ]
 
 [lib]

@@ -38,7 +38,7 @@
 
 use alloc::{boxed::Box, vec};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{dispatcher_core::DispatcherCore, executor_shared::ExecutorShared};
 use crate::core::kernel::{

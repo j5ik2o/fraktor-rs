@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
 use super::InlineExecutor;
 use crate::core::kernel::dispatch::dispatcher::Executor;

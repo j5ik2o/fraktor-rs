@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use crate::core::kernel::{
   actor::{

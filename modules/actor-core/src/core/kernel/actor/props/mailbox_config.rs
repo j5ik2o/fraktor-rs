@@ -1,6 +1,6 @@
 use core::num::NonZeroUsize;
 
-use fraktor_utils_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
+use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
 use super::{MailboxConfigError, MailboxRequirement};
 use crate::core::kernel::dispatch::mailbox::{MailboxPolicy, MessagePriorityGenerator};

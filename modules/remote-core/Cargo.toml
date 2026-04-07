@@ -18,7 +18,7 @@ test-support = []
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
-fraktor-utils-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true }
 ahash = { workspace = true, default-features = false }
 bytes = { workspace = true }
 hashbrown = { workspace = true, default-features = false }

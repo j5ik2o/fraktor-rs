@@ -7,7 +7,7 @@ use core::{num::NonZeroU64, time::Duration};
 mod tests;
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   collections::queue::{OverflowPolicy, backend::BinaryHeapPriorityBackend},
   time::{ManualClock, TimerEntry, TimerHandleId, TimerInstant, TimerWheel, TimerWheelConfig},
 };

@@ -3,7 +3,7 @@
 use alloc::{format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 use portable_atomic::AtomicU64;
 
 use crate::core::{

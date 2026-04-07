@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{snapshot_metadata::SnapshotMetadata, snapshot_selection_criteria::SnapshotSelectionCriteria};
 

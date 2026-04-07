@@ -3,7 +3,7 @@
 use alloc::string::String;
 
 use fraktor_actor_core_rs::core::kernel::{serialization::SerializationExtension, system::ActorSystem};
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{
   BatchingProducer, BatchingProducerConfig, ClusterPubSubShared, PubSubError, PubSubPublisher, PubSubSubscriber,

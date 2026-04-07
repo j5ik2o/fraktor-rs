@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::{
   },
   typed::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand},
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 struct CollectorSender {
   events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,

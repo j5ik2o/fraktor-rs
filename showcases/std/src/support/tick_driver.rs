@@ -27,7 +27,7 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   TickExecutorPump, TickPulseHandler, TickPulseSource,
 };
 #[cfg(feature = "advanced")]
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 

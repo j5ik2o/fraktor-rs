@@ -5,7 +5,7 @@ mod tests;
 
 use core::any::Any;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::snapshot_metadata::SnapshotMetadata;
 

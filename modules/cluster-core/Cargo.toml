@@ -18,7 +18,7 @@ test-support = ["fraktor-actor-core-rs/test-support"]
 
 [dependencies]
 fraktor-actor-core-rs = { workspace = true }
-fraktor-utils-rs = { workspace = true }
+fraktor-utils-core-rs = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true }

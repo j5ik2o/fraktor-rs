@@ -2,7 +2,7 @@ extern crate std;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::typed::{
   TypedActorRef, TypedActorSystem, TypedProps,

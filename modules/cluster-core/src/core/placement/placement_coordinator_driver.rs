@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{PlacementCommandResult, PlacementCoordinatorOutcome, PlacementCoordinatorShared};
 use crate::core::{grain::GrainKey, identity::LookupError};

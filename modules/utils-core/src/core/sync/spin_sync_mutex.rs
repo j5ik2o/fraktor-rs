@@ -42,7 +42,7 @@ impl<T> SpinSyncMutex<T> {
   ///
   /// When you suspect a specific call site is hitting re-entry deadlocks
   /// during testing, surgically replace `SpinSyncMutex<T>` with
-  /// `fraktor_actor_adaptor_rs::std::debug::DebugSpinSyncMutex<T>`. The
+  /// `fraktor_utils_adaptor_std_rs::std::debug::DebugSpinSyncMutex<T>`. The
   /// debug variant tracks the current owner thread and panics on
   /// re-entry from the same thread (while still permitting normal
   /// contention from other threads).

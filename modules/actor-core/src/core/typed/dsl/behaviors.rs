@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{

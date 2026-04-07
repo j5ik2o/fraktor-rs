@@ -1,7 +1,7 @@
 use alloc::collections::VecDeque;
 use std::sync::mpsc::{Receiver, Sender};
 
-use fraktor_utils_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
 use crate::core::kernel::{
   actor::{
