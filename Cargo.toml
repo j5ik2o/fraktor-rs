@@ -27,6 +27,7 @@ workspace = true
 resolver = "2"
 members = [
     "modules/utils-core",
+    "modules/utils-adaptor-std",
     "modules/actor-core",
     "modules/actor-adaptor-std",
     "modules/persistence-core",
@@ -74,6 +75,7 @@ fraktor-remote-adaptor-std-rs = { path = "modules/remote-adaptor-std", version =
 alloc-cortex-m = "0.4"
 async-trait = { version = "0.1.89", default-features = false }
 fraktor-utils-core-rs = { path = "modules/utils-core", version = "0.2.11", default-features = false }
+fraktor-utils-adaptor-std-rs = { path = "modules/utils-adaptor-std", version = "0.2.11" }
 fraktor-stream-core-rs = { path = "modules/stream-core", version = "0.2.11", default-features = false }
 fraktor-stream-adaptor-std-rs = { path = "modules/stream-adaptor-std", version = "0.2.11" }
 cortex-m = "0.7"

@@ -1,6 +1,3 @@
-/// Std-only debugging helpers (test-time instrumentation).
-#[cfg(any(test, feature = "test-support"))]
-pub mod debug;
 /// Dispatch bindings for the standard toolbox.
 pub mod dispatch;
 /// Event bindings for the standard toolbox.
