@@ -17,6 +17,7 @@
 - [ ] 1.4 `dispatcher_new/executor_factory.rs` に `trait ExecutorFactory { fn create(&self, id: &str) -> ExecutorShared; }` を定義する（生の `ArcShared<Box<dyn Executor>>` ではなく `ExecutorShared` を返す）
 - [ ] 1.5 `dispatcher_new/inline_executor.rs` に `InlineExecutor` を定義し、`execute(&mut self, task)` で現スレッド同期実行する。再入対策（trampoline）は `InlineExecutor` 自身の内部状態として持つ。**用途は test / deterministic scheduling に限定し、production の `ExecutorShared` へ組み込まない**
 - [ ] 1.6 executor trait / ExecutorShared / factory / InlineExecutor の unit test を追加する
+- [ ] 1.7 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 1.5 core: DispatcherSettings（新版、immutable settings bundle）
 
@@ -25,6 +26,7 @@
 - [ ] 1.5.3 `DispatcherSettings::new(id, throughput, throughput_deadline, shutdown_timeout) -> Self` と `with_throughput`, `with_throughput_deadline`, `with_shutdown_timeout` 等の builder 風メソッドを実装する。builder はすべて `self` 消費の `Self` 返しに統一する
 - [ ] 1.5.4 `DispatcherSettings` を `Clone` 可能にする
 - [ ] 1.5.5 `DispatcherSettings` の unit test を追加する（builder メソッドの挙動、Clone、フィールド値の保持）
+- [ ] 1.5.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 2. core: DispatcherCore（pub 共通 state、CQS 準拠、内部可変性なし）
 
@@ -40,6 +42,7 @@
 - [ ] 2.6 `mark_attach` / `mark_detach` / `schedule_shutdown_if_sensible` の state machine を Pekko 準拠で実装する（`UNSCHEDULED -> SCHEDULED`、再 attach 時の `SCHEDULED -> RESCHEDULED`、`shutdown()` 後の `UNSCHEDULED` 復帰）
 - [ ] 2.7 DispatcherCore の unit test を追加する（inhabitants カウンタの加減算、shutdown_schedule の状態遷移、CQS 分類の確認）
   - `mark_detach` の underflow clamp が release 相当経路で error log / metric を残すことを確認する
+- [ ] 2.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 2.5 core: MessageDispatcherShared（AShared パターン）
 
@@ -72,6 +75,7 @@
   8. submit 成功で `true` を返す
 - [ ] 2.5.7 `MessageDispatcherShared` の unit test を追加する（ロック区間の最小化、再入時のデッドロック回避、detach の `ShutdownSchedule` 戻り値経路で delayed shutdown 登録、dispatch 候補配列の優先度順 fallback、register_for_execution の Pekko 契約に沿った挙動）
   - shared wrapper 自身が Balancing 専用の team 探索や候補合成を行っていないことを確認する
+- [ ] 2.5.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 3. core: MessageDispatcher trait（CQS 準拠）
 
@@ -96,6 +100,7 @@
   - `register_actor` / `unregister_actor` / `dispatch` / `system_dispatch` / `create_mailbox` は override 可能な hook
   - trait に `register_for_execution` は存在しない（shared wrapper の純粋 CAS + executor submit 経路に集約）
   - trait に `execute_task` は存在しない（本 change スコープ外、必要になった時点で additive に追加）
+- [ ] 3.11 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 4. core: DefaultDispatcher 具象型
 
@@ -107,6 +112,7 @@
   - `create_mailbox(&self, actor, ty)` は新規 `ArcShared<Mailbox>` を返す（default impl でそのまま使える場合は override 不要）
   - hook メソッド (`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `shutdown`) は trait の default impl をそのまま使う（`DefaultDispatcher` 固有の追加処理はない）
 - [ ] 4.4 `DefaultDispatcher` の unit test を追加する（shared wrapper 経由の attach / detach が inhabitants を増減すること、複数 actor を同時 attach できること、auto-shutdown の挙動、default hook が意図通り呼ばれること）
+- [ ] 4.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 5. core: PinnedDispatcher 具象型
 
@@ -122,6 +128,7 @@
     - `unregister_actor(&mut self, actor: &ArcShared<ActorCell>)`: owner を `None` に戻してから `self.core.mark_detach()` を呼ぶ
   - それ以外の hook (`dispatch`, `system_dispatch`, `shutdown`) は default impl
 - [ ] 5.4 `PinnedDispatcher` の unit test を追加する（1 actor 専有、2 体目拒否、同一 actor の再 attach 許容、detach 後の再利用、Pinned 固有値が query で返ること、`SpawnError::DispatcherAlreadyOwned` が返ること）
+- [ ] 5.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 5.5 core: BalancingDispatcher 具象型 + SharedMessageQueue + `Mailbox::new_sharing(...)`
 
@@ -146,6 +153,7 @@
   - receiver mailbox が suspended / busy でも、後続の team candidate mailbox が shared queue を drain できること
   - BalancingDispatcher の `create_mailbox` が `Mailbox::new_sharing(...)` 経由の mailbox を返すこと
   - BalancingDispatcherConfigurator が同じ MessageDispatcherShared clone を返すこと（同じ shared queue が共有される）
+- [ ] 5.5.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 6. core: MailboxOfferFuture Waker (core/no_std)
 
@@ -153,6 +161,7 @@
 - [ ] 6.2 `core::task::RawWaker` を使って `MessageDispatcherShared` + `ArcShared<Mailbox>` を data に載せる実装とする（両者とも Clone で `ArcShared` インクリメントなので安全に RawWaker の data ポインタへ格納できる）
 - [ ] 6.3 `wake` 実装は `MessageDispatcherShared::register_for_execution(&mbox, false, true)` を呼ぶ
 - [ ] 6.4 Waker を消費する側（`MailboxOfferFuture::Pending` 経路）をテストする unit test を追加する
+- [ ] 6.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 7. core: MessageDispatcherConfigurator trait と 具象
 
@@ -171,6 +180,7 @@
   let cfg = DefaultDispatcherConfigurator::new(blocking_settings, blocking_executor);
   ```
 - [ ] 7.5 configurator の unit test を追加する（Default は同じ `MessageDispatcherShared` clone を返す、Pinned は毎回新規、Blocking は id 違いで別 instance、configurator には内部可変性が存在しない）
+- [ ] 7.6 `./scripts/ci-check.sh ai dylint`が成功することを確認する`
 
 ## 8. core: Dispatchers registry の置換
 
@@ -179,6 +189,7 @@
 - [ ] 8.3 Pekko 互換 id の正規化（`pekko.actor.default-dispatcher` → `default`、`pekko.actor.internal-dispatcher` → `default`）を先行 change の要件通り維持する
 - [ ] 8.4 `Dispatchers::resolve` の trait doc に呼び出し頻度契約を明記する: 「呼び出しは actor spawn / bootstrap 経路に限定。message hot path から呼んではならない。`PinnedDispatcherConfigurator` は呼び出しごとに新 thread を生成するため、hot path 呼び出しは thread leak を引き起こす」
 - [ ] 8.5 registry の unit test を追加する
+- [ ] 8.6 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 9. core: Mailbox 改修（並走期間中は additive に留める）
 
@@ -192,6 +203,7 @@
 - [ ] 9.4 Pekko 名に対応する alias / 追加 API（`setAsScheduled` / `setAsIdle` / `canBeScheduledForExecution` 相当）を導入する。並走期間中は legacy dispatcher が使う `request_schedule` などの既存 API を削除しない
 - [ ] 9.5 detach 経路で mailbox を terminal 状態へ遷移させ、`clean_up` する contract を追加する
 - [ ] 9.6 mailbox 改修後も legacy dispatcher と new dispatcher の両方がコンパイル可能であることを確認する
+- [ ] 9.7 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 10. std: Executor 具象の置換（すべて CQS 準拠）
 
@@ -211,6 +223,7 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
   - `PinnedExecutor` が 1 スレッドのみ使うこと
   - `PinnedExecutor::shutdown` が worker thread を正しく join すること
   - submit 失敗時に `ExecuteError` が返り、`register_for_execution` 側の rollback 前提に載せられること
+- [ ] 10.7 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 11. 呼び出し元移行
 
@@ -230,6 +243,7 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 - [ ] 11.7 typed 側 dispatcher selector（`Default` / `Blocking` / `FromConfig` 等）が新 `Dispatchers::resolve` 経由で `MessageDispatcherShared` を解決することを確認する
 - [ ] 11.8 旧 dispatcher 経路を使っていた MailboxOfferFuture / backpressure 経路が新 `DispatcherWaker` 経由に置き換わっていることを確認する
 - [ ] 11.9 旧 registry / legacy mailbox API への内部参照が消えたことを確認してから、最終削除フェーズへ進む
+- [ ] 11.10 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 12. 旧 dispatcher surface の削除
 
@@ -240,6 +254,7 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 - [ ] 12.5 `modules/actor-core/src/core/kernel/dispatch.rs` と `modules/actor-adaptor-std/src/std/dispatch.rs` の re-export を整理する（新型のみが公開される状態にする）
 - [ ] 12.6 `ActorSystemConfig` / `ActorSystem` から旧 registry field と legacy dispatcher bootstrap 経路を最終削除する
 - [ ] 12.7 並走期間中に温存していた legacy mailbox API（旧 `Mailbox::new` シグネチャ、`request_schedule` など）をここで削除または rename 完了する
+- [ ] 12.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 13. 追随更新
 
@@ -247,6 +262,7 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 - [ ] 13.2 dispatcher 関連 tests を全て通す
 - [ ] 13.3 typed selector tests が新 registry で解決されることを確認する
 - [ ] 13.4 `dispatcher-trait-family-redesign` から引き継ぐ capability spec delta（REMOVED / ADDED を含む）が archive 後に矛盾しないことを確認する
+- [ ] 13.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 14. 最終検証
 
