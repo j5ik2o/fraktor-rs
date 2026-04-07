@@ -725,7 +725,7 @@ impl SystemState {
   /// Returns an error if the actor doesn't exist or the message cannot be enqueued.
   pub(crate) fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError> {
     if let Some(cell) = self.cell(&pid) {
-      cell.dispatcher().enqueue_system(message)
+      cell.new_dispatcher_shared().system_dispatch(&cell, message)
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {

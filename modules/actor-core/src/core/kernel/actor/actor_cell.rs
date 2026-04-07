@@ -37,12 +37,9 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherProvisionRequest, DispatcherShared, Dispatchers},
+      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers},
       dispatcher_new::MessageDispatcherShared as NewMessageDispatcherShared,
-      mailbox::{
-        BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
-        metrics_event::MailboxPressureEvent,
-      },
+      mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
     system::{
@@ -104,13 +101,11 @@ pub struct ActorCell {
   pipeline:        MessageInvokerPipeline,
   mailbox:         ArcShared<Mailbox>,
   dispatcher_id:   String,
-  dispatcher:      DispatcherShared,
   /// Handle to the new-dispatcher tree that owns the cell.
   ///
   /// Every cell is attached to a [`NewMessageDispatcherShared`] when it is
-  /// constructed; the legacy [`DispatcherShared`] field above remains as
-  /// scaffolding for the legacy diagnostics / system-message paths until the
-  /// Phase 12 cleanup removes them entirely.
+  /// constructed; `SystemStateShared::remove_cell` calls `detach` on the
+  /// inhabitants counter when the cell is dropped.
   new_dispatcher:  NewMessageDispatcherShared,
   sender:          ActorRefSenderShared,
   receive_timeout: RuntimeMutex<Option<ReceiveTimeoutState>>,
@@ -191,12 +186,6 @@ impl ActorCell {
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
-    let dispatcher_entry =
-      system.resolve_dispatcher(&dispatcher_id).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
-    let request = DispatcherProvisionRequest::new(dispatcher_id.clone()).with_actor_name(name.clone());
-    let provisioned_dispatcher = dispatcher_entry.provider().provision(dispatcher_entry.settings(), &request)?;
-    let dispatcher = provisioned_dispatcher.build_dispatcher(mailbox.clone())?;
-    mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
     // The new dispatcher tree owns the ActorRef sender path. A configurator must
     // be registered for the resolved id (`ActorSystemConfig::default()` seeds
     // the in-process inline configurator).
@@ -226,7 +215,6 @@ impl ActorCell {
       pipeline: MessageInvokerPipeline::new(),
       mailbox,
       dispatcher_id,
-      dispatcher,
       new_dispatcher,
       sender,
       receive_timeout,
@@ -235,15 +223,12 @@ impl ActorCell {
     });
 
     {
-      // Dispatcher keeps a weak reference to the invoker for message delivery.
-      // Using weak reference avoids circular reference: ActorCell → Dispatcher → DispatcherCore → Invoker
-      // → ActorCell
+      // Install the message invoker on the mailbox so the new dispatcher's
+      // `Mailbox::run` drain loop can deliver user/system messages back to
+      // this actor cell. The invoker holds a weak reference to the cell to
+      // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
       let invoker: MessageInvokerShared =
         MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
-      cell.dispatcher.register_invoker(invoker.clone());
-      // Mirror the invoker on the mailbox so the new dispatcher's `Mailbox::run`
-      // path can drain user/system messages without going through the legacy
-      // dispatcher core.
       cell.mailbox.install_invoker(invoker);
     }
 
@@ -309,12 +294,6 @@ impl ActorCell {
   #[must_use]
   pub fn mailbox(&self) -> ArcShared<Mailbox> {
     self.mailbox.clone()
-  }
-
-  /// Returns the dispatcher associated with this cell.
-  #[must_use]
-  pub fn dispatcher(&self) -> DispatcherShared {
-    self.dispatcher.clone()
   }
 
   /// Returns the new-dispatcher handle owned by this cell.
@@ -591,11 +570,7 @@ impl ActorCell {
       return Err(ActorError::from_send_error(&error));
     }
 
-    self.dispatcher.register_for_execution(ScheduleHints {
-      has_system_messages: false,
-      has_user_messages:   true,
-      backpressure_active: false,
-    });
+    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
 
     Ok(1)
   }
@@ -621,11 +596,7 @@ impl ActorCell {
       return Err(ActorError::from_send_error(&error));
     }
 
-    self.dispatcher.register_for_execution(ScheduleHints {
-      has_system_messages: false,
-      has_user_messages:   true,
-      backpressure_active: false,
-    });
+    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
 
     Ok(pending.len())
   }
@@ -674,11 +645,7 @@ impl ActorCell {
       return Err(ActorError::from_send_error(&error));
     }
 
-    self.dispatcher.register_for_execution(ScheduleHints {
-      has_system_messages: false,
-      has_user_messages:   true,
-      backpressure_active: false,
-    });
+    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
 
     Ok(wrapped_messages.len())
   }

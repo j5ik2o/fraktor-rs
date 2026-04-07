@@ -15,7 +15,7 @@ use crate::core::kernel::{
     props::{MailboxConfig, Props},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
 
@@ -467,14 +467,10 @@ fn system_queue_is_drained_before_user_queue() {
     ActorCell::create(state.clone(), Pid::new(42, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
+  cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("system enqueue");
   assert!(cell.actor_ref().try_tell(AnyMessage::new(())).is_ok());
 
-  cell.dispatcher().register_for_execution(ScheduleHints {
-    has_system_messages: true,
-    has_user_messages:   true,
-    backpressure_active: false,
-  });
+  let _scheduled = cell.new_dispatcher_shared().register_for_execution(&cell.mailbox(), true, true);
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);
@@ -492,7 +488,7 @@ fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
     ActorCell::create(state.clone(), Pid::new(60, 0), None, "ordered".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("create");
+  cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("create");
   cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stashing below limit should succeed");
   cell.mailbox().enqueue_user(AnyMessage::new(2_i32)).expect("enqueue queued");
 

@@ -315,7 +315,7 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
     move || StopRecorderActor::new(lifecycle.clone())
   });
   let cell = register_cell(&system, pid, "wppc-stop-recorder", &props);
-  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("create");
+  cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("create");
 
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx =

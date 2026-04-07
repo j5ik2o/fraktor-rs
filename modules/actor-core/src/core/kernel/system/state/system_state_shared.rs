@@ -671,7 +671,7 @@ impl SystemStateShared {
   /// Returns [`SendError`] if the message cannot be delivered.
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError> {
     if let Some(cell) = self.cell(&pid) {
-      cell.dispatcher().enqueue_system(message)
+      cell.new_dispatcher_shared().system_dispatch(&cell, message)
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
