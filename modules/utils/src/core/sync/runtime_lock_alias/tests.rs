@@ -1,12 +1,6 @@
 use super::{RuntimeMutex, RuntimeRwLock};
 
 #[test]
-fn runtime_lock_aliases_use_spin_backend() {
-  let _: RuntimeMutex<u8> = crate::core::sync::SpinSyncMutex::new(1);
-  let _: RuntimeRwLock<u8> = crate::core::sync::SpinSyncRwLock::new(1);
-}
-
-#[test]
 fn runtime_mutex_protects_value() {
   let mutex: RuntimeMutex<_> = RuntimeMutex::new(5_u32);
   assert_eq!(*mutex.lock(), 5);

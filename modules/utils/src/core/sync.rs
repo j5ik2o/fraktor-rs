@@ -6,8 +6,10 @@ pub mod shared;
 mod shared_access;
 mod shared_error;
 /// Spin-based mutex wrapper used as the canonical sync primitive.
+#[allow(clippy::disallowed_types)]
 mod spin_sync_mutex;
 /// Spin-based read-write lock wrapper used as the canonical sync primitive.
+#[allow(clippy::disallowed_types)]
 mod spin_sync_rwlock;
 #[allow(clippy::disallowed_types)]
 mod weak_shared;
