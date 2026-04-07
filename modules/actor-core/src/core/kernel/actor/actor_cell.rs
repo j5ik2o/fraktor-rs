@@ -32,12 +32,13 @@ use crate::core::{
         system_message::{FailureMessageSnapshot, FailurePayload, SystemMessage},
       },
       props::{ActorFactoryShared, Props},
-      scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle},
+      scheduler::{SchedulerCommand, SchedulerError, SchedulerHandle, SchedulerShared},
       spawn::SpawnError,
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
       dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherProvisionRequest, DispatcherShared, Dispatchers},
+      dispatcher_new::MessageDispatcherShared as NewMessageDispatcherShared,
       mailbox::{
         BackpressurePublisher, Mailbox, MailboxCapacity, MailboxInstrumentation, ScheduleHints,
         metrics_event::MailboxPressureEvent,
@@ -104,6 +105,12 @@ pub struct ActorCell {
   mailbox:         ArcShared<Mailbox>,
   dispatcher_id:   String,
   dispatcher:      DispatcherShared,
+  /// Optional handle to the new-dispatcher tree used in parallel with `dispatcher`.
+  ///
+  /// Populated when a `MessageDispatcherConfigurator` is registered for the
+  /// resolved dispatcher id. The cell keeps this around so `remove_cell` can
+  /// call `detach` to decrement the dispatcher's inhabitants counter.
+  new_dispatcher:  Option<NewMessageDispatcherShared>,
   sender:          ActorRefSenderShared,
   receive_timeout: RuntimeMutex<Option<ReceiveTimeoutState>>,
   state:           RuntimeMutex<ActorCellState>,
@@ -120,8 +127,18 @@ impl ActorCell {
   ///
   /// Panics if the system state has already been dropped.
   #[allow(clippy::expect_used)]
-  fn system(&self) -> SystemStateShared {
+  pub(crate) fn system(&self) -> SystemStateShared {
     self.system.upgrade().expect("system state has been dropped")
+  }
+
+  /// Returns the scheduler handle owned by the underlying actor system.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the system state has already been dropped.
+  #[must_use]
+  pub fn scheduler(&self) -> SchedulerShared {
+    self.system().scheduler()
   }
 
   fn make_context(&self) -> ActorContext<'_> {
@@ -179,7 +196,15 @@ impl ActorCell {
     let provisioned_dispatcher = dispatcher_entry.provider().provision(dispatcher_entry.settings(), &request)?;
     let dispatcher = provisioned_dispatcher.build_dispatcher(mailbox.clone())?;
     mailbox.attach_backpressure_publisher(BackpressurePublisher::from_dispatcher(dispatcher.clone()));
-    let sender = dispatcher.into_sender();
+    // Prefer the new dispatcher tree when a configurator is registered for this id;
+    // otherwise fall back to the legacy DispatcherSender path.
+    let new_dispatcher_opt = system.resolve_new_dispatcher(&dispatcher_id);
+    let sender = if let Some(new_dispatcher) = new_dispatcher_opt.clone() {
+      use crate::core::kernel::dispatch::dispatcher_new::NewDispatcherSender;
+      ActorRefSenderShared::new(NewDispatcherSender::new(new_dispatcher, mailbox.clone()))
+    } else {
+      dispatcher.into_sender()
+    };
     let Some(factory) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
@@ -200,6 +225,7 @@ impl ActorCell {
       mailbox,
       dispatcher_id,
       dispatcher,
+      new_dispatcher: new_dispatcher_opt,
       sender,
       receive_timeout,
       state,
@@ -212,7 +238,21 @@ impl ActorCell {
       // → ActorCell
       let invoker: MessageInvokerShared =
         MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
-      cell.dispatcher.register_invoker(invoker);
+      cell.dispatcher.register_invoker(invoker.clone());
+      // Mirror the invoker on the mailbox so the new dispatcher's `Mailbox::run`
+      // path can drain user/system messages without going through the legacy
+      // dispatcher core.
+      cell.mailbox.install_invoker(invoker);
+    }
+
+    // Phase 11.3: when the actor is backed by the new dispatcher tree, register
+    // it for inhabitants tracking. Detach is handled by `ActorCell::Drop` so
+    // that the counter always matches the lifetime of the cell.
+    if let Some(new_dispatcher) = &cell.new_dispatcher {
+      new_dispatcher.attach(&cell).map_err(|error| match error {
+        | SpawnError::DispatcherAlreadyOwned => SpawnError::DispatcherAlreadyOwned,
+        | other => other,
+      })?;
     }
 
     Ok(cell)
@@ -279,6 +319,12 @@ impl ActorCell {
   #[must_use]
   pub fn dispatcher(&self) -> DispatcherShared {
     self.dispatcher.clone()
+  }
+
+  /// Returns the optional new-dispatcher handle owned by this cell.
+  #[must_use]
+  pub fn new_dispatcher_shared(&self) -> Option<NewMessageDispatcherShared> {
+    self.new_dispatcher.clone()
   }
 
   /// Returns the resolved dispatcher identifier associated with this cell.

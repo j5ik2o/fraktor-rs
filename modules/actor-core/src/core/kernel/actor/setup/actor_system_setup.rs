@@ -3,6 +3,10 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
+
+use fraktor_utils_rs::core::sync::ArcShared;
+
 use crate::core::kernel::{
   actor::{
     actor_ref_provider::ActorRefProviderInstaller,
@@ -11,7 +15,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
-  dispatch::dispatcher::DispatcherRegistryEntry,
+  dispatch::{dispatcher::DispatcherRegistryEntry, dispatcher_new::MessageDispatcherConfigurator},
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -76,6 +80,16 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_dispatcher_entry(self, id: impl Into<alloc::string::String>, entry: DispatcherRegistryEntry) -> Self {
     Self { config: self.config.with_dispatcher_entry(id, entry) }
+  }
+
+  /// Registers a new-dispatcher configurator under the supplied id.
+  #[must_use]
+  pub fn with_new_dispatcher_configurator(
+    self,
+    id: impl Into<alloc::string::String>,
+    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+  ) -> Self {
+    Self { config: self.config.with_new_dispatcher_configurator(id, configurator) }
   }
 
   /// Registers or updates a mailbox configuration.

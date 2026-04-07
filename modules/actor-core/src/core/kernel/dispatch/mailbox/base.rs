@@ -4,12 +4,13 @@
 mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, string::String};
-use core::num::NonZeroUsize;
+use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{
-  BackpressurePublisher, MailboxScheduleState, ScheduleHints, SystemQueue, mailbox_enqueue_outcome::EnqueueOutcome,
+  BackpressurePublisher, MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
+  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_enqueue_outcome::EnqueueOutcome,
   mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
@@ -17,7 +18,7 @@ use crate::core::kernel::{
     Pid,
     actor_ref::dead_letter::DeadLetterReason,
     error::SendError,
-    messaging::{AnyMessage, system_message::SystemMessage},
+    messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
     props::{MailboxConfig, MailboxConfigError},
   },
   dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
@@ -33,6 +34,8 @@ pub struct Mailbox {
   user_queue_lock: ArcShared<RuntimeMutex<()>>,
   state:           MailboxScheduleState,
   instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
+  cleanup_policy:  MailboxCleanupPolicy,
+  invoker:         ArcShared<RuntimeMutex<Option<MessageInvokerShared>>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -72,7 +75,97 @@ impl Mailbox {
       user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
       instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
+      invoker: ArcShared::new(RuntimeMutex::new(None)),
     }
+  }
+
+  /// Creates a sharing mailbox that delegates to a shared message queue.
+  ///
+  /// The resulting mailbox is configured with
+  /// [`MailboxCleanupPolicy::LeaveSharedQueue`], so its `clean_up` does not
+  /// drain the underlying queue. This is the constructor used by
+  /// `BalancingDispatcher::create_mailbox`.
+  #[must_use]
+  pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+    Self {
+      policy,
+      system: SystemQueue::new(),
+      user: queue,
+      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
+      state: MailboxScheduleState::new(),
+      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
+      invoker: ArcShared::new(RuntimeMutex::new(None)),
+    }
+  }
+
+  /// Installs the message invoker that [`run`](Self::run) drives.
+  ///
+  /// Called from `ActorCell::create` so that the new dispatcher path can
+  /// drain the mailbox without needing a back-reference to the dispatcher
+  /// itself.
+  pub fn install_invoker(&self, invoker: MessageInvokerShared) {
+    *self.invoker.lock() = Some(invoker);
+  }
+
+  /// Drains the mailbox up to `throughput` messages, invoking each one through the installed
+  /// invoker.
+  ///
+  /// This is the entry point used by the new `MessageDispatcherShared::register_for_execution`
+  /// closure: the dispatcher submits a closure that calls `mailbox.run(throughput, deadline)` and
+  /// the mailbox itself owns the drain loop.
+  ///
+  /// Returns immediately if no invoker has been installed (e.g., during the
+  /// parallel period when only the legacy dispatcher path is active).
+  pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) {
+    let invoker = self.invoker.lock().clone();
+    let Some(invoker) = invoker else {
+      return;
+    };
+
+    self.set_running();
+    let mut processed: usize = 0;
+    let limit = throughput.get();
+    let _ = throughput_deadline; // Deadline support is added in a follow-up change.
+
+    while processed < limit {
+      match self.dequeue() {
+        | Some(MailboxMessage::System(msg)) => {
+          // Suspend / Resume are mailbox-local commands; everything else delegates to the invoker.
+          match msg {
+            | SystemMessage::Suspend => self.suspend(),
+            | SystemMessage::Resume => self.resume(),
+            | other => {
+              if let Err(error) = invoker.with_write(|i| i.invoke_system_message(other)) {
+                self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
+              }
+            },
+          }
+          processed += 1;
+        },
+        | Some(MailboxMessage::User(msg)) => {
+          if let Err(error) = invoker.with_write(|i| i.invoke_user_message(msg)) {
+            self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
+          }
+          processed += 1;
+        },
+        | None => break,
+      }
+    }
+    // The pending-reschedule signal returned by set_idle is irrelevant here:
+    // the new dispatcher's register_for_execution path will be invoked again
+    // by the next dispatch / wake-up.
+    if self.set_idle() {
+      // No-op: the next register_for_execution call from the dispatcher will
+      // pick up any work that arrived during the drain.
+    }
+  }
+
+  /// Returns the cleanup policy configured for this mailbox.
+  #[must_use]
+  pub const fn cleanup_policy(&self) -> MailboxCleanupPolicy {
+    self.cleanup_policy
   }
 
   /// Installs instrumentation hooks for metrics emission.
@@ -152,6 +245,25 @@ impl Mailbox {
         Ok(EnqueueOutcome::Pending(future))
       },
       | Err(error) => Err(error),
+    }
+  }
+
+  /// Enqueues an envelope synchronously, dropping any pending future.
+  ///
+  /// This is the dispatcher-side dispatch path used by the new
+  /// `MessageDispatcher` family. The dispatcher is responsible for handling
+  /// async backpressure separately via `MailboxOfferFuture`; this method
+  /// only reports the immediate enqueue result and discards any returned
+  /// `Pending` future variant by treating it as a successful enqueue (the
+  /// future is held by the caller path that opted into backpressure).
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is suspended, full, or closed.
+  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
+    let payload = envelope.into_payload();
+    match self.enqueue_user(payload)? {
+      | EnqueueOutcome::Enqueued | EnqueueOutcome::Pending(_) => Ok(()),
     }
   }
 
@@ -303,6 +415,29 @@ impl Mailbox {
   #[must_use]
   pub(crate) fn set_idle(&self) -> bool {
     self.state.set_idle()
+  }
+
+  /// Pekko-style alias for [`request_schedule`](Self::request_schedule).
+  ///
+  /// Used by the new `dispatcher_new` module's `register_for_execution`
+  /// orchestration to attempt the CAS that transitions the mailbox from idle
+  /// to scheduled.
+  #[must_use]
+  pub fn set_as_scheduled(&self, hints: ScheduleHints) -> bool {
+    self.state.request_schedule(hints)
+  }
+
+  /// Pekko-style alias for [`set_idle`](Self::set_idle).
+  pub fn set_as_idle(&self) -> bool {
+    self.state.set_idle()
+  }
+
+  /// Returns `true` when the mailbox is currently eligible for scheduling.
+  ///
+  /// Pekko-style alias mirroring `Mailbox.canBeScheduledForExecution`.
+  #[must_use]
+  pub fn can_be_scheduled_for_execution(&self, _hints: ScheduleHints) -> bool {
+    !self.is_suspended()
   }
 
   /// Computes schedule hints from the current queue lengths and suspension state.

@@ -1,0 +1,176 @@
+//! `MessageDispatcher` that load-balances actors over a shared message queue.
+//!
+//! `BalancingDispatcher` carries a single [`SharedMessageQueue`] that all
+//! attached actors share. The Pekko equivalent is
+//! `org.apache.pekko.dispatch.BalancingDispatcher`.
+
+#[cfg(test)]
+mod tests;
+
+use alloc::{boxed::Box, vec::Vec};
+
+use fraktor_utils_rs::core::sync::{ArcShared, WeakShared};
+
+use super::{
+  dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
+  message_dispatcher::MessageDispatcher, shared_message_queue::SharedMessageQueue,
+};
+use crate::core::kernel::{
+  actor::{
+    ActorCell, Pid,
+    error::SendError,
+    messaging::{AnyMessage, system_message::SystemMessage},
+    spawn::SpawnError,
+  },
+  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MailboxType, MessageQueue},
+};
+
+/// Dispatcher that load-balances actors over a shared message queue.
+pub struct BalancingDispatcher {
+  core:         DispatcherCore,
+  shared_queue: ArcShared<SharedMessageQueue>,
+  team:         Vec<WeakShared<ActorCell>>,
+}
+
+impl BalancingDispatcher {
+  /// Constructs a new `BalancingDispatcher`.
+  ///
+  /// The dispatcher allocates a fresh [`SharedMessageQueue`] internally; the
+  /// queue is reused by every actor that attaches via the trait `create_mailbox`
+  /// hook.
+  #[must_use]
+  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+    Self {
+      core:         DispatcherCore::new(settings, executor),
+      shared_queue: ArcShared::new(SharedMessageQueue::new()),
+      team:         Vec::new(),
+    }
+  }
+
+  /// Returns a clone of the shared message queue used by team members.
+  #[must_use]
+  pub fn shared_queue(&self) -> ArcShared<SharedMessageQueue> {
+    self.shared_queue.clone()
+  }
+
+  /// Returns the number of currently registered team members.
+  #[must_use]
+  pub fn team_size(&self) -> usize {
+    self.team.iter().filter(|weak| weak.upgrade().is_some()).count()
+  }
+
+  fn push_team_member(&mut self, actor: &ArcShared<ActorCell>) {
+    let target_pid = actor.pid();
+    if self.team.iter().any(|weak| weak.upgrade().is_some_and(|cell| cell.pid() == target_pid)) {
+      return;
+    }
+    self.team.push(actor.downgrade());
+  }
+
+  fn remove_team_member(&mut self, actor: &ArcShared<ActorCell>) {
+    let target_pid = actor.pid();
+    self.team.retain(|weak| match weak.upgrade() {
+      | Some(cell) => cell.pid() != target_pid,
+      | None => false,
+    });
+  }
+
+  fn collect_team_mailboxes(&mut self, primary: ArcShared<Mailbox>, primary_pid: Pid) -> Vec<ArcShared<Mailbox>> {
+    let mut candidates: Vec<ArcShared<Mailbox>> = Vec::with_capacity(self.team.len() + 1);
+    candidates.push(primary);
+
+    self.team.retain(|weak| weak.upgrade().is_some());
+
+    for weak in &self.team {
+      let Some(cell) = weak.upgrade() else {
+        continue;
+      };
+      if cell.pid() == primary_pid {
+        continue;
+      }
+      let mbox = cell.mailbox();
+      if !candidates.iter().any(|existing| ArcShared::ptr_eq(existing, &mbox)) {
+        candidates.push(mbox);
+      }
+    }
+
+    candidates
+  }
+}
+
+impl MessageDispatcher for BalancingDispatcher {
+  fn core(&self) -> &DispatcherCore {
+    &self.core
+  }
+
+  fn core_mut(&mut self) -> &mut DispatcherCore {
+    &mut self.core
+  }
+
+  fn create_mailbox(&self, _actor: &ArcShared<ActorCell>, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox> {
+    // Sharing mailboxes use the dispatcher's shared queue regardless of the
+    // requested mailbox type. Other type-specific knobs (capacity, throughput
+    // limit, etc.) still come from `mailbox_type` for diagnostics.
+    let _ = mailbox_type;
+    let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
+    ArcShared::new(Mailbox::new_sharing(MailboxPolicy::unbounded(None), queue))
+  }
+
+  fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {
+    self.core.mark_attach();
+    self.push_team_member(actor);
+    Ok(())
+  }
+
+  fn unregister_actor(&mut self, actor: &ArcShared<ActorCell>) {
+    self.remove_team_member(actor);
+    self.core.mark_detach();
+  }
+
+  fn dispatch(
+    &mut self,
+    receiver: &ArcShared<ActorCell>,
+    envelope: Envelope,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    let payload = envelope.into_payload();
+    self.shared_queue.enqueue(payload)?;
+    let primary_mailbox = receiver.mailbox();
+    let primary_pid = receiver.pid();
+    Ok(self.collect_team_mailboxes(primary_mailbox, primary_pid))
+  }
+
+  fn system_dispatch(
+    &mut self,
+    receiver: &ArcShared<ActorCell>,
+    message: SystemMessage,
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
+    let mailbox = receiver.mailbox();
+    mailbox.enqueue_system(message)?;
+    Ok(alloc::vec![mailbox])
+  }
+}
+
+/// Adapter that exposes [`SharedMessageQueue`] through the [`MessageQueue`] trait.
+struct SharedMessageQueueBox(ArcShared<SharedMessageQueue>);
+
+impl MessageQueue for SharedMessageQueueBox {
+  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+    self.0.enqueue(message)
+  }
+
+  fn dequeue(&self) -> Option<AnyMessage> {
+    self.0.dequeue()
+  }
+
+  fn number_of_messages(&self) -> usize {
+    self.0.number_of_messages()
+  }
+
+  fn has_messages(&self) -> bool {
+    self.0.has_messages()
+  }
+
+  fn clean_up(&self) {
+    self.0.clean_up();
+  }
+}

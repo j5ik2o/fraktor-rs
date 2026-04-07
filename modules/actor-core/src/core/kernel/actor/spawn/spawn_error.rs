@@ -26,6 +26,8 @@ pub enum SpawnError {
   /// [`MailboxOverflowStrategy::Block`](crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::Block)
   /// is used with a single-threaded executor that doesn't support blocking operations.
   InvalidMailboxConfig(String),
+  /// A `PinnedDispatcher` is already owned by another actor and cannot accept the new request.
+  DispatcherAlreadyOwned,
   /// Actor system build error occurred during initialization.
   SystemBuildError(String),
 }

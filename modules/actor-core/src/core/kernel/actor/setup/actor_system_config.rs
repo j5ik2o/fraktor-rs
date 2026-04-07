@@ -1,6 +1,9 @@
 //! Actor system configuration API.
 
-use alloc::string::{String, ToString};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+};
 use core::time::Duration;
 
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -15,6 +18,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, Dispatchers},
+    dispatcher_new::{Dispatchers as NewDispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
   system::remote::RemotingConfig,
@@ -33,6 +37,7 @@ pub struct ActorSystemConfig {
   extension_installers: Option<ExtensionInstallers>,
   provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
   dispatchers:          Dispatchers,
+  new_dispatchers:      NewDispatchers,
   mailboxes:            Mailboxes,
   start_time:           Option<Duration>,
 }
@@ -100,6 +105,21 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_dispatcher_entry(mut self, id: impl Into<String>, entry: DispatcherRegistryEntry) -> Self {
     self.dispatchers.register_or_update(id, entry);
+    self
+  }
+
+  /// Registers a new-dispatcher configurator under the supplied id.
+  ///
+  /// The new-dispatcher tree (`fraktor_actor_core_rs::core::kernel::dispatch::dispatcher_new`)
+  /// runs in parallel with the legacy dispatcher registry; consumers migrate
+  /// individually until the legacy tree can be removed.
+  #[must_use]
+  pub fn with_new_dispatcher_configurator(
+    mut self,
+    id: impl Into<String>,
+    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+  ) -> Self {
+    self.new_dispatchers.register_or_update(id, configurator);
     self
   }
 
@@ -187,6 +207,12 @@ impl ActorSystemConfig {
     &self.dispatchers
   }
 
+  /// Returns the new-dispatcher registry configured for the system.
+  #[must_use]
+  pub const fn new_dispatchers(&self) -> &NewDispatchers {
+    &self.new_dispatchers
+  }
+
   /// Returns the mailbox registry configured for the system.
   #[must_use]
   pub const fn mailboxes(&self) -> &Mailboxes {
@@ -206,6 +232,7 @@ impl Default for ActorSystemConfig {
   fn default() -> Self {
     let mut dispatchers = Dispatchers::new();
     dispatchers.ensure_default();
+    let new_dispatchers = NewDispatchers::new();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -217,6 +244,7 @@ impl Default for ActorSystemConfig {
       extension_installers: None,
       provider_installer: None,
       dispatchers,
+      new_dispatchers,
       mailboxes,
       start_time: None,
     }

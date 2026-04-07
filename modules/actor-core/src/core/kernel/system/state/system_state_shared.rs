@@ -42,6 +42,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError},
+    dispatcher_new::MessageDispatcherShared as NewMessageDispatcherShared,
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
@@ -203,6 +204,14 @@ impl SystemStateShared {
 
   /// Removes the actor cell associated with the pid.
   pub fn remove_cell(&self, pid: &Pid) {
+    // Detach from the new dispatcher tree before destroying the cell, so
+    // inhabitants tracking stays balanced.
+    if let Some(cell) = self.cell(pid)
+      && let Some(new_dispatcher) = cell.new_dispatcher_shared()
+    {
+      let _schedule = new_dispatcher.detach(&cell);
+    }
+
     let reservation_source =
       self.inner.read().actor_path_registry().get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
@@ -798,6 +807,16 @@ impl SystemStateShared {
   /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
   pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
     self.inner.read().resolve_dispatcher(id)
+  }
+
+  /// Resolves a new-dispatcher (`MessageDispatcherShared`) for the identifier.
+  ///
+  /// Returns `None` when no configurator is registered. Used by the parallel
+  /// dispatcher migration: callers query the new tree first and fall back to
+  /// the legacy tree when the entry is missing.
+  #[must_use]
+  pub fn resolve_new_dispatcher(&self, id: &str) -> Option<NewMessageDispatcherShared> {
+    self.inner.read().resolve_new_dispatcher(id)
   }
 
   /// Resolves the mailbox configuration for the identifier.

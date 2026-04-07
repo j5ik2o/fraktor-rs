@@ -1,0 +1,193 @@
+use alloc::{boxed::Box, sync::Arc};
+use core::{
+  num::NonZeroUsize,
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
+
+use fraktor_utils_rs::core::sync::ArcShared;
+
+use super::NewDispatcherSender;
+use crate::core::kernel::{
+  actor::{
+    actor_ref::{ActorRefSender, SendOutcome},
+    messaging::AnyMessage,
+  },
+  dispatch::{
+    dispatcher_new::{
+      DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcherShared,
+    },
+    mailbox::{Mailbox, MailboxPolicy},
+  },
+};
+
+struct InlineExec;
+
+impl Executor for InlineExec {
+  fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    task();
+    Ok(())
+  }
+
+  fn shutdown(&mut self) {}
+}
+
+fn nz(value: usize) -> NonZeroUsize {
+  NonZeroUsize::new(value).expect("non-zero")
+}
+
+#[test]
+fn send_returns_schedule_outcome_that_drives_register_for_execution() {
+  let executor = ExecutorShared::new(InlineExec);
+  let settings = DispatcherSettings::new("sender-test", nz(4), None, Duration::from_secs(1));
+  let dispatcher = DefaultDispatcher::new(&settings, executor);
+  let shared = MessageDispatcherShared::new(dispatcher);
+  let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+
+  let mut sender = NewDispatcherSender::new(shared, mailbox.clone());
+  let outcome = sender.send(AnyMessage::new(11_u32)).expect("send");
+  match outcome {
+    | SendOutcome::Schedule(task) => task(),
+    | SendOutcome::Delivered => {},
+  }
+  // Without an installed invoker the run() body is a no-op, but the schedule
+  // closure must still complete without panicking.
+  let _ = mailbox;
+  let _ = AtomicUsize::new(0);
+}
+
+#[test]
+fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
+  use alloc::string::ToString;
+
+  use crate::core::kernel::{
+    actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
+    dispatch::dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct QuietActor;
+
+  impl Actor for QuietActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+  let resolved = state.resolve_new_dispatcher("default").expect("configurator registered");
+
+  // Creating two actor cells should bump the inhabitants counter via attach.
+  let props = Props::from_fn(|| QuietActor);
+  for name in ["actor-a", "actor-b"] {
+    let pid = state.allocate_pid();
+    let cell = ActorCell::create(state.clone(), pid, None, name.to_string(), &props).expect("create cell");
+    state.register_cell(cell);
+  }
+  assert_eq!(resolved.inhabitants(), 2, "each spawned actor should bump inhabitants via attach");
+}
+
+#[test]
+fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants() {
+  use alloc::string::ToString;
+
+  use crate::core::kernel::{
+    actor::{Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props},
+    dispatch::dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct QuietActor;
+
+  impl Actor for QuietActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+  let resolved = state.resolve_new_dispatcher("default").expect("configurator registered");
+
+  let props = Props::from_fn(|| QuietActor);
+  let pid_a = state.allocate_pid();
+  let cell_a = ActorCell::create(state.clone(), pid_a, None, "actor-a".to_string(), &props).expect("create cell");
+  state.register_cell(cell_a);
+
+  let pid_b = state.allocate_pid();
+  let cell_b = ActorCell::create(state.clone(), pid_b, None, "actor-b".to_string(), &props).expect("create cell");
+  state.register_cell(cell_b);
+
+  assert_eq!(resolved.inhabitants(), 2, "attach path should have incremented twice");
+
+  state.remove_cell(&pid_a);
+  assert_eq!(resolved.inhabitants(), 1, "remove_cell should call detach and decrement inhabitants");
+
+  state.remove_cell(&pid_b);
+  assert_eq!(resolved.inhabitants(), 0, "detaching all actors should leave inhabitants at zero");
+}
+
+#[test]
+fn end_to_end_send_via_actor_system_with_new_dispatcher_configurator() {
+  use alloc::string::ToString;
+
+  use crate::core::kernel::{
+    actor::{Actor, ActorContext, actor_ref::ActorRef, error::ActorError, messaging::AnyMessageView, props::Props},
+    dispatch::{
+      dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+      mailbox::MailboxPolicy,
+    },
+    system::ActorSystem,
+  };
+
+  struct CountingActor {
+    seen: Arc<AtomicUsize>,
+  }
+
+  impl Actor for CountingActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      self.seen.fetch_add(1, Ordering::SeqCst);
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+  let seen = Arc::new(AtomicUsize::new(0));
+  let seen_clone = Arc::clone(&seen);
+  // Use the default mailbox config - the actor system already registers the default.
+  let props = Props::from_fn(move || CountingActor { seen: seen_clone.clone() });
+  let _ = MailboxPolicy::unbounded(None);
+  let pid = state.allocate_pid();
+  let cell = crate::core::kernel::actor::ActorCell::create(state.clone(), pid, None, "e2e-test".to_string(), &props)
+    .expect("create cell");
+  state.register_cell(cell.clone());
+
+  // ActorRef::tell goes through the new sender path because the configurator is registered.
+  let mut actor_ref: ActorRef = cell.actor_ref();
+  actor_ref.tell(AnyMessage::new(99_u32));
+
+  assert_eq!(seen.load(Ordering::SeqCst), 1, "the new dispatcher must drain the message via the actor invoker");
+}
