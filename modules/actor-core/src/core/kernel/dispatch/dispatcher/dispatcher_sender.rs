@@ -13,21 +13,18 @@
 //!
 //! The send is split into two phases:
 //!
-//! 1. [`MessageDispatcherShared::dispatch_enqueue`] runs **inside**
-//!    `ActorRefSenderShared`'s per-actor sender lock. It briefly acquires
-//!    the dispatcher write lock, calls the trait `dispatch` hook (which
-//!    enqueues the envelope into the appropriate queue), releases the
+//! 1. [`MessageDispatcherShared::dispatch_enqueue`] runs **inside** `ActorRefSenderShared`'s
+//!    per-actor sender lock. It briefly acquires the dispatcher write lock, calls the trait
+//!    `dispatch` hook (which enqueues the envelope into the appropriate queue), releases the
 //!    dispatcher lock, and returns the candidate mailbox list.
-//! 2. The returned [`SendOutcome::Schedule`] closure runs **after**
-//!    `ActorRefSenderShared` has released the per-actor sender lock and
-//!    invokes [`MessageDispatcherShared::register_user_candidates`], which
-//!    in turn calls `register_for_execution` for each candidate. With an
-//!    inline executor, `register_for_execution` synchronously runs
-//!    `mailbox.run(...)`, so user-supplied message handlers execute on the
-//!    calling thread without holding the per-actor sender lock. This is
-//!    what lets a handler legally re-enter the same actor's `tell` (for
-//!    example via `ctx.ask(...)` + `pipe_to_self`) without deadlocking on
-//!    the sender mutex.
+//! 2. The returned [`SendOutcome::Schedule`] closure runs **after** `ActorRefSenderShared` has
+//!    released the per-actor sender lock and invokes
+//!    [`MessageDispatcherShared::register_user_candidates`], which in turn calls
+//!    `register_for_execution` for each candidate. With an inline executor,
+//!    `register_for_execution` synchronously runs `mailbox.run(...)`, so user-supplied message
+//!    handlers execute on the calling thread without holding the per-actor sender lock. This is
+//!    what lets a handler legally re-enter the same actor's `tell` (for example via `ctx.ask(...)`
+//!    + `pipe_to_self`) without deadlocking on the sender mutex.
 //!
 //! The sender holds only the receiver mailbox. The owning [`ActorCell`] is
 //! resolved via `Mailbox::actor()` on each `send`, which avoids an
