@@ -41,7 +41,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError},
+    dispatcher::MessageDispatcherShared,
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
@@ -203,6 +203,13 @@ impl SystemStateShared {
 
   /// Removes the actor cell associated with the pid.
   pub fn remove_cell(&self, pid: &Pid) {
+    // Detach from the new dispatcher tree before destroying the cell, so
+    // inhabitants tracking stays balanced.
+    if let Some(cell) = self.cell(pid) {
+      let new_dispatcher = cell.new_dispatcher_shared();
+      let _schedule = new_dispatcher.detach(&cell);
+    }
+
     let reservation_source =
       self.inner.read().actor_path_registry().get(pid).map(|handle| (handle.canonical_uri().to_string(), handle.uid()));
 
@@ -663,7 +670,7 @@ impl SystemStateShared {
   /// Returns [`SendError`] if the message cannot be delivered.
   pub fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError> {
     if let Some(cell) = self.cell(&pid) {
-      cell.dispatcher().enqueue_system(message)
+      cell.new_dispatcher_shared().system_dispatch(&cell, message)
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
@@ -791,12 +798,11 @@ impl SystemStateShared {
     self.inner.read().monotonic_now()
   }
 
-  /// Resolves the dispatcher registry entry for the identifier.
+  /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
-  /// # Errors
-  ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
+  /// Returns `None` when no configurator is registered for the id.
+  #[must_use]
+  pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
     self.inner.read().resolve_dispatcher(id)
   }
 

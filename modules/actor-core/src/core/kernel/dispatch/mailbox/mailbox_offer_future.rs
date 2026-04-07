@@ -18,8 +18,11 @@ use fraktor_utils_rs::core::{
   timing::delay::{DelayFuture, DelayProvider},
 };
 
-use super::{mailbox_instrumentation::MailboxInstrumentation, mailbox_queue_state::QueueState, map_user_queue_error};
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use super::{
+  envelope::Envelope, mailbox_instrumentation::MailboxInstrumentation, mailbox_queue_state::QueueState,
+  map_user_envelope_queue_error,
+};
+use crate::core::kernel::actor::error::SendError;
 
 #[cfg(test)]
 mod tests;
@@ -138,15 +141,15 @@ struct MailboxMetrics {
   system_len:      ArcShared<AtomicUsize>,
 }
 
-/// Future completing once a user message has been enqueued.
+/// Future completing once a user envelope has been enqueued.
 pub struct MailboxOfferFuture {
-  inner:   QueueOfferFuture<AnyMessage>,
+  inner:   QueueOfferFuture<Envelope>,
   metrics: Option<MailboxMetrics>,
 }
 
 impl MailboxOfferFuture {
-  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>, message: AnyMessage) -> Self {
-    Self { inner: QueueOfferFuture::new(state, message), metrics: None }
+  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<Envelope>>>, envelope: Envelope) -> Self {
+    Self { inner: QueueOfferFuture::new(state, envelope), metrics: None }
   }
 
   pub(crate) fn with_user_queue_lock(mut self, user_queue_lock: ArcShared<RuntimeMutex<()>>) -> Self {
@@ -197,7 +200,7 @@ impl Future for MailboxOfferFuture {
         self.publish_metrics();
         Poll::Ready(Ok(()))
       },
-      | Poll::Ready(Err(error)) => Poll::Ready(Err(map_user_queue_error(error))),
+      | Poll::Ready(Err(error)) => Poll::Ready(Err(map_user_envelope_queue_error(error))),
       | Poll::Pending => Poll::Pending,
     }
   }

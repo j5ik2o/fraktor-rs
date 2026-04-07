@@ -1,11 +1,12 @@
 use std::{
+  boxed::Box,
   hint::black_box,
   sync::mpsc::{Receiver, SyncSender, sync_channel},
   time::Duration,
 };
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::DefaultDispatcherProvider};
+use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -15,9 +16,16 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     setup::ActorSystemConfig,
   },
-  dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  dispatch::{
+    dispatcher::{
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared,
+      MessageDispatcherConfigurator,
+    },
+    mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  },
   system::ActorSystem,
 };
+use fraktor_utils_rs::core::sync::ArcShared;
 use tokio::runtime::{Builder, Runtime};
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -126,10 +134,15 @@ struct TokioBenchSystem {
 impl TokioBenchSystem {
   fn new(props: &Props) -> Self {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
+    let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
+      let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+      let executor = ExecutorShared::new(TokioExecutor::new(handle));
+      let configurator: Box<dyn MessageDispatcherConfigurator> =
+        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
       let config = ActorSystemConfig::default()
         .with_tick_driver(default_tick_driver_config())
-        .with_default_dispatcher_entry(DefaultDispatcherProvider::new().into_entry());
+        .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::new_with_config(props, &config).expect("actor system")
     });
     Self { runtime, system }

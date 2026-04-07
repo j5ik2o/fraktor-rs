@@ -6,13 +6,14 @@ mod tests;
 use fraktor_utils_rs::core::collections::queue::QueueError;
 
 use super::{
-  QueueStateHandle, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, policy::MailboxPolicy,
+  QueueStateHandle, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
+  policy::MailboxPolicy,
 };
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::error::SendError;
 
 /// Unbounded message queue that grows as needed.
 pub struct UnboundedMessageQueue {
-  handle: QueueStateHandle<AnyMessage>,
+  handle: QueueStateHandle<Envelope>,
 }
 
 impl UnboundedMessageQueue {
@@ -32,16 +33,16 @@ impl Default for UnboundedMessageQueue {
 }
 
 impl MessageQueue for UnboundedMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    match self.handle.offer(message) {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    match self.handle.offer(envelope) {
       | Ok(_) => Ok(EnqueueOutcome::Enqueued),
-      | Err(error) => Err(super::map_user_queue_error(error)),
+      | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     match self.handle.poll() {
-      | Ok(msg) => Some(msg),
+      | Ok(envelope) => Some(envelope),
       | Err(QueueError::Empty | QueueError::Disconnected | QueueError::WouldBlock) => None,
       | Err(_) => None,
     }

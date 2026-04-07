@@ -7,24 +7,25 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
-use super::{mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use super::{envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
+use crate::core::kernel::actor::error::SendError;
 
 /// Initial capacity hint for each backing deque.
 const DEFAULT_CAPACITY: usize = 16;
 
 /// Unbounded message queue that prioritises control messages over normal messages.
 ///
-/// Inspired by Pekko's `UnboundedControlAwareMailbox`. Messages created via
-/// [`AnyMessage::control`] are routed to a dedicated control queue that is
-/// drained before the normal queue during [`dequeue`](MessageQueue::dequeue).
+/// Inspired by Pekko's `UnboundedControlAwareMailbox`. Envelopes whose payload
+/// was created via `AnyMessage::control` are routed to a dedicated control
+/// queue that is drained before the normal queue during
+/// [`dequeue`](MessageQueue::dequeue).
 pub struct UnboundedControlAwareMessageQueue {
   inner: RuntimeMutex<Inner>,
 }
 
 struct Inner {
-  control_queue: VecDeque<AnyMessage>,
-  normal_queue:  VecDeque<AnyMessage>,
+  control_queue: VecDeque<Envelope>,
+  normal_queue:  VecDeque<Envelope>,
 }
 
 impl UnboundedControlAwareMessageQueue {
@@ -47,17 +48,17 @@ impl Default for UnboundedControlAwareMessageQueue {
 }
 
 impl MessageQueue for UnboundedControlAwareMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let mut guard = self.inner.lock();
-    if message.is_control() {
-      guard.control_queue.push_back(message);
+    if envelope.payload().is_control() {
+      guard.control_queue.push_back(envelope);
     } else {
-      guard.normal_queue.push_back(message);
+      guard.normal_queue.push_back(envelope);
     }
     Ok(EnqueueOutcome::Enqueued)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
     guard.control_queue.pop_front().or_else(|| guard.normal_queue.pop_front())
   }

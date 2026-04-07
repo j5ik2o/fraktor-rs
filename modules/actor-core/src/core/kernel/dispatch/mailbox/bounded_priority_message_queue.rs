@@ -9,11 +9,11 @@ use core::{cmp::Ordering, num::NonZeroUsize};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy,
 };
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
+  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Internal mutable state guarded by a lock.
@@ -21,7 +21,7 @@ struct Inner {
   heap: BinaryHeap<PriorityEntry>,
 }
 
-/// Bounded message queue that dequeues messages in priority order.
+/// Bounded message queue that dequeues envelopes in priority order.
 ///
 /// Inspired by Pekko's `BoundedPriorityMailbox`. A [`MessagePriorityGenerator`]
 /// assigns an integer priority to each message; lower values are dequeued first.
@@ -62,10 +62,10 @@ impl BoundedPriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedPriorityMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    let priority = self.generator.priority(&message);
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
-    let entry = PriorityEntry { priority, message };
+    let entry = PriorityEntry { priority, envelope };
 
     if guard.heap.len() < self.capacity {
       guard.heap.push(entry);
@@ -74,8 +74,8 @@ impl MessageQueue for BoundedPriorityMessageQueue {
 
     match self.overflow {
       | MailboxOverflowStrategy::DropNewest => {
-        // Capacity full — drop the incoming message.
-        Err(SendError::full(entry.message))
+        // Capacity full — drop the incoming envelope.
+        Err(SendError::full(entry.envelope.into_payload()))
       },
       | MailboxOverflowStrategy::DropOldest => {
         // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
@@ -90,14 +90,14 @@ impl MessageQueue for BoundedPriorityMessageQueue {
       },
       | MailboxOverflowStrategy::Block => {
         // Block strategy is not supported for priority queues.
-        Err(SendError::full(entry.message))
+        Err(SendError::full(entry.envelope.into_payload()))
       },
     }
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
-    guard.heap.pop().map(|entry| entry.message)
+    guard.heap.pop().map(|entry| entry.envelope)
   }
 
   fn number_of_messages(&self) -> usize {
@@ -111,18 +111,18 @@ impl MessageQueue for BoundedPriorityMessageQueue {
   }
 }
 
-/// Wrapper that orders messages by priority for use in [`BinaryHeap`].
+/// Wrapper that orders envelopes by priority for use in [`BinaryHeap`].
 ///
 /// Same ordering semantics as [`super::unbounded_priority_message_queue`]: lower
 /// priority values compare as greater so that they are dequeued first from the
 /// max-heap.
 struct PriorityEntry {
   priority: i32,
-  message:  AnyMessage,
+  envelope: Envelope,
 }
 
 // BinaryHeap での使用を前提としているため、priority のみで比較する。
-// message の比較は不要（AnyMessage は PartialEq を実装しない）。
+// envelope の比較は不要（AnyMessage は PartialEq を実装しない）。
 impl PartialEq for PriorityEntry {
   fn eq(&self, other: &Self) -> bool {
     self.priority == other.priority

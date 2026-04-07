@@ -1,6 +1,6 @@
 //! Unbounded stable-priority message queue backed by a binary heap.
 //!
-//! Unlike [`super::UnboundedPriorityMessageQueue`], messages with equal
+//! Unlike [`super::UnboundedPriorityMessageQueue`], envelopes with equal
 //! priority are dequeued in FIFO (insertion) order.
 
 #[cfg(test)]
@@ -11,11 +11,11 @@ use alloc::collections::BinaryHeap;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, stable_priority_entry::StablePriorityEntry,
+  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
+  stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
+  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Initial capacity hint for the backing binary heap.
@@ -28,7 +28,7 @@ struct Inner {
 }
 
 /// Unbounded message queue that dequeues in priority order with stable
-/// (FIFO) ordering among messages of equal priority.
+/// (FIFO) ordering among envelopes of equal priority.
 ///
 /// Inspired by Pekko's `UnboundedStablePriorityMailbox`.
 pub struct UnboundedStablePriorityMessageQueue {
@@ -48,18 +48,18 @@ impl UnboundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedStablePriorityMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    let priority = self.generator.priority(&message);
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     let sequence = guard.sequence;
     guard.sequence += 1;
-    guard.heap.push(StablePriorityEntry { priority, sequence, message });
+    guard.heap.push(StablePriorityEntry { priority, sequence, envelope });
     Ok(EnqueueOutcome::Enqueued)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
-    guard.heap.pop().map(|entry| entry.message)
+    guard.heap.pop().map(|entry| entry.envelope)
   }
 
   fn number_of_messages(&self) -> usize {

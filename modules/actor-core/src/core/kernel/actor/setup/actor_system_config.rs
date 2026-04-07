@@ -1,6 +1,9 @@
 //! Actor system configuration API.
 
-use alloc::string::{String, ToString};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+};
 use core::time::Duration;
 
 use fraktor_utils_rs::core::sync::ArcShared;
@@ -14,7 +17,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, Dispatchers},
+    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
   system::remote::RemotingConfig,
@@ -89,17 +92,19 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Sets the reserved default dispatcher entry used when props don't specify a dispatcher.
+  /// Registers a dispatcher configurator under the supplied id.
+  ///
+  /// `ActorSystemConfig::default()` seeds the registry with an
+  /// `InlineExecutor`-backed configurator under the default id; production
+  /// users override the entry by calling this method with a configurator
+  /// that uses a real executor (Tokio, threaded, pinned, etc.).
   #[must_use]
-  pub fn with_default_dispatcher_entry(mut self, entry: DispatcherRegistryEntry) -> Self {
-    self.dispatchers.register_or_update(DEFAULT_DISPATCHER_ID, entry);
-    self
-  }
-
-  /// Registers or updates a dispatcher registry entry.
-  #[must_use]
-  pub fn with_dispatcher_entry(mut self, id: impl Into<String>, entry: DispatcherRegistryEntry) -> Self {
-    self.dispatchers.register_or_update(id, entry);
+  pub fn with_dispatcher_configurator(
+    mut self,
+    id: impl Into<String>,
+    configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
+  ) -> Self {
+    self.dispatchers.register_or_update(id, configurator);
     self
   }
 
@@ -205,7 +210,7 @@ impl ActorSystemConfig {
 impl Default for ActorSystemConfig {
   fn default() -> Self {
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default();
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {

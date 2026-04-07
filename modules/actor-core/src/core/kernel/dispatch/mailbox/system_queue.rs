@@ -127,11 +127,6 @@ impl SystemQueue {
     self.len.clone()
   }
 
-  /// Returns `true` when the queue has no pending elements.
-  pub(crate) fn is_empty(&self) -> bool {
-    self.len() == 0
-  }
-
   fn reverse_list(mut head: *mut Node) -> *mut Node {
     let mut prev = ptr::null_mut();
     while !head.is_null() {

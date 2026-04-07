@@ -1,16 +1,22 @@
-//! Dispatcher bindings tailored for the standard runtime facade.
+//! New std-layer dispatch executors that target the redesigned `Executor` trait.
+//!
+//! Files inside `dispatcher/` MUST NOT depend on the legacy `dispatch/`
+//! tree (see openspec change `dispatcher-pekko-1n-redesign`). Once the
+//! migration completes the legacy tree is removed in a single drop and this
+//! module is renamed back to `dispatch/`.
 
-mod blocking_dispatcher_provider;
-#[cfg(feature = "tokio-executor")]
-mod default_dispatcher_provider;
-mod dispatch_executor;
-/// Pinned dispatcher that dedicates a single execution lane per actor.
-mod pinned_dispatcher_provider;
 mod pinned_executor;
-mod schedule_adapter;
-
-pub use blocking_dispatcher_provider::BlockingDispatcherProvider;
+mod pinned_executor_factory;
+mod threaded_executor;
 #[cfg(feature = "tokio-executor")]
-pub use default_dispatcher_provider::DefaultDispatcherProvider;
-pub use pinned_dispatcher_provider::PinnedDispatcherProvider;
-pub use schedule_adapter::StdScheduleAdapter;
+mod tokio_executor;
+#[cfg(feature = "tokio-executor")]
+mod tokio_executor_factory;
+
+pub use pinned_executor::PinnedExecutor;
+pub use pinned_executor_factory::PinnedExecutorFactory;
+pub use threaded_executor::ThreadedExecutor;
+#[cfg(feature = "tokio-executor")]
+pub use tokio_executor::TokioExecutor;
+#[cfg(feature = "tokio-executor")]
+pub use tokio_executor_factory::TokioExecutorFactory;

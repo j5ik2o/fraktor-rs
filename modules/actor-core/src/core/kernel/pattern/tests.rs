@@ -185,7 +185,7 @@ fn graceful_stop_finishes_after_target_disappears() {
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(RemoveCellRunnable { pid, system: state.clone() });
   state.scheduler().with_write(|scheduler| {
     scheduler
-      .schedule_command(Duration::from_millis(1), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+      .schedule_command(Duration::from_millis(1), SchedulerCommand::RunRunnable { runnable })
       .expect("schedule removal");
   });
 

@@ -1,14 +1,19 @@
 use alloc::collections::BinaryHeap;
 
 use crate::core::kernel::{
-  actor::messaging::AnyMessage, dispatch::mailbox::stable_priority_entry::StablePriorityEntry,
+  actor::messaging::AnyMessage,
+  dispatch::mailbox::{envelope::Envelope, stable_priority_entry::StablePriorityEntry},
 };
+
+fn entry(priority: i32, sequence: u64, payload: AnyMessage) -> StablePriorityEntry {
+  StablePriorityEntry { priority, sequence, envelope: Envelope::new(payload) }
+}
 
 #[test]
 fn lower_priority_dequeued_first() {
   let mut heap = BinaryHeap::new();
-  heap.push(StablePriorityEntry { priority: 20, sequence: 0, message: AnyMessage::new(20_i32) });
-  heap.push(StablePriorityEntry { priority: 10, sequence: 1, message: AnyMessage::new(10_i32) });
+  heap.push(entry(20, 0, AnyMessage::new(20_i32)));
+  heap.push(entry(10, 1, AnyMessage::new(10_i32)));
 
   let first = heap.pop().unwrap();
   assert_eq!(first.priority, 10);
@@ -20,9 +25,9 @@ fn lower_priority_dequeued_first() {
 #[test]
 fn equal_priority_preserves_fifo() {
   let mut heap = BinaryHeap::new();
-  heap.push(StablePriorityEntry { priority: 5, sequence: 0, message: AnyMessage::new("first") });
-  heap.push(StablePriorityEntry { priority: 5, sequence: 1, message: AnyMessage::new("second") });
-  heap.push(StablePriorityEntry { priority: 5, sequence: 2, message: AnyMessage::new("third") });
+  heap.push(entry(5, 0, AnyMessage::new("first")));
+  heap.push(entry(5, 1, AnyMessage::new("second")));
+  heap.push(entry(5, 2, AnyMessage::new("third")));
 
   let first = heap.pop().unwrap();
   assert_eq!(first.sequence, 0);
@@ -37,10 +42,10 @@ fn equal_priority_preserves_fifo() {
 #[test]
 fn mixed_priorities_with_stable_ordering() {
   let mut heap = BinaryHeap::new();
-  heap.push(StablePriorityEntry { priority: 10, sequence: 0, message: AnyMessage::new("a") });
-  heap.push(StablePriorityEntry { priority: 5, sequence: 1, message: AnyMessage::new("b") });
-  heap.push(StablePriorityEntry { priority: 10, sequence: 2, message: AnyMessage::new("c") });
-  heap.push(StablePriorityEntry { priority: 5, sequence: 3, message: AnyMessage::new("d") });
+  heap.push(entry(10, 0, AnyMessage::new("a")));
+  heap.push(entry(5, 1, AnyMessage::new("b")));
+  heap.push(entry(10, 2, AnyMessage::new("c")));
+  heap.push(entry(5, 3, AnyMessage::new("d")));
 
   // Priority 5 first (FIFO within same priority)
   let e1 = heap.pop().unwrap();

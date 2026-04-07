@@ -8,16 +8,15 @@ use core::cmp::Ordering;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
+use super::{envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
+  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Initial capacity hint for the backing binary heap.
 const DEFAULT_CAPACITY: usize = 11;
 
-/// Unbounded message queue that dequeues messages in priority order.
+/// Unbounded message queue that dequeues envelopes in priority order.
 ///
 /// Inspired by Pekko's `UnboundedPriorityMailbox`. A [`MessagePriorityGenerator`]
 /// assigns an integer priority to each message; lower values are dequeued first.
@@ -35,16 +34,16 @@ impl UnboundedPriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedPriorityMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    let priority = self.generator.priority(&message);
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
-    guard.push(PriorityEntry { priority, message });
+    guard.push(PriorityEntry { priority, envelope });
     Ok(EnqueueOutcome::Enqueued)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
-    guard.pop().map(|entry| entry.message)
+    guard.pop().map(|entry| entry.envelope)
   }
 
   fn number_of_messages(&self) -> usize {
@@ -58,18 +57,18 @@ impl MessageQueue for UnboundedPriorityMessageQueue {
   }
 }
 
-/// Wrapper that orders messages by priority for use in [`BinaryHeap`].
+/// Wrapper that orders envelopes by priority for use in [`BinaryHeap`].
 ///
 /// `BinaryHeap` is a max-heap, so [`Ord`] is implemented such that entries
 /// with *lower* priority values compare as *greater*, ensuring they are
 /// dequeued first.
 struct PriorityEntry {
   priority: i32,
-  message:  AnyMessage,
+  envelope: Envelope,
 }
 
 // BinaryHeap での使用を前提としているため、priority のみで比較する。
-// message の比較は不要（AnyMessage は PartialEq を実装しない）。
+// envelope の比較は不要（AnyMessage は PartialEq を実装しない）。
 // 将来この型を公開する場合は比較セマンティクスの再検討が必要。
 impl PartialEq for PriorityEntry {
   fn eq(&self, other: &Self) -> bool {

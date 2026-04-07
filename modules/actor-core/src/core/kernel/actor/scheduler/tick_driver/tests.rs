@@ -390,8 +390,7 @@ fn manual_driver_runs_jobs_without_executor() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "manual" });
   ctx.scheduler().with_write(|s| {
-    s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
-      .expect("schedule");
+    s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable }).expect("schedule");
   });
 
   controller.inject_ticks(1);
@@ -424,8 +423,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "embedded" });
   scheduler.with_write(|s| {
-    s.schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
-      .expect("schedule job");
+    s.schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable }).expect("schedule job");
   });
 
   let feed = bundle.feed().expect("feed").clone();

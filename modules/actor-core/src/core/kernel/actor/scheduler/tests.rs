@@ -119,7 +119,7 @@ fn schedule_message_command(
   message: AnyMessage,
   sender: Option<ActorRef>,
 ) -> Result<SchedulerHandle, SchedulerError> {
-  scheduler.schedule_command(delay, SchedulerCommand::SendMessage { receiver, message, dispatcher: None, sender })
+  scheduler.schedule_command(delay, SchedulerCommand::SendMessage { receiver, message, sender })
 }
 
 fn schedule_runnable_command<F>(
@@ -130,7 +130,7 @@ fn schedule_runnable_command<F>(
 where
   F: SchedulerRunnable, {
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
-  scheduler.schedule_command(delay, SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+  scheduler.schedule_command(delay, SchedulerCommand::RunRunnable { runnable })
 }
 
 struct ManualRunnerOwner;
@@ -230,17 +230,15 @@ fn schedule_command_records_send_message() {
   let message = AnyMessage::new(42u32);
   let handle = scheduler
     .schedule_command(Duration::from_millis(3), SchedulerCommand::SendMessage {
-      receiver:   receiver.clone(),
-      message:    message.clone(),
-      dispatcher: None,
-      sender:     None,
+      receiver: receiver.clone(),
+      message:  message.clone(),
+      sender:   None,
     })
     .expect("handle");
   match scheduler.command_for_test(&handle) {
-    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, dispatcher, sender }) => {
+    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, sender }) => {
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<u32>());
-      assert!(dispatcher.is_none());
       assert!(sender.is_none());
     },
     | other => panic!("unexpected command: {:?}", other),
@@ -262,10 +260,9 @@ fn schedule_once_records_sender_metadata() {
   )
   .expect("handle");
   match scheduler.command_for_test(&handle) {
-    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, dispatcher, sender: stored_sender }) => {
+    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, sender: stored_sender }) => {
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<String>());
-      assert!(dispatcher.is_none());
       assert_eq!(stored_sender.as_ref().map(ActorRef::pid), Some(sender.pid()));
     },
     | other => panic!("unexpected command: {:?}", other),
@@ -282,7 +279,6 @@ fn schedule_at_fixed_rate_executes_multiple_runs() {
     .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
       receiver,
       message: AnyMessage::new(11u32),
-      dispatcher: None,
       sender: None,
     })
     .expect("handle");
@@ -446,8 +442,7 @@ fn fixed_rate_runnable_reports_missed_runs() {
   });
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(1), Duration::from_millis(1), SchedulerCommand::RunRunnable {
-      runnable:   runnable.clone(),
-      dispatcher: None,
+      runnable: runnable.clone(),
     })
     .expect("handle");
 

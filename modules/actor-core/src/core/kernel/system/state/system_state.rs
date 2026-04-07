@@ -55,7 +55,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError, Dispatchers},
+    dispatcher::{Dispatchers, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
@@ -122,7 +122,7 @@ impl SystemState {
     let event_stream = EventStreamShared::default();
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default();
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -719,7 +719,7 @@ impl SystemState {
   /// Returns an error if the actor doesn't exist or the message cannot be enqueued.
   pub(crate) fn send_system_message(&self, pid: Pid, message: SystemMessage) -> Result<(), SendError> {
     if let Some(cell) = self.cell(&pid) {
-      cell.dispatcher().enqueue_system(message)
+      cell.new_dispatcher_shared().system_dispatch(&cell, message)
     } else {
       match message {
         | SystemMessage::Watch(watcher) => {
@@ -774,13 +774,12 @@ impl SystemState {
     Duration::from_millis(ticks)
   }
 
-  /// Resolves the dispatcher registry entry for the identifier.
+  /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
-  /// # Errors
-  ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
-    self.dispatchers.resolve(id)
+  /// Returns `None` when no configurator is registered under that identifier.
+  #[must_use]
+  pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
+    self.dispatchers.resolve(id).ok()
   }
 
   /// Resolves the mailbox configuration for the identifier.

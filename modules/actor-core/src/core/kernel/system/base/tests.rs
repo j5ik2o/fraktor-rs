@@ -35,8 +35,8 @@ use crate::core::{
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
-      DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+      MessageDispatcherConfigurator,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     system::{
@@ -141,37 +141,29 @@ fn resolve_actor_ref_fails_before_root_started() {
   assert!(matches!(err, ActorRefResolveError::ProviderMissing | ActorRefResolveError::InvalidAuthority));
 }
 
+/// Noop executor used to verify that spawn paths never block on dispatcher
+/// progress. `execute` discards the submitted closure so the mailbox never
+/// drains.
 struct NoopExecutor;
 
-impl NoopExecutor {
-  const fn new() -> Self {
-    Self
-  }
-}
-
-impl DispatchExecutor for NoopExecutor {
-  fn execute(&mut self, _dispatcher: DispatchShared) -> Result<(), DispatchError> {
+impl Executor for NoopExecutor {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
     Ok(())
   }
-}
 
-struct NoopDispatcherProvider;
-
-impl DispatcherProvider for NoopDispatcherProvider {
-  fn provision(
-    &self,
-    settings: &DispatcherSettings,
-    _request: &DispatcherProvisionRequest,
-  ) -> Result<Box<dyn DispatcherBuilder>, SpawnError> {
-    Ok(Box::new(ConfiguredDispatcherBuilder::from_executor_with_settings(
-      Box::new(NoopExecutor::new()),
-      settings.clone(),
-    )))
+  fn supports_blocking(&self) -> bool {
+    false
   }
+
+  fn shutdown(&mut self) {}
 }
 
-fn noop_dispatcher_entry() -> DispatcherRegistryEntry {
-  DispatcherRegistryEntry::new(NoopDispatcherProvider, DispatcherSettings::default())
+fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  let settings = DispatcherSettings::with_defaults("noop");
+  let executor = ExecutorShared::new(NoopExecutor);
+  let configurator: Box<dyn MessageDispatcherConfigurator> =
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+  ArcShared::new(configurator)
 }
 
 struct NoopControl;
@@ -654,7 +646,8 @@ fn actor_system_terminate_when_already_terminated() {
 #[test]
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = Props::from_fn({
@@ -670,7 +663,8 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 
 #[test]
 fn spawn_child_same_as_parent_inherits_dispatcher_selection_result() {
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
 
   let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
@@ -718,7 +712,8 @@ fn create_send_failure_triggers_rollback() {
 
 #[test]
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let result = system.spawn_with_parent(None, &props);
 

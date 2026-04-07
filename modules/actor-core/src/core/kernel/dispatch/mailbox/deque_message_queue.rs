@@ -1,17 +1,17 @@
 //! Opt-in deque capability for message queue implementations.
 
-use super::mailbox_enqueue_outcome::EnqueueOutcome;
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use super::{envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome};
+use crate::core::kernel::actor::error::SendError;
 
 /// Extension trait for message queues that support front-of-queue insertion.
 ///
-/// Queues that implement this trait can prepend messages efficiently in O(1)
+/// Queues that implement this trait can prepend envelopes efficiently in O(1)
 /// instead of the drain-and-requeue fallback used by the base [`Mailbox`](super::Mailbox).
 pub trait DequeMessageQueue: Send + Sync {
-  /// Inserts a message at the front of the queue so it is dequeued first.
+  /// Inserts an envelope at the front of the queue so it is dequeued first.
   ///
   /// # Errors
   ///
-  /// Returns [`SendError`] if the message cannot be accepted.
-  fn enqueue_first(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError>;
+  /// Returns [`SendError`] if the envelope cannot be accepted.
+  fn enqueue_first(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError>;
 }

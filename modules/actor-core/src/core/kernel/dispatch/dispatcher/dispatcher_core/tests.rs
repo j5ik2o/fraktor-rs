@@ -1,262 +1,98 @@
-use alloc::boxed::Box;
-use core::time::Duration;
-
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
-
-use super::DispatcherCore;
-use crate::core::kernel::{
-  actor::{
-    Pid,
-    error::ActorError,
-    messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
-  },
-  dispatch::{
-    dispatcher::{DispatchExecutorRunner, InlineExecutor, InlineScheduleAdapter},
-    mailbox::{Mailbox, metrics_event::MailboxPressureEvent},
-  },
+use alloc::{boxed::Box, sync::Arc};
+use core::{
+  num::NonZeroUsize,
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
 };
 
-fn inline_runner() -> ArcShared<DispatchExecutorRunner> {
-  ArcShared::new(DispatchExecutorRunner::new(Box::new(InlineExecutor::new())))
+use super::DispatcherCore;
+use crate::core::kernel::dispatch::dispatcher::{
+  DispatcherSettings, ExecuteError, Executor, ExecutorShared, shutdown_schedule::ShutdownSchedule,
+};
+
+struct StubExecutor {
+  shutdowns: Arc<AtomicUsize>,
 }
 
-#[test]
-fn dispatcher_core_new() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox, executor, adapter, None, None, None);
-  let _ = core;
-}
-
-#[test]
-fn dispatcher_core_new_with_throughput_limit() {
-  use core::num::NonZeroUsize;
-
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let limit = NonZeroUsize::new(100).unwrap();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox, executor, adapter, Some(limit), None, None);
-  let _ = core;
-}
-
-#[test]
-fn dispatcher_core_mailbox() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox.clone(), executor, adapter, None, None, None);
-  let retrieved = core.mailbox();
-  let _ = retrieved;
-}
-
-#[test]
-fn dispatcher_core_executor() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox, executor.clone(), adapter, None, None, None);
-  let retrieved = core.executor();
-  let _ = retrieved;
-}
-
-#[test]
-fn dispatcher_core_state() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox, executor, adapter, None, None, None);
-  let state = core.state();
-  let _ = state;
-}
-
-#[test]
-fn dispatcher_core_drive_with_empty_mailbox() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
-
-  DispatcherCore::drive(&core);
-}
-
-#[test]
-fn dispatcher_core_register_invoker() {
-  struct MockInvoker;
-
-  impl MessageInvoker for MockInvoker {
-    fn invoke_user_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::AnyMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_system_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
+impl Executor for StubExecutor {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    Ok(())
   }
 
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
+  fn shutdown(&mut self) {
+    self.shutdowns.fetch_add(1, Ordering::SeqCst);
+  }
+}
 
-  let invoker = MessageInvokerShared::new(Box::new(MockInvoker) as Box<dyn MessageInvoker>);
-  core.register_invoker(invoker);
+fn nz(value: usize) -> NonZeroUsize {
+  NonZeroUsize::new(value).expect("non-zero")
+}
+
+fn make_core() -> (DispatcherCore, Arc<AtomicUsize>) {
+  let shutdowns = Arc::new(AtomicUsize::new(0));
+  let executor = ExecutorShared::new(StubExecutor { shutdowns: Arc::clone(&shutdowns) });
+  let settings = DispatcherSettings::new("test", nz(5), Some(Duration::from_millis(10)), Duration::from_secs(1));
+  (DispatcherCore::new(&settings, executor), shutdowns)
 }
 
 #[test]
-fn dispatcher_core_invokes_mailbox_pressure_hook_when_full() {
-  struct PressureInvoker {
-    pressure_calls: ArcShared<NoStdMutex<usize>>,
-  }
-
-  impl MessageInvoker for PressureInvoker {
-    fn invoke_user_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::AnyMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_system_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_mailbox_pressure(&mut self, _event: &MailboxPressureEvent) -> Result<(), ActorError> {
-      *self.pressure_calls.lock() += 1;
-      Ok(())
-    }
-  }
-
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
-
-  let pressure_calls = ArcShared::new(NoStdMutex::new(0_usize));
-  let invoker = MessageInvokerShared::new(
-    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker>
-  );
-  core.register_invoker(invoker);
-
-  let event = MailboxPressureEvent::new(Pid::new(11, 0), 4, 4, 100, Duration::from_millis(1), Some(3));
-  DispatcherCore::handle_backpressure(&core, &event);
-  DispatcherCore::drive(&core);
-
-  assert_eq!(*pressure_calls.lock(), 1);
+fn new_copies_settings_into_fields() {
+  let (core, _) = make_core();
+  assert_eq!(core.id(), "test");
+  assert_eq!(core.throughput(), nz(5));
+  assert_eq!(core.throughput_deadline(), Some(Duration::from_millis(10)));
+  assert_eq!(core.shutdown_timeout(), Duration::from_secs(1));
+  assert_eq!(core.inhabitants(), 0);
+  assert_eq!(core.shutdown_schedule(), ShutdownSchedule::Unscheduled);
 }
 
 #[test]
-fn dispatcher_core_invokes_mailbox_pressure_hook_when_threshold_is_reached() {
-  struct PressureInvoker {
-    pressure_calls: ArcShared<NoStdMutex<usize>>,
-  }
-
-  impl MessageInvoker for PressureInvoker {
-    fn invoke_user_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::AnyMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_system_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_mailbox_pressure(&mut self, _event: &MailboxPressureEvent) -> Result<(), ActorError> {
-      *self.pressure_calls.lock() += 1;
-      Ok(())
-    }
-  }
-
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = ArcShared::new(DispatcherCore::new(mailbox, executor, adapter, None, None, None));
-
-  let pressure_calls = ArcShared::new(NoStdMutex::new(0_usize));
-  let invoker = MessageInvokerShared::new(
-    Box::new(PressureInvoker { pressure_calls: pressure_calls.clone() }) as Box<dyn MessageInvoker>
-  );
-  core.register_invoker(invoker);
-
-  let event = MailboxPressureEvent::new(Pid::new(12, 0), 3, 4, 75, Duration::from_millis(1), Some(3));
-  DispatcherCore::handle_backpressure(&core, &event);
-  DispatcherCore::drive(&core);
-
-  assert_eq!(*pressure_calls.lock(), 1);
+fn mark_attach_increments_inhabitants() {
+  let (mut core, _) = make_core();
+  core.mark_attach();
+  core.mark_attach();
+  assert_eq!(core.inhabitants(), 2);
 }
 
 #[test]
-fn dispatcher_core_prioritizes_system_messages_over_mailbox_pressure() {
-  use alloc::vec::Vec;
-  use core::num::NonZeroUsize;
+fn mark_attach_cancels_scheduled_shutdown() {
+  let (mut core, _) = make_core();
+  core.mark_attach();
+  core.mark_detach();
+  let after_detach = core.schedule_shutdown_if_sensible();
+  assert_eq!(after_detach, ShutdownSchedule::Scheduled);
+  core.mark_attach();
+  assert_eq!(core.shutdown_schedule(), ShutdownSchedule::Rescheduled);
+}
 
-  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-  enum DispatchCall {
-    System,
-    Pressure,
-  }
+#[test]
+fn mark_detach_decrements_inhabitants() {
+  let (mut core, _) = make_core();
+  core.mark_attach();
+  core.mark_attach();
+  core.mark_detach();
+  assert_eq!(core.inhabitants(), 1);
+}
 
-  struct PriorityInvoker {
-    calls: ArcShared<NoStdMutex<Vec<DispatchCall>>>,
-  }
+#[test]
+fn schedule_shutdown_if_sensible_only_when_zero_inhabitants() {
+  let (mut core, _) = make_core();
+  core.mark_attach();
+  // 1 inhabitant remains; no scheduling occurs.
+  assert_eq!(core.schedule_shutdown_if_sensible(), ShutdownSchedule::Unscheduled);
+  core.mark_detach();
+  assert_eq!(core.schedule_shutdown_if_sensible(), ShutdownSchedule::Scheduled);
+  // Calling again moves Scheduled -> Rescheduled.
+  assert_eq!(core.schedule_shutdown_if_sensible(), ShutdownSchedule::Rescheduled);
+}
 
-  impl MessageInvoker for PriorityInvoker {
-    fn invoke_user_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::AnyMessage,
-    ) -> Result<(), ActorError> {
-      Ok(())
-    }
-
-    fn invoke_system_message(
-      &mut self,
-      _message: crate::core::kernel::actor::messaging::system_message::SystemMessage,
-    ) -> Result<(), ActorError> {
-      self.calls.lock().push(DispatchCall::System);
-      Ok(())
-    }
-
-    fn invoke_mailbox_pressure(&mut self, _event: &MailboxPressureEvent) -> Result<(), ActorError> {
-      self.calls.lock().push(DispatchCall::Pressure);
-      Ok(())
-    }
-  }
-
-  let mailbox = ArcShared::new(Mailbox::new(
-    crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)
-      .with_throughput_limit(Some(NonZeroUsize::new(1).unwrap())),
-  ));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = ArcShared::new(DispatcherCore::new(mailbox.clone(), executor, adapter, None, None, None));
-
-  let calls = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let invoker =
-    MessageInvokerShared::new(Box::new(PriorityInvoker { calls: calls.clone() }) as Box<dyn MessageInvoker>);
-  core.register_invoker(invoker);
-
-  mailbox.enqueue_system(crate::core::kernel::actor::messaging::system_message::SystemMessage::Stop).unwrap();
-  let event = MailboxPressureEvent::new(Pid::new(13, 0), 4, 4, 100, Duration::from_millis(1), Some(3));
-  DispatcherCore::handle_backpressure(&core, &event);
-  DispatcherCore::drive(&core);
-
-  let recorded = calls.lock().clone();
-  assert_eq!(recorded.len(), 2);
-  assert_eq!(recorded[0], DispatchCall::System);
-  assert_eq!(recorded[1], DispatchCall::Pressure);
+#[test]
+fn shutdown_resets_schedule_and_calls_executor() {
+  let (mut core, shutdowns) = make_core();
+  core.mark_attach();
+  core.mark_detach();
+  core.schedule_shutdown_if_sensible();
+  core.shutdown();
+  assert_eq!(core.shutdown_schedule(), ShutdownSchedule::Unscheduled);
+  assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
 }

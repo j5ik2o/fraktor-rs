@@ -8,7 +8,7 @@ use core::time::Duration;
 use crate::core::{
   kernel::actor::{
     messaging::AnyMessage,
-    scheduler::{DispatcherSenderShared, Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
+    scheduler::{Scheduler, SchedulerCommand, SchedulerError, SchedulerHandle},
   },
   typed::TypedActorRef,
 };
@@ -36,13 +36,11 @@ impl<'a> TypedScheduler<'a> {
   /// # Errors
   ///
   /// Returns an error if the scheduler is not initialized or if scheduling fails.
-  #[allow(clippy::too_many_arguments)]
   pub(crate) fn schedule_once<M>(
     &mut self,
     delay: Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
@@ -51,9 +49,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_once(delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      dispatcher,
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 
@@ -62,14 +59,12 @@ impl<'a> TypedScheduler<'a> {
   /// # Errors
   ///
   /// Returns an error if the scheduler is not initialized or if scheduling fails.
-  #[allow(clippy::too_many_arguments)]
   pub(crate) fn schedule_at_fixed_rate<M>(
     &mut self,
     initial_delay: Duration,
     interval: Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
@@ -78,9 +73,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_at_fixed_rate(initial_delay, interval, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      dispatcher,
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 
@@ -89,14 +83,12 @@ impl<'a> TypedScheduler<'a> {
   /// # Errors
   ///
   /// Returns an error if the scheduler is not initialized or if scheduling fails.
-  #[allow(clippy::too_many_arguments)]
   pub(crate) fn schedule_with_fixed_delay<M>(
     &mut self,
     initial_delay: Duration,
     delay: Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
@@ -105,9 +97,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_with_fixed_delay(initial_delay, delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      dispatcher,
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 }

@@ -15,10 +15,7 @@ use crate::core::kernel::{
     actor_ref::dead_letter::DeadLetterEntry, lifecycle::LifecycleEvent, messaging::AnyMessage,
     scheduler::tick_driver::SchedulerTickMetrics,
   },
-  dispatch::{
-    dispatcher::DispatcherDumpEvent,
-    mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
-  },
+  dispatch::mailbox::metrics_event::{MailboxMetricsEvent, MailboxPressureEvent},
   event::logging::LogEvent,
   serialization::SerializationErrorEvent,
 };
@@ -36,8 +33,6 @@ pub enum EventStreamEvent {
   Mailbox(MailboxMetricsEvent),
   /// Mailbox capacity pressure notification.
   MailboxPressure(MailboxPressureEvent),
-  /// Dispatcher diagnostic snapshot.
-  DispatcherDump(DispatcherDumpEvent),
   /// Unhandled message notification from typed behaviors.
   UnhandledMessage(TypedUnhandledMessageEvent),
   /// Message adapter failure notification.
@@ -71,7 +66,6 @@ impl Clone for EventStreamEvent {
       | Self::Log(event) => Self::Log(event.clone()),
       | Self::Mailbox(event) => Self::Mailbox(event.clone()),
       | Self::MailboxPressure(event) => Self::MailboxPressure(event.clone()),
-      | Self::DispatcherDump(event) => Self::DispatcherDump(event.clone()),
       | Self::UnhandledMessage(event) => Self::UnhandledMessage(event.clone()),
       | Self::AdapterFailure(event) => Self::AdapterFailure(event.clone()),
       | Self::Serialization(event) => Self::Serialization(event.clone()),

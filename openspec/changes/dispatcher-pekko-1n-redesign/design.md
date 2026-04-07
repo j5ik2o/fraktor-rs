@@ -53,31 +53,36 @@
   - `executor(&self) -> ExecutorShared`（clone を返す。`MessageDispatcherShared::register_for_execution` の再スケジュール経路が短時間の read lock 越しにこれを取り出す）
 
   **Overridable hooks (protected 相当、具象型が override 可能)**
-  - `register_actor(&mut self, actor: &ActorCell) -> Result<(), SpawnError>`
+
+  本 change で新規 `Envelope` 型を `modules/actor-core/src/core/kernel/dispatch/mailbox/envelope.rs` に置く。`Envelope` は dispatch/mailbox 層の transport wrapper であり、最小フィールドは `payload: AnyMessage` のみとする。sender 等の既存メタデータは `AnyMessage` が保持する値をそのまま利用し、receiver / priority / correlation_id 等の追加フィールドは本 change では持たない。
+
+  すべての actor 引数は `&ArcShared<ActorCell>` 型で受ける。**理由**: `BalancingDispatcher` の `create_mailbox` override が `Mailbox::new_sharing(Weak<ActorCell>, ...)` を構築するため `WeakShared<ActorCell>` が必要になるが、`&ActorCell` からは取得経路がない (`ArcShared` は `new_cyclic` 相当を持たず、ActorCell に `weak_self` field もないため)。`&ArcShared<ActorCell>` を受け取れば `ArcShared::downgrade(actor)` で Weak を取得できる。
+  - `register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError>`
     - default impl: `self.core_mut().mark_attach()` を呼んで `Ok(())`
     - identity check が必要な場合は `actor.pid()` を使う（`PinnedDispatcher` は owner として `Pid` を保持）
     - `PinnedDispatcher` は owner check + owner 設定を追加する
     - Pekko の `register(actorCell)` に対応
-  - `unregister_actor(&mut self, actor: &ActorCell)`
+  - `unregister_actor(&mut self, actor: &ArcShared<ActorCell>)`
     - default impl: `self.core_mut().mark_detach()` を呼ぶ
     - `PinnedDispatcher` は owner を `None` に戻す
     - Pekko の `unregister(actor)` に対応
-  - `dispatch(&mut self, receiver: &ActorCell, envelope: Envelope) -> Result<Vec<ArcShared<Mailbox>>, SendError>`
+  - `dispatch(&mut self, receiver: &ArcShared<ActorCell>, envelope: Envelope) -> Result<Vec<ArcShared<Mailbox>>, SendError>`
     - default impl: `receiver.mailbox().enqueue_user(envelope)?` → `vec![receiver.mailbox()]` を返す
     - 戻り値は shared wrapper が lock 解放後に `register_for_execution` を試みる候補 mailbox 配列。優先度順に並んでおり、最初に CAS が通った候補で schedule 完了とみなす
-    - `BalancingDispatcher` は `self.shared_queue.enqueue(envelope)?` → `vec![receiver.mailbox()]` で override する（V1 は単一要素、V2 teamWork で複数要素を返せる構造）
+    - `BalancingDispatcher` は `self.shared_queue.enqueue(envelope)?` の後、`receiver.mailbox()` を先頭にした team 候補 mailbox 配列を返す形で override する（V1 でも複数候補。V2 では候補選定の最適化を追加できる構造）
     - hot path の allocation を避けるため、実装は `SmallVec<[ArcShared<Mailbox>; 1]>` 等の small-size optimization を採用してよい（spec レベルでは `Vec` 表記）
-  - `system_dispatch(&mut self, receiver: &ActorCell, msg: SystemMessage) -> Result<Vec<ArcShared<Mailbox>>, SendError>`
+  - `system_dispatch(&mut self, receiver: &ArcShared<ActorCell>, msg: SystemMessage) -> Result<Vec<ArcShared<Mailbox>>, SendError>`
     - default impl: `receiver.mailbox().enqueue_system(msg)?` → `vec![receiver.mailbox()]` を返す
     - 戻り値の意味は `dispatch` と同じ
-  - `suspend(&mut self, actor: &ActorCell)`
-  - `resume(&mut self, actor: &ActorCell)`
+  - `suspend(&mut self, actor: &ArcShared<ActorCell>)`
+  - `resume(&mut self, actor: &ArcShared<ActorCell>)`
   - `shutdown(&mut self)`
     - default impl: `self.core_mut().shutdown()` を呼ぶ
-  - `create_mailbox(&self, actor: &ActorCell, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox>`
+  - `create_mailbox(&self, actor: &ArcShared<ActorCell>, mailbox_type: &dyn MailboxType) -> ArcShared<Mailbox>`
     - **`&self`**（factory メソッド、状態を変えない）
     - default impl: 通常の per-actor mailbox を返す
     - `BalancingDispatcher` は `SharingMailbox`（self.shared_queue を注入した mailbox）を返す形で override する
+    - Weak が必要な場合は `ArcShared::downgrade(actor)` で取得する
     - 運用規律: 外部 caller は直接呼ばず、常に `MessageDispatcherShared::attach` 経由で mailbox を生成する（inhabitants 管理をスキップしないため）
 
   **trait に存在しない（あえて trait method にしないもの）**
@@ -121,28 +126,34 @@
       fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R;
   }
   ```
-- `MessageDispatcherShared` は公開 lifecycle/orchestration API を持つ:
-  - `attach(&self, actor: &ActorCell) -> Result<(), SpawnError>`
-  - `detach(&self, actor: &ActorCell)`
-  - `dispatch(&self, receiver: &ActorCell, envelope: Envelope) -> Result<(), SendError>`
-  - `system_dispatch(&self, receiver: &ActorCell, msg: SystemMessage) -> Result<(), SendError>`
+- `MessageDispatcherShared` は公開 lifecycle/orchestration API を持つ（actor 引数はすべて `&ArcShared<ActorCell>`）:
+  - `attach(&self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError>`
+  - `detach(&self, actor: &ArcShared<ActorCell>)`
+  - `dispatch(&self, receiver: &ArcShared<ActorCell>, envelope: Envelope) -> Result<(), SendError>`
+  - `system_dispatch(&self, receiver: &ArcShared<ActorCell>, msg: SystemMessage) -> Result<(), SendError>`
   - `register_for_execution(&self, mbox: &ArcShared<Mailbox>, has_message_hint: bool, has_system_hint: bool) -> bool`
 - `MessageDispatcherShared::attach` は次の順で動作する:
-  1. `with_write` で `register_actor(actor)` を呼ぶ
-  2. 同じ `with_write` の中で `create_mailbox(actor, ...)` を呼び、生成した mailbox を actor へ設定する
-  3. ロック解放後に `self.register_for_execution(&mbox, false, true)` を呼ぶ
+  1. `with_write` で `register_actor(actor)` を呼ぶ（`actor: &ArcShared<ActorCell>` をそのまま渡す）
+  2. 同じ `with_write` の中で mailbox overflow strategy と executor の blocking 対応を照合する: actor の mailbox config が `MailboxOverflowStrategy::Block` を使う場合、`self.core().executor().supports_blocking()` が `false` なら `SpawnError::InvalidMailboxConfig` を返す
+  3. 同じ `with_write` の中で `create_mailbox(actor, ...)` を呼び、生成した mailbox を `actor.install_mailbox(mbox)` で actor へ設定する（`ActorCell::install_mailbox` は一度だけ呼べる契約）
+  4. ロック解放後に `self.register_for_execution(&mbox, false, true)` を呼ぶ
 - `MessageDispatcherShared::dispatch` / `system_dispatch` は次の順で動作する:
   1. `with_write` で trait hook の `dispatch` / `system_dispatch` を呼び、戻り値の **候補 mailbox 配列** を取得する（trait hook 内では enqueue のみ、schedule 副作用は起こさない）
-  2. ロック解放後、候補配列を優先度順に走査し、各 mailbox に対して `self.register_for_execution(&mbox, has_message_hint=true, has_system_hint=false)` を試みる
+  2. ロック解放後、候補配列を優先度順に走査し、各 mailbox に対して適切な hint で `self.register_for_execution(...)` を試みる
+     - `dispatch`: `has_message_hint=true, has_system_hint=false`
+     - `system_dispatch`: `has_message_hint=false, has_system_hint=true`
   3. 最初に `register_for_execution` が `true` を返した候補で完了する（その候補のみが executor へ submit される）
   4. 全候補が CAS 失敗（busy）でも `Ok(())` を返す（envelope は queue 内に残り、次回 dispatch / drain サイクルで pick up される）
+  5. trait hook が空配列を返した場合はロック解放後の iteration は 0 回で完了する（enqueue のみが行われ schedule は発生しない。将来拡張で「後で一括処理」等のセマンティクスに利用可能）
+  6. shared queue を持つ具象型は liveness のため複数候補を返さなければならない。receiver mailbox が suspended / closed / busy でも、shared wrapper は後続候補へ順に fallback する
 - `MessageDispatcherShared::detach` は次の順で動作する:
   1. `with_write` で `unregister_actor(actor)` を呼ぶ
-  2. 同じ `with_write` の中で actor から detached mailbox を terminal 状態へ遷移させ、`clean_up` する
+  2. 同じ `with_write` の中で `actor.mailbox()` を terminal 状態へ遷移させ、`clean_up` する
   3. 同じ `with_write` の中で `self.core_mut().schedule_shutdown_if_sensible()` を呼び、**戻り値の `ShutdownSchedule` をローカル変数へ copy する**
-  4. ロック解放後、copy した値が `SCHEDULED` の場合のみ `actor.system().scheduler()` から取得した handle に delayed shutdown closure を登録する
+  4. ロック解放後、copy した値が `SCHEDULED` の場合のみ `actor.scheduler()` から取得した handle に delayed shutdown closure を登録する（`ActorCell::scheduler(&self) -> SchedulerShared` は内部で `self.system().scheduler()` を呼ぶ public accessor として追加する）
   5. delayed closure 発火時に `with_write` で `shutdown_schedule` と `inhabitants` を再確認し、`SCHEDULED && inhabitants == 0` の場合のみ `shutdown()` を呼ぶ
   6. 発火時に `RESCHEDULED` または `inhabitants > 0` なら `shutdown_schedule` を `UNSCHEDULED` に戻して何もしない
+  7. delayed shutdown closure は one-shot task として扱い、発火後はいずれの分岐でも必ず drop される（scheduler に保持され続けてはならない）
   - **lock 境界での state 観測**: step 3 の戻り値経由で copy するため、lock 解放後に再度 mutex を取って状態確認する race window を作らない
 - `MessageDispatcherShared::register_for_execution` は次の順で動作する（純粋に CAS + executor submit、trait hook は呼ばない）:
   1. mailbox の `can_be_scheduled_for_execution(hints)` を（ロック外で）評価する。`false` なら `false` を返す
@@ -150,10 +161,13 @@
   3. `with_read` で throughput / throughput_deadline / executor_shared を一度に取り出す（短時間の read lock）
   4. ロックを解放した状態で closure を組み立てる（`self.clone()` と `mbox.clone()` を capture）
   5. closure 内では `mbox.run(throughput, deadline)` → `mbox.set_as_idle()` → `self.register_for_execution(&mbox, false, false)` の順で実行
-  6. 組み立てた closure を `ExecutorShared::execute` 経由で submit し、`true` を返す
+  6. 組み立てた closure を `ExecutorShared::execute` 経由で submit する
+  7. submit が `Ok(())` なら `true` を返す
+  8. submit が `Err(error)` なら `mbox.set_as_idle()` で rollback し、失敗をログ / メトリクスへ記録した上で `false` を返す
   - dispatcher policy 固有の判定（例: `BalancingDispatcher` の teamWork 候補展開）は trait hook ではなく `dispatch` の戻り値配列で表現される。`register_for_execution` は CAS と executor submit のみを担う
 - `MessageDispatcherShared` は query 系の便利メソッドとして trait の主要 query を委譲する（`id` / `throughput` 等）
 - 再入デッドロック防止のため、AShared 系の共通原則に従ってロック区間を最小化する: executor submit、delayed shutdown の登録、closure の実行は `with_write` のブロックを抜けた後で行う
+- `MessageDispatcherShared` は **policy を持たない**。BalancingDispatcher の team member 探索、候補 mailbox 合成、fallback 順序決定を shared wrapper 側で行ってはならない。shared wrapper は具象 dispatcher が返した候補配列を順に `register_for_execution` するだけに留める
 
 #### 満たしてはいけない条件
 
@@ -189,16 +203,17 @@
   - `mark_attach(&mut self)`: `inhabitants += 1` し、`shutdown_schedule == SCHEDULED` なら `RESCHEDULED` に遷移させる（純粋 command、戻り値なし）
   - `mark_detach(&mut self)`: `inhabitants -= 1` する（純粋 command、戻り値なし）
     - `inhabitants` が負になることは設計上ありえない。`debug_assert!(self.inhabitants >= 0)` でデバッグ時に検出し、release ビルドでは `i64::max(self.inhabitants, 0)` で clamp する（Pekko の `IllegalStateException("ACTOR SYSTEM CORRUPTED!!!")` 相当の防御）
+    - release で clamp する場合でも `tracing::error!` 等で状態破損を必ず記録し、observability を失ってはならない
   - `schedule_shutdown_if_sensible(&mut self) -> ShutdownSchedule`: `inhabitants == 0` の時のみ `UNSCHEDULED → SCHEDULED` または `SCHEDULED → RESCHEDULED` の状態遷移を行い、**遷移後の `ShutdownSchedule` 値を返す**
     - CQS 許容例外: `MessageDispatcherShared::detach` step 3 でこの戻り値を lock 解放前に copy し、step 4 の delayed shutdown 登録判定に使うため。Pekko の `updateShutdownSchedule` 相当。代替手段（lock 解放後に query で再観測）は race window を作るため不採用
   - `shutdown(&mut self)`（内部で `self.executor.shutdown()` を呼び、`shutdown_schedule` を UNSCHEDULED に戻す）
 
 - `DispatcherCore` は atomic field を field として公開しない（内部可変性を封じる）。inhabitants とスケジュール状態は `&mut self` ロック越しに更新する
 - delayed shutdown の実行予約そのものは `DispatcherCore` ではなく `MessageDispatcherShared::detach` が actor の system scheduler を使って行う
-- delayed shutdown の scheduler handle は `detach(actor)` の引数から `actor.system().scheduler()` を辿って取得し、`DispatcherCore` / `MessageDispatcherShared` の field には保持しない
+- delayed shutdown の scheduler handle は `detach(actor)` の引数から `actor.scheduler()` を辿って取得し、`DispatcherCore` / `MessageDispatcherShared` の field には保持しない
 - inhabitants カウンタのロックフリー性が要求されるのは `MessageDispatcherShared` のロック越しの経路のみであり、ロックを取得している文脈内では `&mut self` で十分である
 - `DispatcherCore` は pub 公開され、fraktor 外部の独自 `MessageDispatcher` 実装から共通 state として利用可能でなければならない
-- 各具象型（`DefaultDispatcher` / `PinnedDispatcher`）は `core: DispatcherCore` として `DispatcherCore` を field に保持し、自身が実装する `MessageDispatcher` trait の query / command メソッドを `self.core` へ委譲する
+- 3 具象型（`DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher`）は `core: DispatcherCore` として `DispatcherCore` を field に保持し、自身が実装する `MessageDispatcher` trait の query / command メソッドを `self.core` へ委譲する
 
 #### 満たしてはいけない条件
 
@@ -207,15 +222,15 @@
 - `DispatcherCore::register_for_execution` を `&self` メソッドとして提供してはならない（内部可変性なしでは成立しない）
 - `DispatcherCore` を `pub(crate)` に閉じて外部拡張を塞いではならない
 
-### 4. 具象 `DefaultDispatcher` / `PinnedDispatcher`
+### 4. 具象 `DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher`
 
 #### 満たすべき条件
 
-- **両具象型はいずれも core 層（`modules/actor-core/src/core/kernel/dispatch/dispatcher_new/`）に配置する**。tokio や std::thread への型レベル依存は持たず、`no_std` 対応とする。具体的なスレッドプール実装は `ExecutorShared` 経由で構築時に注入される（Pekko の `Dispatcher` が `ExecutorServiceFactoryProvider` を注入されるのと同じ構図）
+- **3 具象型はいずれも core 層（`modules/actor-core/src/core/kernel/dispatch/dispatcher_new/`）に配置する**。tokio や std::thread への型レベル依存は持たず、`no_std` 対応とする。具体的なスレッドプール実装は `ExecutorShared` 経由で構築時に注入される（Pekko の `Dispatcher` が `ExecutorServiceFactoryProvider` を注入されるのと同じ構図）
 - `DefaultDispatcher` は次を満たす:
   - `core: DispatcherCore` を保持する
-  - `MessageDispatcher` trait の default impl をほぼそのまま使う（`core()` / `core_mut()` / `create_mailbox` のみ実装）
-  - hook メソッド (`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `register_for_execution`, `shutdown`) も trait default impl を使う
+  - `MessageDispatcher` trait の必須メソッド (`core()` / `core_mut()`) のみ実装する
+  - すべての overridable hook (`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `suspend`, `resume`, `shutdown`, `create_mailbox`) は trait default impl をそのまま使う（`DefaultDispatcher` 固有の追加処理はない）
 - `PinnedDispatcher` は次を満たす:
   - `core: DispatcherCore` と `owner: Option<Pid>` を保持する（内部可変性は使わない）
   - `DispatcherCore::new` 呼び出し時に `throughput = NonZeroUsize::MAX`, `throughput_deadline = None` を固定で渡す（Pekko: `Int.MaxValue` / `Duration.Zero`）
@@ -225,12 +240,16 @@
   - **`SpawnError::DispatcherAlreadyOwned`** バリアントは本 change で `SpawnError` enum に新規追加する（Task 5.0 を参照）
 - `BalancingDispatcher` は次を満たす:
   - `core: DispatcherCore` と `shared_queue: ArcShared<SharedMessageQueue>` を保持する
+  - attach 済み team member を保持する（例: `Vec<WeakShared<ActorCell>>`。ownership cycle を避けるため strong `ArcShared` は保持しない）
   - `DispatcherCore::new` には通常の `DispatcherSettings` の `throughput` / `throughput_deadline` をそのまま渡す（Pinned のような上書きはしない）
-  - `create_mailbox` を override: `SharingMailbox::new(actor, self.shared_queue.clone())` を返す。SharingMailbox は Mailbox の薄いラッパで `shared_queue` を内部 message queue として使う点が差分
-  - `dispatch` hook を override: `self.shared_queue.enqueue(envelope)?` した上で `vec![receiver.mailbox()]` を返す（V1: 単一候補。V2 teamWork で team member を追加する形に拡張可能）
+  - `create_mailbox` を override: `ArcShared::new(Mailbox::new_sharing(ArcShared::downgrade(actor), self.shared_queue.clone()))` を返す。ここでいう "SharingMailbox" は独立型ではなく、`Mailbox::new_sharing(...)` で構築された `Mailbox` instance の概念名である
+  - `register_actor` / `unregister_actor` を override し、**default の inhabitants 更新 (`mark_attach` / `mark_detach`) を維持した上で** team member registry へ actor の追加 / 除去を行う
+  - `dispatch` hook を override: `self.shared_queue.enqueue(envelope)?` した上で、`receiver.mailbox()` を先頭に、残りの attach 済み team member の mailbox を後続に並べた候補配列を返す（重複除去あり）
+    - dead `WeakShared<ActorCell>` は `dispatch` 中に `upgrade()` 失敗を検出した時点で in-place に剪定する
+    - 重複除去は mailbox の pointer identity（`ArcShared::ptr_eq` 相当）で判定する
   - `system_dispatch` hook は default impl のまま（system message は actor 個別の経路）
-  - `register_actor` / `unregister_actor` / `suspend` / `resume` / `shutdown` は default impl のまま使う
-  - **load balancing のメカニズム**: 全 attach 済み actor の SharingMailbox は同じ `shared_queue` を参照する。actor のいずれかが `mailbox.run()` で dequeue するとき、shared queue から FIFO で envelope が取り出される。これにより複数 actor が同じ queue を消化する形の load balancing が成立する。teamWork による即時 wake up fallback (Pekko の `BalancingDispatcher.teamWork()`) は V1 では実装しない (queue 内 envelope は次の dispatch / actor 再 schedule で消化されるため、機能的には正しい)
+  - `suspend` / `resume` / `shutdown` は default impl のまま使う
+  - **load balancing のメカニズム**: 全 attach 済み actor の `Mailbox::new_sharing(...)` で作られた mailbox は同じ `shared_queue` を参照する。`dispatch` は複数の team 候補 mailbox を返し、shared wrapper がそれらを順に schedule する。これにより receiver mailbox が unschedulable でも他の team member が shared queue を drain できる。Pekko の `BalancingDispatcher.teamWork()` に相当する専用 helper / idle member wake-up 最適化は V1 では実装しない
 - 3 具象型 (`DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher`) はすべて `MessageDispatcherShared::new(concrete)` 経由で `MessageDispatcherShared` へ格納可能でなければならない（直接 `ArcShared<dyn MessageDispatcher>` のような形で多所有化しない）
 - **blocking workload 向け dispatcher は `DefaultDispatcher` の別 id + 別 `ExecutorShared` 構成で表現する**。`BlockingDispatcher` という具象型は作らない（Pekko にも存在しない。Pekko では `reference.conf` で `pekko.actor.default-blocking-io-dispatcher` を `type = "Dispatcher"` として別 pool 設定で登録するだけ）
 
@@ -250,7 +269,7 @@
 #### 満たすべき条件
 
 - `Executor` trait は CQS 原則に従う:
-  - **Command (`&mut self`)**: `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>)`
+  - **Command (`&mut self`)**: `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError>`
   - **Command (`&mut self`)**: `fn shutdown(&mut self)`
   - **Query (`&self`)**: `fn supports_blocking(&self) -> bool { true }`
 - `Executor` trait は core 層に置かれなければならない（`no_std` 対応）
@@ -264,7 +283,7 @@
 
   impl ExecutorShared {
       pub fn new<E: Executor + 'static>(executor: E) -> Self;
-      pub fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>);
+      pub fn execute(&self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError>;
       pub fn shutdown(&self);
       pub fn supports_blocking(&self) -> bool;
   }
@@ -274,10 +293,30 @@
       fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Executor>) -> R) -> R;
   }
   ```
+- `ExecuteError` を core 層に定義する。最小初版は `Rejected`, `Shutdown`, `Backend(String)` 等でよい
 - `ExecutorShared::execute` は `with_write` でロックを取り、trait の `execute` に委譲する
 - `ExecutorShared::execute` は submit 完了後速やかにロックを解放し、task の実行自体は executor の責任範囲（別スレッドや別 loop）で行われる
-- `InlineExecutor`（現スレッド同期実行）は core 層に配置する。再入対策（inline で task 実行中に executor.execute が再帰呼び出しされる場合）は `InlineExecutor` 自身の実装内部で trampoline する（trait 層には持ち込まない）
+  - **重要制約**: `ExecutorShared::execute` は task を submit するだけで、ロック区間内で task 本体を同期実行してはならない。`TokioExecutor` / `ThreadedExecutor` / `PinnedExecutor` は submit が worker thread への送信で完結するため安全
+  - submit 失敗は `Result<(), ExecuteError>` で呼び出し元へ返し、握りつぶしてはならない
+- `InlineExecutor`（現スレッド同期実行）は core 層に配置し、**test / deterministic scheduling 用途のみに使う** (production の dispatcher 経由では使用しない、後述)
 - `TokioExecutor`、`ThreadedExecutor`、`PinnedExecutor`（1 スレッド dedicated）は std 層に配置する
+
+**`InlineExecutor` の用途制限について**:
+
+`InlineExecutor::execute(&mut self, task)` は task を現スレッドで同期実行する性質上、`ExecutorShared` 経由で使用すると `RuntimeMutex` 再入デッドロックを引き起こす。シナリオ:
+
+1. Thread A が `ExecutorShared::execute(task1)` を呼ぶ → `with_write` で `RuntimeMutex` 取得
+2. `InlineExecutor::execute(task1)` が task1 を同期実行
+3. task1 内で別の `ExecutorShared::execute(task2)` が呼ばれる → 同じ `RuntimeMutex` を再取得しようとしてデッドロック
+
+`RuntimeMutex` は std 環境では `StdSyncMutex`、no_std 環境では `SpinSyncMutex` であり、いずれも**非 reentrant**。このため `InlineExecutor` を production dispatcher (`DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher`) の `ExecutorShared` に組み込むことは禁止する。Pekko の `CallingThreadExecutor` も同じ理由で test-only 扱いになっている。
+
+`InlineExecutor` の正当な使い道は:
+- dispatcher を介さない unit test / property-based test
+- deterministic scheduling が要求されるテストシナリオ
+- `ExecutorShared` ラッパを経由しない直接 invocation
+
+これらのケースでは `InlineExecutor::execute` を `&mut self` で直接呼べばよい。再入が発生する場合は `InlineExecutor` 自身が内部 queue + running flag で trampoline する (trait 層に再入対策は持ち込まない)。
 
 #### 満たしてはいけない条件
 
@@ -286,8 +325,10 @@
 - `ExecutorShared` を経由せずに `Box<dyn Executor>` を多所有状態にしてはならない
 - `ExecutorShared` から `MutexGuard` を返す API を公開してはならない
 - `InlineExecutor` を std 層に置いてはならない
+- **`InlineExecutor` を production dispatcher の `ExecutorShared` に組み込んではならない**（上記の再入デッドロック問題のため）
 - core 層から std / tokio 型へ直接依存してはならない
 - Inline 実行時の再入対策を `ExecutorShared` 側で行ってはならない（`InlineExecutor` の実装詳細）
+- task 本体を `ExecutorShared::execute` のロック区間内で同期実行する Executor 実装を作ってはならない（deadlock の温床）
 
 ### 6. Mailbox を Runnable として扱う
 
@@ -302,6 +343,12 @@
 - mailbox は `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` の形でコンストラクタが message queue を外部から注入できる
   - `actor` は `Weak<ActorCell>` で、circular reference 回避とライフサイクル分離のため。`run()` 実行時に `Weak::upgrade()` で actor を取得し、None なら early return
   - `queue` は `ArcShared<Box<dyn MessageQueue>>` 等、同一 instance を複数 mailbox で共有可能な形（BalancingDispatcher の SharingMailbox がこれを利用する）
+- mailbox user queue の `MessageQueue` trait は **`Envelope` を運搬型とする**。既存の `AnyMessage` ベース契約は redesign 完了時点で残さない
+- `Envelope` への移行は queue trait だけでなく mailbox user-path 全体へ波及する
+  - `Mailbox::enqueue_user` / user dequeue path / cleanup path は `Envelope` を扱う
+  - priority / stable-priority / control-aware queue の比較・選別ロジックも `Envelope` を入力に再定義する
+  - dead-letter / instrumentation が user payload を参照する箇所は `Envelope` から必要情報を取得する
+  - 送信側 API（`ActorRefSender` 等）は `AnyMessage` を受け取り、dispatch 境界で `Envelope { payload }` へ変換する
 - mailbox は dispatcher への参照を持たない。`register_for_execution` への終端コールバックは executor submit 時に closure がキャプチャする `MessageDispatcherShared`（= `ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>`）から呼ぶ
 
 #### 満たしてはいけない条件
@@ -319,17 +366,37 @@
   - 初版実装: `ArcShared<RuntimeMutex<VecDeque<Envelope>>>` ベースの単純な FIFO
   - 後で lock-free 化（crossbeam, mpmc 等）も可能だが本 change では scope 外
   - `MessageQueue` trait を実装し、enqueue / dequeue / len / is_empty が `&self` シグネチャを持つ（multi-consumer 許容）
-- `SharingMailbox` は通常の Mailbox の薄いラッパとして core 層に置く
-  - `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` の seam を使い、`queue` として `SharedMessageQueue` を渡して構築する
-  - `run()` の挙動は通常 Mailbox と同じ（system 全件 → user throughput まで dequeue）
-  - **`clean_up()` の挙動だけ通常 Mailbox と異なる**: 通常 Mailbox は close 時に残り envelope を dead letter に流すが、SharingMailbox は **shared queue を drain しない**（queue は他の team member が引き続き使用するため、勝手に drain すると他 actor のメッセージが失われる）
+  - 前提として `MessageQueue` trait 全体を `Envelope` ベースへ移行する。`SharedMessageQueue` だけ別契約にしない。bounded / unbounded / priority / stable-priority 等の既存 concrete queue も同じ payload 型へ揃える
+- **`SharingMailbox` は独立した Rust struct ではなく、`Mailbox` の variant として表現する**。Rust には継承がないため「Mailbox を継承して clean_up を override」という Pekko のパターンを直接写せない。かわりに `Mailbox` 本体に以下の field を追加する:
+  ```rust
+  pub struct Mailbox {
+      // ... 既存 field ...
+      cleanup_policy: MailboxCleanupPolicy,
+  }
+
+  pub enum MailboxCleanupPolicy {
+      /// 通常の per-actor mailbox: close 時に残 envelope を dead letter に流す
+      DrainToDeadLetters,
+      /// Shared queue を参照する mailbox: close 時に queue を drain しない
+      /// (queue は他の team member が引き続き使用するため)
+      LeaveSharedQueue,
+  }
+  ```
+- `Mailbox` は 2 つの constructor を提供する:
+  - `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>) -> Self`: `cleanup_policy = DrainToDeadLetters`
+  - `Mailbox::new_sharing(actor: Weak<ActorCell>, shared_queue: ArcShared<SharedMessageQueue>) -> Self`: `cleanup_policy = LeaveSharedQueue`、`queue` として `shared_queue` を `ArcShared<dyn MessageQueue>` にキャストして保持
+- `Mailbox::clean_up(&self)` は `match self.cleanup_policy { DrainToDeadLetters => drain..., LeaveSharedQueue => skip drain }` で分岐する
+- **"`SharingMailbox`" は概念上の呼称**: 本 change では `Mailbox::new_sharing(...)` で構築された `Mailbox` instance を "SharingMailbox" と呼ぶが、独立した型ではない。`BalancingDispatcher::create_mailbox` は `ArcShared::new(Mailbox::new_sharing(ArcShared::downgrade(actor), self.shared_queue.clone()))` を返す (戻り値型は従来通り `ArcShared<Mailbox>` のまま)
+- **方針の根拠**: `MessageDispatcher::create_mailbox` は `ArcShared<Mailbox>` を返す trait method であり、独立した `SharingMailbox` 型では代入互換にならない。かといって `ArcShared<dyn MailboxLike>` のような trait object 化は既存 Mailbox 型への破壊的変更が大きすぎる。Mailbox 内の `cleanup_policy` flag で分岐するのは最小侵襲で、`run()` 等の hot path には影響しない (flag 参照は `clean_up()` でのみ発生)
+- **dispatcher の「enum/flag 禁止」制約との整合**: design section 4 の「3 具象型の差分を enum 変種やフラグで潰してはならない」は `MessageDispatcher` の policy family (Default/Pinned/Balancing) を enum で合成するなという意味。`Mailbox::cleanup_policy` は mailbox 内部の実装詳細であり、dispatcher の policy type 一覧には影響しない。別論として許容する
 - `BalancingDispatcher` を 2 つ別々に構築すると `shared_queue` も別物になる（instance 毎に独立した queue）
 
 #### 満たしてはいけない条件
 
-- `SharingMailbox` を `BalancingDispatcher` 以外の dispatcher で使用してはならない
-- `SharingMailbox::clean_up()` が shared queue を drain してはならない（shared semantic を破壊する）
+- `Mailbox::new_sharing(...)` を `BalancingDispatcher::create_mailbox` 以外から直接呼んではならない（運用規律）
+- `MailboxCleanupPolicy::LeaveSharedQueue` の mailbox が `clean_up()` で shared queue を drain してはならない（shared semantic を破壊する）
 - `SharedMessageQueue` を直接外部 API として公開してはならない（`BalancingDispatcher` の internal detail）
+- `SharingMailbox` という独立した struct 型を新設してはならない（`Mailbox` の `cleanup_policy` variant で表現する）
 
 ### 7. async backpressure と `DispatcherWaker`
 
@@ -376,15 +443,16 @@
 #### 満たすべき条件
 
 - 本 change で `BalancingDispatcher` を **V1** として実装する。V1 の機能スコープ:
-  1. `SharedMessageQueue` を 1 つ持ち、attach した全 actor の `SharingMailbox` がそれを参照する
+  1. `SharedMessageQueue` を 1 つ持ち、attach した全 actor の `Mailbox::new_sharing(...)` で作られた mailbox がそれを参照する
   2. `dispatch` / `system_dispatch` override で envelope を shared queue に enqueue する
-  3. shared queue の dequeue は `SharingMailbox::run()` 経由で行われ、actor のいずれかが run した時に取り出される（自然な load balancing）
-  4. **team tracking や teamWork fallback は V1 では実装しない**（YAGNI）
+  3. attach 済み team member を保持し、`dispatch` は `receiver.mailbox()` を先頭にした team 候補 mailbox 配列を返す
+  4. shared queue の dequeue は `Mailbox::run()` 経由で行われ、actor のいずれかが run した時に取り出される（自然な load balancing）
+  5. **Pekko の `teamWork()` に相当する専用 helper / idle member wake-up 最適化は V1 では実装しない**
 - 将来 V2 (teamWork load balancing fallback、active wake-up of idle members) を **既存ファイル無変更で additive に追加** できるよう、次の seam を保持する:
-  1. `MessageDispatcher::create_mailbox` が trait メソッドとして存在する（V1 で `BalancingDispatcher` が override し `SharingMailbox` を返す）
-  2. `MessageDispatcher::dispatch` / `system_dispatch` の戻り値が `Vec<ArcShared<Mailbox>>` 構造（V1 は `vec![receiver.mailbox()]` 単一要素、V2 では team member を複数要素として返せる）
+  1. `MessageDispatcher::create_mailbox` が trait メソッドとして存在する（V1 で `BalancingDispatcher` が override し `Mailbox::new_sharing(...)` 経由の mailbox を返す）
+  2. `MessageDispatcher::dispatch` / `system_dispatch` の戻り値が `Vec<ArcShared<Mailbox>>` 構造（V1 でも複数 team 候補を返し、V2 ではその選定をさらに最適化できる）
   3. `MessageDispatcher::register_actor` / `unregister_actor` hook が存在し、V2 で team Vec の add/remove を override で挿入できる
-  4. `Mailbox::new(actor, queue)` のように message queue を外部から注入可能なコンストラクタを持つ（V1 で `SharingMailbox` が利用）
+  4. `Mailbox::new(actor, queue)` / `Mailbox::new_sharing(actor, shared_queue)` のように message queue を外部から注入可能なコンストラクタを持つ
   5. `MessageQueue` trait は multi-consumer を許容するシグネチャ（`&self` のみ、`&mut` を要求しない）— 既存の mailbox 実装でこのポリシーは既に成立しており、project 全体の例外扱いとして維持される
 - 上記 seam の存在を tests ではなく trait / struct のシグネチャ上で担保する
 - `attach` / `detach` 自体は `MessageDispatcherShared` 側の orchestration として提供され、`BalancingDispatcher` を含め具象型差分は trait の overridable hook 側だけで表現する
@@ -399,7 +467,7 @@
 
 #### 満たすべき条件
 
-- `DispatcherSettings` は `DefaultDispatcher` / `PinnedDispatcher` / `DispatcherCore` / `DefaultDispatcherConfigurator` / `PinnedDispatcherConfigurator` に渡すための **immutable な settings bundle** として再定義する
+- `DispatcherSettings` は `DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher` / `DispatcherCore` / `DefaultDispatcherConfigurator` / `PinnedDispatcherConfigurator` / `BalancingDispatcherConfigurator` に渡すための **immutable な settings bundle** として再定義する
 - 旧版 `DispatcherSettings`（`throughput_deadline` / `starvation_deadline` / `schedule_adapter` を持っていたもの）とは **別物** であり、新版は次のフィールドのみを持つ:
   ```rust
   #[derive(Clone)]
@@ -416,6 +484,7 @@
 - `DispatcherCore::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` のシグネチャで使用する
 - `DefaultDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` も同様
 - `PinnedDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` の場合、`settings.throughput` と `settings.throughput_deadline` は **構築時に Pinned 固有値（`NonZeroUsize::MAX` / `None`）に上書き** される（呼び出し側は何を渡しても良いが、結果として Pinned の固定値になる）
+- `BalancingDispatcher::new(settings: DispatcherSettings, executor: ExecutorShared) -> Self` は受け取った `settings` をそのまま `DispatcherCore::new` に渡し、内部で新しい `SharedMessageQueue` を生成する
 
 #### 満たしてはいけない条件
 
@@ -469,13 +538,22 @@
 #### 満たすべき条件
 
 - `MessageDispatcherShared::attach(actor)` が mailbox を生成して actor に install する設計に合わせ、`ActorCell` の生成順は 2-phase init を許容する形へ再設計しなければならない
+- 具体的には `ActorCell` に以下の変更を加える:
+  1. **mailbox slot の 2-phase init**: `mailbox` field を `OnceLock<ArcShared<Mailbox>>` (もしくは `SpinSyncMutex<Option<ArcShared<Mailbox>>>` を no_std 環境でも使える形で) に変更する
+  2. **install method の追加**: `pub fn install_mailbox(&self, mbox: ArcShared<Mailbox>)` を追加する。一度だけ呼べる契約 (二重 install は panic または no-op。推奨は panic = `OnceLock::set().expect("mailbox already installed")`)
+  3. **既存 accessor の signature は維持**: `pub fn mailbox(&self) -> ArcShared<Mailbox>` は従来通り infallible で返す。内部的には `OnceLock::get().expect("mailbox not installed yet").clone()` を呼ぶ。未 install 時は panic になるが、legacy dispatcher 側は構築直後に即 install を呼ぶため問題にならない。legacy code の呼び出し側 (`dispatcher_core.rs` 等) はシグネチャ互換のため書き換え不要
+  3.1 **並走期間中の legacy 経路責務**: legacy `ActorCell::create` 経路は mailbox 生成直後に `install_mailbox` を即時呼ぶ責任を持つ。新 dispatcher 経路は `MessageDispatcherShared::attach` が install を担当する
+  4. **`system()` accessor の可視性拡大**: 現在 private な `fn system(&self) -> SystemStateShared` の可視性を `pub(crate)` に広げる。理由は `MessageDispatcherShared::detach` が delayed shutdown 登録のため `actor.scheduler()` 経由で system scheduler を取得するため
+  5. **`scheduler()` 便利 accessor の追加**: `pub fn scheduler(&self) -> SchedulerShared` を `ActorCell` に追加する。内部では `self.system().scheduler()` を呼ぶ。`SystemStateShared` 自体を dispatcher 層に露出させず、必要な scheduler だけを narrow に取得させる
 - この redesign では `ActorCell` 自体を AShared 化することまでは要求しない
-- 影響範囲は mailbox / dispatcher / sender の install 順序に限定し、`ActorCell` 全体へ広い内部可変性を導入しない
+- 影響範囲は上記 5 項目に限定し、`ActorCell` 全体へ広い内部可変性を導入しない
 
 #### 満たしてはいけない条件
 
-- `ActorCell` の大半の field を `Option` / `OnceLock` 化して初期化順問題を雑に回避してはならない
+- `ActorCell::mailbox()` の戻り値型を `Option<ArcShared<Mailbox>>` に変更してはならない（legacy dispatcher 側の全呼び出しを `.unwrap()` で書き換える必要が生じ、並走期間中の additive 原則と矛盾する）
+- `ActorCell` の `mailbox` 以外の大半の field を `Option` / `OnceLock` 化して初期化順問題を雑に回避してはならない
 - `ActorCell` へ新たな広域 mutex を導入して attach/install を強引に通してはならない
+- `SystemStateShared` を dispatcher 層に public 経路で露出してはならない（`scheduler()` のような narrow accessor を経由する）
 
 ## Acceptance Checklist
 
@@ -507,7 +585,7 @@
 - `Dispatchers::resolve` の呼び出しは spawn / bootstrap の経路に限定され、message hot path から呼ばれない（trait doc に明記）
 - 新版 `DispatcherSettings` が `id` / `throughput` / `throughput_deadline` / `shutdown_timeout` のみを持つ pub struct として core に存在する
 - 旧版 `DispatcherSettings` の `schedule_adapter` / `starvation_deadline` フィールドが新版に引き継がれていない
-- `DispatcherCore::new` / `DefaultDispatcher::new` / `PinnedDispatcher::new` / `BalancingDispatcher::new` / `DefaultDispatcherConfigurator::new` がすべて `DispatcherSettings` を受け取る形で統一されている
+- `DispatcherCore::new` / `DefaultDispatcher::new` / `PinnedDispatcher::new` / `BalancingDispatcher::new` / `DefaultDispatcherConfigurator::new` / `PinnedDispatcherConfigurator::new` / `BalancingDispatcherConfigurator::new` がすべて `DispatcherSettings` を受け取る形で統一されている
 - `SpawnError::DispatcherAlreadyOwned` バリアントが追加されている
 - mailbox / overflow strategy が要求する blocking compatibility が `executor.supports_blocking()` と照合され、不適合な組み合わせは `SpawnError::InvalidMailboxConfig` で attach 時に拒否される
 - 旧 `DispatcherShared` / `DispatchShared` / `DispatcherCore`（旧）/ 旧 `DispatcherSettings` / `DispatchExecutorRunner` / `ScheduleAdapter*` / `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` が削除されている

@@ -1,56 +1,87 @@
+//! Single-thread dedicated [`Executor`] used by `PinnedDispatcher`.
+
+#[cfg(test)]
+mod tests;
+
 extern crate std;
 
+use alloc::boxed::Box;
 use std::{
+  string::String,
   sync::mpsc::{Sender, channel},
   thread::{self, JoinHandle, ThreadId},
 };
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{DispatchError, DispatchExecutor, DispatchShared};
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
 
-/// Dedicated single-lane executor used by `PinnedDispatcher`.
+type Task = Box<dyn FnOnce() + Send + 'static>;
+
+/// Spawns a single dedicated worker thread that runs every submitted task.
+///
+/// The Pekko equivalent is `org.apache.pekko.dispatch.PinnedDispatcher`'s
+/// underlying executor: at most one task is in flight at a time, and shutdown
+/// joins the worker thread cleanly.
 pub struct PinnedExecutor {
-  sender:    Option<Sender<DispatchShared>>,
+  sender:    Option<Sender<Task>>,
   join:      Option<JoinHandle<()>>,
-  thread_id: ThreadId,
+  thread_id: Option<ThreadId>,
 }
 
 impl PinnedExecutor {
-  /// Spawns a dedicated worker thread.
+  /// Spawns the worker thread with the supplied name.
+  ///
+  /// # Panics
+  ///
+  /// Panics if the worker thread cannot be spawned.
   #[must_use]
-  pub fn with_name(name: String) -> Self {
-    let (tx, rx) = channel::<DispatchShared>();
-    let builder = thread::Builder::new().name(name);
-    let join = builder.spawn(move || {
-      while let Ok(dispatcher) = rx.recv() {
-        dispatcher.drive();
-      }
-    });
-    let join = join.expect("pinned dispatcher worker thread must spawn");
-    let thread_id = join.thread().id();
+  pub fn with_name(name: impl Into<String>) -> Self {
+    let (tx, rx) = channel::<Task>();
+    let builder = thread::Builder::new().name(name.into());
+    let join = builder
+      .spawn(move || {
+        while let Ok(task) = rx.recv() {
+          task();
+        }
+      })
+      .expect("pinned executor worker thread must spawn");
+    let thread_id = Some(join.thread().id());
     Self { sender: Some(tx), join: Some(join), thread_id }
   }
 }
 
-impl DispatchExecutor for PinnedExecutor {
-  fn execute(&mut self, dispatcher: DispatchShared) -> Result<(), DispatchError> {
-    match &self.sender {
-      | Some(sender) => sender.send(dispatcher).map_err(|_| DispatchError::ExecutorUnavailable),
-      | None => Err(DispatchError::ExecutorUnavailable),
+impl Executor for PinnedExecutor {
+  fn execute(&mut self, task: Task) -> Result<(), ExecuteError> {
+    let Some(sender) = self.sender.as_ref() else {
+      return Err(ExecuteError::Shutdown);
+    };
+    sender.send(task).map_err(|_| ExecuteError::Shutdown)
+  }
+
+  fn supports_blocking(&self) -> bool {
+    // Single-threaded executor cannot safely run blocking tasks that block
+    // their only worker thread without starving subsequent submissions.
+    false
+  }
+
+  fn shutdown(&mut self) {
+    self.sender.take();
+    let same_thread = self.thread_id.is_some_and(|id| id == thread::current().id());
+    if same_thread {
+      // Cannot join from inside the worker thread; release the handle.
+      let _ = self.join.take();
+      return;
+    }
+    if let Some(join) = self.join.take() {
+      // Best-effort shutdown: a worker panic cannot be recovered here, so the
+      // join result is intentionally observed-and-ignored to satisfy the
+      // `#[must_use]` contract.
+      drop(join.join());
     }
   }
 }
 
 impl Drop for PinnedExecutor {
   fn drop(&mut self) {
-    self.sender.take();
-    if thread::current().id() == self.thread_id {
-      let _ = self.join.take();
-      return;
-    }
-    if let Some(join) = self.join.take() {
-      // Best-effort worker teardown in Drop: a worker panic cannot be recovered here and does not affect
-      // actor-system consistency after the executor has already been dropped.
-      if let Err(_panic) = join.join() {}
-    }
+    self.shutdown();
   }
 }

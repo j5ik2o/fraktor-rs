@@ -3,7 +3,6 @@ use core::marker::PhantomData;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::metrics_event::MailboxPressureEvent;
-use crate::core::kernel::dispatch::dispatcher::DispatcherShared;
 
 type BackpressureCallback = dyn Fn(&MailboxPressureEvent) + Send + Sync + 'static;
 
@@ -27,15 +26,6 @@ impl BackpressurePublisher {
   where
     F: Fn(&MailboxPressureEvent) + Send + Sync + 'static, {
     Self::new(ArcShared::new(callback))
-  }
-
-  /// Creates a publisher that forwards events to the dispatcher.
-  #[must_use]
-  pub fn from_dispatcher(dispatcher: DispatcherShared) -> Self {
-    let publisher = move |event: &MailboxPressureEvent| {
-      dispatcher.notify_backpressure(event);
-    };
-    Self::from_fn(publisher)
   }
 
   /// Publishes a pressure event to the configured target.

@@ -2,9 +2,7 @@ use core::time::Duration;
 
 use crate::core::kernel::{
   actor::{actor_path::GuardianKind as PathGuardianKind, setup::ActorSystemConfig},
-  dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, DispatcherSettings, InlineDispatcherProvider,
-  },
+  dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
   system::remote::RemotingConfig,
 };
 
@@ -65,13 +63,10 @@ fn test_remoting_config_rejects_short_quarantine() {
 }
 
 #[test]
-fn test_actor_system_config_with_default_dispatcher() {
-  let entry = DispatcherRegistryEntry::new(
-    InlineDispatcherProvider::new(),
-    DispatcherSettings::default().with_starvation_deadline(Some(Duration::from_millis(5))),
+fn test_actor_system_config_default_resolves_default_dispatcher() {
+  let config = ActorSystemConfig::default();
+  assert!(
+    config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).is_ok(),
+    "ActorSystemConfig::default() should seed the default dispatcher entry"
   );
-  let config = ActorSystemConfig::default().with_default_dispatcher_entry(entry);
-  let resolved = config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).expect("default dispatcher entry should resolve");
-
-  assert_eq!(resolved.settings().starvation_deadline(), Some(Duration::from_millis(5)));
 }

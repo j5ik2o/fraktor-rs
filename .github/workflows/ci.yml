@@ -15,6 +15,22 @@ env:
   RUSTFLAGS: -D warnings
   CARGO_NET_OFFLINE: false
   DYLINT_VERSION: "4.1.0"
+  # Pin CARGO_HOME to the per-job workspace so concurrent self-hosted runners
+  # never share the registry / package cache. The default would be the runner
+  # user's `~/.cargo`, which is a single directory across every runner instance
+  # on the same physical machine; that caused intermittent
+  # "could not parse/generate dep info" failures when two parallel jobs raced
+  # on the same itertools / regex_automata / clap_builder build artifacts.
+  CARGO_HOME: ${{ github.workspace }}/.cargo
+  # Pin TMPDIR to the per-job workspace as well. The dylint UI tests use
+  # `compiletest_rs`, whose default `build_base` is `env::temp_dir()` (=
+  # `/tmp` on Linux). On self-hosted runners that share `/tmp` with other
+  # services (or that have leftover root-owned stamp files from previous
+  # runs) `compiletest_rs::dump_output_file` panics with `PermissionDenied`
+  # when it tries to overwrite the per-test stdout/stderr dump. Forcing
+  # `TMPDIR` to a workspace-local path keeps every dylint job in its own
+  # isolated scratch dir.
+  TMPDIR: ${{ github.workspace }}/.tmp
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,6 +42,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Prepare workspace TMPDIR
+        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -51,6 +69,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Prepare workspace TMPDIR
+        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -60,7 +80,24 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-          cache-directories: ~/.cargo/bin
+          cache-directories: ${{ github.workspace }}/.cargo/bin
+      - name: Bootstrap cargo-dylint binary from runner cache
+        # The workflow pins CARGO_HOME to ${{ github.workspace }}/.cargo so that
+        # concurrent self-hosted runners do not race on a shared registry, but
+        # that also means each fresh job starts without `cargo-dylint`. Building
+        # `cargo-dylint` from source pulls in `openssl-sys`, which fails on
+        # runners that do not have `libssl-dev` / `pkg-config`. Instead reuse
+        # the pre-installed binary that already lives at the runner user's
+        # default cargo home (`~/.cargo/bin/cargo-dylint`) when present.
+        if: matrix.check.name == 'Dylint'
+        run: |
+          mkdir -p "${CARGO_HOME}/bin"
+          if [ -x "${HOME}/.cargo/bin/cargo-dylint" ]; then
+            cp "${HOME}/.cargo/bin/cargo-dylint" "${CARGO_HOME}/bin/cargo-dylint"
+            "${CARGO_HOME}/bin/cargo-dylint" --version || true
+          else
+            echo "::notice::no pre-installed cargo-dylint at ${HOME}/.cargo/bin; ci-check.sh will attempt to install"
+          fi
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
@@ -84,6 +121,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Prepare workspace TMPDIR
+        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -103,6 +142,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Prepare workspace TMPDIR
+        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:
@@ -122,6 +163,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
+      - name: Prepare workspace TMPDIR
+        run: mkdir -p "${TMPDIR}"
       - name: Setup Rust toolchain (nightly)
         uses: dtolnay/rust-toolchain@master
         with:

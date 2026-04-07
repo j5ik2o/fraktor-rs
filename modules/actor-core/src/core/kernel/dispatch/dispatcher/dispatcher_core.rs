@@ -1,388 +1,143 @@
+//! Common dispatcher state shared by every concrete `MessageDispatcher`.
+//!
+//! `DispatcherCore` carries the configuration, executor, and lifecycle state
+//! that is identical across `DefaultDispatcher`, `PinnedDispatcher`, and
+//! `BalancingDispatcher`. The struct is intentionally CQS-strict and free of
+//! interior mutability: the surrounding `MessageDispatcherShared` provides the
+//! `RuntimeMutex` so callers can run command methods through `&mut self`.
+
 #[cfg(test)]
 mod tests;
 
-use alloc::format;
-use core::{
-  num::NonZeroUsize,
-  pin::Pin,
-  sync::atomic::Ordering,
-  task::{Context, Poll},
-  time::Duration,
-};
-
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
-use portable_atomic::{AtomicU8, AtomicU64};
+use alloc::string::{String, ToString};
+use core::{num::NonZeroUsize, time::Duration};
 
 use super::{
-  dispatch_error::DispatchError, dispatch_executor_runner::DispatchExecutorRunner,
-  dispatcher_dump_event::DispatcherDumpEvent, dispatcher_shared::DispatcherShared, dispatcher_state::DispatcherState,
-  schedule_adapter_shared::ScheduleAdapterShared,
-};
-use crate::core::kernel::{
-  actor::{
-    error::{ActorError, SendError},
-    messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
-  },
-  dispatch::mailbox::{
-    EnqueueOutcome, Mailbox, MailboxMessage, MailboxOfferFuture, ScheduleHints, metrics_event::MailboxPressureEvent,
-  },
-  event::{logging::LogLevel, stream::EventStreamEvent},
-  system::state::{SystemStateShared, SystemStateWeak},
+  dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared, shutdown_schedule::ShutdownSchedule,
 };
 
-const DEFAULT_THROUGHPUT: usize = 300;
-pub(crate) const MAX_EXECUTOR_RETRIES: usize = 2;
-
-/// Entity that drains the mailbox and invokes messages.
-pub(crate) struct DispatcherCore {
-  mailbox:             ArcShared<Mailbox>,
-  executor:            ArcShared<DispatchExecutorRunner>,
-  schedule_adapter:    ScheduleAdapterShared,
-  invoker:             RuntimeMutex<Option<MessageInvokerShared>>,
-  mailbox_pressure:    RuntimeMutex<Option<MailboxPressureEvent>>,
-  state:               AtomicU8,
-  throughput_limit:    Option<NonZeroUsize>,
+/// Identifier-keyed dispatcher state shared by concrete dispatcher types.
+pub struct DispatcherCore {
+  id:                  String,
+  throughput:          NonZeroUsize,
   throughput_deadline: Option<Duration>,
-  starvation_deadline: Option<Duration>,
-  system_state:        Option<SystemStateWeak>,
-  last_progress:       AtomicU64,
+  shutdown_timeout:    Duration,
+  executor:            ExecutorShared,
+  inhabitants:         i64,
+  shutdown_schedule:   ShutdownSchedule,
 }
 
-unsafe impl Send for DispatcherCore {}
-unsafe impl Sync for DispatcherCore {}
-
 impl DispatcherCore {
-  pub(crate) fn new(
-    mailbox: ArcShared<Mailbox>,
-    executor: ArcShared<DispatchExecutorRunner>,
-    schedule_adapter: ScheduleAdapterShared,
-    throughput_limit: Option<NonZeroUsize>,
-    throughput_deadline: Option<Duration>,
-    starvation_deadline: Option<Duration>,
-  ) -> Self {
-    let system_state = mailbox.system_state().map(|s| s.downgrade());
+  /// Constructs the core from an immutable settings bundle and an executor.
+  #[must_use]
+  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
     Self {
-      mailbox,
+      id: settings.id().to_string(),
+      throughput: settings.throughput(),
+      throughput_deadline: settings.throughput_deadline(),
+      shutdown_timeout: settings.shutdown_timeout(),
       executor,
-      schedule_adapter,
-      invoker: RuntimeMutex::new(None),
-      mailbox_pressure: RuntimeMutex::new(None),
-      state: AtomicU8::new(DispatcherState::Idle.as_u8()),
-      throughput_limit,
-      throughput_deadline,
-      starvation_deadline,
-      system_state,
-      last_progress: AtomicU64::new(0),
+      inhabitants: 0,
+      shutdown_schedule: ShutdownSchedule::Unscheduled,
     }
   }
 
-  pub(crate) const fn mailbox(&self) -> &ArcShared<Mailbox> {
-    &self.mailbox
+  /// Returns the dispatcher identifier.
+  #[must_use]
+  pub fn id(&self) -> &str {
+    &self.id
   }
 
-  pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared) {
-    *self.invoker.lock() = Some(invoker);
+  /// Returns the configured throughput.
+  #[must_use]
+  pub const fn throughput(&self) -> NonZeroUsize {
+    self.throughput
   }
 
-  pub(crate) const fn executor(&self) -> &ArcShared<DispatchExecutorRunner> {
+  /// Returns the configured throughput deadline.
+  #[must_use]
+  pub const fn throughput_deadline(&self) -> Option<Duration> {
+    self.throughput_deadline
+  }
+
+  /// Returns the configured shutdown timeout.
+  #[must_use]
+  pub const fn shutdown_timeout(&self) -> Duration {
+    self.shutdown_timeout
+  }
+
+  /// Returns the current inhabitants count (number of attached actors).
+  #[must_use]
+  pub const fn inhabitants(&self) -> i64 {
+    self.inhabitants
+  }
+
+  /// Returns a borrow of the underlying `ExecutorShared`.
+  #[must_use]
+  pub const fn executor(&self) -> &ExecutorShared {
     &self.executor
   }
 
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared {
-    self.schedule_adapter.clone()
+  /// Returns the current `ShutdownSchedule` state.
+  #[must_use]
+  pub const fn shutdown_schedule(&self) -> ShutdownSchedule {
+    self.shutdown_schedule
   }
 
-  pub(crate) const fn state(&self) -> &AtomicU8 {
-    &self.state
-  }
-
-  fn system_state(&self) -> Option<SystemStateShared> {
-    self.system_state.as_ref().and_then(|weak| weak.upgrade())
-  }
-
-  fn record_progress(&self) {
-    if let Some(state) = self.system_state() {
-      let tick = duration_to_millis(state.monotonic_now());
-      self.last_progress.store(tick, Ordering::Release);
+  /// Increments the inhabitants counter and cancels a pending delayed shutdown.
+  ///
+  /// If a delayed shutdown was already scheduled, it transitions to
+  /// `Rescheduled`, telling the eventual delayed-fire callback to skip the
+  /// shutdown.
+  pub const fn mark_attach(&mut self) {
+    self.inhabitants += 1;
+    if matches!(self.shutdown_schedule, ShutdownSchedule::Scheduled) {
+      self.shutdown_schedule = ShutdownSchedule::Rescheduled;
     }
   }
 
-  fn elapsed_since_progress(&self) -> Option<Duration> {
-    let last = self.last_progress.load(Ordering::Acquire);
-    if last == 0 {
-      return None;
-    }
-    let state = self.system_state()?;
-    let now = duration_to_millis(state.monotonic_now());
-    let delta = now.saturating_sub(last);
-    Some(Duration::from_millis(delta))
-  }
-
-  pub(crate) fn drive(self_arc: &ArcShared<Self>) {
-    self_arc.mailbox.set_running();
-    loop {
-      {
-        let this = self_arc;
-        this.process_batch();
-      }
-
-      let should_continue = {
-        let this = self_arc;
-        DispatcherState::Idle.store(&this.state);
-        this.has_pending_work()
-          && DispatcherState::compare_exchange(DispatcherState::Idle, DispatcherState::Running, &this.state).is_ok()
-      };
-
-      if should_continue {
-        self_arc.mailbox.set_running();
-        continue;
-      }
-
-      let pending_reschedule = self_arc.mailbox.set_idle();
-      if pending_reschedule {
-        let mut hints = self_arc.mailbox.current_schedule_hints();
-        hints.backpressure_active = self_arc.has_pending_mailbox_pressure();
-        Self::request_execution(self_arc, hints);
-      }
-
-      break;
-    }
-  }
-
-  fn process_batch(&self) {
-    let limit = self.throughput_limit.map(NonZeroUsize::get).unwrap_or(DEFAULT_THROUGHPUT);
-    let mut processed = 0_usize;
-    let deadline_anchor = self.deadline_anchor();
-
-    while processed < limit {
-      if self.deadline_reached(deadline_anchor, processed) {
-        break;
-      }
-
-      if self.mailbox.system_len() == 0 && self.process_mailbox_pressure() {
-        self.record_progress();
-        processed += 1;
-        continue;
-      }
-
-      match self.mailbox.dequeue() {
-        | Some(MailboxMessage::System(msg)) => {
-          self.handle_system_message(msg);
-          self.record_progress();
-          processed += 1;
-        },
-        | Some(MailboxMessage::User(msg)) => {
-          self.handle_user_message(msg);
-          self.record_progress();
-          processed += 1;
-        },
-        | None => break,
-      }
-    }
-  }
-
-  fn deadline_anchor(&self) -> Option<Duration> {
-    if self.throughput_deadline.is_some() { self.system_state().map(|state| state.monotonic_now()) } else { None }
-  }
-
-  fn deadline_reached(&self, anchor: Option<Duration>, processed: usize) -> bool {
-    if processed == 0 {
-      return false;
-    }
-    match (self.throughput_deadline, anchor, self.system_state()) {
-      | (Some(limit), Some(start), Some(state)) => state.monotonic_now().saturating_sub(start) >= limit,
-      | _ => false,
-    }
-  }
-
-  fn handle_system_message(&self, message: SystemMessage) {
-    match message {
-      | SystemMessage::Suspend => self.mailbox.suspend(),
-      | SystemMessage::Resume => self.mailbox.resume(),
-      | other => {
-        if let Err(error) = self.invoke_system_message(other) {
-          let message = format!("failed to invoke system message: {:?}", error);
-          self.mailbox.emit_log(LogLevel::Error, message);
-        }
-      },
-    }
-  }
-
-  fn handle_user_message(&self, message: AnyMessage) {
-    if let Err(error) = self.invoke_user_message(message) {
-      let message = format!("failed to invoke user message: {:?}", error);
-      self.mailbox.emit_log(LogLevel::Error, message);
-    }
-  }
-
-  fn process_mailbox_pressure(&self) -> bool {
-    let Some(event) = self.mailbox_pressure.lock().take() else {
-      return false;
-    };
-    if let Err(error) = self.invoke_mailbox_pressure(&event) {
-      let message = format!("failed to invoke mailbox pressure handler: {:?}", error);
-      self.mailbox.emit_log(LogLevel::Error, message);
-    }
-    true
-  }
-
-  fn invoke_user_message(&self, message: AnyMessage) -> Result<(), ActorError> {
-    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
-    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
-    let invoker = self.invoker.lock().clone();
-    if let Some(invoker) = invoker {
-      return invoker.with_write(|i| i.invoke_user_message(message));
-    }
-    Ok(())
-  }
-
-  fn invoke_system_message(&self, message: SystemMessage) -> Result<(), ActorError> {
-    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
-    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
-    let invoker = self.invoker.lock().clone();
-    if let Some(invoker) = invoker {
-      return invoker.with_write(|i| i.invoke_system_message(message));
-    }
-    Ok(())
-  }
-
-  fn invoke_mailbox_pressure(&self, event: &MailboxPressureEvent) -> Result<(), ActorError> {
-    // Clone the invoker reference and release the outer lock before acquiring the inner lock.
-    // This prevents potential deadlock when actor message handlers interact with the dispatcher.
-    let invoker = self.invoker.lock().clone();
-    if let Some(invoker) = invoker {
-      return invoker.with_write(|i| i.invoke_mailbox_pressure(event));
-    }
-    Ok(())
-  }
-
-  #[allow(dead_code)]
-  pub(crate) fn enqueue_user(self_arc: &ArcShared<Self>, message: AnyMessage) -> Result<(), SendError> {
-    match self_arc.mailbox.enqueue_user(message) {
-      | Ok(EnqueueOutcome::Enqueued) => {
-        Self::request_execution(self_arc, ScheduleHints {
-          has_system_messages: false,
-          has_user_messages:   true,
-          backpressure_active: false,
-        });
-        Ok(())
-      },
-      | Ok(EnqueueOutcome::Pending(mut future)) => {
-        Self::drain_offer_future(self_arc, &mut future)?;
-        Self::request_execution(self_arc, ScheduleHints {
-          has_system_messages: false,
-          has_user_messages:   true,
-          backpressure_active: false,
-        });
-        Ok(())
-      },
-      | Err(error) => Err(error),
-    }
-  }
-
-  pub(crate) fn enqueue_system(self_arc: &ArcShared<Self>, message: SystemMessage) -> Result<(), SendError> {
-    self_arc.mailbox.enqueue_system(message)?;
-    Self::request_execution(self_arc, ScheduleHints {
-      has_system_messages: true,
-      has_user_messages:   false,
-      backpressure_active: false,
-    });
-    Ok(())
-  }
-
-  #[allow(dead_code)]
-  fn drain_offer_future(self_arc: &ArcShared<Self>, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
-    let adapter = self_arc.schedule_adapter();
-    let dispatcher = DispatcherShared::from_core(self_arc.clone());
-    let waker = adapter.with_write(|a| a.create_waker(dispatcher));
-    let mut cx = Context::from_waker(&waker);
-
-    loop {
-      match Pin::new(&mut *future).poll(&mut cx) {
-        | Poll::Ready(Ok(_)) => return Ok(()),
-        | Poll::Ready(Err(error)) => return Err(error),
-        | Poll::Pending => {
-          Self::request_execution(self_arc, ScheduleHints {
-            has_system_messages: false,
-            has_user_messages:   true,
-            backpressure_active: false,
-          });
-          adapter.with_write(|a| a.on_pending());
-        },
-      }
-    }
-  }
-
-  fn has_pending_work(&self) -> bool {
-    self.mailbox.system_len() > 0
-      || (!self.mailbox.is_suspended() && self.mailbox.user_len() > 0)
-      || self.has_pending_mailbox_pressure()
-  }
-
-  fn has_pending_mailbox_pressure(&self) -> bool {
-    self.mailbox_pressure.lock().is_some()
-  }
-
-  pub(crate) fn request_execution(self_arc: &ArcShared<Self>, hints: ScheduleHints) {
-    if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
-      return;
-    }
-    if self_arc.mailbox.request_schedule(hints) {
-      DispatcherShared::from_core(self_arc.clone()).spawn_execution();
-    } else {
-      self_arc.handle_starvation(hints);
-    }
-  }
-
-  pub(crate) fn handle_backpressure(self_arc: &ArcShared<Self>, event: &MailboxPressureEvent) {
-    *self_arc.mailbox_pressure.lock() = Some(event.clone());
-    let hints = ScheduleHints { has_system_messages: false, has_user_messages: true, backpressure_active: true };
-    Self::request_execution(self_arc, hints);
-  }
-
-  pub(crate) fn handle_executor_failure(&self, attempts: usize, error: DispatchError) {
-    DispatcherState::Idle.store(self.state());
-    let _was_idle = self.mailbox.set_idle();
-    self.schedule_adapter.with_write(|a| a.notify_rejected(attempts));
-    let message = format!("dispatcher execution failed after {} attempt(s): {}", attempts, error);
-    self.mailbox.emit_log(LogLevel::Error, message);
-  }
-
-  pub(crate) fn publish_dump(self_arc: &ArcShared<Self>) {
-    let Some(system_state) = self_arc.mailbox.system_state() else {
-      return;
-    };
-    let Some(pid) = self_arc.mailbox.pid() else {
-      return;
-    };
-    let state_value = self_arc.state.load(Ordering::Acquire);
-    let dispatcher_state = DispatcherState::from_u8(state_value);
-    let event = DispatcherDumpEvent::new(
-      pid,
-      self_arc.mailbox.user_len(),
-      self_arc.mailbox.system_len(),
-      matches!(dispatcher_state, DispatcherState::Running),
-      self_arc.mailbox.is_suspended(),
+  /// Decrements the inhabitants counter.
+  ///
+  /// In debug builds an underflow triggers a `debug_assert!` to surface
+  /// register/unregister mismatches loudly. In release builds the counter is
+  /// clamped to zero and an error log is emitted to preserve observability.
+  pub fn mark_detach(&mut self) {
+    debug_assert!(
+      self.inhabitants > 0,
+      "DispatcherCore::mark_detach underflow: inhabitants={} (id={})",
+      self.inhabitants,
+      self.id
     );
-    system_state.publish_event(&EventStreamEvent::DispatcherDump(event));
+    if self.inhabitants > 0 {
+      self.inhabitants -= 1;
+    } else {
+      tracing::error!(
+        target: "fraktor::dispatcher",
+        dispatcher_id = %self.id,
+        "DispatcherCore::mark_detach observed zero inhabitants; clamping to zero"
+      );
+      self.inhabitants = 0;
+    }
   }
-}
 
-const fn duration_to_millis(duration: Duration) -> u64 {
-  duration.as_millis() as u64
-}
+  /// Transitions the shutdown schedule when the dispatcher has no inhabitants.
+  ///
+  /// Returns the post-transition [`ShutdownSchedule`] so the caller can copy
+  /// the value out of the lock and decide whether to register a delayed
+  /// shutdown closure without re-acquiring the mutex.
+  pub const fn schedule_shutdown_if_sensible(&mut self) -> ShutdownSchedule {
+    if self.inhabitants == 0 {
+      self.shutdown_schedule = match self.shutdown_schedule {
+        | ShutdownSchedule::Unscheduled => ShutdownSchedule::Scheduled,
+        | ShutdownSchedule::Scheduled | ShutdownSchedule::Rescheduled => ShutdownSchedule::Rescheduled,
+      };
+    }
+    self.shutdown_schedule
+  }
 
-impl DispatcherCore {
-  fn handle_starvation(&self, hints: ScheduleHints) {
-    if !hints.has_system_messages && !hints.has_user_messages && !hints.backpressure_active {
-      return;
-    }
-    let Some(threshold) = self.starvation_deadline else {
-      return;
-    };
-    if let Some(elapsed) = self.elapsed_since_progress().filter(|elapsed| *elapsed >= threshold) {
-      let message = format!("dispatcher detected potential starvation after {:?}", elapsed);
-      self.mailbox.emit_log(LogLevel::Warn, message);
-    }
+  /// Shuts the underlying executor down and resets the schedule state.
+  pub fn shutdown(&mut self) {
+    self.executor.shutdown();
+    self.shutdown_schedule = ShutdownSchedule::Unscheduled;
   }
 }

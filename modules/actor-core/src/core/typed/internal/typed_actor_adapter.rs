@@ -141,10 +141,9 @@ where
       let scheduler = ctx.system().scheduler();
       let result = scheduler.with_write(|guard| {
         guard.schedule_once(duration, SchedulerCommand::SendMessage {
-          receiver:   self_ref,
-          message:    AnyMessage::new(message),
-          dispatcher: None,
-          sender:     None,
+          receiver: self_ref,
+          message:  AnyMessage::new(message),
+          sender:   None,
         })
       });
       match result {

@@ -82,12 +82,8 @@ impl ActorMaterializer {
     interval: Duration,
   ) -> Result<SchedulerHandle, StreamError> {
     let receiver = actor.clone().into_actor_ref();
-    let command = SchedulerCommand::SendMessage {
-      receiver,
-      message: AnyMessage::new(StreamDriveCommand::Tick),
-      dispatcher: None,
-      sender: None,
-    };
+    let command =
+      SchedulerCommand::SendMessage { receiver, message: AnyMessage::new(StreamDriveCommand::Tick), sender: None };
     system
       .scheduler()
       .with_write(|scheduler| scheduler.schedule_at_fixed_rate(interval, interval, command))

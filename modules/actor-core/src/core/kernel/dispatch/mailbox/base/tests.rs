@@ -15,8 +15,8 @@ use crate::core::kernel::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   dispatch::mailbox::{
-    EnqueueOutcome, Mailbox, MailboxInstrumentation, MailboxOfferFuture, MailboxOverflowStrategy, MailboxPolicy,
-    MessageQueue, QueueStateHandle,
+    EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation, MailboxOfferFuture, MailboxOverflowStrategy,
+    MailboxPolicy, MessageQueue, QueueStateHandle,
   },
   system::ActorSystem,
 };
@@ -29,10 +29,10 @@ enum ScriptedEnqueue {
 }
 
 struct ScriptedMessageQueue {
-  messages:             RuntimeMutex<VecDeque<AnyMessage>>,
+  messages:             RuntimeMutex<VecDeque<Envelope>>,
   outcomes:             RuntimeMutex<VecDeque<ScriptedEnqueue>>,
   full_hook:            RuntimeMutex<Option<ScriptedFullHook>>,
-  pending_offer_handle: QueueStateHandle<AnyMessage>,
+  pending_offer_handle: QueueStateHandle<Envelope>,
 }
 
 struct ScriptedFullHook {
@@ -62,15 +62,15 @@ impl ScriptedMessageQueue {
 }
 
 impl MessageQueue for ScriptedMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let outcome = self.outcomes.lock().pop_front().expect("enqueue outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
-        self.messages.lock().push_back(message);
+        self.messages.lock().push_back(envelope);
         Ok(EnqueueOutcome::Enqueued)
       },
       | ScriptedEnqueue::Pending => {
-        let future = MailboxOfferFuture::new(self.pending_offer_handle.state.clone(), message);
+        let future = MailboxOfferFuture::new(self.pending_offer_handle.state.clone(), envelope);
         Ok(EnqueueOutcome::Pending(future))
       },
       | ScriptedEnqueue::Full => {
@@ -78,13 +78,13 @@ impl MessageQueue for ScriptedMessageQueue {
           hook.before_error_tx.send(()).expect("full hook notification must be delivered");
           hook.resume_rx.recv().expect("full hook resume signal must be delivered");
         }
-        Err(SendError::full(message))
+        Err(SendError::full(envelope.into_payload()))
       },
-      | ScriptedEnqueue::Closed => Err(SendError::closed(message)),
+      | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
     }
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     self.messages.lock().pop_front()
   }
 

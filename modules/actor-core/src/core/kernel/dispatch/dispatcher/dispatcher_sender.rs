@@ -1,85 +1,89 @@
+//! `ActorRefSender` implementation backed by the new `MessageDispatcherShared`.
+//!
+//! `DispatcherSender` is constructed in `ActorCell::create` whenever the
+//! actor system has a `dispatcher` configurator registered for the
+//! resolved dispatcher id. The sender enqueues envelopes directly into the
+//! receiver mailbox and asks the new dispatcher to schedule it.
+//!
+//! Backpressure: when the mailbox is full, `Mailbox::enqueue_envelope`
+//! returns `EnqueueOutcome::Pending(future)`. The sender polls the
+//! future to completion using a [`dispatcher_waker`](super::dispatcher_waker)
+//! so that capacity-available signals trigger a mailbox re-schedule through
+//! the new dispatcher tree.
+
 #[cfg(test)]
 mod tests;
 
 use alloc::boxed::Box;
-use core::{pin::Pin, task::Context};
+use core::{
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::dispatcher_shared::DispatcherShared;
+use super::{dispatcher_waker::dispatcher_waker, message_dispatcher_shared::MessageDispatcherShared};
 use crate::core::kernel::{
   actor::{
     actor_ref::{ActorRefSender, SendOutcome},
     error::SendError,
     messaging::AnyMessage,
   },
-  dispatch::{
-    dispatcher::schedule_adapter_shared::ScheduleAdapterShared,
-    mailbox::{EnqueueOutcome, Mailbox, MailboxOfferFuture, ScheduleHints},
-  },
+  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxOfferFuture},
 };
 
-/// Sender that enqueues messages via actor handle.
+/// Sender that routes user messages through the new dispatcher tree.
 pub struct DispatcherSender {
-  dispatcher: DispatcherShared,
+  dispatcher: MessageDispatcherShared,
   mailbox:    ArcShared<Mailbox>,
 }
 
-unsafe impl Send for DispatcherSender {}
-unsafe impl Sync for DispatcherSender {}
-
 impl DispatcherSender {
+  /// Builds a new sender bound to `dispatcher` and `mailbox`.
   #[must_use]
-  /// Creates a sender bound to the specified dispatcher.
-  pub fn new(dispatcher: DispatcherShared) -> Self {
-    let mailbox = dispatcher.mailbox();
+  pub const fn new(dispatcher: MessageDispatcherShared, mailbox: ArcShared<Mailbox>) -> Self {
     Self { dispatcher, mailbox }
   }
 
-  fn poll_pending(&self, adapter: &ScheduleAdapterShared, future: &mut MailboxOfferFuture) -> Result<(), SendError> {
-    let waker = adapter.with_write(|a| a.create_waker(self.dispatcher.clone()));
+  /// Drives the [`MailboxOfferFuture`] to completion using a [`dispatcher_waker`].
+  ///
+  /// Each `Pending` poll first re-registers the mailbox for execution on the
+  /// new dispatcher so the drain loop has a chance to free capacity. When
+  /// the waker fires (or the queue succeeds) the future completes and we
+  /// return to the send path.
+  fn drive_offer_future(&self, mut future: MailboxOfferFuture) -> Result<(), SendError> {
+    let waker = dispatcher_waker(self.dispatcher.clone(), self.mailbox.clone());
     let mut cx = Context::from_waker(&waker);
-
     loop {
-      match Pin::new(&mut *future).poll(&mut cx) {
-        | core::task::Poll::Ready(Ok(_)) => return Ok(()),
-        | core::task::Poll::Ready(Err(error)) => return Err(error),
-        | core::task::Poll::Pending => {
-          self.dispatcher.register_for_execution(ScheduleHints {
-            has_system_messages: false,
-            has_user_messages:   true,
-            backpressure_active: false,
-          });
-          adapter.with_write(|a| a.on_pending());
+      match Pin::new(&mut future).poll(&mut cx) {
+        | Poll::Ready(Ok(())) => return Ok(()),
+        | Poll::Ready(Err(error)) => return Err(error),
+        | Poll::Pending => {
+          // Nudge the dispatcher so the drain loop has a chance to free capacity.
+          let _scheduled = self.dispatcher.register_for_execution(&self.mailbox, true, false);
         },
       }
     }
-  }
-
-  fn schedule_user_execution(&self) -> SendOutcome {
-    let dispatcher = self.dispatcher.clone();
-    let schedule = move || {
-      dispatcher.register_for_execution(ScheduleHints {
-        has_system_messages: false,
-        has_user_messages:   true,
-        backpressure_active: false,
-      });
-    };
-    SendOutcome::Schedule(Box::new(schedule))
   }
 }
 
 impl ActorRefSender for DispatcherSender {
   fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
-    match self.mailbox.enqueue_user(message) {
-      | Ok(EnqueueOutcome::Enqueued) => Ok(self.schedule_user_execution()),
-      | Ok(EnqueueOutcome::Pending(mut future)) => {
-        let adapter = self.dispatcher.schedule_adapter();
-        adapter.with_write(|a| a.on_pending());
-        self.poll_pending(&adapter, &mut future)?;
-        Ok(self.schedule_user_execution())
+    let envelope = Envelope::new(message);
+    match self.mailbox.enqueue_envelope(envelope)? {
+      | EnqueueOutcome::Enqueued => {},
+      | EnqueueOutcome::Pending(future) => {
+        self.drive_offer_future(future)?;
       },
-      | Err(error) => Err(error),
     }
+    let dispatcher = self.dispatcher.clone();
+    let mailbox = self.mailbox.clone();
+    let schedule = move || {
+      // The boolean is best-effort: a busy mailbox is fine, the next send
+      // will retry. A failed submit is already logged by the shared wrapper.
+      let _scheduled = dispatcher.register_for_execution(&mailbox, true, false);
+    };
+    Ok(SendOutcome::Schedule(Box::new(schedule)))
   }
 }

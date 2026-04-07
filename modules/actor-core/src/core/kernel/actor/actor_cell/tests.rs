@@ -15,7 +15,7 @@ use crate::core::kernel::{
     props::{MailboxConfig, Props},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
 
@@ -156,11 +156,27 @@ fn actor_cell_holds_components() {
   assert_eq!(cell.name(), "worker");
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
-  assert_eq!(cell.dispatcher().mailbox().system_len(), 0);
+}
+
+#[test]
+#[should_panic(expected = "ActorCell::install_mailbox called twice for the same cell")]
+fn actor_cell_install_mailbox_panics_on_double_install() {
+  let system = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(system.clone(), Pid::new(7, 0), None, "double-install".to_string(), &props).expect("cell");
+  // The cell already installed its mailbox during `create`. Re-installing it
+  // must trip the debug-build assertion that enforces the install-once
+  // contract.
+  let mailbox = cell.mailbox();
+  cell.install_mailbox(mailbox);
 }
 
 #[test]
 fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
+  // The registered "bounded" policy has capacity 1 with DropNewest semantics,
+  // so the second user enqueue should be rejected even though `Props` requests
+  // an unbounded mismatched policy.
   let registered_policy = MailboxPolicy::bounded(
     NonZeroUsize::new(1).expect("non-zero mailbox capacity"),
     MailboxOverflowStrategy::DropNewest,
@@ -175,7 +191,11 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 
   let cell = ActorCell::create(system, Pid::new(2, 0), None, "worker".to_string(), &props).expect("create actor cell");
 
-  assert_eq!(*cell.mailbox().policy(), registered_policy);
+  let mailbox = cell.mailbox();
+  mailbox.enqueue_user(AnyMessage::new(1_u32)).expect("first enqueue fits the bounded capacity");
+  let second = mailbox.enqueue_user(AnyMessage::new(2_u32));
+  assert!(matches!(second, Err(_)), "DropNewest should reject the second enqueue past capacity 1");
+  assert_eq!(mailbox.user_len(), 1);
 }
 
 #[test]
@@ -468,14 +488,10 @@ fn system_queue_is_drained_before_user_queue() {
     ActorCell::create(state.clone(), Pid::new(42, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("system enqueue");
+  cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("system enqueue");
   assert!(cell.actor_ref().try_tell(AnyMessage::new(())).is_ok());
 
-  cell.dispatcher().register_for_execution(ScheduleHints {
-    has_system_messages: true,
-    has_user_messages:   true,
-    backpressure_active: false,
-  });
+  let _scheduled = cell.new_dispatcher_shared().register_for_execution(&cell.mailbox(), true, true);
 
   let snapshot = log.lock().clone();
   assert_eq!(snapshot, vec!["pre_start", "receive"]);
@@ -493,7 +509,7 @@ fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
     ActorCell::create(state.clone(), Pid::new(60, 0), None, "ordered".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  cell.dispatcher().enqueue_system(SystemMessage::Create).expect("create");
+  cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("create");
   cell.stash_message_with_limit(AnyMessage::new(1_i32), usize::MAX).expect("stashing below limit should succeed");
   cell.mailbox().enqueue_user(AnyMessage::new(2_i32)).expect("enqueue queued");
 

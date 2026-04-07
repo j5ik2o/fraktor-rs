@@ -27,6 +27,8 @@ mod bounded_stable_priority_message_queue;
 mod capacity;
 /// Opt-in deque capability for message queue implementations.
 mod deque_message_queue;
+mod envelope;
+mod mailbox_cleanup_policy;
 mod mailbox_enqueue_outcome;
 mod mailbox_instrumentation;
 mod mailbox_message;
@@ -82,9 +84,11 @@ pub use bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType;
 pub use bounded_stable_priority_message_queue::BoundedStablePriorityMessageQueue;
 pub use capacity::MailboxCapacity;
 pub use deque_message_queue::DequeMessageQueue;
+pub use envelope::Envelope;
+pub use mailbox_cleanup_policy::MailboxCleanupPolicy;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
 pub use mailbox_instrumentation::MailboxInstrumentation;
-pub(crate) use mailbox_message::MailboxMessage;
+pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;
@@ -120,6 +124,17 @@ pub(crate) fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item),
     | QueueError::TimedOut(item) => SendError::timeout(item),
+    | QueueError::Disconnected | QueueError::Empty | QueueError::WouldBlock => {
+      panic!("unexpected queue error variant during offer")
+    },
+  }
+}
+
+pub(crate) fn map_user_envelope_queue_error(error: QueueError<envelope::Envelope>) -> SendError {
+  match error {
+    | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item.into_payload()),
+    | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item.into_payload()),
+    | QueueError::TimedOut(item) => SendError::timeout(item.into_payload()),
     | QueueError::Disconnected | QueueError::Empty | QueueError::WouldBlock => {
       panic!("unexpected queue error variant during offer")
     },

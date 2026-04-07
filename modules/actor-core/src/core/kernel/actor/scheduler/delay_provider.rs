@@ -37,8 +37,7 @@ impl SchedulerBackedDelayProvider {
   fn schedule_delay(&mut self, duration: Duration, trigger: &DelayTrigger) -> Result<SchedulerHandle, SchedulerError> {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(TriggerRunnable { trigger: trigger.clone() });
     self.with_scheduler(|scheduler| {
-      scheduler
-        .schedule_command(duration, SchedulerCommand::RunRunnable { runnable: runnable.clone(), dispatcher: None })
+      scheduler.schedule_command(duration, SchedulerCommand::RunRunnable { runnable: runnable.clone() })
     })
   }
 

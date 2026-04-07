@@ -4,7 +4,7 @@ use core::fmt;
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::{dispatcher_sender_shared::DispatcherSenderShared, runnable::SchedulerRunnable};
+use super::runnable::SchedulerRunnable;
 use crate::core::kernel::actor::{actor_ref::ActorRef, messaging::AnyMessage};
 
 /// Commands executed when scheduled timers fire.
@@ -15,20 +15,16 @@ pub enum SchedulerCommand {
   /// Sends a message to the target actor through the scheduler pipeline.
   SendMessage {
     /// Target actor reference receiving the message.
-    receiver:   ActorRef,
+    receiver: ActorRef,
     /// Message payload to be enqueued.
-    message:    AnyMessage,
-    /// Dispatcher used to enqueue the message (if explicitly provided).
-    dispatcher: Option<DispatcherSenderShared>,
+    message:  AnyMessage,
     /// Logical sender recorded for diagnostics.
-    sender:     Option<ActorRef>,
+    sender:   Option<ActorRef>,
   },
   /// Runs a closure-style task when the timer fires.
   RunRunnable {
     /// Runnable invoked once the timer expires.
-    runnable:   ArcShared<dyn SchedulerRunnable>,
-    /// Dispatcher requested for runnable execution, when available.
-    dispatcher: Option<DispatcherSenderShared>,
+    runnable: ArcShared<dyn SchedulerRunnable>,
   },
 }
 

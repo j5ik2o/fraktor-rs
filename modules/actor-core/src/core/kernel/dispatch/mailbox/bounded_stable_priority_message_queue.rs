@@ -1,6 +1,6 @@
 //! Bounded stable-priority message queue backed by a binary heap with capacity control.
 //!
-//! Unlike [`super::BoundedPriorityMessageQueue`], messages with equal
+//! Unlike [`super::BoundedPriorityMessageQueue`], envelopes with equal
 //! priority are dequeued in FIFO (insertion) order.
 
 #[cfg(test)]
@@ -12,12 +12,11 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
-  stable_priority_entry::StablePriorityEntry,
+  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
+  overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
+  actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
 
 /// Internal mutable state guarded by a lock.
@@ -27,7 +26,7 @@ struct Inner {
 }
 
 /// Bounded message queue that dequeues in priority order with stable
-/// (FIFO) ordering among messages of equal priority.
+/// (FIFO) ordering among envelopes of equal priority.
 ///
 /// Inspired by Pekko's `BoundedStablePriorityMailbox`. A
 /// [`MessagePriorityGenerator`] assigns an integer priority to each message;
@@ -68,12 +67,12 @@ impl BoundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    let priority = self.generator.priority(&message);
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     let sequence = guard.sequence;
     guard.sequence += 1;
-    let entry = StablePriorityEntry { priority, sequence, message };
+    let entry = StablePriorityEntry { priority, sequence, envelope };
 
     if guard.heap.len() < self.capacity {
       guard.heap.push(entry);
@@ -82,8 +81,8 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
     match self.overflow {
       | MailboxOverflowStrategy::DropNewest => {
-        // Capacity full — drop the incoming message.
-        Err(SendError::full(entry.message))
+        // Capacity full — drop the incoming envelope.
+        Err(SendError::full(entry.envelope.into_payload()))
       },
       | MailboxOverflowStrategy::DropOldest => {
         // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
@@ -98,14 +97,14 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
       },
       | MailboxOverflowStrategy::Block => {
         // Block strategy is not supported for priority queues.
-        Err(SendError::full(entry.message))
+        Err(SendError::full(entry.envelope.into_payload()))
       },
     }
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
-    guard.heap.pop().map(|entry| entry.message)
+    guard.heap.pop().map(|entry| entry.envelope)
   }
 
   fn number_of_messages(&self) -> usize {
