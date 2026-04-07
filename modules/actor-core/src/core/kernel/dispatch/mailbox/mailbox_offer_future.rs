@@ -24,9 +24,6 @@ use super::{
 };
 use crate::core::kernel::actor::error::SendError;
 
-#[cfg(test)]
-mod tests;
-
 /// Future returned when a queue needs to wait for capacity.
 struct QueueOfferFuture<T>
 where

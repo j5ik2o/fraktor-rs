@@ -12,6 +12,4 @@ pub enum MailboxOverflowStrategy {
   DropOldest,
   /// Attempts to grow the underlying storage.
   Grow,
-  /// Blocks the producer until capacity becomes available.
-  Block,
 }

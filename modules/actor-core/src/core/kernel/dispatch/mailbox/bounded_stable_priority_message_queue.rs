@@ -32,11 +32,6 @@ struct Inner {
 /// [`MessagePriorityGenerator`] assigns an integer priority to each message;
 /// lower values are dequeued first. When the queue reaches capacity, the
 /// configured [`MailboxOverflowStrategy`] determines the behaviour.
-///
-/// # Unsupported strategies
-///
-/// [`MailboxOverflowStrategy::Block`] is not supported for priority queues.
-/// Constructing with `Block` will cause [`SendError`] at enqueue time.
 pub struct BoundedStablePriorityMessageQueue {
   inner:     RuntimeMutex<Inner>,
   generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -46,11 +41,6 @@ pub struct BoundedStablePriorityMessageQueue {
 
 impl BoundedStablePriorityMessageQueue {
   /// Creates a new bounded stable-priority message queue.
-  ///
-  /// # Note
-  ///
-  /// `Block` overflow strategy is not supported for priority queues.
-  /// Use `DropNewest`, `DropOldest`, or `Grow` instead.
   #[must_use]
   pub fn new(
     generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -94,10 +84,6 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         // Ignore the bound and grow.
         guard.heap.push(entry);
         Ok(EnqueueOutcome::Enqueued)
-      },
-      | MailboxOverflowStrategy::Block => {
-        // Block strategy is not supported for priority queues.
-        Err(SendError::full(entry.envelope.into_payload()))
       },
     }
   }

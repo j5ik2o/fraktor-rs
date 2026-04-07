@@ -1,12 +1,12 @@
 ## 1. dispatcher_waker 撤去 (commit 1)
 
-- [ ] 1.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/dispatcher_waker.rs` を削除する
-- [ ] 1.2 `modules/actor-core/src/core/kernel/dispatch/dispatcher/dispatcher_waker/tests.rs` とディレクトリを削除する
-- [ ] 1.3 `modules/actor-core/src/core/kernel/dispatch/dispatcher.rs` から `mod dispatcher_waker;` と `pub use dispatcher_waker::dispatcher_waker;` を削除する
-- [ ] 1.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs` の `enqueue_envelope` rustdoc から `DispatcherWaker` への言及を削除する (該当箇所: 旧 line 280-287 周辺)
-- [ ] 1.5 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 1.6 `cargo test -p fraktor-actor-core-rs --lib core::kernel::dispatch::dispatcher` が pass することを確認する
-- [ ] 1.7 commit: `chore(mailbox): delete dead dispatcher_waker module`
+- [x] 1.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/dispatcher_waker.rs` を削除する
+- [x] 1.2 `modules/actor-core/src/core/kernel/dispatch/dispatcher/dispatcher_waker/tests.rs` とディレクトリを削除する
+- [x] 1.3 `modules/actor-core/src/core/kernel/dispatch/dispatcher.rs` から `mod dispatcher_waker;` と `pub use dispatcher_waker::dispatcher_waker;` を削除する
+- [x] 1.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs` の `enqueue_envelope` rustdoc から `DispatcherWaker` への言及を削除する (該当箇所: 旧 line 280-287 周辺)
+- [x] 1.5 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 1.6 `cargo test -p fraktor-actor-core-rs --lib core::kernel::dispatch::dispatcher` が pass することを確認する (59 passed)
+- [x] 1.7 commit: `chore(mailbox): delete dead dispatcher_waker module` (e1c6a66b)
 
 ## 2. MailboxOverflowStrategy::Block variant 撤去 (commit 2)
 
@@ -14,26 +14,26 @@
 
 ### 2.A enum + bounded queue
 
-- [ ] 2.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/overflow_strategy.rs` から `Block` variant を削除する
-- [ ] 2.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/overflow_strategy/tests.rs` の `Block` 関連 test を削除する
-- [ ] 2.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue.rs` の `MailboxOverflowStrategy::Block` match arm を削除する (`MailboxOfferFuture::new(...)` の production caller がここで消える)
-- [ ] 2.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs` の `MailboxOverflowStrategy::Block` reject 分岐を削除する
-- [ ] 2.5 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue.rs` の `MailboxOverflowStrategy::Block` reject 分岐を削除する
+- [x] 2.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/overflow_strategy.rs` から `Block` variant を削除する
+- [x] 2.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/overflow_strategy/tests.rs` の `Block` 関連 test を削除する
+- [x] 2.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue.rs` の `MailboxOverflowStrategy::Block` match arm を削除する (`MailboxOfferFuture::new(...)` の production caller がここで消える)
+- [x] 2.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs` の `MailboxOverflowStrategy::Block` reject 分岐を削除する
+- [x] 2.5 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue.rs` の `MailboxOverflowStrategy::Block` reject 分岐を削除する
 
 ### 2.B テスト追従
 
-- [ ] 2.6 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue/tests.rs` の Block 関連テストを削除する
-- [ ] 2.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue/tests.rs` の Block reject test を削除する
-- [ ] 2.8 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue/tests.rs` の Block reject test を削除する
-- [ ] 2.9 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_mailbox_type/tests.rs` の Block 関連 test を確認・削除する
-- [ ] 2.10 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_mailbox_type/tests.rs` の Block 関連 test を確認・削除する
+- [x] 2.6 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue/tests.rs` の Block 関連テストを削除する (Block 参照なし、no-op)
+- [x] 2.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue/tests.rs` の Block reject test を削除する
+- [x] 2.8 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue/tests.rs` の Block reject test を削除する
+- [x] 2.9 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_mailbox_type/tests.rs` の Block 関連 test を確認・削除する (Block 参照なし、no-op)
+- [x] 2.10 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_mailbox_type/tests.rs` の Block 関連 test を確認・削除する (Block 参照なし、no-op)
 
 ### 2.C 周辺整理
 
-- [ ] 2.11 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_queue_handles.rs` の `MailboxOverflowStrategy::Block => OverflowPolicy::Block` mapping を削除する
-- [ ] 2.12 `MailboxPolicy::bounded(...)` を `MailboxOverflowStrategy::Block` で呼んでいる残テストを `DropNewest` 等に置換、または該当テストを削除する (`grep -rn "MailboxOverflowStrategy::Block" modules/` で残箇所を確認)
-- [ ] 2.13 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 2.14 `cargo test -p fraktor-actor-core-rs --lib core::kernel::dispatch::mailbox` が pass することを確認する
+- [x] 2.11 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_queue_handles.rs` の `MailboxOverflowStrategy::Block => OverflowPolicy::Block` mapping を削除する
+- [x] 2.12 `MailboxPolicy::bounded(...)` を `MailboxOverflowStrategy::Block` で呼んでいる残テストを `DropNewest` 等に置換、または該当テストを削除する: `mailbox_offer_future/tests.rs` (4 件すべて Block 依存) を全削除し、`mailbox_offer_future.rs` から `mod tests;` を削除
+- [x] 2.13 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する (warnings 2 件 — `MailboxOfferFuture::new` dead code、commit 3 で解消)
+- [x] 2.14 `cargo test -p fraktor-actor-core-rs --lib core::kernel::dispatch::mailbox` が pass することを確認する (117 passed)
 - [ ] 2.15 commit: `feat(mailbox): remove MailboxOverflowStrategy::Block variant`
 
 ## 3. MessageQueue::enqueue 戻り値簡素化 + MailboxOfferFuture / EnqueueOutcome 撤去 (commit 3)
