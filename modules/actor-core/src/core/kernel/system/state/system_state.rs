@@ -55,8 +55,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError, Dispatchers},
-    dispatcher_new::{Dispatchers as NewDispatchers, MessageDispatcherShared as NewMessageDispatcherShared},
+    dispatcher_new::{Dispatchers, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
@@ -104,7 +103,6 @@ pub struct SystemState {
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
   dispatchers: Dispatchers,
-  new_dispatchers: NewDispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
   path_identity: PathIdentity,
@@ -124,9 +122,7 @@ impl SystemState {
     let event_stream = EventStreamShared::default();
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default();
-    let mut new_dispatchers = NewDispatchers::new();
-    new_dispatchers.ensure_default_inline();
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -159,7 +155,6 @@ impl SystemState {
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       dispatchers,
-      new_dispatchers,
       mailboxes,
       deployer: Deployer::default(),
       path_identity: PathIdentity::default(),
@@ -237,7 +232,6 @@ impl SystemState {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
     self.dispatchers = config.dispatchers().clone();
-    self.new_dispatchers = config.new_dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
       self.path_identity.canonical_host = Some(remoting.canonical_host().to_string());
@@ -780,24 +774,12 @@ impl SystemState {
     Duration::from_millis(ticks)
   }
 
-  /// Resolves the dispatcher registry entry for the identifier.
+  /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
-  /// # Errors
-  ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
-    self.dispatchers.resolve(id)
-  }
-
-  /// Resolves a new-dispatcher (`MessageDispatcherShared`) for the identifier.
-  ///
-  /// Returns `None` when no configurator is registered under that identifier
-  /// in the new-dispatcher tree (the parallel period falls back to the
-  /// legacy [`resolve_dispatcher`](Self::resolve_dispatcher) path in that
-  /// case).
+  /// Returns `None` when no configurator is registered under that identifier.
   #[must_use]
-  pub fn resolve_new_dispatcher(&self, id: &str) -> Option<NewMessageDispatcherShared> {
-    self.new_dispatchers.resolve(id).ok()
+  pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
+    self.dispatchers.resolve(id).ok()
   }
 
   /// Resolves the mailbox configuration for the identifier.

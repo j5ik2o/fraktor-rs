@@ -10,7 +10,7 @@ use crate::core::{
   kernel::{
     actor::props::{MailboxConfig, Props},
     dispatch::{
-      dispatcher::DEFAULT_BLOCKING_DISPATCHER_ID,
+      dispatcher_new::DEFAULT_BLOCKING_DISPATCHER_ID,
       mailbox::{MailboxOverflowStrategy, MailboxPolicy},
     },
   },

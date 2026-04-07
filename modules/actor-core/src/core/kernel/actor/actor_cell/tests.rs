@@ -160,6 +160,9 @@ fn actor_cell_holds_components() {
 
 #[test]
 fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
+  // The registered "bounded" policy has capacity 1 with DropNewest semantics,
+  // so the second user enqueue should be rejected even though `Props` requests
+  // an unbounded mismatched policy.
   let registered_policy = MailboxPolicy::bounded(
     NonZeroUsize::new(1).expect("non-zero mailbox capacity"),
     MailboxOverflowStrategy::DropNewest,
@@ -174,7 +177,11 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 
   let cell = ActorCell::create(system, Pid::new(2, 0), None, "worker".to_string(), &props).expect("create actor cell");
 
-  assert_eq!(*cell.mailbox().policy(), registered_policy);
+  let mailbox = cell.mailbox();
+  mailbox.enqueue_user(AnyMessage::new(1_u32)).expect("first enqueue fits the bounded capacity");
+  let second = mailbox.enqueue_user(AnyMessage::new(2_u32));
+  assert!(matches!(second, Err(_)), "DropNewest should reject the second enqueue past capacity 1");
+  assert_eq!(mailbox.user_len(), 1);
 }
 
 #[test]

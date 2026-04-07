@@ -1,7 +1,7 @@
 //! Typed dispatcher lookup facade.
 //!
 //! Corresponds to `org.apache.pekko.actor.typed.Dispatchers` in the Pekko
-//! reference implementation. Resolves a [`DispatcherRegistryEntry`] from a
+//! reference implementation. Resolves a [`MessageDispatcherShared`] from a
 //! [`DispatcherSelector`] by delegating to the kernel dispatcher registry
 //! via [`SystemStateShared`].
 
@@ -10,7 +10,7 @@ mod tests;
 
 use crate::core::{
   kernel::{
-    dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatcherRegistryEntry, DispatcherRegistryError},
+    dispatch::dispatcher_new::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatchersError, MessageDispatcherShared},
     system::state::SystemStateShared,
   },
   typed::DispatcherSelector,
@@ -51,7 +51,7 @@ impl Dispatchers {
     Self { state }
   }
 
-  /// Resolves a dispatcher registry entry for the given selector.
+  /// Resolves a dispatcher handle for the given selector.
   ///
   /// # Selector mapping
   ///
@@ -65,15 +65,15 @@ impl Dispatchers {
   ///
   /// # Errors
   ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the resolved identifier
+  /// Returns [`DispatchersError::Unknown`] when the resolved identifier
   /// has not been registered in the kernel dispatcher registry.
-  pub fn lookup(&self, selector: &DispatcherSelector) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
+  pub fn lookup(&self, selector: &DispatcherSelector) -> Result<MessageDispatcherShared, DispatchersError> {
     let id = match selector {
       | DispatcherSelector::Default | DispatcherSelector::SameAsParent => REGISTERED_DEFAULT_DISPATCHER_ID,
       | DispatcherSelector::FromConfig(id) => Self::normalize_dispatcher_id(id),
       | DispatcherSelector::Blocking => DEFAULT_BLOCKING_DISPATCHER_ID,
     };
-    self.state.resolve_dispatcher(id)
+    self.state.resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(alloc::string::ToString::to_string(id)))
   }
 
   /// Shuts down the typed dispatcher facade.

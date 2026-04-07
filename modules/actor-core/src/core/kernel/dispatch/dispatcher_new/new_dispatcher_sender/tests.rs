@@ -80,10 +80,10 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
-  let resolved = state.resolve_new_dispatcher("default").expect("configurator registered");
+  let resolved = state.resolve_dispatcher("default").expect("configurator registered");
 
   // Creating two actor cells should bump the inhabitants counter via attach.
   let props = Props::from_fn(|| QuietActor);
@@ -132,7 +132,7 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
   let seen = Arc::new(RuntimeMutex::new(Vec::new()));
@@ -206,7 +206,7 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
 
@@ -278,7 +278,7 @@ fn new_dispatcher_delivers_messages_to_multiple_actors_independently() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
 
@@ -340,10 +340,10 @@ fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants()
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
-  let resolved = state.resolve_new_dispatcher("default").expect("configurator registered");
+  let resolved = state.resolve_dispatcher("default").expect("configurator registered");
 
   let props = Props::from_fn(|| QuietActor);
   let pid_a = state.allocate_pid();
@@ -364,7 +364,7 @@ fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants()
 }
 
 #[test]
-fn end_to_end_send_via_actor_system_with_new_dispatcher_configurator() {
+fn end_to_end_send_via_actor_system_with_dispatcher_configurator() {
   use alloc::string::ToString;
 
   use crate::core::kernel::{
@@ -393,7 +393,7 @@ fn end_to_end_send_via_actor_system_with_new_dispatcher_configurator() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("default", configurator_handle)
+    config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
   let seen = Arc::new(AtomicUsize::new(0));

@@ -88,7 +88,7 @@ pub use envelope::Envelope;
 pub use mailbox_cleanup_policy::MailboxCleanupPolicy;
 pub use mailbox_enqueue_outcome::EnqueueOutcome;
 pub use mailbox_instrumentation::MailboxInstrumentation;
-pub(crate) use mailbox_message::MailboxMessage;
+pub use mailbox_message::MailboxMessage;
 pub use mailbox_offer_future::MailboxOfferFuture;
 pub use mailbox_poll_future::MailboxPollFuture;
 pub(crate) use mailbox_queue_handles::QueueStateHandle;

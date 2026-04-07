@@ -1,5 +1,5 @@
 use crate::core::{
-  kernel::dispatch::dispatcher::DispatcherRegistryError,
+  kernel::dispatch::dispatcher_new::DispatchersError,
   typed::{DispatcherSelector, dispatchers::Dispatchers},
 };
 
@@ -21,7 +21,7 @@ fn lookup_default_selector_resolves_default_dispatcher() {
   // When: lookup is called with DispatcherSelector::Default
   let result = dispatchers.lookup(&DispatcherSelector::Default);
 
-  // Then: a valid dispatcher registry entry is returned
+  // Then: a valid dispatcher handle is returned
   assert!(result.is_ok(), "Default selector should resolve to the default dispatcher");
 }
 
@@ -29,43 +29,34 @@ fn lookup_default_selector_resolves_default_dispatcher() {
 
 #[test]
 fn lookup_from_config_selector_resolves_registered_dispatcher() {
-  // Given: a Dispatchers facade backed by a system with default dispatchers
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: lookup is called with Pekko's public default dispatcher id
   let selector = DispatcherSelector::from_config(Dispatchers::DEFAULT_DISPATCHER_ID);
   let result = dispatchers.lookup(&selector);
 
-  // Then: the public id is normalized to the registered dispatcher
   assert!(result.is_ok(), "FromConfig(DefaultDispatcherId) should resolve to the default dispatcher");
 }
 
 #[test]
 fn lookup_from_config_selector_normalizes_internal_dispatcher_id_to_default() {
-  // Given: a Dispatchers facade backed by a system with default dispatchers
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: lookup is called with Pekko's public internal dispatcher id
   let selector = DispatcherSelector::from_config(Dispatchers::INTERNAL_DISPATCHER_ID);
   let result = dispatchers.lookup(&selector);
 
-  // Then: internal id も reserved default entry へ正規化される
   assert!(result.is_ok(), "FromConfig(InternalDispatcherId) should resolve to the default dispatcher");
 }
 
 #[test]
 fn lookup_from_config_selector_returns_error_for_unknown_id() {
-  // Given: a Dispatchers facade
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: lookup is called with a non-existent dispatcher id
   let selector = DispatcherSelector::from_config("non-existent-dispatcher");
   let result = dispatchers.lookup(&selector);
 
-  // Then: an Unknown error is returned
   assert!(
-    matches!(result, Err(DispatcherRegistryError::Unknown(_))),
-    "Unknown dispatcher id should return DispatcherRegistryError::Unknown"
+    matches!(result, Err(DispatchersError::Unknown(_))),
+    "Unknown dispatcher id should return DispatchersError::Unknown"
   );
 }
 
@@ -73,13 +64,10 @@ fn lookup_from_config_selector_returns_error_for_unknown_id() {
 
 #[test]
 fn lookup_same_as_parent_selector_falls_back_to_default() {
-  // Given: a Dispatchers facade
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: lookup is called with SameAsParent
   let result = dispatchers.lookup(&DispatcherSelector::SameAsParent);
 
-  // Then: the default dispatcher is returned (SameAsParent is resolved at spawn time)
   assert!(result.is_ok(), "SameAsParent should fall back to the default dispatcher in lookup");
 }
 
@@ -87,13 +75,10 @@ fn lookup_same_as_parent_selector_falls_back_to_default() {
 
 #[test]
 fn lookup_blocking_selector_resolves_blocking_dispatcher() {
-  // Given: a Dispatchers facade with default dispatchers (including blocking)
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: lookup is called with DispatcherSelector::Blocking
   let result = dispatchers.lookup(&DispatcherSelector::Blocking);
 
-  // Then: the blocking dispatcher is returned
   assert!(result.is_ok(), "Blocking selector should resolve to the blocking dispatcher");
 }
 
@@ -101,19 +86,13 @@ fn lookup_blocking_selector_resolves_blocking_dispatcher() {
 
 #[test]
 fn default_dispatcher_id_matches_kernel_constant() {
-  // Given/When: the Dispatchers::DEFAULT_DISPATCHER_ID constant
   let id = Dispatchers::DEFAULT_DISPATCHER_ID;
-
-  // Then: it matches Pekko's public default dispatcher id
   assert_eq!(id, "pekko.actor.default-dispatcher");
 }
 
 #[test]
 fn internal_dispatcher_id_matches_pekko_constant() {
-  // Given/When: the Dispatchers::INTERNAL_DISPATCHER_ID constant
   let id = Dispatchers::INTERNAL_DISPATCHER_ID;
-
-  // Then: it matches Pekko's internal dispatcher id
   assert_eq!(id, "pekko.actor.internal-dispatcher");
 }
 
@@ -121,32 +100,25 @@ fn internal_dispatcher_id_matches_pekko_constant() {
 
 #[test]
 fn shutdown_is_callable_as_a_noop() {
-  // Given: a Dispatchers facade backed by a live actor system
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: shutdown is called
   dispatchers.shutdown();
 
-  // Then: the facade remains usable because shutdown is a safe no-op
   let result = dispatchers.lookup(&DispatcherSelector::Default);
   assert!(result.is_ok(), "shutdown() should not invalidate dispatcher lookup");
 }
 
-// --- lookup consistency: Default and SameAsParent resolve to same entry ----
+// --- lookup consistency: Default and SameAsParent resolve to same handle ----
 
 #[test]
-fn lookup_default_and_same_as_parent_resolve_to_equivalent_entry() {
-  // Given: a Dispatchers facade
+fn lookup_default_and_same_as_parent_resolve_to_equivalent_handle() {
   let dispatchers = new_dispatchers_with_defaults();
 
-  // When: both Default and SameAsParent are looked up
-  let default_entry = dispatchers.lookup(&DispatcherSelector::Default).expect("Default");
-  let same_as_parent_entry = dispatchers.lookup(&DispatcherSelector::SameAsParent).expect("SameAsParent");
+  let default_handle = dispatchers.lookup(&DispatcherSelector::Default).expect("Default");
+  let same_as_parent_handle = dispatchers.lookup(&DispatcherSelector::SameAsParent).expect("SameAsParent");
 
-  // Then: both resolve to the same settings snapshot
-  assert_eq!(
-    default_entry.settings().starvation_deadline(),
-    same_as_parent_entry.settings().starvation_deadline(),
-    "Default and SameAsParent should resolve to equivalent entries"
-  );
+  // Both selectors should target the same registered dispatcher id, so the
+  // resolved handles report the same identifier and throughput.
+  assert_eq!(default_handle.id(), same_as_parent_handle.id());
+  assert_eq!(default_handle.throughput(), same_as_parent_handle.throughput());
 }

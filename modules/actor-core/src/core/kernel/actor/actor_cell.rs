@@ -8,7 +8,7 @@ use alloc::{
   boxed::Box,
   collections::{BTreeSet, VecDeque},
   format,
-  string::{String, ToString},
+  string::String,
   vec,
   vec::Vec,
 };
@@ -37,8 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers},
-      dispatcher_new::MessageDispatcherShared as NewMessageDispatcherShared,
+      dispatcher_new::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared as NewMessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -186,13 +185,11 @@ impl ActorCell {
       mailbox.set_instrumentation(instrumentation);
     }
     let dispatcher_id = Self::resolve_dispatcher_id(&system, parent, props)?;
-    // The new dispatcher tree owns the ActorRef sender path. A configurator must
+    // The dispatcher tree owns the ActorRef sender path. A configurator must
     // be registered for the resolved id (`ActorSystemConfig::default()` seeds
     // the in-process inline configurator).
-    let new_dispatcher = system.resolve_new_dispatcher(&dispatcher_id).ok_or_else(|| {
-      SpawnError::invalid_props(alloc::format!(
-        "no new-dispatcher configurator registered for id `{dispatcher_id}`"
-      ))
+    let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
+      SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
     use crate::core::kernel::dispatch::dispatcher_new::NewDispatcherSender;
     let sender = ActorRefSenderShared::new(NewDispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
@@ -261,7 +258,9 @@ impl ActorCell {
 
     let dispatcher_id = props.dispatcher_id().unwrap_or(DEFAULT_DISPATCHER_ID);
     let normalized = Dispatchers::normalize_dispatcher_id(dispatcher_id);
-    system.resolve_dispatcher(normalized).map_err(|error| SpawnError::invalid_props(error.to_string()))?;
+    if system.resolve_dispatcher(normalized).is_none() {
+      return Err(SpawnError::invalid_props(alloc::format!("dispatcher `{normalized}` is not registered")));
+    }
     Ok(normalized.to_owned())
   }
 

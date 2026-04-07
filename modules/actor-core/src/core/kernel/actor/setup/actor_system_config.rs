@@ -17,8 +17,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherRegistryEntry, Dispatchers},
-    dispatcher_new::{Dispatchers as NewDispatchers, MessageDispatcherConfigurator},
+    dispatcher_new::{Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
   system::remote::RemotingConfig,
@@ -37,7 +36,6 @@ pub struct ActorSystemConfig {
   extension_installers: Option<ExtensionInstallers>,
   provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
   dispatchers:          Dispatchers,
-  new_dispatchers:      NewDispatchers,
   mailboxes:            Mailboxes,
   start_time:           Option<Duration>,
 }
@@ -94,32 +92,19 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Sets the reserved default dispatcher entry used when props don't specify a dispatcher.
-  #[must_use]
-  pub fn with_default_dispatcher_entry(mut self, entry: DispatcherRegistryEntry) -> Self {
-    self.dispatchers.register_or_update(DEFAULT_DISPATCHER_ID, entry);
-    self
-  }
-
-  /// Registers or updates a dispatcher registry entry.
-  #[must_use]
-  pub fn with_dispatcher_entry(mut self, id: impl Into<String>, entry: DispatcherRegistryEntry) -> Self {
-    self.dispatchers.register_or_update(id, entry);
-    self
-  }
-
-  /// Registers a new-dispatcher configurator under the supplied id.
+  /// Registers a dispatcher configurator under the supplied id.
   ///
-  /// The new-dispatcher tree (`fraktor_actor_core_rs::core::kernel::dispatch::dispatcher_new`)
-  /// runs in parallel with the legacy dispatcher registry; consumers migrate
-  /// individually until the legacy tree can be removed.
+  /// `ActorSystemConfig::default()` seeds the registry with an
+  /// `InlineExecutor`-backed configurator under the default id; production
+  /// users override the entry by calling this method with a configurator
+  /// that uses a real executor (Tokio, threaded, pinned, etc.).
   #[must_use]
-  pub fn with_new_dispatcher_configurator(
+  pub fn with_dispatcher_configurator(
     mut self,
     id: impl Into<String>,
     configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
   ) -> Self {
-    self.new_dispatchers.register_or_update(id, configurator);
+    self.dispatchers.register_or_update(id, configurator);
     self
   }
 
@@ -207,12 +192,6 @@ impl ActorSystemConfig {
     &self.dispatchers
   }
 
-  /// Returns the new-dispatcher registry configured for the system.
-  #[must_use]
-  pub const fn new_dispatchers(&self) -> &NewDispatchers {
-    &self.new_dispatchers
-  }
-
   /// Returns the mailbox registry configured for the system.
   #[must_use]
   pub const fn mailboxes(&self) -> &Mailboxes {
@@ -231,9 +210,7 @@ impl ActorSystemConfig {
 impl Default for ActorSystemConfig {
   fn default() -> Self {
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default();
-    let mut new_dispatchers = NewDispatchers::new();
-    new_dispatchers.ensure_default_inline();
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -245,7 +222,6 @@ impl Default for ActorSystemConfig {
       extension_installers: None,
       provider_installer: None,
       dispatchers,
-      new_dispatchers,
       mailboxes,
       start_time: None,
     }

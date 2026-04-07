@@ -9,7 +9,7 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{
-  BackpressurePublisher, MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
+  MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
   mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_enqueue_outcome::EnqueueOutcome,
   mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
@@ -173,12 +173,6 @@ impl Mailbox {
     *self.instrumentation.lock() = Some(instrumentation);
   }
 
-  /// Returns the mailbox policy.
-  #[must_use]
-  pub(crate) const fn policy(&self) -> &MailboxPolicy {
-    &self.policy
-  }
-
   /// Returns the system state handle if instrumentation has been installed.
   pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
     self.instrumentation.lock().as_ref().and_then(|inst| inst.system_state())
@@ -194,14 +188,6 @@ impl Mailbox {
   pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
     if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
       instrumentation.emit_log(level, message);
-    }
-  }
-
-  /// Installs a backpressure publisher used for dispatcher coordination.
-  pub(crate) fn attach_backpressure_publisher(&self, publisher: BackpressurePublisher) {
-    let mut guard = self.instrumentation.lock();
-    if let Some(instrumentation) = guard.as_mut() {
-      instrumentation.attach_backpressure_publisher(publisher);
     }
   }
 
@@ -437,16 +423,6 @@ impl Mailbox {
   #[must_use]
   pub fn can_be_scheduled_for_execution(&self, _hints: ScheduleHints) -> bool {
     !self.is_suspended()
-  }
-
-  /// Computes schedule hints from the current queue lengths and suspension state.
-  #[must_use]
-  pub(crate) fn current_schedule_hints(&self) -> ScheduleHints {
-    ScheduleHints {
-      has_system_messages: !self.system.is_empty(),
-      has_user_messages:   !self.is_suspended() && self.user_len() > 0,
-      backpressure_active: false,
-    }
   }
 
   /// Indicates whether the mailbox is currently suspended.

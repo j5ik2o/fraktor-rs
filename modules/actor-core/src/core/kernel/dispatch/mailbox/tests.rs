@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
@@ -9,7 +9,7 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorContext,
     error::ActorError,
-    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
+    messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
@@ -81,35 +81,6 @@ fn mailbox_schedule_requests_follow_state_engine() {
 
   assert!(mailbox.set_idle());
   assert!(mailbox.request_schedule(hints));
-}
-
-#[test]
-fn mailbox_schedule_hints_reflect_current_workload() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
-
-  let idle_hints = mailbox.current_schedule_hints();
-  assert!(!idle_hints.has_system_messages);
-  assert!(!idle_hints.has_user_messages);
-  assert!(!idle_hints.backpressure_active);
-
-  mailbox.enqueue_system(SystemMessage::Create).expect("system enqueue");
-  let system_hints = mailbox.current_schedule_hints();
-  assert!(system_hints.has_system_messages);
-  assert!(!system_hints.has_user_messages);
-  assert!(!system_hints.backpressure_active);
-  assert!(mailbox.dequeue().is_some());
-
-  mailbox.enqueue_user(AnyMessage::new(String::from("user"))).expect("user enqueue");
-  let user_hints = mailbox.current_schedule_hints();
-  assert!(!user_hints.has_system_messages);
-  assert!(user_hints.has_user_messages);
-  assert!(!user_hints.backpressure_active);
-
-  mailbox.suspend();
-  let suspended_hints = mailbox.current_schedule_hints();
-  assert!(!suspended_hints.has_system_messages);
-  assert!(!suspended_hints.has_user_messages);
-  assert!(!suspended_hints.backpressure_active);
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

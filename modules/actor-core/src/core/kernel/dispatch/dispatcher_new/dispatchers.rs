@@ -129,7 +129,7 @@ impl Dispatchers {
   /// configuration installed by `ActorSystemConfig::default()` so that all
   /// in-process tests run on the new dispatcher tree without bringing in
   /// `tokio` or another runtime. Production users override the entry through
-  /// `ActorSystemConfig::with_new_dispatcher_configurator`.
+  /// `ActorSystemConfig::with_dispatcher_configurator`.
   pub fn ensure_default_inline(&mut self) {
     self.ensure_default(|| {
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);

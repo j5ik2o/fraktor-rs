@@ -41,8 +41,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError},
-    dispatcher_new::MessageDispatcherShared as NewMessageDispatcherShared,
+    dispatcher_new::MessageDispatcherShared,
     mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
@@ -799,23 +798,12 @@ impl SystemStateShared {
     self.inner.read().monotonic_now()
   }
 
-  /// Resolves the dispatcher registry entry for the identifier.
+  /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
-  /// # Errors
-  ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
-    self.inner.read().resolve_dispatcher(id)
-  }
-
-  /// Resolves a new-dispatcher (`MessageDispatcherShared`) for the identifier.
-  ///
-  /// Returns `None` when no configurator is registered. Used by the parallel
-  /// dispatcher migration: callers query the new tree first and fall back to
-  /// the legacy tree when the entry is missing.
+  /// Returns `None` when no configurator is registered for the id.
   #[must_use]
-  pub fn resolve_new_dispatcher(&self, id: &str) -> Option<NewMessageDispatcherShared> {
-    self.inner.read().resolve_new_dispatcher(id)
+  pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
+    self.inner.read().resolve_dispatcher(id)
   }
 
   /// Resolves the mailbox configuration for the identifier.

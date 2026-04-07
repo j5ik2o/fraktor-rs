@@ -19,7 +19,7 @@ use crate::core::kernel::{
     spawn::SpawnError,
   },
   dispatch::{
-    dispatcher::{DispatcherRegistryEntry, DispatcherRegistryError},
+    dispatcher_new::{DispatchersError, MessageDispatcherShared},
     mailbox::MailboxRegistryError,
   },
 };
@@ -49,13 +49,18 @@ impl ExtendedActorSystem {
     self.inner
   }
 
-  /// Resolves the dispatcher registry entry for the identifier.
+  /// Resolves a [`MessageDispatcherShared`] for the identifier.
   ///
   /// # Errors
   ///
-  /// Returns [`DispatcherRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn resolve_dispatcher(&self, id: &str) -> Result<DispatcherRegistryEntry, DispatcherRegistryError> {
-    self.inner.state().resolve_dispatcher(id)
+  /// Returns [`DispatchersError::Unknown`] when the identifier has not been
+  /// registered in the dispatcher registry.
+  pub fn resolve_dispatcher(&self, id: &str) -> Result<MessageDispatcherShared, DispatchersError> {
+    self
+      .inner
+      .state()
+      .resolve_dispatcher(id)
+      .ok_or_else(|| DispatchersError::Unknown(alloc::string::ToString::to_string(id)))
   }
 
   /// Resolves the mailbox configuration for the identifier.

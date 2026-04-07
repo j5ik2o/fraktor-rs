@@ -4,7 +4,7 @@ use crate::core::kernel::actor::messaging::{AnyMessage, system_message::SystemMe
 
 /// Represents messages dequeued from the mailbox.
 #[derive(Debug)]
-pub(crate) enum MailboxMessage {
+pub enum MailboxMessage {
   /// Internal system-level message.
   System(SystemMessage),
   /// Application user-level message.

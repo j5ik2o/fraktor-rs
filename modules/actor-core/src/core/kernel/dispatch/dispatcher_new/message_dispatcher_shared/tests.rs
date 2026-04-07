@@ -104,7 +104,7 @@ fn dispatch_drives_user_message_through_actor_invoker() {
 }
 
 #[test]
-fn resolve_new_dispatcher_from_actor_system_returns_registered_configurator() {
+fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   use alloc::boxed::Box;
 
   use fraktor_utils_rs::core::sync::ArcShared;
@@ -120,8 +120,8 @@ fn resolve_new_dispatcher_from_actor_system_returns_registered_configurator() {
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
-    config.with_new_dispatcher_configurator("system-test-dispatch", configurator_handle)
+    config.with_dispatcher_configurator("system-test-dispatch", configurator_handle)
   });
-  let resolved = system.state().resolve_new_dispatcher("system-test-dispatch").expect("registered configurator");
+  let resolved = system.state().resolve_dispatcher("system-test-dispatch").expect("registered configurator");
   assert_eq!(resolved.id(), "system-test-dispatch");
 }
