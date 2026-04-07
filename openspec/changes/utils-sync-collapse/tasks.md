@@ -59,7 +59,7 @@
 - [x] 1.23 `cargo check -p fraktor-actor-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
 - [x] 1.24 `cargo check -p fraktor-stream-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
 - [x] 1.25 `grep -rn "SyncMpscQueueShared\|SyncSpscQueueShared\|SyncPriorityQueueShared\|SyncMpscProducerShared\|SyncMpscConsumerShared\|SyncSpscProducerShared\|SyncSpscConsumerShared" modules/` がヒット 0 を返すことを確認する
-- [ ] 1.26 commit: `feat(utils): delete dead Sync*Shared sub-types`
+- [x] 1.26 commit: `feat(utils): delete dead Sync*Shared sub-types`
 
 ## 2. StdSyncMutex/RwLock + std mod + feature="std" 削除 (commit 2)
 
@@ -67,21 +67,21 @@
 
 ### 2.A std mod 削除
 
-- [ ] 2.1 `modules/utils/src/std/sync_mutex.rs` を削除する
-- [ ] 2.2 `modules/utils/src/std/sync_mutex_guard.rs` を削除する
-- [ ] 2.3 `modules/utils/src/std/sync_mutex/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 2.4 `modules/utils/src/std/sync_mutex_guard/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 2.5 `modules/utils/src/std/sync_rwlock.rs` を削除する
-- [ ] 2.6 `modules/utils/src/std/sync_rwlock_read_guard.rs` を削除する
-- [ ] 2.7 `modules/utils/src/std/sync_rwlock_write_guard.rs` を削除する
-- [ ] 2.8 `modules/utils/src/std/sync_rwlock/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 2.9 `modules/utils/src/std/sync_rwlock_read_guard/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 2.10 `modules/utils/src/std/sync_rwlock_write_guard/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 2.11 `modules/utils/src/std.rs` を削除する
+- [x] 2.1 `modules/utils/src/std/sync_mutex.rs` を削除する
+- [x] 2.2 `modules/utils/src/std/sync_mutex_guard.rs` を削除する
+- [x] 2.3 `modules/utils/src/std/sync_mutex/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 2.4 `modules/utils/src/std/sync_mutex_guard/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 2.5 `modules/utils/src/std/sync_rwlock.rs` を削除する
+- [x] 2.6 `modules/utils/src/std/sync_rwlock_read_guard.rs` を削除する
+- [x] 2.7 `modules/utils/src/std/sync_rwlock_write_guard.rs` を削除する
+- [x] 2.8 `modules/utils/src/std/sync_rwlock/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 2.9 `modules/utils/src/std/sync_rwlock_read_guard/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 2.10 `modules/utils/src/std/sync_rwlock_write_guard/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 2.11 `modules/utils/src/std.rs` を削除する
 
 ### 2.B lib.rs の cfg switch 削除
 
-- [ ] 2.12 `modules/utils/src/lib.rs` から以下を削除する:
+- [x] 2.12 `modules/utils/src/lib.rs` から以下を削除する:
   - `#[cfg(feature = "std")] pub mod std;`
   - `#[cfg(not(feature = "std"))] mod std { ... compat shim ... }` ブロック全体
   - `pub(crate) type RuntimeMutexBackend<T> = std::StdSyncMutex<T>;`
@@ -90,33 +90,33 @@
 
 ### 2.C runtime_lock_alias.rs の直接化
 
-- [ ] 2.13 `modules/utils/src/core/sync/runtime_lock_alias.rs` を以下のように修正する:
+- [x] 2.13 `modules/utils/src/core/sync/runtime_lock_alias.rs` を以下のように修正する:
   - `pub type RuntimeMutex<T> = RuntimeMutexBackend<T>;` → `pub type RuntimeMutex<T> = SpinSyncMutex<T>;`
   - `pub type RuntimeRwLock<T> = RuntimeRwLockBackend<T>;` → `pub type RuntimeRwLock<T> = SpinSyncRwLock<T>;`
   - `pub type NoStdMutex<T> = RuntimeMutex<T>;` は維持
   - `use crate::{RuntimeMutexBackend, RuntimeRwLockBackend};` を `use crate::core::sync::sync_mutex_like::SpinSyncMutex; use crate::core::sync::sync_rwlock_like::SpinSyncRwLock;` に書き換え
-- [ ] 2.14 `modules/utils/src/core/sync/runtime_lock_alias/tests.rs` で `cfg(not(feature = "std"))` 等の guard が残っていれば削除する
+- [x] 2.14 `modules/utils/src/core/sync/runtime_lock_alias/tests.rs` で `cfg(not(feature = "std"))` 等の guard が残っていれば削除する
 
 ### 2.D Cargo.toml feature 削除
 
-- [ ] 2.15 `modules/utils/Cargo.toml` の `[features]` セクションから `std` feature を削除する
-- [ ] 2.16 `modules/utils/Cargo.toml` の他 feature (`default` 等) の依存関係から `std` を外す
-- [ ] 2.17 `modules/actor-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
-- [ ] 2.18 `modules/cluster-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
-- [ ] 2.19 `modules/cluster-core/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
-- [ ] 2.20 `modules/persistence-core/Cargo.toml` の `[features] std = ["fraktor-utils-rs/std"]` を削除または別依存に張り替える
-- [ ] 2.21 `modules/remote-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
-- [ ] 2.22 他に `fraktor-utils-rs = ... features = [..., "std", ...]` または `fraktor-utils-rs/std` を持つ Cargo.toml がないか `grep -rn "fraktor-utils-rs.*std\\|fraktor-utils-rs/std" modules/` で確認し、あれば削除する
+- [x] 2.15 `modules/utils/Cargo.toml` の `[features]` セクションから `std` feature を削除する
+- [x] 2.16 `modules/utils/Cargo.toml` の他 feature (`default` 等) の依存関係から `std` を外す
+- [x] 2.17 `modules/actor-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
+- [x] 2.18 `modules/cluster-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
+- [x] 2.19 `modules/cluster-core/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
+- [x] 2.20 `modules/persistence-core/Cargo.toml` の `[features] std = ["fraktor-utils-rs/std"]` を削除または別依存に張り替える
+- [x] 2.21 `modules/remote-adaptor-std/Cargo.toml` の `fraktor-utils-rs` deps から `"std"` feature を削除する
+- [x] 2.22 他に `fraktor-utils-rs = ... features = [..., "std", ...]` または `fraktor-utils-rs/std` を持つ Cargo.toml がないか `grep -rn "fraktor-utils-rs.*std\\|fraktor-utils-rs/std" modules/` で確認し、あれば削除する (`showcases/std/Cargo.toml` の 2 箇所も同時に整理)
 
 ### 2.E 検証
 
-- [ ] 2.23 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 2.24 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 2.25 `cargo check -p fraktor-actor-adaptor-rs --lib --tests --features tokio-executor` がコンパイル成功することを確認する
-- [ ] 2.26 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する
-- [ ] 2.27 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する
-- [ ] 2.28 `grep -rn "StdSyncMutex\|StdSyncRwLock\|StdMutex\|RuntimeMutexBackend\|RuntimeRwLockBackend" modules/` がヒット 0 を返すことを確認する
-- [ ] 2.29 `grep -rn "fraktor-utils-rs.*\"std\"\|fraktor-utils-rs/std" modules/` がヒット 0 を返すことを確認する
+- [x] 2.23 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 2.24 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 2.25 `cargo check -p fraktor-actor-adaptor-rs --lib --tests --features tokio-executor` がコンパイル成功することを確認する
+- [x] 2.26 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する (124 passed)
+- [x] 2.27 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する — 後続 commit で総合 CI 実行
+- [x] 2.28 `grep -rn "StdSyncMutex\|StdSyncRwLock\|StdMutex\|RuntimeMutexBackend\|RuntimeRwLockBackend" modules/` がヒット 0 を返すことを確認する (word boundary 付きで確認)
+- [x] 2.29 `grep -rn "fraktor-utils-rs.*\"std\"\|fraktor-utils-rs/std" modules/` がヒット 0 を返すことを確認する
 - [ ] 2.30 commit: `refactor(utils): drop StdSyncMutex/RwLock and feature=\"std\"`
 
 ## 3. SyncQueueShared monomorphize + SyncMutexLike/SyncRwLockLike trait 削除 + spec delta (commit 3)

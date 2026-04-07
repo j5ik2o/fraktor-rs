@@ -21,7 +21,7 @@ test-support = ["fraktor-cluster-core-rs/test-support", "fraktor-actor-core-rs/t
 fraktor-cluster-core-rs = { workspace = true }
 fraktor-actor-core-rs = { workspace = true }
 fraktor-actor-adaptor-rs = { workspace = true }
-fraktor-utils-rs = { workspace = true, features = ["alloc", "std", "unsize"] }
+fraktor-utils-rs = { workspace = true, features = ["alloc", "unsize"] }
 serde = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
@@ -36,6 +36,5 @@ workspace = true
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
 fraktor-actor-adaptor-rs = { workspace = true, features = ["tokio-executor", "test-support"] }
 fraktor-cluster-core-rs = { workspace = true, features = ["test-support"] }
-fraktor-utils-rs = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }
 anyhow = { workspace = true }

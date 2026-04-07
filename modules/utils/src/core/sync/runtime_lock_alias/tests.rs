@@ -1,7 +1,6 @@
 use super::{RuntimeMutex, RuntimeRwLock};
 use crate::core::sync::sync_rwlock_like::SyncRwLockLike;
 
-#[cfg(not(feature = "std"))]
 #[test]
 fn runtime_lock_aliases_use_spin_backend() {
   let _: RuntimeMutex<u8> = crate::core::sync::sync_mutex_like::SpinSyncMutex::new(1);

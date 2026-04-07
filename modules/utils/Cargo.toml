@@ -17,7 +17,6 @@ alloc = []
 interrupt-cortex-m = ["cortex-m"]
 force-portable-arc = []
 unsize = []
-std = []
 
 [dependencies]
 async-trait = { workspace = true }
