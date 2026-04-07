@@ -3,7 +3,7 @@
 ## プロジェクト前提
 
 - **対象**: `fraktor-rs` (Rust アクターフレームワーク, Apache Pekko / protoactor-go を参照実装)
-- **作業ディレクトリ**: `/Users/j5ik2o/Sources/j5ik2o.github.com/j5ik2o/fraktor-rs`
+- **リポジトリ**: `j5ik2o/fraktor-rs` (作業はリポジトリルートを基準にした相対パスで記述する)
 - **設計価値観**: YAGNI, Less is more, 後方互換不要(リリース前開発フェーズ)
 - **制約**: `modules/*/src/core/` は `no_std`、`modules/*/src/std/` がアダプタ
 - **規約場所**: `.agents/rules/rust/*.md`
