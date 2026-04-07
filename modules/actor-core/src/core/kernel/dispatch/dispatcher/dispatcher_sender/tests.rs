@@ -476,3 +476,79 @@ fn dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown() {
   // has already left the SCHEDULED state observable via the shared handle.
   assert_eq!(dispatcher.inhabitants(), 0);
 }
+
+#[test]
+fn dispatcher_resolve_is_not_called_from_message_hot_path() {
+  // Phase 14.5.1: end-to-end check that the call-frequency contract on
+  // `Dispatchers::resolve` holds dynamically. Spawning an actor must bump
+  // the diagnostic counter (because `ActorCell::create` resolves the
+  // dispatcher), but sending user messages through the established
+  // `ActorRef` must NOT bump the counter — the dispatcher handle is cached
+  // by `DispatcherSender` after spawn and the message hot path never goes
+  // back through the registry.
+  use alloc::string::ToString;
+
+  use crate::core::kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext, actor_ref::ActorRef, error::ActorError, messaging::AnyMessageView, props::Props,
+    },
+    dispatch::dispatcher::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct CountingActor {
+    seen: Arc<AtomicUsize>,
+  }
+
+  impl Actor for CountingActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      self.seen.fetch_add(1, Ordering::SeqCst);
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+
+  let count_before_spawn = state.dispatcher_resolve_call_count();
+
+  let seen = Arc::new(AtomicUsize::new(0));
+  let seen_clone = Arc::clone(&seen);
+  let props = Props::from_fn(move || CountingActor { seen: seen_clone.clone() });
+  let pid = state.allocate_pid();
+  let cell = ActorCell::create(state.clone(), pid, None, "callcount".to_string(), &props).expect("create cell");
+  state.register_cell(cell.clone());
+
+  let count_after_spawn = state.dispatcher_resolve_call_count();
+  // Spawning bumps the counter at least once: ActorCell::create reaches the
+  // registry to materialise the dispatcher for this actor. The exact value
+  // is implementation-dependent (validation lookups + final lookup), so we
+  // only assert "spawn moved the counter forward".
+  assert!(
+    count_after_spawn > count_before_spawn,
+    "spawning an actor must bump dispatcher_resolve_call_count (before={count_before_spawn}, after={count_after_spawn})",
+  );
+
+  // Now send a substantial number of messages and let the inline executor
+  // drain them. None of this traffic should hit the registry.
+  let mut actor_ref: ActorRef = cell.actor_ref();
+  const MESSAGE_COUNT: usize = 1000;
+  for i in 0..MESSAGE_COUNT {
+    actor_ref.tell(AnyMessage::new(i as u32));
+  }
+  assert_eq!(seen.load(Ordering::SeqCst), MESSAGE_COUNT, "every message must be processed");
+
+  let count_after_messages = state.dispatcher_resolve_call_count();
+  assert_eq!(
+    count_after_messages, count_after_spawn,
+    "message hot path must not invoke Dispatchers::resolve \
+     (before_messages={count_after_spawn}, after_messages={count_after_messages}, messages_sent={MESSAGE_COUNT})",
+  );
+}

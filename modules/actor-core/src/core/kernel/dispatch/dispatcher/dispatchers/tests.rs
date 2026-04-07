@@ -90,3 +90,39 @@ fn ensure_default_is_idempotent_when_present() {
   let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default");
   assert_eq!(resolved.id(), "first");
 }
+
+#[test]
+fn resolve_call_count_starts_at_zero_and_increments_per_call() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register");
+  assert_eq!(dispatchers.resolve_call_count(), 0);
+  let _ = dispatchers.resolve("default").expect("resolve 1");
+  assert_eq!(dispatchers.resolve_call_count(), 1);
+  let _ = dispatchers.resolve("default").expect("resolve 2");
+  let _ = dispatchers.resolve("default").expect("resolve 3");
+  assert_eq!(dispatchers.resolve_call_count(), 3);
+}
+
+#[test]
+fn resolve_call_count_increments_even_on_unknown_id() {
+  let dispatchers = Dispatchers::new();
+  assert_eq!(dispatchers.resolve_call_count(), 0);
+  let _ = dispatchers.resolve("missing");
+  let _ = dispatchers.resolve("missing");
+  // Failed lookups still bump the counter so the diagnostic captures the
+  // full call traffic into the registry, not just successful resolutions.
+  assert_eq!(dispatchers.resolve_call_count(), 2);
+}
+
+#[test]
+fn resolve_call_count_is_shared_across_clones() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.register("default", make_default_configurator("default")).expect("register");
+  let cloned = dispatchers.clone();
+  let _ = dispatchers.resolve("default").expect("resolve from original");
+  let _ = cloned.resolve("default").expect("resolve from clone");
+  // Clones share the same counter so the diagnostic accurately reflects the
+  // total call traffic regardless of which Dispatchers handle observed it.
+  assert_eq!(dispatchers.resolve_call_count(), 2);
+  assert_eq!(cloned.resolve_call_count(), 2);
+}
