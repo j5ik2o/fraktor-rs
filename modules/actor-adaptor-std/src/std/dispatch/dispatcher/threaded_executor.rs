@@ -48,10 +48,6 @@ impl Executor for ThreadedExecutor {
     builder.spawn(task).map(|_handle| ()).map_err(|err| ExecuteError::Backend(alloc::format!("{err}")))
   }
 
-  fn supports_blocking(&self) -> bool {
-    true
-  }
-
   fn shutdown(&mut self) {
     // Nothing to release; spawned threads are owned by the operating system
     // until they exit on their own.

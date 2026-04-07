@@ -8,8 +8,7 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::collections::queue::QueueError;
 
 use super::{
-  QueueStateHandle, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_offer_future::MailboxOfferFuture, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  QueueStateHandle, envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
   policy::MailboxPolicy,
 };
 use crate::core::kernel::actor::error::SendError;
@@ -32,19 +31,11 @@ impl BoundedMessageQueue {
 }
 
 impl MessageQueue for BoundedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     match self.overflow {
       | MailboxOverflowStrategy::DropNewest => self.offer_if_room(envelope),
       | MailboxOverflowStrategy::DropOldest => self.offer_after_dropping_oldest(envelope),
       | MailboxOverflowStrategy::Grow => self.offer(envelope),
-      | MailboxOverflowStrategy::Block => match self.handle.offer_if_room(envelope, self.capacity) {
-        | Ok(_) => Ok(EnqueueOutcome::Enqueued),
-        | Err(QueueError::Full(item)) => {
-          let future = MailboxOfferFuture::new(self.handle.state.clone(), item);
-          Ok(EnqueueOutcome::Pending(future))
-        },
-        | Err(error) => Err(super::map_user_envelope_queue_error(error)),
-      },
     }
   }
 
@@ -66,23 +57,23 @@ impl MessageQueue for BoundedMessageQueue {
 }
 
 impl BoundedMessageQueue {
-  fn offer(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn offer(&self, envelope: Envelope) -> Result<(), SendError> {
     match self.handle.offer(envelope) {
-      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Ok(_) => Ok(()),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }
 
-  fn offer_if_room(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn offer_if_room(&self, envelope: Envelope) -> Result<(), SendError> {
     match self.handle.offer_if_room(envelope, self.capacity) {
-      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Ok(_) => Ok(()),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }
 
-  fn offer_after_dropping_oldest(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn offer_after_dropping_oldest(&self, envelope: Envelope) -> Result<(), SendError> {
     match self.handle.drop_oldest_and_offer(envelope, self.capacity) {
-      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Ok(_) => Ok(()),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }

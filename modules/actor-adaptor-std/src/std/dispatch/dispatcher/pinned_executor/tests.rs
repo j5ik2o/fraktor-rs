@@ -33,9 +33,3 @@ fn execute_after_shutdown_returns_error() {
   let result = executor.execute(Box::new(|| {}));
   assert!(matches!(result, Err(ExecuteError::Shutdown)));
 }
-
-#[test]
-fn supports_blocking_returns_false() {
-  let executor = PinnedExecutor::with_name("pinned-test-blocking");
-  assert!(!executor.supports_blocking());
-}

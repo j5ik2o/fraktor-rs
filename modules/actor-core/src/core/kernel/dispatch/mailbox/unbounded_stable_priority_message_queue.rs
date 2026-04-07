@@ -10,10 +10,7 @@ use alloc::collections::BinaryHeap;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{
-  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
-  stable_priority_entry::StablePriorityEntry,
-};
+use super::{envelope::Envelope, message_queue::MessageQueue, stable_priority_entry::StablePriorityEntry};
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
@@ -48,13 +45,13 @@ impl UnboundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedStablePriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     let sequence = guard.sequence;
     guard.sequence += 1;
     guard.heap.push(StablePriorityEntry { priority, sequence, envelope });
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {

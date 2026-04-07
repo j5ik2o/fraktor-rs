@@ -91,6 +91,5 @@ const fn map_overflow(strategy: MailboxOverflowStrategy) -> OverflowPolicy {
     | MailboxOverflowStrategy::DropNewest => OverflowPolicy::DropNewest,
     | MailboxOverflowStrategy::DropOldest => OverflowPolicy::DropOldest,
     | MailboxOverflowStrategy::Grow => OverflowPolicy::Grow,
-    | MailboxOverflowStrategy::Block => OverflowPolicy::Block,
   }
 }

@@ -3,8 +3,7 @@
 //! `Executor` is the dispatcher-side seam between submitting a task closure and
 //! whatever runtime (tokio, std::thread, embedded) actually executes it. The
 //! trait follows the project-wide CQS rule: `execute` and `shutdown` mutate the
-//! executor backend so they take `&mut self`, while `supports_blocking` is a
-//! pure query.
+//! executor backend so they take `&mut self`.
 //!
 //! Production dispatchers always wrap an executor in
 //! [`ExecutorShared`](super::ExecutorShared) so that the `&mut self` contract
@@ -30,15 +29,6 @@ pub trait Executor: Send + Sync {
   /// Returns [`ExecuteError`] when the backend cannot accept the task. Callers
   /// must roll back the mailbox CAS state when this happens.
   fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError>;
-
-  /// Returns `true` if this executor can execute blocking tasks safely.
-  ///
-  /// Single-threaded or cooperatively scheduled executors must return `false`
-  /// so that mailboxes configured with `MailboxOverflowStrategy::Block` are
-  /// rejected at attach time.
-  fn supports_blocking(&self) -> bool {
-    true
-  }
 
   /// Shuts the executor down, releasing the underlying worker resources.
   fn shutdown(&mut self);

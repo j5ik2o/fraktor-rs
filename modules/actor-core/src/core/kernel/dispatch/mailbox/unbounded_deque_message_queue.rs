@@ -7,10 +7,7 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
-use super::{
-  deque_message_queue::DequeMessageQueue, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome,
-  message_queue::MessageQueue,
-};
+use super::{deque_message_queue::DequeMessageQueue, envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;
 
 /// Initial capacity hint for the backing deque.
@@ -40,10 +37,10 @@ impl Default for UnboundedDequeMessageQueue {
 }
 
 impl MessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let mut guard = self.inner.lock();
     guard.push_back(envelope);
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
@@ -67,9 +64,9 @@ impl MessageQueue for UnboundedDequeMessageQueue {
 }
 
 impl DequeMessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue_first(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError> {
     let mut guard = self.inner.lock();
     guard.push_front(envelope);
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 }

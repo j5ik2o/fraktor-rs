@@ -21,10 +21,3 @@ async fn execute_runs_task_via_blocking_pool() {
   waited.notified().await;
   assert_eq!(count.load(Ordering::SeqCst), 1);
 }
-
-#[test]
-fn supports_blocking_returns_true() {
-  let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime");
-  let executor = TokioExecutor::new(runtime.handle().clone());
-  assert!(executor.supports_blocking());
-}

@@ -53,10 +53,6 @@ where
     result
   }
 
-  pub(crate) fn register_producer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
-    self.producer_waiters.register()
-  }
-
   pub(crate) fn register_consumer_waiter(&mut self) -> Result<WaitShared<QueueError<T>>, WaitError> {
     self.consumer_waiters.register()
   }

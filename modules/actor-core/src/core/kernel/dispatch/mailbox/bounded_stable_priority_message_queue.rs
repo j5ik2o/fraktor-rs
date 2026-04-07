@@ -12,8 +12,8 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
+  envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
@@ -32,11 +32,6 @@ struct Inner {
 /// [`MessagePriorityGenerator`] assigns an integer priority to each message;
 /// lower values are dequeued first. When the queue reaches capacity, the
 /// configured [`MailboxOverflowStrategy`] determines the behaviour.
-///
-/// # Unsupported strategies
-///
-/// [`MailboxOverflowStrategy::Block`] is not supported for priority queues.
-/// Constructing with `Block` will cause [`SendError`] at enqueue time.
 pub struct BoundedStablePriorityMessageQueue {
   inner:     RuntimeMutex<Inner>,
   generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -46,11 +41,6 @@ pub struct BoundedStablePriorityMessageQueue {
 
 impl BoundedStablePriorityMessageQueue {
   /// Creates a new bounded stable-priority message queue.
-  ///
-  /// # Note
-  ///
-  /// `Block` overflow strategy is not supported for priority queues.
-  /// Use `DropNewest`, `DropOldest`, or `Grow` instead.
   #[must_use]
   pub fn new(
     generator: ArcShared<dyn MessagePriorityGenerator>,
@@ -67,7 +57,7 @@ impl BoundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     let sequence = guard.sequence;
@@ -76,7 +66,7 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
     if guard.heap.len() < self.capacity {
       guard.heap.push(entry);
-      return Ok(EnqueueOutcome::Enqueued);
+      return Ok(());
     }
 
     match self.overflow {
@@ -88,16 +78,12 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
         let _ = guard.heap.pop();
         guard.heap.push(entry);
-        Ok(EnqueueOutcome::Enqueued)
+        Ok(())
       },
       | MailboxOverflowStrategy::Grow => {
         // Ignore the bound and grow.
         guard.heap.push(entry);
-        Ok(EnqueueOutcome::Enqueued)
-      },
-      | MailboxOverflowStrategy::Block => {
-        // Block strategy is not supported for priority queues.
-        Err(SendError::full(entry.envelope.into_payload()))
+        Ok(())
       },
     }
   }

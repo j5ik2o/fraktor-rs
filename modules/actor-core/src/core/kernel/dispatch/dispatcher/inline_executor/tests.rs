@@ -16,12 +16,6 @@ fn execute_runs_task_on_current_thread() {
 }
 
 #[test]
-fn supports_blocking_returns_false() {
-  let executor = InlineExecutor::new();
-  assert!(!executor.supports_blocking());
-}
-
-#[test]
 fn nested_execute_uses_trampoline() {
   let mut executor = InlineExecutor::new();
   let max_depth = Arc::new(AtomicUsize::new(0));
@@ -45,5 +39,4 @@ fn nested_execute_uses_trampoline() {
 fn shutdown_clears_pending_tasks() {
   let mut executor = InlineExecutor::new();
   executor.shutdown();
-  assert!(!executor.supports_blocking());
 }

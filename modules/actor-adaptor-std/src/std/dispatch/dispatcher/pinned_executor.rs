@@ -57,12 +57,6 @@ impl Executor for PinnedExecutor {
     sender.send(task).map_err(|_| ExecuteError::Shutdown)
   }
 
-  fn supports_blocking(&self) -> bool {
-    // Single-threaded executor cannot safely run blocking tasks that block
-    // their only worker thread without starving subsequent submissions.
-    false
-  }
-
   fn shutdown(&mut self) {
     self.sender.take();
     let same_thread = self.thread_id.is_some_and(|id| id == thread::current().id());

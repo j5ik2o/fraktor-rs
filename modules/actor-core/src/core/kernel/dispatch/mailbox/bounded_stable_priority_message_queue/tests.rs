@@ -134,16 +134,6 @@ fn grow_ignores_capacity() {
 }
 
 #[test]
-fn block_returns_error() {
-  let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedStablePriorityMessageQueue::new(pgen, capacity(1), MailboxOverflowStrategy::Block);
-
-  queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
-  let result = queue.enqueue(Envelope::new(AnyMessage::new(20_i32)));
-  assert!(result.is_err());
-}
-
-#[test]
 fn clean_up_removes_all_messages() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = BoundedStablePriorityMessageQueue::new(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);

@@ -122,11 +122,6 @@ impl SystemQueue {
     self.len.load(Ordering::Acquire)
   }
 
-  #[must_use]
-  pub(crate) fn len_handle(&self) -> ArcShared<AtomicUsize> {
-    self.len.clone()
-  }
-
   fn reverse_list(mut head: *mut Node) -> *mut Node {
     let mut prev = ptr::null_mut();
     while !head.is_null() {

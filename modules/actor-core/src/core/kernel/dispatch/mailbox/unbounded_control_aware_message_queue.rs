@@ -7,7 +7,7 @@ use alloc::collections::VecDeque;
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
-use super::{envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
+use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;
 
 /// Initial capacity hint for each backing deque.
@@ -48,14 +48,14 @@ impl Default for UnboundedControlAwareMessageQueue {
 }
 
 impl MessageQueue for UnboundedControlAwareMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let mut guard = self.inner.lock();
     if envelope.payload().is_control() {
       guard.control_queue.push_back(envelope);
     } else {
       guard.normal_queue.push_back(envelope);
     }
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {

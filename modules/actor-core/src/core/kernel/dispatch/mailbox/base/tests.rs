@@ -1,9 +1,4 @@
 use alloc::collections::VecDeque;
-use core::{
-  future::Future,
-  pin::Pin,
-  task::{Context, RawWaker, RawWakerVTable, Waker},
-};
 use std::sync::mpsc::{Receiver, Sender};
 
 use fraktor_utils_rs::core::sync::RuntimeMutex;
@@ -15,24 +10,21 @@ use crate::core::kernel::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   dispatch::mailbox::{
-    EnqueueOutcome, Envelope, Mailbox, MailboxInstrumentation, MailboxOfferFuture, MailboxOverflowStrategy,
-    MailboxPolicy, MessageQueue, QueueStateHandle,
+    Envelope, Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, MessageQueue,
   },
   system::ActorSystem,
 };
 
 enum ScriptedEnqueue {
   Enqueued,
-  Pending,
   Full,
   Closed,
 }
 
 struct ScriptedMessageQueue {
-  messages:             RuntimeMutex<VecDeque<Envelope>>,
-  outcomes:             RuntimeMutex<VecDeque<ScriptedEnqueue>>,
-  full_hook:            RuntimeMutex<Option<ScriptedFullHook>>,
-  pending_offer_handle: QueueStateHandle<Envelope>,
+  messages:  RuntimeMutex<VecDeque<Envelope>>,
+  outcomes:  RuntimeMutex<VecDeque<ScriptedEnqueue>>,
+  full_hook: RuntimeMutex<Option<ScriptedFullHook>>,
 }
 
 struct ScriptedFullHook {
@@ -53,25 +45,20 @@ impl ScriptedMessageQueue {
 
   fn new_with_full_hook(outcomes: VecDeque<ScriptedEnqueue>, full_hook: Option<ScriptedFullHook>) -> Self {
     Self {
-      messages:             RuntimeMutex::new(VecDeque::new()),
-      outcomes:             RuntimeMutex::new(outcomes),
-      full_hook:            RuntimeMutex::new(full_hook),
-      pending_offer_handle: QueueStateHandle::new_user(&MailboxPolicy::unbounded(None)),
+      messages:  RuntimeMutex::new(VecDeque::new()),
+      outcomes:  RuntimeMutex::new(outcomes),
+      full_hook: RuntimeMutex::new(full_hook),
     }
   }
 }
 
 impl MessageQueue for ScriptedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let outcome = self.outcomes.lock().pop_front().expect("enqueue outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
         self.messages.lock().push_back(envelope);
-        Ok(EnqueueOutcome::Enqueued)
-      },
-      | ScriptedEnqueue::Pending => {
-        let future = MailboxOfferFuture::new(self.pending_offer_handle.state.clone(), envelope);
-        Ok(EnqueueOutcome::Pending(future))
+        Ok(())
       },
       | ScriptedEnqueue::Full => {
         if let Some(hook) = self.full_hook.lock().take() {
@@ -94,28 +81,7 @@ impl MessageQueue for ScriptedMessageQueue {
 
   fn clean_up(&self) {
     self.messages.lock().clear();
-    while self.pending_offer_handle.poll().is_ok() {}
   }
-}
-
-unsafe fn noop_clone(_: *const ()) -> RawWaker {
-  noop_raw_waker()
-}
-
-unsafe fn noop_wake(_: *const ()) {}
-
-unsafe fn noop_wake_by_ref(_: *const ()) {}
-
-unsafe fn noop_drop(_: *const ()) {}
-
-const NOOP_WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop_wake, noop_wake_by_ref, noop_drop);
-
-fn noop_raw_waker() -> RawWaker {
-  RawWaker::new(core::ptr::null(), &NOOP_WAKER_VTABLE)
-}
-
-fn noop_waker() -> Waker {
-  unsafe { Waker::from_raw(noop_raw_waker()) }
 }
 
 #[test]
@@ -272,72 +238,9 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
   assert!(matches!(prepend_result, Err(SendError::Full(_))));
 
   let enqueue_result = enqueue_handle.join().expect("エンキュースレッドが完了するべき");
-  assert!(matches!(enqueue_result, Ok(EnqueueOutcome::Enqueued)));
+  assert!(enqueue_result.is_ok());
   // existing-1(復元) + existing-2(復元) + concurrent = 3
   assert_eq!(mailbox.user_len(), 3);
-}
-
-#[test]
-fn mailbox_prepend_user_messages_blocks_pending_offer_poll_until_prepend_finishes() {
-  use std::{
-    sync::{Arc, mpsc},
-    thread,
-    time::Duration,
-  };
-
-  let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued, // existing-1
-    ScriptedEnqueue::Enqueued, // existing-2
-    ScriptedEnqueue::Pending,  // pending エンキュー
-    ScriptedEnqueue::Enqueued, // prepend（drain-and-requeue 1回目）
-    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗 → ロールバック発動
-    ScriptedEnqueue::Enqueued, // 復元: prepend（新メッセージ）
-    ScriptedEnqueue::Enqueued, // 復元: existing-1
-    ScriptedEnqueue::Enqueued, // 復元: existing-2
-  ]);
-  let (before_error_tx, before_error_rx) = mpsc::channel();
-  let (resume_tx, resume_rx) = mpsc::channel();
-  let queue = Box::new(ScriptedMessageQueue::new_with_full_hook(
-    outcomes,
-    Some(ScriptedFullHook::new(before_error_tx, resume_rx)),
-  ));
-  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
-
-  mailbox.enqueue_user(AnyMessage::new("existing-1")).expect("existing-1");
-  mailbox.enqueue_user(AnyMessage::new("existing-2")).expect("existing-2");
-  let mut pending_future = match mailbox.enqueue_user(AnyMessage::new("pending")) {
-    | Ok(EnqueueOutcome::Pending(future)) => future,
-    | Ok(EnqueueOutcome::Enqueued) => panic!("pending の結果が返されるべき"),
-    | Err(error) => panic!("pending エンキューは成功するべき: {error:?}"),
-  };
-
-  let mailbox_for_prepend = Arc::clone(&mailbox);
-  let prepended = VecDeque::from([AnyMessage::new("prepend")]);
-  let prepend_handle = thread::spawn(move || mailbox_for_prepend.prepend_user_messages(&prepended));
-
-  before_error_rx.recv().expect("prepend が full フック地点でキューロックを保持するべき");
-
-  let (poll_done_tx, poll_done_rx) = mpsc::channel();
-  let poll_handle = thread::spawn(move || {
-    let waker = noop_waker();
-    let mut context = Context::from_waker(&waker);
-    let poll_result = Pin::new(&mut pending_future).poll(&mut context);
-    poll_done_tx.send(()).expect("pending poll 完了シグナルが送信されるべき");
-    poll_result
-  });
-
-  assert!(
-    poll_done_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "prepend がキューロックを保持中は pending offer poll がブロックされるべき",
-  );
-
-  resume_tx.send(()).expect("prepend 再開シグナルが送信されるべき");
-
-  let prepend_result = prepend_handle.join().expect("prepend thread must complete");
-  assert!(matches!(prepend_result, Err(SendError::Full(_))));
-
-  let poll_result = poll_handle.join().expect("pending poll thread must complete");
-  assert!(matches!(poll_result, core::task::Poll::Ready(Ok(()))));
 }
 
 #[test]

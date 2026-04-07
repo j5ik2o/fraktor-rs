@@ -20,12 +20,6 @@ pub enum SpawnError {
   SystemNotBootstrapped,
   /// The provided props were invalid for this actor system.
   InvalidProps(String),
-  /// The mailbox configuration is incompatible with the dispatcher executor.
-  ///
-  /// This typically occurs when
-  /// [`MailboxOverflowStrategy::Block`](crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::Block)
-  /// is used with a single-threaded executor that doesn't support blocking operations.
-  InvalidMailboxConfig(String),
   /// A `PinnedDispatcher` is already owned by another actor and cannot accept the new request.
   DispatcherAlreadyOwned,
   /// Actor system build error occurred during initialization.
@@ -55,12 +49,6 @@ impl SpawnError {
   #[must_use]
   pub fn invalid_props(reason: impl Into<String>) -> Self {
     Self::InvalidProps(reason.into())
-  }
-
-  /// Creates an invalid mailbox configuration error with the provided reason.
-  #[must_use]
-  pub fn invalid_mailbox_config(reason: impl Into<String>) -> Self {
-    Self::InvalidMailboxConfig(reason.into())
   }
 
   /// Creates a system build error from ActorSystemBuildError.

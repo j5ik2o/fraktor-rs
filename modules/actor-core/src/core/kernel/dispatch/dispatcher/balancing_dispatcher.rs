@@ -17,7 +17,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MessageQueue},
+  dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
@@ -149,7 +149,7 @@ impl MessageDispatcher for BalancingDispatcher {
 struct SharedMessageQueueBox(ArcShared<SharedMessageQueue>);
 
 impl MessageQueue for SharedMessageQueueBox {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     self.0.enqueue(envelope)
   }
 
