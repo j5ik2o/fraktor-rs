@@ -280,11 +280,9 @@ impl Mailbox {
   ///
   /// This is the dispatcher-side dispatch path used by the
   /// `MessageDispatcher` family. Callers that care about backpressure
-  /// inspect the returned [`EnqueueOutcome::Pending`] and drive the
-  /// `MailboxOfferFuture` through a [`DispatcherWaker`] (see
-  /// `crate::core::kernel::dispatch::dispatcher::dispatcher_waker`).
-  /// Callers that don't care about backpressure can simply drop the
-  /// `Pending` variant.
+  /// inspect the returned [`EnqueueOutcome::Pending`] variant, though
+  /// the default `MessageDispatcher::dispatch` implementation drops it
+  /// and returns `SendError::full` instead.
   ///
   /// # Errors
   ///
