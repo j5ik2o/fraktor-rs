@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::{ArcShared, sync_rwlock_like::SyncRwLockLike};
+use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::SystemStateShared;
 use crate::core::kernel::{

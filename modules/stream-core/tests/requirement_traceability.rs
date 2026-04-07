@@ -20,7 +20,7 @@ use fraktor_stream_core_rs::core::{
   r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, StreamDslError, StreamError},
   materialization::{ActorMaterializer, ActorMaterializerConfig, Completion, StreamNotUsed},
 };
-use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 type VerifyFn = fn();
 

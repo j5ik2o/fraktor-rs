@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::sync::{sync_mutex_like::SpinSyncMutex, sync_rwlock_like::SpinSyncRwLock};
+use crate::core::sync::{SpinSyncMutex, SpinSyncRwLock};
 
 /// Runtime-selected mutex alias.
 pub type RuntimeMutex<T> = SpinSyncMutex<T>;

@@ -1,9 +1,7 @@
-use crate::core::sync::sync_mutex_like::SyncMutexLike;
-
 #[cfg(test)]
 mod tests;
 
-/// Thin wrapper around [`spin::Mutex`] implementing [`SyncMutexLike`].
+/// Thin wrapper around [`spin::Mutex`].
 pub struct SpinSyncMutex<T>(spin::Mutex<T>);
 
 unsafe impl<T: Send> Send for SpinSyncMutex<T> {}
@@ -30,24 +28,5 @@ impl<T> SpinSyncMutex<T> {
   /// Locks the mutex and returns a guard to the protected value.
   pub fn lock(&self) -> spin::MutexGuard<'_, T> {
     self.0.lock()
-  }
-}
-
-impl<T> SyncMutexLike<T> for SpinSyncMutex<T> {
-  type Guard<'a>
-    = spin::MutexGuard<'a, T>
-  where
-    T: 'a;
-
-  fn new(value: T) -> Self {
-    SpinSyncMutex::new(value)
-  }
-
-  fn into_inner(self) -> T {
-    SpinSyncMutex::into_inner(self)
-  }
-
-  fn lock(&self) -> Self::Guard<'_> {
-    SpinSyncMutex::lock(self)
   }
 }

@@ -4,7 +4,7 @@ use core::{
   task::Poll,
 };
 
-use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   DynValue, SinkDecision, SinkLogic, StreamDslError, StreamError,

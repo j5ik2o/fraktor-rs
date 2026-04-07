@@ -117,7 +117,7 @@
 - [x] 2.27 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する — 後続 commit で総合 CI 実行
 - [x] 2.28 `grep -rn "StdSyncMutex\|StdSyncRwLock\|StdMutex\|RuntimeMutexBackend\|RuntimeRwLockBackend" modules/` がヒット 0 を返すことを確認する (word boundary 付きで確認)
 - [x] 2.29 `grep -rn "fraktor-utils-rs.*\"std\"\|fraktor-utils-rs/std" modules/` がヒット 0 を返すことを確認する
-- [ ] 2.30 commit: `refactor(utils): drop StdSyncMutex/RwLock and feature=\"std\"`
+- [x] 2.30 commit: `refactor(utils): drop StdSyncMutex/RwLock and feature=\"std\"`
 
 ## 3. SyncQueueShared monomorphize + SyncMutexLike/SyncRwLockLike trait 削除 + spec delta (commit 3)
 
@@ -125,7 +125,7 @@
 
 ### 3.A SyncQueueShared monomorphize
 
-- [ ] 3.1 `modules/utils/src/core/collections/queue/sync_queue_shared.rs` を以下のように修正する:
+- [x] 3.1 `modules/utils/src/core/collections/queue/sync_queue_shared.rs` を以下のように修正する:
   - `use ...sync_mutex_like::{SpinSyncMutex, SyncMutexLike};` から `SyncMutexLike` を削除
   - `pub struct SyncQueueShared<T, K, B, M = SpinSyncMutex<SyncQueue<T, K, B>>>` から `M` パラメータと default を削除し `pub struct SyncQueueShared<T, K, B>` にする
   - `where M: SyncMutexLike<SyncQueue<T, K, B>>` 句を削除
@@ -133,63 +133,63 @@
   - `impl<T, K, B, M> SyncQueueShared<T, K, B, M>` の generic params から `M` を削除し `where` 句から `SyncMutexLike` 制約を削除
   - `impl<T, B, M> SyncQueueShared<T, FifoKey, B, M>` (= 残った FifoKey 専用 impl) も同様に `M` 削除
   - `pub fn shared(&self) -> &ArcShared<M>` の戻り値型を `&ArcShared<SpinSyncMutex<SyncQueue<T, K, B>>>` に変更
-- [ ] 3.2 `pub type SyncFifoQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, FifoKey, B>>> = SyncQueueShared<T, FifoKey, B, M>;` を `pub type SyncFifoQueueShared<T, B> = SyncQueueShared<T, FifoKey, B>;` に変更する
-- [ ] 3.3 `modules/utils/src/core/collections/queue/tests.rs` 内の `SyncQueueShared<_, FifoKey, _, _>` のような型注釈から第 4 型パラメータ `_` を削除する (`SyncQueueShared<_, FifoKey, _>`)
+- [x] 3.2 `pub type SyncFifoQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, FifoKey, B>>> = SyncQueueShared<T, FifoKey, B, M>;` を `pub type SyncFifoQueueShared<T, B> = SyncQueueShared<T, FifoKey, B>;` に変更する
+- [x] 3.3 `modules/utils/src/core/collections/queue/tests.rs` 内の `SyncQueueShared<_, FifoKey, _, _>` のような型注釈から第 4 型パラメータ `_` を削除する (`SyncQueueShared<_, FifoKey, _>`)
 
 ### 3.B caller (SyncQueueShared monomorphize 対応)
 
-- [ ] 3.4 `modules/actor-core/src/core/kernel/dispatch/mailbox.rs:115-116` の `pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>, RuntimeMutex<SyncQueue<T, FifoKey, VecDequeBackend<T>>>>;` を `pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>>;` に変更する
-- [ ] 3.5 同ファイルの `use fraktor_utils_rs::core::{collections::queue::{..., SyncQueue, ..., type_keys::FifoKey}, sync::RuntimeMutex};` から不要になった `SyncQueue`, `FifoKey`, `RuntimeMutex` を削除する (もし他で使われていなければ)
-- [ ] 3.6 `modules/stream-core/src/core/impl/fusing/stream_buffer.rs` は変更不要であることを確認する (既に 2 パラメータ形式)
-- [ ] 3.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_queue_handles.rs:48-49` の `RuntimeMutex::new(sync_queue)` → `ArcShared::new(mutex)` → `UserQueueShared::<T>::new(...)` 構築が無修正で動くことを確認する (`RuntimeMutex<T>` は `SpinSyncMutex<T>` の alias)
+- [x] 3.4 `modules/actor-core/src/core/kernel/dispatch/mailbox.rs:115-116` の `pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>, RuntimeMutex<SyncQueue<T, FifoKey, VecDequeBackend<T>>>>;` を `pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>>;` に変更する
+- [x] 3.5 同ファイルの `use fraktor_utils_rs::core::{collections::queue::{..., SyncQueue, ..., type_keys::FifoKey}, sync::RuntimeMutex};` から不要になった `SyncQueue`, `FifoKey`, `RuntimeMutex` を削除する (もし他で使われていなければ)
+- [x] 3.6 `modules/stream-core/src/core/impl/fusing/stream_buffer.rs` は変更不要であることを確認する (既に 2 パラメータ形式)
+- [x] 3.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_queue_handles.rs:48-49` の `RuntimeMutex::new(sync_queue)` → `ArcShared::new(mutex)` → `UserQueueShared::<T>::new(...)` 構築が無修正で動くことを確認する (`RuntimeMutex<T>` は `SpinSyncMutex<T>` の alias)
 
 ### 3.C trait 削除 + impl 削除 + inherent method 追加 + 必須配線更新
 
-- [ ] 3.8 `modules/utils/src/core/sync/sync_mutex_like.rs` を削除する
-- [ ] 3.9 `modules/utils/src/core/sync/sync_rwlock_like.rs` を削除する
-- [ ] 3.10 `modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex.rs` から `impl SyncMutexLike<T> for SpinSyncMutex<T> { ... }` ブロックと、関連する `use ...SyncMutexLike;` を削除する
-- [ ] 3.11 `modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock.rs` から `impl SyncRwLockLike<T> for SpinSyncRwLock<T> { ... }` ブロックと、関連する `use ...SyncRwLockLike;` を削除する
-- [ ] 3.12 同ファイル (`spin_sync_rwlock.rs`) の inherent impl ブロック (`impl<T> SpinSyncRwLock<T>`) に `pub fn read(&self) -> spin::RwLockReadGuard<'_, T>` メソッドを追加する (実装は `self.0.read()` への薄い委譲)
-- [ ] 3.13 同ファイルに inherent な `pub fn write(&self) -> spin::RwLockWriteGuard<'_, T>` メソッドを追加する (実装は `self.0.write()` への薄い委譲)
-- [ ] 3.14 `modules/utils/src/core/sync.rs` または親 mod の `mod` / `pub use` 宣言を整理し、`SpinSyncMutex` / `SpinSyncRwLock` を facade 削除後も公開し続ける配線に更新する
-- [ ] 3.15 `SpinSyncRwLock` が `Default` 実装を持つ場合 (もしあれば) は trait method の依存箇所を確認し、必要に応じて inherent method ベースに書き換え
+- [x] 3.8 `modules/utils/src/core/sync/sync_mutex_like.rs` を削除する
+- [x] 3.9 `modules/utils/src/core/sync/sync_rwlock_like.rs` を削除する
+- [x] 3.10 `modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex.rs` から `impl SyncMutexLike<T> for SpinSyncMutex<T> { ... }` ブロックと、関連する `use ...SyncMutexLike;` を削除する
+- [x] 3.11 `modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock.rs` から `impl SyncRwLockLike<T> for SpinSyncRwLock<T> { ... }` ブロックと、関連する `use ...SyncRwLockLike;` を削除する
+- [x] 3.12 同ファイル (`spin_sync_rwlock.rs`) の inherent impl ブロック (`impl<T> SpinSyncRwLock<T>`) に `pub fn read(&self) -> spin::RwLockReadGuard<'_, T>` メソッドを追加する (実装は `self.0.read()` への薄い委譲)
+- [x] 3.13 同ファイルに inherent な `pub fn write(&self) -> spin::RwLockWriteGuard<'_, T>` メソッドを追加する (実装は `self.0.write()` への薄い委譲)
+- [x] 3.14 `modules/utils/src/core/sync.rs` または親 mod の `mod` / `pub use` 宣言を整理し、`SpinSyncMutex` / `SpinSyncRwLock` を facade 削除後も公開し続ける配線に更新する
+- [x] 3.15 `SpinSyncRwLock` が `Default` 実装を持つ場合 (もしあれば) は trait method の依存箇所を確認し、必要に応じて inherent method ベースに書き換え — `Default` 実装なし
 
 ### 3.D (任意) ディレクトリフラット化
 
-- [ ] 3.16 `git mv modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex.rs modules/utils/src/core/sync/spin_sync_mutex.rs` で移動する
-- [ ] 3.17 `git mv modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock.rs modules/utils/src/core/sync/spin_sync_rwlock.rs` で移動する
-- [ ] 3.18 `modules/utils/src/core/sync/sync_mutex_like/` ディレクトリ削除 (空になる)
-- [ ] 3.19 `modules/utils/src/core/sync/sync_rwlock_like/` ディレクトリ削除 (空になる)
-- [ ] 3.20 3.14 で入れた `mod` / `pub use` 配線を、新しい file path に追従するよう再調整する
+- [x] 3.16 `git mv modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex.rs modules/utils/src/core/sync/spin_sync_mutex.rs` で移動する
+- [x] 3.17 `git mv modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock.rs modules/utils/src/core/sync/spin_sync_rwlock.rs` で移動する
+- [x] 3.18 `modules/utils/src/core/sync/sync_mutex_like/` ディレクトリ削除 (空になる)
+- [x] 3.19 `modules/utils/src/core/sync/sync_rwlock_like/` ディレクトリ削除 (空になる)
+- [x] 3.20 3.14 で入れた `mod` / `pub use` 配線を、新しい file path に追従するよう再調整する
 
 ### 3.E caller (`use SyncRwLockLike;` 行削除)
 
-- [ ] 3.21 `modules/actor-core/src/core/kernel/system/state/system_state_shared.rs` の `use ...sync_rwlock_like::SyncRwLockLike;` を含む import 行を整理する
-- [ ] 3.22 `modules/actor-core/src/core/kernel/serialization/serialization_registry/registry.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.23 `modules/actor-core/src/core/kernel/actor/actor_ref/dead_letter/dead_letter_shared.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.24 `modules/actor-core/src/core/kernel/actor/scheduler/scheduler_shared.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.25 `modules/actor-core/src/core/kernel/actor/messaging/message_invoker/invoker_shared.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.26 `modules/actor-core/src/core/kernel/actor/messaging/message_invoker/middleware_shared.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.27 `modules/actor-core/src/core/kernel/event/stream/event_stream_shared.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.28 `modules/actor-core/src/core/kernel/system/state/system_state_shared/tests.rs` の `use ...SyncRwLockLike;` を整理する
-- [ ] 3.29 `modules/utils/src/core/sync/runtime_lock_alias/tests.rs` の `use ...SyncRwLockLike;` と `cfg(not(feature = "std"))` ガードを削除する
-- [ ] 3.30 `modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex/tests.rs` の trait 経由 assertion を inherent method ベースに更新する
-- [ ] 3.31 `modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock/tests.rs` の trait import を削除し、inherent method ベースのテストへ更新する
-- [ ] 3.32 `grep -rn "use.*SyncMutexLike\|use.*SyncRwLockLike" modules/` で残存 import がないか確認する
+- [x] 3.21 `modules/actor-core/src/core/kernel/system/state/system_state_shared.rs` の `use ...sync_rwlock_like::SyncRwLockLike;` を含む import 行を整理する
+- [x] 3.22 `modules/actor-core/src/core/kernel/serialization/serialization_registry/registry.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.23 `modules/actor-core/src/core/kernel/actor/actor_ref/dead_letter/dead_letter_shared.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.24 `modules/actor-core/src/core/kernel/actor/scheduler/scheduler_shared.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.25 `modules/actor-core/src/core/kernel/actor/messaging/message_invoker/invoker_shared.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.26 `modules/actor-core/src/core/kernel/actor/messaging/message_invoker/middleware_shared.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.27 `modules/actor-core/src/core/kernel/event/stream/event_stream_shared.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.28 `modules/actor-core/src/core/kernel/system/state/system_state_shared/tests.rs` の `use ...SyncRwLockLike;` を整理する
+- [x] 3.29 `modules/utils/src/core/sync/runtime_lock_alias/tests.rs` の `use ...SyncRwLockLike;` と `cfg(not(feature = "std"))` ガードを削除する
+- [x] 3.30 `modules/utils/src/core/sync/sync_mutex_like/spin_sync_mutex/tests.rs` の trait 経由 assertion を inherent method ベースに更新する (flatten 後は `sync/spin_sync_mutex/tests.rs`)
+- [x] 3.31 `modules/utils/src/core/sync/sync_rwlock_like/spin_sync_rwlock/tests.rs` の trait import を削除し、inherent method ベースのテストへ更新する (flatten 後は `sync/spin_sync_rwlock/tests.rs`)
+- [x] 3.32 `grep -rn "use.*SyncMutexLike\|use.*SyncRwLockLike" modules/` で残存 import がないか確認する
 
 ### 3.F clippy / rustdoc 更新
 
-- [ ] 3.33 `modules/utils/clippy.toml` の `disallowed-types` で `std::sync::Mutex` の `replacement` を `fraktor_utils_rs::core::sync::SpinSyncMutex` (or 適切な path) に更新する
-- [ ] 3.34 `modules/actor-core/clippy.toml` の同様の replacement を更新する
-- [ ] 3.35 `modules/cluster-core/clippy.toml` の同様の replacement を更新する
-- [ ] 3.36 `modules/utils/clippy.toml` の `std::sync::RwLock` についても replacement target を `SpinSyncRwLock` 直接参照に更新する (もし設定されていれば)
-- [ ] 3.37 他 clippy.toml に同様の replacement target が残っていないか `grep -rn "SyncMutexLike\|SyncRwLockLike" modules/*/clippy.toml` で確認する
-- [ ] 3.38 `modules/actor-core/src/core/typed/dsl/timer_scheduler.rs` の rustdoc 内の `[\`SyncMutexLike\`]...` 参照を `[\`SpinSyncMutex\`]...` に更新する
-- [ ] 3.39 `modules/utils/src/core/sync/shared_access.rs` の rustdoc 内の `SyncMutexLike::lock` 言及を `SpinSyncMutex::lock` に更新する
+- [x] 3.33 `modules/utils/clippy.toml` の `disallowed-types` で `std::sync::Mutex` の `replacement` を `fraktor_utils_rs::core::sync::SpinSyncMutex` (or 適切な path) に更新する
+- [x] 3.34 `modules/actor-core/clippy.toml` の同様の replacement を更新する
+- [x] 3.35 `modules/cluster-core/clippy.toml` の同様の replacement を更新する
+- [x] 3.36 `modules/utils/clippy.toml` の `std::sync::RwLock` についても replacement target を `SpinSyncRwLock` 直接参照に更新する (もし設定されていれば) — `std::sync::RwLock` の disallowed-types エントリは元々なし
+- [x] 3.37 他 clippy.toml に同様の replacement target が残っていないか `grep -rn "SyncMutexLike\|SyncRwLockLike" modules/*/clippy.toml` で確認する
+- [x] 3.38 `modules/actor-core/src/core/typed/dsl/timer_scheduler.rs` の rustdoc 内の `[\`SyncMutexLike\`]...` 参照を `[\`SpinSyncMutex\`]...` に更新する
+- [x] 3.39 `modules/utils/src/core/sync/shared_access.rs` の rustdoc 内の `SyncMutexLike::lock` 言及を `SpinSyncMutex::lock` に更新する
 
 ### 3.G openspec spec delta
 
-- [ ] 3.40 `openspec/changes/utils-sync-collapse/specs/utils-dead-code-removal/spec.md` を MODIFIED Requirements 形式で確定する:
+- [x] 3.40 `openspec/changes/utils-sync-collapse/specs/utils-dead-code-removal/spec.md` を MODIFIED Requirements 形式で確定する:
   - Requirement: `未使用の共有・同期補助型は公開 API に存在しない`
   - 既存の禁止リストに以下の型を追加:
     - `SyncMpscQueueShared`, `SyncSpscQueueShared`, `SyncPriorityQueueShared`
@@ -202,27 +202,27 @@
 
 ### 3.H 検証
 
-- [ ] 3.41 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 3.42 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 3.43 `cargo check -p fraktor-stream-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 3.44 `cargo check -p fraktor-actor-adaptor-rs --lib --tests --features tokio-executor` がコンパイル成功することを確認する
-- [ ] 3.45 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する
-- [ ] 3.46 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する
-- [ ] 3.47 `cargo test -p fraktor-actor-adaptor-rs --lib --features tokio-executor` 全件 pass を確認する
-- [ ] 3.48 `./scripts/ci-check.sh ai dylint` exit 0
-- [ ] 3.49 `./scripts/ci-check.sh ai all` exit 0
-- [ ] 3.50 `grep -rn "SyncMutexLike\|SyncRwLockLike" modules/` がヒット 0 (clippy.toml の replacement target 言及を除く) を返すことを確認する
-- [ ] 3.51 `openspec validate utils-sync-collapse --strict` valid を返すことを確認する
+- [x] 3.41 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 3.42 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 3.43 `cargo check -p fraktor-stream-core-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 3.44 `cargo check -p fraktor-actor-adaptor-rs --lib --tests --features tokio-executor` がコンパイル成功することを確認する
+- [x] 3.45 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する (125 passed)
+- [x] 3.46 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する (1579 passed)
+- [x] 3.47 `cargo test -p fraktor-actor-adaptor-rs --lib --features tokio-executor` 全件 pass を確認する — `ci-check.sh ai all` で全 workspace test 走らせ緑
+- [x] 3.48 `./scripts/ci-check.sh ai dylint` exit 0
+- [x] 3.49 `./scripts/ci-check.sh ai all` exit 0
+- [x] 3.50 `grep -rn "SyncMutexLike\|SyncRwLockLike" modules/` がヒット 0 (clippy.toml の replacement target 言及を除く) を返すことを確認する
+- [x] 3.51 `openspec validate utils-sync-collapse --strict` valid を返すことを確認する
 - [ ] 3.52 commit: `refactor(utils): monomorphize SyncQueueShared and collapse SyncMutexLike/SyncRwLockLike`
 
 ## 4. 最終検証
 
-- [ ] 4.1 `RuntimeMutex` / `NoStdMutex` / `RuntimeRwLock` の caller (合計 173) が無修正のまま動作していることを確認する: `grep -rn "RuntimeMutex\|NoStdMutex\|RuntimeRwLock" modules/ | wc -l` でヒット数が cleanup 前後でほぼ同じであること
-- [ ] 4.2 `SpinSyncMutex` の caller (44) が変わっていないことを確認する: `grep -rn "SpinSyncMutex" modules/ | wc -l` (impl 削除分はマイナスされる)
-- [ ] 4.3 `SyncQueueShared` / `SyncFifoQueueShared` の caller (actor-core mailbox + stream-core stream_buffer) が動作していることを確認する
-- [ ] 4.4 `cargo build --workspace` が clean に通る
-- [ ] 4.5 `./scripts/ci-check.sh ai all` exit 0
-- [ ] 4.6 `openspec validate utils-sync-collapse --strict` valid
+- [x] 4.1 `RuntimeMutex` / `NoStdMutex` / `RuntimeRwLock` の caller (合計 173) が無修正のまま動作していることを確認する: `grep -rn "RuntimeMutex\|NoStdMutex\|RuntimeRwLock" modules/ | wc -l` でヒット数が cleanup 前後でほぼ同じであること
+- [x] 4.2 `SpinSyncMutex` の caller (44) が変わっていないことを確認する: `grep -rn "SpinSyncMutex" modules/ | wc -l` (impl 削除分はマイナスされる)
+- [x] 4.3 `SyncQueueShared` / `SyncFifoQueueShared` の caller (actor-core mailbox + stream-core stream_buffer) が動作していることを確認する
+- [x] 4.4 `cargo build --workspace` が clean に通る
+- [x] 4.5 `./scripts/ci-check.sh ai all` exit 0
+- [x] 4.6 `openspec validate utils-sync-collapse --strict` valid
 
 ## 5. PR 作成
 

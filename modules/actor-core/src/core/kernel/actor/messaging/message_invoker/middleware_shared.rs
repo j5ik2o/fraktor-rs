@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess, sync_rwlock_like::SyncRwLockLike};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
 
 use super::middleware::MessageInvokerMiddleware;
 

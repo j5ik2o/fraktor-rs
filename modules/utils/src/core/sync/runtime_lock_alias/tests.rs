@@ -1,10 +1,9 @@
 use super::{RuntimeMutex, RuntimeRwLock};
-use crate::core::sync::sync_rwlock_like::SyncRwLockLike;
 
 #[test]
 fn runtime_lock_aliases_use_spin_backend() {
-  let _: RuntimeMutex<u8> = crate::core::sync::sync_mutex_like::SpinSyncMutex::new(1);
-  let _: RuntimeRwLock<u8> = crate::core::sync::sync_rwlock_like::SpinSyncRwLock::new(1);
+  let _: RuntimeMutex<u8> = crate::core::sync::SpinSyncMutex::new(1);
+  let _: RuntimeRwLock<u8> = crate::core::sync::SpinSyncRwLock::new(1);
 }
 
 #[test]

@@ -1,9 +1,7 @@
-use crate::core::sync::sync_rwlock_like::SyncRwLockLike;
-
 #[cfg(test)]
 mod tests;
 
-/// Thin wrapper around [`spin::RwLock`] implementing [`SyncRwLockLike`].
+/// Thin wrapper around [`spin::RwLock`].
 pub struct SpinSyncRwLock<T>(spin::RwLock<T>);
 
 unsafe impl<T: Send> Send for SpinSyncRwLock<T> {}
@@ -26,31 +24,14 @@ impl<T> SpinSyncRwLock<T> {
   pub fn into_inner(self) -> T {
     self.0.into_inner()
   }
-}
 
-impl<T> SyncRwLockLike<T> for SpinSyncRwLock<T> {
-  type ReadGuard<'a>
-    = spin::RwLockReadGuard<'a, T>
-  where
-    T: 'a;
-  type WriteGuard<'a>
-    = spin::RwLockWriteGuard<'a, T>
-  where
-    T: 'a;
-
-  fn new(value: T) -> Self {
-    SpinSyncRwLock::new(value)
-  }
-
-  fn into_inner(self) -> T {
-    SpinSyncRwLock::into_inner(self)
-  }
-
-  fn read(&self) -> Self::ReadGuard<'_> {
+  /// Acquires a shared read guard.
+  pub fn read(&self) -> spin::RwLockReadGuard<'_, T> {
     self.0.read()
   }
 
-  fn write(&self) -> Self::WriteGuard<'_> {
+  /// Acquires an exclusive write guard.
+  pub fn write(&self) -> spin::RwLockWriteGuard<'_, T> {
     self.0.write()
   }
 }
