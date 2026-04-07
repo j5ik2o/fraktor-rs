@@ -8,7 +8,7 @@ use fraktor_cluster_core_rs::core::{
   grain::{GrainCallError, GrainCallOptions, GrainCodec, GrainRef as CoreGrainRef},
   identity::ClusterIdentity,
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::std::ClusterApi;
 

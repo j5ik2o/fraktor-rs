@@ -5,7 +5,7 @@ mod tests;
 
 use core::time::Duration;
 
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::{
   kernel::pattern::{complete_with_timeout, install_ask_timeout},

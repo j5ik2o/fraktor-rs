@@ -2,7 +2,7 @@
 
 use core::{cmp, time::Duration};
 
-use fraktor_utils_rs::core::timing::delay::{DelayFuture, DelayProvider};
+use fraktor_utils_core_rs::core::timing::delay::{DelayFuture, DelayProvider};
 
 use crate::core::kernel::actor::{
   actor_ref::ActorRef,

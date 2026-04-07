@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, collections::VecDeque};
 use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
 
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   collections::queue::OverflowPolicy,
   sync::{ArcShared, SpinSyncMutex},
 };

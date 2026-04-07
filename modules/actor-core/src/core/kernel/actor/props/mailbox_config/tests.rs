@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::collections::queue::capabilities::{QueueCapability, QueueCapabilitySet};
+use fraktor_utils_core_rs::core::collections::queue::capabilities::{QueueCapability, QueueCapabilitySet};
 
 use super::*;
 use crate::core::kernel::actor::props::MailboxConfigError;
@@ -22,7 +22,7 @@ fn validate_rejects_stable_priority_without_generator() {
 
 #[test]
 fn validate_accepts_stable_priority_with_generator() {
-  use fraktor_utils_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::core::sync::ArcShared;
 
   use crate::core::kernel::{actor::messaging::AnyMessage, dispatch::mailbox::MessagePriorityGenerator};
 
@@ -64,7 +64,7 @@ fn validate_accepts_control_aware_with_unbounded_policy() {
 
 #[test]
 fn validate_rejects_priority_with_control_aware() {
-  use fraktor_utils_rs::core::sync::ArcShared;
+  use fraktor_utils_core_rs::core::sync::ArcShared;
 
   use crate::core::kernel::{actor::messaging::AnyMessage, dispatch::mailbox::MessagePriorityGenerator};
 

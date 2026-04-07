@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   collections::queue::{OfferOutcome, QueueError, SyncQueue, SyncQueueShared, backend::VecDequeBackend},
   sync::{ArcShared, SpinSyncMutex},
 };

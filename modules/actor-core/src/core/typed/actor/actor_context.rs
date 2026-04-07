@@ -6,7 +6,7 @@ mod tests;
 use alloc::{format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
 
 use crate::core::{
   kernel::{

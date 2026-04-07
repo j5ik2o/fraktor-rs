@@ -18,7 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   eventsourced::Eventsourced, in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,

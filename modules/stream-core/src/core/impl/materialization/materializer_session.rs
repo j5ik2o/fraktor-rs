@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex};
 
 use super::StreamState;
 use crate::core::{

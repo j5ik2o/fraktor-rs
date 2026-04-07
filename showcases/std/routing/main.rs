@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::typed::{
   dsl::{Behaviors, routing::Routers},
 };
 use fraktor_showcases_std::support;
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 // --- メッセージ定義 ---
 

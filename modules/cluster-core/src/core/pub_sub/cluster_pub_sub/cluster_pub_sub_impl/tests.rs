@@ -4,7 +4,7 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex},
   time::TimerInstant,
 };

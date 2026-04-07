@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_rs::core::sync::{RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{RuntimeMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{

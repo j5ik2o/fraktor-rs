@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::EventStreamShared,
   system::{ActorSystem, ActorSystemBuildError},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   BlockListProvider, ClusterExtension, ClusterExtensionConfig,

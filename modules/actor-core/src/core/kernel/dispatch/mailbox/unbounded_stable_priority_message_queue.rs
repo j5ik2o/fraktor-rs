@@ -8,7 +8,7 @@ mod tests;
 
 use alloc::collections::BinaryHeap;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue, stable_priority_entry::StablePriorityEntry};
 use crate::core::kernel::{

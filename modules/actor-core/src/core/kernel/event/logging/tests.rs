@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 

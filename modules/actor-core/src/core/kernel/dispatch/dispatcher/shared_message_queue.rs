@@ -11,7 +11,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::kernel::{
   actor::error::SendError,

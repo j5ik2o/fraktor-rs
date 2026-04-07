@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{super::TerminationSignal, ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::kernel::actor::{

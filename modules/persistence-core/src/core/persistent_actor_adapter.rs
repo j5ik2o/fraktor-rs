@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   messaging::{AnyMessage, AnyMessageView},
   scheduler::{SchedulerCommand, SchedulerHandle},
 };
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::{
   journal_response::JournalResponse, persistence_error::PersistenceError,

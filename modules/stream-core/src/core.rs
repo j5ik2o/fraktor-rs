@@ -63,7 +63,7 @@ pub use bounded_source_queue::BoundedSourceQueue;
 pub use completion_strategy::CompletionStrategy;
 #[cfg(feature = "compression")]
 pub use dsl::Compression;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use r#impl::{
   RestartBackoff, fusing::DemandTracker as InternalDemandTracker,
   validate_positive_argument as internal_validate_positive_argument,

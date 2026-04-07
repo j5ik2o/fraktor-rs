@@ -10,7 +10,7 @@ use core::{
 };
 
 use fraktor_actor_core_rs::core::kernel::actor::{Pid, actor_ref::ActorRef, messaging::AnyMessage};
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   event_adapters::EventAdapters, journal_message::JournalMessage, journal_response::JournalResponse,

@@ -1,7 +1,7 @@
 //! Registry tracking cancellable entries by handle identifier.
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use super::cancellable_entry::CancellableEntry;

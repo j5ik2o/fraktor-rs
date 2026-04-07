@@ -5,7 +5,7 @@
 use alloc::boxed::Box;
 use core::cmp::Ordering;
 
-use fraktor_utils_rs::core::collections::{
+use fraktor_utils_core_rs::core::collections::{
   PriorityMessage,
   queue::{SyncQueue, backend::BinaryHeapPriorityBackend},
 };

@@ -13,7 +13,7 @@ use std::{
   borrow::Cow,
 };
 
-use fraktor_actor_adaptor_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::StdBlocker;
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, error::ActorError, extension::ExtensionInstallers, messaging::AnyMessageView, props::Props,
@@ -27,7 +27,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_showcases_std::support;
-use fraktor_utils_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 use serde::{Deserialize, Serialize};
 
 // --- メッセージ定義 ---
@@ -248,7 +248,7 @@ fn main() {
           "serialization extension was not retained".into(),
         )
       })?;
-      if !fraktor_utils_rs::core::sync::ArcShared::ptr_eq(&registered, &existing) {
+      if !fraktor_utils_core_rs::core::sync::ArcShared::ptr_eq(&registered, &existing) {
         return Err(fraktor_actor_core_rs::core::kernel::system::ActorSystemBuildError::Configuration(
           "serialization extension identity mismatch".into(),
         ));

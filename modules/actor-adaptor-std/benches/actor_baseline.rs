@@ -6,7 +6,7 @@ use std::{
 };
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
+use fraktor_actor_adaptor_std_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -25,7 +25,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::{Builder, Runtime};
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(1);

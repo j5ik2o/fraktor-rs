@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
   serialization::{SerializationCallScope, SerializationError, SerializationExtensionShared, SerializedMessage},
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use super::{GrainCodec, GrainCodecError};
 

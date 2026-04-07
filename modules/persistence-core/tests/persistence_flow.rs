@@ -29,7 +29,7 @@ use fraktor_persistence_core_rs::core::{
   Eventsourced, InMemoryJournal, InMemorySnapshotStore, Journal, PersistenceContext, PersistenceExtensionInstaller,
   PersistentActor, PersistentRepr, Snapshot, SnapshotMetadata, SnapshotStore, persistent_props, spawn_persistent,
 };
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 use test_utils::shared_mutex;
 type SharedValue = ArcShared<RuntimeMutex<i32>>;
 type SharedFlag = ArcShared<RuntimeMutex<bool>>;

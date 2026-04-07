@@ -1,6 +1,6 @@
 use core::fmt;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::RestartLogSettings;
 use crate::core::r#impl::StreamError;

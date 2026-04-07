@@ -1,6 +1,6 @@
 //! Shared wrapper for actor cell registry.
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::cells::Cells;
 

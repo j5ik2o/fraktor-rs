@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex},
   time::TimerInstant,
 };

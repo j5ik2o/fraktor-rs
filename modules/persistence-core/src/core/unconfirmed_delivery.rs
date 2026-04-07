@@ -6,7 +6,7 @@ mod tests;
 use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::actor_ref::ActorRef;
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 /// Unconfirmed delivery tracked by at-least-once delivery.
 pub struct UnconfirmedDelivery {

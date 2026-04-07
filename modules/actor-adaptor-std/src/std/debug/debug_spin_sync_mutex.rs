@@ -20,7 +20,7 @@ use std::{
   thread,
 };
 
-use fraktor_utils_rs::core::sync::SpinSyncMutex;
+use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
 use super::debug_spin_sync_mutex_guard::DebugSpinSyncMutexGuard;
 

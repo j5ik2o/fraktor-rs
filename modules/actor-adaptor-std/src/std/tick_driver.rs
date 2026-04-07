@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   next_tick_driver_id,
 };
 #[cfg(feature = "tokio-executor")]
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 #[cfg(feature = "tokio-executor")]
 use tokio::{
   runtime::Handle,

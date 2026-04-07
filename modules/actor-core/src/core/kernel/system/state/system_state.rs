@@ -18,7 +18,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::PathIdentity;

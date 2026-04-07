@@ -5,7 +5,7 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_rs::core::time::{SchedulerTickHandle, TickLease};
+use fraktor_utils_core_rs::core::time::{SchedulerTickHandle, TickLease};
 
 use super::Scheduler;
 

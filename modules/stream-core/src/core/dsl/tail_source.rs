@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_rs::core::sync::SpinSyncMutex;
+use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
 use super::{StreamError, StreamNotUsed, source::Source};
 

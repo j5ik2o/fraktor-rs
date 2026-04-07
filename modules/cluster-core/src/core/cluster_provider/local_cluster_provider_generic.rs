@@ -15,7 +15,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{EventStreamEvent, EventStreamShared},
 };
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
 use crate::core::{

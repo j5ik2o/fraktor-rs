@@ -48,7 +48,7 @@ fn grain_context_scope_finishes_and_releases_context() {
 
 fn build_system_with_extension<F>(
   identity_lookup_factory: F,
-) -> (ActorSystem, fraktor_utils_rs::core::sync::ArcShared<ClusterExtension>)
+) -> (ActorSystem, fraktor_utils_core_rs::core::sync::ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());

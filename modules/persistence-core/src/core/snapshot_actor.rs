@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   error::ActorError,
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   snapshot::Snapshot, snapshot_actor_config::SnapshotActorConfig, snapshot_error::SnapshotError,

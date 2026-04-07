@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 type DrainFn = Box<dyn Fn() + Send + Sync>;
 type IsDrainingFn = Box<dyn Fn() -> bool + Send + Sync>;

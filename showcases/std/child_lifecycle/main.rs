@@ -12,7 +12,7 @@ use core::{
 };
 use std::sync::Arc;
 
-use fraktor_actor_adaptor_rs::std::StdBlocker;
+use fraktor_actor_adaptor_std_rs::std::StdBlocker;
 use fraktor_actor_core_rs::core::{
   kernel::actor::{
     error::ActorError,

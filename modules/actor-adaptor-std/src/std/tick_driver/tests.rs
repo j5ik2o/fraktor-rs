@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, RuntimeMutex, SharedAccess},
   time::TimerInstant,
 };

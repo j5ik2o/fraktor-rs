@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::{
     receptionist::{Receptionist, ServiceKey},
   },
 };
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..10_000 {

@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::ActorRefResolver;
 use crate::core::{

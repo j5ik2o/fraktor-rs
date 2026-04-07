@@ -2,7 +2,7 @@ use alloc::{borrow::ToOwned, boxed::Box, string::String};
 use core::num::NonZeroUsize;
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 use crate::core::kernel::{

@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::event::stream::{
   RemotingLifecycleEvent, subscriber_handle,
 };
 use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///

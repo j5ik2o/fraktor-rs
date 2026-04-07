@@ -10,7 +10,7 @@ use core::{
   task::{Context, Poll},
 };
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use futures::task::AtomicWaker;
 
 /// Notifies scheduler executors when new ticks arrive.

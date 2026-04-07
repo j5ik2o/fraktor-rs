@@ -2,7 +2,7 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_rs::core::collections::{
+use fraktor_utils_core_rs::core::collections::{
   queue::{OfferOutcome, QueueError},
   wait::{WaitError, WaitQueue, WaitShared},
 };

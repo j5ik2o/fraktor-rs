@@ -3,7 +3,7 @@
 use core::any::{Any, TypeId};
 
 use ahash::RandomState;
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use hashbrown::HashMap;
 
 /// Registry of actor system extensions.

@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::ToString};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::BalancingDispatcher;
 use crate::core::kernel::{

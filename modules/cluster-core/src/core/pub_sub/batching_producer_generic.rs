@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   messaging::AnyMessage,
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerShared},
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
   sync::{ArcShared, RuntimeMutex, SharedAccess},
 };

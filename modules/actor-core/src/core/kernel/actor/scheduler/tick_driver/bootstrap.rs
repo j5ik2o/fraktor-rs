@@ -5,8 +5,8 @@ use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 
 #[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_rs::core::time::TimerInstant;
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, RuntimeMutex, SharedAccess},
   time::MonotonicClock,
 };

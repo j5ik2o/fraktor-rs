@@ -3,7 +3,7 @@
 use core::time::Duration;
 use std::{env, thread, time::Instant};
 
-use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{

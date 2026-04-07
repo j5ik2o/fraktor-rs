@@ -2,7 +2,7 @@
 
 use core::{future::IntoFuture, task::Waker};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{blocker::Blocker, termination_future::TerminationFuture, termination_state::TerminationState};
 

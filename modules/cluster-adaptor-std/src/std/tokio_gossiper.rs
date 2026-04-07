@@ -4,7 +4,7 @@ use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_core_rs::core::membership::{Gossiper, MembershipCoordinatorShared};
-use fraktor_utils_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::core::time::TimerInstant;
 use tokio::sync::oneshot;
 
 use crate::std::{

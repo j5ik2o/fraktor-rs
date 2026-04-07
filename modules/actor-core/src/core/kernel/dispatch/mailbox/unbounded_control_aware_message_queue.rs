@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
 use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;

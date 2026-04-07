@@ -8,7 +8,7 @@ use alloc::string::String;
 use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 
 use super::ClusterProvider;
 use crate::core::{BlockListProvider, ClusterProviderError, ClusterTopology, TopologyUpdate};

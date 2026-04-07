@@ -25,7 +25,7 @@ use fraktor_cluster_core_rs::core::{
     cluster_pub_sub::{ClusterPubSub, ClusterPubSubImpl},
   },
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess},
   time::TimerInstant,
 };

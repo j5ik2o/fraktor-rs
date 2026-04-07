@@ -52,7 +52,7 @@ use fraktor_cluster_core_rs::core::{
   BlockListProvider, ClusterEvent, ClusterExtensionConfig, ClusterExtensionInstaller, ClusterProviderError,
   ClusterTopology, StartupMode, TopologyUpdate, cluster_provider::ClusterProvider,
 };
-use fraktor_utils_rs::core::{sync::ArcShared, time::TimerInstant};
+use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
 use tokio::task::JoinHandle;
 
 /// Configuration for AWS ECS cluster provider.

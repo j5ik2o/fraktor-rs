@@ -3,7 +3,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::pattern::{CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerState, Clock};
 

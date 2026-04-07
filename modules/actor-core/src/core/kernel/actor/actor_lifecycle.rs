@@ -104,7 +104,7 @@ pub trait Actor: Send {
   ///     SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind,
   ///   },
   /// };
-  /// use fraktor_utils_rs::core::sync::NoStdMutex;
+  /// use fraktor_utils_core_rs::core::sync::NoStdMutex;
   ///
   /// struct ResilientWorker {
   ///   consecutive_errors: u32,

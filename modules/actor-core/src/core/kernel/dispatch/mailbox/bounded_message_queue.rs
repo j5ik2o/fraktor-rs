@@ -5,7 +5,7 @@ mod tests;
 
 use core::num::NonZeroUsize;
 
-use fraktor_utils_rs::core::collections::queue::QueueError;
+use fraktor_utils_core_rs::core::collections::queue::QueueError;
 
 use super::{
   QueueStateHandle, envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,

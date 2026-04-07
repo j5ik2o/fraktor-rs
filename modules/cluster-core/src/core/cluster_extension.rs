@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use crate::core::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,

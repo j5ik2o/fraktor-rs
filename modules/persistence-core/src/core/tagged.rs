@@ -9,7 +9,7 @@ use core::{
   fmt::{Debug, Formatter},
 };
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Event payload with a set of query tags.
 pub struct Tagged {

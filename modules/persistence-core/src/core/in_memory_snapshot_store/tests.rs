@@ -4,7 +4,7 @@ use core::{
   task::{Context, Poll, Waker},
 };
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   in_memory_snapshot_store::InMemorySnapshotStore, snapshot_metadata::SnapshotMetadata,

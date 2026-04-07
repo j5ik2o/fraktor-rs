@@ -4,7 +4,7 @@ use core::{
   sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
 };
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::actor::messaging::system_message::SystemMessage;
 

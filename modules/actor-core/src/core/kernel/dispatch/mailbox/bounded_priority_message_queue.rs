@@ -6,7 +6,7 @@ mod tests;
 use alloc::collections::BinaryHeap;
 use core::{cmp::Ordering, num::NonZeroUsize};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy};
 use crate::core::kernel::{

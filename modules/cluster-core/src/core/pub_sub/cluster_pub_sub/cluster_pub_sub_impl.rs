@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamShared},
   serialization::{SerializationError, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_rs::core::{
+use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };

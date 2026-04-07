@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use fraktor_utils_rs::core::time::TimerInstant;
+use fraktor_utils_core_rs::core::time::TimerInstant;
 
 /// Quarantine information for an authority.
 #[derive(Clone, Debug, Eq, PartialEq)]

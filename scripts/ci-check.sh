@@ -790,7 +790,7 @@ run_dylint() {
   fi
   local -a main_package_args=()
   local -a hardware_targets=()
-  local -a feature_packages=("fraktor-actor-adaptor-rs=tokio-executor")
+  local -a feature_packages=("fraktor-actor-adaptor-std-rs=tokio-executor")
 
   if [[ ${#package_args[@]} -eq 0 ]]; then
     if ! command -v python3 >/dev/null 2>&1; then
@@ -944,18 +944,18 @@ PY
 run_clippy() {
   # --all-targets は dev-dep 解決時に ahash/proptest のトランジティブ依存が
   # 壊れるため --lib --bins に限定する（テストコードは run_tests で検証される）。
-  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-rs / fraktor-cluster-adaptor-rs を一時的に除外する。
-  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings"
-  run_cargo clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-rs --lib --bins -- -D warnings || return 1
+  # postcard 1.1.3 が nightly と非互換のため fraktor-cluster-core-rs / fraktor-cluster-adaptor-std-rs を一時的に除外する。
+  log_step "cargo +${DEFAULT_TOOLCHAIN} clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings"
+  run_cargo clippy --workspace --exclude fraktor-cluster-core-rs --exclude fraktor-cluster-adaptor-std-rs --lib --bins -- -D warnings || return 1
 }
 
 run_no_std() {
   PARALLEL_PIDS=()
   PARALLEL_LABELS=()
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --features alloc" \
+    "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --features alloc" \
     "no-std-host-utils" \
-    check -p fraktor-utils-rs --no-default-features --features alloc
+    check -p fraktor-utils-core-rs --no-default-features --features alloc
   start_parallel_cargo \
     "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-rs --no-default-features" \
     "no-std-host-core" \
@@ -967,9 +967,9 @@ run_no_std() {
     PARALLEL_PIDS=()
     PARALLEL_LABELS=()
     start_parallel_cargo \
-      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-rs --no-default-features --target ${thumb_target} -F fraktor-utils-rs/alloc" \
+      "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-utils-core-rs --no-default-features --target ${thumb_target} -F fraktor-utils-core-rs/alloc" \
       "no-std-thumb-utils" \
-      check -p fraktor-utils-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-rs/alloc
+      check -p fraktor-utils-core-rs --no-default-features --target "${thumb_target}" -F fraktor-utils-core-rs/alloc
     start_parallel_cargo \
       "cargo +${DEFAULT_TOOLCHAIN} check -p fraktor-actor-core-rs -p fraktor-stream-core-rs --no-default-features --target ${thumb_target}" \
       "no-std-thumb-core" \
@@ -982,13 +982,13 @@ run_std() {
   PARALLEL_PIDS=()
   PARALLEL_LABELS=()
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-rs" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-utils-core-rs" \
     "std-utils" \
-    test -p fraktor-utils-rs
+    test -p fraktor-utils-core-rs
   start_parallel_cargo \
-    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib" \
+    "cargo +${DEFAULT_TOOLCHAIN} test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib" \
     "std-core" \
-    test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-rs -p fraktor-rs --lib
+    test -p fraktor-actor-core-rs -p fraktor-stream-core-rs -p fraktor-stream-adaptor-std-rs -p fraktor-rs --lib
   wait_parallel_cargo || return 1
 }
 
@@ -1216,8 +1216,8 @@ run_perf() {
   log_step "cargo test -p fraktor-actor-core-rs stress_scheduler_handles_"
   run_cargo test -p fraktor-actor-core-rs stress_scheduler_handles_ || return 1
 
-  log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
-  run_cargo bench -p fraktor-actor-adaptor-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1
+  log_step "cargo +${DEFAULT_TOOLCHAIN} bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10"
+  run_cargo bench -p fraktor-actor-adaptor-std-rs --bench actor_baseline --features test-support,tokio-executor -- --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10 || return 1
 }
 
 run_all() {

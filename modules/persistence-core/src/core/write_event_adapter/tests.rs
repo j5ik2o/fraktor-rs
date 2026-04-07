@@ -1,6 +1,6 @@
 use core::{any::Any, ops::Deref};
 
-use fraktor_utils_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::write_event_adapter::WriteEventAdapter;
 
