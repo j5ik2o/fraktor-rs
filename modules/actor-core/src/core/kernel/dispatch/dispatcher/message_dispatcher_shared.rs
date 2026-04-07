@@ -250,8 +250,24 @@ impl MessageDispatcherShared {
     let throughput_deadline = self.throughput_deadline();
     let executor = self.executor();
     let mbox_clone = mailbox.clone();
+    // Capture a clone of the dispatcher so the post-drain reschedule path
+    // can re-call `register_for_execution` if more work arrived during the
+    // drain. Without this, `Mailbox::run` would consume the
+    // `need_reschedule` flag silently and the late-arriving messages would
+    // sit in the queue until the next external `tell()` (which may never
+    // come — e.g. when the producer has already submitted the entire batch
+    // before the receiver finished its first throughput-limited drain).
+    let dispatcher = self.clone();
     let result = executor.execute(Box::new(move || {
-      mbox_clone.run(throughput, throughput_deadline);
+      let needs_reschedule = mbox_clone.run(throughput, throughput_deadline);
+      if needs_reschedule {
+        // Re-arm the schedule. We don't know whether the pending work is a
+        // user message or a system message at this point, so signal both
+        // hint flags conservatively — `request_schedule` will only refuse
+        // when the mailbox is closed or already scheduled by another
+        // thread, both of which are safe outcomes.
+        let _ = dispatcher.register_for_execution(&mbox_clone, true, true);
+      }
     }));
 
     match result {

@@ -17,7 +17,6 @@
 
 use std::{
   boxed::Box,
-  num::NonZeroUsize,
   sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -90,26 +89,17 @@ impl Actor for TeamGuardian {
 fn build_system() -> ActorSystem {
   let handle = tokio::runtime::Handle::current();
 
-  // High throughput so a single mailbox.run() can drain the entire batch.
-  // The default `with_defaults` value is 5, which is too low for the
-  // contention scenario: with throughput=5 and batch=1000, the receiver
-  // mailbox would have to be re-scheduled 200 times. The current dispatcher
-  // tree relies on follow-up `tell()` calls to trigger re-schedule via
-  // `register_for_execution`, so once all `tell()` calls have already been
-  // submitted and the first drain returns under the throughput limit, the
-  // remaining envelopes can sit in the queue without being woken up. This
-  // is a separate finding (lost wake-up) that is out of scope for the
-  // Phase 14.5 contention observation; bumping the throughput here lets the
-  // contention test focus on the documented "no active wake of idle team
-  // members → skew" trade-off rather than the lost wake-up bug.
-  let throughput = NonZeroUsize::new(4096).expect("non-zero throughput");
-
-  let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID).with_throughput(throughput);
+  // Use the default throughput (5). With the lost-wake-up fix in
+  // `Mailbox::run` (Phase 14.5 follow-up), the dispatcher correctly
+  // re-schedules itself across throughput boundaries, so a 1000-envelope
+  // batch drains correctly even though each `mailbox.run` invocation only
+  // processes a small slice.
+  let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new(TokioExecutor::new(handle.clone()));
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
-  let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID).with_throughput(throughput);
+  let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new(TokioExecutor::new(handle));
   let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor));
@@ -151,13 +141,25 @@ fn flood_and_wait(receiver: &ActorRef, total: &Arc<AtomicUsize>, count: usize) -
     let mut target = receiver.clone();
     target.tell(AnyMessage::new(sequence as u32));
   }
+  let after_send = started.elapsed();
   let deadline = started + DRAIN_TIMEOUT;
+  let mut last_observed = 0_usize;
+  let mut last_progress = Instant::now();
   while total.load(Ordering::Acquire) < count {
-    if Instant::now() > deadline {
+    let now = Instant::now();
+    let observed = total.load(Ordering::Acquire);
+    if observed > last_observed {
+      last_observed = observed;
+      last_progress = now;
+    }
+    if now > deadline {
       panic!(
-        "timed out waiting for drain: total={} expected={}",
-        total.load(Ordering::Acquire),
-        count
+        "timed out waiting for drain: total={} expected={} after_send_ms={} \
+         stalled_ms={}",
+        observed,
+        count,
+        after_send.as_millis(),
+        last_progress.elapsed().as_millis(),
       );
     }
     std::thread::yield_now();
@@ -178,38 +180,29 @@ async fn balancing_dispatcher_contention_distribution_observation() {
   // distribution to stderr so the observed numbers become part of the
   // test output record.
   //
+  // The bench/test runs at the default `throughput=5` (5 envelopes per
+  // mailbox.run drain pass), which is the production-realistic setting and
+  // forces the dispatcher to repeatedly re-schedule the mailbox across
+  // throughput boundaries. This relies on the lost-wake-up fix in
+  // `Mailbox::run`: `run()` now returns the pending-reschedule signal and
+  // `MessageDispatcherShared::register_for_execution` re-arms the schedule
+  // when work arrived during the drain. Without that fix, this scenario
+  // hangs around ~450 envelopes because the late-arriving tells see the
+  // mailbox `running`, set `need_reschedule`, and the previous code
+  // dropped that signal silently.
+  //
   // Invariants asserted:
   // - Every envelope is processed exactly once (sum == batch).
   // - All four team members observe work (`min > 0` → no idle members).
-  //   This is empirically stable across the runs we sampled.
-  //
-  // Observed samples (5 consecutive runs on a multi-thread Tokio runtime,
-  // worker_threads=4, batch=1000, throughput=4096):
-  //   per_actor=[444, 288, 166, 102]  elapsed=21ms  idle=0
-  //   per_actor=[244, 249, 240, 267]  elapsed=3ms   idle=0
-  //   per_actor=[428, 165, 225, 182]  elapsed=3ms   idle=0
-  //   per_actor=[295, 260, 229, 216]  elapsed=3ms   idle=0
-  //   per_actor=[240, 259, 239, 262]  elapsed=3ms   idle=0
   //
   // Findings:
   // - design.md §9 predicted that V1 (no active wake of idle team members)
   //   could leave team members idle while the receiver drains. In practice
   //   the natural drain pattern keeps all four members working: even when
-  //   one team member dominates the distribution (max/min ≈ 4.4 in the
-  //   most skewed run), every member processes a non-trivial share of the
-  //   batch. No run produced an idle team member.
+  //   one team member dominates the distribution, every member processes a
+  //   non-trivial share of the batch.
   // - The receiver (actor[0]) tends to skew slightly higher because the
   //   tells land on its own mailbox before any sibling can pick them up.
-  //
-  // Out of scope for Phase 14.5 (logged for follow-up):
-  // - At the default `throughput=5`, the same scenario hangs after ~450
-  //   envelopes because the mailbox `set_idle()` return value is currently
-  //   ignored in `Mailbox::run`, so the dispatcher relies on follow-up
-  //   `tell()` calls to re-schedule. When all `tell()`s have already been
-  //   submitted, the remaining envelopes can sit in the queue without a
-  //   wake-up. This test sidesteps the issue by raising the throughput so
-  //   a single drain handles the entire batch — the lost wake-up bug
-  //   itself is a separate finding worth a dedicated change.
   const TEAM_SIZE: usize = 4;
   const BATCH: usize = 1000;
 
