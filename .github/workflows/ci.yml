@@ -68,6 +68,23 @@ jobs:
         with:
           shared-key: lint
           cache-directories: ${{ github.workspace }}/.cargo/bin
+      - name: Bootstrap cargo-dylint binary from runner cache
+        # The workflow pins CARGO_HOME to ${{ github.workspace }}/.cargo so that
+        # concurrent self-hosted runners do not race on a shared registry, but
+        # that also means each fresh job starts without `cargo-dylint`. Building
+        # `cargo-dylint` from source pulls in `openssl-sys`, which fails on
+        # runners that do not have `libssl-dev` / `pkg-config`. Instead reuse
+        # the pre-installed binary that already lives at the runner user's
+        # default cargo home (`~/.cargo/bin/cargo-dylint`) when present.
+        if: matrix.check.name == 'Dylint'
+        run: |
+          mkdir -p "${CARGO_HOME}/bin"
+          if [ -x "${HOME}/.cargo/bin/cargo-dylint" ]; then
+            cp "${HOME}/.cargo/bin/cargo-dylint" "${CARGO_HOME}/bin/cargo-dylint"
+            "${CARGO_HOME}/bin/cargo-dylint" --version || true
+          else
+            echo "::notice::no pre-installed cargo-dylint at ${HOME}/.cargo/bin; ci-check.sh will attempt to install"
+          fi
       - name: Run ${{ matrix.check.name }}
         run: ./scripts/ci-check.sh ${{ matrix.check.script }}
 
