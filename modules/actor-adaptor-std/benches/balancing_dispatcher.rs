@@ -119,8 +119,7 @@ struct DispatcherBenchSystem {
 
 impl DispatcherBenchSystem {
   fn new() -> Self {
-    let runtime =
-      Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
+    let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);

@@ -66,10 +66,7 @@ impl Dispatchers {
   /// Creates an empty registry.
   #[must_use]
   pub fn new() -> Self {
-    Self {
-      entries:       HashMap::with_hasher(RandomState::new()),
-      resolve_count: ArcShared::new(AtomicUsize::new(0)),
-    }
+    Self { entries: HashMap::with_hasher(RandomState::new()), resolve_count: ArcShared::new(AtomicUsize::new(0)) }
   }
 
   /// Registers a configurator for the supplied identifier.

@@ -227,20 +227,16 @@ impl Mailbox {
     // Surface the "needs reschedule" signal to the caller. The signal is
     // a union of two independent sources:
     //
-    // 1. **Producer signal** (`need_reschedule`, consumed by `set_idle`):
-    //    `request_schedule` sets this flag when a `tell()` arrives while
-    //    the mailbox is busy. Without `set_idle`'s return value the
+    // 1. **Producer signal** (`need_reschedule`, consumed by `set_idle`): `request_schedule` sets this
+    //    flag when a `tell()` arrives while the mailbox is busy. Without `set_idle`'s return value the
     //    dispatcher would never know that work arrived during the drain.
     //
-    // 2. **Consumer signal** (queue still has messages after the drain):
-    //    The throughput limit is a yield point, not a "queue is empty"
-    //    signal. When we hit the limit (or even when the limit was not
-    //    reached but envelopes were already in the queue before we
-    //    started, e.g. if a `BalancingDispatcher` team queue holds
-    //    messages enqueued by tells that scheduled a different team
-    //    member), the queue can still have pending work that no producer
-    //    will ever announce again — the producers may have already
-    //    finished firing all their tells. Self-reporting via the queue
+    // 2. **Consumer signal** (queue still has messages after the drain): The throughput limit is a
+    //    yield point, not a "queue is empty" signal. When we hit the limit (or even when the limit was
+    //    not reached but envelopes were already in the queue before we started, e.g. if a
+    //    `BalancingDispatcher` team queue holds messages enqueued by tells that scheduled a different
+    //    team member), the queue can still have pending work that no producer will ever announce again
+    //    — the producers may have already finished firing all their tells. Self-reporting via the queue
     //    state is the only way to keep the drain loop alive in that case.
     //
     // The dispatcher closure that wraps `run()` must re-call

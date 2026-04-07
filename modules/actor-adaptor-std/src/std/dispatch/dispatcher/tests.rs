@@ -196,24 +196,22 @@ async fn balancing_dispatcher_contention_distribution_observation() {
   // - All four team members observe work (`min > 0` → no idle members).
   //
   // Findings:
-  // - design.md §9 predicted that V1 (no active wake of idle team members)
-  //   could leave team members idle while the receiver drains. In practice
-  //   the natural drain pattern keeps all four members working: even when
-  //   one team member dominates the distribution, every member processes a
+  // - design.md §9 predicted that V1 (no active wake of idle team members) could leave team members
+  //   idle while the receiver drains. In practice the natural drain pattern keeps all four members
+  //   working: even when one team member dominates the distribution, every member processes a
   //   non-trivial share of the batch.
-  // - The receiver (actor[0]) tends to skew slightly higher because the
-  //   tells land on its own mailbox before any sibling can pick them up.
+  // - The receiver (actor[0]) tends to skew slightly higher because the tells land on its own mailbox
+  //   before any sibling can pick them up.
   const TEAM_SIZE: usize = 4;
   const BATCH: usize = 1000;
 
   let system = tokio::task::spawn_blocking(build_system).await.expect("build system");
-  let (refs, per_actor, total) =
-    tokio::task::spawn_blocking({
-      let system = system.clone();
-      move || spawn_team(&system, TEAM_SIZE, BALANCING_DISPATCHER_ID)
-    })
-    .await
-    .expect("spawn team");
+  let (refs, per_actor, total) = tokio::task::spawn_blocking({
+    let system = system.clone();
+    move || spawn_team(&system, TEAM_SIZE, BALANCING_DISPATCHER_ID)
+  })
+  .await
+  .expect("spawn team");
 
   let elapsed = tokio::task::spawn_blocking({
     let receiver = refs[0].clone();
