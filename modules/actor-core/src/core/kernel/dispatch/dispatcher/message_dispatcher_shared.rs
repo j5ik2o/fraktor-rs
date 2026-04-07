@@ -260,13 +260,17 @@ impl MessageDispatcherShared {
     let dispatcher = self.clone();
     let result = executor.execute(Box::new(move || {
       let needs_reschedule = mbox_clone.run(throughput, throughput_deadline);
-      if needs_reschedule {
+      if needs_reschedule && !dispatcher.register_for_execution(&mbox_clone, true, true) {
         // Re-arm the schedule. We don't know whether the pending work is a
         // user message or a system message at this point, so signal both
-        // hint flags conservatively — `request_schedule` will only refuse
-        // when the mailbox is closed or already scheduled by another
-        // thread, both of which are safe outcomes.
-        let _ = dispatcher.register_for_execution(&mbox_clone, true, true);
+        // hint flags conservatively. A `false` return is best-effort and
+        // safe: it means another path already scheduled the mailbox
+        // (request_schedule CAS lost) or the mailbox is closed, both of
+        // which leave a future drain pass guaranteed by some other path.
+        tracing::trace!(
+          target: "fraktor::dispatcher",
+          "post-drain reschedule observed mailbox already scheduled or closed"
+        );
       }
     }));
 
