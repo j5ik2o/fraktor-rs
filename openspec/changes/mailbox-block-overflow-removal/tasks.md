@@ -172,7 +172,7 @@ spec delta ファイルは proposal 作成時に既に作成済み・push 済み
 
 ## 7. PR 作成
 
-- [ ] 7.1 PR title: `refactor(mailbox): remove MailboxOverflowStrategy::Block and async backpressure scaffolding`
-- [ ] 7.2 PR description に proposal.md / design.md の要約と Pekko / Proto.Actor Go の比較根拠を含める
-- [ ] 7.3 commit history が 5 つ (本体 4 つ + openspec 1 つ) に分かれていることを確認する
-- [ ] 7.4 各コミットが独立して `cargo test` / `cargo check` を通過することを確認する
+- [x] 7.1 PR title: `refactor(mailbox): remove MailboxOverflowStrategy::Block and async backpressure scaffolding` (PR #1527)
+- [x] 7.2 PR description に proposal.md / design.md の要約と Pekko / Proto.Actor Go の比較根拠を含める
+- [x] 7.3 commit history が段階的 commit に分かれていることを確認する (proposal + 4 implementation + dead-code cleanup + docs finalize の 7 コミット)
+- [x] 7.4 各コミットが独立して `cargo test` / `cargo check` を通過することを確認する (commit 2 のみ MailboxOfferFuture::new の dead-code warning 2 件あり、commit 3 で型ごと削除される前提)
