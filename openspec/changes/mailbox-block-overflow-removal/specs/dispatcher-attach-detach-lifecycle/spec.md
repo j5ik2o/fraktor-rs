@@ -1,0 +1,46 @@
+## MODIFIED Requirements
+
+### Requirement: dispatcher は 1 : N で actor を収容する lifecycle を提供する
+
+dispatcher は Pekko の `MessageDispatcher` と同じく、単一 instance で複数 actor を同時に収容する lifecycle を提供しなければならない (MUST)。`attach` / `detach` は inhabitants カウンタを通じて dispatcher 自身の終了タイミングを決定する。
+
+#### Scenario: 複数 actor が同一 dispatcher に共存する
+- **WHEN** `MessageDispatcherShared` に異なる 2 体以上の actor を `attach` する
+- **THEN** すべての `attach` は成功する（`PinnedDispatcher` を除く）
+- **AND** `inhabitants` は attach した actor 数と等しい
+- **AND** すべての actor の mailbox が同じ `ExecutorShared` を経由して submit される
+- **AND** dispatcher は 1 actor の mailbox への参照を field として保持しない
+
+#### Scenario: attach は MessageDispatcherShared が register_actor hook → create_mailbox → register_for_execution を順に orchestrate する
+- **WHEN** `MessageDispatcherShared::attach(&self, actor)` を呼ぶ
+- **THEN** `MessageDispatcherShared` は `with_write` の中で `self.register_actor(actor)` を呼ぶ
+- **AND** `register_actor` の default impl は `self.core_mut().mark_attach()` を呼び `inhabitants` を 1 加算する（`PinnedDispatcher` は owner check も行う）
+- **AND** 同じ `with_write` の中で `self.create_mailbox(actor, ...)` で作られた mailbox が actor に設定される
+- **AND** ロック解放後に `MessageDispatcherShared::register_for_execution(&mbox, false, true)` が呼ばれる
+- **AND** mailbox overflow strategy と executor の blocking 互換性を検証するゲートは存在しない (`MailboxOverflowStrategy::Block` と `Executor::supports_blocking()` 撤去に伴い不要)
+
+#### Scenario: detach は unregister_actor hook を呼んで inhabitants 減算と auto-shutdown を予約する
+- **WHEN** `MessageDispatcherShared::detach(&self, actor)` を呼ぶ
+- **THEN** `MessageDispatcherShared` は `with_write` の中で `self.unregister_actor(actor)` を呼ぶ
+- **AND** `unregister_actor` の default impl は `self.core_mut().mark_detach()` を呼び `inhabitants` を 1 減算する（戻り値なし、純粋 command）
+- **AND** 同じ `with_write` の中で detached mailbox は terminal 状態へ遷移し、clean up される
+- **AND** 続けて `self.core_mut().schedule_shutdown_if_sensible()` が呼ばれ、その戻り値 `ShutdownSchedule` をローカル変数へ copy する。全 actor が detach された（`inhabitants == 0`）場合のみ `shutdown_schedule` が `UNSCHEDULED → SCHEDULED` へ遷移する
+- **AND** ロック解放後、copy した値が `SCHEDULED` のときだけ `MessageDispatcherShared` は `actor.scheduler()` から取得した handle に delayed shutdown closure を登録する
+- **AND** lock 解放後の状態再観測は行わない（race window を作らない）
+- **AND** `PinnedDispatcher` は `unregister_actor` を override して owner を `None` に戻してから default 処理を呼ぶ
+
+#### Scenario: 全 detach 後に shutdown_timeout 経過で executor が自動停止する
+- **WHEN** 全 actor が `detach` された後、`shutdown_timeout` で指定された時間が経過する
+- **THEN** dispatcher は自身の `ExecutorShared::shutdown()` を呼ぶ
+- **AND** `shutdown_schedule` は `UNSCHEDULED` に戻る（次回 attach 時に再利用可能）
+
+#### Scenario: delayed shutdown の system scheduler は detach 引数の actor から辿る
+- **WHEN** `MessageDispatcherShared::detach(&self, actor)` が delayed shutdown を登録する
+- **THEN** scheduler handle は `actor.scheduler()` 経由で取得する
+- **AND** `DispatcherCore` / `MessageDispatcherShared` は system scheduler への参照を field として保持しない
+
+#### Scenario: shutdown 予約中の再 attach が shutdown をキャンセルする
+- **WHEN** shutdown 予約中（`shutdown_schedule == SCHEDULED`）に新しい actor が `attach` される
+- **THEN** `register_actor` の実行中に `shutdown_schedule` は `SCHEDULED → RESCHEDULED` へ遷移する
+- **AND** shutdown アクションが発火するときに `RESCHEDULED` を検知して cancel する
+- **AND** dispatcher は停止せず新しい actor を収容する
