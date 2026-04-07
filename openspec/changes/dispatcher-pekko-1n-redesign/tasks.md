@@ -194,14 +194,21 @@
 ## 9. core: Mailbox 改修（並走期間中は additive に留める）
 
 - [x] 9.0 `modules/actor-core/src/core/kernel/dispatch/mailbox/envelope.rs` に `Envelope { payload: AnyMessage }` を定義する。sender 等の既存メタデータは `AnyMessage` 側を再利用し、本 change では receiver / priority / correlation_id 等の追加フィールドは持たない
-- [ ] 9.0.0 送信側 API（`ActorRefSender` 等）が `AnyMessage` を受け取り、dispatch 境界で `Envelope` へラップする変換点を導入する
-- [ ] 9.0.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/message_queue.rs` の `MessageQueue` trait と既存 concrete queue 実装群（bounded / unbounded / deque / priority / stable-priority / control-aware）を `Envelope` ベースへ移行する。redesign 完了時点で mailbox user-path に `AnyMessage` ベース queue 契約を残さない
-- [ ] 9.0.2 mailbox user-path の追随更新を行う: `Mailbox::enqueue_user`、user dequeue path、cleanup path、priority / stable-priority / control-aware queue の比較・選別ロジック、dead-letter / instrumentation で user payload を参照する箇所を `Envelope` ベースへ揃える
-- [ ] 9.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs` に queue 注入可能な public コンストラクタ `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` を **追加** する。並走期間中は legacy dispatcher が使う既存 `Mailbox::new(...)` シグネチャを削除しない
-- [ ] 9.2 `Mailbox::run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>)` を追加する。drain ループ本体は既存 `DispatcherCore::process_batch` のロジックを mailbox 側へ移設する。`Weak<ActorCell>` の upgrade に失敗したら早期 return
-- [ ] 9.3 mailbox 側の `set_running` / `set_idle` を run 内で呼び、dispatcher 側の state 管理を排除する
+- [x] 9.0.0 送信側 API（`ActorRefSender` 等）が `AnyMessage` を受け取り、dispatch 境界で `Envelope` へラップする変換点を導入する
+  > `DispatcherSender::send` が `AnyMessage` 受領後に `Envelope::new(...)` で wrap してから `Mailbox::enqueue_envelope` を呼ぶ。trait 境界は `AnyMessage` のままで legacy 互換。
+- [x] 9.0.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/message_queue.rs` の `MessageQueue` trait と既存 concrete queue 実装群（bounded / unbounded / deque / priority / stable-priority / control-aware）を `Envelope` ベースへ移行する。redesign 完了時点で mailbox user-path に `AnyMessage` ベース queue 契約を残さない
+  > `MessageQueue::{enqueue, dequeue}` が `Envelope` を受け取り、bounded / unbounded / deque / priority / stable_priority / control_aware / SharedMessageQueue / SharedMessageQueueBox がすべて追随。`map_user_envelope_queue_error` を追加。
+- [x] 9.0.2 mailbox user-path の追随更新を行う: `Mailbox::enqueue_user`、user dequeue path、cleanup path、priority / stable-priority / control-aware queue の比較・選別ロジック、dead-letter / instrumentation で user payload を参照する箇所を `Envelope` ベースへ揃える
+  > `Mailbox::enqueue_envelope` が canonical な enqueue になり、`enqueue_user(AnyMessage)` は wrap shim。`prepend_user_messages` / `prepend_via_drain_and_requeue` / `MailboxOfferFuture` / `MailboxMessage::User(Envelope)` も Envelope baseで動く。dead letter は payload 抽出時にだけ unwrap する。
+- [x] 9.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs` に queue 注入可能な public コンストラクタ `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` を **追加** する。並走期間中は legacy dispatcher が使う既存 `Mailbox::new(...)` シグネチャを削除しない
+  > `Mailbox::with_actor(actor: WeakShared<ActorCell>, policy, queue: Box<dyn MessageQueue>)` を新設。`install_actor` で late-bind も可能。`Mailbox::new(policy)` は legacy 互換のため残置。
+- [x] 9.2 `Mailbox::run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>)` を追加する。drain ループ本体は既存 `DispatcherCore::process_batch` のロジックを mailbox 側へ移設する。`Weak<ActorCell>` の upgrade に失敗したら早期 return
+  > `Mailbox::run` で先頭の `actor.upgrade()` チェックを追加し、cell drop 後は drain せずに早期 return する。
+- [x] 9.3 mailbox 側の `set_running` / `set_idle` を run 内で呼び、dispatcher 側の state 管理を排除する
+  > legacy `DispatcherCore::process_batch` 削除済み。`Mailbox::run` が自身で `set_running` / `set_idle` を呼ぶ唯一の経路。
 - [x] 9.4 Pekko 名に対応する alias / 追加 API（`setAsScheduled` / `setAsIdle` / `canBeScheduledForExecution` 相当）を導入する。並走期間中は legacy dispatcher が使う `request_schedule` などの既存 API を削除しない
-- [ ] 9.5 detach 経路で mailbox を terminal 状態へ遷移させ、`clean_up` する contract を追加する
+- [x] 9.5 detach 経路で mailbox を terminal 状態へ遷移させ、`clean_up` する contract を追加する
+  > `MailboxScheduleState::close` / `is_closed` を追加し、`Mailbox::become_closed_and_clean_up` が `MailboxCleanupPolicy::DrainToDeadLetters` のときに dead letter へ流してから `clean_up` を呼ぶ。`MessageDispatcherShared::detach` の先頭でこれを呼ぶ。
 - [x] 9.6 mailbox 改修後も legacy dispatcher と new dispatcher の両方がコンパイル可能であることを確認する
 - [x] 9.7 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
