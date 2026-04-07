@@ -24,8 +24,11 @@
 - dispatcher の公開抽象は `MessageDispatcher` trait と `MessageDispatcherShared` を中心とし、trait は query / hook、shared wrapper は lock 解放後の副作用を伴う orchestration（`attach` / `detach` / `dispatch` / `system_dispatch` / `register_for_execution`）を担当する
 - `MessageDispatcher` trait のメソッドは CQS 原則に従う:
   - **Query**（状態を読むのみ）は `&self` + 戻り値あり（`id`, `throughput`, `throughput_deadline`, `shutdown_timeout`, `inhabitants` 等）
-  - **Command / Hook**（状態を変える）は `&mut self`（`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `register_for_execution`, `suspend`, `resume`, `execute_task`, `shutdown` 等）
+  - **Command / Hook**（状態を変える）は `&mut self`（`register_actor`, `unregister_actor`, `dispatch`, `system_dispatch`, `suspend`, `resume`, `shutdown` 等）
   - `create_mailbox` は状態を変えない factory として `&self`
+- `MessageDispatcher::dispatch` / `system_dispatch` の戻り値は `Vec<ArcShared<Mailbox>>` (または small-vec optimization 同等) で、shared wrapper が lock 解放後に候補配列を順に `register_for_execution` する。この設計により BalancingDispatcher の teamWork load balancing も同じ seam で表現できる
+- `register_for_execution` は trait method ではなく `MessageDispatcherShared` の純粋な CAS + executor submit 経路として提供する（trait hook の dual CAS を排除するため）
+- `execute_task` は本 change のスコープ外（YAGNI）。Pekko の `executeTask` 相当（dispatcher の executor へ任意 closure を submit する経路）は具体的な caller が現れた時点で additive に追加する
 - 内部可変性は使用しない。`MessageDispatcher` を複数スレッド・複数所有者で共有する経路は `MessageDispatcherShared` を通じてのみ提供する
 - `MessageDispatcherShared` は既存の AShared 系 (`ActorFactoryShared` など) と同じパターンに従い、`ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>` を内包し、`SharedAccess<Box<dyn MessageDispatcher>>` を実装する（`with_read` / `with_write`）
 - 1 つの dispatcher は同時に複数の actor を収容できる（1 : N）
@@ -34,14 +37,18 @@
 - 全 actor が detach された後、`shutdown_timeout` 経過で executor を自動停止する
 - delayed shutdown の実行予約は `MessageDispatcherShared::detach` が actor の system scheduler を使って行い、`DispatcherCore` は state machine だけを保持する
 - delayed shutdown 用の scheduler handle は `detach(actor)` の引数から `actor.system().scheduler()` を辿って取得する。`DispatcherCore` / `MessageDispatcherShared` は scheduler を field として保持しない
-- `MessageDispatcher` の具象型として `DefaultDispatcher` と `PinnedDispatcher` を独立した型として提供する
-- `PinnedDispatcher` は 1 actor 専有の dedicated lane を提供し、owner check を register 時に行う
+- `MessageDispatcher` の具象型として `DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher` の **3 つ** を独立した型として提供する
+- `PinnedDispatcher` は 1 actor 専有の dedicated lane を提供し、owner check を register 時に行う。重複所有時は `SpawnError::DispatcherAlreadyOwned` を返す（本 change で `SpawnError` enum に新規バリアント追加）
+- `BalancingDispatcher` は本 change で **V1 として実装する**: `SharedMessageQueue` を 1 つ持ち、attach した全 actor の `SharingMailbox` がそれを参照することで自然に load balancing を実現する。teamWork による active wake-up fallback は V2 (additive) として将来追加する
 - `PinnedDispatcherConfigurator::dispatcher()` は呼び出しのたびに新しい `PinnedDispatcher` を返す（Pekko と同じ）
-- `DefaultDispatcherConfigurator::dispatcher()` は同一インスタンスをキャッシュして返す（Pekko と同じ）
+- `DefaultDispatcherConfigurator::dispatcher()` / `BalancingDispatcherConfigurator::dispatcher()` は同一インスタンスをキャッシュして返す（Pekko と同じ）
+- `Dispatchers::resolve` の呼び出しは spawn / bootstrap 経路に限定する。message hot path から呼んではならない（PinnedDispatcherConfigurator は呼び出しごとに新 thread 生成のため、hot path 呼び出しは thread leak を引き起こす）
 - dispatcher の共通 state と private helper は `DispatcherCore` （pub struct）に集約し、各具象型が `core: DispatcherCore` として保持する
 - `DispatcherCore` 自身も CQS 原則に従う（commands は `&mut self`、queries は `&self`）
-- `DispatcherCore::schedule_shutdown_if_sensible` は delayed shutdown を即実行せず、`shutdown_schedule` の遷移だけを担う
-- `DispatcherCore::mark_detach` は inhabitants の減算だけを担い、shutdown 判定は `MessageDispatcherShared::detach` の orchestration で行う
+- `DispatcherCore::mark_attach` / `mark_detach` は戻り値なしの純粋 command として定義する（CQS 例外なし）
+- `DispatcherCore::schedule_shutdown_if_sensible` は `ShutdownSchedule` を返す。これは CQS 許容例外であり、`MessageDispatcherShared::detach` が lock 解放前に値を copy して delayed shutdown 登録判定に使うため
+- `MessageDispatcherShared::detach` の delayed shutdown 登録は、状態遷移後の `ShutdownSchedule` を lock 内で copy out し、ロック解放後にその値で判定する（lock 解放後の再観測による race window を作らない）
+- mailbox / overflow strategy が要求する blocking compatibility は `executor.supports_blocking()` と照合し、不適合な組み合わせは `SpawnError::InvalidMailboxConfig` で attach 時に拒否する
 - dispatcher 単位の mutex による 1:N 共有時の contention は既知のトレードオフとして受け入れ、bench / diagnostics で観測する
 - `Executor` trait も CQS 原則に従う:
   - `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>)` は command
@@ -69,10 +76,13 @@
 - `ScheduleAdapter` trait / `ScheduleAdapterShared` / `InlineScheduleAdapter` / `ScheduleWaker` の多層構造を残してはならない
 - `DispatcherBuilder` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` を 1:1 前提の「 actor 毎 dispatcher 組み立て」のために残してはならない
 - `MessageDispatcher` / `Executor` trait の command メソッドを内部可変性で `&self` に偽装してはならない（CQS 違反、内部可変性ポリシー違反）
+- `MessageDispatcher` trait に `register_for_execution` / `execute_task` を残してはならない（前者は shared wrapper に集約、後者は本 change スコープ外）
 - inhabitants と自動 shutdown 契約を省略して「手動 shutdown のみ」の運用に戻してはならない
 - 後方互換ブリッジとして旧 `DispatcherCore` / `DispatcherShared` と新 `MessageDispatcher` を同時に公開し続けてはならない
 - 並走期間中に `dispatcher_new/` から旧 `dispatcher/` の型・関数・モジュールを `use` / 参照してはならない（短絡的な再利用を含めて禁止。同じ概念が必要なら新側に独立して再実装する）
 - 旧版 `DispatcherSettings` の `schedule_adapter` / `starvation_deadline` フィールドを新版に持ち込んではならない（前者は `ScheduleAdapter` 自体の削除に伴って、後者は YAGNI で初期版から除外）
+- `BalancingDispatcher` の V1 で teamWork load balancing fallback を実装してはならない（V2 として additive に追加する）
+- `SharingMailbox` を `BalancingDispatcher` 以外の dispatcher で使ってはならない
 
 ## Capabilities
 
@@ -101,17 +111,21 @@
   - `ActorCell` は 2-phase init が必要になる可能性が高い。cell 本体の確保と mailbox / dispatcher / sender の install を分離する設計判断が必要
   - `MessageDispatcher::create_mailbox` は public trait method だが、運用規律として `MessageDispatcherShared::attach` 経由以外から直接呼ばない前提で扱う
 - 影響 API:
-  - `MessageDispatcher` trait (new, CQS 準拠)
+  - `MessageDispatcher` trait (new, CQS 準拠、`register_for_execution` / `execute_task` を持たない)
   - `MessageDispatcherShared` struct (new, AShared パターン)
   - `DispatcherCore` (pub, new)
   - `DispatcherSettings` (new, **旧版とは別物**: `id` / `throughput` / `throughput_deadline` / `shutdown_timeout` の immutable bundle。旧 `schedule_adapter` / `starvation_deadline` フィールドは持たない)
-  - `DefaultDispatcher` / `PinnedDispatcher` concrete types (new, core 層配置)
+  - `DefaultDispatcher` / `PinnedDispatcher` / `BalancingDispatcher` concrete types (new, **3 つすべて** core 層配置)
+  - `SharedMessageQueue` struct (new, core 層、`BalancingDispatcher` 専用)
+  - `SharingMailbox` struct (new, core 層、Mailbox の薄いラッパ、shared queue 参照)
   - `MessageDispatcherConfigurator` trait (renamed from `DispatcherProvider` concept)
+  - `DefaultDispatcherConfigurator` / `PinnedDispatcherConfigurator` / `BalancingDispatcherConfigurator` の 3 具象 configurator
   - `Executor` trait (reshaped, CQS 準拠 `&mut self`)
   - `ExecutorShared` struct (new, AShared パターン)
   - `DispatcherWaker` (new, no_std)
-  - `Mailbox::new` (breaking, queue injection)
+  - `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` (breaking, queue injection)
   - `Mailbox::run` (new)
+  - `SpawnError::DispatcherAlreadyOwned` バリアント (new, PinnedDispatcher の同時所有拒否)
   - removal: `DispatcherShared`(旧), `DispatchShared`, `DispatcherBuilder`, `DispatcherProvider`, `DispatchExecutorRunner`, `DispatcherProvisionRequest`, `DispatcherRegistryEntry`, `ConfiguredDispatcherBuilder`, `DispatchExecutor`(旧), 旧 `DispatcherSettings`(`schedule_adapter` / `starvation_deadline` を含む版), `ScheduleAdapter*`, `InlineScheduleAdapter`, `ScheduleWaker`, `StdScheduleAdapter`
 - 互換性:
   - 後方互換は不要（プロジェクト方針に従う）

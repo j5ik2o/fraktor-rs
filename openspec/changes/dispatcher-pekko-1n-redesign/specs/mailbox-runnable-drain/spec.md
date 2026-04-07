@@ -24,15 +24,41 @@ mailbox は Pekko の `Mailbox extends Runnable` と同じく、自身の `run()
 
 ### Requirement: Mailbox コンストラクタは message queue を外部注入できる
 
-mailbox は message queue を外部から注入可能なコンストラクタを持ち、将来の `BalancingDispatcher` が shared queue を差し込めるようにしなければならない (MUST)。
+mailbox は message queue を外部から注入可能なコンストラクタを持ち、`BalancingDispatcher` の `SharingMailbox` が shared queue を差し込めるようにしなければならない (MUST)。
 
 #### Scenario: Mailbox::new は queue を引数に取る
-- **WHEN** `Mailbox::new(actor, queue)` のシグネチャを確認する
-- **THEN** `queue` は外部から構築された `ArcShared<Box<dyn MessageQueue>>`（またはそれに相当する既存の `MessageQueueShared` 相当型）で受け取る
+- **WHEN** `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` のシグネチャを確認する
+- **THEN** `actor` は `Weak<ActorCell>` で、circular reference 回避とライフサイクル分離のため
+- **AND** `queue` は外部から構築された `ArcShared<Box<dyn MessageQueue>>`（またはそれに相当する型）で受け取る
 - **AND** mailbox が message queue を内部で new する経路のみに限定されていない
+- **AND** `Mailbox::run()` は `Weak::upgrade()` で actor を取得し、None なら early return する
 
 #### Scenario: MessageQueue trait は multi-consumer を許容する
 - **WHEN** `MessageQueue` trait のシグネチャを確認する
 - **THEN** `enqueue` / `dequeue` / `len` などのメソッドは `&self` のみを要求する
 - **AND** `&mut self` を要求するメソッドは存在しない
-- **AND** これは将来 `TeamQueueMessageQueue`（multi-consumer）を実装するための seam となる
+- **AND** これは `SharedMessageQueue` (multi-consumer) を実装するための seam として使われる
+
+### Requirement: SharedMessageQueue と SharingMailbox は BalancingDispatcher 用に core 層に提供される
+
+`BalancingDispatcher` の load balancing を実現するため、`SharedMessageQueue` と `SharingMailbox` は core 層 (`no_std` 対応) に置かれなければならない (MUST)。これらは `BalancingDispatcher` の internal detail であり、他の dispatcher からは使用してはならない (MUST NOT)。
+
+#### Scenario: SharedMessageQueue は thread-safe な multi-consumer queue である
+- **WHEN** `SharedMessageQueue` の定義を確認する
+- **THEN** `pub struct SharedMessageQueue { inner: ArcShared<RuntimeMutex<VecDeque<Envelope>>> }` 等の thread-safe な内部構造を持つ
+- **AND** `MessageQueue` trait を実装し、`enqueue` / `dequeue` / `len` / `is_empty` がすべて `&self` シグネチャ
+- **AND** core 層 (`modules/actor-core/src/core/kernel/dispatch/dispatcher_new/shared_message_queue.rs`) に置かれる
+- **AND** `no_std` 対応である
+- **AND** 後で lock-free 実装に差し替え可能なシグネチャに留められている
+
+#### Scenario: SharingMailbox は通常 Mailbox の薄いラッパで shared queue を参照する
+- **WHEN** `SharingMailbox` の定義を確認する
+- **THEN** `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>)` の seam を使い、`queue` として `SharedMessageQueue` を受け取る
+- **AND** `run()` の挙動は通常 Mailbox と同じ（system 全件 → user throughput まで dequeue）
+- **AND** **`clean_up()` の挙動だけ通常 Mailbox と異なる**: shared queue を drain しない (queue は他の team member が引き続き使用するため)
+- **AND** core 層に置かれる
+
+#### Scenario: SharingMailbox は BalancingDispatcher 以外で使われない
+- **WHEN** `SharingMailbox` の利用箇所を確認する
+- **THEN** `BalancingDispatcher::create_mailbox` 以外で構築されていない
+- **AND** `DefaultDispatcher` / `PinnedDispatcher` は通常 Mailbox を使用する
