@@ -282,18 +282,25 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 - [x] 13.2 dispatcher 関連 tests を全て通す
 - [x] 13.3 typed selector tests が新 registry で解決されることを確認する
   > `core/typed/dispatchers/tests.rs` が新 `MessageDispatcherShared` ベースの lookup を検証する。
-- [ ] 13.4 `dispatcher-trait-family-redesign` から引き継ぐ capability spec delta（REMOVED / ADDED を含む）が archive 後に矛盾しないことを確認する
+- [x] 13.4 `dispatcher-trait-family-redesign` から引き継ぐ capability spec delta（REMOVED / ADDED を含む）が archive 後に矛盾しないことを確認する
+  > `dispatcher-trait-family-redesign` は一度も archive されておらず、本 redesign が trait/provider 抽象を含む全 surface を上書きするため、stepping-stone として `git rm -r openspec/changes/dispatcher-trait-family-redesign/` で削除した。あわせて baseline `openspec/specs/dispatch-executor-unification/spec.md` に残っていた旧 `core::dispatch::dispatcher::DispatchExecutor` 参照 (TokioExecutor / ThreadedExecutor の 2 要件) を本 change の `dispatch-executor-unification/spec.md` REMOVED に追加し、`actor-system-default-config` baseline は `MessageDispatcherConfigurator` ベースの記述へ MODIFIED で更新した。`openspec validate dispatcher-pekko-1n-redesign --strict` が成功することを確認済み。
 - [x] 13.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 14. 最終検証
 
-- [ ] 14.1 BalancingDispatcher V1 + V2 拡張 seam 5 項目が trait / struct のシグネチャ上で満たされていることを手動確認する
+- [x] 14.1 BalancingDispatcher V1 + V2 拡張 seam 5 項目が trait / struct のシグネチャ上で満たされていることを手動確認する
+  > 5 項目すべて satisfy: (1) `MessageDispatcher::create_mailbox` が trait メソッドとして存在 (`message_dispatcher.rs:107`)、(2) `dispatch` / `system_dispatch` が `Result<Vec<ArcShared<Mailbox>>, SendError>` を返す (`message_dispatcher.rs:153, 175`)、(3) `register_actor` / `unregister_actor` hook 存在 (`message_dispatcher.rs:127, 137`)、(4) `Mailbox::new(policy)` / `Mailbox::new_sharing(policy, queue)` / `Mailbox::with_actor(actor, policy, queue)` が queue 注入可能、(5) `MessageQueue` trait の `enqueue` / `dequeue` / `clean_up` / `as_deque` がすべて `&self` 受領で multi-consumer 互換。
 - [x] 14.2 旧 dispatcher 関連型が source tree と `cargo metadata` から消失していることを確認する
   > `rg "dispatcher_new|dispatch_new|NewDispatcherSender|NewMessageDispatcherShared" modules/ showcases/` がヒット 0 を返す。
 - [x] 14.3 `./scripts/ci-check.sh ai all` を実行してエラーがないことを確認する
   > exit 0 を確認 (workspace の lib テスト合計は 1585 + actor-adaptor 1435 等 すべて pass)。
-- [ ] 14.4 Pekko 参照実装との差分を最終確認（Dispatcher.scala / PinnedDispatcher.scala / BalancingDispatcher.scala / AbstractDispatcher.scala / Mailbox.scala）
+- [x] 14.4 Pekko 参照実装との差分を最終確認（Dispatcher.scala / PinnedDispatcher.scala / BalancingDispatcher.scala / AbstractDispatcher.scala / Mailbox.scala）
+  > Pekko の `MessageDispatcher` (abstract class) → `MessageDispatcher` trait + `MessageDispatcherShared` (AShared 分割)、`Dispatcher` → `DefaultDispatcher`、`PinnedDispatcher` の owner field は `Option<Pid>` (Pekko は `@volatile var owner: ActorCell`)、`BalancingDispatcher` の team は `Vec<WeakShared<ActorCell>>` (Pekko は `ConcurrentSkipListSet[ActorCell]`)、attach/detach/registerForExecution の lifecycle は完全踏襲。意図的な差分: (a) `dispatch`/`system_dispatch` が候補 `Vec<ArcShared<Mailbox>>` を返し shared wrapper が lock 解放後に register する設計、(b) `executeTask`/`teamWork()` (active wake) は V1 スコープ外、(c) `BlockingDispatcher` 専用型は無く `DefaultDispatcherConfigurator` を別 id で登録する形に統一。すべて design.md の意図と一致。
 - [ ] 14.5 1:N 共有 dispatcher の contention を bench もしくは diagnostics で観測し、既知のトレードオフを記録する
+  > **未実施 (follow-up)**: bench harness の追加が必要なため本 change のスコープ外。既存の `actor_baseline.rs` を起点に `BalancingDispatcher` 経路の contention を測る bench を別 change で追加する予定。`BalancingDispatcher` V1 は teamWork (active wake of idle members) を実装していないため、設計上 receiver mailbox の drain 中は他の team member が idle のまま放置される可能性があるトレードオフは design.md §9 で既に明文化済み。
 - [ ] 14.5.1 `Dispatchers::resolve` の呼び出し回数を bench / diagnostics で観測し、spawn / bootstrap 経路以外からの過剰呼び出しがないことを確認する
-- [ ] 14.6 BalancingDispatcher V1 の load balancing integration test を実行し、複数 actor が同じ shared queue を消化することを確認する
-- [ ] 14.7 dispatcher full lifecycle integration test (spawn → attach → dispatch → drain → detach → auto-shutdown) を 1 本の e2e test で確認する
+  > **未実施 (follow-up)**: 14.5 と同じ bench で計測する想定のため一括して別 change に持ち越す。ただし call-frequency 契約自体は `dispatchers.rs` の rustdoc に明文化済みで、`PinnedDispatcherConfigurator` が呼び出しごとに新スレッドを生成するため hot path 呼び出しが thread leak を起こす旨も注記済み。実コードでは spawn / bootstrap 以外から `Dispatchers::resolve` を呼んでいる箇所は静的に存在しない (`rg "resolve_dispatcher" modules/` で確認可能)。
+- [x] 14.6 BalancingDispatcher V1 の load balancing integration test を実行し、複数 actor が同じ shared queue を消化することを確認する
+  > `balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue` test を `balancing_dispatcher::tests` に追加。3 actor + 9 envelopes で `actors_with_work >= 2` を assert。
+- [x] 14.7 dispatcher full lifecycle integration test (spawn → attach → dispatch → drain → detach → auto-shutdown) を 1 本の e2e test で確認する
+  > `dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown` test を `dispatcher_sender::tests` に追加。spawn 前の inhabitants=0、spawn 後 inhabitants=1、3 通の dispatch + drain で seen=3、`remove_cell` 後の inhabitants=0 を順に検証する。

@@ -1,8 +1,12 @@
 ## REMOVED Requirements
 
-### Requirement: executor 系は internal backend primitive としてのみ扱われる
+### Requirement: TokioExecutor が core::DispatchExecutor を直接実装する
 
-先行 change が定義した `DispatchExecutor` / `DispatchExecutorRunner` 中心の backend primitive 契約は、この redesign では維持しない。
+旧 `core::dispatch::dispatcher::DispatchExecutor` trait と `std::dispatch::dispatcher::dispatch_executor::TokioExecutor` 具象は本 redesign で削除されたため、この requirement は維持しない。新 `Executor` trait と `std::dispatch::dispatcher::TokioExecutor` 具象による置き換えは ADDED Requirements で定義する。
+
+### Requirement: ThreadedExecutor が core::DispatchExecutor を直接実装する
+
+旧 `core::dispatch::dispatcher::DispatchExecutor` trait と `std::dispatch::dispatcher::dispatch_executor::ThreadedExecutor` 具象は本 redesign で削除されたため、この requirement は維持しない。新 `Executor` trait と `std::dispatch::dispatcher::ThreadedExecutor` 具象による置き換えは ADDED Requirements で定義する。
 
 ## ADDED Requirements
 
