@@ -1,6 +1,6 @@
 use fraktor_utils_rs::core::{
   collections::queue::{OfferOutcome, QueueError, SyncFifoQueueShared, SyncQueue, backend::VecDequeBackend},
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SpinSyncMutex},
 };
 
 use super::{StreamError, stream_buffer_config::StreamBufferConfig};

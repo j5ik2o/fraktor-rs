@@ -5,13 +5,13 @@ use core::{
   time::Duration,
 };
 
-use spin::Mutex as SpinMutex;
+use crate::core::sync::SpinSyncMutex;
 
 /// Shared state driving delay futures and triggers.
 pub(crate) struct DelayState {
   completed: AtomicBool,
-  waker:     SpinMutex<Option<Waker>>,
-  cancel:    SpinMutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
+  waker:     SpinSyncMutex<Option<Waker>>,
+  cancel:    SpinSyncMutex<Option<Box<dyn FnOnce() + Send + Sync>>>,
   _duration: Duration,
 }
 
@@ -19,8 +19,8 @@ impl DelayState {
   pub(crate) const fn new(duration: Duration) -> Self {
     Self {
       completed: AtomicBool::new(false),
-      waker:     SpinMutex::new(None),
-      cancel:    SpinMutex::new(None),
+      waker:     SpinSyncMutex::new(None),
+      cancel:    SpinSyncMutex::new(None),
       _duration: duration,
     }
   }

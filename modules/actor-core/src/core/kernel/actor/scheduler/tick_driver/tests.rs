@@ -7,7 +7,7 @@ use core::{
 };
 
 use fraktor_utils_rs::core::{
-  sync::{ArcShared, NoStdMutex, SharedAccess, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, NoStdMutex, SharedAccess, SpinSyncMutex},
   time::TimerInstant,
 };
 

@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use crate::core::sync::{ArcShared, SharedAccess, sync_mutex_like::SpinSyncMutex};
+use crate::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 /// テスト用のシンプルな SharedAccess 実装（Mutex バックエンド）。
 struct SharedSpin<T> {

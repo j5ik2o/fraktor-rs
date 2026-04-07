@@ -1,5 +1,4 @@
 use super::SpinSyncMutex;
-use crate::core::sync::sync_mutex_like::SyncMutexLike;
 
 #[test]
 fn test_spin_sync_mutex_as_inner() {
@@ -41,16 +40,16 @@ fn test_spin_sync_mutex_multiple_locks() {
 }
 
 #[test]
-fn test_spin_sync_mutex_sync_mutex_like_trait() {
+fn test_spin_sync_mutex_inherent_lock() {
   let mutex = SpinSyncMutex::new("hello");
 
-  // Test trait methods separately to avoid borrow issues
+  // Inherent methods are reachable without any trait import.
   {
-    let guard = <SpinSyncMutex<_> as SyncMutexLike<_>>::lock(&mutex);
+    let guard = mutex.lock();
     assert_eq!(*guard, "hello");
   }
 
-  let value = <SpinSyncMutex<_> as SyncMutexLike<_>>::into_inner(mutex);
+  let value = mutex.into_inner();
   assert_eq!(value, "hello");
 }
 

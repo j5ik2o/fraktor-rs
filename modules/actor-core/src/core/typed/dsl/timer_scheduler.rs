@@ -33,9 +33,10 @@ where
 
 /// Shared handle for [`TimerScheduler`], suitable for use in `Fn` closures.
 ///
-/// Users call `.lock()` (via
-/// [`SyncMutexLike`](fraktor_utils_rs::core::sync::sync_mutex_like::SyncMutexLike))
-/// to obtain mutable access to the underlying timer scheduler.
+/// Users call `.lock()` on the inherent
+/// [`SpinSyncMutex`](fraktor_utils_rs::core::sync::SpinSyncMutex) API
+/// (reachable via the `RuntimeMutex` alias) to obtain mutable access to the
+/// underlying timer scheduler.
 pub type TimerSchedulerShared<M> = ArcShared<RuntimeMutex<TimerScheduler<M>>>;
 
 impl<M> TimerScheduler<M>

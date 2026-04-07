@@ -1,4 +1,4 @@
-use fraktor_utils_rs::core::sync::{ArcShared, sync_mutex_like::SpinSyncMutex};
+use fraktor_utils_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{KillSwitch, StreamError};
 use crate::core::{dsl::Flow, materialization::StreamNotUsed};

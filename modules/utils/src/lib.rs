@@ -58,17 +58,3 @@ extern crate alloc;
 
 /// Core utilities shared across runtimes.
 pub mod core;
-/// Runtime toolbox and aliases for std environments.
-#[allow(cfg_std_forbid)]
-#[cfg(feature = "std")]
-pub mod std;
-#[cfg(not(feature = "std"))]
-mod std {
-  use crate::core::sync::{sync_mutex_like::SpinSyncMutex, sync_rwlock_like::SpinSyncRwLock};
-
-  pub(crate) type StdSyncMutex<T> = SpinSyncMutex<T>;
-  pub(crate) type StdSyncRwLock<T> = SpinSyncRwLock<T>;
-}
-
-pub(crate) type RuntimeMutexBackend<T> = std::StdSyncMutex<T>;
-pub(crate) type RuntimeRwLockBackend<T> = std::StdSyncRwLock<T>;

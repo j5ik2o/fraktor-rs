@@ -28,4 +28,3 @@ workspace = true
 
 [dev-dependencies]
 fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
-fraktor-utils-rs = { workspace = true, features = ["std"] }

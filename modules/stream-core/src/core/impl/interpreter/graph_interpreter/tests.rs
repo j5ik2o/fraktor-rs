@@ -3,7 +3,7 @@ use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
 
 use fraktor_utils_rs::core::{
   collections::queue::OverflowPolicy,
-  sync::{ArcShared, sync_mutex_like::SpinSyncMutex},
+  sync::{ArcShared, SpinSyncMutex},
 };
 
 use crate::core::{
