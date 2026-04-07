@@ -461,8 +461,7 @@ fn dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown() {
 
   let seen = Arc::new(AtomicUsize::new(0));
   let seen_clone = Arc::clone(&seen);
-  let props =
-    Props::from_fn(move || CountingActor { seen: seen_clone.clone() }).with_dispatcher_id("lifecycle");
+  let props = Props::from_fn(move || CountingActor { seen: seen_clone.clone() }).with_dispatcher_id("lifecycle");
   let pid: Pid = state.allocate_pid();
   // attach: ActorCell::create runs the dispatcher.attach hook which bumps
   // inhabitants and registers the mailbox for execution.

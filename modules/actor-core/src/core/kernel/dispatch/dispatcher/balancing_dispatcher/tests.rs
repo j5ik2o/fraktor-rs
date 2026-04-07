@@ -176,8 +176,8 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   let mut cells: alloc::vec::Vec<ArcShared<ActorCell>> = alloc::vec::Vec::new();
   for (idx, counter) in counters.iter().enumerate() {
     let counter_clone = counter.clone();
-    let props = Props::from_fn(move || CountingActor { seen: counter_clone.clone() })
-      .with_dispatcher_id("balancing-load");
+    let props =
+      Props::from_fn(move || CountingActor { seen: counter_clone.clone() }).with_dispatcher_id("balancing-load");
     let pid = state.allocate_pid();
     let name = alloc::format!("balancer-{idx}");
     let cell = ActorCell::create(state.clone(), pid, None, name, &props).expect("create cell");
