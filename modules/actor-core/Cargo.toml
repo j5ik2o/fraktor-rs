@@ -36,6 +36,11 @@ tracing = { workspace = true, default-features = false }
 
 [dev-dependencies]
 criterion = { workspace = true }
+# Cargo allows cyclic dev-dependencies because they only resolve in
+# test builds, not the lib build. This lets actor-core's own tests use
+# `DebugSpinSyncMutex` from the std adapter for re-entry detection
+# without polluting the no_std lib.
+fraktor-actor-adaptor-rs = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }
 proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
