@@ -19,7 +19,7 @@ use crate::core::kernel::{
     spawn::SpawnError,
   },
   dispatch::{
-    dispatcher_new::{DispatchersError, MessageDispatcherShared},
+    dispatcher::{DispatchersError, MessageDispatcherShared},
     mailbox::MailboxRegistryError,
   },
 };

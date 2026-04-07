@@ -240,7 +240,7 @@ impl Mailbox {
   /// `MessageDispatcher` family. Callers that care about backpressure
   /// inspect the returned [`EnqueueOutcome::Pending`] and drive the
   /// `MailboxOfferFuture` through a [`DispatcherWaker`] (see
-  /// `crate::core::kernel::dispatch::dispatcher_new::dispatcher_waker`).
+  /// `crate::core::kernel::dispatch::dispatcher::dispatcher_waker`).
   /// Callers that don't care about backpressure can simply drop the
   /// `Pending` variant.
   ///
@@ -404,7 +404,7 @@ impl Mailbox {
 
   /// Pekko-style alias for [`request_schedule`](Self::request_schedule).
   ///
-  /// Used by the new `dispatcher_new` module's `register_for_execution`
+  /// Used by the new `dispatcher` module's `register_for_execution`
   /// orchestration to attempt the CAS that transitions the mailbox from idle
   /// to scheduled.
   #[must_use]

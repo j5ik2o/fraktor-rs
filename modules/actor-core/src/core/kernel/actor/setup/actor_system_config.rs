@@ -17,7 +17,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher_new::{Dispatchers, MessageDispatcherConfigurator},
+    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
   system::remote::RemotingConfig,

@@ -37,7 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher_new::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared as NewMessageDispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared as MessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -102,10 +102,10 @@ pub struct ActorCell {
   dispatcher_id:   String,
   /// Handle to the new-dispatcher tree that owns the cell.
   ///
-  /// Every cell is attached to a [`NewMessageDispatcherShared`] when it is
+  /// Every cell is attached to a [`MessageDispatcherShared`] when it is
   /// constructed; `SystemStateShared::remove_cell` calls `detach` on the
   /// inhabitants counter when the cell is dropped.
-  new_dispatcher:  NewMessageDispatcherShared,
+  new_dispatcher:  MessageDispatcherShared,
   sender:          ActorRefSenderShared,
   receive_timeout: RuntimeMutex<Option<ReceiveTimeoutState>>,
   state:           RuntimeMutex<ActorCellState>,
@@ -191,8 +191,8 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
-    use crate::core::kernel::dispatch::dispatcher_new::NewDispatcherSender;
-    let sender = ActorRefSenderShared::new(NewDispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
+    use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
+    let sender = ActorRefSenderShared::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
     let Some(factory) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
@@ -297,7 +297,7 @@ impl ActorCell {
 
   /// Returns the new-dispatcher handle owned by this cell.
   #[must_use]
-  pub fn new_dispatcher_shared(&self) -> NewMessageDispatcherShared {
+  pub fn new_dispatcher_shared(&self) -> MessageDispatcherShared {
     self.new_dispatcher.clone()
   }
 

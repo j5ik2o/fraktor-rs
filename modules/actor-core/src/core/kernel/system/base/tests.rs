@@ -34,7 +34,7 @@ use crate::core::{
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
-    dispatch::dispatcher_new::{
+    dispatch::dispatcher::{
       DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
       MessageDispatcherConfigurator,
     },

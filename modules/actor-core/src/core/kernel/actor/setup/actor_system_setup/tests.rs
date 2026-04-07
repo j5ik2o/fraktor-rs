@@ -7,7 +7,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemSetup, BootstrapSetup},
   },
-  dispatch::dispatcher_new::DEFAULT_DISPATCHER_ID,
+  dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
 };
 
 #[test]

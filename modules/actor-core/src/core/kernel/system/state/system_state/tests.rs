@@ -30,7 +30,7 @@ use crate::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::{
-    dispatcher_new::{
+    dispatcher::{
       DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
       MessageDispatcherConfigurator,
     },

@@ -55,7 +55,7 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher_new::{Dispatchers, MessageDispatcherShared},
+    dispatcher::{Dispatchers, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{

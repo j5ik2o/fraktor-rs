@@ -10,7 +10,7 @@ mod tests;
 
 use crate::core::{
   kernel::{
-    dispatch::dispatcher_new::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatchersError, MessageDispatcherShared},
+    dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatchersError, MessageDispatcherShared},
     system::state::SystemStateShared,
   },
   typed::DispatcherSelector,

@@ -7,7 +7,7 @@ use std::{
 use std::boxed::Box;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatch_new::TokioExecutor};
+use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext,
@@ -18,7 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::{
-    dispatcher_new::{
+    dispatcher::{
       DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared,
       MessageDispatcherConfigurator,
     },

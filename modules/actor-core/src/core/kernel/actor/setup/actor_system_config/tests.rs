@@ -2,7 +2,7 @@ use core::time::Duration;
 
 use crate::core::kernel::{
   actor::{actor_path::GuardianKind as PathGuardianKind, setup::ActorSystemConfig},
-  dispatch::dispatcher_new::DEFAULT_DISPATCHER_ID,
+  dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
   system::remote::RemotingConfig,
 };
 

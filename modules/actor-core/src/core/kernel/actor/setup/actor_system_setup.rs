@@ -15,7 +15,7 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
-  dispatch::dispatcher_new::MessageDispatcherConfigurator,
+  dispatch::dispatcher::MessageDispatcherConfigurator,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].

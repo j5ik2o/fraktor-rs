@@ -1,5 +1,5 @@
 use crate::core::{
-  kernel::dispatch::dispatcher_new::DispatchersError,
+  kernel::dispatch::dispatcher::DispatchersError,
   typed::{DispatcherSelector, dispatchers::Dispatchers},
 };
 
