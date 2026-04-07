@@ -104,7 +104,7 @@ where
     let self_ref = self.self_ref.clone();
     let handle = self
       .scheduler
-      .with_write(|guard| guard.schedule_with_fixed_delay(initial_delay, delay, self_ref, message, None, None))?;
+      .with_write(|guard| guard.schedule_with_fixed_delay(initial_delay, delay, self_ref, message, None))?;
     self.entries.insert(key, handle);
     Ok(())
   }
@@ -157,7 +157,7 @@ where
     let self_ref = self.self_ref.clone();
     let handle = self
       .scheduler
-      .with_write(|guard| guard.schedule_at_fixed_rate(initial_delay, interval, self_ref, message, None, None))?;
+      .with_write(|guard| guard.schedule_at_fixed_rate(initial_delay, interval, self_ref, message, None))?;
     self.entries.insert(key, handle);
     Ok(())
   }
@@ -170,7 +170,7 @@ where
   pub fn start_single_timer(&mut self, key: TimerKey, message: M, delay: Duration) -> Result<(), SchedulerError> {
     self.cancel(&key);
     let self_ref = self.self_ref.clone();
-    let handle = self.scheduler.with_write(|guard| guard.schedule_once(delay, self_ref, message, None, None))?;
+    let handle = self.scheduler.with_write(|guard| guard.schedule_once(delay, self_ref, message, None))?;
     self.entries.insert(key, handle);
     Ok(())
   }

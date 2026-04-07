@@ -156,7 +156,6 @@ fn actor_cell_holds_components() {
   assert_eq!(cell.name(), "worker");
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
-  assert_eq!(cell.dispatcher().mailbox().system_len(), 0);
 }
 
 #[test]

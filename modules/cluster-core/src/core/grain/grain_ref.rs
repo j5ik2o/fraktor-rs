@@ -343,7 +343,7 @@ fn schedule_retry_with_system(
   wait: core::time::Duration,
   runnable: ArcShared<GrainRetryRunnable>,
 ) -> Result<(), ClusterRequestError> {
-  let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+  let command = SchedulerCommand::RunRunnable { runnable };
   system
     .state()
     .scheduler()

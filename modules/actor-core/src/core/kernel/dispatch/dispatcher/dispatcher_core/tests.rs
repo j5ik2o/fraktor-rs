@@ -42,16 +42,6 @@ fn dispatcher_core_new_with_throughput_limit() {
 }
 
 #[test]
-fn dispatcher_core_mailbox() {
-  let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
-  let executor = inline_runner();
-  let adapter = InlineScheduleAdapter::shared();
-  let core = DispatcherCore::new(mailbox.clone(), executor, adapter, None, None, None);
-  let retrieved = core.mailbox();
-  let _ = retrieved;
-}
-
-#[test]
 fn dispatcher_core_executor() {
   let mailbox = ArcShared::new(Mailbox::new(crate::core::kernel::dispatch::mailbox::MailboxPolicy::unbounded(None)));
   let executor = inline_runner();

@@ -206,9 +206,8 @@ impl SystemStateShared {
   pub fn remove_cell(&self, pid: &Pid) {
     // Detach from the new dispatcher tree before destroying the cell, so
     // inhabitants tracking stays balanced.
-    if let Some(cell) = self.cell(pid)
-      && let Some(new_dispatcher) = cell.new_dispatcher_shared()
-    {
+    if let Some(cell) = self.cell(pid) {
+      let new_dispatcher = cell.new_dispatcher_shared();
       let _schedule = new_dispatcher.detach(&cell);
     }
 

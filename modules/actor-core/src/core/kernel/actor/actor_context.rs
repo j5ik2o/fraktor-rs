@@ -496,10 +496,9 @@ impl ActorContext<'_> {
       return;
     };
     let command = SchedulerCommand::SendMessage {
-      receiver:   self_ref,
-      message:    state.message.clone(),
-      dispatcher: None,
-      sender:     None,
+      receiver: self_ref,
+      message:  state.message.clone(),
+      sender:   None,
     };
     match system.scheduler().with_write(|scheduler| scheduler.schedule_once(state.duration, command)) {
       | Ok(handle) => {

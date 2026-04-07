@@ -88,10 +88,9 @@ where
     let handle = scheduler
       .with_write(|guard| {
         guard.schedule_once(timeout, SchedulerCommand::SendMessage {
-          receiver:   self_ref,
-          message:    AnyMessage::new(tick),
-          dispatcher: None,
-          sender:     None,
+          receiver: self_ref,
+          message:  AnyMessage::new(tick),
+          sender:   None,
         })
       })
       .map_err(|error| ActorError::fatal(format!("failed to schedule recovery timeout: {error}")))?;

@@ -34,9 +34,15 @@ use crate::core::{
       setup::ActorSystemConfig,
       spawn::SpawnError,
     },
-    dispatch::dispatcher::{
-      ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
-      DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+    dispatch::{
+      dispatcher::{
+        ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
+        DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
+      },
+      dispatcher_new::{
+        DefaultDispatcherConfigurator, DispatcherSettings as NewDispatcherSettings, ExecuteError,
+        Executor as NewExecutor, ExecutorShared, MessageDispatcherConfigurator,
+      },
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     system::{
@@ -172,6 +178,33 @@ impl DispatcherProvider for NoopDispatcherProvider {
 
 fn noop_dispatcher_entry() -> DispatcherRegistryEntry {
   DispatcherRegistryEntry::new(NoopDispatcherProvider, DispatcherSettings::default())
+}
+
+/// Noop variant of the new dispatcher tree's [`NewExecutor`].
+///
+/// `execute` discards the submitted closure so the mailbox never drains, which
+/// mirrors the legacy [`NoopExecutor`] used to test spawn-paths that must not
+/// block on dispatcher progress.
+struct NoopNewExecutor;
+
+impl NewExecutor for NoopNewExecutor {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    Ok(())
+  }
+
+  fn supports_blocking(&self) -> bool {
+    false
+  }
+
+  fn shutdown(&mut self) {}
+}
+
+fn noop_new_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  let settings = NewDispatcherSettings::with_defaults("noop");
+  let executor = ExecutorShared::new(NoopNewExecutor);
+  let configurator: Box<dyn MessageDispatcherConfigurator> =
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+  ArcShared::new(configurator)
 }
 
 struct NoopControl;
@@ -654,7 +687,11 @@ fn actor_system_terminate_when_already_terminated() {
 #[test]
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_dispatcher_entry("noop", noop_dispatcher_entry())
+      .with_new_dispatcher_configurator("noop", noop_new_dispatcher_configurator())
+  });
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = Props::from_fn({
@@ -670,7 +707,11 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 
 #[test]
 fn spawn_child_same_as_parent_inherits_dispatcher_selection_result() {
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_dispatcher_entry("noop", noop_dispatcher_entry())
+      .with_new_dispatcher_configurator("noop", noop_new_dispatcher_configurator())
+  });
 
   let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
@@ -718,7 +759,11 @@ fn create_send_failure_triggers_rollback() {
 
 #[test]
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
-  let system = ActorSystem::new_empty_with(|config| config.with_dispatcher_entry("noop", noop_dispatcher_entry()));
+  let system = ActorSystem::new_empty_with(|config| {
+    config
+      .with_dispatcher_entry("noop", noop_dispatcher_entry())
+      .with_new_dispatcher_configurator("noop", noop_new_dispatcher_configurator())
+  });
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let result = system.spawn_with_parent(None, &props);
 

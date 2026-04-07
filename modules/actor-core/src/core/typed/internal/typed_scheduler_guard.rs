@@ -1,7 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
 use crate::core::{
-  kernel::actor::scheduler::{DispatcherSenderShared, Scheduler, SchedulerError, SchedulerHandle},
+  kernel::actor::scheduler::{Scheduler, SchedulerError, SchedulerHandle},
   typed::{TypedActorRef, internal::TypedScheduler},
 };
 
@@ -20,18 +20,16 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// # Errors
   ///
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
-  #[allow(clippy::too_many_arguments)]
   pub fn schedule_once<M>(
     &mut self,
     delay: core::time::Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(self.scheduler).schedule_once(delay, receiver, message, dispatcher, sender)
+    TypedScheduler::new(self.scheduler).schedule_once(delay, receiver, message, sender)
   }
 
   /// Schedules a typed message at a fixed rate while holding the lock.
@@ -39,26 +37,17 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// # Errors
   ///
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
-  #[allow(clippy::too_many_arguments)]
   pub fn schedule_at_fixed_rate<M>(
     &mut self,
     initial_delay: core::time::Duration,
     interval: core::time::Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(self.scheduler).schedule_at_fixed_rate(
-      initial_delay,
-      interval,
-      receiver,
-      message,
-      dispatcher,
-      sender,
-    )
+    TypedScheduler::new(self.scheduler).schedule_at_fixed_rate(initial_delay, interval, receiver, message, sender)
   }
 
   /// Schedules a typed message with fixed delay semantics while holding the lock.
@@ -66,26 +55,17 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// # Errors
   ///
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
-  #[allow(clippy::too_many_arguments)]
   pub fn schedule_with_fixed_delay<M>(
     &mut self,
     initial_delay: core::time::Duration,
     delay: core::time::Duration,
     receiver: TypedActorRef<M>,
     message: M,
-    dispatcher: Option<DispatcherSenderShared>,
     sender: Option<TypedActorRef<M>>,
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    TypedScheduler::new(self.scheduler).schedule_with_fixed_delay(
-      initial_delay,
-      delay,
-      receiver,
-      message,
-      dispatcher,
-      sender,
-    )
+    TypedScheduler::new(self.scheduler).schedule_with_fixed_delay(initial_delay, delay, receiver, message, sender)
   }
 }
 

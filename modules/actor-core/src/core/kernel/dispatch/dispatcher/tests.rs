@@ -7,7 +7,6 @@ use core::{
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
-use std::thread;
 
 use fraktor_utils_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess, sync_mutex_like::SpinSyncMutex};
 
@@ -120,47 +119,6 @@ fn dispatcher_respects_throughput_and_deadline_limits() {
   assert_eq!(tick.pending_tasks(), 1);
   tick.tick();
   assert!(tick.pending_tasks() <= 1);
-}
-
-#[test]
-fn schedule_adapter_receives_pending_signal() {
-  let (mailbox, _system) = bounded_mailbox(1);
-  let (tick, runner) = tick_executor_with_runner();
-  let adapter = ScheduleAdapterShared::new(Box::new(CountingScheduleAdapter::default()) as Box<dyn ScheduleAdapter>);
-  let dispatcher = dispatcher_with_executor_and_adapter(mailbox.clone(), runner, None, None, adapter.clone());
-  let invoker = MessageInvokerShared::new(Box::new(RecordingInvoker::default()) as Box<dyn MessageInvoker>);
-  dispatcher.register_invoker(invoker);
-
-  mailbox.enqueue_user(AnyMessage::new(1usize)).expect("first message");
-  let mut sender = dispatcher.into_sender();
-
-  let handle = thread::spawn(move || {
-    sender.send(AnyMessage::new(2usize)).expect("second message");
-  });
-
-  // Wait until the spawned thread has attempted to send to the full mailbox,
-  // confirmed by on_pending() being called at least once.
-  let mut pending_observed = false;
-  for _ in 0..10_000 {
-    if adapter.with_write(|a| {
-      a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
-    }) > 0
-    {
-      pending_observed = true;
-      break;
-    }
-    thread::yield_now();
-  }
-  assert!(pending_observed, "schedule adapter should observe pending backpressure before dispatcher tick");
-
-  dispatcher.register_for_execution(register_user_hint());
-  tick.tick();
-  handle.join().expect("join");
-
-  let pending_calls = adapter.with_write(|a| {
-    a.as_any_mut().downcast_mut::<CountingScheduleAdapter>().expect("counting adapter").pending_calls()
-  });
-  assert!(pending_calls > 0);
 }
 
 #[test]
@@ -474,10 +432,6 @@ struct CountingScheduleAdapter {
 impl CountingScheduleAdapter {
   fn new() -> Self {
     Self { pending: ArcShared::new(NoStdMutex::new(0)), rejected: ArcShared::new(NoStdMutex::new(0)) }
-  }
-
-  fn pending_calls(&self) -> usize {
-    *self.pending.lock()
   }
 
   fn rejected_calls(&self) -> usize {

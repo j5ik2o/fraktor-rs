@@ -115,7 +115,7 @@ impl BatchingProducer {
 
   fn schedule_flush(&self) -> Result<(), PubSubError> {
     let runnable = ArcShared::new(BatchFlushRunnable { producer: self.clone() });
-    let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+    let command = SchedulerCommand::RunRunnable { runnable };
     let result =
       self.inner.scheduler.with_write(|scheduler| scheduler.schedule_once(self.inner.config.max_wait, command));
     if let Err(error) = result {

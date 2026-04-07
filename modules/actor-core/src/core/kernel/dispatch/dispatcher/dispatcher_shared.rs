@@ -4,7 +4,6 @@ use core::time::Duration;
 use fraktor_utils_rs::core::sync::ArcShared;
 
 use super::{
-  DispatcherSender,
   dispatch_error::DispatchError,
   dispatch_executor::DispatchExecutor,
   dispatch_executor_runner::DispatchExecutorRunner,
@@ -17,7 +16,6 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    actor_ref::ActorRefSenderShared,
     error::SendError,
     messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
   },
@@ -135,12 +133,6 @@ impl DispatcherShared {
     DispatcherCore::request_execution(&self.core, hints);
   }
 
-  /// Returns a reference to the mailbox.
-  #[must_use]
-  pub(crate) fn mailbox(&self) -> ArcShared<Mailbox> {
-    self.core.mailbox().clone()
-  }
-
   /// Notifies the dispatcher about a mailbox pressure signal.
   pub(crate) fn notify_backpressure(&self, event: &MailboxPressureEvent) {
     DispatcherCore::handle_backpressure(&self.core, event);
@@ -148,17 +140,6 @@ impl DispatcherShared {
 
   pub(crate) const fn from_core(core: ArcShared<DispatcherCore>) -> Self {
     Self { core }
-  }
-
-  /// Constructs an `ActorRefSender` implementation with a shared handle.
-  #[must_use]
-  #[allow(clippy::wrong_self_convention)]
-  pub(crate) fn into_sender(&self) -> ActorRefSenderShared {
-    ActorRefSenderShared::new(DispatcherSender::new(self.clone()))
-  }
-
-  pub(crate) fn schedule_adapter(&self) -> ScheduleAdapterShared {
-    self.core.schedule_adapter()
   }
 
   /// Publishes dispatcher diagnostics to the event stream, when instrumentation is available.

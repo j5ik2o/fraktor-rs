@@ -34,7 +34,7 @@ fn drive_pending_executes_scheduled_job() {
   let log = ArcShared::new(NoStdMutex::new(Vec::new()));
   let runnable = ArcShared::new(RecordingRunnable { log: log.clone(), label: "fired" });
   scheduler.with_write(|s| {
-    s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable, dispatcher: None })
+    s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable })
       .expect("schedule once");
   });
 

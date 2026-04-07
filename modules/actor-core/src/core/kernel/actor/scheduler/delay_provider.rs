@@ -38,7 +38,7 @@ impl SchedulerBackedDelayProvider {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(TriggerRunnable { trigger: trigger.clone() });
     self.with_scheduler(|scheduler| {
       scheduler
-        .schedule_command(duration, SchedulerCommand::RunRunnable { runnable: runnable.clone(), dispatcher: None })
+        .schedule_command(duration, SchedulerCommand::RunRunnable { runnable: runnable.clone() })
     })
   }
 

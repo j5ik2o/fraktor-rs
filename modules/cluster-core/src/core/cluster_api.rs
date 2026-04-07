@@ -285,7 +285,7 @@ impl ClusterApi {
   ) -> Result<(), ClusterRequestError> {
     let runnable = ArcShared::new(TimeoutRunnable { future });
 
-    let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+    let command = SchedulerCommand::RunRunnable { runnable };
     let result = self.system.state().scheduler().with_write(|scheduler| scheduler.schedule_once(timeout, command));
     result.map(|_| ()).map_err(|error| ClusterRequestError::TimeoutScheduleFailed { reason: format!("{error:?}") })
   }

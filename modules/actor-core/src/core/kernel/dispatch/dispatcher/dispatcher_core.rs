@@ -76,10 +76,6 @@ impl DispatcherCore {
     }
   }
 
-  pub(crate) const fn mailbox(&self) -> &ArcShared<Mailbox> {
-    &self.mailbox
-  }
-
   pub(crate) fn register_invoker(&self, invoker: MessageInvokerShared) {
     *self.invoker.lock() = Some(invoker);
   }

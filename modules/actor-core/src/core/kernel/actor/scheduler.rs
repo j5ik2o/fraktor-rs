@@ -7,7 +7,6 @@ mod config;
 mod delay_provider;
 /// Scheduler diagnostics subsystem types, including deterministic event logging and replay.
 pub mod diagnostics;
-mod dispatcher_sender_shared;
 mod dump;
 mod dump_job;
 mod error;
@@ -35,7 +34,6 @@ mod tests;
 pub use command::SchedulerCommand;
 pub use config::SchedulerConfig;
 pub use delay_provider::SchedulerBackedDelayProvider;
-pub use dispatcher_sender_shared::DispatcherSenderShared;
 pub use dump::SchedulerDump;
 pub use dump_job::SchedulerDumpJob;
 pub use error::SchedulerError;

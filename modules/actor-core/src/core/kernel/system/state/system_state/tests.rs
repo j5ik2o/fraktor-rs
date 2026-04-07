@@ -34,6 +34,10 @@ use crate::core::kernel::{
       ConfiguredDispatcherBuilder, DispatchError, DispatchExecutor, DispatchShared, DispatcherBuilder,
       DispatcherProvider, DispatcherProvisionRequest, DispatcherRegistryEntry, DispatcherSettings,
     },
+    dispatcher_new::{
+      DefaultDispatcherConfigurator, DispatcherSettings as NewDispatcherSettings, ExecuteError,
+      Executor as NewExecutor, ExecutorShared, MessageDispatcherConfigurator,
+    },
     mailbox::MailboxMessage,
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
@@ -106,7 +110,9 @@ fn build_shared_state() -> SystemStateShared {
 }
 
 fn build_shared_state_with_noop_dispatcher() -> SystemStateShared {
-  let config = base_config().with_dispatcher_entry("noop", noop_dispatcher_entry());
+  let config = base_config()
+    .with_dispatcher_entry("noop", noop_dispatcher_entry())
+    .with_new_dispatcher_configurator("noop", noop_new_dispatcher_configurator());
   SystemStateShared::new(SystemState::build_from_config(&config).expect("state"))
 }
 
@@ -893,6 +899,33 @@ impl DispatcherProvider for NoopDispatcherProvider {
 
 fn noop_dispatcher_entry() -> DispatcherRegistryEntry {
   DispatcherRegistryEntry::new(NoopDispatcherProvider, DispatcherSettings::default())
+}
+
+/// Noop variant of the new dispatcher tree's [`NewExecutor`].
+///
+/// `execute` discards the submitted closure so the mailbox never drains, which
+/// mirrors the legacy [`NoopExecutor`] used to test spawn-paths that must not
+/// block on dispatcher progress.
+struct NoopNewExecutor;
+
+impl NewExecutor for NoopNewExecutor {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    Ok(())
+  }
+
+  fn supports_blocking(&self) -> bool {
+    false
+  }
+
+  fn shutdown(&mut self) {}
+}
+
+fn noop_new_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  let settings = NewDispatcherSettings::with_defaults("noop");
+  let executor = ExecutorShared::new(NoopNewExecutor);
+  let configurator: Box<dyn MessageDispatcherConfigurator> =
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+  ArcShared::new(configurator)
 }
 
 struct LogRecorder {

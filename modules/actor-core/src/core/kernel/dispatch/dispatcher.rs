@@ -26,7 +26,6 @@ mod dispatcher_provider;
 mod dispatcher_provision_request;
 mod dispatcher_registry_entry;
 mod dispatcher_registry_error;
-mod dispatcher_sender;
 mod dispatcher_settings;
 mod dispatcher_shared;
 mod dispatcher_state;
@@ -55,7 +54,6 @@ pub use dispatcher_provider::DispatcherProvider;
 pub use dispatcher_provision_request::DispatcherProvisionRequest;
 pub use dispatcher_registry_entry::DispatcherRegistryEntry;
 pub use dispatcher_registry_error::DispatcherRegistryError;
-pub(crate) use dispatcher_sender::DispatcherSender;
 pub use dispatcher_settings::DispatcherSettings;
 #[doc(hidden)]
 pub use dispatcher_shared::DispatcherShared;

@@ -61,7 +61,7 @@ impl Scheduler {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    self.inner.with_write(|guard| guard.schedule_once(delay, receiver, message, None, None))
+    self.inner.with_write(|guard| guard.schedule_once(delay, receiver, message, None))
   }
 
   /// Schedules repeated message delivery at a fixed rate.
@@ -81,7 +81,7 @@ impl Scheduler {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    self.inner.with_write(|guard| guard.schedule_at_fixed_rate(initial_delay, interval, receiver, message, None, None))
+    self.inner.with_write(|guard| guard.schedule_at_fixed_rate(initial_delay, interval, receiver, message, None))
   }
 
   /// Schedules repeated message delivery with a fixed delay between completions.
@@ -101,7 +101,7 @@ impl Scheduler {
   ) -> Result<SchedulerHandle, SchedulerError>
   where
     M: Send + Sync + 'static, {
-    self.inner.with_write(|guard| guard.schedule_with_fixed_delay(initial_delay, delay, receiver, message, None, None))
+    self.inner.with_write(|guard| guard.schedule_with_fixed_delay(initial_delay, delay, receiver, message, None))
   }
 
   /// Schedules a runnable once after the given delay.
@@ -116,7 +116,7 @@ impl Scheduler {
   where
     R: SchedulerRunnable, {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
-    let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+    let command = SchedulerCommand::RunRunnable { runnable };
     self.inner.with_write(|guard| KernelScheduler::schedule_once(&mut *guard, delay, command))
   }
 
@@ -137,7 +137,7 @@ impl Scheduler {
   where
     R: SchedulerRunnable, {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
-    let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+    let command = SchedulerCommand::RunRunnable { runnable };
     self
       .inner
       .with_write(|guard| KernelScheduler::schedule_at_fixed_rate(&mut *guard, initial_delay, interval, command))
@@ -160,7 +160,7 @@ impl Scheduler {
   where
     R: SchedulerRunnable, {
     let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(runnable);
-    let command = SchedulerCommand::RunRunnable { runnable, dispatcher: None };
+    let command = SchedulerCommand::RunRunnable { runnable };
     self
       .inner
       .with_write(|guard| KernelScheduler::schedule_with_fixed_delay(&mut *guard, initial_delay, delay, command))

@@ -24,7 +24,7 @@ fn typed_schedule_once_forwards_sender_metadata() {
     let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
     let sender = TypedActorRef::<u32>::from_untyped(ActorRef::null());
     let handle = typed_scheduler
-      .schedule_once(Duration::from_millis(1), receiver.clone(), 7u32, None, Some(sender.clone()))
+      .schedule_once(Duration::from_millis(1), receiver.clone(), 7u32, Some(sender.clone()))
       .expect("handle");
     match scheduler.command_for_test(&handle) {
       | Some(SchedulerCommand::SendMessage { sender: stored_sender, .. }) => {
@@ -42,7 +42,7 @@ fn typed_schedule_at_fixed_rate_registers_job() {
     let mut typed_scheduler = TypedScheduler::new(&mut scheduler);
     let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
     let handle = typed_scheduler
-      .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), receiver.clone(), 3u32, None, None)
+      .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), receiver.clone(), 3u32, None)
       .expect("handle");
     assert!(scheduler.command_for_test(&handle).is_some());
   }
@@ -55,7 +55,7 @@ fn typed_scheduler_shared_reuses_scheduler_handle() {
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
 
   let handle = shared
-    .with_write(|guard| guard.schedule_once(Duration::from_millis(5), receiver.clone(), 99u32, None, None))
+    .with_write(|guard| guard.schedule_once(Duration::from_millis(5), receiver.clone(), 99u32, None))
     .expect("handle");
 
   {

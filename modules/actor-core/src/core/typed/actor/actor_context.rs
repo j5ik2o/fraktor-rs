@@ -347,7 +347,7 @@ where
   where
     C: Send + Sync + 'static, {
     let scheduler = self.inner().system().scheduler();
-    scheduler.with_write(|guard| TypedSchedulerGuard::new(guard).schedule_once(delay, target, message, None, None))
+    scheduler.with_write(|guard| TypedSchedulerGuard::new(guard).schedule_once(delay, target, message, None))
   }
 
   /// Provides mutable access to the underlying untyped context.
