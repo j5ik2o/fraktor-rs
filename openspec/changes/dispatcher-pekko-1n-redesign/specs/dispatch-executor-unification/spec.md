@@ -12,10 +12,11 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 
 #### Scenario: Executor trait は CQS 準拠のシグネチャを持つ
 - **WHEN** `Executor` trait のシグネチャを確認する
-- **THEN** command: `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>)` が定義されている
+- **THEN** command: `fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError>` が定義されている
 - **AND** command: `fn shutdown(&mut self)` が定義されている
 - **AND** query: `fn supports_blocking(&self) -> bool { true }` が default 付きで定義されている
 - **AND** command を `&self` + 内部可変性で偽装する実装は存在しない
+- **AND** `ExecuteError` が executor submit 失敗を表す型として定義されている
 
 #### Scenario: ExecutorShared は AShared パターンに従う
 - **WHEN** `ExecutorShared` の定義を確認する
@@ -23,8 +24,19 @@ dispatcher の内部で使われる executor 抽象は、CQS 準拠の単一 tra
 - **AND** 内部に `ArcShared<RuntimeMutex<Box<dyn Executor>>>` を保持する
 - **AND** `Clone` を実装する（`ArcShared::clone` ベース）
 - **AND** `SharedAccess<Box<dyn Executor>>` を実装し、`with_read` / `with_write` を提供する
-- **AND** convenience メソッド `execute(&self, task)` / `shutdown(&self)` / `supports_blocking(&self) -> bool` を提供する
+- **AND** convenience メソッド `execute(&self, task) -> Result<(), ExecuteError>` / `shutdown(&self)` / `supports_blocking(&self) -> bool` を提供する
 - **AND** 既存の AShared 系 (`ActorFactoryShared` など) と同じパターンに従っている
+
+#### Scenario: ExecutorShared::execute はロック区間内で task 本体を同期実行しない
+- **WHEN** `ExecutorShared::execute(&self, task)` の契約を確認する
+- **THEN** `ExecutorShared` は task を executor backend へ submit するだけである
+- **AND** `RuntimeMutex` のロック区間内で task 本体を同期実行してはならない
+- **AND** submit 完了後にロックを解放し、その後の task 実行は backend 側の責務である
+
+#### Scenario: submit 失敗は ExecuteError として観測される
+- **WHEN** executor backend が task submit を拒否する
+- **THEN** `Executor::execute` / `ExecutorShared::execute` は `Err(ExecuteError)` を返す
+- **AND** 呼び出し側はこの失敗を握りつぶさず、rollback または記録を行う
 
 #### Scenario: DispatchExecutorRunner は存在しない
 - **WHEN** `core::kernel::dispatch` 配下を確認する
