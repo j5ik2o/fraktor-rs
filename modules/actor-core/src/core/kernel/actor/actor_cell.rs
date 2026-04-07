@@ -14,7 +14,7 @@ use alloc::{
 };
 use core::{mem, task::Poll, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared, sync_mutex_like::SpinSyncMutex};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
@@ -98,7 +98,16 @@ pub struct ActorCell {
   factory:         ActorFactoryShared,
   actor:           ActorShared,
   pipeline:        MessageInvokerPipeline,
-  mailbox:         ArcShared<Mailbox>,
+  /// Interior-mutable mailbox slot.
+  ///
+  /// `ActorCell::create` builds the mailbox eagerly and immediately calls
+  /// [`Self::install_mailbox`], so by the time the cell is observable from
+  /// outside the slot is always populated. The interior mutability is
+  /// confined to this single slot to leave the rest of `ActorCell` as plain
+  /// owned state — it is the only seam needed for the Pekko-style 2-phase
+  /// `attach` flow where the dispatcher creates the mailbox after the cell
+  /// exists. The slot uses `SpinSyncMutex` so it stays `no_std` compatible.
+  mailbox:         SpinSyncMutex<Option<ArcShared<Mailbox>>>,
   dispatcher_id:   String,
   /// Handle to the new-dispatcher tree that owns the cell.
   ///
@@ -210,7 +219,7 @@ impl ActorCell {
       factory,
       actor,
       pipeline: MessageInvokerPipeline::new(),
-      mailbox,
+      mailbox: SpinSyncMutex::new(None),
       dispatcher_id,
       new_dispatcher,
       sender,
@@ -219,18 +228,29 @@ impl ActorCell {
       terminated: AtomicBool::new(false),
     });
 
+    // Install the eagerly-built mailbox into the cell's interior-mutable slot.
+    // The contract is "install once": every later call to `cell.mailbox()`
+    // returns this `ArcShared<Mailbox>`. This is the single seam used to
+    // satisfy the Pekko-style 2-phase init where the dispatcher is responsible
+    // for the mailbox; until that flow lands the cell still pre-builds the
+    // mailbox and installs it itself, but the slot makes the `install_mailbox`
+    // contract observable to tests and to future dispatcher-side
+    // `create_mailbox` callers.
+    cell.install_mailbox(mailbox);
+
     {
       // Install the message invoker on the mailbox so the new dispatcher's
       // `Mailbox::run` drain loop can deliver user/system messages back to
       // this actor cell. The invoker holds a weak reference to the cell to
       // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
+      let mailbox_handle = cell.mailbox();
       let invoker: MessageInvokerShared =
         MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
-      cell.mailbox.install_invoker(invoker);
+      mailbox_handle.install_invoker(invoker);
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call
       // `Mailbox::clean_up` without re-deriving the back-reference.
-      let _previous_actor = cell.mailbox.install_actor(cell.downgrade());
+      let _previous_actor = mailbox_handle.install_actor(cell.downgrade());
     }
 
     // Register the new dispatcher attach so the inhabitants counter matches the
@@ -293,10 +313,34 @@ impl ActorCell {
     &self.tags
   }
 
+  /// Installs the mailbox into the cell's interior-mutable slot.
+  ///
+  /// Calling this twice on the same cell is a programmer error: the contract
+  /// is "install once" so callers can rely on `cell.mailbox()` returning a
+  /// stable handle for the rest of the cell's lifetime. The double-install
+  /// case panics in debug builds and overwrites in release.
+  ///
+  /// # Panics
+  ///
+  /// Panics in debug builds when called more than once for the same cell.
+  pub fn install_mailbox(&self, mailbox: ArcShared<Mailbox>) {
+    let mut slot = self.mailbox.lock();
+    debug_assert!(slot.is_none(), "ActorCell::install_mailbox called twice for the same cell");
+    *slot = Some(mailbox);
+  }
+
   /// Returns a handle to the mailbox managed by this cell.
+  ///
+  /// # Panics
+  ///
+  /// Panics when the cell has not yet been initialised via
+  /// [`Self::install_mailbox`]. In normal flow `ActorCell::create` performs
+  /// the install before returning the cell, so external callers always
+  /// observe a populated slot.
   #[must_use]
+  #[allow(clippy::expect_used)]
   pub fn mailbox(&self) -> ArcShared<Mailbox> {
-    self.mailbox.clone()
+    self.mailbox.lock().clone().expect("mailbox not installed yet")
   }
 
   /// Returns the new-dispatcher handle owned by this cell.
@@ -565,7 +609,8 @@ impl ActorCell {
     let mut pending = VecDeque::new();
     pending.push_back(message);
 
-    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+    let mailbox = self.mailbox();
+    if let Err(error) = mailbox.prepend_user_messages(&pending) {
       let mut state = self.state.lock();
       if let Some(message) = pending.pop_front() {
         state.stashed_messages.push_front(message);
@@ -573,7 +618,7 @@ impl ActorCell {
       return Err(ActorError::from_send_error(&error));
     }
 
-    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
+    let _scheduled = self.new_dispatcher.register_for_execution(&mailbox, true, false);
 
     Ok(1)
   }
@@ -593,13 +638,14 @@ impl ActorCell {
       return Ok(0);
     }
 
-    if let Err(error) = self.mailbox.prepend_user_messages(&pending) {
+    let mailbox = self.mailbox();
+    if let Err(error) = mailbox.prepend_user_messages(&pending) {
       let mut state = self.state.lock();
       state.stashed_messages = pending;
       return Err(ActorError::from_send_error(&error));
     }
 
-    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
+    let _scheduled = self.new_dispatcher.register_for_execution(&mailbox, true, false);
 
     Ok(pending.len())
   }
@@ -643,12 +689,13 @@ impl ActorCell {
       }
     }
 
-    if let Err(error) = self.mailbox.prepend_user_messages(&wrapped_messages) {
+    let mailbox = self.mailbox();
+    if let Err(error) = mailbox.prepend_user_messages(&wrapped_messages) {
       self.restore_stashed_messages(original_messages);
       return Err(ActorError::from_send_error(&error));
     }
 
-    let _scheduled = self.new_dispatcher.register_for_execution(&self.mailbox, true, false);
+    let _scheduled = self.new_dispatcher.register_for_execution(&mailbox, true, false);
 
     Ok(wrapped_messages.len())
   }
@@ -865,7 +912,7 @@ impl ActorCell {
     self.recreate_actor();
     let outcome = self.run_pre_start(LifecycleStage::Restarted);
     if outcome.is_ok() {
-      self.mailbox.resume();
+      self.mailbox().resume();
     }
     outcome
   }
@@ -928,7 +975,7 @@ impl ActorCell {
   }
 
   fn report_failure(&self, error: &ActorError, snapshot: Option<FailureMessageSnapshot>) {
-    self.mailbox.suspend();
+    self.mailbox().suspend();
     let timestamp = self.system().monotonic_now();
     let payload = FailurePayload::from_error(self.pid, error, snapshot, timestamp);
     self.system().report_failure(payload);
@@ -1097,11 +1144,11 @@ impl MessageInvoker for ActorCellInvoker {
         Ok(())
       },
       | SystemMessage::Suspend => {
-        cell.mailbox.suspend();
+        cell.mailbox().suspend();
         Ok(())
       },
       | SystemMessage::Resume => {
-        cell.mailbox.resume();
+        cell.mailbox().resume();
         Ok(())
       },
       | SystemMessage::Watch(pid) => {

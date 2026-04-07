@@ -159,6 +159,20 @@ fn actor_cell_holds_components() {
 }
 
 #[test]
+#[should_panic(expected = "ActorCell::install_mailbox called twice for the same cell")]
+fn actor_cell_install_mailbox_panics_on_double_install() {
+  let system = ActorSystem::new_empty().state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell =
+    ActorCell::create(system.clone(), Pid::new(7, 0), None, "double-install".to_string(), &props).expect("cell");
+  // The cell already installed its mailbox during `create`. Re-installing it
+  // must trip the debug-build assertion that enforces the install-once
+  // contract.
+  let mailbox = cell.mailbox();
+  cell.install_mailbox(mailbox);
+}
+
+#[test]
 fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
   // The registered "bounded" policy has capacity 1 with DropNewest semantics,
   // so the second user enqueue should be rejected even though `Props` requests
