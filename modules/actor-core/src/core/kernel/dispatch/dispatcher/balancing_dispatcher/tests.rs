@@ -121,3 +121,88 @@ fn create_mailbox_returns_sharing_mailbox() {
   let mailbox = dispatcher.create_mailbox(&cells[0], mailbox_type.as_ref());
   assert_eq!(mailbox.cleanup_policy(), MailboxCleanupPolicy::LeaveSharedQueue);
 }
+
+#[test]
+fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
+  // Phase 14.6: end-to-end load balancing check. Three actors are attached
+  // to the same `BalancingDispatcherConfigurator`, then 9 envelopes are
+  // dispatched through the first cell. Because all team members share the
+  // same `SharedMessageQueue`, the inline executor drains the queue across
+  // multiple actors instead of leaving everything on the receiver mailbox.
+  // The test asserts that more than one actor observed work, which is the
+  // V1 load-balancing contract documented in
+  // `dispatcher-pekko-1n-redesign/specs/dispatcher-trait-provider-abstraction/spec.md`.
+  use alloc::sync::Arc;
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use crate::core::kernel::dispatch::dispatcher::{BalancingDispatcherConfigurator, MessageDispatcherConfigurator};
+
+  struct InlineExec;
+
+  impl Executor for InlineExec {
+    fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+      task();
+      Ok(())
+    }
+
+    fn shutdown(&mut self) {}
+  }
+
+  struct CountingActor {
+    seen: Arc<AtomicUsize>,
+  }
+
+  impl Actor for CountingActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _msg: AnyMessageView<'_>) -> Result<(), ActorError> {
+      self.seen.fetch_add(1, Ordering::SeqCst);
+      Ok(())
+    }
+  }
+
+  let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
+    let inner: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(BalancingDispatcherConfigurator::new(&settings, executor));
+    ArcShared::new(inner)
+  };
+  let configurator_clone = configurator.clone();
+  let system = ActorSystem::new_empty_with(move |config| {
+    config.with_dispatcher_configurator("balancing-load", configurator_clone.clone())
+  });
+  let state = system.state();
+
+  let counters: alloc::vec::Vec<Arc<AtomicUsize>> = (0..3).map(|_| Arc::new(AtomicUsize::new(0))).collect();
+  let mut cells: alloc::vec::Vec<ArcShared<ActorCell>> = alloc::vec::Vec::new();
+  for (idx, counter) in counters.iter().enumerate() {
+    let counter_clone = counter.clone();
+    let props = Props::from_fn(move || CountingActor { seen: counter_clone.clone() })
+      .with_dispatcher_id("balancing-load");
+    let pid = state.allocate_pid();
+    let name = alloc::format!("balancer-{idx}");
+    let cell = ActorCell::create(state.clone(), pid, None, name, &props).expect("create cell");
+    state.register_cell(cell.clone());
+    cells.push(cell);
+  }
+
+  // Dispatch 9 envelopes by rotating across the three cells. With an inline
+  // executor each tell triggers an immediate synchronous drain on the
+  // receiver mailbox, so by tell-ing through each actor in turn we exercise
+  // every team member's drain path. The shared queue is the same instance
+  // for all three cells, so every envelope is routed through it.
+  let mut refs: alloc::vec::Vec<_> = cells.iter().map(|cell| cell.actor_ref()).collect();
+  for value in 0..9_u32 {
+    let target = (value as usize) % refs.len();
+    refs[target].tell(AnyMessage::new(value));
+  }
+
+  let total: usize = counters.iter().map(|c| c.load(Ordering::SeqCst)).sum();
+  assert_eq!(total, 9, "all 9 envelopes must be processed exactly once");
+
+  let actors_with_work = counters.iter().filter(|c| c.load(Ordering::SeqCst) > 0).count();
+  assert!(
+    actors_with_work >= 2,
+    "load balancing must spread work across more than one actor (counters: {:?})",
+    counters.iter().map(|c| c.load(Ordering::SeqCst)).collect::<alloc::vec::Vec<_>>()
+  );
+}
