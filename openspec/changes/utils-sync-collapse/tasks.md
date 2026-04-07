@@ -213,7 +213,7 @@
 - [x] 3.49 `./scripts/ci-check.sh ai all` exit 0
 - [x] 3.50 `grep -rn "SyncMutexLike\|SyncRwLockLike" modules/` がヒット 0 (clippy.toml の replacement target 言及を除く) を返すことを確認する
 - [x] 3.51 `openspec validate utils-sync-collapse --strict` valid を返すことを確認する
-- [ ] 3.52 commit: `refactor(utils): monomorphize SyncQueueShared and collapse SyncMutexLike/SyncRwLockLike`
+- [x] 3.52 commit: `refactor(utils): monomorphize SyncQueueShared and collapse SyncMutexLike/SyncRwLockLike`
 
 ## 4. 最終検証
 
@@ -226,7 +226,7 @@
 
 ## 5. PR 作成
 
-- [ ] 5.1 PR title: `refactor(utils): collapse dead Sync*Shared sub-types, StdSyncMutex/RwLock, and SyncMutexLike/RwLockLike traits`
-- [ ] 5.2 PR description に proposal.md / design.md の要約を含める (Why / What Changes / commit history / 検証結果)
-- [ ] 5.3 commit history が 3 つ (本体 3 つ、spec delta は commit 3 同梱) に分かれていることを確認する
-- [ ] 5.4 各コミットが独立して `cargo test` / `cargo check` を通過することを確認する
+- [x] 5.1 PR title: `refactor(utils): collapse dead Sync*Shared, StdSyncMutex/RwLock, and SyncMutexLike/RwLockLike` (#1530)
+- [x] 5.2 PR description に proposal.md / design.md の要約を含める (Why / What Changes / commit history / 検証結果)
+- [x] 5.3 commit history が 3 つ (本体 3 つ、spec delta は commit 3 同梱) に分かれていることを確認する
+- [x] 5.4 各コミットが独立して `cargo test` / `cargo check` を通過することを確認する
