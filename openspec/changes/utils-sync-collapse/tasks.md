@@ -4,33 +4,33 @@
 
 ### 1.A 本体削除
 
-- [ ] 1.1 `modules/utils/src/core/collections/queue/sync_mpsc_producer_shared.rs` を削除する
-- [ ] 1.2 `modules/utils/src/core/collections/queue/sync_mpsc_consumer_shared.rs` を削除する
-- [ ] 1.3 `modules/utils/src/core/collections/queue/sync_spsc_producer_shared.rs` を削除する
-- [ ] 1.4 `modules/utils/src/core/collections/queue/sync_spsc_consumer_shared.rs` を削除する
-- [ ] 1.5 `modules/utils/src/core/collections/queue/sync_spsc_producer_shared/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 1.6 `modules/utils/src/core/collections/queue/sync_mpsc_producer_shared/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 1.7 `modules/utils/src/core/collections/queue/sync_mpsc_consumer_shared/tests.rs` とディレクトリを削除する (存在する場合)
-- [ ] 1.8 `modules/utils/src/core/collections/queue/sync_spsc_consumer_shared/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 1.1 `modules/utils/src/core/collections/queue/sync_mpsc_producer_shared.rs` を削除する
+- [x] 1.2 `modules/utils/src/core/collections/queue/sync_mpsc_consumer_shared.rs` を削除する
+- [x] 1.3 `modules/utils/src/core/collections/queue/sync_spsc_producer_shared.rs` を削除する
+- [x] 1.4 `modules/utils/src/core/collections/queue/sync_spsc_consumer_shared.rs` を削除する
+- [x] 1.5 `modules/utils/src/core/collections/queue/sync_spsc_producer_shared/tests.rs` とディレクトリを削除する (存在する場合)
+- [x] 1.6 `modules/utils/src/core/collections/queue/sync_mpsc_producer_shared/tests.rs` とディレクトリを削除する (存在する場合) — 存在せず
+- [x] 1.7 `modules/utils/src/core/collections/queue/sync_mpsc_consumer_shared/tests.rs` とディレクトリを削除する (存在する場合) — 存在せず
+- [x] 1.8 `modules/utils/src/core/collections/queue/sync_spsc_consumer_shared/tests.rs` とディレクトリを削除する (存在する場合) — 存在せず
 
 ### 1.B sync_queue_shared.rs 内の dead 部分削除
 
-- [ ] 1.9 `modules/utils/src/core/collections/queue/sync_queue_shared.rs` から以下の `use` を削除する:
+- [x] 1.9 `modules/utils/src/core/collections/queue/sync_queue_shared.rs` から以下の `use` を削除する:
   - `sync_mpsc_consumer_shared::SyncMpscConsumerShared`
   - `sync_mpsc_producer_shared::SyncMpscProducerShared`
   - `sync_spsc_consumer_shared::SyncSpscConsumerShared`
   - `sync_spsc_producer_shared::SyncSpscProducerShared`
-- [ ] 1.10 `impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>` ブロック (`new_mpsc`, `producer_clone`, `into_mpsc_pair`) を削除する
-- [ ] 1.11 `impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>` ブロック (`new_spsc`, `into_spsc_pair`) を削除する
-- [ ] 1.12 `impl<T, B, M> SyncQueueShared<T, PriorityKey, B, M>` ブロック (`peek_min`) を削除する
-- [ ] 1.13 `pub type SyncMpscQueueShared<T, B, M = ...> = SyncQueueShared<T, MpscKey, B, M>;` を削除する
-- [ ] 1.14 `pub type SyncSpscQueueShared<T, B, M = ...> = SyncQueueShared<T, SpscKey, B, M>;` を削除する
-- [ ] 1.15 `pub type SyncPriorityQueueShared<T, B, M = ...> = SyncQueueShared<T, PriorityKey, B, M>;` を削除する
-- [ ] 1.16 不要になった `use` (`PriorityMessage`, `SyncPriorityBackend`, `MultiProducer`, `SingleConsumer`, `SingleProducer`, `SupportsPeek`, `MpscKey`, `PriorityKey`, `SpscKey` 等) を整理する。`FifoKey` と `TypeKey` は保持
+- [x] 1.10 `impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>` ブロック (`new_mpsc`, `producer_clone`, `into_mpsc_pair`) を削除する
+- [x] 1.11 `impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>` ブロック (`new_spsc`, `into_spsc_pair`) を削除する
+- [x] 1.12 `impl<T, B, M> SyncQueueShared<T, PriorityKey, B, M>` ブロック (`peek_min`) を削除する
+- [x] 1.13 `pub type SyncMpscQueueShared<T, B, M = ...> = SyncQueueShared<T, MpscKey, B, M>;` を削除する
+- [x] 1.14 `pub type SyncSpscQueueShared<T, B, M = ...> = SyncQueueShared<T, SpscKey, B, M>;` を削除する
+- [x] 1.15 `pub type SyncPriorityQueueShared<T, B, M = ...> = SyncQueueShared<T, PriorityKey, B, M>;` を削除する
+- [x] 1.16 不要になった `use` (`PriorityMessage`, `SyncPriorityBackend`, `MultiProducer`, `SupportsPeek`, `MpscKey`, `PriorityKey`, `SpscKey` 等) を整理する。`FifoKey`, `TypeKey`, `SingleProducer`, `SingleConsumer` は保持
 
 ### 1.C mod / pub use 整理
 
-- [ ] 1.17 `modules/utils/src/core/collections/queue.rs` から以下を削除する:
+- [x] 1.17 `modules/utils/src/core/collections/queue.rs` から以下を削除する:
   - `mod sync_mpsc_consumer_shared;`
   - `mod sync_mpsc_producer_shared;`
   - `mod sync_spsc_consumer_shared;`
@@ -43,22 +43,22 @@
 
 ### 1.D テスト整理
 
-- [ ] 1.18 `modules/utils/src/core/collections/queue/tests.rs` から以下のテスト関数を削除する:
+- [x] 1.18 `modules/utils/src/core/collections/queue/tests.rs` から以下のテスト関数を削除する:
   - `block_policy_reports_full` (SpscKey 使用)
   - `grow_policy_increases_capacity` (MpscKey 使用)
   - `priority_queue_supports_peek` (PriorityKey 使用)
   - `mpsc_pair_supports_multiple_producers` (MpscKey + into_mpsc_pair 使用)
   - `spsc_pair_provides_split_access` (SpscKey + into_spsc_pair 使用)
-- [ ] 1.19 `tests.rs` の保持: `offer_and_poll_fifo_queue`, `vec_ring_backend_provides_fifo_behavior`, `shared_error_mapping_matches_spec` 等の `FifoKey` ベース テスト
-- [ ] 1.20 `tests.rs` の `use` 文から削除されたテストでのみ使われていた import (`MpscKey`, `SpscKey`, `PriorityKey`, `BinaryHeapPriorityBackend`, `TestPriorityMessage` 等) を削除する
+- [x] 1.19 `tests.rs` の保持: `offer_and_poll_fifo_queue`, `vec_ring_backend_provides_fifo_behavior`, `shared_error_mapping_matches_spec` 等の `FifoKey` ベース テスト
+- [x] 1.20 `tests.rs` の `use` 文から削除されたテストでのみ使われていた import (`MpscKey`, `SpscKey`, `PriorityKey`, `BinaryHeapPriorityBackend`, `TestPriorityMessage` 等) を削除する
 
 ### 1.E 検証
 
-- [ ] 1.21 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 1.22 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する
-- [ ] 1.23 `cargo check -p fraktor-actor-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
-- [ ] 1.24 `cargo check -p fraktor-stream-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
-- [ ] 1.25 `grep -rn "SyncMpscQueueShared\|SyncSpscQueueShared\|SyncPriorityQueueShared\|SyncMpscProducerShared\|SyncMpscConsumerShared\|SyncSpscProducerShared\|SyncSpscConsumerShared" modules/` がヒット 0 を返すことを確認する
+- [x] 1.21 `cargo check -p fraktor-utils-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 1.22 `cargo test -p fraktor-utils-rs --lib` 全件 pass を確認する (124 passed)
+- [x] 1.23 `cargo check -p fraktor-actor-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
+- [x] 1.24 `cargo check -p fraktor-stream-core-rs --lib` がコンパイル成功することを確認する (`SyncFifoQueueShared` が依然動作することの確認)
+- [x] 1.25 `grep -rn "SyncMpscQueueShared\|SyncSpscQueueShared\|SyncPriorityQueueShared\|SyncMpscProducerShared\|SyncMpscConsumerShared\|SyncSpscProducerShared\|SyncSpscConsumerShared" modules/` がヒット 0 を返すことを確認する
 - [ ] 1.26 commit: `feat(utils): delete dead Sync*Shared sub-types`
 
 ## 2. StdSyncMutex/RwLock + std mod + feature="std" 削除 (commit 2)

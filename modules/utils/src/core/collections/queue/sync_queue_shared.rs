@@ -1,19 +1,13 @@
 use core::marker::PhantomData;
 
-use super::{
-  SyncQueue, sync_mpsc_consumer_shared::SyncMpscConsumerShared, sync_mpsc_producer_shared::SyncMpscProducerShared,
-  sync_spsc_consumer_shared::SyncSpscConsumerShared, sync_spsc_producer_shared::SyncSpscProducerShared,
-};
+use super::SyncQueue;
 use crate::core::{
-  collections::{
-    PriorityMessage,
-    queue::{
-      QueueError,
-      backend::{SyncQueueBackend, sync_priority_backend::SyncPriorityBackend},
-      capabilities::{MultiProducer, SingleConsumer, SingleProducer, SupportsPeek},
-      offer_outcome::OfferOutcome,
-      type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey, TypeKey},
-    },
+  collections::queue::{
+    QueueError,
+    backend::SyncQueueBackend,
+    capabilities::{SingleConsumer, SingleProducer},
+    offer_outcome::OfferOutcome,
+    type_keys::{FifoKey, TypeKey},
   },
   sync::{
     ArcShared,
@@ -109,73 +103,6 @@ where
   }
 }
 
-impl<T, B, M> SyncQueueShared<T, PriorityKey, B, M>
-where
-  T: Clone + PriorityMessage,
-  B: SyncPriorityBackend<T>,
-  M: SyncMutexLike<SyncQueue<T, PriorityKey, B>>,
-  PriorityKey: SupportsPeek,
-{
-  /// Retrieves the smallest element without removing it.
-  ///
-  /// # Errors
-  ///
-  /// Returns a `QueueError` when the backend cannot access the next element due to closure,
-  /// disconnection, or backend-specific failures.
-  pub fn peek_min(&self) -> Result<Option<T>, QueueError<T>> {
-    let queue = self.inner.lock();
-    queue.peek_min()
-  }
-}
-
-impl<T, B, M> SyncQueueShared<T, MpscKey, B, M>
-where
-  B: SyncQueueBackend<T>,
-  M: SyncMutexLike<SyncQueue<T, MpscKey, B>>,
-  MpscKey: MultiProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for MPSC usage.
-  #[must_use]
-  pub const fn new_mpsc(shared_queue: ArcShared<M>) -> Self {
-    SyncQueueShared::new(shared_queue)
-  }
-
-  /// Returns a cloneable producer for MPSC usage.
-  #[must_use]
-  pub fn producer_clone(&self) -> SyncMpscProducerShared<T, B, M> {
-    SyncMpscProducerShared::new(self.inner.clone())
-  }
-
-  /// Consumes the queue and returns the producer/consumer pair.
-  #[must_use]
-  pub fn into_mpsc_pair(self) -> (SyncMpscProducerShared<T, B, M>, SyncMpscConsumerShared<T, B, M>) {
-    let consumer = SyncMpscConsumerShared::new(self.inner.clone());
-    let producer = SyncMpscProducerShared::new(self.inner);
-    (producer, consumer)
-  }
-}
-
-impl<T, B, M> SyncQueueShared<T, SpscKey, B, M>
-where
-  B: SyncQueueBackend<T>,
-  M: SyncMutexLike<SyncQueue<T, SpscKey, B>>,
-  SpscKey: SingleProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for SPSC usage.
-  #[must_use]
-  pub const fn new_spsc(shared_queue: ArcShared<M>) -> Self {
-    SyncQueueShared::new(shared_queue)
-  }
-
-  /// Consumes the queue and returns the SPSC producer/consumer pair.
-  #[must_use]
-  pub fn into_spsc_pair(self) -> (SyncSpscProducerShared<T, B, M>, SyncSpscConsumerShared<T, B, M>) {
-    let consumer = SyncSpscConsumerShared::new(self.inner.clone());
-    let producer = SyncSpscProducerShared::new(self.inner);
-    (producer, consumer)
-  }
-}
-
 impl<T, B, M> SyncQueueShared<T, FifoKey, B, M>
 where
   B: SyncQueueBackend<T>,
@@ -189,12 +116,5 @@ where
   }
 }
 
-/// Type alias for an MPSC queue.
-pub type SyncMpscQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, MpscKey, B>>> = SyncQueueShared<T, MpscKey, B, M>;
-/// Type alias for an SPSC queue.
-pub type SyncSpscQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, SpscKey, B>>> = SyncQueueShared<T, SpscKey, B, M>;
 /// Type alias for a FIFO queue.
 pub type SyncFifoQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, FifoKey, B>>> = SyncQueueShared<T, FifoKey, B, M>;
-/// Type alias for a priority queue.
-pub type SyncPriorityQueueShared<T, B, M = SpinSyncMutex<SyncQueue<T, PriorityKey, B>>> =
-  SyncQueueShared<T, PriorityKey, B, M>;

@@ -116,68 +116,15 @@ mod fifo_backend {
 
 use fifo_backend::FifoBackend;
 
-mod mpsc_key_capability_assertion {
-  use crate::core::collections::queue::{
-    capabilities::{MultiProducer, SingleConsumer},
-    type_keys::MpscKey,
-  };
-
-  /// Ensures capability traits are implemented for MpscKey.
-  pub(crate) fn assert_capabilities() {
-    fn require_capabilities<K: MultiProducer + SingleConsumer>() {}
-    require_capabilities::<MpscKey>();
-  }
-}
-
-mod priority_message {
-  use crate::core::collections::PriorityMessage;
-
-  /// Priority-aware message used in priority queue tests.
-  #[derive(Clone, Debug, PartialEq, Eq)]
-  pub(crate) struct TestPriorityMessage {
-    value:    i32,
-    priority: Option<i8>,
-  }
-
-  impl TestPriorityMessage {
-    /// Creates a new message with the specified value and priority.
-    #[must_use]
-    pub(crate) const fn new(value: i32, priority: Option<i8>) -> Self {
-      Self { value, priority }
-    }
-
-    /// Returns the stored payload.
-    #[must_use]
-    pub(crate) const fn value(&self) -> i32 {
-      self.value
-    }
-  }
-
-  impl PriorityMessage for TestPriorityMessage {
-    fn get_priority(&self) -> Option<i8> {
-      self.priority
-    }
-  }
-}
-
-use priority_message::TestPriorityMessage;
-
-use crate::core::{
-  collections::queue::{
-    OfferOutcome, OverflowPolicy,
-    backend::{BinaryHeapPriorityBackend, VecDequeBackend},
-    capabilities::{
-      QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet, SingleConsumer, SingleProducer, SupportsPeek,
-    },
-    type_keys::{FifoKey, MpscKey, PriorityKey, SpscKey},
-  },
-  sync::SharedError,
+use crate::core::collections::queue::{
+  OfferOutcome, OverflowPolicy,
+  backend::VecDequeBackend,
+  capabilities::{QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet},
+  type_keys::FifoKey,
 };
 
 #[test]
 fn offer_and_poll_fifo_queue() {
-  mpsc_key_capability_assertion::assert_capabilities();
-
   let backend = FifoBackend::new(QueueConfig::new(2), OverflowPolicy::DropOldest);
   let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
@@ -195,95 +142,12 @@ fn offer_and_poll_fifo_queue() {
 }
 
 #[test]
-fn block_policy_reports_full() {
-  let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Block);
-  let sync_queue = SyncQueue::new(backend);
-  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
-
-  assert_eq!(queue.offer(10).unwrap(), OfferOutcome::Enqueued);
-  let err = queue.offer(20).unwrap_err();
-  assert!(matches!(err, QueueError::Full(value) if value == 20));
-}
-
-#[test]
-fn grow_policy_increases_capacity() {
-  let backend = FifoBackend::new(QueueConfig::new(1), OverflowPolicy::Grow);
-  let sync_queue = SyncQueue::new(backend);
-  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared.clone());
-
-  assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);
-  let outcome = queue.offer(2).unwrap();
-  assert_eq!(outcome, OfferOutcome::GrewTo { capacity: 2 });
-  assert_eq!(queue.capacity(), 2);
-
-  queue.close().unwrap();
-  assert!(matches!(queue.offer(3), Err(QueueError::Closed(value)) if value == 3));
-  assert_eq!(queue.poll().unwrap(), 1);
-  assert_eq!(queue.poll().unwrap(), 2);
-  assert!(matches!(queue.poll(), Err(QueueError::Disconnected)));
-}
-
-#[test]
-fn priority_queue_supports_peek() {
-  fn assert_priority_capabilities<K: SingleProducer + SingleConsumer + SupportsPeek>() {}
-  assert_priority_capabilities::<PriorityKey>();
-
-  let backend = BinaryHeapPriorityBackend::new_with_capacity(4, OverflowPolicy::DropOldest);
-  let sync_queue = SyncQueue::new(backend);
-  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<TestPriorityMessage, PriorityKey, _, _> = SyncQueueShared::new(shared);
-
-  assert_eq!(queue.offer(TestPriorityMessage::new(5, Some(2))).unwrap(), OfferOutcome::Enqueued);
-  assert_eq!(queue.offer(TestPriorityMessage::new(2, Some(0))).unwrap(), OfferOutcome::Enqueued);
-  assert_eq!(queue.offer(TestPriorityMessage::new(7, Some(5))).unwrap(), OfferOutcome::Enqueued);
-
-  let peeked = queue.peek_min().unwrap().map(|msg| msg.value());
-  assert_eq!(peeked, Some(2));
-  assert_eq!(queue.poll().unwrap().value(), 7);
-  assert_eq!(queue.peek_min().unwrap().map(|msg| msg.value()), Some(2));
-}
-
-#[test]
 fn shared_error_mapping_matches_spec() {
+  use crate::core::sync::SharedError;
+
   assert_eq!(QueueError::<()>::from(SharedError::Poisoned), QueueError::Disconnected);
   assert_eq!(QueueError::<()>::from(SharedError::BorrowConflict), QueueError::WouldBlock);
   assert_eq!(QueueError::<()>::from(SharedError::InterruptContext), QueueError::WouldBlock);
-}
-
-#[test]
-fn mpsc_pair_supports_multiple_producers() {
-  let backend = VecDequeBackend::with_capacity(8, OverflowPolicy::DropOldest);
-  let sync_queue = SyncQueue::new(backend);
-  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, MpscKey, _, _> = SyncQueueShared::new(shared);
-
-  let (producer, consumer) = queue.into_mpsc_pair();
-  let another = producer.clone();
-
-  producer.offer(1).unwrap();
-  another.offer(2).unwrap();
-  producer.offer(3).unwrap();
-
-  let mut collected = [consumer.poll().unwrap(), consumer.poll().unwrap(), consumer.poll().unwrap()];
-  collected.sort();
-  assert_eq!(collected, [1, 2, 3]);
-}
-
-#[test]
-fn spsc_pair_provides_split_access() {
-  let backend = VecDequeBackend::with_capacity(4, OverflowPolicy::Block);
-  let sync_queue = SyncQueue::new(backend);
-  let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, SpscKey, _, _> = SyncQueueShared::new(shared);
-
-  let (producer, consumer) = queue.into_spsc_pair();
-  producer.offer(10).unwrap();
-  producer.offer(20).unwrap();
-
-  assert_eq!(consumer.poll().unwrap(), 10);
-  assert_eq!(consumer.poll().unwrap(), 20);
 }
 
 #[test]
