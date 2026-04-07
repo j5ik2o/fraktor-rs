@@ -16,18 +16,6 @@ impl<T> PriorityEntry<T> {
     Self { priority, sequence, item }
   }
 
-  pub(crate) const fn priority(&self) -> i8 {
-    self.priority
-  }
-
-  pub(crate) const fn sequence(&self) -> u64 {
-    self.sequence
-  }
-
-  pub(crate) const fn item(&self) -> &T {
-    &self.item
-  }
-
   pub(crate) fn into_item(self) -> T {
     self.item
   }

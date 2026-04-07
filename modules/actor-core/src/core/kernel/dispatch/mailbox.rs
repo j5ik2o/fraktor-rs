@@ -2,7 +2,7 @@
 //!
 //! This module contains message queue implementations and configurations.
 
-use fraktor_utils_rs::core::collections::queue::{QueueError, SyncFifoQueueShared, backend::VecDequeBackend};
+use fraktor_utils_rs::core::collections::queue::{QueueError, SyncQueueShared, backend::VecDequeBackend};
 
 use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 
@@ -109,7 +109,7 @@ pub use unbounded_stable_priority_message_queue::UnboundedStablePriorityMessageQ
 #[cfg(test)]
 mod tests;
 
-pub(crate) type UserQueueShared<T> = SyncFifoQueueShared<T, VecDequeBackend<T>>;
+pub(crate) type UserQueueShared<T> = SyncQueueShared<T, VecDequeBackend<T>>;
 
 pub(crate) fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
   match error {

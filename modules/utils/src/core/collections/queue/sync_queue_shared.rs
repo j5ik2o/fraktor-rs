@@ -2,37 +2,29 @@ use core::marker::PhantomData;
 
 use super::SyncQueue;
 use crate::core::{
-  collections::queue::{
-    QueueError,
-    backend::SyncQueueBackend,
-    capabilities::{SingleConsumer, SingleProducer},
-    offer_outcome::OfferOutcome,
-    type_keys::{FifoKey, TypeKey},
-  },
+  collections::queue::{QueueError, backend::SyncQueueBackend, offer_outcome::OfferOutcome},
   sync::{ArcShared, SpinSyncMutex},
 };
 
-/// Queue API parameterised by element type, type key, and backend.
+/// Shared, mutex-guarded handle around [`SyncQueue`].
 ///
-/// Internally guarded by [`SpinSyncMutex`]; the mutex backend is fixed
-/// after the sync abstraction collapse.
+/// Internally guarded by [`SpinSyncMutex`]; ordering and capability semantics
+/// (FIFO / priority / etc.) are entirely determined by the supplied backend.
 #[derive(Clone)]
-pub struct SyncQueueShared<T, K, B>
+pub struct SyncQueueShared<T, B>
 where
-  K: TypeKey,
   B: SyncQueueBackend<T>, {
-  inner: ArcShared<SpinSyncMutex<SyncQueue<T, K, B>>>,
-  _pd:   PhantomData<(T, K, B)>,
+  inner: ArcShared<SpinSyncMutex<SyncQueue<T, B>>>,
+  _pd:   PhantomData<T>,
 }
 
-impl<T, K, B> SyncQueueShared<T, K, B>
+impl<T, B> SyncQueueShared<T, B>
 where
-  K: TypeKey,
   B: SyncQueueBackend<T>,
 {
-  /// Creates a new queue from the provided shared backend.
+  /// Creates a new shared queue from the provided shared backend.
   #[must_use]
-  pub const fn new(shared_queue: ArcShared<SpinSyncMutex<SyncQueue<T, K, B>>>) -> Self {
+  pub const fn new(shared_queue: ArcShared<SpinSyncMutex<SyncQueue<T, B>>>) -> Self {
     Self { inner: shared_queue, _pd: PhantomData }
   }
 
@@ -96,22 +88,7 @@ where
 
   /// Provides access to the underlying shared backend.
   #[must_use]
-  pub const fn shared(&self) -> &ArcShared<SpinSyncMutex<SyncQueue<T, K, B>>> {
+  pub const fn shared(&self) -> &ArcShared<SpinSyncMutex<SyncQueue<T, B>>> {
     &self.inner
   }
 }
-
-impl<T, B> SyncQueueShared<T, FifoKey, B>
-where
-  B: SyncQueueBackend<T>,
-  FifoKey: SingleProducer + SingleConsumer,
-{
-  /// Creates a queue tailored for FIFO usage.
-  #[must_use]
-  pub const fn new_fifo(shared_queue: ArcShared<SpinSyncMutex<SyncQueue<T, FifoKey, B>>>) -> Self {
-    SyncQueueShared::new(shared_queue)
-  }
-}
-
-/// Type alias for a FIFO queue.
-pub type SyncFifoQueueShared<T, B> = SyncQueueShared<T, FifoKey, B>;

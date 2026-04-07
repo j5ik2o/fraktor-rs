@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable, SchedulerShared},
 };
 use fraktor_utils_rs::core::{
-  collections::queue::{OverflowPolicy, QueueError, SyncFifoQueue, backend::VecDequeBackend},
+  collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
   sync::{ArcShared, RuntimeMutex, SharedAccess},
 };
 
@@ -170,14 +170,14 @@ struct BatchingProducerInner {
 }
 
 struct BatchingProducerState {
-  queue:        SyncFifoQueue<AnyMessage, VecDequeBackend<AnyMessage>>,
+  queue:        SyncQueue<AnyMessage, VecDequeBackend<AnyMessage>>,
   timer_active: bool,
 }
 
 impl BatchingProducerState {
   fn new(capacity: usize) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, OverflowPolicy::Block);
-    Self { queue: SyncFifoQueue::new(backend), timer_active: false }
+    Self { queue: SyncQueue::new(backend), timer_active: false }
   }
 
   fn drain_batch(&mut self, max: usize) -> Vec<AnyMessage> {

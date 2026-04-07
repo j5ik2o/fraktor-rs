@@ -1,10 +1,6 @@
 use alloc::collections::BinaryHeap;
-use core::cmp::Ordering;
 
-use super::{
-  PriorityBackendConfig, SyncPriorityBackendInternal, SyncQueueBackend, SyncQueueBackendInternal,
-  sync_priority_backend::{PriorityEntry, SyncPriorityBackend},
-};
+use super::{PriorityBackendConfig, SyncQueueBackend, SyncQueueBackendInternal, priority_entry::PriorityEntry};
 use crate::core::collections::{
   PriorityMessage,
   queue::{QueueError, offer_outcome::OfferOutcome, overflow_policy::OverflowPolicy},
@@ -128,20 +124,5 @@ impl<T: PriorityMessage> SyncQueueBackendInternal<T> for BinaryHeapPriorityBacke
 
   fn close(&mut self) {
     self.closed = true;
-  }
-}
-
-impl<T: PriorityMessage> SyncPriorityBackend<T> for BinaryHeapPriorityBackend<T> {}
-
-impl<T: PriorityMessage> SyncPriorityBackendInternal<T> for BinaryHeapPriorityBackend<T> {
-  fn peek_min(&self) -> Option<&T> {
-    self
-      .entries
-      .iter()
-      .min_by(|a, b| match a.priority().cmp(&b.priority()) {
-        | Ordering::Equal => a.sequence().cmp(&b.sequence()),
-        | ord => ord,
-      })
-      .map(|entry| entry.item())
   }
 }

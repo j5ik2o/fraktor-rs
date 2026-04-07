@@ -120,7 +120,6 @@ use crate::core::collections::queue::{
   OfferOutcome, OverflowPolicy,
   backend::VecDequeBackend,
   capabilities::{QueueCapability, QueueCapabilityRegistry, QueueCapabilitySet},
-  type_keys::FifoKey,
 };
 
 #[test]
@@ -128,7 +127,7 @@ fn offer_and_poll_fifo_queue() {
   let backend = FifoBackend::new(QueueConfig::new(2), OverflowPolicy::DropOldest);
   let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, FifoKey, _> = SyncQueueShared::new(shared);
+  let queue: SyncQueueShared<_, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);
   assert_eq!(queue.offer(2).unwrap(), OfferOutcome::Enqueued);
@@ -155,7 +154,7 @@ fn vec_ring_backend_provides_fifo_behavior() {
   let backend = VecDequeBackend::with_capacity(3, OverflowPolicy::DropOldest);
   let sync_queue = SyncQueue::new(backend);
   let shared = ArcShared::new(SpinSyncMutex::new(sync_queue));
-  let queue: SyncQueueShared<_, FifoKey, _> = SyncQueueShared::new(shared);
+  let queue: SyncQueueShared<_, _> = SyncQueueShared::new(shared);
 
   assert_eq!(queue.offer(1).unwrap(), OfferOutcome::Enqueued);
   assert_eq!(queue.offer(2).unwrap(), OfferOutcome::Enqueued);
