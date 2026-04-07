@@ -8,9 +8,10 @@ use alloc::collections::VecDeque;
 use fraktor_utils_rs::core::sync::RuntimeMutex;
 
 use super::{
-  deque_message_queue::DequeMessageQueue, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
+  deque_message_queue::DequeMessageQueue, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome,
+  message_queue::MessageQueue,
 };
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::actor::error::SendError;
 
 /// Initial capacity hint for the backing deque.
 const DEFAULT_CAPACITY: usize = 16;
@@ -21,7 +22,7 @@ const DEFAULT_CAPACITY: usize = 16;
 /// enabling efficient prepend operations for stash-based actors instead of the
 /// drain-and-requeue fallback used by the base [`Mailbox`](super::Mailbox).
 pub struct UnboundedDequeMessageQueue {
-  inner: RuntimeMutex<VecDeque<AnyMessage>>,
+  inner: RuntimeMutex<VecDeque<Envelope>>,
 }
 
 impl UnboundedDequeMessageQueue {
@@ -39,13 +40,13 @@ impl Default for UnboundedDequeMessageQueue {
 }
 
 impl MessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let mut guard = self.inner.lock();
-    guard.push_back(message);
+    guard.push_back(envelope);
     Ok(EnqueueOutcome::Enqueued)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     let mut guard = self.inner.lock();
     guard.pop_front()
   }
@@ -66,9 +67,9 @@ impl MessageQueue for UnboundedDequeMessageQueue {
 }
 
 impl DequeMessageQueue for UnboundedDequeMessageQueue {
-  fn enqueue_first(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue_first(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let mut guard = self.inner.lock();
-    guard.push_front(message);
+    guard.push_front(envelope);
     Ok(EnqueueOutcome::Enqueued)
   }
 }

@@ -9,7 +9,7 @@
 use crate::core::kernel::actor::messaging::AnyMessage;
 
 /// Transport wrapper for user-level messages between dispatcher and mailbox.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Envelope {
   payload: AnyMessage,
 }

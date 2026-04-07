@@ -5,7 +5,7 @@ mod tests;
 
 use core::cmp::Ordering;
 
-use crate::core::kernel::actor::messaging::AnyMessage;
+use super::envelope::Envelope;
 
 /// Monotonic sequence counter used to break priority ties in FIFO order.
 ///
@@ -24,7 +24,7 @@ pub(crate) type SequenceNumber = u64;
 pub(crate) struct StablePriorityEntry {
   pub(crate) priority: i32,
   pub(crate) sequence: SequenceNumber,
-  pub(crate) message:  AnyMessage,
+  pub(crate) envelope: Envelope,
 }
 
 impl PartialEq for StablePriorityEntry {

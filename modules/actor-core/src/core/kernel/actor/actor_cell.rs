@@ -37,7 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared as MessageDispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -227,6 +227,10 @@ impl ActorCell {
       let invoker: MessageInvokerShared =
         MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       cell.mailbox.install_invoker(invoker);
+      // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
+      // early-return after the cell drops, and so detach paths can call
+      // `Mailbox::clean_up` without re-deriving the back-reference.
+      let _previous_actor = cell.mailbox.install_actor(cell.downgrade());
     }
 
     // Register the new dispatcher attach so the inhabitants counter matches the

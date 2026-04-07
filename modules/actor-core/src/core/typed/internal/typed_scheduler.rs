@@ -49,8 +49,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_once(delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 
@@ -73,8 +73,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_at_fixed_rate(initial_delay, interval, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 
@@ -97,8 +97,8 @@ impl<'a> TypedScheduler<'a> {
     let sender_untyped = sender.map(TypedActorRef::into_untyped);
     self.scheduler.schedule_with_fixed_delay(initial_delay, delay, SchedulerCommand::SendMessage {
       receiver: receiver_untyped,
-      message: AnyMessage::new(message),
-      sender: sender_untyped,
+      message:  AnyMessage::new(message),
+      sender:   sender_untyped,
     })
   }
 }

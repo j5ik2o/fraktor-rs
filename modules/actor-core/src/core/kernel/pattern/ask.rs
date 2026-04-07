@@ -47,8 +47,7 @@ pub(crate) fn install_ask_timeout(
 
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(AskTimeoutRunnable { future: future.clone() });
   let result = system.scheduler().with_write(|scheduler| {
-    scheduler
-      .schedule_command(timeout, SchedulerCommand::RunRunnable { runnable: runnable.clone() })
+    scheduler.schedule_command(timeout, SchedulerCommand::RunRunnable { runnable: runnable.clone() })
   });
   if result.is_err() {
     complete_with_timeout(future);

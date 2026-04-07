@@ -16,12 +16,7 @@ use super::{
   message_dispatcher::MessageDispatcher, shared_message_queue::SharedMessageQueue,
 };
 use crate::core::kernel::{
-  actor::{
-    ActorCell, Pid,
-    error::SendError,
-    messaging::{AnyMessage, system_message::SystemMessage},
-    spawn::SpawnError,
-  },
+  actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox, MailboxPolicy, MailboxType, MessageQueue},
 };
 
@@ -132,8 +127,7 @@ impl MessageDispatcher for BalancingDispatcher {
     receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
   ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
-    let payload = envelope.into_payload();
-    self.shared_queue.enqueue(payload)?;
+    self.shared_queue.enqueue(envelope)?;
     let primary_mailbox = receiver.mailbox();
     let primary_pid = receiver.pid();
     Ok(self.collect_team_mailboxes(primary_mailbox, primary_pid))
@@ -154,11 +148,11 @@ impl MessageDispatcher for BalancingDispatcher {
 struct SharedMessageQueueBox(ArcShared<SharedMessageQueue>);
 
 impl MessageQueue for SharedMessageQueueBox {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    self.0.enqueue(message)
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    self.0.enqueue(envelope)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     self.0.dequeue()
   }
 

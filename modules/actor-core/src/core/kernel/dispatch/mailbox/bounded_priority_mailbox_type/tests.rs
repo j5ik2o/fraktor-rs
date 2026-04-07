@@ -5,7 +5,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
-  dispatch::mailbox::{MailboxOverflowStrategy, MessagePriorityGenerator, mailbox_type::MailboxType},
+  dispatch::mailbox::{Envelope, MailboxOverflowStrategy, MessagePriorityGenerator, mailbox_type::MailboxType},
 };
 
 #[test]
@@ -16,9 +16,9 @@ fn creates_bounded_priority_queue() {
   let factory = BoundedPriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
   let queue = factory.create();
 
-  queue.enqueue(AnyMessage::new(30_i32)).expect("enqueue 30");
-  queue.enqueue(AnyMessage::new(10_i32)).expect("enqueue 10");
+  queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
+  queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
 
-  let first = queue.dequeue().expect("dequeue 1st");
+  let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 10);
 }

@@ -14,13 +14,13 @@ use alloc::collections::VecDeque;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::kernel::{
-  actor::{error::SendError, messaging::AnyMessage},
-  dispatch::mailbox::{DequeMessageQueue, EnqueueOutcome, MessageQueue},
+  actor::error::SendError,
+  dispatch::mailbox::{DequeMessageQueue, EnqueueOutcome, Envelope, MessageQueue},
 };
 
 /// Thread-safe FIFO queue shared by all actors of a `BalancingDispatcher`.
 pub struct SharedMessageQueue {
-  inner: ArcShared<RuntimeMutex<VecDeque<AnyMessage>>>,
+  inner: ArcShared<RuntimeMutex<VecDeque<Envelope>>>,
 }
 
 impl SharedMessageQueue {
@@ -44,12 +44,12 @@ impl Default for SharedMessageQueue {
 }
 
 impl MessageQueue for SharedMessageQueue {
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
-    self.inner.lock().push_back(message);
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+    self.inner.lock().push_back(envelope);
     Ok(EnqueueOutcome::Enqueued)
   }
 
-  fn dequeue(&self) -> Option<AnyMessage> {
+  fn dequeue(&self) -> Option<Envelope> {
     self.inner.lock().pop_front()
   }
 

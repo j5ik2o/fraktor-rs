@@ -6,16 +6,16 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
 
 use super::{
-  MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
-  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_enqueue_outcome::EnqueueOutcome,
-  mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
+  MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
+  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
   actor::{
-    Pid,
+    ActorCell, Pid,
     actor_ref::dead_letter::DeadLetterReason,
     error::SendError,
     messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
@@ -36,6 +36,10 @@ pub struct Mailbox {
   instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
   cleanup_policy:  MailboxCleanupPolicy,
   invoker:         ArcShared<RuntimeMutex<Option<MessageInvokerShared>>>,
+  /// Weak handle to the owning actor cell. Set by [`Mailbox::with_actor`] and
+  /// observed by [`Mailbox::run`] so the drain loop can early-return when the
+  /// cell has been dropped.
+  actor:           ArcShared<RuntimeMutex<Option<WeakShared<ActorCell>>>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -77,6 +81,7 @@ impl Mailbox {
       instrumentation: ArcShared::new(RuntimeMutex::new(None)),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
       invoker: ArcShared::new(RuntimeMutex::new(None)),
+      actor: ArcShared::new(RuntimeMutex::new(None)),
     }
   }
 
@@ -97,7 +102,49 @@ impl Mailbox {
       instrumentation: ArcShared::new(RuntimeMutex::new(None)),
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
       invoker: ArcShared::new(RuntimeMutex::new(None)),
+      actor: ArcShared::new(RuntimeMutex::new(None)),
     }
+  }
+
+  /// Creates a mailbox bound to a specific actor cell.
+  ///
+  /// This is the canonical Pekko-aligned constructor: the mailbox captures a
+  /// weak reference to the owning [`ActorCell`] so the drain loop in
+  /// [`Mailbox::run`] can early-return after the cell has been dropped, and
+  /// so detach paths can transition the mailbox to a terminal state and run
+  /// `clean_up` without needing the dispatcher to thread the reference back
+  /// through.
+  ///
+  /// `queue` may be a freshly-built per-actor queue or a clone of a shared
+  /// queue (used by `BalancingDispatcher::create_mailbox`).
+  #[must_use]
+  pub fn with_actor(actor: WeakShared<ActorCell>, policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+    Self {
+      policy,
+      system: SystemQueue::new(),
+      user: queue,
+      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
+      state: MailboxScheduleState::new(),
+      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
+      invoker: ArcShared::new(RuntimeMutex::new(None)),
+      actor: ArcShared::new(RuntimeMutex::new(Some(actor))),
+    }
+  }
+
+  /// Replaces the weak actor handle, returning the previous one.
+  ///
+  /// `ActorCell::create` calls this once the cell `ArcShared` is materialised
+  /// so the legacy `Mailbox::new(policy)` constructor (which does not yet
+  /// know the cell) can be late-bound to its owner.
+  pub fn install_actor(&self, actor: WeakShared<ActorCell>) -> Option<WeakShared<ActorCell>> {
+    self.actor.lock().replace(actor)
+  }
+
+  /// Returns a clone of the weak actor handle if one is installed.
+  #[must_use]
+  pub fn actor(&self) -> Option<WeakShared<ActorCell>> {
+    self.actor.lock().clone()
   }
 
   /// Installs the message invoker that [`run`](Self::run) drives.
@@ -124,6 +171,17 @@ impl Mailbox {
       return;
     };
 
+    // Phase 9.2: bail out if the owning actor cell has been dropped. The
+    // weak handle is optional so legacy `Mailbox::new(policy)` callers (which
+    // never installed an actor) keep their existing semantics.
+    let actor_alive = match self.actor.lock().as_ref() {
+      | Some(weak) => weak.upgrade().is_some(),
+      | None => true,
+    };
+    if !actor_alive {
+      return;
+    }
+
     self.set_running();
     let mut processed: usize = 0;
     let limit = throughput.get();
@@ -144,8 +202,9 @@ impl Mailbox {
           }
           processed += 1;
         },
-        | Some(MailboxMessage::User(msg)) => {
-          if let Err(error) = invoker.with_write(|i| i.invoke_user_message(msg)) {
+        | Some(MailboxMessage::User(envelope)) => {
+          let payload = envelope.into_payload();
+          if let Err(error) = invoker.with_write(|i| i.invoke_user_message(payload)) {
             self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
           }
           processed += 1;
@@ -205,18 +264,39 @@ impl Mailbox {
 
   /// Attempts to enqueue a user message; returns a future when blocking is needed.
   ///
+  /// This is the legacy convenience entry point used by tests and stash paths
+  /// that have an `AnyMessage` in hand. The message is wrapped in an
+  /// [`Envelope`] before being handed to the underlying queue.
+  ///
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
   #[cfg_attr(not(test), doc(hidden))]
   pub fn enqueue_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+    self.enqueue_envelope(Envelope::new(message))
+  }
+
+  /// Enqueues an envelope and returns the raw [`EnqueueOutcome`].
+  ///
+  /// This is the dispatcher-side dispatch path used by the
+  /// `MessageDispatcher` family. Callers that care about backpressure
+  /// inspect the returned [`EnqueueOutcome::Pending`] and drive the
+  /// `MailboxOfferFuture` through a [`DispatcherWaker`] (see
+  /// `crate::core::kernel::dispatch::dispatcher::dispatcher_waker`).
+  /// Callers that don't care about backpressure can simply drop the
+  /// `Pending` variant.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the mailbox is suspended, full, or closed.
+  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     if self.is_suspended() {
-      return Err(SendError::suspended(message));
+      return Err(SendError::suspended(envelope.into_payload()));
     }
 
     let enqueue_result = {
       let _guard = self.user_queue_lock.lock();
-      self.user.enqueue(message)
+      self.user.enqueue(envelope)
     };
 
     match enqueue_result {
@@ -232,24 +312,6 @@ impl Mailbox {
       },
       | Err(error) => Err(error),
     }
-  }
-
-  /// Enqueues an envelope and returns the raw [`EnqueueOutcome`].
-  ///
-  /// This is the dispatcher-side dispatch path used by the new
-  /// `MessageDispatcher` family. Callers that care about backpressure
-  /// inspect the returned [`EnqueueOutcome::Pending`] and drive the
-  /// `MailboxOfferFuture` through a [`DispatcherWaker`] (see
-  /// `crate::core::kernel::dispatch::dispatcher::dispatcher_waker`).
-  /// Callers that don't care about backpressure can simply drop the
-  /// `Pending` variant.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
-    let payload = envelope.into_payload();
-    self.enqueue_user(payload)
   }
 
   /// Prepends user messages so they are processed before already queued user messages.
@@ -293,7 +355,7 @@ impl Mailbox {
   ) -> Result<(), SendError> {
     // Insert in reverse order so the first message in `messages` ends up at the front.
     for message in messages.iter().rev().cloned() {
-      if let Err(error) = deque.enqueue_first(message) {
+      if let Err(error) = deque.enqueue_first(Envelope::new(message)) {
         self.publish_metrics_with_user_len(self.user.number_of_messages());
         return Err(error);
       }
@@ -308,14 +370,16 @@ impl Mailbox {
     messages: &VecDeque<AnyMessage>,
     first_message: &AnyMessage,
   ) -> Result<(), SendError> {
-    let mut existing = VecDeque::new();
-    while let Some(message) = self.user.dequeue() {
-      existing.push_back(message);
+    let mut existing: VecDeque<Envelope> = VecDeque::new();
+    while let Some(envelope) = self.user.dequeue() {
+      existing.push_back(envelope);
     }
 
     let mut enqueue_result = Ok(());
-    for message in messages.iter().cloned().chain(existing.iter().cloned()) {
-      if let Err(error) = self.enqueue_for_prepend(message, first_message) {
+    let new_envelopes = messages.iter().cloned().map(Envelope::new);
+    let existing_envelopes = existing.iter().cloned();
+    for envelope in new_envelopes.chain(existing_envelopes) {
+      if let Err(error) = self.enqueue_for_prepend(envelope, first_message) {
         enqueue_result = Err(error);
         break;
       }
@@ -327,11 +391,11 @@ impl Mailbox {
       let system_state = self.system_state();
       let total_existing = existing.len();
       let mut restored: usize = 0;
-      for message in existing {
-        if self.enqueue_for_prepend(message.clone(), first_message).is_err() {
+      for envelope in existing {
+        if self.enqueue_for_prepend(envelope.clone(), first_message).is_err() {
           // Route unrecoverable messages to dead letter storage
           if let Some(ref state) = system_state {
-            state.record_dead_letter(message, DeadLetterReason::Dropped, pid);
+            state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
           }
         } else {
           restored += 1;
@@ -422,7 +486,38 @@ impl Mailbox {
   /// Pekko-style alias mirroring `Mailbox.canBeScheduledForExecution`.
   #[must_use]
   pub fn can_be_scheduled_for_execution(&self, _hints: ScheduleHints) -> bool {
-    !self.is_suspended()
+    !self.is_closed() && !self.is_suspended()
+  }
+
+  /// Transitions the mailbox to the closed terminal state, drains the user
+  /// queue (subject to the mailbox's [`MailboxCleanupPolicy`]), and routes
+  /// any remaining envelopes to the dead-letter destination when the policy
+  /// is [`MailboxCleanupPolicy::DrainToDeadLetters`].
+  ///
+  /// Called from `MessageDispatcherShared::detach` so the dispatcher detach
+  /// path mirrors Pekko's `Mailbox.becomeClosed` + `cleanUp` contract: once
+  /// the cell is being torn down, no further executions can be scheduled and
+  /// in-flight envelopes are observed exactly once.
+  pub fn become_closed_and_clean_up(&self) {
+    self.state.close();
+    let pid = self.pid();
+    let system_state = self.system_state();
+    if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
+      let _guard = self.user_queue_lock.lock();
+      while let Some(envelope) = self.user.dequeue() {
+        if let Some(ref state) = system_state {
+          state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+        }
+      }
+    }
+    self.user.clean_up();
+    self.publish_metrics_with_user_len(self.user.number_of_messages());
+  }
+
+  /// Returns whether the mailbox is in the terminal closed state.
+  #[must_use]
+  pub fn is_closed(&self) -> bool {
+    self.state.is_closed()
   }
 
   /// Indicates whether the mailbox is currently suspended.
@@ -462,8 +557,8 @@ impl Mailbox {
     current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
-  fn enqueue_for_prepend(&self, message: AnyMessage, first_message: &AnyMessage) -> Result<(), SendError> {
-    match self.user.enqueue(message) {
+  fn enqueue_for_prepend(&self, envelope: Envelope, first_message: &AnyMessage) -> Result<(), SendError> {
+    match self.user.enqueue(envelope) {
       | Ok(EnqueueOutcome::Enqueued) => Ok(()),
       | Ok(EnqueueOutcome::Pending(_)) => Err(SendError::full(first_message.clone())),
       | Err(error) => Err(error),

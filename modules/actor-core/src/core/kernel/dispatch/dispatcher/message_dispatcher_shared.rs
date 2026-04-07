@@ -105,12 +105,15 @@ impl MessageDispatcherShared {
 
   /// Detaches `actor` from the dispatcher.
   ///
-  /// Returns the post-detach [`ShutdownSchedule`] state so test code can
-  /// inspect whether a delayed shutdown was scheduled. The actual
-  /// scheduler-based delayed shutdown registration happens during Phase 11
-  /// (caller migration).
+  /// Transitions the actor's mailbox into the closed terminal state and runs
+  /// `clean_up` so any remaining envelopes are routed to dead letters (the
+  /// `MailboxCleanupPolicy::LeaveSharedQueue` variant used by
+  /// `BalancingDispatcher` skips the drain). Returns the post-detach
+  /// [`ShutdownSchedule`] so callers can decide whether to register a delayed
+  /// dispatcher shutdown.
   #[must_use]
   pub fn detach(&self, actor: &ArcShared<ActorCell>) -> ShutdownSchedule {
+    actor.mailbox().become_closed_and_clean_up();
     self.with_write(|inner| {
       inner.unregister_actor(actor);
       inner.core_mut().schedule_shutdown_if_sensible()

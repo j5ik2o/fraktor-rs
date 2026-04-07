@@ -1,32 +1,37 @@
 //! Abstraction over user message queue implementations.
 
-use super::{deque_message_queue::DequeMessageQueue, mailbox_enqueue_outcome::EnqueueOutcome};
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use super::{deque_message_queue::DequeMessageQueue, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome};
+use crate::core::kernel::actor::error::SendError;
 
 /// Pluggable user message queue interface inspired by Pekko's `MessageQueue`.
 ///
 /// Implementations must be thread-safe. The mailbox runtime calls these methods
 /// while holding appropriate synchronisation internally.
+///
+/// User messages travel through the queue wrapped in an [`Envelope`]; the
+/// envelope is the seam where future per-message metadata (sender, priority
+/// override, correlation id, …) can be added without changing every queue
+/// implementation.
 pub trait MessageQueue: Send + Sync {
-  /// Enqueues a user message into the queue.
+  /// Enqueues a user envelope into the queue.
   ///
   /// # Errors
   ///
-  /// Returns [`SendError`] if the message cannot be accepted (full, closed, etc.).
-  fn enqueue(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError>;
+  /// Returns [`SendError`] if the envelope cannot be accepted (full, closed, etc.).
+  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError>;
 
-  /// Dequeues the next user message, if available.
-  fn dequeue(&self) -> Option<AnyMessage>;
+  /// Dequeues the next user envelope, if available.
+  fn dequeue(&self) -> Option<Envelope>;
 
-  /// Returns the number of messages currently in the queue.
+  /// Returns the number of envelopes currently in the queue.
   fn number_of_messages(&self) -> usize;
 
-  /// Returns `true` when at least one message is available.
+  /// Returns `true` when at least one envelope is available.
   fn has_messages(&self) -> bool {
     self.number_of_messages() > 0
   }
 
-  /// Clears remaining messages from the queue during shutdown.
+  /// Clears remaining envelopes from the queue during shutdown.
   fn clean_up(&self);
 
   /// Returns the deque capability when this queue supports front-of-queue insertion.

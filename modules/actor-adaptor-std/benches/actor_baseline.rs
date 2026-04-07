@@ -1,10 +1,9 @@
 use std::{
+  boxed::Box,
   hint::black_box,
   sync::mpsc::{Receiver, SyncSender, sync_channel},
   time::Duration,
 };
-
-use std::boxed::Box;
 
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use fraktor_actor_adaptor_rs::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};

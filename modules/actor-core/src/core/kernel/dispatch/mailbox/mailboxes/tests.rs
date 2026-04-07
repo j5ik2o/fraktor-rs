@@ -7,7 +7,7 @@ use crate::core::kernel::{
     messaging::AnyMessage,
     props::{MailboxConfigError, MailboxRequirement},
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
+  dispatch::mailbox::{Envelope, MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError},
 };
 
 #[test]
@@ -43,8 +43,8 @@ fn create_message_queue_uses_registered_mailbox_policy() {
   registry.register("bounded", config).expect("register mailbox");
 
   let queue = registry.create_message_queue("bounded").expect("create queue");
-  assert!(queue.enqueue(AnyMessage::new(1_u32)).is_ok());
-  assert!(matches!(queue.enqueue(AnyMessage::new(2_u32)), Err(SendError::Full(_))));
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
+  assert!(matches!(queue.enqueue(Envelope::new(AnyMessage::new(2_u32))), Err(SendError::Full(_))));
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn create_message_queue_from_control_aware_requirement() {
 
   let queue = registry.create_message_queue("ctrl").expect("create queue");
   // 制御認識キューは通常メッセージも受け入れられる
-  assert!(queue.enqueue(AnyMessage::new(42_u32)).is_ok());
+  assert!(queue.enqueue(Envelope::new(AnyMessage::new(42_u32))).is_ok());
   assert!(queue.has_messages());
 }
 

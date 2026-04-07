@@ -97,6 +97,24 @@ impl MailboxScheduleState {
     self.current_suspend_count() > 0
   }
 
+  /// Marks the mailbox as terminally closed. Once set, [`request_schedule`]
+  /// rejects all further scheduling attempts so the dispatcher detach path
+  /// can guarantee no further drain cycles will start.
+  pub(crate) fn close(&self) {
+    loop {
+      let state = self.state.load(Ordering::Acquire);
+      let desired = state | FLAG_CLOSED;
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        return;
+      }
+    }
+  }
+
+  /// Returns `true` when the mailbox has been closed (terminal state).
+  pub(crate) fn is_closed(&self) -> bool {
+    self.state.load(Ordering::Acquire) & FLAG_CLOSED != 0
+  }
+
   fn current_suspend_count(&self) -> u32 {
     (self.state.load(Ordering::Acquire) & SUSPEND_MASK) >> SUSPEND_SHIFT
   }

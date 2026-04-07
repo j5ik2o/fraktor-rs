@@ -64,9 +64,9 @@ fn make_actor_cells(names: &[&str]) -> (ActorSystem, alloc::vec::Vec<ArcShared<A
 fn shared_queue_is_thread_safe_via_sequential_enqueue() {
   let dispatcher = make_dispatcher();
   let queue = dispatcher.shared_queue();
-  use crate::core::kernel::dispatch::mailbox::MessageQueue;
-  let _ = queue.enqueue(AnyMessage::new(1_u32));
-  let _ = queue.enqueue(AnyMessage::new(2_u32));
+  use crate::core::kernel::dispatch::mailbox::{Envelope, MessageQueue};
+  let _ = queue.enqueue(Envelope::new(AnyMessage::new(1_u32)));
+  let _ = queue.enqueue(Envelope::new(AnyMessage::new(2_u32)));
   assert_eq!(queue.number_of_messages(), 2);
   assert!(queue.dequeue().is_some());
   assert!(queue.dequeue().is_some());

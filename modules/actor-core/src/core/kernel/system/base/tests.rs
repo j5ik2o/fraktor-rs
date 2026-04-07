@@ -646,10 +646,8 @@ fn actor_system_terminate_when_already_terminated() {
 #[test]
 fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
-  let system = ActorSystem::new_empty_with(|config| {
-    config
-      .with_dispatcher_configurator("noop", noop_dispatcher_configurator())
-  });
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
   let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = Props::from_fn({
@@ -665,10 +663,8 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
 
 #[test]
 fn spawn_child_same_as_parent_inherits_dispatcher_selection_result() {
-  let system = ActorSystem::new_empty_with(|config| {
-    config
-      .with_dispatcher_configurator("noop", noop_dispatcher_configurator())
-  });
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
 
   let parent_props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let parent = system.spawn_with_parent(None, &parent_props).expect("parent spawn succeeds");
@@ -716,10 +712,8 @@ fn create_send_failure_triggers_rollback() {
 
 #[test]
 fn spawn_returns_child_ref_even_if_dispatcher_is_idle() {
-  let system = ActorSystem::new_empty_with(|config| {
-    config
-      .with_dispatcher_configurator("noop", noop_dispatcher_configurator())
-  });
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
   let props = Props::from_fn(|| TestActor).with_dispatcher_id("noop");
   let result = system.spawn_with_parent(None, &props);
 
