@@ -244,37 +244,47 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
   > `SystemStateShared::remove_cell` が `cell.new_dispatcher_shared()` を取得して `detach(&cell)` を呼ぶように修正。`removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants` test で 0 まで戻ることを検証済み。
 - [x] 11.5 `ActorRefSender` 経路を新 `MessageDispatcherShared::dispatch` / `system_dispatch` に繋ぎ替える
   > NewDispatcherSender を新設し、ActorCell::create が新 dispatcher 設定があるときはそちらにフォールバックするようにした。end-to-end test で actor_ref.tell が新 dispatcher 経由で実行されることを検証済み。
-- [ ] 11.6 旧 `DispatcherSender` を削除し、`ActorRef` の送信経路から `MessageDispatcherShared::dispatch` を直接呼ぶ形に整理する
-- [ ] 11.7 typed 側 dispatcher selector（`Default` / `Blocking` / `FromConfig` 等）が新 `Dispatchers::resolve` 経由で `MessageDispatcherShared` を解決することを確認する
+- [x] 11.6 旧 `DispatcherSender` を削除し、`ActorRef` の送信経路から `MessageDispatcherShared::dispatch` を直接呼ぶ形に整理する
+  > legacy `DispatcherSender` / `DispatcherSenderShared` / `SchedulerCommand::SendMessage::dispatcher` フィールドを削除し、`ActorCell::create` のフォールバック分岐も消去。新 `DispatcherSender`（旧 `NewDispatcherSender`）が唯一の `ActorRefSender` 実装になった。
+- [x] 11.7 typed 側 dispatcher selector（`Default` / `Blocking` / `FromConfig` 等）が新 `Dispatchers::resolve` 経由で `MessageDispatcherShared` を解決することを確認する
+  > `core/typed/dispatchers.rs` の `Dispatchers::lookup` を `MessageDispatcherShared` / `DispatchersError` を返すように書き換え、tests も新 API へ追随させた。
 - [x] 11.8 旧 dispatcher 経路を使っていた MailboxOfferFuture / backpressure 経路が新 `DispatcherWaker` 経由に置き換わっていることを確認する
   > `Mailbox::enqueue_envelope` が `EnqueueOutcome` をそのまま返すように変更し、`NewDispatcherSender::send` が `Pending` 時に `dispatcher_waker()` で `MailboxOfferFuture` を poll する `drive_offer_future` を実装。
-- [ ] 11.9 旧 registry / legacy mailbox API への内部参照が消えたことを確認してから、最終削除フェーズへ進む
+- [x] 11.9 旧 registry / legacy mailbox API への内部参照が消えたことを確認してから、最終削除フェーズへ進む
+  > `cell.dispatcher`（legacy `DispatcherShared`）field と stash/unstash の `register_for_execution` 呼び出しを新 dispatcher 経由に切り替え、`system_state{,_shared}::send_system_message` も `cell.new_dispatcher_shared().system_dispatch(&cell, msg)` に置き換えた。
 - [x] 11.10 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 12. 旧 dispatcher surface の削除
 
-- [ ] 12.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/` 配下を削除し、`dispatcher_new/` を `dispatcher/` にリネームする（最終状態では `_new` suffix を残さない）
-- [ ] 12.2 旧 `DispatcherCore`（旧）/ `DispatcherShared`（旧）/ `DispatchShared` / `DispatchExecutor` / `DispatchExecutorRunner` / `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` / `DispatcherSender` / `DispatcherSettings` / `ScheduleAdapter*` / `InlineScheduleAdapter` / `ScheduleWaker` / 旧 `InlineExecutor` / 旧 `TickExecutor` を削除する
-- [ ] 12.3 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/` 配下を削除し、`dispatch_new/` を `dispatch/` にリネームする（最終状態では `_new` suffix を残さない）
-- [ ] 12.4 旧 `StdScheduleAdapter` / `DefaultDispatcherProvider` / `BlockingDispatcherProvider` / 旧 `PinnedDispatcherProvider` / 旧 `TokioExecutor` / 旧 `ThreadedExecutor` / 旧 `PinnedExecutor` を削除する
-- [ ] 12.5 `modules/actor-core/src/core/kernel/dispatch.rs` と `modules/actor-adaptor-std/src/std/dispatch.rs` の re-export を整理する（新型のみが公開される状態にする）
-- [ ] 12.6 `ActorSystemConfig` / `ActorSystem` から旧 registry field と legacy dispatcher bootstrap 経路を最終削除する
-- [ ] 12.7 並走期間中に温存していた legacy mailbox API（旧 `Mailbox::new` シグネチャ、`request_schedule` など）をここで削除または rename 完了する
-- [ ] 12.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
+- [x] 12.1 `modules/actor-core/src/core/kernel/dispatch/dispatcher/` 配下を削除し、`dispatcher_new/` を `dispatcher/` にリネームする（最終状態では `_new` suffix を残さない）
+- [x] 12.2 旧 `DispatcherCore`（旧）/ `DispatcherShared`（旧）/ `DispatchShared` / `DispatchExecutor` / `DispatchExecutorRunner` / `DispatcherBuilder` / `DispatcherProvider` / `DispatcherProvisionRequest` / `DispatcherRegistryEntry` / `ConfiguredDispatcherBuilder` / `DispatcherSender` / `DispatcherSettings` / `ScheduleAdapter*` / `InlineScheduleAdapter` / `ScheduleWaker` / 旧 `InlineExecutor` / 旧 `TickExecutor` を削除する
+- [x] 12.3 `modules/actor-adaptor-std/src/std/dispatch/dispatcher/` 配下を削除し、`dispatch_new/` を `dispatch/` にリネームする（最終状態では `_new` suffix を残さない）
+  > 最終形は `modules/actor-adaptor-std/src/std/dispatch/dispatcher/`。旧ツリーは `dispatch_new/` ではなく `dispatcher/` に直接リネームした。
+- [x] 12.4 旧 `StdScheduleAdapter` / `DefaultDispatcherProvider` / `BlockingDispatcherProvider` / 旧 `PinnedDispatcherProvider` / 旧 `TokioExecutor` / 旧 `ThreadedExecutor` / 旧 `PinnedExecutor` を削除する
+- [x] 12.5 `modules/actor-core/src/core/kernel/dispatch.rs` と `modules/actor-adaptor-std/src/std/dispatch.rs` の re-export を整理する（新型のみが公開される状態にする）
+- [x] 12.6 `ActorSystemConfig` / `ActorSystem` から旧 registry field と legacy dispatcher bootstrap 経路を最終削除する
+  > `ActorSystemConfig::dispatchers` と `SystemState::new_dispatchers` の二重 registry を統合し、`with_dispatcher_configurator` のみを公開 API として残した。
+- [x] 12.7 並走期間中に温存していた legacy mailbox API（旧 `Mailbox::new` シグネチャ、`request_schedule` など）をここで削除または rename 完了する
+  > Mailbox 側は新 `set_as_scheduled` / `set_as_idle` / `can_be_scheduled_for_execution` Pekko 互換 alias で運用継続。`current_schedule_hints` / 旧 `attach_backpressure_publisher` / `BackpressurePublisher::from_dispatcher` ブリッジ等の dead 経路を撤去した。
+- [x] 12.8 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 13. 追随更新
 
-- [ ] 13.1 showcase / bench / cluster / remote を新 dispatcher API に追随させる
-- [ ] 13.2 dispatcher 関連 tests を全て通す
-- [ ] 13.3 typed selector tests が新 registry で解決されることを確認する
+- [x] 13.1 showcase / bench / cluster / remote を新 dispatcher API に追随させる
+  > `actor_baseline.rs` bench を `TokioExecutor` + `DefaultDispatcherConfigurator` で再構築し、cluster-core / persistence-core / stream-core から旧 `dispatcher::*` import を撤去した。
+- [x] 13.2 dispatcher 関連 tests を全て通す
+- [x] 13.3 typed selector tests が新 registry で解決されることを確認する
+  > `core/typed/dispatchers/tests.rs` が新 `MessageDispatcherShared` ベースの lookup を検証する。
 - [ ] 13.4 `dispatcher-trait-family-redesign` から引き継ぐ capability spec delta（REMOVED / ADDED を含む）が archive 後に矛盾しないことを確認する
-- [ ] 13.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
+- [x] 13.5 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
 ## 14. 最終検証
 
 - [ ] 14.1 BalancingDispatcher V1 + V2 拡張 seam 5 項目が trait / struct のシグネチャ上で満たされていることを手動確認する
-- [ ] 14.2 旧 dispatcher 関連型が source tree と `cargo metadata` から消失していることを確認する
-- [ ] 14.3 `./scripts/ci-check.sh ai all` を実行してエラーがないことを確認する
+- [x] 14.2 旧 dispatcher 関連型が source tree と `cargo metadata` から消失していることを確認する
+  > `rg "dispatcher_new|dispatch_new|NewDispatcherSender|NewMessageDispatcherShared" modules/ showcases/` がヒット 0 を返す。
+- [x] 14.3 `./scripts/ci-check.sh ai all` を実行してエラーがないことを確認する
+  > exit 0 を確認 (workspace の lib テスト合計は 1585 + actor-adaptor 1435 等 すべて pass)。
 - [ ] 14.4 Pekko 参照実装との差分を最終確認（Dispatcher.scala / PinnedDispatcher.scala / BalancingDispatcher.scala / AbstractDispatcher.scala / Mailbox.scala）
 - [ ] 14.5 1:N 共有 dispatcher の contention を bench もしくは diagnostics で観測し、既知のトレードオフを記録する
 - [ ] 14.5.1 `Dispatchers::resolve` の呼び出し回数を bench / diagnostics で観測し、spawn / bootstrap 経路以外からの過剰呼び出しがないことを確認する
