@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-
 use super::SyncQueue;
 use crate::core::{
   collections::queue::{QueueError, backend::SyncQueueBackend, offer_outcome::OfferOutcome},
@@ -15,7 +13,6 @@ pub struct SyncQueueShared<T, B>
 where
   B: SyncQueueBackend<T>, {
   inner: ArcShared<SpinSyncMutex<SyncQueue<T, B>>>,
-  _pd:   PhantomData<T>,
 }
 
 impl<T, B> SyncQueueShared<T, B>
@@ -25,7 +22,7 @@ where
   /// Creates a new shared queue from the provided shared backend.
   #[must_use]
   pub const fn new(shared_queue: ArcShared<SpinSyncMutex<SyncQueue<T, B>>>) -> Self {
-    Self { inner: shared_queue, _pd: PhantomData }
+    Self { inner: shared_queue }
   }
 
   /// Enqueues an item according to the backend's overflow policy.

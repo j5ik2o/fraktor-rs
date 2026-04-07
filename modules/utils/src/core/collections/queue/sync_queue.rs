@@ -12,6 +12,10 @@ pub struct SyncQueue<T, B>
 where
   B: SyncQueueBackend<T>, {
   backend: B,
+  // The where clause `B: SyncQueueBackend<T>` does NOT count as a use of `T`
+  // per rustc's E0392 check (only struct fields do). We have no field whose
+  // type names `T` directly, so `PhantomData<T>` is required to keep `T` in
+  // the struct definition.
   _pd:     PhantomData<T>,
 }
 
