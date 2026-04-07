@@ -96,6 +96,134 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
 }
 
 #[test]
+fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
+  use alloc::{string::ToString, sync::Arc, vec::Vec};
+
+  use fraktor_utils_rs::core::sync::RuntimeMutex;
+
+  use crate::core::kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext,
+      actor_ref::ActorRef,
+      error::ActorError,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+    },
+    dispatch::dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct RecordingActor {
+    seen: Arc<RuntimeMutex<Vec<u32>>>,
+  }
+
+  impl Actor for RecordingActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      if let Some(value) = message.downcast_ref::<u32>() {
+        self.seen.lock().push(*value);
+      }
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(16), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+  let seen = Arc::new(RuntimeMutex::new(Vec::new()));
+  let seen_clone = Arc::clone(&seen);
+  let props = Props::from_fn(move || RecordingActor { seen: seen_clone.clone() });
+  let pid = state.allocate_pid();
+  let cell = ActorCell::create(state.clone(), pid, None, "recording-actor".to_string(), &props).expect("create cell");
+  state.register_cell(cell.clone());
+
+  let mut actor_ref: ActorRef = cell.actor_ref();
+  for i in 0..10_u32 {
+    actor_ref.tell(AnyMessage::new(i));
+  }
+
+  let received = seen.lock().clone();
+  assert_eq!(received, (0..10_u32).collect::<Vec<_>>(), "messages must be delivered in FIFO order");
+}
+
+#[test]
+fn new_dispatcher_delivers_messages_to_multiple_actors_independently() {
+  use alloc::{string::ToString, sync::Arc};
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use crate::core::kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext,
+      actor_ref::ActorRef,
+      error::ActorError,
+      messaging::{AnyMessage, AnyMessageView},
+      props::Props,
+    },
+    dispatch::dispatcher_new::{DefaultDispatcherConfigurator, MessageDispatcherConfigurator},
+    system::ActorSystem,
+  };
+
+  struct CounterActor {
+    count: Arc<AtomicUsize>,
+  }
+
+  impl Actor for CounterActor {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+      self.count.fetch_add(1, Ordering::SeqCst);
+      Ok(())
+    }
+  }
+
+  let system = ActorSystem::new_empty_with(|config| {
+    let executor = ExecutorShared::new(InlineExec);
+    let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
+    config.with_new_dispatcher_configurator("default", configurator_handle)
+  });
+  let state = system.state();
+
+  let counter_a = Arc::new(AtomicUsize::new(0));
+  let counter_b = Arc::new(AtomicUsize::new(0));
+
+  let props_a = {
+    let c = counter_a.clone();
+    Props::from_fn(move || CounterActor { count: c.clone() })
+  };
+  let props_b = {
+    let c = counter_b.clone();
+    Props::from_fn(move || CounterActor { count: c.clone() })
+  };
+
+  let pid_a = state.allocate_pid();
+  let cell_a = ActorCell::create(state.clone(), pid_a, None, "actor-a".to_string(), &props_a).expect("create a");
+  state.register_cell(cell_a.clone());
+
+  let pid_b = state.allocate_pid();
+  let cell_b = ActorCell::create(state.clone(), pid_b, None, "actor-b".to_string(), &props_b).expect("create b");
+  state.register_cell(cell_b.clone());
+
+  let mut ref_a: ActorRef = cell_a.actor_ref();
+  let mut ref_b: ActorRef = cell_b.actor_ref();
+
+  for _ in 0..5 {
+    ref_a.tell(AnyMessage::new(1_u32));
+  }
+  for _ in 0..3 {
+    ref_b.tell(AnyMessage::new(1_u32));
+  }
+
+  assert_eq!(counter_a.load(Ordering::SeqCst), 5, "actor-a should have received 5 messages");
+  assert_eq!(counter_b.load(Ordering::SeqCst), 3, "actor-b should have received 3 messages");
+}
+
+#[test]
 fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants() {
   use alloc::string::ToString;
 

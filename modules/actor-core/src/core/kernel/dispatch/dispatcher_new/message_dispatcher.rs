@@ -156,7 +156,11 @@ pub trait MessageDispatcher: Send + Sync {
     envelope: Envelope,
   ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
     let mailbox = receiver.mailbox();
-    mailbox.enqueue_envelope(envelope)?;
+    // Backpressure: the default impl drops the pending future and leaves the
+    // envelope in-flight. Hot-path callers that care about async backpressure
+    // should go through `NewDispatcherSender::send`, which polls the future
+    // via `DispatcherWaker` before returning.
+    let _ = mailbox.enqueue_envelope(envelope)?;
     Ok(vec![mailbox])
   }
 

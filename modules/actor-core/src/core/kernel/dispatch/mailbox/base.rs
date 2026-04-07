@@ -248,23 +248,22 @@ impl Mailbox {
     }
   }
 
-  /// Enqueues an envelope synchronously, dropping any pending future.
+  /// Enqueues an envelope and returns the raw [`EnqueueOutcome`].
   ///
   /// This is the dispatcher-side dispatch path used by the new
-  /// `MessageDispatcher` family. The dispatcher is responsible for handling
-  /// async backpressure separately via `MailboxOfferFuture`; this method
-  /// only reports the immediate enqueue result and discards any returned
-  /// `Pending` future variant by treating it as a successful enqueue (the
-  /// future is held by the caller path that opted into backpressure).
+  /// `MessageDispatcher` family. Callers that care about backpressure
+  /// inspect the returned [`EnqueueOutcome::Pending`] and drive the
+  /// `MailboxOfferFuture` through a [`DispatcherWaker`] (see
+  /// `crate::core::kernel::dispatch::dispatcher_new::dispatcher_waker`).
+  /// Callers that don't care about backpressure can simply drop the
+  /// `Pending` variant.
   ///
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
+  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
     let payload = envelope.into_payload();
-    match self.enqueue_user(payload)? {
-      | EnqueueOutcome::Enqueued | EnqueueOutcome::Pending(_) => Ok(()),
-    }
+    self.enqueue_user(payload)
   }
 
   /// Prepends user messages so they are processed before already queued user messages.

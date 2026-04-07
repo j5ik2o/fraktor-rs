@@ -246,7 +246,8 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
   > NewDispatcherSender を新設し、ActorCell::create が新 dispatcher 設定があるときはそちらにフォールバックするようにした。end-to-end test で actor_ref.tell が新 dispatcher 経由で実行されることを検証済み。
 - [ ] 11.6 旧 `DispatcherSender` を削除し、`ActorRef` の送信経路から `MessageDispatcherShared::dispatch` を直接呼ぶ形に整理する
 - [ ] 11.7 typed 側 dispatcher selector（`Default` / `Blocking` / `FromConfig` 等）が新 `Dispatchers::resolve` 経由で `MessageDispatcherShared` を解決することを確認する
-- [ ] 11.8 旧 dispatcher 経路を使っていた MailboxOfferFuture / backpressure 経路が新 `DispatcherWaker` 経由に置き換わっていることを確認する
+- [x] 11.8 旧 dispatcher 経路を使っていた MailboxOfferFuture / backpressure 経路が新 `DispatcherWaker` 経由に置き換わっていることを確認する
+  > `Mailbox::enqueue_envelope` が `EnqueueOutcome` をそのまま返すように変更し、`NewDispatcherSender::send` が `Pending` 時に `dispatcher_waker()` で `MailboxOfferFuture` を poll する `drive_offer_future` を実装。
 - [ ] 11.9 旧 registry / legacy mailbox API への内部参照が消えたことを確認してから、最終削除フェーズへ進む
 - [x] 11.10 `./scripts/ci-check.sh ai dylint`が成功することを確認する
 
