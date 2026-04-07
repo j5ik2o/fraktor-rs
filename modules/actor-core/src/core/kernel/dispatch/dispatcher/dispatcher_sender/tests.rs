@@ -7,18 +7,9 @@ use core::{
 
 use fraktor_utils_rs::core::sync::ArcShared;
 
-use super::DispatcherSender;
 use crate::core::kernel::{
-  actor::{
-    actor_ref::{ActorRefSender, SendOutcome},
-    messaging::AnyMessage,
-  },
-  dispatch::{
-    dispatcher::{
-      DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcherShared,
-    },
-    mailbox::{Mailbox, MailboxPolicy},
-  },
+  actor::messaging::AnyMessage,
+  dispatch::dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorShared},
 };
 
 struct InlineExec;
@@ -36,25 +27,16 @@ fn nz(value: usize) -> NonZeroUsize {
   NonZeroUsize::new(value).expect("non-zero")
 }
 
-#[test]
-fn send_returns_schedule_outcome_that_drives_register_for_execution() {
-  let executor = ExecutorShared::new(InlineExec);
-  let settings = DispatcherSettings::new("sender-test", nz(4), None, Duration::from_secs(1));
-  let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherShared::new(dispatcher);
-  let mailbox = ArcShared::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-
-  let mut sender = DispatcherSender::new(shared, mailbox.clone());
-  let outcome = sender.send(AnyMessage::new(11_u32)).expect("send");
-  match outcome {
-    | SendOutcome::Schedule(task) => task(),
-    | SendOutcome::Delivered => {},
-  }
-  // Without an installed invoker the run() body is a no-op, but the schedule
-  // closure must still complete without panicking.
-  let _ = mailbox;
-  let _ = AtomicUsize::new(0);
-}
+// `send_returns_schedule_outcome_that_drives_register_for_execution` has been
+// retired. It constructed a `Mailbox::new(...)` without an attached
+// `ActorCell`, exercising a send path that no longer exists:
+// `DispatcherSender::send` now resolves the owning cell via
+// `Mailbox::actor()` and delegates to `MessageDispatcherShared::dispatch`
+// so `BalancingDispatcher` can override the routing. The end-to-end cases
+// below (`actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants`,
+// `end_to_end_send_via_actor_system_with_dispatcher_configurator`,
+// `dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown`)
+// cover the current send contract with a real cell.
 
 #[test]
 fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {

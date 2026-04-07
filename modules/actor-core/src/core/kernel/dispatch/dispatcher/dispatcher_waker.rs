@@ -50,17 +50,19 @@ unsafe fn clone_waker(data: *const ()) -> RawWaker {
 unsafe fn wake_waker(data: *const ()) {
   // SAFETY: `data` was produced by `Box::into_raw` and is now consumed.
   let boxed = unsafe { Box::from_raw(data.cast::<WakerState>().cast_mut()) };
-  // The wake side does not need to observe whether scheduling succeeded;
-  // a busy mailbox simply skips this wake-up and is rescheduled by the next
-  // dispatch path.
-  let _scheduled = boxed.dispatcher.register_for_execution(&boxed.mailbox, false, true);
+  // `DispatcherWaker` is installed by `MailboxOfferFuture` for user-message
+  // backpressure wake-ups, so the hints must describe "a user message is
+  // pending", not a system message. Inverting these hints would let the
+  // wake-up pass `request_schedule`'s suspended-mailbox guard even when no
+  // user-message work is pending, which would stall backpressure completion.
+  let _scheduled = boxed.dispatcher.register_for_execution(&boxed.mailbox, true, false);
 }
 
 unsafe fn wake_by_ref_waker(data: *const ()) {
   // SAFETY: `data` was produced by `Box::into_raw` and remains live for the
   // entire lifetime of the surrounding `Waker`.
   let state = unsafe { &*data.cast::<WakerState>() };
-  let _scheduled = state.dispatcher.register_for_execution(&state.mailbox, false, true);
+  let _scheduled = state.dispatcher.register_for_execution(&state.mailbox, true, false);
 }
 
 unsafe fn drop_waker(data: *const ()) {

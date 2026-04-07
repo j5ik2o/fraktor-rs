@@ -77,6 +77,18 @@ impl MessageDispatcherShared {
     self.with_read(|inner| inner.executor())
   }
 
+  /// Returns a pre-built shared mailbox if the inner dispatcher requires one.
+  ///
+  /// Delegates to
+  /// [`MessageDispatcher::try_create_shared_mailbox`](super::MessageDispatcher::try_create_shared_mailbox).
+  /// Returns `None` for dispatchers that want `ActorCell::create` to build a
+  /// per-actor mailbox from `MailboxConfig`; returns `Some` for dispatchers
+  /// like `BalancingDispatcher` whose team members must drain a shared queue.
+  #[must_use]
+  pub fn try_create_shared_mailbox(&self) -> Option<ArcShared<Mailbox>> {
+    self.with_read(|inner| inner.try_create_shared_mailbox())
+  }
+
   /// Attaches `actor` to the dispatcher and arranges initial scheduling.
   ///
   /// # Errors

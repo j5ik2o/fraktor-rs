@@ -113,12 +113,9 @@ fn dispatch_enqueues_to_shared_queue_and_returns_team_candidates() {
 }
 
 #[test]
-fn create_mailbox_returns_sharing_mailbox() {
-  use crate::core::kernel::dispatch::mailbox::{MailboxType, UnboundedMailboxType};
+fn try_create_shared_mailbox_returns_sharing_mailbox() {
   let dispatcher = make_dispatcher();
-  let (_system, cells) = make_actor_cells(&["solo"]);
-  let mailbox_type: alloc::boxed::Box<dyn MailboxType> = alloc::boxed::Box::new(UnboundedMailboxType::default());
-  let mailbox = dispatcher.create_mailbox(&cells[0], mailbox_type.as_ref());
+  let mailbox = dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
   assert_eq!(mailbox.cleanup_policy(), MailboxCleanupPolicy::LeaveSharedQueue);
 }
 
