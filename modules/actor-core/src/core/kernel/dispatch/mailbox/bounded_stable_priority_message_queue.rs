@@ -12,8 +12,8 @@ use core::num::NonZeroUsize;
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use super::{
-  envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
+  envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
+  stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
@@ -57,7 +57,7 @@ impl BoundedStablePriorityMessageQueue {
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     let sequence = guard.sequence;
@@ -66,7 +66,7 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
 
     if guard.heap.len() < self.capacity {
       guard.heap.push(entry);
-      return Ok(EnqueueOutcome::Enqueued);
+      return Ok(());
     }
 
     match self.overflow {
@@ -78,12 +78,12 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
         let _ = guard.heap.pop();
         guard.heap.push(entry);
-        Ok(EnqueueOutcome::Enqueued)
+        Ok(())
       },
       | MailboxOverflowStrategy::Grow => {
         // Ignore the bound and grow.
         guard.heap.push(entry);
-        Ok(EnqueueOutcome::Enqueued)
+        Ok(())
       },
     }
   }

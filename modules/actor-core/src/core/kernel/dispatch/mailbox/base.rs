@@ -10,8 +10,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakSh
 
 use super::{
   MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
-  mailbox_enqueue_outcome::EnqueueOutcome, mailbox_instrumentation::MailboxInstrumentation,
-  mailbox_message::MailboxMessage, message_queue::MessageQueue,
+  mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
   actor::{
@@ -272,22 +271,19 @@ impl Mailbox {
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
   #[cfg_attr(not(test), doc(hidden))]
-  pub fn enqueue_user(&self, message: AnyMessage) -> Result<EnqueueOutcome, SendError> {
+  pub fn enqueue_user(&self, message: AnyMessage) -> Result<(), SendError> {
     self.enqueue_envelope(Envelope::new(message))
   }
 
-  /// Enqueues an envelope and returns the raw [`EnqueueOutcome`].
+  /// Enqueues an envelope into the user queue.
   ///
   /// This is the dispatcher-side dispatch path used by the
-  /// `MessageDispatcher` family. Callers that care about backpressure
-  /// inspect the returned [`EnqueueOutcome::Pending`] variant, though
-  /// the default `MessageDispatcher::dispatch` implementation drops it
-  /// and returns `SendError::full` instead.
+  /// `MessageDispatcher` family.
   ///
   /// # Errors
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
-  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
     if self.is_suspended() {
       return Err(SendError::suspended(envelope.into_payload()));
     }
@@ -298,15 +294,9 @@ impl Mailbox {
     };
 
     match enqueue_result {
-      | Ok(EnqueueOutcome::Enqueued) => {
+      | Ok(()) => {
         self.publish_metrics();
-        Ok(EnqueueOutcome::Enqueued)
-      },
-      | Ok(EnqueueOutcome::Pending(future)) => {
-        let future = future
-          .with_user_queue_lock(self.user_queue_lock.clone())
-          .with_metrics(self.instrumentation.clone(), self.system.len_handle());
-        Ok(EnqueueOutcome::Pending(future))
+        Ok(())
       },
       | Err(error) => Err(error),
     }
@@ -377,7 +367,7 @@ impl Mailbox {
     let new_envelopes = messages.iter().cloned().map(Envelope::new);
     let existing_envelopes = existing.iter().cloned();
     for envelope in new_envelopes.chain(existing_envelopes) {
-      if let Err(error) = self.enqueue_for_prepend(envelope, first_message) {
+      if let Err(error) = self.user.enqueue(envelope) {
         enqueue_result = Err(error);
         break;
       }
@@ -390,7 +380,7 @@ impl Mailbox {
       let total_existing = existing.len();
       let mut restored: usize = 0;
       for envelope in existing {
-        if self.enqueue_for_prepend(envelope.clone(), first_message).is_err() {
+        if self.user.enqueue(envelope.clone()).is_err() {
           // Route unrecoverable messages to dead letter storage
           if let Some(ref state) = system_state {
             state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
@@ -555,13 +545,6 @@ impl Mailbox {
     current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
-  fn enqueue_for_prepend(&self, envelope: Envelope, first_message: &AnyMessage) -> Result<(), SendError> {
-    match self.user.enqueue(envelope) {
-      | Ok(EnqueueOutcome::Enqueued) => Ok(()),
-      | Ok(EnqueueOutcome::Pending(_)) => Err(SendError::full(first_message.clone())),
-      | Err(error) => Err(error),
-    }
-  }
 
   fn publish_metrics(&self) {
     let user_len = {

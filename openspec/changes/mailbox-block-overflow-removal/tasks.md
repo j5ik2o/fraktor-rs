@@ -34,7 +34,7 @@
 - [x] 2.12 `MailboxPolicy::bounded(...)` を `MailboxOverflowStrategy::Block` で呼んでいる残テストを `DropNewest` 等に置換、または該当テストを削除する: `mailbox_offer_future/tests.rs` (4 件すべて Block 依存) を全削除し、`mailbox_offer_future.rs` から `mod tests;` を削除
 - [x] 2.13 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する (warnings 2 件 — `MailboxOfferFuture::new` dead code、commit 3 で解消)
 - [x] 2.14 `cargo test -p fraktor-actor-core-rs --lib core::kernel::dispatch::mailbox` が pass することを確認する (117 passed)
-- [ ] 2.15 commit: `feat(mailbox): remove MailboxOverflowStrategy::Block variant`
+- [x] 2.15 commit: `feat(mailbox): remove MailboxOverflowStrategy::Block variant` (dbf379b9)
 
 ## 3. MessageQueue::enqueue 戻り値簡素化 + MailboxOfferFuture / EnqueueOutcome 撤去 (commit 3)
 
@@ -42,12 +42,12 @@
 
 ### 3.A trait + 共通型
 
-- [ ] 3.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/message_queue.rs` の `MessageQueue::enqueue` 戻り値を `Result<(), SendError>` に変更する
-- [ ] 3.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/deque_message_queue.rs` の `DequeMessageQueue::enqueue_first` 戻り値を `Result<(), SendError>` に変更する
-- [ ] 3.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_enqueue_outcome.rs` ファイルごと削除 (`EnqueueOutcome` enum 撤去)
-- [ ] 3.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_offer_future.rs` ファイルごと削除
-- [ ] 3.5 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_offer_future/tests.rs` とディレクトリを削除
-- [ ] 3.6 `modules/actor-core/src/core/kernel/dispatch/mailbox.rs` (module declarations) から以下を削除:
+- [x] 3.1 `modules/actor-core/src/core/kernel/dispatch/mailbox/message_queue.rs` の `MessageQueue::enqueue` 戻り値を `Result<(), SendError>` に変更する
+- [x] 3.2 `modules/actor-core/src/core/kernel/dispatch/mailbox/deque_message_queue.rs` の `DequeMessageQueue::enqueue_first` 戻り値を `Result<(), SendError>` に変更する
+- [x] 3.3 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_enqueue_outcome.rs` ファイルごと削除 (`EnqueueOutcome` enum 撤去)
+- [x] 3.4 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_offer_future.rs` ファイルごと削除
+- [x] 3.5 `modules/actor-core/src/core/kernel/dispatch/mailbox/mailbox_offer_future/tests.rs` とディレクトリを削除 (commit 2 で実施済み)
+- [x] 3.6 `modules/actor-core/src/core/kernel/dispatch/mailbox.rs` (module declarations) から以下を削除:
   - `mod mailbox_enqueue_outcome;`
   - `mod mailbox_offer_future;`
   - `pub use mailbox_enqueue_outcome::EnqueueOutcome;`
@@ -55,52 +55,49 @@
 
 ### 3.B queue 実装の追従
 
-- [ ] 3.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue.rs` を新シグネチャに追従 (`Ok(EnqueueOutcome::Enqueued)` → `Ok(())`)
-- [ ] 3.8 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs` を新シグネチャに追従
-- [ ] 3.9 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue.rs` を新シグネチャに追従
-- [ ] 3.10 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_message_queue.rs` を新シグネチャに追従
-- [ ] 3.11 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_control_aware_message_queue.rs` を新シグネチャに追従
-- [ ] 3.12 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_priority_message_queue.rs` を新シグネチャに追従
-- [ ] 3.13 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_stable_priority_message_queue.rs` を新シグネチャに追従
-- [ ] 3.14 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_deque_message_queue.rs` を新シグネチャに追従 (`enqueue` + `enqueue_first` 両方)
-- [ ] 3.15 `modules/actor-core/src/core/kernel/dispatch/dispatcher/shared_message_queue.rs` を新シグネチャに追従
-- [ ] 3.16 `modules/actor-core/src/core/kernel/dispatch/dispatcher/balancing_dispatcher.rs` 内の `SharedMessageQueueBox` の `MessageQueue` impl を新シグネチャに追従
+- [x] 3.7 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue.rs` を新シグネチャに追従 (`Ok(EnqueueOutcome::Enqueued)` → `Ok(())`)
+- [x] 3.8 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue.rs` を新シグネチャに追従
+- [x] 3.9 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue.rs` を新シグネチャに追従
+- [x] 3.10 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_message_queue.rs` を新シグネチャに追従
+- [x] 3.11 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_control_aware_message_queue.rs` を新シグネチャに追従
+- [x] 3.12 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_priority_message_queue.rs` を新シグネチャに追従
+- [x] 3.13 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_stable_priority_message_queue.rs` を新シグネチャに追従
+- [x] 3.14 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_deque_message_queue.rs` を新シグネチャに追従 (`enqueue` + `enqueue_first` 両方)
+- [x] 3.15 `modules/actor-core/src/core/kernel/dispatch/dispatcher/shared_message_queue.rs` を新シグネチャに追従
+- [x] 3.16 `modules/actor-core/src/core/kernel/dispatch/dispatcher/balancing_dispatcher.rs` 内の `SharedMessageQueueBox` の `MessageQueue` impl を新シグネチャに追従
 
 ### 3.C queue 実装テストの追従
 
-- [ ] 3.17 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue/tests.rs` の `Ok(EnqueueOutcome::Enqueued)` 等の match arm を `Ok(())` に置換 (or `is_ok()` 呼び出しに簡素化)
-- [ ] 3.18 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue/tests.rs` を追従
-- [ ] 3.19 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue/tests.rs` を追従
-- [ ] 3.20 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_message_queue/tests.rs` を追従
-- [ ] 3.21 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_control_aware_message_queue/tests.rs` を追従
-- [ ] 3.22 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_priority_message_queue/tests.rs` を追従
-- [ ] 3.23 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_stable_priority_message_queue/tests.rs` を追従
-- [ ] 3.24 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_deque_message_queue/tests.rs` を追従
-- [ ] 3.25 `modules/actor-core/src/core/kernel/dispatch/dispatcher/shared_message_queue/tests.rs` を追従
+- [x] 3.17 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_message_queue/tests.rs` の `Ok(EnqueueOutcome::Enqueued)` 等の match arm を `Ok(())` に置換 (no-op、参照なし)
+- [x] 3.18 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_priority_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.19 `modules/actor-core/src/core/kernel/dispatch/mailbox/bounded_stable_priority_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.20 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.21 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_control_aware_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.22 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_priority_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.23 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_stable_priority_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.24 `modules/actor-core/src/core/kernel/dispatch/mailbox/unbounded_deque_message_queue/tests.rs` を追従 (no-op)
+- [x] 3.25 `modules/actor-core/src/core/kernel/dispatch/dispatcher/shared_message_queue/tests.rs` を追従
 
 ### 3.D Mailbox 上位 API の追従
 
-- [ ] 3.26 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::enqueue_envelope` の戻り値を `Result<EnqueueOutcome, SendError>` から `Result<(), SendError>` に変更
-- [ ] 3.27 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::enqueue_user` を新しい戻り値型に追従
-- [ ] 3.28 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::prepend_user_messages` 内の `Ok(EnqueueOutcome::Pending(_))` 分岐を削除し、`Ok(())` 分岐に簡素化 (該当箇所: line 562-563 周辺)
-- [ ] 3.29 `modules/actor-core/src/core/kernel/dispatch/mailbox/base/tests.rs` の mock queue impl を新 trait シグネチャに追従 (該当箇所: line 65-74 周辺)
-- [ ] 3.30 `modules/actor-core/src/core/kernel/dispatch/mailbox/base/tests.rs` 内の `Ok(EnqueueOutcome::Enqueued)` / `Ok(EnqueueOutcome::Pending(...))` を参照する test を削除または簡素化 (該当箇所: line 275, 309, 310 周辺)
+- [x] 3.26 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::enqueue_envelope` の戻り値を `Result<EnqueueOutcome, SendError>` から `Result<(), SendError>` に変更
+- [x] 3.27 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::enqueue_user` を新しい戻り値型に追従
+- [x] 3.28 `modules/actor-core/src/core/kernel/dispatch/mailbox/base.rs::prepend_user_messages` 内の `Ok(EnqueueOutcome::Pending(_))` 分岐を削除し、`Ok(())` 分岐に簡素化 (`enqueue_for_prepend` ヘルパ自体を削除)
+- [x] 3.29 `modules/actor-core/src/core/kernel/dispatch/mailbox/base/tests.rs` の mock queue impl を新 trait シグネチャに追従
+- [x] 3.30 `modules/actor-core/src/core/kernel/dispatch/mailbox/base/tests.rs` 内の `Ok(EnqueueOutcome::Enqueued)` / `Ok(EnqueueOutcome::Pending(...))` を参照する test を削除または簡素化 (`mailbox_prepend_user_messages_blocks_pending_offer_poll_until_prepend_finishes` を削除、`ScriptedEnqueue::Pending` も削除)
 
 ### 3.E dispatcher hook の追従
 
-- [ ] 3.31 `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs::dispatch` default impl を簡素化:
-  - `EnqueueOutcome::Pending(_future)` 分岐を削除
-  - `let envelope_for_error = envelope.clone();` 行を削除
-  - `match mailbox.enqueue_envelope(envelope)? { ... }` を直接 `mailbox.enqueue_envelope(envelope)?; Ok(vec![mailbox])` に簡素化
-- [ ] 3.32 `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs` の rustdoc から `Pending` / `MailboxOfferFuture` への言及を削除
+- [x] 3.31 `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs::dispatch` default impl を簡素化
+- [x] 3.32 `modules/actor-core/src/core/kernel/dispatch/dispatcher/message_dispatcher.rs` の rustdoc から `Pending` / `MailboxOfferFuture` への言及を削除
 
 ### 3.F 検証
 
-- [ ] 3.33 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 3.34 `cargo check -p fraktor-actor-adaptor-rs --lib --tests` がコンパイル成功することを確認する
-- [ ] 3.35 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する
-- [ ] 3.36 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する
-- [ ] 3.37 `grep -rn "EnqueueOutcome\|MailboxOfferFuture" modules/` がヒット 0 を返すことを確認する
+- [x] 3.33 `cargo check -p fraktor-actor-core-rs --lib --tests` がコンパイル成功することを確認する (warnings 2 件: `register_producer_waiter`, `len_handle` — backpressure infra 残骸、別 follow-up)
+- [x] 3.34 `cargo check -p fraktor-actor-adaptor-rs --lib --tests` がコンパイル成功することを確認する
+- [x] 3.35 `cargo test -p fraktor-actor-core-rs --lib` 全件 pass を確認する (1577 passed)
+- [x] 3.36 `cargo test -p fraktor-actor-adaptor-rs --lib` 全件 pass を確認する (11 passed)
+- [x] 3.37 `grep -rn "EnqueueOutcome\|MailboxOfferFuture" modules/` がヒット 0 を返すことを確認する
 - [ ] 3.38 commit: `refactor(mailbox): simplify MessageQueue::enqueue to Result<(), SendError> and drop MailboxOfferFuture`
 
 ## 4. Executor::supports_blocking + SpawnError::InvalidMailboxConfig 撤去 (commit 4)

@@ -5,10 +5,7 @@ mod tests;
 
 use fraktor_utils_rs::core::collections::queue::QueueError;
 
-use super::{
-  QueueStateHandle, envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue,
-  policy::MailboxPolicy,
-};
+use super::{QueueStateHandle, envelope::Envelope, message_queue::MessageQueue, policy::MailboxPolicy};
 use crate::core::kernel::actor::error::SendError;
 
 /// Unbounded message queue that grows as needed.
@@ -33,9 +30,9 @@ impl Default for UnboundedMessageQueue {
 }
 
 impl MessageQueue for UnboundedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     match self.handle.offer(envelope) {
-      | Ok(_) => Ok(EnqueueOutcome::Enqueued),
+      | Ok(_) => Ok(()),
       | Err(error) => Err(super::map_user_envelope_queue_error(error)),
     }
   }

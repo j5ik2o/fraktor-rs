@@ -43,7 +43,7 @@ use fraktor_utils_rs::core::sync::ArcShared;
 use super::{dispatcher_core::DispatcherCore, executor_shared::ExecutorShared};
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
-  dispatch::mailbox::{EnqueueOutcome, Envelope, Mailbox},
+  dispatch::mailbox::{Envelope, Mailbox},
 };
 
 /// Hook/query surface of a dispatcher.
@@ -149,24 +149,8 @@ pub trait MessageDispatcher: Send + Sync {
     envelope: Envelope,
   ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
     let mailbox = receiver.mailbox();
-    // The dispatch trait does not support async back-pressure wait: if the
-    // mailbox's bounded queue returns `Pending`, the envelope would be held
-    // inside the future and silently dropped together with the future. Clone
-    // the envelope up-front so we can surface a concrete `SendError::full`
-    // on the back-pressure path instead of losing the message. `Envelope`
-    // clones cheaply (`AnyMessage::clone` is a single atomic bump), so this
-    // only costs one extra ref on the happy path up to the match below.
-    let envelope_for_error = envelope.clone();
-    match mailbox.enqueue_envelope(envelope)? {
-      | EnqueueOutcome::Enqueued => Ok(vec![mailbox]),
-      | EnqueueOutcome::Pending(_future) => {
-        // Dropping `_future` releases the in-flight slot it was waiting for;
-        // the envelope payload that would have been delivered is surfaced
-        // via `envelope_for_error` so the caller can retry, route elsewhere,
-        // or record a dead letter instead of observing a silent drop.
-        Err(SendError::full(envelope_for_error.into_payload()))
-      },
-    }
+    mailbox.enqueue_envelope(envelope)?;
+    Ok(vec![mailbox])
   }
 
   /// Enqueues a system message for `receiver` and returns the candidate mailbox list.

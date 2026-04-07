@@ -15,7 +15,7 @@ use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::kernel::{
   actor::error::SendError,
-  dispatch::mailbox::{DequeMessageQueue, EnqueueOutcome, Envelope, MessageQueue},
+  dispatch::mailbox::{DequeMessageQueue, Envelope, MessageQueue},
 };
 
 /// Thread-safe FIFO queue shared by all actors of a `BalancingDispatcher`.
@@ -44,9 +44,9 @@ impl Default for SharedMessageQueue {
 }
 
 impl MessageQueue for SharedMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     self.inner.lock().push_back(envelope);
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {

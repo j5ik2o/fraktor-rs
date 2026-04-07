@@ -1,14 +1,13 @@
 use super::SharedMessageQueue;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
-  dispatch::mailbox::{EnqueueOutcome, Envelope, MessageQueue},
+  dispatch::mailbox::{Envelope, MessageQueue},
 };
 
 #[test]
 fn enqueue_appends_messages() {
   let queue = SharedMessageQueue::new();
-  let outcome = queue.enqueue(Envelope::new(AnyMessage::new(42_u32))).expect("enqueue");
-  assert!(matches!(outcome, EnqueueOutcome::Enqueued));
+  queue.enqueue(Envelope::new(AnyMessage::new(42_u32))).expect("enqueue");
   assert_eq!(queue.number_of_messages(), 1);
   assert!(queue.has_messages());
 }

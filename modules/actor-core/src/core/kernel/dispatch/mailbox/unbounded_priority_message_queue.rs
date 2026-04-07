@@ -8,7 +8,7 @@ use core::cmp::Ordering;
 
 use fraktor_utils_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{envelope::Envelope, mailbox_enqueue_outcome::EnqueueOutcome, message_queue::MessageQueue};
+use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
@@ -34,11 +34,11 @@ impl UnboundedPriorityMessageQueue {
 }
 
 impl MessageQueue for UnboundedPriorityMessageQueue {
-  fn enqueue(&self, envelope: Envelope) -> Result<EnqueueOutcome, SendError> {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
     let mut guard = self.inner.lock();
     guard.push(PriorityEntry { priority, envelope });
-    Ok(EnqueueOutcome::Enqueued)
+    Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
