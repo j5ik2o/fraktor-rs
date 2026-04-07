@@ -31,12 +31,17 @@ fn nz(value: usize) -> NonZeroUsize {
 // retired. It constructed a `Mailbox::new(...)` without an attached
 // `ActorCell`, exercising a send path that no longer exists:
 // `DispatcherSender::send` now resolves the owning cell via
-// `Mailbox::actor()` and delegates to `MessageDispatcherShared::dispatch`
-// so `BalancingDispatcher` can override the routing. The end-to-end cases
-// below (`actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants`,
+// `Mailbox::actor()` (returning `SendError::closed` if the upgrade fails),
+// then runs the two-phase `dispatch_enqueue` (inside the per-actor sender
+// lock) + `register_user_candidates` (returned as `SendOutcome::Schedule`,
+// invoked by `ActorRefSenderShared::send` after the sender lock is
+// released) split that keeps the inline-executor re-entrancy contract
+// intact. The end-to-end cases below
+// (`actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants`,
 // `end_to_end_send_via_actor_system_with_dispatcher_configurator`,
-// `dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown`)
-// cover the current send contract with a real cell.
+// `dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown`,
+// and the `new_dispatcher_handles_actor_to_actor_send_without_deadlock`
+// regression test) cover the current send contract with a real cell.
 
 #[test]
 fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
