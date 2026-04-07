@@ -236,8 +236,10 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
 
 並走戦略: `dispatcher_new/` と旧 `dispatcher/` を同時に存在させ、fraktor 外部の公開 API は新型のみを見せる。一方で内部実装では、呼び出し元の移行が完了するまで旧 registry / mailbox API を一時的に残してよい。旧 dispatcher の呼び出し元（`ActorCell` / `ActorRefSender` / bootstrap 等）を sub-task 単位で一つずつ新 API へ切り替え、切り替え済みの箇所から旧 re-export と旧 state を削除していく。
 
-- [ ] 11.0 `ActorCell` に interior-mutable な mailbox slot を追加する: `mailbox: OnceLock<ArcShared<Mailbox>>` (もしくは `SpinSyncMutex<Option<ArcShared<Mailbox>>>`) フィールドを追加し、`pub fn install_mailbox(&self, mbox: ArcShared<Mailbox>)` メソッド (一度だけ呼べる契約) を新規追加する。`pub fn mailbox(&self) -> ArcShared<Mailbox>` の既存シグネチャは維持し、内部では `expect("mailbox not installed yet")` で未 install を検出する
-- [ ] 11.0.1 2-phase init の影響範囲を `ActorCell` の mailbox / dispatcher / sender install 順序のみに限定する。`ActorCell` 全体の AShared 化や広域 mutex 導入は行わず、上記の mailbox slot 1 つだけが新たに interior mutable になる
+- [x] 11.0 `ActorCell` に interior-mutable な mailbox slot を追加する: `mailbox: OnceLock<ArcShared<Mailbox>>` (もしくは `SpinSyncMutex<Option<ArcShared<Mailbox>>>`) フィールドを追加し、`pub fn install_mailbox(&self, mbox: ArcShared<Mailbox>)` メソッド (一度だけ呼べる契約) を新規追加する。`pub fn mailbox(&self) -> ArcShared<Mailbox>` の既存シグネチャは維持し、内部では `expect("mailbox not installed yet")` で未 install を検出する
+  > `ActorCell::mailbox` を `SpinSyncMutex<Option<ArcShared<Mailbox>>>` に変更（`no_std` 互換のため `OnceLock` ではなく `SpinSyncMutex` を採用）。`pub fn install_mailbox(&self, mbox: ArcShared<Mailbox>)` を追加し、二度目の呼び出しは `debug_assert!` で panic。`pub fn mailbox(&self) -> ArcShared<Mailbox>` は `expect("mailbox not installed yet")` を使う実装に変更。double-install panic は `actor_cell_install_mailbox_panics_on_double_install` regression test で固定。
+- [x] 11.0.1 2-phase init の影響範囲を `ActorCell` の mailbox / dispatcher / sender install 順序のみに限定する。`ActorCell` 全体の AShared 化や広域 mutex 導入は行わず、上記の mailbox slot 1 つだけが新たに interior mutable になる
+  > 新たに interior mutable になったのは `mailbox` slot 1 つだけ。`ActorCell` の他フィールドは引き続き plain 所有 state のまま (children/watchers/etc は既存の `RuntimeMutex<ActorCellState>` 内、`actor` / `factory` は既存の AShared、`pipeline` は不変) で、ActorCell 全体を AShared 化していない。広域 mutex の導入も行っていない。
 - [x] 11.0.2 `ActorCell::system(&self) -> SystemStateShared` の可視性を `pub(crate)` に広げ、あわせて `pub fn scheduler(&self) -> SchedulerShared` を追加する。`MessageDispatcherShared::detach` は `actor.scheduler()` 経由で delayed shutdown を登録し、`SystemStateShared` 自体を dispatcher 層へ露出しない
 - [x] 11.0.3 並走期間中の legacy `ActorCell::create` 経路が mailbox 生成直後に `install_mailbox` を即時呼ぶように変更する。new dispatcher 側は `MessageDispatcherShared::attach` が install を担当する
   > Mailbox::install_invoker を使って同等の効果を達成。invoker をマウントすることで Mailbox::run() が直接ドレインできるようになった。
@@ -246,7 +248,8 @@ std 層のすべての `Executor` 具象実装は trait 契約（`execute(&mut s
   > SystemState/SystemStateShared に new_dispatchers を追加し、apply_actor_system_config から伝搬するように対応。resolve_new_dispatcher アクセサも追加。
 - [x] 11.3 `ActorCell::start` などの bootstrap が `MessageDispatcherShared::attach(actor)` を呼ぶように修正する。attach が mailbox を生成して actor に install する前提で生成順を組み替える
   > ActorCell::create の末尾で `new_dispatcher.attach(&cell)` を呼ぶように追加した (opt-in 経路のみ)。mailbox は引き続き legacy が eager 生成し、install_invoker で Mailbox::run へ接続する。inhabitants カウンタの増減を `actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants` test で検証済み。
-- [ ] 11.3.1 legacy mailbox eager 生成ブロック (`ActorCell::create` 内) を段階移行し、install 漏れ経路が存在しないことを確認する
+- [x] 11.3.1 legacy mailbox eager 生成ブロック (`ActorCell::create` 内) を段階移行し、install 漏れ経路が存在しないことを確認する
+  > `ActorCell::create` は新しい install_mailbox seam を経由するように変更済み。flow は (1) `Mailbox::new_from_config` で eager 生成 + `set_instrumentation` → (2) `ArcShared::new(Self { ..., mailbox: SpinSyncMutex::new(None), ... })` で cell を構築 → (3) `cell.install_mailbox(mailbox)` で seam に install → (4) `cell.mailbox().install_invoker(...)` / `install_actor(cell.downgrade())` → (5) `cell.new_dispatcher.attach(&cell)`。これで install 漏れ経路は静的に存在しない (`mailbox()` は内部で `expect` するため install 抜けはランタイムでも検出される)。
 - [x] 11.4 `ActorCell::stop` / termination 経路が `MessageDispatcherShared::detach(actor)` を呼ぶように修正する
   > `SystemStateShared::remove_cell` が `cell.new_dispatcher_shared()` を取得して `detach(&cell)` を呼ぶように修正。`removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants` test で 0 まで戻ることを検証済み。
 - [x] 11.5 `ActorRefSender` 経路を新 `MessageDispatcherShared::dispatch` / `system_dispatch` に繋ぎ替える
