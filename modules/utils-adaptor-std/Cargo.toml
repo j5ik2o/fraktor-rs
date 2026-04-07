@@ -2,10 +2,10 @@
 name = "fraktor-utils-adaptor-std-rs"
 version = "0.2.11"
 edition = "2024"
-description = "Std adapter helpers for fraktor-utils-core-rs (test/debug instrumentation)"
+description = "Std adapter helpers for fraktor-utils-core-rs (placeholder pending RuntimeMutex Port/Adapter)"
 license = "MIT OR Apache-2.0"
-keywords = ["fraktor", "utils", "adaptor", "std", "debug"]
-categories = ["concurrency", "development-tools::debugging"]
+keywords = ["fraktor", "utils", "adaptor", "std"]
+categories = ["concurrency"]
 repository = "https://github.com/j5ik2o/fraktor-rs"
 homepage = "https://github.com/j5ik2o/fraktor-rs"
 documentation = "https://docs.rs/fraktor-utils-adaptor-std-rs"
@@ -14,20 +14,9 @@ autoexamples = false
 
 [features]
 default = []
-# `test-support` enables std-dependent debug helpers that downstream test
-# code can opt into. Production code should not enable this feature.
-test-support = ["dep:spin"]
 
 [dependencies]
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
-spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"], optional = true }
-
-[dev-dependencies]
-# Pull `spin` in unconditionally for unit tests so that `cfg(test)` items in
-# `std::debug::debug_spin_sync_mutex` (which use `spin::MutexGuard` directly)
-# can compile under `cargo test` even when the `test-support` feature is not
-# explicitly enabled. The production graph still uses the optional dep above.
-spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"] }
 
 [lints]
 workspace = true

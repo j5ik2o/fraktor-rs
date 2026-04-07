@@ -40,12 +40,10 @@ impl<T> SpinSyncMutex<T> {
   /// it structurally harder to nest lock acquisitions because the callee
   /// cannot easily call back into the same shared state.
   ///
-  /// When you suspect a specific call site is hitting re-entry deadlocks
-  /// during testing, surgically replace `SpinSyncMutex<T>` with
-  /// `fraktor_utils_adaptor_std_rs::std::debug::DebugSpinSyncMutex<T>`. The
-  /// debug variant tracks the current owner thread and panics on
-  /// re-entry from the same thread (while still permitting normal
-  /// contention from other threads).
+  /// A drop-in instrumented variant for re-entry detection during testing
+  /// is planned to be re-introduced once the `RuntimeMutex` Port + Adapter
+  /// (`LockDriver` trait) refactoring lands; until then, deadlock symptoms
+  /// must be diagnosed via stack traces of the spinning thread.
   pub fn lock(&self) -> spin::MutexGuard<'_, T> {
     self.0.lock()
   }
