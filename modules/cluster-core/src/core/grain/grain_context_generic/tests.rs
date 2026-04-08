@@ -2,13 +2,13 @@ use alloc::string::String;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, Pid,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
-    error::ActorError,
+    error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
       SchedulerConfig,
@@ -16,8 +16,9 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  system::ActorSystem,
+  system::{ActorSystem, TerminationSignal},
 };
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::{
   ClusterApi, ClusterExtension, ClusterExtensionConfig, ClusterExtensionInstaller,
@@ -44,9 +45,7 @@ fn grain_context_exposes_identity_and_cluster() {
   assert_eq!(actor_ref.pid(), Pid::new(1, 0));
 }
 
-fn build_system_with_extension<F>(
-  identity_lookup_factory: F,
-) -> (ActorSystem, fraktor_utils_core_rs::core::sync::ArcShared<ClusterExtension>)
+fn build_system_with_extension<F>(identity_lookup_factory: F) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
@@ -74,11 +73,7 @@ where
 struct TestGuardian;
 
 impl Actor for TestGuardian {
-  fn receive(
-    &mut self,
-    _context: &mut fraktor_actor_core_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -133,18 +128,15 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_signal(&self) -> fraktor_actor_core_rs::core::kernel::system::TerminationSignal {
-    fraktor_actor_core_rs::core::kernel::system::TerminationSignal::already_terminated()
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
   }
 }
 
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

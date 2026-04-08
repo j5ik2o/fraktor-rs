@@ -3,13 +3,13 @@ use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, Pid,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
-    error::ActorError,
+    error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  system::ActorSystem,
+  system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess},
@@ -29,8 +29,8 @@ use fraktor_utils_core_rs::core::{
 
 use crate::core::{
   ClusterApi, ClusterApiError, ClusterEvent, ClusterEventType, ClusterExtension, ClusterExtensionConfig,
-  ClusterExtensionInstaller, ClusterRequestError, ClusterResolveError, ClusterSubscriptionInitialStateMode,
-  ClusterTopology, MetricsError, TopologyUpdate,
+  ClusterExtensionInstaller, ClusterProviderError, ClusterRequestError, ClusterResolveError,
+  ClusterSubscriptionInitialStateMode, ClusterTopology, MetricsError, TopologyUpdate,
   cluster_provider::{ClusterProvider, NoopClusterProvider},
   downing_provider::DowningProvider,
   grain::{GRAIN_EVENT_STREAM_NAME, GrainEvent, GrainKey},
@@ -553,11 +553,7 @@ fn build_topology_update(version: u64, joined: Vec<String>, left: Vec<String>) -
 struct TestGuardian;
 
 impl Actor for TestGuardian {
-  fn receive(
-    &mut self,
-    _context: &mut fraktor_actor_core_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
-  ) -> Result<(), fraktor_actor_core_rs::core::kernel::actor::error::ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -678,28 +674,28 @@ struct RecordingDownProvider {
 }
 
 impl ClusterProvider for RecordingDownProvider {
-  fn start_member(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn start_client(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn down(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     self.downed.lock().push(String::from(authority));
     Ok(())
   }
 
-  fn join(&mut self, _authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn join(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn leave(&mut self, _authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn leave(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn shutdown(&mut self, _graceful: bool) -> Result<(), crate::core::ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 }
@@ -710,29 +706,29 @@ struct RecordingMembershipProvider {
 }
 
 impl ClusterProvider for RecordingMembershipProvider {
-  fn start_member(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+  fn start_member(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn start_client(&mut self) -> Result<(), crate::core::ClusterProviderError> {
+  fn start_client(&mut self) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn down(&mut self, _authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn down(&mut self, _authority: &str) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 
-  fn join(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn join(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     self.joined.lock().push(String::from(authority));
     Ok(())
   }
 
-  fn leave(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn leave(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     self.left.lock().push(String::from(authority));
     Ok(())
   }
 
-  fn shutdown(&mut self, _graceful: bool) -> Result<(), crate::core::ClusterProviderError> {
+  fn shutdown(&mut self, _graceful: bool) -> Result<(), ClusterProviderError> {
     Ok(())
   }
 }
@@ -742,7 +738,7 @@ struct RecordingDowningProvider {
 }
 
 impl DowningProvider for RecordingDowningProvider {
-  fn down(&mut self, authority: &str) -> Result<(), crate::core::ClusterProviderError> {
+  fn down(&mut self, authority: &str) -> Result<(), ClusterProviderError> {
     self.downed.lock().push(String::from(authority));
     Ok(())
   }
@@ -769,18 +765,15 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_signal(&self) -> fraktor_actor_core_rs::core::kernel::system::TerminationSignal {
-    fraktor_actor_core_rs::core::kernel::system::TerminationSignal::already_terminated()
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
   }
 }
 
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Ok(SendOutcome::Delivered)
   }
 }

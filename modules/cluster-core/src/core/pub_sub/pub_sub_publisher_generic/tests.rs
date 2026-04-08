@@ -1,4 +1,7 @@
-use fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage;
+use fraktor_actor_core_rs::core::kernel::{
+  actor::messaging::AnyMessage,
+  serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
+};
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use super::PubSubPublisher;
@@ -55,12 +58,8 @@ struct CustomPayload;
 
 #[test]
 fn publish_rejects_when_not_serializable() {
-  let setup = fraktor_actor_core_rs::core::kernel::serialization::default_serialization_setup();
-  let registry = ArcShared::new(
-    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(
-      &setup,
-    ),
-  );
+  let setup = default_serialization_setup();
+  let registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
   let stub = StubPubSub::new();
   let shared = ClusterPubSubShared::new(Box::new(stub.clone()));
   let publisher = PubSubPublisher::new(shared, registry);

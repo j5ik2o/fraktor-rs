@@ -1,5 +1,7 @@
 use super::*;
-use crate::core::{ConfigValidation, JoinConfigCompatChecker};
+use crate::core::{
+  ConfigValidation, JoinConfigCompatChecker, cluster_topology::ClusterTopology, pub_sub::PubSubConfig,
+};
 
 #[test]
 fn metrics_flag_and_address_are_preserved() {
@@ -16,20 +18,15 @@ fn metrics_flag_and_address_are_preserved() {
 
 #[test]
 fn pubsub_config_is_preserved() {
-  let custom =
-    crate::core::pub_sub::PubSubConfig::new(core::time::Duration::from_secs(5), core::time::Duration::from_secs(12));
+  let custom = PubSubConfig::new(core::time::Duration::from_secs(5), core::time::Duration::from_secs(12));
   let config = ClusterExtensionConfig::new().with_pubsub_config(custom);
   assert_eq!(config.pubsub_config(), &custom);
 }
 
 #[test]
 fn static_topology_is_preserved() {
-  let topology = crate::core::cluster_topology::ClusterTopology::new(
-    7,
-    vec!["node-a".to_string()],
-    vec!["node-b".to_string()],
-    vec!["node-c".to_string()],
-  );
+  let topology =
+    ClusterTopology::new(7, vec!["node-a".to_string()], vec!["node-b".to_string()], vec!["node-c".to_string()]);
   let config = ClusterExtensionConfig::new().with_static_topology(topology.clone());
   assert_eq!(config.static_topology(), Some(&topology));
 }
@@ -53,16 +50,10 @@ fn app_version_is_preserved() {
 #[test]
 fn join_compatibility_reports_pubsub_mismatch() {
   let local = ClusterExtensionConfig::new()
-    .with_pubsub_config(crate::core::pub_sub::PubSubConfig::new(
-      core::time::Duration::from_secs(3),
-      core::time::Duration::from_secs(30),
-    ))
+    .with_pubsub_config(PubSubConfig::new(core::time::Duration::from_secs(3), core::time::Duration::from_secs(30)))
     .with_roles(vec!["backend".to_string()]);
   let joining = ClusterExtensionConfig::new()
-    .with_pubsub_config(crate::core::pub_sub::PubSubConfig::new(
-      core::time::Duration::from_secs(5),
-      core::time::Duration::from_secs(30),
-    ))
+    .with_pubsub_config(PubSubConfig::new(core::time::Duration::from_secs(5), core::time::Duration::from_secs(30)))
     .with_roles(vec!["frontend".to_string()]);
 
   let validation = local.check_join_compatibility(&joining);
@@ -71,8 +62,7 @@ fn join_compatibility_reports_pubsub_mismatch() {
 
 #[test]
 fn join_compatibility_accepts_same_pubsub_config() {
-  let shared =
-    crate::core::pub_sub::PubSubConfig::new(core::time::Duration::from_secs(4), core::time::Duration::from_secs(40));
+  let shared = PubSubConfig::new(core::time::Duration::from_secs(4), core::time::Duration::from_secs(40));
   let local = ClusterExtensionConfig::new().with_pubsub_config(shared).with_roles(vec!["backend".to_string()]);
   let joining = ClusterExtensionConfig::new().with_pubsub_config(shared).with_roles(vec!["frontend".to_string()]);
 

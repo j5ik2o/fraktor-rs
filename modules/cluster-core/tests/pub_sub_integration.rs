@@ -16,7 +16,7 @@ use fraktor_cluster_core_rs::core::{
   cluster_provider::NoopClusterProvider,
   downing_provider::NoopDowningProvider,
   grain::KindRegistry,
-  identity::{IdentityLookupShared, NoopIdentityLookup},
+  identity::{ClusterIdentity, IdentityLookupShared, NoopIdentityLookup},
   membership::{GossiperShared, NoopGossiper},
   pub_sub::{
     ClusterPubSubShared, DeliverBatchRequest, DeliveryEndpoint, DeliveryEndpointShared, DeliveryReport, DeliveryStatus,
@@ -134,9 +134,7 @@ fn publish_emits_delivery_and_metrics_events() {
   pubsub.start().expect("start");
 
   let topic = PubSubTopic::from("news");
-  let subscriber = PubSubSubscriber::ClusterIdentity(
-    fraktor_cluster_core_rs::core::identity::ClusterIdentity::new("kind", "sub-1").expect("identity"),
-  );
+  let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "sub-1").expect("identity"));
   pubsub.subscribe(&topic, subscriber).expect("subscribe");
 
   let batch = PubSubBatch::new(vec![PubSubEnvelope {
@@ -167,9 +165,7 @@ fn topology_update_reactivates_suspended_subscribers() {
   kind_registry.register_all(Vec::new());
 
   let topic = PubSubTopic::from("news");
-  let subscriber = PubSubSubscriber::ClusterIdentity(
-    fraktor_cluster_core_rs::core::identity::ClusterIdentity::new("kind", "sub-1").expect("identity"),
-  );
+  let subscriber = PubSubSubscriber::ClusterIdentity(ClusterIdentity::new("kind", "sub-1").expect("identity"));
 
   let pubsub = build_pubsub(event_stream.clone(), &kind_registry, vec![subscriber.clone()]);
   let pubsub_shared = ClusterPubSubShared::new(Box::new(pubsub));

@@ -22,7 +22,7 @@ use crate::core::{
   identity::{IdentityLookup, IdentitySetupError, LookupError},
   membership::{Gossiper, NodeStatus},
   placement::{ActivatedKind, PlacementResolution},
-  pub_sub::cluster_pub_sub::ClusterPubSub,
+  pub_sub::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub},
 };
 
 fn build_update(
@@ -143,38 +143,27 @@ impl Gossiper for StubGossiper {
 
 struct StubPubSub;
 impl ClusterPubSub for StubPubSub {
-  fn start(&mut self) -> Result<(), crate::core::pub_sub::PubSubError> {
+  fn start(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn stop(&mut self) -> Result<(), crate::core::pub_sub::PubSubError> {
+  fn stop(&mut self) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn subscribe(
-    &mut self,
-    _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber,
-  ) -> Result<(), crate::core::pub_sub::PubSubError> {
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn unsubscribe(
-    &mut self,
-    _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber,
-  ) -> Result<(), crate::core::pub_sub::PubSubError> {
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn publish(
-    &mut self,
-    _request: crate::core::pub_sub::PublishRequest,
-  ) -> Result<crate::core::pub_sub::PublishAck, crate::core::pub_sub::PubSubError> {
-    Ok(crate::core::pub_sub::PublishAck::accepted())
+  fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
+    Ok(PublishAck::accepted())
   }
 
-  fn on_topology(&mut self, _update: &crate::core::TopologyUpdate) {}
+  fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
 
 struct StubIdentity;
