@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
-  association::Association,
+  association::{Association, QuarantineReason},
   envelope::{OutboundEnvelope, OutboundPriority},
   transport::TransportEndpoint,
   wire::{AckPdu, EnvelopePdu},
@@ -241,7 +241,7 @@ async fn outbound_loop_drains_active_association() {
       &mut self,
       _address: &Address,
       _uid: Option<u64>,
-      _reason: fraktor_remote_core_rs::association::QuarantineReason,
+      _reason: QuarantineReason,
     ) -> Result<(), TransportError> {
       Ok(())
     }

@@ -2,7 +2,9 @@ use bytes::{Bytes, BytesMut};
 use fraktor_remote_core_rs::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::tcp_transport::{frame_codec::WireFrameCodec, wire_frame::WireFrame};
+use crate::tcp_transport::{
+  frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame,
+};
 
 #[test]
 fn wire_frame_codec_roundtrips_envelope() {
@@ -116,7 +118,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
     let mut framed = tokio_util::codec::Framed::new(stream, WireFrameCodec::new());
     use futures::StreamExt;
     if let Some(Ok(frame)) = framed.next().await {
-      inbound_tx.send(crate::tcp_transport::inbound_frame_event::InboundFrameEvent { peer: peer_addr, frame }).unwrap();
+      inbound_tx.send(InboundFrameEvent { peer: peer_addr, frame }).unwrap();
     }
   });
   // Quiet the unused-variable warnings for the placeholder server handle.
