@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use super::{
-  SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_u32, read_big_endian_uint,
+  Framing, SimpleFramingDecoderLogic, checked_frame_length, find_delimiter, read_big_endian_u32, read_big_endian_uint,
 };
 
 #[test]
@@ -56,7 +56,7 @@ fn should_error_when_frame_length_addition_overflows() {
 fn should_create_delimiter_flow() {
   use crate::core::dsl::Source;
 
-  let framing = super::Framing::delimiter(vec![b'\n'], 1024, false);
+  let framing = Framing::delimiter(vec![b'\n'], 1024, false);
   let source = Source::from(vec![b"hello\nwor".to_vec(), b"ld\nfoo".to_vec()]);
   let result = source.via(framing).collect_values();
   let frames = result.unwrap();
@@ -67,7 +67,7 @@ fn should_create_delimiter_flow() {
 fn should_emit_trailing_bytes_when_allow_truncation_is_true() {
   use crate::core::dsl::Source;
 
-  let framing = super::Framing::delimiter(vec![b'\n'], 1024, true);
+  let framing = Framing::delimiter(vec![b'\n'], 1024, true);
   let source = Source::from(vec![b"hello\ntrailing".to_vec()]);
   let result = source.via(framing).collect_values();
   let frames = result.unwrap();
@@ -78,7 +78,7 @@ fn should_emit_trailing_bytes_when_allow_truncation_is_true() {
 fn should_discard_trailing_bytes_when_allow_truncation_is_false() {
   use crate::core::dsl::Source;
 
-  let framing = super::Framing::delimiter(vec![b'\n'], 1024, false);
+  let framing = Framing::delimiter(vec![b'\n'], 1024, false);
   let source = Source::from(vec![b"hello\ntrailing".to_vec()]);
   let result = source.via(framing).collect_values();
   let frames = result.unwrap();
@@ -89,7 +89,7 @@ fn should_discard_trailing_bytes_when_allow_truncation_is_false() {
 fn should_error_when_frame_exceeds_max_frame_length() {
   use crate::core::{dsl::Source, r#impl::StreamError};
 
-  let framing = super::Framing::delimiter(vec![b'\n'], 5, false);
+  let framing = Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"toolong\nok".to_vec()]);
   let result = source.via(framing).collect_values();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
@@ -99,7 +99,7 @@ fn should_error_when_frame_exceeds_max_frame_length() {
 fn should_error_when_buffer_exceeds_max_frame_length_without_delimiter() {
   use crate::core::{dsl::Source, r#impl::StreamError};
 
-  let framing = super::Framing::delimiter(vec![b'\n'], 5, false);
+  let framing = Framing::delimiter(vec![b'\n'], 5, false);
   let source = Source::from(vec![b"abcdef".to_vec()]);
   let result = source.via(framing).collect_values();
   assert!(matches!(result, Err(StreamError::BufferOverflow)));
@@ -109,7 +109,7 @@ fn should_error_when_buffer_exceeds_max_frame_length_without_delimiter() {
 fn should_create_length_field_flow() {
   use crate::core::dsl::Source;
 
-  let framing = super::Framing::length_field(0, 2);
+  let framing = Framing::length_field(0, 2);
   // frame1: length=3 (0x0003) + payload "abc"
   // frame2: length=2 (0x0002) + payload "de"
   let mut data = Vec::new();
@@ -130,7 +130,7 @@ fn should_create_length_field_flow() {
 fn should_encode_payload_with_four_byte_big_endian_length_header() {
   use crate::core::dsl::Source;
 
-  let protocol = super::Framing::simple_framing_protocol(16);
+  let protocol = Framing::simple_framing_protocol(16);
   let (encoder, _decoder, _mat) = protocol.split();
 
   let frames = Source::single(b"abc".to_vec()).via(encoder).collect_values().unwrap();
@@ -141,7 +141,7 @@ fn should_encode_payload_with_four_byte_big_endian_length_header() {
 fn should_decode_chunked_frames_and_strip_length_header() {
   use crate::core::dsl::Source;
 
-  let protocol = super::Framing::simple_framing_protocol(16);
+  let protocol = Framing::simple_framing_protocol(16);
   let (_encoder, decoder, _mat) = protocol.split();
 
   let frames = Source::from(vec![vec![0x00, 0x00, 0x00], vec![0x03, b'a'], vec![b'b', b'c', 0x00, 0x00], vec![
@@ -158,7 +158,7 @@ fn should_decode_chunked_frames_and_strip_length_header() {
 fn should_support_empty_payload_frame() {
   use crate::core::dsl::Source;
 
-  let protocol = super::Framing::simple_framing_protocol(16);
+  let protocol = Framing::simple_framing_protocol(16);
   let (encoder, decoder, _mat) = protocol.split();
 
   let encoded = Source::single(Vec::new()).via(encoder).collect_values().unwrap();
@@ -172,7 +172,7 @@ fn should_support_empty_payload_frame() {
 fn should_round_trip_payloads_through_simple_framing_protocol() {
   use crate::core::dsl::{Flow, Source};
 
-  let protocol = super::Framing::simple_framing_protocol(16);
+  let protocol = Framing::simple_framing_protocol(16);
   let loopback = protocol.join(Flow::new());
 
   let decoded = Source::from(vec![b"abc".to_vec(), Vec::new(), b"de".to_vec()]).via(loopback).collect_values().unwrap();
@@ -184,7 +184,7 @@ fn should_round_trip_payloads_through_simple_framing_protocol() {
 fn should_error_when_payload_exceeds_maximum_message_length() {
   use crate::core::{dsl::Source, r#impl::StreamError};
 
-  let protocol = super::Framing::simple_framing_protocol(3);
+  let protocol = Framing::simple_framing_protocol(3);
   let (encoder, _decoder, _mat) = protocol.split();
 
   let result = Source::single(b"toolong".to_vec()).via(encoder).collect_values();
@@ -195,7 +195,7 @@ fn should_error_when_payload_exceeds_maximum_message_length() {
 fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
   use crate::core::{dsl::Source, r#impl::StreamError};
 
-  let protocol = super::Framing::simple_framing_protocol(3);
+  let protocol = Framing::simple_framing_protocol(3);
   let (_encoder, decoder, _mat) = protocol.split();
 
   let result = Source::single(vec![0x00, 0x00, 0x00, 0x04, b'a', b'b', b'c', b'd']).via(decoder).collect_values();
@@ -207,7 +207,7 @@ fn should_error_when_decoded_length_header_exceeds_maximum_message_length() {
 fn should_error_when_source_ends_with_truncated_decoded_frame() {
   use crate::core::{dsl::Source, r#impl::StreamError};
 
-  let protocol = super::Framing::simple_framing_protocol(16);
+  let protocol = Framing::simple_framing_protocol(16);
   let (_encoder, decoder, _mat) = protocol.split();
 
   let result = Source::single(vec![0x00, 0x00, 0x00, 0x03, b'a', b'b']).via(decoder).collect_values();

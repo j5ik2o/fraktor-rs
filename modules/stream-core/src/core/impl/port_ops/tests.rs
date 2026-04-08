@@ -1,7 +1,8 @@
 use crate::core::{
   dsl::{Flow, Sink, Source},
   r#impl::{
-    graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter, materialization::StreamState, port_ops::PortOps,
+    fusing::StreamBufferConfig, graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter,
+    materialization::StreamState, port_ops::PortOps,
   },
   materialization::{Completion, DriveOutcome, StreamNotUsed},
   shape::Outlet,
@@ -98,7 +99,7 @@ fn port_ops_via_chained_produces_correct_result() {
   // Then: running the graph directly produces (3+1)*10 = 40
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan().unwrap();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
 }

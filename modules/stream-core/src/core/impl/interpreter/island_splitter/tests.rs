@@ -2,9 +2,9 @@ use core::any::TypeId;
 
 use super::super::IslandSplitter;
 use crate::core::{
-  Attributes, DemandTracker, DynValue, MatCombine, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition,
-  SourceLogic, StageDefinition, StreamError, SupervisionStrategy,
-  shape::{Inlet, Outlet},
+  Attributes, DemandTracker, DynValue, FlowDefinition, FlowLogic, MatCombine, SinkDecision, SinkDefinition, SinkLogic,
+  SourceDefinition, SourceLogic, StageDefinition, StreamError, StreamPlan, SupervisionStrategy,
+  shape::{Inlet, Outlet, PortId},
   stage::StageKind,
 };
 
@@ -21,7 +21,7 @@ impl SourceLogic for EmptySourceLogic {
 
 struct PassthroughFlowLogic;
 
-impl crate::core::FlowLogic for PassthroughFlowLogic {
+impl FlowLogic for PassthroughFlowLogic {
   fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
     Ok(alloc::vec![input])
   }
@@ -59,7 +59,7 @@ fn make_source(outlet: &Outlet<u32>, attrs: Attributes) -> StageDefinition {
 }
 
 fn make_flow(inlet: &Inlet<u32>, outlet: &Outlet<u32>, attrs: Attributes) -> StageDefinition {
-  StageDefinition::Flow(crate::core::FlowDefinition {
+  StageDefinition::Flow(FlowDefinition {
     kind:        StageKind::FlowMap,
     inlet:       inlet.id(),
     outlet:      outlet.id(),
@@ -88,9 +88,9 @@ fn make_sink(inlet: &Inlet<u32>, attrs: Attributes) -> StageDefinition {
 
 fn build_plan(
   stages: alloc::vec::Vec<StageDefinition>,
-  edges: alloc::vec::Vec<(crate::core::shape::PortId, crate::core::shape::PortId, MatCombine)>,
-) -> crate::core::StreamPlan {
-  crate::core::StreamPlan::from_parts(stages, edges).expect("build_plan")
+  edges: alloc::vec::Vec<(PortId, PortId, MatCombine)>,
+) -> StreamPlan {
+  StreamPlan::from_parts(stages, edges).expect("build_plan")
 }
 
 // --- No async boundary: single island ---
@@ -306,7 +306,7 @@ fn split_async_cut_preserves_unrelated_branch_in_downstream_island() {
     make_source(&source_a_out, Attributes::new()),
     make_flow(&async_in, &async_out, Attributes::async_boundary().and(Attributes::dispatcher("branch-dispatcher"))),
     make_source(&source_b_out, Attributes::new()),
-    StageDefinition::Flow(crate::core::FlowDefinition {
+    StageDefinition::Flow(FlowDefinition {
       kind:        StageKind::FlowMerge,
       inlet:       merge_in.id(),
       outlet:      merge_out.id(),

@@ -4,7 +4,10 @@ use crate::{
   core::{
     StreamError,
     dsl::{Flow, Sink, Source},
-    r#impl::{graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter, materialization::StreamState},
+    r#impl::{
+      fusing::StreamBufferConfig, graph_dsl_builder::GraphDslBuilder, interpreter::GraphInterpreter,
+      materialization::StreamState,
+    },
     materialization::{Completion, DriveOutcome, StreamNotUsed},
   },
   graph_chain,
@@ -42,7 +45,7 @@ fn graph_chain_source_to_sink_directly() -> Result<(), StreamError> {
 
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan()?;
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(*observed.lock(), alloc::vec![42_u32]);
   Ok(())
@@ -64,7 +67,7 @@ fn manual_wiring_source_flow_sink() -> Result<(), StreamError> {
   // Then: the graph produces 5 * 2 = 10
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan()?;
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
   Ok(())
@@ -87,7 +90,7 @@ fn manual_wiring_source_two_flows_sink() -> Result<(), StreamError> {
   // Then: the graph produces (3+1)*10 = 40
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan()?;
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(40_u32)));
   Ok(())
@@ -111,7 +114,7 @@ fn manual_wiring_source_three_flows_sink() -> Result<(), StreamError> {
   // Then: the graph produces ((2+1)*2)+10 = 16
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan()?;
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(16_u32)));
   Ok(())
@@ -136,7 +139,7 @@ fn graph_chain_macro_builds_graph() -> Result<(), StreamError> {
 
   let (graph, _mat) = builder.into_parts();
   let plan = graph.into_plan()?;
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_terminal(&mut interpreter);
   assert_eq!(*observed.lock(), alloc::vec![10_u32, 20, 30]);
   Ok(())
