@@ -9,8 +9,9 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
 
 use super::{
-  MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy,
-  mailbox_instrumentation::MailboxInstrumentation, mailbox_message::MailboxMessage, message_queue::MessageQueue,
+  DequeMessageQueue, MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
+  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
+  mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
   actor::{
@@ -20,7 +21,7 @@ use crate::core::kernel::{
     messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
     props::{MailboxConfig, MailboxConfigError},
   },
-  dispatch::mailbox::{capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy},
+  dispatch::mailbox::policy::MailboxPolicy,
   event::logging::LogLevel,
   system::state::SystemStateShared,
 };
@@ -56,7 +57,7 @@ impl Mailbox {
   ///
   /// When the config declares deque semantics and the policy is unbounded, this produces a
   /// deque-capable queue that supports O(1) front insertion in
-  /// [`prepend_user_messages`](Self::prepend_user_messages).
+  /// [`prepend_user_messages_deque`](Self::prepend_user_messages_deque).
   ///
   /// # Errors
   ///
@@ -351,17 +352,27 @@ impl Mailbox {
     }
   }
 
+  /// Returns the deque capability of the user queue when available.
+  #[must_use]
+  pub(crate) fn user_deque(&self) -> Option<&dyn DequeMessageQueue> {
+    self.user.as_deque()
+  }
+
   /// Prepends user messages so they are processed before already queued user messages.
   ///
-  /// When the underlying queue implements
-  /// [`DequeMessageQueue`](super::deque_message_queue::DequeMessageQueue), each message is
-  /// inserted at the front in O(1). Otherwise, the drain-and-requeue fallback is used.
+  /// Callers must first resolve deque capability via [`Self::user_deque`]. The resolved
+  /// capability is passed back into the locked prepend path so the lock responsibility remains
+  /// with `Mailbox`.
   ///
   /// # Errors
   ///
-  /// Returns an error if the mailbox is suspended, capacity checks fail, or queue restoration
-  /// fails.
-  pub(crate) fn prepend_user_messages(&self, messages: &VecDeque<AnyMessage>) -> Result<(), SendError> {
+  /// Returns an error if the mailbox is closed, suspended, or the underlying deque rejects the
+  /// prepend.
+  pub(crate) fn prepend_user_messages_deque(
+    &self,
+    resolved_deque: &dyn DequeMessageQueue,
+    messages: &VecDeque<AnyMessage>,
+  ) -> Result<(), SendError> {
     let Some(first_message) = messages.front().cloned() else {
       return Ok(());
     };
@@ -374,24 +385,17 @@ impl Mailbox {
     if self.is_suspended() {
       return Err(SendError::suspended(first_message));
     }
-    self.prepend_user_messages_locked(messages, first_message)
+    self.prepend_user_messages_deque_locked(resolved_deque, messages, first_message)
   }
 
-  /// Returns whether the user queue supports deque-style prepend.
-  #[must_use]
-  pub(crate) fn user_queue_is_deque_capable(&self) -> bool {
-    self.user.as_deque().is_some()
-  }
-
-  /// Locked critical section of [`Self::prepend_user_messages`].
+  /// Locked critical section of [`Self::prepend_user_messages_deque`].
   ///
   /// Acquires `user_queue_lock`, performs the authoritative close re-check,
-  /// runs the capacity check, and dispatches to the deque or drain-and-
-  /// requeue path. Must only be called from
-  /// [`Self::prepend_user_messages`] in production code after the fast
-  /// path has cleared.
-  fn prepend_user_messages_locked(
+  /// and prepends in O(k). Must only be called
+  /// from [`Self::prepend_user_messages_deque`] after the fast path has cleared.
+  fn prepend_user_messages_deque_locked(
     &self,
+    deque: &dyn DequeMessageQueue,
     messages: &VecDeque<AnyMessage>,
     first_message: AnyMessage,
   ) -> Result<(), SendError> {
@@ -403,24 +407,11 @@ impl Mailbox {
       return Err(SendError::closed(first_message));
     }
 
-    let current_user_len = self.user.number_of_messages();
-    if self.prepend_would_overflow(messages.len(), current_user_len) {
-      return Err(SendError::full(first_message));
-    }
-
-    if let Some(deque) = self.user.as_deque() {
-      return self.prepend_via_deque(deque, messages);
-    }
-
-    self.prepend_via_drain_and_requeue(messages, &first_message)
+    self.prepend_via_deque(deque, messages)
   }
 
   /// Efficient O(k) prepend path for deque-capable queues.
-  fn prepend_via_deque(
-    &self,
-    deque: &dyn super::deque_message_queue::DequeMessageQueue,
-    messages: &VecDeque<AnyMessage>,
-  ) -> Result<(), SendError> {
+  fn prepend_via_deque(&self, deque: &dyn DequeMessageQueue, messages: &VecDeque<AnyMessage>) -> Result<(), SendError> {
     // Insert in reverse order so the first message in `messages` ends up at the front.
     for message in messages.iter().rev().cloned() {
       if let Err(error) = deque.enqueue_first(Envelope::new(message)) {
@@ -428,58 +419,6 @@ impl Mailbox {
         return Err(error);
       }
     }
-    self.publish_metrics_with_user_len(self.user.number_of_messages());
-    Ok(())
-  }
-
-  /// Drain-and-requeue fallback for non-deque queues.
-  fn prepend_via_drain_and_requeue(
-    &self,
-    messages: &VecDeque<AnyMessage>,
-    first_message: &AnyMessage,
-  ) -> Result<(), SendError> {
-    let mut existing: VecDeque<Envelope> = VecDeque::new();
-    while let Some(envelope) = self.user.dequeue() {
-      existing.push_back(envelope);
-    }
-
-    let mut enqueue_result = Ok(());
-    let new_envelopes = messages.iter().cloned().map(Envelope::new);
-    let existing_envelopes = existing.iter().cloned();
-    for envelope in new_envelopes.chain(existing_envelopes) {
-      if let Err(error) = self.user.enqueue(envelope) {
-        enqueue_result = Err(error);
-        break;
-      }
-    }
-
-    if let Err(_error) = enqueue_result {
-      self.user.clean_up();
-      let pid = self.pid();
-      let system_state = self.system_state();
-      let total_existing = existing.len();
-      let mut restored: usize = 0;
-      for envelope in existing {
-        if self.user.enqueue(envelope.clone()).is_err() {
-          // Route unrecoverable messages to dead letter storage
-          if let Some(ref state) = system_state {
-            state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
-          }
-        } else {
-          restored += 1;
-        }
-      }
-      let lost = total_existing - restored;
-      if lost > 0 {
-        self.emit_log(
-          LogLevel::Error,
-          alloc::format!("mailbox prepend recovery: {lost} of {total_existing} message(s) routed to dead letters"),
-        );
-      }
-      self.publish_metrics_with_user_len(self.user.number_of_messages());
-      return Err(SendError::full(first_message.clone()));
-    }
-
     self.publish_metrics_with_user_len(self.user.number_of_messages());
     Ok(())
   }
@@ -570,7 +509,7 @@ impl Mailbox {
     let pid = self.pid();
     let system_state = self.system_state();
     // Acquire `user_queue_lock` before `state.close()` so that any in-flight
-    // `enqueue_envelope` / `prepend_user_messages` waiting on the lock will
+    // `enqueue_envelope` / `prepend_user_messages_deque` waiting on the lock will
     // observe `is_closed() == true` in their under-lock re-check and reject
     // instead of mutating a drained queue. This serialization boundary is
     // maintained regardless of `cleanup_policy` to also protect direct
@@ -620,18 +559,6 @@ impl Mailbox {
   #[must_use]
   pub const fn throughput_limit(&self) -> Option<NonZeroUsize> {
     self.policy.throughput_limit()
-  }
-
-  const fn prepend_would_overflow(&self, prepended_count: usize, current_user_len: usize) -> bool {
-    let MailboxCapacity::Bounded { capacity } = self.policy.capacity() else {
-      return false;
-    };
-
-    if matches!(self.policy.overflow(), MailboxOverflowStrategy::Grow) {
-      return false;
-    }
-
-    current_user_len.saturating_add(prepended_count) > capacity.get()
   }
 
   fn publish_metrics(&self) {

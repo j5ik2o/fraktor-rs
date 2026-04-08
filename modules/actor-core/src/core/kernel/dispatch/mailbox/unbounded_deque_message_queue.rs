@@ -17,7 +17,7 @@ const DEFAULT_CAPACITY: usize = 16;
 ///
 /// This queue is selected when [`MailboxRequirement::needs_deque()`] is true,
 /// enabling efficient prepend operations for stash-based actors instead of the
-/// drain-and-requeue fallback used by the base [`Mailbox`](super::Mailbox).
+/// generic prepend fallback removed from the base [`Mailbox`](super::Mailbox).
 pub struct UnboundedDequeMessageQueue {
   inner: RuntimeMutex<VecDeque<Envelope>>,
 }

@@ -451,7 +451,7 @@ impl ActorCell {
   ///
   /// Returns an overflow error when the stash already reached `max_messages`.
   pub(crate) fn stash_message_with_limit(&self, message: AnyMessage, max_messages: usize) -> Result<(), ActorError> {
-    if !self.mailbox().user_queue_is_deque_capable() {
+    if self.mailbox().user_deque().is_none() {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     }
     let mut state = self.state.lock();
@@ -612,9 +612,10 @@ impl ActorCell {
       return Ok(0);
     }
 
-    if !self.mailbox().user_queue_is_deque_capable() {
+    let mailbox = self.mailbox();
+    let Some(user_deque) = mailbox.user_deque() else {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    }
+    };
 
     let message = {
       let mut state = self.state.lock();
@@ -628,8 +629,7 @@ impl ActorCell {
     let mut pending = VecDeque::new();
     pending.push_back(message);
 
-    let mailbox = self.mailbox();
-    if let Err(error) = mailbox.prepend_user_messages(&pending) {
+    if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
       let mut state = self.state.lock();
       if let Some(message) = pending.pop_front() {
         state.stashed_messages.push_front(message);
@@ -652,9 +652,10 @@ impl ActorCell {
       return Ok(0);
     }
 
-    if !self.mailbox().user_queue_is_deque_capable() {
+    let mailbox = self.mailbox();
+    let Some(user_deque) = mailbox.user_deque() else {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    }
+    };
 
     let pending = {
       let mut state = self.state.lock();
@@ -665,8 +666,7 @@ impl ActorCell {
       return Ok(0);
     }
 
-    let mailbox = self.mailbox();
-    if let Err(error) = mailbox.prepend_user_messages(&pending) {
+    if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
       let mut state = self.state.lock();
       state.stashed_messages = pending;
       return Err(ActorError::from_send_error(&error));
@@ -693,9 +693,10 @@ impl ActorCell {
       return Ok(0);
     }
 
-    if !self.mailbox().user_queue_is_deque_capable() {
+    let mailbox = self.mailbox();
+    let Some(user_deque) = mailbox.user_deque() else {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
-    }
+    };
 
     let original_messages = {
       let mut state = self.state.lock();
@@ -724,8 +725,7 @@ impl ActorCell {
       }
     }
 
-    let mailbox = self.mailbox();
-    if let Err(error) = mailbox.prepend_user_messages(&wrapped_messages) {
+    if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &wrapped_messages) {
       self.restore_stashed_messages(original_messages);
       return Err(ActorError::from_send_error(&error));
     }

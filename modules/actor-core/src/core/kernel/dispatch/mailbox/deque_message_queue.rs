@@ -6,7 +6,7 @@ use crate::core::kernel::actor::error::SendError;
 /// Extension trait for message queues that support front-of-queue insertion.
 ///
 /// Queues that implement this trait can prepend envelopes efficiently in O(1)
-/// instead of the drain-and-requeue fallback used by the base [`Mailbox`](super::Mailbox).
+/// through the deque-only prepend API on [`Mailbox`](super::Mailbox).
 pub trait DequeMessageQueue: Send + Sync {
   /// Inserts an envelope at the front of the queue so it is dequeued first.
   ///

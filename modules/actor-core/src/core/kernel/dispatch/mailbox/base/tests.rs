@@ -10,7 +10,8 @@ use crate::core::kernel::{
     messaging::{AnyMessage, system_message::SystemMessage},
   },
   dispatch::mailbox::{
-    Envelope, Mailbox, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy, MessageQueue,
+    DequeMessageQueue, Envelope, Mailbox, MailboxInstrumentation, MailboxMessage, MailboxOverflowStrategy,
+    MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
   },
   system::ActorSystem,
 };
@@ -82,6 +83,89 @@ impl MessageQueue for ScriptedMessageQueue {
   fn clean_up(&self) {
     self.messages.lock().clear();
   }
+}
+
+struct ScriptedDequeMessageQueue {
+  messages:                RuntimeMutex<VecDeque<Envelope>>,
+  enqueue_outcomes:        RuntimeMutex<VecDeque<ScriptedEnqueue>>,
+  enqueue_first_outcomes:  RuntimeMutex<VecDeque<ScriptedEnqueue>>,
+  enqueue_first_full_hook: RuntimeMutex<Option<ScriptedFullHook>>,
+}
+
+impl ScriptedDequeMessageQueue {
+  fn new(enqueue_outcomes: VecDeque<ScriptedEnqueue>, enqueue_first_outcomes: VecDeque<ScriptedEnqueue>) -> Self {
+    Self::new_with_enqueue_first_hook(enqueue_outcomes, enqueue_first_outcomes, None)
+  }
+
+  fn new_with_enqueue_first_hook(
+    enqueue_outcomes: VecDeque<ScriptedEnqueue>,
+    enqueue_first_outcomes: VecDeque<ScriptedEnqueue>,
+    enqueue_first_full_hook: Option<ScriptedFullHook>,
+  ) -> Self {
+    Self {
+      messages:                RuntimeMutex::new(VecDeque::new()),
+      enqueue_outcomes:        RuntimeMutex::new(enqueue_outcomes),
+      enqueue_first_outcomes:  RuntimeMutex::new(enqueue_first_outcomes),
+      enqueue_first_full_hook: RuntimeMutex::new(enqueue_first_full_hook),
+    }
+  }
+}
+
+impl MessageQueue for ScriptedDequeMessageQueue {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+    let outcome = self.enqueue_outcomes.lock().pop_front().expect("enqueue outcome must be configured");
+    match outcome {
+      | ScriptedEnqueue::Enqueued => {
+        self.messages.lock().push_back(envelope);
+        Ok(())
+      },
+      | ScriptedEnqueue::Full => Err(SendError::full(envelope.into_payload())),
+      | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
+    }
+  }
+
+  fn dequeue(&self) -> Option<Envelope> {
+    self.messages.lock().pop_front()
+  }
+
+  fn number_of_messages(&self) -> usize {
+    self.messages.lock().len()
+  }
+
+  fn clean_up(&self) {
+    self.messages.lock().clear();
+  }
+
+  fn as_deque(&self) -> Option<&dyn DequeMessageQueue> {
+    Some(self)
+  }
+}
+
+impl DequeMessageQueue for ScriptedDequeMessageQueue {
+  fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError> {
+    let outcome = self.enqueue_first_outcomes.lock().pop_front().expect("enqueue_first outcome must be configured");
+    match outcome {
+      | ScriptedEnqueue::Enqueued => {
+        self.messages.lock().push_front(envelope);
+        Ok(())
+      },
+      | ScriptedEnqueue::Full => {
+        if let Some(hook) = self.enqueue_first_full_hook.lock().take() {
+          hook.before_error_tx.send(()).expect("full hook notification must be delivered");
+          hook.resume_rx.recv().expect("full hook resume signal must be delivered");
+        }
+        Err(SendError::full(envelope.into_payload()))
+      },
+      | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
+    }
+  }
+}
+
+fn expect_next_user_message(mailbox: &Mailbox, expected: &str) {
+  let Some(MailboxMessage::User(envelope)) = mailbox.dequeue() else {
+    panic!("user message expected");
+  };
+  assert_eq!(envelope.payload().downcast_ref::<&str>().copied(), Some(expected));
 }
 
 #[test]
@@ -163,51 +247,46 @@ fn mailbox_enqueue_user_bounded() {
 }
 
 #[test]
-fn mailbox_prepend_user_messages_returns_error_and_restores_existing_only() {
-  let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued, // existing-1
-    ScriptedEnqueue::Enqueued, // existing-2
-    ScriptedEnqueue::Enqueued, // prepend（drain 後の再エンキュー）
-    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗
-    // clean_up 後、既存メッセージのみ復元
-    ScriptedEnqueue::Enqueued, // 復元: existing-1
-    ScriptedEnqueue::Enqueued, // 復元: existing-2
-  ]);
-  let queue = Box::new(ScriptedMessageQueue::new(outcomes));
+fn mailbox_prepend_user_messages_deque_returns_error_and_keeps_existing_messages() {
+  let queue = Box::new(ScriptedDequeMessageQueue::new(
+    VecDeque::from([
+      ScriptedEnqueue::Enqueued, // existing-1
+      ScriptedEnqueue::Enqueued, // existing-2
+    ]),
+    VecDeque::from([ScriptedEnqueue::Full]),
+  ));
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
 
   mailbox.enqueue_user(AnyMessage::new("existing-1")).expect("existing-1");
   mailbox.enqueue_user(AnyMessage::new("existing-2")).expect("existing-2");
 
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
-  let result = mailbox.prepend_user_messages(&prepended);
+  let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
+  let result = mailbox.prepend_user_messages_deque(user_deque, &prepended);
 
-  // 新メッセージの挿入は失敗として報告される
   assert!(result.is_err(), "prepend should fail: {result:?}");
+  assert_eq!(mailbox.user_len(), 2, "existing messages must remain queued");
+  expect_next_user_message(&mailbox, "existing-1");
+  expect_next_user_message(&mailbox, "existing-2");
 }
 
 #[test]
-fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishes() {
+fn mailbox_prepend_user_messages_deque_blocks_concurrent_enqueue_until_prepend_finishes() {
   use std::{
     sync::{Arc, mpsc},
     thread,
     time::Duration,
   };
 
-  let outcomes = VecDeque::from([
-    ScriptedEnqueue::Enqueued, // existing-1
-    ScriptedEnqueue::Enqueued, // existing-2
-    ScriptedEnqueue::Enqueued, // prepend（drain-and-requeue 1回目）
-    ScriptedEnqueue::Full,     // existing-1 の再エンキューが失敗 → ロールバック発動
-    // 既存メッセージのみ復元（新メッセージは含めない）
-    ScriptedEnqueue::Enqueued, // 復元: existing-1
-    ScriptedEnqueue::Enqueued, // 復元: existing-2
-    ScriptedEnqueue::Enqueued, // 並行エンキュー
-  ]);
   let (before_error_tx, before_error_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
-  let queue = Box::new(ScriptedMessageQueue::new_with_full_hook(
-    outcomes,
+  let queue = Box::new(ScriptedDequeMessageQueue::new_with_enqueue_first_hook(
+    VecDeque::from([
+      ScriptedEnqueue::Enqueued, // existing-1
+      ScriptedEnqueue::Enqueued, // existing-2
+      ScriptedEnqueue::Enqueued, // concurrent enqueue
+    ]),
+    VecDeque::from([ScriptedEnqueue::Full]),
     Some(ScriptedFullHook::new(before_error_tx, resume_rx)),
   ));
   let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
@@ -217,7 +296,10 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
 
   let mailbox_for_prepend = Arc::clone(&mailbox);
   let prepended = VecDeque::from([AnyMessage::new("prepend")]);
-  let prepend_handle = thread::spawn(move || mailbox_for_prepend.prepend_user_messages(&prepended));
+  let prepend_handle = thread::spawn(move || {
+    let user_deque = mailbox_for_prepend.user_deque().expect("deque mailbox should expose deque capability");
+    mailbox_for_prepend.prepend_user_messages_deque(user_deque, &prepended)
+  });
 
   before_error_rx.recv().expect("prepend がスクリプト上の full 地点に到達するべき");
 
@@ -241,8 +323,40 @@ fn mailbox_prepend_user_messages_blocks_concurrent_enqueue_until_prepend_finishe
 
   let enqueue_result = enqueue_handle.join().expect("エンキュースレッドが完了するべき");
   assert!(enqueue_result.is_ok());
-  // existing-1(復元) + existing-2(復元) + concurrent = 3
   assert_eq!(mailbox.user_len(), 3);
+}
+
+#[test]
+fn mailbox_prepend_user_messages_deque_is_noop_for_empty_batch() {
+  let queue = Box::new(UnboundedDequeMessageQueue::new());
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+
+  mailbox.enqueue_user(AnyMessage::new("existing")).expect("existing");
+
+  let empty = VecDeque::new();
+  let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
+  let result = mailbox.prepend_user_messages_deque(user_deque, &empty);
+
+  assert!(result.is_ok());
+  assert_eq!(mailbox.user_len(), 1);
+  expect_next_user_message(&mailbox, "existing");
+}
+
+#[test]
+fn mailbox_prepend_user_messages_deque_preserves_front_insertion_order() {
+  let queue = Box::new(UnboundedDequeMessageQueue::new());
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+
+  mailbox.enqueue_user(AnyMessage::new("existing")).expect("existing");
+
+  let prepended = VecDeque::from([AnyMessage::new("first"), AnyMessage::new("second")]);
+  let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
+  mailbox.prepend_user_messages_deque(user_deque, &prepended).expect("deque prepend should succeed");
+
+  assert_eq!(mailbox.user_len(), 3);
+  expect_next_user_message(&mailbox, "first");
+  expect_next_user_message(&mailbox, "second");
+  expect_next_user_message(&mailbox, "existing");
 }
 
 #[test]
@@ -361,12 +475,14 @@ fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
 }
 
 #[test]
-fn mailbox_prepend_user_messages_returns_closed_after_mailbox_close() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
+  let queue = Box::new(UnboundedDequeMessageQueue::new());
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
   mailbox.become_closed_and_clean_up();
 
   let messages = VecDeque::from([AnyMessage::new("msg")]);
-  let result = mailbox.prepend_user_messages(&messages);
+  let user_deque = mailbox.user_deque().expect("deque mailbox should expose deque capability");
+  let result = mailbox.prepend_user_messages_deque(user_deque, &messages);
   assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
 }
 
@@ -418,7 +534,7 @@ fn cleanup_close_wins_against_inflight_enqueue() {
 }
 
 /// Same invariant as [`cleanup_close_wins_against_inflight_enqueue`] but
-/// exercising the `prepend_user_messages` path used by
+/// exercising the deque-only prepend path used by
 /// `ActorCell::unstash_*`.
 #[test]
 fn cleanup_close_wins_against_inflight_prepend() {
@@ -428,7 +544,8 @@ fn cleanup_close_wins_against_inflight_prepend() {
     time::Duration,
   };
 
-  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let queue = Box::new(UnboundedDequeMessageQueue::new());
+  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
   let guard = mailbox.user_queue_lock.lock();
   let messages = VecDeque::from([AnyMessage::new("inflight-prepend")]);
   let (started_tx, started_rx) = mpsc::channel();
@@ -436,7 +553,8 @@ fn cleanup_close_wins_against_inflight_prepend() {
   let mailbox_for_prepend = Arc::clone(&mailbox);
   let prepend_handle = thread::spawn(move || {
     started_tx.send(()).expect("prepend 開始シグナルが送信されるべき");
-    let result = mailbox_for_prepend.prepend_user_messages(&messages);
+    let user_deque = mailbox_for_prepend.user_deque().expect("deque mailbox should expose deque capability");
+    let result = mailbox_for_prepend.prepend_user_messages_deque(user_deque, &messages);
     result_tx.send(result).expect("prepend 結果が送信されるべき");
   });
 
