@@ -17,11 +17,20 @@ use std::{
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
+use super::{
+  CycleSourceLogic, IterateSourceLogic, LazySourceLogic, QueueSourceLogic, QueueWithOverflowSourceLogic,
+  RepeatSourceLogic, UnboundedQueueSourceLogic,
+};
 use crate::core::{
-  DynValue, OverflowStrategy, QueueOfferResult, RestartSettings, SharedKillSwitch, SourceLogic, StageDefinition,
-  StreamDslError, StreamError, SubstreamCancelStrategy,
-  dsl::{Sink, Source},
-  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
+  BoundedSourceQueue, DynValue, OverflowStrategy, QueueOfferResult, RestartSettings, SharedKillSwitch, SourceLogic,
+  StageDefinition, StreamDslError, StreamError, SubstreamCancelStrategy, ThrottleMode,
+  attributes::{Attributes, DispatcherAttribute},
+  dsl::{RunnableGraph, Sink, Source},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared, StreamState},
+    queue::{SourceQueue, SourceQueueWithComplete},
+  },
   materialization::{
     Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, Materialized, Materializer, StreamCompletion, StreamDone,
     StreamNotUsed,
@@ -31,19 +40,19 @@ use crate::core::{
 };
 
 struct CreateSourceTestLogic<T, F> {
-  queue:    crate::core::BoundedSourceQueue<T>,
+  queue:    BoundedSourceQueue<T>,
   producer: Option<F>,
 }
 
 impl<T, F> CreateSourceTestLogic<T, F> {
-  const fn new(queue: crate::core::BoundedSourceQueue<T>, producer: F) -> Self {
+  const fn new(queue: BoundedSourceQueue<T>, producer: F) -> Self {
     Self { queue, producer: Some(producer) }
   }
 
   fn start_producer_if_needed(&mut self) -> Result<(), StreamError>
   where
     T: Send + Sync + 'static,
-    F: FnOnce(crate::core::BoundedSourceQueue<T>) + Send + 'static, {
+    F: FnOnce(BoundedSourceQueue<T>) + Send + 'static, {
     let Some(producer) = self.producer.take() else {
       return Ok(());
     };
@@ -74,7 +83,7 @@ impl<T, F> CreateSourceTestLogic<T, F> {
 impl<T, F> SourceLogic for CreateSourceTestLogic<T, F>
 where
   T: Send + Sync + 'static,
-  F: FnOnce(crate::core::BoundedSourceQueue<T>) + Send + 'static,
+  F: FnOnce(BoundedSourceQueue<T>) + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     self.start_producer_if_needed()?;
@@ -95,14 +104,11 @@ where
   Out: Send + Sync + 'static,
 {
   /// Construct a source from a background producer for unit tests.
-  pub fn create<F>(
-    capacity: usize,
-    producer: F,
-  ) -> Result<Source<Out, crate::core::BoundedSourceQueue<Out>>, StreamDslError>
+  pub fn create<F>(capacity: usize, producer: F) -> Result<Source<Out, BoundedSourceQueue<Out>>, StreamDslError>
   where
-    F: FnOnce(crate::core::BoundedSourceQueue<Out>) + Send + 'static, {
+    F: FnOnce(BoundedSourceQueue<Out>) + Send + 'static, {
     let capacity = validate_positive_argument("capacity", capacity)?;
-    let queue = crate::core::BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
+    let queue = BoundedSourceQueue::new(capacity, OverflowStrategy::Backpressure);
     let logic = CreateSourceTestLogic::new(queue.clone(), producer);
     Ok(Source::from_logic(StageKind::Custom, logic).map_materialized_value(move |_| queue))
   }
@@ -129,10 +135,10 @@ impl Materializer for RecordingMaterializer {
     Ok(())
   }
 
-  fn materialize<Mat>(&mut self, graph: super::super::RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
+  fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls += 1;
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);
@@ -651,7 +657,7 @@ fn source_range_descending_emits_reverse_sequence() {
 
 #[test]
 fn source_repeat_with_take_limits_elements() {
-  let mut logic = super::RepeatSourceLogic { value: 9_u32 };
+  let mut logic = RepeatSourceLogic { value: 9_u32 };
   let mut values = Vec::new();
   for _ in 0..4 {
     let value = logic.pull().expect("pull").expect("value");
@@ -662,7 +668,7 @@ fn source_repeat_with_take_limits_elements() {
 
 #[test]
 fn source_cycle_repeats_input_sequence() {
-  let mut logic = super::CycleSourceLogic { values: vec![1_u32, 2, 3], index: 0 };
+  let mut logic = CycleSourceLogic { values: vec![1_u32, 2, 3], index: 0 };
   let mut values = Vec::new();
   for _ in 0..7 {
     let value = logic.pull().expect("pull").expect("value");
@@ -679,7 +685,7 @@ fn source_cycle_empty_values_completes_without_elements() {
 
 #[test]
 fn source_iterate_emits_progressive_values() {
-  let mut logic = super::IterateSourceLogic { current: 1_u32, func: |value| value + 2 };
+  let mut logic = IterateSourceLogic { current: 1_u32, func: |value| value + 2 };
   let mut values = Vec::new();
   for _ in 0..4 {
     let value = logic.pull().expect("pull").expect("value");
@@ -846,8 +852,8 @@ fn source_queue_take_should_not_panic_when_queue_is_already_completed() {
 
 #[test]
 fn source_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::r#impl::queue::SourceQueue::new();
-  let mut logic = super::UnboundedQueueSourceLogic { queue: queue.clone() };
+  let mut queue = SourceQueue::new();
+  let mut logic = UnboundedQueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(12_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(13_u32), QueueOfferResult::Enqueued);
@@ -897,8 +903,8 @@ fn source_queue_with_overflow_materializes_queue_with_complete_and_emits_offered
 
 #[test]
 fn source_bounded_queue_cancel_closes_queue_and_discards_buffered_values() {
-  let mut queue = crate::core::BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
-  let mut logic = super::QueueSourceLogic { queue: queue.clone() };
+  let mut queue = BoundedSourceQueue::new(2, OverflowStrategy::DropTail);
+  let mut logic = QueueSourceLogic { queue: queue.clone() };
 
   assert_eq!(queue.offer(20_u32), QueueOfferResult::Enqueued);
   assert_eq!(queue.offer(21_u32), QueueOfferResult::Enqueued);
@@ -951,11 +957,11 @@ fn source_queue_with_overflow_allows_multiple_pending_offers_when_configured() {
 
 #[test]
 fn source_queue_with_overflow_cancel_resolves_pending_offers_and_completion() {
-  let mut queue = crate::core::r#impl::queue::SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
+  let mut queue = SourceQueueWithComplete::new(1, OverflowStrategy::Backpressure, 1);
   let completion = queue.watch_completion();
   let waker = noop_waker();
   let mut context = Context::from_waker(&waker);
-  let mut logic = super::QueueWithOverflowSourceLogic { queue: queue.clone() };
+  let mut logic = QueueWithOverflowSourceLogic { queue: queue.clone() };
 
   assert_eq!(poll_ready(queue.offer(30_u32)), QueueOfferResult::Enqueued);
 
@@ -1475,7 +1481,7 @@ fn source_async_keeps_single_path_behavior() {
 #[test]
 fn source_throttle_keeps_single_path_behavior() {
   let values = Source::single(5_u32)
-    .throttle(2, crate::core::ThrottleMode::Shaping)
+    .throttle(2, ThrottleMode::Shaping)
     .expect("throttle")
     .collect_values()
     .expect("collect_values");
@@ -1484,7 +1490,7 @@ fn source_throttle_keeps_single_path_behavior() {
 
 #[test]
 fn source_throttle_rejects_zero_capacity() {
-  let result = Source::single(1_u32).throttle(0, crate::core::ThrottleMode::Shaping);
+  let result = Source::single(1_u32).throttle(0, ThrottleMode::Shaping);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
@@ -2288,7 +2294,7 @@ fn source_reduce_folds_with_first_element_as_seed() {
 
 #[test]
 fn source_lazy_source_persists_error_on_collect_values_failure() {
-  let mut logic = super::LazySourceLogic::<u32, _> {
+  let mut logic = LazySourceLogic::<u32, _> {
     factory: Some(|| Source::<u32, StreamNotUsed>::failed(StreamError::Failed)),
     buffer:  VecDeque::new(),
     error:   None,
@@ -2351,7 +2357,7 @@ fn source_pre_materialize_returns_source_and_completion() {
 #[test]
 fn source_throttle_enforcing_mode_keeps_single_path() {
   let values = Source::single(5_u32)
-    .throttle(2, crate::core::ThrottleMode::Enforcing)
+    .throttle(2, ThrottleMode::Enforcing)
     .expect("throttle")
     .collect_values()
     .expect("collect_values");
@@ -2362,7 +2368,7 @@ fn source_throttle_enforcing_mode_keeps_single_path() {
 fn source_throttle_enforcing_mode_fails_on_capacity_overflow() {
   let result = Source::single(alloc::vec![1_u32, 2, 3])
     .map_concat(|v: alloc::vec::Vec<u32>| v)
-    .throttle(1, crate::core::ThrottleMode::Enforcing)
+    .throttle(1, ThrottleMode::Enforcing)
     .expect("throttle")
     .collect_values();
   assert_eq!(result, Err(StreamError::BufferOverflow));
@@ -2373,17 +2379,15 @@ fn source_named_keeps_elements_and_sets_attributes() {
   let values = Source::from_array([1_u32, 2, 3]).named("test-source").collect_values().expect("collect_values");
   assert_eq!(values, vec![1_u32, 2, 3]);
 
-  let (graph, _mat) = Source::<u32, crate::core::materialization::StreamNotUsed>::from_array([1_u32, 2])
-    .named("test-source")
-    .into_parts();
+  let (graph, _mat) = Source::<u32, StreamNotUsed>::from_array([1_u32, 2]).named("test-source").into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-source")]);
 }
 
 #[test]
 fn source_with_and_add_attributes_merge_names() {
-  let (graph, _mat) = Source::<u32, crate::core::materialization::StreamNotUsed>::from_array([1_u32, 2])
-    .with_attributes(crate::core::attributes::Attributes::named("base"))
-    .add_attributes(crate::core::attributes::Attributes::named("extra"))
+  let (graph, _mat) = Source::<u32, StreamNotUsed>::from_array([1_u32, 2])
+    .with_attributes(Attributes::named("base"))
+    .add_attributes(Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
@@ -3082,7 +3086,7 @@ fn source_async_with_dispatcher_marks_node_with_dispatcher_attribute() {
   // Then: the source stage has both async and dispatcher attributes
   let attrs = plan.stages[0].attributes();
   assert!(attrs.is_async());
-  let dispatcher = attrs.get::<crate::core::attributes::DispatcherAttribute>();
+  let dispatcher = attrs.get::<DispatcherAttribute>();
   assert!(dispatcher.is_some());
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
 }

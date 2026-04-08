@@ -5,7 +5,10 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use super::SourceSubFlow;
 use crate::core::{
   dsl::{Sink, Source},
-  r#impl::materialization::{Stream, StreamState},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamState},
+  },
   materialization::{DriveOutcome, RunnableGraph},
 };
 
@@ -17,7 +20,7 @@ impl<Out, Mat> SourceSubFlow<Out, Mat> {
 
 fn run_to_completion<Mat>(graph: RunnableGraph<Mat>) {
   let (plan, _materialized) = graph.into_parts();
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
   let mut idle_budget = 1024_usize;

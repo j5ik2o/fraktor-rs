@@ -11,10 +11,15 @@ use crate::core::{
   OverflowStrategy, RestartSettings, SinkDecision, SinkDefinition, SinkLogic, SourceDefinition, SourceLogic,
   StageDefinition, StreamError, StreamPlan, SubstreamCancelStrategy, SupervisionStrategy,
   dsl::{Flow, Sink, Source},
-  r#impl::{RestartBackoff, fusing::DemandTracker, interpreter::GraphInterpreter, materialization::StreamState},
+  r#impl::{
+    RestartBackoff,
+    fusing::{DemandTracker, StreamBufferConfig},
+    interpreter::GraphInterpreter,
+    materialization::StreamState,
+  },
   materialization::{Completion, DriveOutcome, KeepRight, MatCombine, StreamCompletion, StreamDone, StreamNotUsed},
   shape::{Inlet, Outlet, PortId},
-  stage::StageKind,
+  stage::{AsyncCallback, StageKind, TimerGraphStageLogic},
 };
 
 fn drive_to_completion(interpreter: &mut GraphInterpreter) {
@@ -347,7 +352,7 @@ fn map_async_waits_for_pending_future_before_completion() {
       KeepRight,
     );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   interpreter.start().expect("start");
   assert_eq!(interpreter.drive(), DriveOutcome::Progressed);
@@ -367,7 +372,7 @@ fn source_map_fold_completes() {
   let graph =
     Source::single(1_u32).map(|value| value + 1).into_mat(Sink::fold(0_u32, |acc, value| acc + value), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(2)));
@@ -377,7 +382,7 @@ fn source_map_fold_completes() {
 fn source_head_completes_after_first() {
   let graph = Source::single(5_u32).into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(5)));
@@ -402,7 +407,7 @@ fn take_until_requests_source_shutdown_after_first_match() {
     KeepRight,
   );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
@@ -415,7 +420,7 @@ fn flat_map_concat_uses_inner_source() {
   let graph =
     Source::single(1_u32).flat_map_concat(|value| Source::single(value + 1)).into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(completion.poll(), Completion::Ready(Ok(2)));
 }
@@ -432,8 +437,7 @@ fn flat_map_concat_respects_backpressure_when_inner_emits_multiple_elements() {
       KeepRight,
     );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 1_u32, 2_u32, 2_u32])));
@@ -457,7 +461,7 @@ fn merge_prioritized_n_preserves_weighted_order_through_interpreter() {
     KeepRight,
   );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(
@@ -488,7 +492,7 @@ fn flat_map_merge_uses_configured_breadth() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 1, 2, 2, 3, 3])));
@@ -509,7 +513,7 @@ fn flat_map_merge_delays_new_inner_creation_until_breadth_slot_is_released() {
     .expect("flat_map_merge")
     .into_mat(Sink::ignore(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
 
   assert_eq!(*created.lock(), 0);
@@ -541,7 +545,7 @@ fn flat_map_concat_fails_stream_when_inner_source_fails_without_recovery() {
     .flat_map_concat(|_| Source::<u32, _>::from_logic(StageKind::Custom, FailingInnerSourceLogic))
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
@@ -562,7 +566,7 @@ fn flat_map_merge_fails_stream_when_inner_source_fails_without_recovery() {
     .expect("flat_map_merge")
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
@@ -585,7 +589,7 @@ fn buffer_flow_backpressure_keeps_buffered_elements_without_failing() {
     vec![(source_outlet.id(), buffer_inlet, MatCombine::Left), (buffer_outlet, sink_inlet.id(), MatCombine::Right)],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
@@ -617,7 +621,7 @@ fn buffer_flow_fail_policy_fails_stream_on_overflow() {
     vec![(source_outlet.id(), buffer_inlet, MatCombine::Left), (buffer_outlet, sink_inlet.id(), MatCombine::Right)],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::BufferOverflow)));
@@ -640,7 +644,7 @@ fn buffer_flow_drop_oldest_keeps_latest_elements() {
     vec![(source_outlet.id(), buffer_inlet, MatCombine::Left), (buffer_outlet, sink_inlet.id(), MatCombine::Right)],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![2, 3])));
@@ -666,7 +670,7 @@ fn async_boundary_flow_preserves_input_order() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1, 2, 3])));
@@ -682,18 +686,14 @@ fn graph_interpreter_helper_builders_extract_flow_definitions() {
 #[test]
 fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
   struct AsyncTimerEmissionFlowLogic {
-    callback:    crate::core::stage::AsyncCallback<u32>,
-    timer:       crate::core::stage::TimerGraphStageLogic,
+    callback:    AsyncCallback<u32>,
+    timer:       TimerGraphStageLogic,
     initialized: bool,
   }
 
   impl AsyncTimerEmissionFlowLogic {
     fn new() -> Self {
-      Self {
-        callback:    crate::core::stage::AsyncCallback::new(),
-        timer:       crate::core::stage::TimerGraphStageLogic::new(),
-        initialized: false,
-      }
+      Self { callback: AsyncCallback::new(), timer: TimerGraphStageLogic::new(), initialized: false }
     }
   }
 
@@ -751,27 +751,22 @@ fn flow_async_callback_and_timer_hooks_are_driven_by_interpreter() {
       (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
     ]);
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
 }
 
 struct AsyncTimerFailureFlowLogic {
-  callback:            crate::core::stage::AsyncCallback<u32>,
-  timer:               crate::core::stage::TimerGraphStageLogic,
+  callback:            AsyncCallback<u32>,
+  timer:               TimerGraphStageLogic,
   initialized:         bool,
   complete_on_failure: bool,
 }
 
 impl AsyncTimerFailureFlowLogic {
   fn new(complete_on_failure: bool) -> Self {
-    Self {
-      callback: crate::core::stage::AsyncCallback::new(),
-      timer: crate::core::stage::TimerGraphStageLogic::new(),
-      initialized: false,
-      complete_on_failure,
-    }
+    Self { callback: AsyncCallback::new(), timer: TimerGraphStageLogic::new(), initialized: false, complete_on_failure }
   }
 }
 
@@ -811,7 +806,7 @@ impl FlowLogic for AsyncTimerFailureFlowLogic {
 }
 
 struct AsyncFailureStillRunsTimerFlowLogic {
-  timer:               crate::core::stage::TimerGraphStageLogic,
+  timer:               TimerGraphStageLogic,
   initialized:         bool,
   fail_async_once:     bool,
   complete_on_failure: bool,
@@ -819,12 +814,7 @@ struct AsyncFailureStillRunsTimerFlowLogic {
 
 impl AsyncFailureStillRunsTimerFlowLogic {
   fn new(complete_on_failure: bool) -> Self {
-    Self {
-      timer: crate::core::stage::TimerGraphStageLogic::new(),
-      initialized: false,
-      fail_async_once: true,
-      complete_on_failure,
-    }
+    Self { timer: TimerGraphStageLogic::new(), initialized: false, fail_async_once: true, complete_on_failure }
   }
 }
 
@@ -893,18 +883,14 @@ impl FlowLogic for TickFailureCompleteFlowLogic {
 }
 
 struct AsyncAndTimerCompleteFlowLogic {
-  callback:    crate::core::stage::AsyncCallback<u32>,
-  timer:       crate::core::stage::TimerGraphStageLogic,
+  callback:    AsyncCallback<u32>,
+  timer:       TimerGraphStageLogic,
   initialized: bool,
 }
 
 impl AsyncAndTimerCompleteFlowLogic {
   fn new() -> Self {
-    Self {
-      callback:    crate::core::stage::AsyncCallback::new(),
-      timer:       crate::core::stage::TimerGraphStageLogic::new(),
-      initialized: false,
-    }
+    Self { callback: AsyncCallback::new(), timer: TimerGraphStageLogic::new(), initialized: false }
   }
 }
 
@@ -968,7 +954,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_resume() {
       (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
     ]);
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
@@ -1003,7 +989,7 @@ fn flow_timer_outputs_survive_async_failure_with_complete() {
       (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
     ]);
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![101_u32])));
@@ -1038,7 +1024,7 @@ fn flow_async_and_timer_outputs_survive_apply_failure_with_complete() {
       (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
     ]);
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![10_u32, 101_u32])));
@@ -1096,7 +1082,7 @@ fn flow_tick_complete_shuts_down_stage_and_completes_downstream() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   for _ in 0..8 {
     if interpreter.state() != StreamState::Running {
@@ -1162,7 +1148,7 @@ fn flow_async_and_timer_complete_notifies_downstream_once() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   for _ in 0..8 {
     if interpreter.state() != StreamState::Running {
@@ -1184,7 +1170,7 @@ fn group_by_uses_key_function() {
     .merge_substreams()
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(3_u32)));
@@ -1205,7 +1191,7 @@ fn group_by_default_cancels_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1230,7 +1216,7 @@ fn group_by_drain_consumes_remaining_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1255,7 +1241,7 @@ fn group_by_propagate_cancels_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1279,7 +1265,7 @@ fn split_when_drain_consumes_remaining_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1308,7 +1294,7 @@ fn split_when_propagate_cancels_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1335,7 +1321,7 @@ fn split_after_drain_consumes_remaining_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1359,7 +1345,7 @@ fn split_after_propagate_cancels_upstream_after_head_completion() {
   .merge_substreams()
   .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1373,7 +1359,7 @@ fn split_after_propagate_cancels_upstream_after_head_completion() {
 fn recover_flow_replaces_upstream_failure() {
   let graph = Source::<u32, _>::failed(StreamError::Failed).recover(|_| Some(10_u32)).into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
@@ -1385,7 +1371,7 @@ fn recover_flow_intercepts_upstream_failure() {
     .recover(|_| Some(10_u32))
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(10_u32)));
@@ -1397,7 +1383,7 @@ fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
     .recover_with_retries(0, |_| Some(Source::single(10_u32)))
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
@@ -1407,7 +1393,7 @@ fn recover_with_retries_flow_fails_when_retry_budget_is_zero() {
 fn restart_sink_with_backoff_keeps_single_path_behavior() {
   let graph = Source::single(5_u32).into_mat(Sink::head().restart_sink_with_backoff(1, 3), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
@@ -1418,7 +1404,7 @@ fn sink_supervision_variants_keep_single_path_behavior() {
   let graph = Source::single(5_u32)
     .into_mat(Sink::head().supervision_stop().supervision_resume().supervision_restart(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(5_u32)));
@@ -1446,7 +1432,7 @@ fn source_supervision_stop_fails_on_pull_error() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1476,7 +1462,7 @@ fn source_supervision_resume_skips_failed_pull_and_continues() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1512,7 +1498,7 @@ fn source_supervision_restart_invokes_on_restart_and_continues() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1544,7 +1530,7 @@ fn flow_supervision_stop_fails_on_apply_error() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1575,7 +1561,7 @@ fn flow_supervision_resume_skips_failed_input_and_continues() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1609,7 +1595,7 @@ fn sink_supervision_stop_fails_on_push_error() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1643,7 +1629,7 @@ fn sink_supervision_resume_skips_failed_input_and_continues() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1679,7 +1665,7 @@ fn sink_supervision_restart_invokes_on_restart_and_continues() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1718,7 +1704,7 @@ fn restart_budget_exhaustion_completes_with_default_terminal_action() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
@@ -1745,7 +1731,7 @@ fn source_completion_triggers_restart_until_budget_is_exhausted() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![9_u32, 9_u32])));
@@ -1779,7 +1765,7 @@ fn source_restart_with_backoff_recovers_after_failure_transition() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1827,7 +1813,7 @@ fn source_restart_is_not_bypassed_by_downstream_propagate_failure_action() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1861,7 +1847,7 @@ fn source_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1893,7 +1879,7 @@ fn flow_restart_with_backoff_recovers_after_failure_transition() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1931,7 +1917,7 @@ fn flow_restart_is_not_bypassed_when_on_failure_propagates() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -1966,7 +1952,7 @@ fn flow_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -2002,7 +1988,7 @@ fn sink_restart_with_backoff_recovers_after_failure_transition() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -2035,7 +2021,7 @@ fn sink_restart_with_backoff_fails_on_budget_exhaustion_when_configured() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   drive_to_completion(&mut interpreter);
 
@@ -2071,7 +2057,7 @@ fn abort_while_restart_waiting_keeps_restart_callback_uninvoked() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   interpreter.start().expect("start");
   let _ = interpreter.drive();
@@ -2115,7 +2101,7 @@ fn source_restart_backoff_waits_configured_ticks_before_on_restart() {
     sink_inlet.id(),
     MatCombine::Right,
   )]);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   interpreter.start().expect("start");
   let _ = interpreter.drive();
@@ -2157,7 +2143,7 @@ fn flow_restart_backoff_waits_configured_ticks_before_on_restart() {
   };
   let sink = collect_u32_sequence_sink(sink_inlet, completion.clone());
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
 
   interpreter.start().expect("start");
   let _ = interpreter.drive();
@@ -2208,7 +2194,7 @@ fn split_when_restart_supervision_behaves_like_resume() {
     attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
@@ -2248,7 +2234,7 @@ fn non_split_restart_supervision_calls_on_restart() {
     attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
@@ -2293,8 +2279,7 @@ fn async_boundary_backpressures_instead_of_failing_when_downstream_stalls() {
       (async_boundary_outlet, sink_inlet.id(), MatCombine::Right),
     ],
   );
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   interpreter.start().expect("start");
   for _ in 0..8 {
     let _ = interpreter.drive();
@@ -2315,8 +2300,7 @@ fn delay_backpressures_instead_of_failing_when_downstream_stalls() {
       .expect("delay")
       .into_mat(Sink::from_logic(StageKind::SinkIgnore, BlockedSinkLogic { completion }), KeepRight);
   let (plan, _completion) = graph.into_parts();
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   interpreter.start().expect("start");
 
   for _ in 0..10 {
@@ -2386,8 +2370,7 @@ fn cross_operator_backpressure_propagates_through_substream_and_async_boundary()
       (async_boundary_outlet, sink_inlet.id(), MatCombine::Right),
     ],
   );
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   interpreter.start().expect("start");
   for _ in 0..16 {
     let _ = interpreter.drive();
@@ -2408,8 +2391,7 @@ fn conflate_continues_aggregating_while_downstream_is_backpressured() {
   .via(Flow::new().conflate(|acc, value| acc + value))
   .into_mat(Sink::from_logic(StageKind::SinkIgnore, BlockedSinkLogic { completion }), KeepRight);
   let (plan, _completion) = graph.into_parts();
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   interpreter.start().expect("start");
 
   for _ in 0..16 {
@@ -2474,8 +2456,7 @@ fn conflate_emits_aggregated_value_when_downstream_unblocks() {
     KeepRight,
   );
   let (plan, _completion) = graph.into_parts();
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   interpreter.start().expect("start");
 
   // Phase 1: drive while downstream is blocked – conflate processes source values.
@@ -2524,8 +2505,7 @@ fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
     .async_boundary()
     .into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
-  let mut interpreter =
-    GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::new(1, OverflowPolicy::Block));
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Failed);
   assert_eq!(completion.poll(), Completion::Ready(Err(StreamError::Failed)));
@@ -2572,7 +2552,7 @@ fn source_restart_is_preserved_across_substream_and_async_boundary_chain() {
       (async_boundary_outlet, sink_inlet.id(), MatCombine::Right),
     ],
   );
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![7_u32, 7_u32])));
@@ -2598,7 +2578,7 @@ fn split_when_flow_splits_before_predicate() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32], vec![2_u32, 3_u32], vec![4_u32]])));
@@ -2624,7 +2604,7 @@ fn split_after_flow_splits_after_predicate() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![vec![1_u32, 2_u32], vec![3_u32, 4_u32]])));
@@ -2640,7 +2620,7 @@ fn merge_substreams_flattens_segment_elements() {
     KeepRight,
   );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
@@ -2656,7 +2636,7 @@ fn concat_substreams_flattens_segment_elements() {
     KeepRight,
   );
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32, 3_u32])));
@@ -2666,7 +2646,7 @@ fn concat_substreams_flattens_segment_elements() {
 fn cancel_updates_state() {
   let graph = Source::single(1_u32).into_mat(Sink::ignore(), KeepRight);
   let (plan, _completion) = graph.into_parts();
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   interpreter.cancel().expect("cancel");
   assert_eq!(interpreter.state(), StreamState::Cancelled);
@@ -2699,7 +2679,7 @@ fn drive_does_not_pull_without_demand() {
     attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, Vec::new(), sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   let outcome = interpreter.drive();
   assert_eq!(outcome, DriveOutcome::Idle);
@@ -2736,7 +2716,7 @@ fn drive_rejects_type_mismatch() {
     attributes:  Attributes::new(),
   };
   let plan = linear_plan(source, vec![flow], sink);
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   while interpreter.state() == StreamState::Running {
     let _ = interpreter.drive();
@@ -2805,7 +2785,7 @@ fn executes_with_topologically_sorted_flow_order() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(StreamDone::new())));
@@ -2871,7 +2851,7 @@ fn supports_plan_with_multiple_sources() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32, 2_u32])));
@@ -2896,7 +2876,7 @@ fn supports_plan_with_multiple_sinks() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion1.poll(), Completion::Ready(Ok(vec![1_u32])));
@@ -2970,7 +2950,7 @@ fn flow_kill_switch_shutdown_only_closes_bound_branch() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   let mut drive_budget = 32_usize;
   while *pulls.lock() == 0_u32 {
@@ -3050,7 +3030,7 @@ fn cancel_upstream_stage_calls_on_source_done_for_upstream_flow() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![1_u32])));
@@ -3087,7 +3067,7 @@ fn cancel_upstream_stage_calls_on_source_done_in_direct_upstream_cancellation_pa
       (flow_outlet.id(), sink_inlet.id(), MatCombine::Right),
     ]);
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   interpreter.close_and_clear_incoming_edges_for_stage(2).expect("close sink incoming");
   interpreter.cancel_upstream_stage(2).expect("cancel upstream");
 
@@ -3146,7 +3126,7 @@ fn supports_multiple_outgoing_edges_from_source() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
@@ -3204,7 +3184,7 @@ fn supports_multiple_outgoing_edges_from_flow() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(210)));
@@ -3251,7 +3231,7 @@ fn broadcast_flow_duplicates_elements_to_all_outgoing_edges() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(312)));
@@ -3297,7 +3277,7 @@ fn flow_fan_out_failure_uses_local_supervision_fallback() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
 
   assert_eq!(interpreter.state(), StreamState::Completed);
@@ -3378,7 +3358,7 @@ fn balance_flow_distributes_elements_round_robin() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(210)));
@@ -3469,7 +3449,7 @@ fn merge_flow_combines_multiple_incoming_edges() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
@@ -3560,7 +3540,7 @@ fn zip_flow_combines_elements_when_all_inputs_have_values() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(230)));
@@ -3651,7 +3631,7 @@ fn concat_flow_emits_elements_in_input_order() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11, 13, 102, 104])));
@@ -3726,7 +3706,7 @@ fn partition_flow_routes_elements_by_predicate_between_outgoing_edges() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(210_u32)));
@@ -3773,7 +3753,7 @@ fn unzip_flow_routes_tuple_components_to_two_edges() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(115_u32)));
@@ -3836,7 +3816,7 @@ fn interleave_flow_emits_round_robin_from_multiple_incoming_edges() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 102_u32, 13_u32, 104_u32])));
@@ -3899,7 +3879,7 @@ fn prepend_flow_prioritizes_lower_index_inputs() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(completion.poll(), Completion::Ready(Ok(vec![11_u32, 13_u32, 102_u32, 104_u32])));
@@ -3933,7 +3913,7 @@ fn zip_all_flow_emits_fill_values_after_completion() {
     ],
   );
 
-  let mut interpreter = GraphInterpreter::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::default());
   drive_to_completion(&mut interpreter);
   assert_eq!(interpreter.state(), StreamState::Completed);
   assert_eq!(

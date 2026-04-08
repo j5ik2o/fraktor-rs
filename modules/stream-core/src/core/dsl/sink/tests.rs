@@ -10,7 +10,7 @@ use crate::core::{
   DynValue, SinkDecision, SinkLogic, StreamDslError, StreamError,
   dsl::{Sink, Source},
   r#impl::{
-    fusing::DemandTracker,
+    fusing::{DemandTracker, StreamBufferConfig},
     materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
   },
   materialization::{
@@ -44,7 +44,7 @@ impl Materializer for TestMaterializer {
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     self.calls = self.calls.saturating_add(1);
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);

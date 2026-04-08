@@ -5,7 +5,10 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use crate::core::{
   OverflowStrategy, QueueOfferResult, StreamError,
   dsl::{ActorSource, Sink},
-  r#impl::materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamHandleId, StreamHandleImpl, StreamShared},
+  },
   materialization::{Completion, KeepBoth, Materialized, Materializer, RunnableGraph, StreamCompletion},
 };
 
@@ -18,7 +21,7 @@ impl Materializer for TestMaterializer {
 
   fn materialize<Mat>(&mut self, graph: RunnableGraph<Mat>) -> Result<Materialized<Mat>, StreamError> {
     let (plan, materialized) = graph.into_parts();
-    let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+    let mut stream = Stream::new(plan, StreamBufferConfig::default());
     stream.start()?;
     let shared = StreamShared::new(stream);
     let handle = StreamHandleImpl::new(StreamHandleId::next(), shared);

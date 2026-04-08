@@ -3,11 +3,17 @@ use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
+use super::{
+  BufferLogic, ConcatLogic, ConcatSourceLogic, ConflateWithSeedLogic, ExpandLogic, LazyFlowLogic, MapAsyncLogic,
+  MergePreferredLogic, MergePrioritizedLogic, MergeSortedLogic, OrElseSourceLogic, PrependSourceLogic, RetryFlowLogic,
+  SecondarySourceBridge, StatefulMapConcatLogic, StatefulMapLogic, ZipLogic, ZipWithIndexLogic,
+};
 use crate::core::{
   DynValue, FlowLogic, OverflowStrategy, QueueOfferResult, RestartSettings, SourceLogic, StageDefinition,
-  StreamDslError, StreamError, SubstreamCancelStrategy,
+  StreamDslError, StreamError, SubstreamCancelStrategy, ThrottleMode,
+  attributes::{Attributes, DispatcherAttribute},
   dsl::{Flow, FlowMonitorImpl, Sink, Source, TailSource},
-  r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, materialization::Stream},
+  r#impl::{DefaultOperatorCatalog, OperatorCatalog, OperatorKey, fusing::StreamBufferConfig, materialization::Stream},
   materialization::{
     Completion, DriveOutcome, KeepBoth, KeepLeft, KeepRight, StreamCompletion, StreamDone, StreamNotUsed,
   },
@@ -256,7 +262,7 @@ fn concat_lazy_emits_secondary_values_without_waiting_for_secondary_completion()
 
   let graph = Source::single(1_u32).via(Flow::new().concat_lazy(secondary).drop(1));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -281,7 +287,7 @@ fn prepend_lazy_emits_secondary_values_without_waiting_for_secondary_completion(
 
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -315,7 +321,7 @@ fn or_else_emits_secondary_values_without_waiting_for_secondary_completion() {
 
   let graph = Source::<u32, _>::empty().via(Flow::new().or_else(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
   drive_until_completion(&mut stream, &completion);
@@ -354,7 +360,7 @@ fn prepend_lazy_materializes_secondary_on_first_demand() {
   });
   let graph = Source::single(3_u32).via(Flow::new().prepend_lazy(secondary));
   let (plan, completion) = graph.into_mat(Sink::head(), KeepRight).into_parts();
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   assert_eq!(*materialize_calls.lock(), 0_u32);
 
   stream.start().expect("start");
@@ -1204,7 +1210,7 @@ fn flat_map_concat_emits_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -1232,7 +1238,7 @@ fn flat_map_merge_emits_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -1279,7 +1285,7 @@ fn async_boundary_keeps_single_path_behavior() {
 #[test]
 fn throttle_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
-    .via(Flow::new().throttle(2, crate::core::ThrottleMode::Shaping).expect("throttle"))
+    .via(Flow::new().throttle(2, ThrottleMode::Shaping).expect("throttle"))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -1288,7 +1294,7 @@ fn throttle_keeps_single_path_behavior() {
 #[test]
 fn throttle_rejects_zero_capacity() {
   let flow = Flow::<u32, u32, StreamNotUsed>::new();
-  let result = flow.throttle(0, crate::core::ThrottleMode::Shaping);
+  let result = flow.throttle(0, ThrottleMode::Shaping);
   assert!(matches!(
     result,
     Err(StreamDslError::InvalidArgument { name: "capacity", value: 0, reason: "must be greater than zero" })
@@ -1407,7 +1413,7 @@ fn map_async_preserves_order_with_parallelism() {
 
 #[test]
 fn map_async_logic_keeps_order_and_tracks_pending_output() {
-  let mut logic = super::MapAsyncLogic::<u32, u32, _, YieldThenOutputFuture<u32>> {
+  let mut logic = MapAsyncLogic::<u32, u32, _, YieldThenOutputFuture<u32>> {
     func:        |value: u32| YieldThenOutputFuture::new(value.saturating_add(1)),
     parallelism: 2,
     pending:     VecDeque::new(),
@@ -1436,7 +1442,7 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
 
 #[test]
 fn conflate_with_seed_logic_defers_and_merges_pending_values() {
-  let mut logic = super::ConflateWithSeedLogic::<u32, u32, _, _> {
+  let mut logic = ConflateWithSeedLogic::<u32, u32, _, _> {
     seed:         |value| value + 10,
     aggregate:    |acc, value| acc + value,
     pending:      None,
@@ -1505,19 +1511,11 @@ struct PartitionedYieldFuture {
   partition:     usize,
   poll_count:    u8,
   ready_after:   u8,
-  active_counts:
-    fraktor_utils_core_rs::core::sync::ArcShared<fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>>,
+  active_counts: ArcShared<SpinSyncMutex<[u32; 2]>>,
 }
 
 impl PartitionedYieldFuture {
-  fn new(
-    value: u32,
-    partition: usize,
-    ready_after: u8,
-    active_counts: fraktor_utils_core_rs::core::sync::ArcShared<
-      fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>,
-    >,
-  ) -> Self {
+  fn new(value: u32, partition: usize, ready_after: u8, active_counts: ArcShared<SpinSyncMutex<[u32; 2]>>) -> Self {
     Self::new_with_overlap(value, partition, ready_after, active_counts, None)
   }
 
@@ -1525,12 +1523,8 @@ impl PartitionedYieldFuture {
     value: u32,
     partition: usize,
     ready_after: u8,
-    active_counts: fraktor_utils_core_rs::core::sync::ArcShared<
-      fraktor_utils_core_rs::core::sync::SpinSyncMutex<[u32; 2]>,
-    >,
-    overlap_seen: Option<
-      &fraktor_utils_core_rs::core::sync::ArcShared<fraktor_utils_core_rs::core::sync::SpinSyncMutex<bool>>,
-    >,
+    active_counts: ArcShared<SpinSyncMutex<[u32; 2]>>,
+    overlap_seen: Option<&ArcShared<SpinSyncMutex<bool>>>,
   ) -> Self {
     {
       let mut guard = active_counts.lock();
@@ -1567,9 +1561,7 @@ impl Future for PartitionedYieldFuture {
 
 #[test]
 fn map_async_partitioned_serializes_same_partition_while_preserving_input_order() {
-  let active_counts = fraktor_utils_core_rs::core::sync::ArcShared::new(
-    fraktor_utils_core_rs::core::sync::SpinSyncMutex::new([0_u32; 2]),
-  );
+  let active_counts = ArcShared::new(SpinSyncMutex::new([0_u32; 2]));
   let values = Source::from_array([1_u32, 3, 2, 4])
     .via(
       Flow::new()
@@ -1589,11 +1581,8 @@ fn map_async_partitioned_serializes_same_partition_while_preserving_input_order(
 
 #[test]
 fn map_async_partitioned_unordered_emits_completed_partitions_without_global_ordering() {
-  let active_counts = fraktor_utils_core_rs::core::sync::ArcShared::new(
-    fraktor_utils_core_rs::core::sync::SpinSyncMutex::new([0_u32; 2]),
-  );
-  let overlap_seen =
-    fraktor_utils_core_rs::core::sync::ArcShared::new(fraktor_utils_core_rs::core::sync::SpinSyncMutex::new(false));
+  let active_counts = ArcShared::new(SpinSyncMutex::new([0_u32; 2]));
+  let overlap_seen = ArcShared::new(SpinSyncMutex::new(false));
   let values = Source::from_array([1_u32, 2_u32])
     .via(
       Flow::new()
@@ -1705,7 +1694,7 @@ fn flatten_emits_inner_head_without_waiting_for_inner_completion() {
     .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -2018,7 +2007,7 @@ fn group_by_cancels_upstream_after_head_completion_by_default() {
       .into_mat(Sink::head(), KeepRight);
 
   let (plan, completion) = graph.into_parts();
-  let mut interpreter = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut interpreter = Stream::new(plan, StreamBufferConfig::default());
   interpreter.start().expect("start");
   drive_until_completion(&mut interpreter, &completion);
 
@@ -2314,7 +2303,7 @@ fn supervision_variants_keep_single_path_behavior() {
 
 #[test]
 fn zip_logic_on_restart_clears_pending_state() {
-  let mut logic = super::ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new() };
+  let mut logic = ZipLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new() };
 
   let first = logic.apply_with_edge(0, Box::new(1_u32)).expect("first apply");
   assert!(first.is_empty());
@@ -2327,7 +2316,7 @@ fn zip_logic_on_restart_clears_pending_state() {
 
 #[test]
 fn concat_logic_on_restart_clears_pending_state() {
-  let mut logic = super::ConcatLogic::<u32> {
+  let mut logic = ConcatLogic::<u32> {
     fan_in:      2,
     edge_slots:  Vec::new(),
     pending:     Vec::new(),
@@ -2349,7 +2338,7 @@ fn concat_logic_on_restart_clears_pending_state() {
 
 #[test]
 fn concat_source_logic_on_restart_keeps_secondary_stream() {
-  let mut logic = super::ConcatSourceLogic::<u32, StreamNotUsed> {
+  let mut logic = ConcatSourceLogic::<u32, StreamNotUsed> {
     secondary:         Some(Source::from_array([7_u32, 8_u32])),
     secondary_runtime: None,
     pending:           VecDeque::new(),
@@ -2373,15 +2362,14 @@ fn concat_source_logic_on_restart_keeps_secondary_stream() {
 
 #[test]
 fn secondary_source_bridge_emits_single_value() {
-  let mut bridge = super::SecondarySourceBridge::new(Source::single(7_u32)).expect("bridge");
+  let mut bridge = SecondarySourceBridge::new(Source::single(7_u32)).expect("bridge");
 
   assert_eq!(bridge.poll_next().expect("poll_next"), Some(7_u32));
 }
 
 #[test]
 fn secondary_source_bridge_supports_multi_outlet_inner_source() {
-  let mut bridge =
-    super::SecondarySourceBridge::new(Source::single(7_u32).broadcast(2).expect("broadcast")).expect("bridge");
+  let mut bridge = SecondarySourceBridge::new(Source::single(7_u32).broadcast(2).expect("broadcast")).expect("bridge");
 
   assert_eq!(bridge.poll_next().expect("poll_next first"), Some(7_u32));
   assert_eq!(bridge.poll_next().expect("poll_next second"), Some(7_u32));
@@ -2389,7 +2377,7 @@ fn secondary_source_bridge_supports_multi_outlet_inner_source() {
 
 #[test]
 fn prepend_source_logic_on_restart_keeps_secondary_stream() {
-  let mut logic = super::PrependSourceLogic::<u32, StreamNotUsed> {
+  let mut logic = PrependSourceLogic::<u32, StreamNotUsed> {
     secondary:         Some(Source::from_array([1_u32, 2_u32])),
     secondary_runtime: None,
     pending_secondary: VecDeque::new(),
@@ -2412,7 +2400,7 @@ fn prepend_source_logic_on_restart_keeps_secondary_stream() {
 
 #[test]
 fn or_else_source_logic_on_restart_keeps_secondary_stream() {
-  let mut logic = super::OrElseSourceLogic::<u32, StreamNotUsed> {
+  let mut logic = OrElseSourceLogic::<u32, StreamNotUsed> {
     secondary:         Some(Source::from_array([9_u32, 10_u32])),
     secondary_runtime: None,
     pending_secondary: VecDeque::new(),
@@ -2437,7 +2425,7 @@ fn or_else_source_logic_on_restart_keeps_secondary_stream() {
 
 #[test]
 fn zip_with_index_logic_on_restart_resets_counter() {
-  let mut logic = super::ZipWithIndexLogic::<u32> { next_index: 0, _pd: core::marker::PhantomData };
+  let mut logic = ZipWithIndexLogic::<u32> { next_index: 0, _pd: core::marker::PhantomData };
   let first = logic.apply(Box::new(10_u32)).expect("first apply");
   let second = logic.apply(Box::new(11_u32)).expect("second apply");
   assert_eq!(first.len(), 1);
@@ -2459,7 +2447,7 @@ fn stateful_map_logic_on_restart_recreates_mapper() {
     }
   };
   let mapper = factory();
-  let mut logic = super::StatefulMapLogic::<u32, u32, _, _> { factory, mapper, _pd: core::marker::PhantomData };
+  let mut logic = StatefulMapLogic::<u32, u32, _, _> { factory, mapper, _pd: core::marker::PhantomData };
 
   let first = logic.apply(Box::new(1_u32)).expect("first apply");
   let second = logic.apply(Box::new(2_u32)).expect("second apply");
@@ -2486,7 +2474,7 @@ fn stateful_map_concat_logic_on_restart_recreates_mapper() {
   };
   let mapper = factory();
   let mut logic =
-    super::StatefulMapConcatLogic::<u32, u32, _, _, [u32; 1]> { factory, mapper, _pd: core::marker::PhantomData };
+    StatefulMapConcatLogic::<u32, u32, _, _, [u32; 1]> { factory, mapper, _pd: core::marker::PhantomData };
 
   let first = logic.apply(Box::new(1_u32)).expect("first apply");
   let second = logic.apply(Box::new(2_u32)).expect("second apply");
@@ -3080,7 +3068,7 @@ fn expand_and_extrapolate_share_expand_behavior() {
 
 #[test]
 fn expand_and_extrapolate_emit_extrapolated_values_during_idle_ticks() {
-  let mut logic = super::ExpandLogic::<u32, _> {
+  let mut logic = ExpandLogic::<u32, _> {
     expander:                |value: &u32| vec![*value, value.saturating_mul(10)],
     last:                    None,
     pending:                 None,
@@ -3129,7 +3117,7 @@ fn expand_and_extrapolate_emit_extrapolated_values_during_idle_ticks() {
 
 #[test]
 fn expand_and_extrapolate_do_not_hang_with_infinite_iterators() {
-  let mut logic = super::ExpandLogic::<u32, _> {
+  let mut logic = ExpandLogic::<u32, _> {
     expander:                |value: &u32| core::iter::repeat(*value),
     last:                    None,
     pending:                 None,
@@ -3314,7 +3302,7 @@ fn also_to_mat_routes_elements_to_side_sink() {
   let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -3350,7 +3338,7 @@ fn wire_tap_mat_routes_elements_to_side_sink() {
   let (sink_graph, downstream_completion) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -3406,7 +3394,7 @@ fn wire_tap_mat_side_sink_receives_elements() {
   let (sink_graph, _downstream) = Sink::<u32, _>::ignore().into_parts();
   graph.append(sink_graph);
   let plan = graph.into_plan().expect("into_plan");
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
   let mut idle_budget = 1024_usize;
   while !stream.state().is_terminal() {
@@ -3716,12 +3704,8 @@ fn merge_preferred_rejects_zero_fan_in() {
 
 #[test]
 fn merge_preferred_logic_prefers_slot_zero() {
-  let mut logic = super::MergePreferredLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergePreferredLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   // edge 1 が最初に接続 → partition_point により slot 0 に配置される
   let result = logic.apply_with_edge(1, Box::new(100_u32)).expect("edge 1");
@@ -3739,12 +3723,8 @@ fn merge_preferred_logic_prefers_slot_zero() {
 
 #[test]
 fn merge_preferred_logic_always_prefers_slot_zero_in_sequence() {
-  let mut logic = super::MergePreferredLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergePreferredLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   // 各apply_with_edgeで投入されたデータは即座に消費される（同時データなし）
   // このテストはシーケンシャルな投入・消費の基本動作を確認する
@@ -3764,7 +3744,7 @@ fn merge_preferred_logic_always_prefers_slot_zero_in_sequence() {
 #[test]
 fn merge_preferred_logic_prefers_slot_zero_with_simultaneous_data() {
   // 両スロットに同時にデータが存在する状態で、slot 0（preferred）が優先されることを検証
-  let mut logic = super::MergePreferredLogic::<u32> {
+  let mut logic = MergePreferredLogic::<u32> {
     fan_in:      2,
     edge_slots:  vec![0, 1],
     pending:     vec![VecDeque::from([10, 20, 30]), VecDeque::from([100, 200, 300])],
@@ -3795,7 +3775,7 @@ fn merge_preferred_logic_prefers_slot_zero_with_simultaneous_data() {
 #[test]
 fn merge_preferred_logic_falls_back_to_secondary() {
   // slot 0（preferred）が空の場合、slot 1（secondary）から取得されることを検証
-  let mut logic = super::MergePreferredLogic::<u32> {
+  let mut logic = MergePreferredLogic::<u32> {
     fan_in:      2,
     edge_slots:  vec![0, 1],
     pending:     vec![VecDeque::new(), VecDeque::from([100, 200])],
@@ -3813,12 +3793,8 @@ fn merge_preferred_logic_falls_back_to_secondary() {
 
 #[test]
 fn merge_preferred_logic_on_restart_clears_state() {
-  let mut logic = super::MergePreferredLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergePreferredLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("apply");
   logic.on_source_done().expect("source done");
@@ -3876,7 +3852,7 @@ fn merge_prioritized_n_rejects_length_mismatch() {
 #[test]
 fn merge_prioritized_logic_outputs_on_each_apply() {
   // シーケンシャルな投入・消費の基本動作を確認
-  let mut logic = super::MergePrioritizedLogic::<u32> {
+  let mut logic = MergePrioritizedLogic::<u32> {
     fan_in:      2,
     priorities:  vec![3, 1],
     edge_slots:  Vec::new(),
@@ -3909,7 +3885,7 @@ fn merge_prioritized_logic_outputs_on_each_apply() {
 fn merge_prioritized_logic_respects_weight_ratio() {
   // 重み [3, 1] で両スロットにデータが同時に存在する場合、
   // slot 0 から3つ → slot 1 から1つ のサイクルで取得されることを検証
-  let mut logic = super::MergePrioritizedLogic::<u32> {
+  let mut logic = MergePrioritizedLogic::<u32> {
     fan_in:      2,
     priorities:  vec![3, 1],
     edge_slots:  vec![0, 1],
@@ -3935,7 +3911,7 @@ fn merge_prioritized_logic_respects_weight_ratio() {
 #[test]
 fn merge_prioritized_logic_equal_weights_alternates() {
   // 等重み [1, 1] で両スロットにデータがある場合、交互に取得されることを検証
-  let mut logic = super::MergePrioritizedLogic::<u32> {
+  let mut logic = MergePrioritizedLogic::<u32> {
     fan_in:      2,
     priorities:  vec![1, 1],
     edge_slots:  vec![0, 1],
@@ -3958,7 +3934,7 @@ fn merge_prioritized_logic_equal_weights_alternates() {
 
 #[test]
 fn merge_prioritized_logic_on_restart_clears_state() {
-  let mut logic = super::MergePrioritizedLogic::<u32> {
+  let mut logic = MergePrioritizedLogic::<u32> {
     fan_in:      2,
     priorities:  vec![1, 1],
     edge_slots:  Vec::new(),
@@ -3996,12 +3972,8 @@ fn merge_sorted_rejects_zero_fan_in() {
 
 #[test]
 fn merge_sorted_logic_emits_minimum_value() {
-  let mut logic = super::MergeSortedLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergeSortedLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   // edge 0 に大きい値
   let result = logic.apply_with_edge(0, Box::new(10_u32)).expect("edge 0");
@@ -4016,12 +3988,8 @@ fn merge_sorted_logic_emits_minimum_value() {
 
 #[test]
 fn merge_sorted_logic_drain_emits_sorted_order() {
-  let mut logic = super::MergeSortedLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergeSortedLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   // 各edgeにソート済みデータを蓄積
   let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("edge 0 a");
@@ -4047,12 +4015,8 @@ fn merge_sorted_logic_drain_emits_sorted_order() {
 
 #[test]
 fn merge_sorted_logic_on_restart_clears_state() {
-  let mut logic = super::MergeSortedLogic::<u32> {
-    fan_in:      2,
-    edge_slots:  Vec::new(),
-    pending:     Vec::new(),
-    source_done: false,
-  };
+  let mut logic =
+    MergeSortedLogic::<u32> { fan_in: 2, edge_slots: Vec::new(), pending: Vec::new(), source_done: false };
 
   let _ = logic.apply_with_edge(0, Box::new(1_u32)).expect("apply");
   logic.on_source_done().expect("source done");
@@ -4200,7 +4164,7 @@ impl FlowLogic for MultiOutputRetryTestLogic {
 #[test]
 fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
   // Given: 3つの inner logic すべてにシャットダウンフラグが設定された LazyFlowLogic
-  let mut logic = super::LazyFlowLogic::<u32, u32, StreamNotUsed, fn() -> Flow<u32, u32, StreamNotUsed>> {
+  let mut logic = LazyFlowLogic::<u32, u32, StreamNotUsed, fn() -> Flow<u32, u32, StreamNotUsed>> {
     factory:      None,
     inner_logics: alloc::vec![
       Box::new(ShutdownFlagFlowLogic { shutdown_requested: true }),
@@ -4228,7 +4192,7 @@ fn flow_lazy_flow_take_shutdown_request_clears_all_inner_flags() {
 #[test]
 fn retry_flow_logic_queues_multiple_retries_before_restarting_inner() {
   let restart_calls = ArcShared::new(SpinSyncMutex::new(0_u32));
-  let mut logic = super::RetryFlowLogic::<u32, u32, _>::new(
+  let mut logic = RetryFlowLogic::<u32, u32, _>::new(
     alloc::vec![Box::new(MultiOutputRetryTestLogic { restart_calls: restart_calls.clone() })],
     |input: &u32, output: &u32| {
       if *input < 10 { Some(output.saturating_add(100)) } else { None }
@@ -4261,7 +4225,7 @@ fn retry_flow_logic_queues_multiple_retries_before_restarting_inner() {
 #[test]
 fn throttle_enforcing_mode_keeps_single_path_behavior() {
   let values = Source::single(7_u32)
-    .via(Flow::new().throttle(2, crate::core::ThrottleMode::Enforcing).expect("throttle"))
+    .via(Flow::new().throttle(2, ThrottleMode::Enforcing).expect("throttle"))
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![7_u32]);
@@ -4273,7 +4237,7 @@ fn throttle_enforcing_mode_fails_on_capacity_overflow() {
   // 下流が排出できるより速く飽和させる。
   let result = Source::single(alloc::vec![1_u32, 2, 3])
     .via(Flow::new().map_concat(|v: alloc::vec::Vec<u32>| v))
-    .via(Flow::new().throttle(1, crate::core::ThrottleMode::Enforcing).expect("throttle"))
+    .via(Flow::new().throttle(1, ThrottleMode::Enforcing).expect("throttle"))
     .collect_values();
   assert_eq!(result, Err(StreamError::BufferOverflow));
 }
@@ -4313,7 +4277,7 @@ fn throttle_shaping_logic_uses_backpressure_at_capacity() {
 
 #[test]
 fn buffer_logic_drop_buffer_clears_pending_and_keeps_newest() {
-  let mut logic = super::BufferLogic::<u32> {
+  let mut logic = BufferLogic::<u32> {
     capacity:          2,
     overflow_strategy: OverflowStrategy::DropBuffer,
     pending:           VecDeque::new(),
@@ -4333,7 +4297,7 @@ fn buffer_logic_drop_buffer_clears_pending_and_keeps_newest() {
 
 #[test]
 fn buffer_logic_fail_returns_buffer_overflow_when_full() {
-  let mut logic = super::BufferLogic::<u32> {
+  let mut logic = BufferLogic::<u32> {
     capacity:          1,
     overflow_strategy: OverflowStrategy::Fail,
     pending:           VecDeque::new(),
@@ -4422,8 +4386,8 @@ fn flow_named_keeps_elements_and_sets_attributes() {
 #[test]
 fn flow_with_and_add_attributes_merge_names() {
   let (graph, _mat) = Flow::<u32, u32, StreamNotUsed>::new()
-    .with_attributes(crate::core::attributes::Attributes::named("base"))
-    .add_attributes(crate::core::attributes::Attributes::named("extra"))
+    .with_attributes(Attributes::named("base"))
+    .add_attributes(Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
@@ -4765,7 +4729,7 @@ fn flow_async_with_dispatcher_marks_node_with_both_attributes() {
   assert_eq!(async_indices.len(), 1, "async 属性は 1 つの stage のみに付くべき");
 
   let async_stage = &plan.stages[async_indices[0]];
-  let dispatcher = async_stage.attributes().get::<crate::core::attributes::DispatcherAttribute>();
+  let dispatcher = async_stage.attributes().get::<DispatcherAttribute>();
   assert!(dispatcher.is_some(), "async stage に DispatcherAttribute がない");
   assert_eq!(dispatcher.unwrap().name(), "custom-dispatcher");
 

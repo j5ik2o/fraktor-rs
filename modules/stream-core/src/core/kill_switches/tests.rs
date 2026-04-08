@@ -1,7 +1,10 @@
 use crate::core::{
   KillSwitches,
   dsl::{Sink, Source},
-  r#impl::materialization::{Stream, StreamState},
+  r#impl::{
+    fusing::StreamBufferConfig,
+    materialization::{Stream, StreamState},
+  },
   materialization::{KeepBoth, KeepLeft, KeepRight},
 };
 
@@ -57,7 +60,7 @@ fn kill_switches_single_allows_multiple_distinct_flow_switches() {
 
   assert!(plan.shared_kill_switch_states().is_empty());
 
-  let mut stream = Stream::new(plan, crate::core::r#impl::fusing::StreamBufferConfig::default());
+  let mut stream = Stream::new(plan, StreamBufferConfig::default());
   stream.start().expect("start");
 
   for _ in 0..3 {
