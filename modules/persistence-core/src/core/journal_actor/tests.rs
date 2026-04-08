@@ -15,6 +15,7 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
+use super::JournalPoll;
 use crate::core::{
   in_memory_journal::InMemoryJournal, journal_actor::JournalActor, journal_actor_config::JournalActorConfig,
   journal_error::JournalError, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -255,7 +256,7 @@ fn journal_actor_retry_max_exceeded_on_errors() {
 
   assert!(store.lock().is_empty());
 
-  let poll = AnyMessage::new(super::JournalPoll);
+  let poll = AnyMessage::new(JournalPoll);
   actor.receive(&mut ctx, poll.as_view()).expect("receive failed");
 
   let responses = store.lock();

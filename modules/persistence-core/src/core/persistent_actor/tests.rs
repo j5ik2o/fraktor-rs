@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
+  Recovery, eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
   persistence_context::PersistenceContext, persistent_actor::PersistentActor, persistent_repr::PersistentRepr,
   snapshot::Snapshot, snapshot_message::SnapshotMessage, snapshot_metadata::SnapshotMetadata,
   snapshot_response::SnapshotResponse, snapshot_selection_criteria::SnapshotSelectionCriteria,
@@ -65,7 +65,7 @@ fn start_recovery_without_snapshot(actor: &mut DummyPersistentActor) {
   let (journal_ref, _journal_store) = create_sender();
   let (snapshot_ref, _snapshot_store) = create_sender();
   actor.context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
+  actor.context.start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
 }
 
 fn move_to_recovering(actor: &mut DummyPersistentActor) {
@@ -77,7 +77,7 @@ fn move_to_recovering(actor: &mut DummyPersistentActor) {
 }
 
 fn move_to_processing_commands(actor: &mut DummyPersistentActor) {
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
+  actor.context.start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
     ActorRef::null(),
@@ -320,7 +320,7 @@ fn persistent_actor_defer_runs_after_write_messages_successful() {
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut ctx = build_context();
   let mut actor = DummyPersistentActor::new_with_refs(journal_ref, snapshot_ref);
-  actor.context.start_recovery(crate::core::Recovery::default(), ActorRef::null()).expect("start recovery");
+  actor.context.start_recovery(Recovery::default(), ActorRef::null()).expect("start recovery");
   let _ = actor.context.handle_snapshot_response(
     &SnapshotResponse::LoadSnapshotResult { snapshot: None, to_sequence_nr: u64::MAX },
     ActorRef::null(),

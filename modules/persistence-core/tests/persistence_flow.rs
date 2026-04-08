@@ -15,6 +15,7 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorContext,
     actor_ref::ActorRef,
     error::ActorError,
+    extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
@@ -178,8 +179,7 @@ fn recovery_flow_snapshot_then_replay() {
   let _ = drive_ready(snapshot_store.save_snapshot(snapshot_metadata, snapshot_payload));
 
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -229,8 +229,7 @@ fn persist_flow_keeps_values_independent() {
   ];
 
   let installer = PersistenceExtensionInstaller::new(InMemoryJournal::new(), InMemorySnapshotStore::new());
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()

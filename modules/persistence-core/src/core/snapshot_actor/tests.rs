@@ -13,8 +13,9 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
+use super::SnapshotPoll;
 use crate::core::{
-  in_memory_snapshot_store::InMemorySnapshotStore, snapshot_actor::SnapshotActor,
+  in_memory_snapshot_store::InMemorySnapshotStore, snapshot::Snapshot, snapshot_actor::SnapshotActor,
   snapshot_actor_config::SnapshotActorConfig, snapshot_error::SnapshotError, snapshot_message::SnapshotMessage,
   snapshot_metadata::SnapshotMetadata, snapshot_response::SnapshotResponse,
   snapshot_selection_criteria::SnapshotSelectionCriteria,
@@ -73,7 +74,7 @@ impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
   where
     Self: 'a;
   type LoadFuture<'a>
-    = core::future::Pending<Result<Option<crate::core::snapshot::Snapshot>, SnapshotError>>
+    = core::future::Pending<Result<Option<Snapshot>, SnapshotError>>
   where
     Self: 'a;
   type SaveFuture<'a>
@@ -130,7 +131,7 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
   where
     Self: 'a;
   type LoadFuture<'a>
-    = core::future::Ready<Result<Option<crate::core::snapshot::Snapshot>, SnapshotError>>
+    = core::future::Ready<Result<Option<Snapshot>, SnapshotError>>
   where
     Self: 'a;
   type SaveFuture<'a>
@@ -258,7 +259,7 @@ fn snapshot_actor_retry_max_exceeded_on_errors() {
 
   assert!(store.lock().is_empty());
 
-  let poll = AnyMessage::new(super::SnapshotPoll);
+  let poll = AnyMessage::new(SnapshotPoll);
   actor.receive(&mut ctx, poll.as_view()).expect("receive failed");
 
   let responses = store.lock();

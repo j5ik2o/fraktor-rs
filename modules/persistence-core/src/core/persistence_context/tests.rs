@@ -15,11 +15,13 @@ use fraktor_actor_core_rs::core::kernel::actor::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
 use crate::core::{
-  event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced, journal_error::JournalError,
-  journal_message::JournalMessage, journal_response::JournalResponse, journal_response_action::JournalResponseAction,
-  pending_handler_invocation::PendingHandlerInvocation, persistence_context::PersistenceContext,
-  persistent_actor_state::PersistentActorState, persistent_repr::PersistentRepr, read_event_adapter::ReadEventAdapter,
-  snapshot::Snapshot, snapshot_message::SnapshotMessage, write_event_adapter::WriteEventAdapter,
+  Recovery, event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced,
+  journal_error::JournalError, journal_message::JournalMessage, journal_response::JournalResponse,
+  journal_response_action::JournalResponseAction, pending_handler_invocation::PendingHandlerInvocation,
+  persistence_context::PersistenceContext, persistent_actor_state::PersistentActorState,
+  persistent_repr::PersistentRepr, read_event_adapter::ReadEventAdapter, snapshot::Snapshot,
+  snapshot_message::SnapshotMessage, snapshot_selection_criteria::SnapshotSelectionCriteria,
+  write_event_adapter::WriteEventAdapter,
 };
 
 type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
@@ -156,7 +158,7 @@ fn context_sends_snapshot_messages() {
 
   let message = SnapshotMessage::DeleteSnapshots {
     persistence_id: "pid-1".to_string(),
-    criteria:       crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria::latest(),
+    criteria:       SnapshotSelectionCriteria::latest(),
     sender:         ActorRef::null(),
   };
   context.send_snapshot_message(message).expect("send");
@@ -193,7 +195,7 @@ fn send_snapshot_message_returns_message_passing_error_when_snapshot_delivery_fa
 
   let message = SnapshotMessage::DeleteSnapshots {
     persistence_id: "pid-1".to_string(),
-    criteria:       crate::core::snapshot_selection_criteria::SnapshotSelectionCriteria::latest(),
+    criteria:       SnapshotSelectionCriteria::latest(),
     sender:         ActorRef::null(),
   };
 
@@ -271,7 +273,7 @@ fn start_recovery_none_requests_highest_sequence_nr() {
   let mut context = DummyContext::new("pid-1".to_string());
   context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
 
-  context.start_recovery(crate::core::Recovery::none(), ActorRef::null()).expect("start recovery");
+  context.start_recovery(Recovery::none(), ActorRef::null()).expect("start recovery");
 
   let journal_messages = journal_store.lock();
   assert_eq!(journal_messages.len(), 1);
@@ -294,7 +296,7 @@ fn highest_sequence_nr_completes_recovery_none_path() {
   let (snapshot_ref, _snapshot_store) = create_sender();
   let mut context = DummyContext::new("pid-1".to_string());
   context.bind_actor_refs(journal_ref, snapshot_ref).expect("bind actor refs");
-  context.start_recovery(crate::core::Recovery::none(), ActorRef::null()).expect("start recovery");
+  context.start_recovery(Recovery::none(), ActorRef::null()).expect("start recovery");
   assert_eq!(context.state(), PersistentActorState::RecoveryStarted);
 
   let action = context.handle_journal_response(&JournalResponse::HighestSequenceNr {
