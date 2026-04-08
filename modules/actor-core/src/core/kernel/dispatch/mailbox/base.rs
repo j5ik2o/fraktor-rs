@@ -185,6 +185,9 @@ impl Mailbox {
 
     let close_requested_at_start = self.state.is_close_requested();
     let invoker = self.invoker.lock().clone();
+    // A missing invoker only short-circuits the normal drain path. If close was
+    // already requested, we must still enter the run loop so terminal cleanup
+    // can complete even though no further user/system delivery is possible.
     if invoker.is_none() && !close_requested_at_start {
       return false;
     }
