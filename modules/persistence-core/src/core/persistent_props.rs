@@ -1,5 +1,8 @@
 //! Public entry points for persistent actor construction.
 
+#[cfg(test)]
+mod tests;
+
 use fraktor_actor_core_rs::core::kernel::actor::{
   ActorContext, ChildRef, actor_ref::ActorRef, props::Props, spawn::SpawnError,
 };

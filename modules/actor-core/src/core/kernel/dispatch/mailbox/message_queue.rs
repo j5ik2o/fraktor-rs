@@ -38,7 +38,7 @@ pub trait MessageQueue: Send + Sync {
   ///
   /// The default returns `None`. Override this in deque-capable queue implementations
   /// to enable O(1) prepend in
-  /// [`Mailbox::prepend_user_messages`](super::Mailbox::prepend_user_messages).
+  /// [`Mailbox::prepend_user_messages_deque`](super::Mailbox::prepend_user_messages_deque).
   fn as_deque(&self) -> Option<&dyn DequeMessageQueue> {
     None
   }
