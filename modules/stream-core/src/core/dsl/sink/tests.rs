@@ -8,6 +8,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   DynValue, SinkDecision, SinkLogic, StreamDslError, StreamError,
+  attributes::Attributes,
   dsl::{Sink, Source},
   r#impl::{
     fusing::{DemandTracker, StreamBufferConfig},
@@ -656,8 +657,8 @@ fn sink_named_keeps_behavior_and_sets_attributes() {
 #[test]
 fn sink_with_and_add_attributes_merge_names() {
   let (graph, _mat) = Sink::<u32, _>::ignore()
-    .with_attributes(crate::core::attributes::Attributes::named("base"))
-    .add_attributes(crate::core::attributes::Attributes::named("extra"))
+    .with_attributes(Attributes::named("base"))
+    .add_attributes(Attributes::named("extra"))
     .into_parts();
   assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
 }
