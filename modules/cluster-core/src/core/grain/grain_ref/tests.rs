@@ -2,13 +2,13 @@ use alloc::{string::String, vec::Vec};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, Pid,
+    Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::AnyMessage,
+    messaging::{AnyMessage, AnyMessageView},
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
   },
-  system::ActorSystem,
+  system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex, SharedAccess},
@@ -222,11 +222,7 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
 struct TestGuardian;
 
 impl Actor for TestGuardian {
-  fn receive(
-    &mut self,
-    _context: &mut fraktor_actor_core_rs::core::kernel::actor::ActorContext<'_>,
-    _message: fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessageView<'_>,
-  ) -> Result<(), ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -283,8 +279,8 @@ impl ActorRefProvider for TestActorRefProvider {
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
-  fn termination_signal(&self) -> fraktor_actor_core_rs::core::kernel::system::TerminationSignal {
-    fraktor_actor_core_rs::core::kernel::system::TerminationSignal::already_terminated()
+  fn termination_signal(&self) -> TerminationSignal {
+    TerminationSignal::already_terminated()
   }
 }
 
@@ -294,10 +290,7 @@ struct TestSender {
 }
 
 impl ActorRefSender for TestSender {
-  fn send(
-    &mut self,
-    message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     if matches!(self.behavior, SendBehavior::Fail) {
       return Err(SendError::timeout(AnyMessage::new(())));
     }
@@ -422,10 +415,7 @@ impl RecordingSender {
 }
 
 impl ActorRefSender for RecordingSender {
-  fn send(
-    &mut self,
-    message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
     Ok(SendOutcome::Delivered)
   }
@@ -434,10 +424,7 @@ impl ActorRefSender for RecordingSender {
 struct FailingSender;
 
 impl ActorRefSender for FailingSender {
-  fn send(
-    &mut self,
-    _message: AnyMessage,
-  ) -> Result<SendOutcome, fraktor_actor_core_rs::core::kernel::actor::error::SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     Err(SendError::timeout(AnyMessage::new(())))
   }
 }

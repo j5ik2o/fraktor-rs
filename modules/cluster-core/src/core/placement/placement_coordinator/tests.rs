@@ -5,7 +5,7 @@ use crate::core::{
   identity::RendezvousHasher,
   placement::{
     ActivationRecord, PlacementCommand, PlacementCommandResult, PlacementCoordinatorCore, PlacementCoordinatorError,
-    PlacementLease, PlacementLocality, PlacementRequestId,
+    PlacementLease, PlacementLocality, PlacementRequestId, placement_lock_error::PlacementLockError,
   },
 };
 
@@ -51,9 +51,7 @@ fn handle_command_result_rejects_unknown_request() {
 
   let result = PlacementCommandResult::LockAcquired {
     request_id: PlacementRequestId(999),
-    result:     Err(crate::core::placement::placement_lock_error::PlacementLockError::Failed {
-      reason: "missing".to_string(),
-    }),
+    result:     Err(PlacementLockError::Failed { reason: "missing".to_string() }),
   };
 
   let err = coordinator.handle_command_result(result).expect_err("unknown request");

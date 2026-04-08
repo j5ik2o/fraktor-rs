@@ -22,7 +22,10 @@ use crate::core::{
   identity::{IdentityLookup, IdentityLookupShared, IdentitySetupError, LookupError, PidCache, PidCacheEvent},
   membership::{Gossiper, GossiperShared},
   placement::{ActivatedKind, PlacementResolution},
-  pub_sub::{ClusterPubSubShared, PubSubError, cluster_pub_sub::ClusterPubSub},
+  pub_sub::{
+    ClusterPubSubShared, PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest,
+    cluster_pub_sub::ClusterPubSub,
+  },
 };
 
 fn build_update(
@@ -356,7 +359,7 @@ impl StubPubSub {
 impl ClusterPubSub for StubPubSub {
   fn start(&mut self) -> Result<(), PubSubError> {
     if self.fail_start {
-      return Err(PubSubError::TopicAlreadyExists { topic: crate::core::pub_sub::PubSubTopic::from("pubsub-error") });
+      return Err(PubSubError::TopicAlreadyExists { topic: PubSubTopic::from("pubsub-error") });
     }
     *self.started.lock() = true;
     Ok(())
@@ -364,36 +367,25 @@ impl ClusterPubSub for StubPubSub {
 
   fn stop(&mut self) -> Result<(), PubSubError> {
     if self.fail_stop {
-      return Err(PubSubError::TopicNotFound { topic: crate::core::pub_sub::PubSubTopic::from("pubsub-error") });
+      return Err(PubSubError::TopicNotFound { topic: PubSubTopic::from("pubsub-error") });
     }
     *self.stopped.lock() = true;
     Ok(())
   }
 
-  fn subscribe(
-    &mut self,
-    _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber,
-  ) -> Result<(), PubSubError> {
+  fn subscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn unsubscribe(
-    &mut self,
-    _topic: &crate::core::pub_sub::PubSubTopic,
-    _subscriber: crate::core::pub_sub::PubSubSubscriber,
-  ) -> Result<(), PubSubError> {
+  fn unsubscribe(&mut self, _topic: &PubSubTopic, _subscriber: PubSubSubscriber) -> Result<(), PubSubError> {
     Ok(())
   }
 
-  fn publish(
-    &mut self,
-    _request: crate::core::pub_sub::PublishRequest,
-  ) -> Result<crate::core::pub_sub::PublishAck, PubSubError> {
-    Ok(crate::core::pub_sub::PublishAck::accepted())
+  fn publish(&mut self, _request: PublishRequest) -> Result<PublishAck, PubSubError> {
+    Ok(PublishAck::accepted())
   }
 
-  fn on_topology(&mut self, _update: &crate::core::TopologyUpdate) {}
+  fn on_topology(&mut self, _update: &TopologyUpdate) {}
 }
 
 impl Default for StubPubSub {

@@ -1,8 +1,12 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+use fraktor_actor_core_rs::core::kernel::{
+  actor::messaging::AnyMessage,
+  event::stream::{
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+  },
+  serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, NoStdMutex},
@@ -11,7 +15,7 @@ use fraktor_utils_core_rs::core::{
 
 use super::ClusterPubSubImpl;
 use crate::core::{
-  ClusterEvent, TopologyUpdate,
+  ClusterEvent, ClusterTopology, TopologyUpdate,
   grain::KindRegistry,
   identity::ClusterIdentity,
   pub_sub::{
@@ -106,12 +110,8 @@ fn make_pubsub(
   registry: &KindRegistry,
   failed: Vec<PubSubSubscriber>,
 ) -> ClusterPubSubImpl {
-  let setup = fraktor_actor_core_rs::core::kernel::serialization::default_serialization_setup();
-  let serialization_registry = ArcShared::new(
-    fraktor_actor_core_rs::core::kernel::serialization::serialization_registry::SerializationRegistry::from_setup(
-      &setup,
-    ),
-  );
+  let setup = default_serialization_setup();
+  let serialization_registry = ArcShared::new(SerializationRegistry::from_setup(&setup));
   let endpoint = DeliveryEndpointShared::new(Box::new(StubEndpoint::new(failed)));
   ClusterPubSubImpl::new(event_stream, serialization_registry, endpoint, PubSubConfig::default(), registry)
 }
@@ -169,11 +169,7 @@ fn publish_accepts_and_emits_events() {
     type_name:     String::from("dummy"),
     bytes:         vec![1],
   }]);
-  let request = PublishRequest::new(
-    topic.clone(),
-    fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
-    PublishOptions::default(),
-  );
+  let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), PublishOptions::default());
   let ack = pubsub.publish(request).expect("publish");
   assert_eq!(ack, PublishAck::accepted());
 
@@ -199,11 +195,7 @@ fn publish_rejects_when_no_subscribers() {
     type_name:     String::from("dummy"),
     bytes:         vec![1],
   }]);
-  let request = PublishRequest::new(
-    topic.clone(),
-    fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
-    PublishOptions::default(),
-  );
+  let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), PublishOptions::default());
   let ack = pubsub.publish(request).expect("publish");
   assert_eq!(ack.status, crate::core::pub_sub::PublishStatus::Rejected);
 }
@@ -227,14 +219,10 @@ fn topology_update_reactivates_suspended_subscribers() {
     type_name:     String::from("dummy"),
     bytes:         vec![1],
   }]);
-  let request = PublishRequest::new(
-    topic.clone(),
-    fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage::new(batch),
-    PublishOptions::default(),
-  );
+  let request = PublishRequest::new(topic.clone(), AnyMessage::new(batch), PublishOptions::default());
   let _ = pubsub.publish(request).expect("publish");
 
-  let topology = crate::core::ClusterTopology::new(1, vec![String::from("node-a")], Vec::new(), Vec::new());
+  let topology = ClusterTopology::new(1, vec![String::from("node-a")], Vec::new(), Vec::new());
   let update = TopologyUpdate::new(
     topology,
     vec![String::from("node-a")],
