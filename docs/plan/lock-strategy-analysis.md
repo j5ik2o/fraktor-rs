@@ -1168,6 +1168,11 @@ Phase III: stash-requires-deque-mailbox                         [NEXT AFTER II]
            ├─ typed/classic unstash が deque-capable mailbox を獲得
            └─ 目的: prepend_via_drain_and_requeue を production unreachable に近づける
 
+Phase III.5: mailbox-prepend-requires-deque                     [OPTIONAL BRIDGE BEFORE IV]
+             ├─ `Mailbox::prepend_user_messages(...)` を deque-only 契約に硬化
+             ├─ `prepend_via_drain_and_requeue` を削除
+             └─ 目的: Phase IV を outer lock reduction だけに集中させる
+
 Phase IV:  outer lock reduction の再提案                        [RE-DESIGN REQUIRED]
            ├─ Phase II/III 完了後に案 a1 / a2 を再評価
            ├─ close correctness を壊さない形で lock 段数削減を設計
