@@ -4,27 +4,27 @@
 
 ### 1.A 設計ドキュメント整備
 
-- [ ] 1.1 `proposal.md` を作成し、stash と deque mailbox 要求の不整合を整理する (本 change の Why)
-- [ ] 1.2 `design.md` に 5 つの設計オプション (Option A〜E) を詳述する
-  - [ ] Option A: Behavior に `mailbox_requirement` field を追加し、spawn 時に Props に merge
-  - [ ] Option B: `TypedProps::with_stash_capacity` builder を追加 (明示的 opt-in)
-  - [ ] Option C: Mailbox 側で runtime panic / diagnostics
-  - [ ] Option D: stash unstash を Behavior layer 内で完結 (mailbox prepend を使わない)
-  - [ ] Option E: Hybrid (typed = Option D, classic = Option B)
-- [ ] 1.3 `design.md` に **比較表** を作成し、実装コスト・互換性・Pekko 整合・middleware 経路への影響を可視化する
-- [ ] 1.4 `design.md` に **recommend 候補** (現時点では Option A) と理由を明示する
-- [ ] 1.5 `spec.md` に **option-agnostic な不変条件** を記述する (どの option が選ばれても満たすべき contract)
+- [x] 1.1 `proposal.md` を作成し、stash と deque mailbox 要求の不整合を整理する (本 change の Why)
+- [x] 1.2 `design.md` に 5 つの設計オプション (Option A〜E) を詳述する
+  - [x] Option A: Behavior に `mailbox_requirement` field を追加し、spawn 時に Props に merge
+  - [x] Option B: `Props::with_mailbox_requirement(MailboxRequirement::for_stash())` を基本とし、typed には薄い convenience を追加 (明示的 opt-in)
+  - [x] Option C: Mailbox 側で runtime panic / diagnostics
+  - [x] Option D: stash unstash を Behavior layer 内で完結 (mailbox prepend を使わない)
+  - [x] Option E: Hybrid (typed = Option D, classic = Option B)
+- [x] 1.3 `design.md` に **比較表** を作成し、実装コスト・互換性・Pekko 整合・middleware 経路への影響を可視化する
+- [x] 1.4 `design.md` に **recommend 候補** と理由を明示する
+- [x] 1.5 `spec.md` に **option-agnostic な不変条件** を記述する (どの option が選ばれても満たすべき contract)
 
 ### 1.B 既存挙動の verify
 
-- [ ] 1.6 `MailboxRequirement::for_stash()` の caller を grep で確認する (`grep -rn "for_stash" modules/`)
-- [ ] 1.7 `Behaviors::with_stash` の使用箇所を typed テストで確認する (現状 production で deque 強制されていないことの再確認)
-- [ ] 1.8 `cell.stash_message_with_limit` の使用箇所を classic テストで確認する
-- [ ] 1.9 `prepend_via_drain_and_requeue` が production で実行される証拠を test 名で 2 件以上特定する
+- [x] 1.6 `MailboxRequirement::for_stash()` の caller を grep で確認する (`grep -rn "for_stash" modules/`)
+- [x] 1.7 `Behaviors::with_stash` の使用箇所を typed テストで確認する (現状 production で deque 強制されていないことの再確認)
+- [x] 1.8 `cell.stash_message_with_limit` の使用箇所を classic テストで確認する
+- [x] 1.9 `prepend_via_drain_and_requeue` が production で実行される証拠を test 名で 2 件以上特定する
 
 ### 1.C openspec 検証
 
-- [ ] 1.10 `openspec validate stash-requires-deque-mailbox --strict` valid を確認
+- [x] 1.10 `openspec validate stash-requires-deque-mailbox --strict` valid を確認
 
 ### 1.D commit + push
 
@@ -37,7 +37,7 @@
 Phase 2 の tasks は **本 change には記述しない**。user / team が Phase 1 の review で option を選んだ後、選ばれた option に対応する別 openspec change として作成される。例:
 
 - 選ばれた option が A → 新規 change `stash-requires-deque-mailbox-via-behavior-field`
-- 選ばれた option が B → 新規 change `stash-requires-deque-mailbox-via-typed-props-builder`
+- 選ばれた option が B → 新規 change `stash-requires-deque-mailbox-via-props-requirement`
 - 選ばれた option が D → 新規 change `stash-via-behavior-runner-direct-replay`
 - など
 

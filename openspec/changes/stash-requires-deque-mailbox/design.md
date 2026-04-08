@@ -71,6 +71,17 @@ User code (later, inside actor handler):
 
 以下のオプションを評価する。1 つに絞るのは本 change Phase 1 のスコープ外。
 
+#### Cross-cutting constraint: 現状は `bounded + deque` が成立しない
+
+現行実装では `deque_mailbox_type_from_policy` が bounded policy を `MailboxConfigError::BoundedWithDeque` で reject する。したがって、**現状の mailbox factory のままでは `MailboxRequirement::for_stash()` と bounded mailbox を両立できない**。
+
+この制約は Option A / B / C / E の mailbox-backed replay path に共通する。Option D は mailbox prepend を使わないため、この制約を直接は受けない。
+
+したがって Phase 2 では次のどちらかを明示的に選ぶ必要がある:
+
+- `bounded + stash` はサポート外として明示する
+- `BoundedDequeMessageQueue` 相当を別 change で新設する
+
 #### Option A: Behavior に `mailbox_requirement` field を追加し、spawn 時に Props に merge
 
 ```rust
@@ -102,42 +113,57 @@ let mailbox_config = props.mailbox_config().clone()
 - 「Behavior は spawn 時の設定に影響しない」という現状の不変条件が壊れる
 - spawn 経路が Behavior を inspect する必要がある (Behavior factory が呼ばれた後で初めて分かる)
 - BehaviorRunner や TypedActorAdapter の signature 変更が必要 (Behavior を inspect する hook を追加)
-- spawn 時点で Behavior factory が一度呼ばれて、その後で実 actor 用にもう一度呼ばれる、という二重実行のリスクがある (これは現状 not yet で、Behavior factory は一度しか呼ばれない)
+- 現状 `TypedProps::from_behavior_factory` は factory を spawn 時に 1 回だけ呼ぶ。Option A は **その 1 回の実行で得た `Behavior` を mailbox 構築前に inspect できる hook** を spawn 経路へ追加する必要がある。これは `ActorCell::create` と typed adapter 間の配線変更であり、単なる field 追加では済まない
+- `bounded + stash` は現状の mailbox factory 制約により別途解決が必要
 
 **実装コスト**: 中程度 (Behavior 構造変更 + spawn 経路変更 + 全 spawn test の確認)
 
 **互換性**: 既存ユーザコードに対して非破壊。内部 spawn API の変更あり。
 
-#### Option B: `TypedProps` (および classic `Props`) に `with_stash_capacity` builder を追加
+#### Option B: `Props` の mailbox requirement を明示的に使い、typed には薄い convenience を追加
 
 ```rust
 impl<M> TypedProps<M> {
-  pub fn with_stash_capacity(mut self, capacity: usize) -> Self {
-    self.props = self.props.with_mailbox_requirement(MailboxRequirement::for_stash());
-    // capacity は別途 attach (Behavior 側で持つか、Props metadata に持つ)
-    self
+  pub fn with_stash_mailbox(self) -> Self {
+    self.map_props(|props| props.with_mailbox_requirement(MailboxRequirement::for_stash()))
   }
 }
 
-// ユーザは:
+// classic:
+let props = Props::from_fn(factory)
+  .with_mailbox_requirement(MailboxRequirement::for_stash());
+
+// typed:
 let props = TypedProps::from_behavior_factory(|| stash_behavior(0))
-  .with_stash_capacity(8);   // ← 明示的に opt-in
+  .with_stash_mailbox();   // ← typed からの薄い convenience
 ```
+
+`with_stash_mailbox()` は仮称であり、Phase 2 では `with_stash_support()` など user 意図をより直接表す名前へ見直す余地がある。
 
 **Pros:**
 - 既存の Behavior / Props の責務境界を保つ
 - 明示的な opt-in なので silent なバグが減る
-- API 表面の変更が局所的 (TypedProps に builder method 1 つ追加)
+- 実装の中心は既存 `Props::with_mailbox_requirement(...)` の再利用で済む
+- `TypedProps` 側の変更も薄い convenience method 1 つで足りる
 
 **Cons:**
-- ユーザが `with_stash_capacity` を **必ず** 呼ぶ必要がある。忘れると runtime で `prepend_via_drain_and_requeue` (将来削除予定) または panic
+- ユーザが deque requirement を **必ず** 明示する必要がある。typed helper を呼び忘れると fallback/panic に落ちる
 - 既存の `Behaviors::with_stash` を使うコードは破壊的 (要修正)
-- `Behaviors::with_stash` を呼びつつ `with_stash_capacity` を呼び忘れる、という pitfall は依然残る
+- `Behaviors::with_stash` を呼びつつ requirement を付け忘れる、という pitfall は依然残る
 - 「stash を使う」という意図が API 上 2 箇所 (Behavior + Props) に分散する
+- `bounded + stash` は現状の mailbox factory 制約により別途解決が必要
 
-**実装コスト**: 低 (builder method 追加 + ドキュメント)
+**実装コスト**: 低 (typed convenience method 追加 + docs/tests)
 
 **互換性**: 既存 ユーザコードに対して破壊的 (build doesn't fail at compile time, but runtime fails)。
+
+**成立条件 (重要):**
+- Option B を採用する場合、Phase 2 では **silent fallback を許してはならない**。`prepend_via_drain_and_requeue` を削除したうえで、deque requirement を満たさない actor が stash/unstash を使った場合は **deterministic に失敗** しなければならない
+- 失敗の発見タイミングは Phase 2 で詰めるが、少なくとも「helper 呼び忘れのまま production で fallback 経路に流れる」状態は不可
+- したがって Option B は「explicit opt-in + fallback 削除 + deterministic validation」の 3 点セットで初めて spec を満たす
+- practical な緩和策としては、少なくとも次のどちらかが必要:
+  - `Behaviors::with_stash` 利用と mailbox requirement 未指定の組み合わせを検出する lint / static check
+  - `prepend_via_drain_and_requeue` 削除後の deterministic validation (`panic` または spawn-time validation)
 
 #### Option C: Mailbox 側で runtime panic / diagnostics
 
@@ -158,6 +184,7 @@ if !self.user.as_deque().is_some() {
 - 「正しく動くべきコード」が configure 漏れで panic する設計は脆弱
 - Option D / E のように prepend を不要にする抜本対応にはならない
 - silent な性能劣化問題は解消される (panic で stop) が、production crash のリスクが新たに増える
+- `bounded + stash` 制約は残る
 
 **実装コスト**: 最小 (panic 1 行 + ドキュメント)
 
@@ -182,13 +209,17 @@ unstash_messages の経路を変更:
 - `user_queue_lock` 撤廃の最大の障害が消える
 - Behavior layer が stash の責務を完全に持つ (責務境界が明確)
 - mailbox 種別 (deque か否か) と stash 機能が独立する
+- mailbox に依存しないため、現状の `bounded + deque` 制約に縛られない
 
 **Cons:**
-- 「stashed messages は mailbox の existing pending よりも前に処理される」という Pekko 互換セマンティクスを保つために、unstash 中は新規 enqueue を block するか、unstash 完了後に mailbox を再 schedule するか、何らかの工夫が必要
-- middleware 経路が変わる: 現状は mailbox prepend 後に通常の dispatcher loop が middleware を通すが、Option D では BehaviorRunner が直接呼ぶため middleware を bypass する可能性
+- spec.md Requirement 3 の **ordering invariant** (`stashed messages are processed before existing pending mailbox messages`) を保たなければならない。この拘束を満たすには少なくとも次のいずれかが必要:
+  - unstash 中に mailbox への新規 enqueue を block する
+  - unstash 完了まで dispatcher loop を pause する
+  - mailbox の pending と stashed を統合的に観測できる別の直列化境界を導入する
+- 上記のどれを選んでも `user_queue_lock` 撤廃や dispatcher/runner 構造に追加コストが発生するため、Option D の実装難度は比較表以上に重い
+- actor-core には現状 `Props::middleware()` に識別子を保持する API はあるが、typed/classic の runtime path でそれを解決して user callback に適用する mailbox-prepend middleware 実装は見当たらない。したがってここで言う middleware 懸念は **現行 runtime の破壊** ではなく、**将来 pipeline を追加したときの拡張性リスク** である
 - ActorCell の `unstash_messages` シグネチャと caller (ActorCell::stash_unstash 経路) の大規模書き換え
 - Pekko との互換性が崩れる可能性 (Pekko は mailbox レベルで unstash する)
-- stashed messages の **順序** と **新着 messages の interleaving** をどう定義するかの新たな設計判断が必要
 
 **実装コスト**: 高 (ActorCell 経路 + Behavior layer の interpreter + middleware 統合 + tests)
 
@@ -212,11 +243,16 @@ classic actor の stash:
 - typed users (新規 actor の主流) は zero-config で正しく動く
 - classic users は明示的な opt-in (compile-time 保証ではないが pattern が単純)
 - `prepend_via_drain_and_requeue` を完全削除可能
+- classic 側の既存 `Props::with_mailbox_requirement(...)` と typed 側の抜本解 (`Option D`) を分離して段階導入できる
+- typed と classic の移行速度を分けられる。typed を先に改善しつつ、classic は既存 Props API に寄せたまま後追いで整理できる
+- `bounded + stash` 制約の解き方を typed/classic で分離検討できるため、単一 option で両方を一度に着地させるより review を分割しやすい
 
 **Cons:**
 - 2 つの別々の機構を維持する必要がある (実装コストが最大)
 - typed / classic の挙動が乖離する可能性
 - レビューコストが最大
+- classic では `bounded + stash` 制約が残る一方、typed では回避できるため、 capability の対称性が崩れる
+- classic にも Option D を適用可能なら、この hybrid を独立 option として残す理由は弱くなる
 
 **実装コスト**: 最大 (Option B + Option D の和)
 
@@ -231,30 +267,36 @@ classic actor の stash:
 | Behavior 責務拡大 | あり | なし | なし | あり | あり (typed) |
 | `prepend_via_drain_and_requeue` 削除可能 | yes | yes | no | yes | yes |
 | `user_queue_lock` 撤廃可能 | yes | yes | no | yes | yes |
+| `bounded + stash` を新 queue なしで扱える | no | no | no | yes | typed=yes / classic=no |
 | Pekko 互換 | yes | yes | yes | 要再検討 | typed=要再検討, classic=yes |
 | Compile-time 強制 | no | no | no | no | no |
-| 失敗検出時期 | spawn 時 (silent) | runtime panic | runtime panic | (該当なし) | runtime panic (classic) |
-| middleware 経路 | 不変 | 不変 | 不変 | 変わる可能性 | 部分変化 |
+| 失敗検出時期 | n/a (auto) | lint または validation/panic | runtime panic | n/a | typed=n/a / classic=validation/panic |
+| middleware 経路 | 不変 | 不変 | 不変 | 将来拡張時に再検討要 | typed=再検討 / classic=不変 |
 
 ### Decision 4: 推奨候補 (commit ではない)
 
-**現時点での recommend は Option A** だが、user / team の判断を仰ぐ:
+**現時点での recommend は Option B** だが、user / team の判断を仰ぐ:
 
 **理由**:
-- 実装コストが妥当 (中)
-- ユーザ既存コードを壊さない
+- 既存の `Behavior` / `Props` の責務境界を崩さない
+- 既存の `Props::with_mailbox_requirement(...)` をそのまま活用できる
+- 実装コストが最小に近く、YAGNI/`Less is more` に合う
 - `prepend_via_drain_and_requeue` 削除という主目的を達成する
 - Pekko 互換セマンティクスを維持できる
 - middleware 経路に変化なし
-- silent な性能劣化を解消する
+- classic 側はすでに持っている API を活かせる
 
 **懸念**:
-- Behavior の責務拡大は OO 的に微妙
-- spawn 経路の改修コストが想定より大きい可能性 (BehaviorRunner / TypedActorAdapter の API 変更)
+- typed 側で explicit opt-in を忘れる pitfall は残る
+- 既存 typed tests / examples の書き換えが必要
+- compile-time 強制にはならない
 
-**もし user が「Behavior の責務を pure に保ちたい」と判断するなら → Option B**
-- ただし silent なバグの pitfall を許容する必要がある
-- ドキュメントで「stash を使う場合は必ず with_stash_capacity を呼ぶこと」を明示
+**recommend の前提条件:**
+- Option B を採用するなら、Phase 2 で helper 忘れを **silent に見逃さない** 緩和策を同時に入れる
+- 最低ラインは「lint または deterministic validation」のどちらかであり、fallback を残したまま進めてはならない
+
+**もし user が「既存 typed user code を壊したくない」と判断するなら → Option A**
+- ただし `Behavior` の責務拡大と spawn 経路改修を受け入れる必要がある
 
 **もし user が「mailbox prepend を完全に消したい」と判断するなら → Option D**
 - ただし Pekko 互換セマンティクスの再検討が必要
@@ -269,7 +311,7 @@ classic actor の stash:
 1. stash 利用 actor は **必ず deque-capable mailbox** で実行される、または stash の replay が mailbox prepend を経由しない設計である
 2. `Behaviors::with_stash` を使う既存 typed test (例: `typed_behaviors_stash_buffered_messages_across_transition`) は Phase 2 後も pass する
 3. `cell.stash_message_with_limit` を使う既存 classic test (例: `unstash_messages_are_replayed_before_existing_mailbox_messages`) も pass する
-4. stash → unstash の order semantic (stashed messages are processed before existing pending messages) は維持される、または明示的に変更が議論される
+4. stash → unstash の order semantic (stashed messages are processed before existing pending messages) は維持される
 
 ## Risks / Trade-offs
 
@@ -293,7 +335,7 @@ classic actor の stash:
 ### Step 2: user / team レビュー
 
 - 5 オプションを review
-- recommend (Option A) を採用するか、別 option を選ぶか、修正を求めるかを判断
+- recommend (Option B) を採用するか、別 option を選ぶか、修正を求めるかを判断
 - 議論結果を design.md に追記
 
 ### Step 3: 合意後
@@ -308,12 +350,9 @@ classic actor の stash:
   - 現状、Behavior は handler logic のみを保持する pure な abstraction
   - mailbox_requirement を持たせると「actor の実行環境要求」も Behavior の責務になる
   - これは Pekko の `Behaviors.setup` 内で `ActorContext.system` を介して mailbox を変更できる API と似ているが、ベスト practice として議論の余地がある
-- **Q2**: stash unstash の **順序保証** は本当に必要か?
-  - Pekko の現状: 「stashed messages are processed before existing pending messages」 は明示的な契約
-  - fraktor-rs もこの契約を守る必要があるか? それとも relax して「いつかは processed される」程度でよいか?
-  - 緩める場合は behavior change の document を追加
 - **Q3**: Option D の middleware 経路問題は、Behavior layer から explicitly middleware pipeline を呼ぶ helper を提供すれば解消できるか?
-  - 実装次第。middleware の dispatch 単位 (envelope vs typed message) を考慮する必要あり
+  - 現状 actor-core には middleware identifier を `Props` に保持する API はあるが、runtime pipeline 実装自体は見当たらない
+  - 将来 pipeline を追加する場合、dispatch 単位 (envelope vs typed message) をどう定義するかが論点になる
 - **Q4**: Phase 2 で実装した change は、本 change を update する形にするか、新規 change として作るか?
   - 現状の openspec workflow ではどちらも可能
   - recommend: 新規 change を作る (本 change は explore-only として archive)

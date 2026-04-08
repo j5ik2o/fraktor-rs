@@ -27,7 +27,7 @@ production が `prepend_via_drain_and_requeue` に依存している証拠:
 
 `Behaviors::with_stash` は **Behavior layer のヘルパー** であり、`Props.mailbox_config` への参照を持たない。Behavior と Props は意図的に独立した責務を持っており、現状の API では Behavior から Props.mailbox_config に対して deque 要求を伝達する自然な経路がない。
 
-選択肢は複数あり、それぞれ異なる API impact / behavior 変化 / 実装コストを持つ。**proposal/design 先行で合意を取ってから実装に進む** 必要がある。本 change の責務は **設計空間を整理し、選択肢を提示すること** である。
+選択肢は複数あり、それぞれ異なる API impact / behavior 変化 / 実装コストを持つ。特に `TypedProps` には現在 `with_mailbox_requirement(...)` 相当の convenience がなく、classic `Props` が既に持つ API との差分も設計論点になる。**proposal/design 先行で合意を取ってから実装に進む** 必要がある。本 change の責務は **設計空間を整理し、選択肢を提示すること** である。
 
 ## What Changes
 
@@ -52,6 +52,12 @@ production が `prepend_via_drain_and_requeue` に依存している証拠:
 - test の追加・変更も **一切なし**
 - `stashed_messages` field や `stash_message_with_limit` の signature 変更も **一切なし**
 - これらは Phase 2 で合意された option に応じて行う
+
+### Process boundary
+
+- Phase 1 の diff は `openspec/changes/stash-requires-deque-mailbox/` 配下のドキュメントだけに限定する
+- Phase 2 の実装は **別の openspec change** として追跡する
+- 本 change は explore / proposal のコンテキストを残し、実装 change の入口として archive される
 
 ## Capabilities
 
@@ -79,7 +85,7 @@ production が `prepend_via_drain_and_requeue` に依存している証拠:
 選ばれた option に依存:
 
 - **Option A** (Behavior に requirements field 追加): `Behavior<M>` struct + 全 spawn 経路 + tests
-- **Option B** (TypedProps explicit builder): `TypedProps::with_stash_capacity` 等の helper + ドキュメント + tests
+- **Option B** (Props requirement explicit opt-in): `Props::with_mailbox_requirement(MailboxRequirement::for_stash())` を基本線とし、必要なら `TypedProps::with_stash_mailbox()` のような薄い helper を追加
 - **Option C** (Mailbox runtime panic): 実装は最小だが behavior change 大きい
 - **Option D** (stash unstash を Behavior layer 内で完結): `unstash_messages` 経路の大規模書き換え + Pekko 互換性検討
 - **Option E** (Hybrid: typed = D, classic = B): 最大の作業量、最も柔軟

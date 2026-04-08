@@ -9,6 +9,8 @@
 
 どちらの path を選ぶかは本 change の Phase 1 (探索) ではなく、Phase 1 完了後の合意で決定される。本 spec は **どちらの path でも満たすべき不変条件** だけを記述する。
 
+注: Phase 1 の現時点の recommend は **Path 1** (`Props` 側の explicit opt-in) だが、本 spec 自体はその決定に依存しない。
+
 #### Scenario: stash backing is deterministic (no silent fallback)
 - **WHEN** stash 機能を使うコード (typed `Behaviors::with_stash` または classic `cell.stash_message_with_limit`) を実行する
 - **THEN** Phase 2 完了後は `Mailbox::prepend_via_drain_and_requeue` が **実行されない** (Path 1 では deque 経路だけが取られ、Path 2 では mailbox prepend 自体を経由しないため)
@@ -27,33 +29,31 @@
 これらの test の期待値 (assert) は維持される。test の構築方法 (例: Props 構築の API、mailbox 構築方法) は **option 次第で書き換わる可能性がある** が、observable behavior (stashed → unstash 後の処理順) は不変である。
 
 #### Scenario: All existing stash tests pass after Phase 2
-- **WHEN** Phase 2 実装後に `cargo test -p fraktor-actor-core-rs --tests` を実行する
+- **WHEN** Phase 2 実装後に `cargo test -p fraktor-actor-core-rs --lib` を実行する
 - **THEN** stash 関連の全 test が pass する
 - **AND** test の assertion (受信 message の順序、count 等) は Phase 1 以前と同じ
 
-### Requirement: Stash → unstash ordering SHALL be preserved or explicitly documented
+### Requirement: `bounded + stash` combination SHALL be handled deterministically
 
-Phase 2 の実装では、現状の **「stashed messages are processed before existing pending mailbox messages」** という order semantic を **維持する**（SHOULD）。維持できない場合 (Option D の middleware bypass 議論など) は、behavior change を **明示的に design.md と CHANGELOG に記録する**（MUST）。
+現状の mailbox factory では `MailboxRequirement::for_stash()` と bounded mailbox policy は両立せず、`MailboxConfigError::BoundedWithDeque` で reject される。Phase 2 ではこの組み合わせを **明示的に定義** しなければならない（MUST）。
+
+許容されるのは次のどちらかのみ:
+
+- **Path A**: `bounded + stash` を正式サポートし、deque-capable bounded mailbox 実装を導入する
+- **Path B**: `bounded + stash` は unsupported とし、spawn/configuration 時に deterministic に失敗させる
+
+どちらにしても、silent fallback や暗黙の degrade は許されない（MUST NOT）。
+
+#### Scenario: bounded stash never degrades silently
+- **WHEN** user が bounded mailbox と stash を同時に要求する
+- **THEN** system は deque-capable bounded mailbox を構成する、または deterministic な configuration failure を返す
+- **AND** `prepend_via_drain_and_requeue` に暗黙 fallback しない
+
+### Requirement: Stash → unstash ordering SHALL be preserved
+
+Phase 2 の実装では、現状の **「stashed messages are processed before existing pending mailbox messages」** という order semantic を **維持しなければならない**（MUST）。この ordering は既存の classic / typed テストが依存している観測可能な契約であり、explore change の段階で緩めてはならない。
 
 #### Scenario: Stashed messages observed before pending messages
 - **WHEN** actor が stash → 新着 message を受信 → unstash を順次行う
 - **THEN** unstashed messages が新着 message より **前に** 処理される
-- **AND** この order semantic は Phase 2 で維持される、または明示的な変更として記録される
-
-### Requirement: Phase 1 SHALL NOT modify implementation code
-
-本 change の Phase 1 (explore / proposal) では **実装コードを一切変更してはならない**（MUST NOT）。変更されるファイルは `openspec/changes/stash-requires-deque-mailbox/` 配下のみである。
-
-#### Scenario: Phase 1 git diff is documentation-only
-- **WHEN** 本 change Phase 1 の `git diff` を確認する
-- **THEN** 変更されたファイルは `openspec/changes/stash-requires-deque-mailbox/proposal.md` / `design.md` / `tasks.md` / `specs/stash-mailbox-requirement/spec.md` の 4 つだけである
-- **AND** `modules/` 配下のファイルは一切変更されていない
-
-### Requirement: Phase 2 implementation SHALL be tracked as a separate openspec change
-
-Phase 2 の実装は **本 change ではなく別の openspec change として追跡する**（MUST）。Phase 1 の design.md で recommend された option (または合意で選ばれた option) に対応する新規 change を作成し、固有の proposal / design / tasks / spec を持たせる。
-
-#### Scenario: Phase 2 is a separate openspec change
-- **WHEN** Phase 1 完了後に Phase 2 の作業を開始する
-- **THEN** `openspec/changes/<phase-2-change-name>/` という新しいディレクトリが作成される
-- **AND** 本 change `stash-requires-deque-mailbox` は変更されない (または archive 候補としてマーク)
+- **AND** `typed_behaviors_unstash_replays_before_already_queued_messages` と `unstash_messages_are_replayed_before_existing_mailbox_messages` の観測結果は維持される
