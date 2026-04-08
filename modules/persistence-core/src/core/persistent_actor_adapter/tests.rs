@@ -5,6 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorCell, ActorContext,
     actor_ref::ActorRef,
     error::ActorError,
+    extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView, message_invoker::MessageInvokerPipeline},
     props::Props,
     scheduler::{
@@ -20,6 +21,7 @@ use fraktor_actor_core_rs::core::kernel::{
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
+use super::RecoveryTick;
 use crate::core::{
   eventsourced::Eventsourced, in_memory_journal::InMemoryJournal, in_memory_snapshot_store::InMemorySnapshotStore,
   journal_error::JournalError, journal_response::JournalResponse, persistence_context::PersistenceContext,
@@ -213,8 +215,7 @@ fn adapter_pre_start_binds_context() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -239,8 +240,7 @@ fn adapter_pre_start_schedules_recovery_timeout() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -264,8 +264,7 @@ fn adapter_pre_start_rejects_persistence_id_mismatch() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -288,8 +287,7 @@ fn adapter_rearms_recovery_timeout_on_snapshot_and_replayed_message() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -326,7 +324,7 @@ fn adapter_forwards_recovery_timed_out_signal() {
   let mut ctx = build_context(&system);
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
-  let message = fraktor_actor_core_rs::core::kernel::actor::messaging::AnyMessage::new(RecoveryTimedOut::new("pid-1"));
+  let message = AnyMessage::new(RecoveryTimedOut::new("pid-1"));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -341,7 +339,7 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_snapshot() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovery_started(&mut adapter, &mut ctx);
-  let message = AnyMessage::new(super::RecoveryTick::waiting_snapshot(adapter.recovery_timeout_epoch));
+  let message = AnyMessage::new(RecoveryTick::waiting_snapshot(adapter.recovery_timeout_epoch));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -361,7 +359,7 @@ fn adapter_recovery_tick_triggers_timeout_while_waiting_event() {
   let actor = DummyPersistentActor::new();
   let mut adapter = PersistentActorAdapter::new(actor);
   prepare_recovering(&mut adapter, &mut ctx);
-  let message = AnyMessage::new(super::RecoveryTick::waiting_event(adapter.recovery_timeout_epoch));
+  let message = AnyMessage::new(RecoveryTick::waiting_event(adapter.recovery_timeout_epoch));
 
   let result = adapter.receive(&mut ctx, message.as_view());
 
@@ -379,8 +377,7 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
   let journal = InMemoryJournal::new();
   let snapshot_store = InMemorySnapshotStore::new();
   let installer = PersistenceExtensionInstaller::new(journal, snapshot_store);
-  let installers = fraktor_actor_core_rs::core::kernel::actor::extension::ExtensionInstallers::default()
-    .with_extension_installer(installer);
+  let installers = ExtensionInstallers::default().with_extension_installer(installer);
   let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let config = ActorSystemConfig::default()
@@ -406,7 +403,7 @@ fn adapter_ignores_stale_recovery_tick_epoch() {
   adapter.receive(&mut ctx, replayed.as_view()).expect("replayed message");
   assert_ne!(stale_epoch, adapter.recovery_timeout_epoch);
 
-  let stale_tick = AnyMessage::new(super::RecoveryTick::waiting_event(stale_epoch));
+  let stale_tick = AnyMessage::new(RecoveryTick::waiting_event(stale_epoch));
   adapter.receive(&mut ctx, stale_tick.as_view()).expect("stale tick should be ignored");
 
   assert_eq!(adapter.actor.timed_out_count, 0);
