@@ -193,8 +193,7 @@ impl MailboxScheduleState {
           RunFinishOutcome::FinalizeNow
         }
       } else {
-        let pending_reschedule = self.need_reschedule.load(Ordering::Acquire);
-        RunFinishOutcome::Continue { pending_reschedule }
+        RunFinishOutcome::Continue { pending_reschedule: false }
       };
 
       if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {

@@ -216,6 +216,8 @@ impl Mailbox {
             | SystemMessage::Suspend => self.suspend(),
             | SystemMessage::Resume => self.resume(),
             | other => {
+              // `install_invoker` 前に mailbox が早期 close された edge case では
+              // invoker が未設定のままなので、そのままループを抜けてよい。
               let Some(ref invoker) = invoker else {
                 break;
               };
@@ -227,6 +229,8 @@ impl Mailbox {
           processed += 1;
         },
         | Some(MailboxMessage::User(envelope)) => {
+          // `install_invoker` 前に mailbox が早期 close された edge case では
+          // invoker が未設定のままなので、そのままループを抜けてよい。
           let Some(ref invoker) = invoker else {
             break;
           };
