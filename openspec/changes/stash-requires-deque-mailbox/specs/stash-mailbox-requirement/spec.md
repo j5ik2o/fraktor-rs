@@ -1,59 +1,85 @@
 ## ADDED Requirements
 
-### Requirement: Stash usage SHALL be backed by deque-capable mailbox or by an in-Behavior replay path
+### Requirement: Stash-capable actor props SHALL declare deque mailbox requirement explicitly
 
-`actor-core` の stash 機構 (`Behaviors::with_stash` および `ActorCell::stash_message_with_limit` 経路) は、以下のいずれかを **満たさなければならない**（MUST）:
+stash を利用する actor を構成する API は、deque-capable mailbox requirement を明示できなければならない（MUST）。typed/untyped の両方で stash 用 mailbox convenience API を提供し、その API は `MailboxRequirement::for_stash()` と同等の requirement を適用しなければならない（MUST）。
 
-- **Path 1**: stash を使う actor が必ず **deque-capable mailbox** (`MailboxRequirement::for_stash() = requires_deque()` 強制) で spawn される。`unstash` は `Mailbox::prepend_user_messages` を経由するが、その内部は deque 専用 path (`UnboundedDequeMessageQueue::enqueue_first` 等の atomic prepend) のみを使う
-- **Path 2**: stash の replay (`unstash`) が `Mailbox::prepend_user_messages` を経由せず、Behavior interpreter / dispatcher loop の中で直接 stashed messages を replay する
+#### Scenario: Untyped stash mailbox helper applies deque requirement
+- **GIVEN** caller が untyped actor 用の `Props` を構成している
+- **WHEN** caller が `Props::with_stash_mailbox()` を適用する
+- **THEN** resulting `Props` は `MailboxRequirement::for_stash()` と同等の mailbox requirement を持つ
 
-どちらの path を選ぶかは本 change の Phase 1 (探索) ではなく、Phase 1 完了後の合意で決定される。本 spec は **どちらの path でも満たすべき不変条件** だけを記述する。
+#### Scenario: Typed stash mailbox helper applies deque requirement
+- **GIVEN** caller が typed actor 用の `TypedProps` を構成している
+- **WHEN** caller が `TypedProps::with_stash_mailbox()` を適用する
+- **THEN** underlying untyped `Props` は `MailboxRequirement::for_stash()` と同等の mailbox requirement を持つ
 
-注: Phase 1 の現時点の recommend は **Path 1** (`Props` 側の explicit opt-in) だが、本 spec 自体はその決定に依存しない。
+### Requirement: Stash SHALL fail deterministically when mailbox is not deque-capable
 
-#### Scenario: stash backing is deterministic (no silent fallback)
-- **WHEN** stash 機能を使うコード (typed `Behaviors::with_stash` または classic `cell.stash_message_with_limit`) を実行する
-- **THEN** Phase 2 完了後は `Mailbox::prepend_via_drain_and_requeue` が **実行されない** (Path 1 では deque 経路だけが取られ、Path 2 では mailbox prepend 自体を経由しないため)
-- **AND** silent な性能劣化 (drain_and_requeue の暗黙 fallback) は発生しない
+`ActorCell::stash_message_with_limit` は、mailbox が deque-capable prepend を提供できない場合に stash を受け付けてはならない（MUST NOT）。この場合は deterministic な recoverable error を返し、新しい stashed message を追加してはならない（MUST NOT）。
 
-### Requirement: Existing stash tests SHALL continue to pass after Phase 2
+#### Scenario: stash rejects non-deque mailbox before buffering
+- **GIVEN** actor が deque-capable mailbox requirement を持たないまま実行されている
+- **WHEN** actor が `stash_message_with_limit` を実行する
+- **THEN** result は recoverable error になる
+- **AND** 新しい message は stash buffer に追加されない
 
-`actor-core` の既存 stash 関連 test は、Phase 2 で選ばれた option を実装した後も **すべて pass しなければならない**（MUST）:
+### Requirement: Unstash SHALL fail deterministically when mailbox is not deque-capable
 
-- `typed_behaviors_stash_buffered_messages_across_transition` (`modules/actor-core/src/core/typed/tests.rs`)
-- `typed_behaviors_with_stash_limits_capacity` (同上)
-- `typed_behaviors_with_stash_keeps_adapter_payload_after_unstash` (同上)
-- `unstash_messages_are_replayed_before_existing_mailbox_messages` (`modules/actor-core/src/core/kernel/actor/actor_cell/tests.rs`)
-- その他 stash 関連 test 全般
+`ActorCell::unstash_message`、`unstash_messages`、`unstash_messages_with_limit` は、mailbox が deque-capable prepend を提供できない場合に silent fallback してはならない（MUST NOT）。この場合は deterministic な recoverable error を返し、既存の stashed messages を失ってはならない（MUST NOT）。
 
-これらの test の期待値 (assert) は維持される。test の構築方法 (例: Props 構築の API、mailbox 構築方法) は **option 次第で書き換わる可能性がある** が、observable behavior (stashed → unstash 後の処理順) は不変である。
+#### Scenario: unstash_message rejects non-deque mailbox
+- **GIVEN** actor が既に stashed message を保持している
+- **AND** actor は deque-capable mailbox requirement を持たないまま実行されている
+- **WHEN** actor が `unstash_message` を実行する
+- **THEN** result は recoverable error になる
+- **AND** unstash 対象 message は stashed state に残る
 
-#### Scenario: All existing stash tests pass after Phase 2
-- **WHEN** Phase 2 実装後に `cargo test -p fraktor-actor-core-rs --lib` を実行する
-- **THEN** stash 関連の全 test が pass する
-- **AND** test の assertion (受信 message の順序、count 等) は Phase 1 以前と同じ
+#### Scenario: unstash_messages rejects non-deque mailbox
+- **GIVEN** actor が複数の stashed messages を保持している
+- **AND** actor は deque-capable mailbox requirement を持たないまま実行されている
+- **WHEN** actor が `unstash_messages` を実行する
+- **THEN** result は recoverable error になる
+- **AND** stashed messages は失われない
 
-### Requirement: `bounded + stash` combination SHALL be handled deterministically
+#### Scenario: unstash_messages_with_limit rejects non-deque mailbox
+- **GIVEN** actor が複数の stashed messages を保持している
+- **AND** actor は deque-capable mailbox requirement を持たないまま実行されている
+- **WHEN** actor が `unstash_messages_with_limit` を実行する
+- **THEN** result は recoverable error になる
+- **AND** wrap 前の stash 順序を保ったまま messages は復元される
 
-現状の mailbox factory では `MailboxRequirement::for_stash()` と bounded mailbox policy は両立せず、`MailboxConfigError::BoundedWithDeque` で reject される。Phase 2 ではこの組み合わせを **明示的に定義** しなければならない（MUST）。
+### Requirement: Supported stash path SHALL preserve prepend ordering semantics
 
-許容されるのは次のどちらかのみ:
+deque mailbox requirement を満たした stash actor では、unstash により replay された messages は既に mailbox に積まれている pending messages より前に処理されなければならない（MUST）。
 
-- **Path A**: `bounded + stash` を正式サポートし、deque-capable bounded mailbox 実装を導入する
-- **Path B**: `bounded + stash` は unsupported とし、spawn/configuration 時に deterministic に失敗させる
+#### Scenario: Typed unstash replays before queued messages
+- **GIVEN** typed actor が `TypedProps::with_stash_mailbox()` を使って spawn されている
+- **WHEN** actor が message を stash した後に mailbox 上へ別 message を enqueue してから unstash する
+- **THEN** unstashed message は既存 queued message より前に観測される
 
-どちらにしても、silent fallback や暗黙の degrade は許されない（MUST NOT）。
+#### Scenario: Classic unstash replays before queued messages
+- **GIVEN** classic actor が `Props::with_stash_mailbox()` を使って spawn されている
+- **WHEN** actor が message を stash した後に mailbox 上へ別 message を enqueue してから unstash する
+- **THEN** unstashed message は既存 queued message より前に観測される
 
-#### Scenario: bounded stash never degrades silently
-- **WHEN** user が bounded mailbox と stash を同時に要求する
-- **THEN** system は deque-capable bounded mailbox を構成する、または deterministic な configuration failure を返す
-- **AND** `prepend_via_drain_and_requeue` に暗黙 fallback しない
+#### Scenario: Empty unstash remains a no-op even without deque capability
+- **GIVEN** actor は stashed messages を保持していない
+- **AND** actor は deque-capable mailbox requirement を持たないまま実行されている
+- **WHEN** actor が `unstash_message` または `unstash_messages` を実行する
+- **THEN** result は `Ok(0)` である
+- **AND** stash contract violation error は返らない
 
-### Requirement: Stash → unstash ordering SHALL be preserved
+### Requirement: `bounded + stash` SHALL fail deterministically
 
-Phase 2 の実装では、現状の **「stashed messages are processed before existing pending mailbox messages」** という order semantic を **維持しなければならない**（MUST）。この ordering は既存の classic / typed テストが依存している観測可能な契約であり、explore change の段階で緩めてはならない。
+`bounded` mailbox policy と stash mailbox requirement の組み合わせは、silent fallback してはならない（MUST NOT）。Phase III では bounded deque mailbox を導入しないため、この構成は deterministic な configuration failure を返さなければならない（MUST）。
 
-#### Scenario: Stashed messages observed before pending messages
-- **WHEN** actor が stash → 新着 message を受信 → unstash を順次行う
-- **THEN** unstashed messages が新着 message より **前に** 処理される
-- **AND** `typed_behaviors_unstash_replays_before_already_queued_messages` と `unstash_messages_are_replayed_before_existing_mailbox_messages` の観測結果は維持される
+#### Scenario: Bounded typed stash support is rejected
+- **GIVEN** caller が bounded mailbox policy を選んでいる
+- **WHEN** caller が `TypedProps::with_stash_mailbox()` を組み合わせて actor を構成する
+- **THEN** spawn または mailbox configuration validation は deterministic に失敗する
+
+#### Scenario: Bounded untyped stash support is rejected
+- **GIVEN** caller が bounded mailbox policy を選んでいる
+- **WHEN** caller が `Props::with_stash_mailbox()` を組み合わせて actor を構成する
+- **THEN** spawn または mailbox configuration validation は deterministic に失敗する
