@@ -117,12 +117,13 @@ impl MessageDispatcherShared {
 
   /// Detaches `actor` from the dispatcher.
   ///
-  /// Transitions the actor's mailbox into the closed terminal state and runs
-  /// `clean_up` so any remaining envelopes are routed to dead letters (the
-  /// `MailboxCleanupPolicy::LeaveSharedQueue` variant used by
-  /// `BalancingDispatcher` skips the drain). Returns the post-detach
-  /// [`ShutdownSchedule`] so callers can decide whether to register a delayed
-  /// dispatcher shutdown.
+  /// Requests terminal close for the actor's mailbox and, when the mailbox is
+  /// idle, lets the detach caller perform immediate cleanup. When the mailbox
+  /// is already running, cleanup ownership is handed off to the in-flight
+  /// runner so detach does not block waiting for the drain loop to finish.
+  ///
+  /// Returns the post-detach [`ShutdownSchedule`] so callers can decide whether
+  /// to register a delayed dispatcher shutdown.
   #[must_use]
   pub fn detach(&self, actor: &ArcShared<ActorCell>) -> ShutdownSchedule {
     actor.mailbox().become_closed_and_clean_up();

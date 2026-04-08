@@ -9,8 +9,8 @@ use core::{num::NonZeroUsize, time::Duration};
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
 
 use super::{
-  DequeMessageQueue, MailboxScheduleState, ScheduleHints, SystemQueue, envelope::Envelope,
-  mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
+  CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
+  envelope::Envelope, mailbox_cleanup_policy::MailboxCleanupPolicy, mailbox_instrumentation::MailboxInstrumentation,
   mailbox_message::MailboxMessage, message_queue::MessageQueue,
 };
 use crate::core::kernel::{
@@ -179,10 +179,18 @@ impl Mailbox {
   /// pending reschedule.
   #[must_use]
   pub fn run(&self, throughput: NonZeroUsize, throughput_deadline: Option<Duration>) -> bool {
-    let invoker = self.invoker.lock().clone();
-    let Some(invoker) = invoker else {
+    if self.state.is_cleanup_done() {
       return false;
-    };
+    }
+
+    let close_requested_at_start = self.state.is_close_requested();
+    let invoker = self.invoker.lock().clone();
+    // invoker 不在で通常の drain path は早期終了してよい。ただし close が既に
+    // 要求済みなら、これ以上 user/system delivery ができなくても terminal
+    // cleanup を完了させるために run loop へ入る必要がある。
+    if invoker.is_none() && !close_requested_at_start {
+      return false;
+    }
 
     // Phase 9.2: bail out if the owning actor cell has been dropped. The
     // weak handle is optional so legacy `Mailbox::new(policy)` callers (which
@@ -191,7 +199,7 @@ impl Mailbox {
       | Some(weak) => weak.upgrade().is_some(),
       | None => true,
     };
-    if !actor_alive {
+    if !actor_alive && !close_requested_at_start {
       return false;
     }
 
@@ -208,6 +216,11 @@ impl Mailbox {
             | SystemMessage::Suspend => self.suspend(),
             | SystemMessage::Resume => self.resume(),
             | other => {
+              // `install_invoker` 前に mailbox が早期 close された edge case では
+              // invoker が未設定のままなので、そのままループを抜けてよい。
+              let Some(ref invoker) = invoker else {
+                break;
+              };
               if let Err(error) = invoker.with_write(|i| i.invoke_system_message(other)) {
                 self.emit_log(LogLevel::Error, alloc::format!("failed to invoke system message: {error:?}"));
               }
@@ -216,6 +229,11 @@ impl Mailbox {
           processed += 1;
         },
         | Some(MailboxMessage::User(envelope)) => {
+          // `install_invoker` 前に mailbox が早期 close された edge case では
+          // invoker が未設定のままなので、そのままループを抜けてよい。
+          let Some(ref invoker) = invoker else {
+            break;
+          };
           let payload = envelope.into_payload();
           if let Err(error) = invoker.with_write(|i| i.invoke_user_message(payload)) {
             self.emit_log(LogLevel::Error, alloc::format!("failed to invoke user message: {error:?}"));
@@ -244,9 +262,17 @@ impl Mailbox {
     // `register_for_execution` whenever this combined signal is true,
     // otherwise late-arriving or already-queued messages would sit in
     // the mailbox without anyone to wake it up.
-    let pending_reschedule = self.set_idle();
-    let still_has_work = self.user_len() > 0 || self.system_len() > 0;
-    pending_reschedule || still_has_work
+    match self.finish_run() {
+      | RunFinishOutcome::Continue { pending_reschedule } => {
+        let still_has_work = self.user_len() > 0 || self.system_len() > 0;
+        pending_reschedule || still_has_work
+      },
+      | RunFinishOutcome::FinalizeNow => {
+        self.finalize_cleanup();
+        false
+      },
+      | RunFinishOutcome::Closed => false,
+    }
   }
 
   /// Returns the cleanup policy configured for this mailbox.
@@ -426,6 +452,10 @@ impl Mailbox {
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage> {
+    if self.state.is_close_requested() {
+      return None;
+    }
+
     if let Some(system) = self.system.pop() {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
@@ -437,6 +467,9 @@ impl Mailbox {
 
     let result = {
       let _guard = self.user_queue_lock.lock();
+      if self.state.is_close_requested() {
+        return None;
+      }
       self.user.dequeue().map(MailboxMessage::User)
     };
     if result.is_some() {
@@ -467,10 +500,16 @@ impl Mailbox {
     self.state.set_running();
   }
 
-  /// Clears the running flag and returns whether a pending reschedule must occur immediately.
+  /// Clears scheduled/running flags and returns whether a pending reschedule must occur
+  /// immediately.
   #[must_use]
   pub(crate) fn set_idle(&self) -> bool {
     self.state.set_idle()
+  }
+
+  #[must_use]
+  pub(crate) fn finish_run(&self) -> RunFinishOutcome {
+    self.state.finish_run()
   }
 
   /// Pekko-style alias for [`request_schedule`](Self::request_schedule).
@@ -506,17 +545,19 @@ impl Mailbox {
   /// the cell is being torn down, no further executions can be scheduled and
   /// in-flight envelopes are observed exactly once.
   pub fn become_closed_and_clean_up(&self) {
+    match self.state.request_close() {
+      | CloseRequestOutcome::CallerOwnsFinalizer => self.finalize_cleanup(),
+      | CloseRequestOutcome::RunnerOwnsFinalizer
+      | CloseRequestOutcome::AlreadyRequested
+      | CloseRequestOutcome::AlreadyCleaned => {},
+    }
+  }
+
+  fn finalize_cleanup(&self) {
     let pid = self.pid();
     let system_state = self.system_state();
-    // Acquire `user_queue_lock` before `state.close()` so that any in-flight
-    // `enqueue_envelope` / `prepend_user_messages_deque` waiting on the lock will
-    // observe `is_closed() == true` in their under-lock re-check and reject
-    // instead of mutating a drained queue. This serialization boundary is
-    // maintained regardless of `cleanup_policy` to also protect direct
-    // mailbox APIs on sharing mailboxes.
     let user_len_after_cleanup = {
       let _guard = self.user_queue_lock.lock();
-      self.state.close();
       if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
         while let Some(envelope) = self.user.dequeue() {
           if let Some(ref state) = system_state {
@@ -525,7 +566,9 @@ impl Mailbox {
         }
       }
       self.user.clean_up();
-      self.user.number_of_messages()
+      let user_len = self.user.number_of_messages();
+      self.state.finish_cleanup();
+      user_len
     };
     self.publish_metrics_with_user_len(user_len_after_cleanup);
   }

@@ -7,9 +7,26 @@ mod tests;
 
 const FLAG_SCHEDULED: u32 = 1 << 0;
 const FLAG_RUNNING: u32 = 1 << 1;
-const FLAG_CLOSED: u32 = 1 << 2;
-const SUSPEND_SHIFT: u32 = 3;
+const FLAG_CLOSE_REQUESTED: u32 = 1 << 2;
+const FLAG_FINALIZER_OWNED: u32 = 1 << 3;
+const FLAG_CLEANUP_DONE: u32 = 1 << 4;
+const SUSPEND_SHIFT: u32 = 5;
 const SUSPEND_MASK: u32 = !((1 << SUSPEND_SHIFT) - 1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CloseRequestOutcome {
+  CallerOwnsFinalizer,
+  RunnerOwnsFinalizer,
+  AlreadyRequested,
+  AlreadyCleaned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunFinishOutcome {
+  Continue { pending_reschedule: bool },
+  FinalizeNow,
+  Closed,
+}
 
 /// Mailbox-internal schedule state tracking scheduling, running, and suspension.
 pub(crate) struct MailboxScheduleState {
@@ -44,7 +61,7 @@ impl MailboxScheduleState {
 
     loop {
       let state = self.state.load(Ordering::Acquire);
-      if state & FLAG_CLOSED != 0 {
+      if state & (FLAG_CLOSE_REQUESTED | FLAG_CLEANUP_DONE) != 0 {
         return false;
       }
       if state & (FLAG_SCHEDULED | FLAG_RUNNING) != 0 {
@@ -69,11 +86,11 @@ impl MailboxScheduleState {
     }
   }
 
-  /// Clears the running flag. Returns `true` if mailbox should re-schedule immediately.
+  /// Clears scheduled/running and returns whether a pending reschedule must occur immediately.
   pub(crate) fn set_idle(&self) -> bool {
     loop {
       let state = self.state.load(Ordering::Acquire);
-      let desired = state & !FLAG_RUNNING;
+      let desired = state & !(FLAG_RUNNING | FLAG_SCHEDULED);
       if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         break;
       }
@@ -97,22 +114,96 @@ impl MailboxScheduleState {
     self.current_suspend_count() > 0
   }
 
-  /// Marks the mailbox as terminally closed. Once set, [`request_schedule`]
-  /// rejects all further scheduling attempts so the dispatcher detach path
-  /// can guarantee no further drain cycles will start.
-  pub(crate) fn close(&self) {
+  /// Requests terminal close and attempts to elect the cleanup finalizer.
+  pub(crate) fn request_close(&self) -> CloseRequestOutcome {
     loop {
       let state = self.state.load(Ordering::Acquire);
-      let desired = state | FLAG_CLOSED;
+      if state & FLAG_CLEANUP_DONE != 0 {
+        return CloseRequestOutcome::AlreadyCleaned;
+      }
+      if state & FLAG_CLOSE_REQUESTED != 0 {
+        if state & FLAG_RUNNING != 0 {
+          return CloseRequestOutcome::RunnerOwnsFinalizer;
+        }
+        if state & FLAG_FINALIZER_OWNED != 0 {
+          return CloseRequestOutcome::AlreadyRequested;
+        }
+        let desired = state | FLAG_CLOSE_REQUESTED | FLAG_FINALIZER_OWNED;
+        if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+          return CloseRequestOutcome::CallerOwnsFinalizer;
+        }
+        continue;
+      }
+      let desired = if state & FLAG_RUNNING != 0 {
+        state | FLAG_CLOSE_REQUESTED
+      } else {
+        state | FLAG_CLOSE_REQUESTED | FLAG_FINALIZER_OWNED
+      };
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        return if state & FLAG_RUNNING != 0 {
+          CloseRequestOutcome::RunnerOwnsFinalizer
+        } else {
+          CloseRequestOutcome::CallerOwnsFinalizer
+        };
+      }
+    }
+  }
+
+  /// Marks terminal cleanup as complete.
+  pub(crate) fn finish_cleanup(&self) {
+    loop {
+      let state = self.state.load(Ordering::Acquire);
+      let desired = state | FLAG_CLEANUP_DONE;
       if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
         return;
       }
     }
   }
 
-  /// Returns `true` when the mailbox has been closed (terminal state).
+  pub(crate) fn is_close_requested(&self) -> bool {
+    self.state.load(Ordering::Acquire) & FLAG_CLOSE_REQUESTED != 0
+  }
+
+  /// Returns `true` when terminal cleanup has completed.
+  pub(crate) fn is_cleanup_done(&self) -> bool {
+    self.state.load(Ordering::Acquire) & FLAG_CLEANUP_DONE != 0
+  }
+
+  /// Returns `true` when the mailbox has entered terminal close processing.
   pub(crate) fn is_closed(&self) -> bool {
-    self.state.load(Ordering::Acquire) & FLAG_CLOSED != 0
+    self.state.load(Ordering::Acquire) & (FLAG_CLOSE_REQUESTED | FLAG_CLEANUP_DONE) != 0
+  }
+
+  /// Clears the running flag and reports what the caller should do next.
+  pub(crate) fn finish_run(&self) -> RunFinishOutcome {
+    loop {
+      let state = self.state.load(Ordering::Acquire);
+      let mut desired = state & !(FLAG_RUNNING | FLAG_SCHEDULED);
+      let close_requested = state & FLAG_CLOSE_REQUESTED != 0;
+      let cleanup_done = state & FLAG_CLEANUP_DONE != 0;
+      let finalizer_owned = state & FLAG_FINALIZER_OWNED != 0;
+
+      let outcome = if cleanup_done {
+        RunFinishOutcome::Closed
+      } else if close_requested {
+        if finalizer_owned {
+          RunFinishOutcome::Closed
+        } else {
+          desired |= FLAG_FINALIZER_OWNED;
+          RunFinishOutcome::FinalizeNow
+        }
+      } else {
+        RunFinishOutcome::Continue { pending_reschedule: false }
+      };
+
+      if self.state.compare_exchange(state, desired, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        let pending_reschedule = self.need_reschedule.swap(false, Ordering::AcqRel);
+        return match outcome {
+          | RunFinishOutcome::Continue { .. } => RunFinishOutcome::Continue { pending_reschedule },
+          | other => other,
+        };
+      }
+    }
   }
 
   fn current_suspend_count(&self) -> u32 {

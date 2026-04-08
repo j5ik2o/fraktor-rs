@@ -1,17 +1,25 @@
 use alloc::collections::VecDeque;
-use std::sync::mpsc::{Receiver, Sender};
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{
+  Arc,
+  mpsc::{Receiver, Sender},
+};
 
 use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
 use crate::core::kernel::{
   actor::{
     Pid,
-    error::SendError,
-    messaging::{AnyMessage, system_message::SystemMessage},
+    error::{ActorError, SendError},
+    messaging::{
+      AnyMessage,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
+      system_message::SystemMessage,
+    },
   },
   dispatch::mailbox::{
-    DequeMessageQueue, Envelope, Mailbox, MailboxInstrumentation, MailboxMessage, MailboxOverflowStrategy,
-    MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
+    CloseRequestOutcome, DequeMessageQueue, Envelope, Mailbox, MailboxInstrumentation, MailboxMessage,
+    MailboxOverflowStrategy, MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
   },
   system::ActorSystem,
 };
@@ -158,6 +166,85 @@ impl DequeMessageQueue for ScriptedDequeMessageQueue {
       },
       | ScriptedEnqueue::Closed => Err(SendError::closed(envelope.into_payload())),
     }
+  }
+}
+
+enum BlockingInvocationKind {
+  User,
+  System,
+}
+
+struct BlockingInvoker {
+  block_kind:         BlockingInvocationKind,
+  entered_tx:         Sender<()>,
+  resume_rx:          RuntimeMutex<Receiver<()>>,
+  user_invocations:   Arc<AtomicUsize>,
+  system_invocations: Arc<AtomicUsize>,
+}
+
+impl BlockingInvoker {
+  fn new(
+    block_kind: BlockingInvocationKind,
+    entered_tx: Sender<()>,
+    resume_rx: Receiver<()>,
+    user_invocations: Arc<AtomicUsize>,
+    system_invocations: Arc<AtomicUsize>,
+  ) -> Self {
+    Self { block_kind, entered_tx, resume_rx: RuntimeMutex::new(resume_rx), user_invocations, system_invocations }
+  }
+
+  fn block_once(&self) {
+    self.entered_tx.send(()).expect("blocking invoker should signal entry");
+    self.resume_rx.lock().recv().expect("blocking invoker should receive resume");
+  }
+}
+
+impl MessageInvoker for BlockingInvoker {
+  fn invoke_user_message(&mut self, _message: AnyMessage) -> Result<(), ActorError> {
+    let previous = self.user_invocations.fetch_add(1, Ordering::SeqCst);
+    if matches!(self.block_kind, BlockingInvocationKind::User) && previous == 0 {
+      self.block_once();
+    }
+    Ok(())
+  }
+
+  fn invoke_system_message(&mut self, _message: SystemMessage) -> Result<(), ActorError> {
+    let previous = self.system_invocations.fetch_add(1, Ordering::SeqCst);
+    if matches!(self.block_kind, BlockingInvocationKind::System) && previous == 0 {
+      self.block_once();
+    }
+    Ok(())
+  }
+}
+
+struct CleanupCountingQueue {
+  messages:       RuntimeMutex<VecDeque<Envelope>>,
+  clean_up_calls: Arc<AtomicUsize>,
+}
+
+impl CleanupCountingQueue {
+  fn new(clean_up_calls: Arc<AtomicUsize>) -> Self {
+    Self { messages: RuntimeMutex::new(VecDeque::new()), clean_up_calls }
+  }
+}
+
+impl MessageQueue for CleanupCountingQueue {
+  fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
+    self.messages.lock().push_back(envelope);
+    Ok(())
+  }
+
+  fn dequeue(&self) -> Option<Envelope> {
+    self.messages.lock().pop_front()
+  }
+
+  fn number_of_messages(&self) -> usize {
+    self.messages.lock().len()
+  }
+
+  fn clean_up(&self) {
+    self.clean_up_calls.fetch_add(1, Ordering::SeqCst);
+    self.messages.lock().clear();
   }
 }
 
@@ -520,8 +607,9 @@ fn cleanup_close_wins_against_inflight_enqueue() {
     "producer は user_queue_lock 上でブロックされるべき",
   );
 
-  mailbox.state.close();
+  assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
+  mailbox.state.finish_cleanup();
   drop(guard);
 
   let result = result_rx.recv().expect("enqueue 結果を受信できるべき");
@@ -564,8 +652,9 @@ fn cleanup_close_wins_against_inflight_prepend() {
     "prepend は user_queue_lock 上でブロックされるべき",
   );
 
-  mailbox.state.close();
+  assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
+  mailbox.state.finish_cleanup();
   drop(guard);
 
   let result = result_rx.recv().expect("prepend 結果を受信できるべき");
@@ -575,4 +664,72 @@ fn cleanup_close_wins_against_inflight_prepend() {
     "under-lock re-check must reject inflight prepend, got {result:?}",
   );
   assert_eq!(mailbox.user_len(), 0, "no phantom prepended message should be in the queue");
+}
+
+#[test]
+fn runner_finalizer_cleans_up_exactly_once() {
+  use core::num::NonZeroUsize;
+  use std::{sync::mpsc, thread};
+
+  let clean_up_calls = Arc::new(AtomicUsize::new(0));
+  let queue = Box::new(CleanupCountingQueue::new(clean_up_calls.clone()));
+  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
+  let (entered_tx, entered_rx) = mpsc::channel();
+  let (resume_tx, resume_rx) = mpsc::channel();
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(BlockingInvoker::new(
+    BlockingInvocationKind::User,
+    entered_tx,
+    resume_rx,
+    user_invocations.clone(),
+    system_invocations,
+  ))));
+  mailbox.enqueue_user(AnyMessage::new("first")).expect("first");
+  mailbox.enqueue_user(AnyMessage::new("second")).expect("second");
+
+  let mailbox_for_run = Arc::clone(&mailbox);
+  let run_handle = thread::spawn(move || mailbox_for_run.run(NonZeroUsize::new(8).unwrap(), None));
+
+  entered_rx.recv().expect("runner should start first user message");
+  mailbox.become_closed_and_clean_up();
+  mailbox.become_closed_and_clean_up();
+  resume_tx.send(()).expect("resume");
+
+  assert!(!run_handle.join().expect("run thread should complete"));
+  assert_eq!(user_invocations.load(Ordering::SeqCst), 1, "second queued message must not be delivered");
+  assert_eq!(mailbox.user_len(), 0, "runner finalizer should clean remaining user queue");
+  assert_eq!(clean_up_calls.load(Ordering::SeqCst), 1, "cleanup must run exactly once");
+}
+
+#[test]
+fn close_request_does_not_dequeue_additional_system_messages() {
+  use core::num::NonZeroUsize;
+  use std::{sync::mpsc, thread};
+
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let (entered_tx, entered_rx) = mpsc::channel();
+  let (resume_tx, resume_rx) = mpsc::channel();
+  let user_invocations = Arc::new(AtomicUsize::new(0));
+  let system_invocations = Arc::new(AtomicUsize::new(0));
+  mailbox.install_invoker(MessageInvokerShared::new(Box::new(BlockingInvoker::new(
+    BlockingInvocationKind::System,
+    entered_tx,
+    resume_rx,
+    user_invocations,
+    system_invocations.clone(),
+  ))));
+  mailbox.enqueue_system(SystemMessage::Create).expect("create");
+  mailbox.enqueue_system(SystemMessage::Stop).expect("stop");
+
+  let mailbox_for_run = Arc::clone(&mailbox);
+  let run_handle = thread::spawn(move || mailbox_for_run.run(NonZeroUsize::new(8).unwrap(), None));
+
+  entered_rx.recv().expect("system invoker should block on first system message");
+  mailbox.become_closed_and_clean_up();
+  resume_tx.send(()).expect("resume");
+
+  assert!(!run_handle.join().expect("run thread should complete"));
+  assert_eq!(system_invocations.load(Ordering::SeqCst), 1, "close request must stop the next system dequeue");
+  assert_eq!(mailbox.system_len(), 1, "second system message should remain queued");
 }
