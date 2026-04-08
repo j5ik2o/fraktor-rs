@@ -7,13 +7,15 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorContext, ChildRef, Pid,
     actor_path::{ActorPath, ActorPathError, ActorPathParts, PathResolutionError},
     actor_ref::{ActorRef, NullSender},
     actor_selection::{ActorSelection, ActorSelectionError, ActorSelectionResolver},
     error::ActorError,
     messaging::{ActorIdentity, AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+    setup::ActorSystemConfig,
   },
   system::{
     ActorSystem,
@@ -52,19 +54,14 @@ impl Actor for SelectionProbeActor {
 
 fn build_selection_system() -> ActorSystem {
   let props = Props::from_fn(|| NoopActor).with_name("selection-root");
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
-    .with_system_name("selection-spec")
-    .with_tick_driver(tick_driver);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let config = ActorSystemConfig::default().with_system_name("selection-spec").with_tick_driver(tick_driver);
   ActorSystem::new_with_config(&props, &config).expect("system")
 }
 
 fn spawn_selection_probe(
   system: &ActorSystem,
-) -> (crate::core::kernel::actor::ChildRef, ArcShared<NoStdMutex<Vec<String>>>, ArcShared<NoStdMutex<Vec<Option<Pid>>>>)
-{
+) -> (ChildRef, ArcShared<NoStdMutex<Vec<String>>>, ArcShared<NoStdMutex<Vec<Option<Pid>>>>) {
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let senders = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({

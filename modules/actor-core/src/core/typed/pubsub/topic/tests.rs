@@ -3,10 +3,13 @@ use core::hint::spin_loop;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
-use crate::core::typed::{
-  TypedActorRef, TypedActorSystem, TypedProps,
-  dsl::Behaviors,
-  pubsub::{Topic, TopicCommand, TopicStats},
+use crate::core::{
+  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  typed::{
+    TypedActorRef, TypedActorSystem, TypedProps,
+    dsl::Behaviors,
+    pubsub::{Topic, TopicCommand, TopicStats},
+  },
 };
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
@@ -22,9 +25,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 #[test]
 fn topic_should_publish_to_subscribers_and_report_stats() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
   let topic_props = TypedProps::<TopicCommand<u32>>::from_behavior_factory(|| Topic::behavior("numbers"));

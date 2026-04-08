@@ -14,6 +14,7 @@ use crate::core::{
       extension::{Extension, ExtensionId},
       messaging::AnyMessage,
       scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+      setup::ActorSystemConfig,
     },
     event::{
       logging::{LogEvent, LogLevel},
@@ -22,7 +23,7 @@ use crate::core::{
     system::ActorSystem,
   },
   typed::{
-    TypedActorSystem, TypedProps,
+    DispatcherSelector, TypedActorRef, TypedActorSystem, TypedProps,
     dsl::Behaviors,
     eventstream::EventStreamCommand,
     receptionist::{ReceptionistCommand, SYSTEM_RECEPTIONIST_TOP_LEVEL},
@@ -85,9 +86,7 @@ impl ActorRefSender for CollectorSender {
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
-    .with_start_time(Duration::from_secs(1))
-    .with_tick_driver(tick_driver);
+  let config = ActorSystemConfig::default().with_start_time(Duration::from_secs(1)).with_tick_driver(tick_driver);
   TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system")
 }
 
@@ -184,13 +183,11 @@ fn register_extension_is_idempotent() {
 #[test]
 fn name_returns_configured_system_name() {
   // Given: a typed actor system with a custom name
-  let guardian_props = TypedProps::<u32>::from_behavior_factory(crate::core::typed::dsl::Behaviors::ignore);
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let config = ActorSystemConfig::default()
     .with_system_name("my-actor-system")
-    .with_tick_driver(crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    ));
-  let system = crate::core::typed::TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: name() is called
   let name = system.name();
@@ -233,13 +230,11 @@ fn start_time_returns_non_zero_duration() {
 fn start_time_returns_configured_value() {
   // Given: a typed actor system with an explicit start_time
   let expected_start = core::time::Duration::from_secs(1_700_000_000);
-  let guardian_props = TypedProps::<u32>::from_behavior_factory(crate::core::typed::dsl::Behaviors::ignore);
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let config = ActorSystemConfig::default()
     .with_start_time(expected_start)
-    .with_tick_driver(crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    ));
-  let system = crate::core::typed::TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: start_time() is called
   let start_time = system.start_time();
@@ -254,13 +249,11 @@ fn start_time_returns_configured_value() {
 fn uptime_returns_elapsed_since_start() {
   // Given: a system with a known start_time
   let start = core::time::Duration::from_secs(1_000);
-  let guardian_props = TypedProps::<u32>::from_behavior_factory(crate::core::typed::dsl::Behaviors::ignore);
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default().with_start_time(start).with_tick_driver(
-    crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    ),
-  );
-  let system = crate::core::typed::TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let config = ActorSystemConfig::default()
+    .with_start_time(start)
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: uptime is calculated with a known "now"
   let now = core::time::Duration::from_secs(1_042);
@@ -276,13 +269,11 @@ fn uptime_returns_elapsed_since_start() {
 fn uptime_saturates_when_now_is_before_start() {
   // Given: a system with a start_time
   let start = core::time::Duration::from_secs(1_000);
-  let guardian_props = TypedProps::<u32>::from_behavior_factory(crate::core::typed::dsl::Behaviors::ignore);
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default().with_start_time(start).with_tick_driver(
-    crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    ),
-  );
-  let system = crate::core::typed::TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let config = ActorSystemConfig::default()
+    .with_start_time(start)
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: now is before start_time (edge case)
   let now = core::time::Duration::from_secs(500);
@@ -303,8 +294,7 @@ fn scheduler_returns_facade_that_can_schedule_once() {
 
   // When: scheduler() is called and schedule_once is invoked
   let scheduler = system.scheduler();
-  let receiver =
-    crate::core::typed::TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::null());
+  let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
   let result = scheduler.schedule_once(core::time::Duration::from_millis(10), receiver, 42u32);
 
   // Then: a SchedulerHandle is returned
@@ -320,8 +310,7 @@ fn scheduler_returns_facade_that_can_schedule_at_fixed_rate() {
 
   // When: scheduler() returns a Scheduler and schedule_at_fixed_rate is called
   let scheduler = system.scheduler();
-  let receiver =
-    crate::core::typed::TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::null());
+  let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
   let result = scheduler.schedule_at_fixed_rate(
     core::time::Duration::from_millis(5),
     core::time::Duration::from_millis(10),
@@ -342,8 +331,7 @@ fn scheduler_returns_facade_that_can_schedule_with_fixed_delay() {
 
   // When: scheduler() returns a Scheduler and schedule_with_fixed_delay is called
   let scheduler = system.scheduler();
-  let receiver =
-    crate::core::typed::TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::null());
+  let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
   let result = scheduler.schedule_with_fixed_delay(
     core::time::Duration::from_millis(5),
     core::time::Duration::from_millis(20),
@@ -366,7 +354,7 @@ fn dispatchers_returns_facade_that_resolves_default() {
 
   // When: dispatchers() is called and the default selector is looked up
   let dispatchers = system.dispatchers();
-  let result = dispatchers.lookup(&crate::core::typed::DispatcherSelector::Default);
+  let result = dispatchers.lookup(&DispatcherSelector::Default);
 
   // Then: the default dispatcher configuration is returned
   assert!(result.is_ok(), "dispatchers().lookup(Default) should succeed");
@@ -381,7 +369,7 @@ fn dispatchers_returns_facade_that_resolves_blocking() {
 
   // When: dispatchers() is called and the Blocking selector is looked up
   let dispatchers = system.dispatchers();
-  let result = dispatchers.lookup(&crate::core::typed::DispatcherSelector::Blocking);
+  let result = dispatchers.lookup(&DispatcherSelector::Blocking);
 
   // Then: the blocking dispatcher configuration is returned
   assert!(result.is_ok(), "dispatchers().lookup(Blocking) should succeed");
@@ -396,7 +384,7 @@ fn dispatchers_returns_facade_that_rejects_unknown() {
 
   // When: dispatchers() is called and an unknown dispatcher id is looked up
   let dispatchers = system.dispatchers();
-  let selector = crate::core::typed::DispatcherSelector::from_config("nonexistent");
+  let selector = DispatcherSelector::from_config("nonexistent");
   let result = dispatchers.lookup(&selector);
 
   // Then: an error is returned
@@ -426,12 +414,10 @@ fn address_returns_local_address_with_system_name() {
 fn address_returns_local_address_with_custom_name() {
   // Given: a typed actor system with a custom name
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let config = crate::core::kernel::actor::setup::ActorSystemConfig::default()
+  let config = ActorSystemConfig::default()
     .with_system_name("custom-system")
-    .with_tick_driver(crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-      crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-    ));
-  let system = crate::core::typed::TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+    .with_tick_driver(TickDriverConfig::manual(ManualTestDriver::new()));
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: address() is called
   let address = system.address();
@@ -483,7 +469,7 @@ fn receptionist_returns_registered_system_receptionist_ref() {
   let receptionist = system.receptionist();
   let top_level =
     system.state().extra_top_level(SYSTEM_RECEPTIONIST_TOP_LEVEL).expect("system receptionist top-level registration");
-  let top_level = crate::core::typed::TypedActorRef::<ReceptionistCommand>::from_untyped(top_level);
+  let top_level = TypedActorRef::<ReceptionistCommand>::from_untyped(top_level);
 
   assert_eq!(receptionist_ref.expect("registered receptionist").pid(), top_level.pid());
   assert_eq!(receptionist.pid(), top_level.pid());

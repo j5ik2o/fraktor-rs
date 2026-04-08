@@ -117,7 +117,7 @@ fn cyclic_dependency_detected() {
 #[tokio::test]
 async fn run_executes_tasks_in_phase_order() {
   let cs = default_shutdown();
-  let order = ArcShared::new(fraktor_utils_core_rs::core::sync::RuntimeMutex::new(Vec::<i32>::new()));
+  let order = ArcShared::new(RuntimeMutex::new(Vec::<i32>::new()));
 
   let o1 = order.clone();
   cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "stop-task", move || async move {

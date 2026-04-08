@@ -8,7 +8,7 @@ use core::{
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
-  actor::messaging::AnyMessage,
+  actor::{ActorCell, messaging::AnyMessage},
   dispatch::dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorShared},
 };
 
@@ -389,8 +389,7 @@ fn end_to_end_send_via_actor_system_with_dispatcher_configurator() {
   let props = Props::from_fn(move || CountingActor { seen: seen_clone.clone() });
   let _ = MailboxPolicy::unbounded(None);
   let pid = state.allocate_pid();
-  let cell = crate::core::kernel::actor::ActorCell::create(state.clone(), pid, None, "e2e-test".to_string(), &props)
-    .expect("create cell");
+  let cell = ActorCell::create(state.clone(), pid, None, "e2e-test".to_string(), &props).expect("create cell");
   state.register_cell(cell.clone());
 
   // ActorRef::tell goes through the new sender path because the configurator is registered.

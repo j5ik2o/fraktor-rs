@@ -7,6 +7,7 @@ use super::{AbstractFsm, Fsm, FsmReason, FsmStateTimeout, FsmTransition, Logging
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
+    error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
@@ -33,11 +34,7 @@ struct Ignore;
 struct NoopActor;
 
 impl Actor for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContext<'_>,
-    _message: AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -240,9 +237,7 @@ fn fsm_restart_requires_initialize_before_handling_messages() {
   let error = fsm.handle(&mut ctx, &advance_view).expect_err("restart should require initialize");
 
   assert!(!fsm.is_terminated());
-  assert!(
-    matches!(error, crate::core::kernel::actor::error::ActorError::Recoverable(reason) if reason.as_str() == "fsm not initialized")
-  );
+  assert!(matches!(error, ActorError::Recoverable(reason) if reason.as_str() == "fsm not initialized"));
 
   fsm.initialize(&ctx).expect("reinitialize");
   fsm.handle(&mut ctx, &advance_view).expect("advance");

@@ -8,7 +8,7 @@ use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared:
 use crate::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
   },
@@ -18,8 +18,8 @@ use crate::core::kernel::{
 struct RecordingSender;
 
 impl ActorRefSender for RecordingSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
   }
 }
 

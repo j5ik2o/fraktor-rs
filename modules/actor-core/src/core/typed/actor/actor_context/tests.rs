@@ -11,14 +11,20 @@ use crate::core::{
       supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
     },
     event::{
-      logging::LogLevel,
+      logging::{LogEvent, LogLevel},
       stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
     },
   },
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
+    actor::{
+      TypedActorContext,
+      actor_context::{ActorContext, Pid, SendError},
+    },
     behavior::Behavior,
     dsl::{AbstractBehavior, Behaviors, StatusReply, TypedAskError},
+    eventstream::EventStreamCommand,
+    message_adapter::AdapterError,
   },
 };
 
@@ -78,7 +84,7 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
     }
   });
   let actor = system.as_untyped().spawn(actor_props.to_untyped()).expect("spawn actor");
-  let mut actor = crate::core::typed::TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
+  let mut actor = TypedActorRef::<u32>::from_untyped(actor.into_actor_ref());
 
   actor.tell(1);
   actor.tell(1);
@@ -134,11 +140,7 @@ struct AnonymousSpawnCounterBehavior {
 }
 
 impl AbstractBehavior<u32> for AnonymousSpawnCounterBehavior {
-  fn on_message(
-    &mut self,
-    _ctx: &mut crate::core::typed::actor::TypedActorContext<'_, u32>,
-    msg: &u32,
-  ) -> Result<Behavior<u32>, ActorError> {
+  fn on_message(&mut self, _ctx: &mut TypedActorContext<'_, u32>, msg: &u32) -> Result<Behavior<u32>, ActorError> {
     *self.count.lock() += *msg;
     Ok(Behaviors::same())
   }
@@ -149,7 +151,7 @@ struct AnonymousRestartCrashBehavior;
 impl AbstractBehavior<AnonymousRestartChildMsg> for AnonymousRestartCrashBehavior {
   fn on_message(
     &mut self,
-    _ctx: &mut crate::core::typed::actor::TypedActorContext<'_, AnonymousRestartChildMsg>,
+    _ctx: &mut TypedActorContext<'_, AnonymousRestartChildMsg>,
     msg: &AnonymousRestartChildMsg,
   ) -> Result<Behavior<AnonymousRestartChildMsg>, ActorError> {
     match msg {
@@ -484,7 +486,7 @@ fn forward_preserves_sender_through_typed_context() {
   }
 
   impl ActorRefSender for CapturingSender {
-    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, crate::core::kernel::actor::error::SendError> {
+    fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
       self.inbox.lock().push(message);
       Ok(SendOutcome::Delivered)
     }
@@ -501,7 +503,7 @@ fn forward_preserves_sender_through_typed_context() {
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(original_sender.clone()));
 
-  let mut typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let mut typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   typed_ctx.try_forward(&mut target, 42_u32).expect("forward");
 
   let captured = inbox.lock();
@@ -528,8 +530,8 @@ fn schedule_once_registers_command_in_scheduler() {
 
   // Create a typed actor context with the system and call schedule_once.
   let pid = system.as_untyped().allocate_pid();
-  let mut context = crate::core::kernel::actor::ActorContext::new(system.as_untyped(), pid);
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let mut context = ActorContext::new(system.as_untyped(), pid);
+  let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
 
   let target = system.user_guardian_ref();
   let handle = typed_ctx.schedule_once(Duration::from_millis(100), target, 42_u32);
@@ -640,7 +642,7 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
   system.state().register_cell(cell);
   let mut context = ActorContext::new(&system, pid);
 
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   let tags = typed_ctx.tags();
   assert_eq!(tags.len(), 2);
   assert!(tags.contains("observer"));
@@ -649,8 +651,6 @@ fn typed_props_with_tags_are_readable_via_typed_context() {
 
 #[test]
 fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
-  use alloc::string::String;
-
   use crate::core::kernel::{
     actor::{ActorCell, ActorContext},
     system::ActorSystem,
@@ -665,7 +665,7 @@ fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
   system.state().register_cell(cell);
   let mut context = ActorContext::new(&system, pid);
 
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   let tags = typed_ctx.tags();
   assert_eq!(tags.len(), 2);
   assert!(tags.contains("alpha"));
@@ -674,8 +674,6 @@ fn typed_props_with_tag_adds_single_tag_readable_via_typed_context() {
 
 #[test]
 fn typed_props_without_tags_returns_empty_via_typed_context() {
-  use alloc::string::String;
-
   use crate::core::kernel::{
     actor::{ActorCell, ActorContext},
     system::ActorSystem,
@@ -690,14 +688,12 @@ fn typed_props_without_tags_returns_empty_via_typed_context() {
   system.state().register_cell(cell);
   let mut context = ActorContext::new(&system, pid);
 
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   assert!(typed_ctx.tags().is_empty());
 }
 
 #[test]
 fn typed_context_system_reuses_shared_event_stream_endpoint() {
-  use alloc::string::String;
-
   use crate::core::kernel::{
     actor::{
       ActorCell, ActorContext, Pid,
@@ -737,17 +733,17 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
     ActorCell::create(system.state(), pid, None, String::from("event-stream-owner"), props.to_untyped()).expect("cell");
   system.state().register_cell(cell);
   let mut context = ActorContext::new(&system, pid);
-  let typed_ctx = crate::core::typed::actor::TypedActorContext::<u32>::from_untyped(&mut context, None);
+  let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(903, 0), EventCollector::new(recorded_events.clone()));
-  let first = EventStreamEvent::Log(crate::core::kernel::event::logging::LogEvent::new(
+  let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "phase2-context-first-event".into(),
     Duration::from_millis(14),
     Some(Pid::new(903, 0)),
     None,
   ));
-  let second = EventStreamEvent::Log(crate::core::kernel::event::logging::LogEvent::new(
+  let second = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "phase2-context-second-event".into(),
     Duration::from_millis(15),
@@ -759,26 +755,22 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   {
     let mut subscribe_stream = typed_ctx.system().event_stream();
     subscribe_stream
-      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Subscribe { subscriber: collector.clone() })
+      .try_tell(EventStreamCommand::Subscribe { subscriber: collector.clone() })
       .expect("subscribe command should be accepted");
   }
   {
     let mut publish_stream = typed_system.event_stream();
-    publish_stream
-      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Publish(first))
-      .expect("first publish command should be accepted");
+    publish_stream.try_tell(EventStreamCommand::Publish(first)).expect("first publish command should be accepted");
   }
   {
     let mut unsubscribe_stream = typed_ctx.system().event_stream();
     unsubscribe_stream
-      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
+      .try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
       .expect("unsubscribe command should be accepted");
   }
   {
     let mut publish_stream = typed_system.event_stream();
-    publish_stream
-      .try_tell(crate::core::typed::eventstream::EventStreamCommand::Publish(second))
-      .expect("second publish command should be accepted");
+    publish_stream.try_tell(EventStreamCommand::Publish(second)).expect("second publish command should be accepted");
   }
 
   // 検証: ctx.system() は同じ actor system の他 wrapper と endpoint state を共有する
@@ -846,8 +838,7 @@ fn spawn_anonymous_child_has_no_explicit_name() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let child_pid_slot: ArcShared<NoStdMutex<Option<crate::core::kernel::actor::Pid>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let child_pid_slot: ArcShared<NoStdMutex<Option<Pid>>> = ArcShared::new(NoStdMutex::new(None));
 
   let parent_props = TypedProps::<u32>::from_behavior_factory({
     let child_pid_slot = child_pid_slot.clone();
@@ -943,9 +934,7 @@ fn spawn_anonymous_can_spawn_same_from_abstract_behavior_twice() {
       Behaviors::setup(move |ctx| {
         let child_behavior = Behaviors::from_abstract({
           let count = count.clone();
-          move |_ctx: &mut crate::core::typed::actor::TypedActorContext<'_, u32>| AnonymousSpawnCounterBehavior {
-            count: count.clone(),
-          }
+          move |_ctx: &mut TypedActorContext<'_, u32>| AnonymousSpawnCounterBehavior { count: count.clone() }
         });
 
         let child1 = ctx.spawn_anonymous(&child_behavior).expect("spawn anonymous 1");
@@ -1287,7 +1276,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
           .pipe_to(
             future,
             &receiver_ref,
-            |_value| Err(crate::core::typed::message_adapter::AdapterError::Custom(String::from("map-ok failure"))),
+            |_value| Err(AdapterError::Custom(String::from("map-ok failure"))),
             |_error: String| Ok(0),
           )
           .expect("pipe_to");
@@ -1349,7 +1338,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_err_returns_adapter_error() {
             future,
             &receiver_ref,
             |value| Ok(value),
-            |_error| Err(crate::core::typed::message_adapter::AdapterError::Custom(String::from("map-err failure"))),
+            |_error| Err(AdapterError::Custom(String::from("map-err failure"))),
           )
           .expect("pipe_to");
         Ok(Behaviors::same())

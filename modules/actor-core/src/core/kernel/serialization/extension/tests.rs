@@ -17,6 +17,7 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
     actor_ref::{ActorRef, NullSender, dead_letter::DeadLetterReason},
+    error::ActorError,
     messaging::AnyMessageView,
     props::Props,
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -24,12 +25,18 @@ use crate::core::kernel::{
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   serialization::{
-    builtin, call_scope::SerializationCallScope, error::SerializationError, error_event::SerializationErrorEvent,
-    not_serializable_error::NotSerializableError, serialization_setup::SerializationSetup,
-    serialized_message::SerializedMessage, serializer::Serializer, serializer_id::SerializerId,
-    string_manifest_serializer::SerializerWithStringManifest, transport_information::TransportInformation,
+    SerializationSetupBuilder, builtin, call_scope::SerializationCallScope, error::SerializationError,
+    error_event::SerializationErrorEvent, not_serializable_error::NotSerializableError,
+    serialization_setup::SerializationSetup, serialized_message::SerializedMessage, serializer::Serializer,
+    serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
+    transport_information::TransportInformation,
   },
-  system::{ActorSystem, remote::RemotingConfig, state::SystemStateShared},
+  system::{
+    ActorSystem,
+    remote::RemotingConfig,
+    state::{SystemStateShared, system_state::SystemState},
+  },
+  util::ByteString,
 };
 
 #[derive(Debug, PartialEq)]
@@ -54,10 +61,7 @@ impl Serializer for TestSerializer {
     false
   }
 
-  fn to_binary(
-    &self,
-    value: &(dyn Any + Send + Sync),
-  ) -> Result<Vec<u8>, crate::core::kernel::serialization::error::SerializationError> {
+  fn to_binary(&self, value: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
     let payload = value.downcast_ref::<TestPayload>().expect("TestPayload expected");
     Ok(vec![payload.0])
   }
@@ -66,7 +70,7 @@ impl Serializer for TestSerializer {
     &self,
     bytes: &[u8],
     _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send + Sync>, crate::core::kernel::serialization::error::SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(TestPayload(bytes.first().copied().unwrap_or_default())))
   }
 
@@ -78,7 +82,7 @@ impl Serializer for TestSerializer {
 fn build_extension(manifest: Option<&str>) -> (SerializationExtension, SerializerId, ActorSystem) {
   let serializer_id = SerializerId::try_from(300).expect("id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
-  let mut builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let mut builder = SerializationSetupBuilder::new()
     .register_serializer("test", serializer_id, serializer)
     .expect("register")
     .set_fallback("test")
@@ -142,11 +146,7 @@ fn serialized_actor_path_prefers_transport_address() {
 struct NoopActor;
 
 impl Actor for NoopActor {
-  fn receive(
-    &mut self,
-    _ctx: &mut ActorContext<'_>,
-    _message: AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -157,16 +157,14 @@ fn build_system_with_remoting(remoting: Option<RemotingConfig>, system_name: &st
   if let Some(remoting) = remoting {
     config = config.with_remoting_config(remoting);
   }
-  let state = SystemStateShared::new(
-    crate::core::kernel::system::state::system_state::SystemState::build_from_config(&config).expect("state"),
-  );
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
   ActorSystem::from_state(state)
 }
 
 fn build_extension_with_system(system: &ActorSystem) -> SerializationExtension {
   let serializer_id = SerializerId::try_from(700).expect("id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("test", serializer_id, serializer)
     .expect("register")
     .set_fallback("test")
@@ -285,7 +283,7 @@ impl SerializerWithStringManifest for ManifestSerializer {
 fn build_manifest_extension() -> (SerializationExtension, ActorSystem) {
   let serializer_id = SerializerId::try_from(333).expect("id");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(ManifestSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("manifest", serializer_id, serializer)
     .expect("register")
     .set_fallback("manifest")
@@ -325,7 +323,7 @@ fn not_serializable_publishes_event_and_deadletter() {
 
   let serializer_id = SerializerId::try_from(401).expect("id");
   let fallback: ArcShared<dyn Serializer> = ArcShared::new(FailingSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("failing", serializer_id, fallback)
     .expect("register")
     .set_fallback("failing")
@@ -357,7 +355,7 @@ fn not_serializable_event_records_pid_and_transport() {
 
   let serializer_id = SerializerId::try_from(402).expect("id");
   let failing: ArcShared<dyn Serializer> = ArcShared::new(FailingSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("failing", serializer_id, failing)
     .expect("register")
     .set_fallback("failing")
@@ -395,7 +393,7 @@ fn manifest_route_falls_back_to_legacy_serializer() {
     (SerializerId::try_from(420).expect("current"), SerializerId::try_from(421).expect("legacy"));
   let current: ArcShared<dyn Serializer> = ArcShared::new(VersionedSerializer::new(current_id));
   let legacy: ArcShared<dyn Serializer> = ArcShared::new(LegacySerializer::new(legacy_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("current", current_id, current)
     .expect("register current")
     .register_serializer("legacy", legacy_id, legacy)
@@ -426,7 +424,7 @@ fn manifest_route_failure_surfaces_not_serializable_with_manifest() {
 
   let serializer_id = SerializerId::try_from(422).expect("serializer");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(VersionedSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("current", serializer_id, serializer)
     .expect("register")
     .set_fallback("current")
@@ -461,7 +459,7 @@ fn runtime_binding_without_manifest_in_remote_scope_fails() {
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
   let secondary_id = SerializerId::try_from(431).expect("secondary");
   let secondary: ArcShared<dyn Serializer> = ArcShared::new(SecondarySerializer::new(secondary_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("main", serializer_id, serializer)
     .expect("register")
     .register_serializer("secondary", secondary_id, secondary)
@@ -509,7 +507,7 @@ fn cache_resolution_emits_hit_and_binding_logs() {
 
   let serializer_id = SerializerId::try_from(512).expect("serializer");
   let serializer: ArcShared<dyn Serializer> = ArcShared::new(TestSerializer::new(serializer_id));
-  let builder = crate::core::kernel::serialization::builder::SerializationSetupBuilder::new()
+  let builder = SerializationSetupBuilder::new()
     .register_serializer("test", serializer_id, serializer)
     .expect("register")
     .set_fallback("test")
@@ -796,12 +794,10 @@ fn builtin_serializers_support_primitives() {
   assert_eq!(*bytes_value.downcast::<Vec<u8>>().unwrap(), bytes);
 
   // ByteString 往復検証（F-011 回帰）
-  let byte_string = crate::core::kernel::util::ByteString::from_slice(&[10, 20, 30]);
+  let byte_string = ByteString::from_slice(&[10, 20, 30]);
   let bs_msg = extension.serialize(&byte_string, SerializationCallScope::Local).expect("ByteString encode");
-  let bs_value = extension
-    .deserialize(&bs_msg, Some(TypeId::of::<crate::core::kernel::util::ByteString>()))
-    .expect("ByteString decode");
-  let decoded = bs_value.downcast::<crate::core::kernel::util::ByteString>().expect("ByteString downcast");
+  let bs_value = extension.deserialize(&bs_msg, Some(TypeId::of::<ByteString>())).expect("ByteString decode");
+  let decoded = bs_value.downcast::<ByteString>().expect("ByteString downcast");
   assert_eq!(decoded.as_slice(), &[10, 20, 30]);
 }
 

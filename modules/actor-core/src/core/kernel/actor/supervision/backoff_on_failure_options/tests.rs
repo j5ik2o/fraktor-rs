@@ -2,18 +2,19 @@ use alloc::string::String;
 use core::time::Duration;
 
 use crate::core::kernel::actor::{
+  ActorContext,
+  error::ActorError,
+  messaging::AnyMessageView,
   props::Props,
-  supervision::{BackoffOnFailureOptions, BackoffSupervisorStrategy, SupervisorStrategy, SupervisorStrategyKind},
+  supervision::{
+    BackoffOnFailureOptions, BackoffSupervisorStrategy, SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind,
+  },
 };
 
 struct DummyActor;
 
 impl crate::core::kernel::actor::Actor for DummyActor {
-  fn receive(
-    &mut self,
-    _context: &mut crate::core::kernel::actor::ActorContext<'_>,
-    _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
-  ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+  fn receive(&mut self, _context: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
   }
 }
@@ -123,8 +124,7 @@ fn with_supervisor_strategy_sets_strategy() {
   // Given: default options and a custom supervisor strategy
   let options = BackoffOnFailureOptions::new(child_props(), String::from("child"), default_strategy());
   let custom_strategy =
-    SupervisorStrategy::with_decider(|_| crate::core::kernel::actor::supervision::SupervisorDirective::Restart)
-      .with_kind(SupervisorStrategyKind::OneForOne);
+    SupervisorStrategy::with_decider(|_| SupervisorDirective::Restart).with_kind(SupervisorStrategyKind::OneForOne);
 
   // When: setting the supervisor strategy
   let options = options.with_supervisor_strategy(custom_strategy);

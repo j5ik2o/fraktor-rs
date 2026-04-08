@@ -11,8 +11,9 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
-  system::ActorSystem,
+  system::{ActorSystem, SpinBlocker},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -21,13 +22,11 @@ struct Start;
 #[test]
 fn terminate_signals_future() {
   let props = Props::from_fn(|| IdleGuardian);
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   let termination = system.when_terminated();
   system.terminate().expect("terminate");
-  system.run_until_terminated(&fraktor_actor_core_rs::core::kernel::system::SpinBlocker);
+  system.run_until_terminated(&SpinBlocker);
   assert!(termination.is_terminated());
 }
 
@@ -39,9 +38,7 @@ fn stop_self_propagates_to_children() {
     move || ParentGuardian::new(child_states.clone())
   });
 
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

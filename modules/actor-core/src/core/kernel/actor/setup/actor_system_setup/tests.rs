@@ -4,7 +4,10 @@ use crate::core::kernel::{
   actor::{
     actor_ref_provider::LocalActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{ManualTestDriver, TickDriverConfig},
+    },
     setup::{ActorSystemSetup, BootstrapSetup},
   },
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
@@ -12,8 +15,7 @@ use crate::core::kernel::{
 
 #[test]
 fn actor_system_setup_composes_bootstrap_and_runtime_settings() {
-  let tick_driver =
-    TickDriverConfig::manual(crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new());
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let setup = ActorSystemSetup::new(BootstrapSetup::default().with_system_name("setup-system"))
     .with_scheduler_config(SchedulerConfig::default())
     .with_tick_driver(tick_driver)
@@ -30,8 +32,7 @@ fn actor_system_setup_composes_bootstrap_and_runtime_settings() {
 
 #[test]
 fn with_bootstrap_setup_preserves_runtime_settings() {
-  let tick_driver =
-    TickDriverConfig::manual(crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new());
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let setup =
     ActorSystemSetup::new(BootstrapSetup::default().with_system_name("before").with_start_time(Duration::from_secs(1)))
       .with_scheduler_config(SchedulerConfig::default())

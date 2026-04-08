@@ -4,6 +4,7 @@ use std::thread::yield_now;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
+use super::{BackoffConfig, BackoffSupervisorActor};
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -251,8 +252,8 @@ fn unrecognized_messages_are_forwarded_to_child() {
 fn get_current_child_returns_none_when_no_child() {
   let system = ActorSystem::new_empty();
   let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), default_strategy());
-  let config = super::BackoffConfig::from_stop(options);
-  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let config = BackoffConfig::from_stop(options);
+  let mut actor = BackoffSupervisorActor::from_config(config);
 
   let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
@@ -333,8 +334,8 @@ fn second_restart_maps_to_first_exponential_backoff_iteration() {
 fn on_stop_restart_count_saturates_at_u32_max() {
   let system = ActorSystem::new_empty();
   let options = BackoffOnStopOptions::new(noop_props(), String::from("child"), default_strategy());
-  let config = super::BackoffConfig::from_stop(options);
-  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let config = BackoffConfig::from_stop(options);
+  let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(42, 0);
   actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
   actor.restart_count = u32::MAX;
@@ -350,8 +351,8 @@ fn on_stop_restart_count_saturates_at_u32_max() {
 fn on_failure_restart_count_saturates_at_u32_max() {
   let system = ActorSystem::new_empty();
   let options = BackoffOnFailureOptions::new(noop_props(), String::from("child"), default_strategy());
-  let config = super::BackoffConfig::from_failure(options);
-  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let config = BackoffConfig::from_failure(options);
+  let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(43, 0);
   actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
   actor.restart_count = u32::MAX;
@@ -458,8 +459,8 @@ fn on_failure_with_stop_strategy_does_not_mark_pending_restart() {
   let strategy = SupervisorStrategy::with_decider(|_| SupervisorDirective::Stop);
   let options = BackoffOnFailureOptions::new(noop_props(), String::from("child"), one_tick_strategy())
     .with_supervisor_strategy(strategy);
-  let config = super::BackoffConfig::from_failure(options);
-  let mut actor = super::BackoffSupervisorActor::from_config(config);
+  let config = BackoffConfig::from_failure(options);
+  let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(42, 0);
   actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
 

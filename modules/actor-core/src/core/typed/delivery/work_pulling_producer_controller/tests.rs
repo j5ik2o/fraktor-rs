@@ -9,15 +9,19 @@ use super::{
   execute_wppc_deferred,
 };
 use crate::core::{
-  kernel::actor::{
-    Actor, ActorCell, ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
-    error::{ActorError, SendError},
-    messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
-    props::Props,
+  kernel::{
+    actor::{
+      Actor, ActorCell, ActorContext, Pid,
+      actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
+      error::{ActorError, SendError},
+      messaging::{AnyMessage, AnyMessageView, system_message::SystemMessage},
+      props::Props,
+    },
+    system::ActorSystem,
   },
   typed::{
     TypedActorRef,
+    actor::TypedActorContext,
     delivery::{
       ConsumerControllerCommand, DurableProducerQueueCommand, MessageSent, ProducerControllerCommand,
       ProducerControllerRequestNext, ProducerControllerSettings, StoreMessageSentAck, WorkPullingProducerController,
@@ -65,12 +69,7 @@ impl Actor for StopRecorderActor {
   }
 }
 
-fn register_cell(
-  system: &crate::core::kernel::system::ActorSystem,
-  pid: Pid,
-  name: &str,
-  props: &Props,
-) -> ArcShared<ActorCell> {
+fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
   let cell = ActorCell::create(system.state(), pid, None, name.to_string(), props).expect("create actor cell");
   system.state().register_cell(cell.clone());
   cell
@@ -307,7 +306,7 @@ fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
 
 #[test]
 fn durable_queue_send_failure_stops_work_pulling_controller() {
-  let system = crate::core::kernel::system::ActorSystem::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let lifecycle = ArcShared::new(NoStdMutex::new(Vec::new()));
   let props = Props::from_fn({
@@ -318,11 +317,7 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
   cell.new_dispatcher_shared().system_dispatch(&cell, SystemMessage::Create).expect("create");
 
   let mut context = ActorContext::new(&system, pid);
-  let mut typed_ctx =
-    crate::core::typed::actor::TypedActorContext::<WorkPullingProducerControllerCommand<u32>>::from_untyped(
-      &mut context,
-      None,
-    );
+  let mut typed_ctx = TypedActorContext::<WorkPullingProducerControllerCommand<u32>>::from_untyped(&mut context, None);
   let state = ArcShared::new(RuntimeMutex::new(WorkPullingState::<u32>::new("test-producer".to_string(), 16)));
   let durable_queue = TypedActorRef::from_untyped(ActorRef::new(Pid::new(999, 0), FailingSender));
 

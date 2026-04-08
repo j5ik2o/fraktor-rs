@@ -11,6 +11,7 @@ use crate::core::{
       actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
       error::{ActorError, SendError},
       messaging::AnyMessage,
+      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     event::{
       logging::LogLevel,
@@ -21,7 +22,7 @@ use crate::core::{
   typed::{
     TypedActorRef, TypedActorSystem, TypedProps,
     dsl::Behaviors,
-    receptionist::{Listing, Receptionist, ReceptionistCommand, ServiceKey},
+    receptionist::{Deregistered, Listing, Receptionist, ReceptionistCommand, Registered, ServiceKey},
   },
 };
 
@@ -73,9 +74,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 
 fn new_test_system() -> TypedActorSystem<u32> {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system")
 }
 
@@ -176,13 +175,13 @@ fn register_with_ack_sends_registered_to_reply_to() {
   let ack_service_id = ArcShared::new(NoStdMutex::new(alloc::string::String::new()));
 
   // Spawn a receiver for Registered ack
-  let ack_props = TypedProps::<crate::core::typed::receptionist::Registered>::from_behavior_factory({
+  let ack_props = TypedProps::<Registered>::from_behavior_factory({
     let ack_received = ack_received.clone();
     let ack_service_id = ack_service_id.clone();
     move || {
       let ack_received = ack_received.clone();
       let ack_service_id = ack_service_id.clone();
-      Behaviors::receive_message(move |_ctx, registered: &crate::core::typed::receptionist::Registered| {
+      Behaviors::receive_message(move |_ctx, registered: &Registered| {
         *ack_service_id.lock() = alloc::string::String::from(registered.service_id());
         *ack_received.lock() = true;
         Ok(Behaviors::same())
@@ -190,7 +189,7 @@ fn register_with_ack_sends_registered_to_reply_to() {
     }
   });
   let ack_actor = system.as_untyped().spawn(ack_props.to_untyped()).expect("spawn ack receiver");
-  let ack_ref = TypedActorRef::<crate::core::typed::receptionist::Registered>::from_untyped(ack_actor.into_actor_ref());
+  let ack_ref = TypedActorRef::<Registered>::from_untyped(ack_actor.into_actor_ref());
 
   // Spawn a routee to register
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -226,13 +225,13 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
   let ack_received = ArcShared::new(NoStdMutex::new(false));
   let ack_service_id = ArcShared::new(NoStdMutex::new(alloc::string::String::new()));
 
-  let ack_props = TypedProps::<crate::core::typed::receptionist::Deregistered>::from_behavior_factory({
+  let ack_props = TypedProps::<Deregistered>::from_behavior_factory({
     let ack_received = ack_received.clone();
     let ack_service_id = ack_service_id.clone();
     move || {
       let ack_received = ack_received.clone();
       let ack_service_id = ack_service_id.clone();
-      Behaviors::receive_message(move |_ctx, deregistered: &crate::core::typed::receptionist::Deregistered| {
+      Behaviors::receive_message(move |_ctx, deregistered: &Deregistered| {
         *ack_service_id.lock() = alloc::string::String::from(deregistered.service_id());
         *ack_received.lock() = true;
         Ok(Behaviors::same())
@@ -240,8 +239,7 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
     }
   });
   let ack_actor = system.as_untyped().spawn(ack_props.to_untyped()).expect("spawn ack receiver");
-  let ack_ref =
-    TypedActorRef::<crate::core::typed::receptionist::Deregistered>::from_untyped(ack_actor.into_actor_ref());
+  let ack_ref = TypedActorRef::<Deregistered>::from_untyped(ack_actor.into_actor_ref());
 
   // When: deregister_with_ack is called
   receptionist.tell(Receptionist::deregister_with_ack(&key, routee_ref, ack_ref));
@@ -260,21 +258,20 @@ fn registered_is_for_key_returns_true_for_matching_key() {
   let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("key-check-svc");
 
-  let captured_registered =
-    ArcShared::new(NoStdMutex::new(Option::<crate::core::typed::receptionist::Registered>::None));
+  let captured_registered = ArcShared::new(NoStdMutex::new(Option::<Registered>::None));
 
-  let ack_props = TypedProps::<crate::core::typed::receptionist::Registered>::from_behavior_factory({
+  let ack_props = TypedProps::<Registered>::from_behavior_factory({
     let captured = captured_registered.clone();
     move || {
       let captured = captured.clone();
-      Behaviors::receive_message(move |_ctx, registered: &crate::core::typed::receptionist::Registered| {
+      Behaviors::receive_message(move |_ctx, registered: &Registered| {
         *captured.lock() = Some(registered.clone());
         Ok(Behaviors::same())
       })
     }
   });
   let ack_actor = system.as_untyped().spawn(ack_props.to_untyped()).expect("spawn ack receiver");
-  let ack_ref = TypedActorRef::<crate::core::typed::receptionist::Registered>::from_untyped(ack_actor.into_actor_ref());
+  let ack_ref = TypedActorRef::<Registered>::from_untyped(ack_actor.into_actor_ref());
 
   let routee_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");

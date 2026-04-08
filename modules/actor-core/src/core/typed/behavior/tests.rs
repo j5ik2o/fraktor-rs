@@ -4,7 +4,10 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::{
   kernel::{
-    actor::{ActorContext, supervision::SupervisorStrategyKind},
+    actor::{
+      ActorContext, Pid,
+      supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+    },
     system::ActorSystem,
   },
   typed::{
@@ -34,7 +37,7 @@ enum Outer {
   Text(()),
 }
 
-fn make_ctx(system: &ActorSystem) -> (crate::core::kernel::actor::Pid, ActorContext<'_>) {
+fn make_ctx(system: &ActorSystem) -> (Pid, ActorContext<'_>) {
   let pid = system.allocate_pid();
   let context = ActorContext::new(system, pid);
   (pid, context)
@@ -269,12 +272,9 @@ fn narrow_clone_restarts_with_fresh_inner_behavior() {
 fn transform_messages_propagates_supervisor_override_from_started_inner() {
   let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
     Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())).with_supervisor_strategy(
-      crate::core::kernel::actor::supervision::SupervisorStrategy::new(
-        SupervisorStrategyKind::OneForOne,
-        5,
-        core::time::Duration::from_secs(1),
-        |_| crate::core::kernel::actor::supervision::SupervisorDirective::Restart,
-      ),
+      SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, core::time::Duration::from_secs(1), |_| {
+        SupervisorDirective::Restart
+      }),
     )
   });
 

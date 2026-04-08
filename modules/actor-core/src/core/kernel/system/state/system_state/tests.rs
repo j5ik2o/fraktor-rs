@@ -24,7 +24,7 @@ use crate::core::kernel::{
       SchedulerConfig,
       tick_driver::{
         ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
-        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump,
+        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
       },
     },
     setup::ActorSystemConfig,
@@ -41,7 +41,7 @@ use crate::core::kernel::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
     remote::RemotingConfig,
-    state::{AuthorityState, SystemStateShared},
+    state::{AuthorityState, SystemStateShared, system_state::LogLevel},
   },
 };
 
@@ -134,10 +134,7 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(
-    &mut self,
-    _feed: crate::core::kernel::actor::scheduler::tick_driver::TickFeedHandle,
-  ) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
     let control = ArcShared::new(RuntimeMutex::new(control));
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
@@ -480,14 +477,9 @@ fn system_state_emit_log() {
   let _subscription = state.event_stream().subscribe(&subscriber);
   let pid = state.allocate_pid();
 
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Info, String::from("test message"), Some(pid), None);
-  state.emit_log(crate::core::kernel::event::logging::LogLevel::Error, String::from("error message"), None, None);
-  state.emit_log(
-    crate::core::kernel::event::logging::LogLevel::Warn,
-    String::from("named logger message"),
-    Some(pid),
-    Some(String::from("my_logger")),
-  );
+  state.emit_log(LogLevel::Info, String::from("test message"), Some(pid), None);
+  state.emit_log(LogLevel::Error, String::from("error message"), None, None);
+  state.emit_log(LogLevel::Warn, String::from("named logger message"), Some(pid), Some(String::from("my_logger")));
 
   let events_snapshot = events_shared.lock().clone();
   let named_log = events_snapshot.iter().rev().find_map(|event| match event {

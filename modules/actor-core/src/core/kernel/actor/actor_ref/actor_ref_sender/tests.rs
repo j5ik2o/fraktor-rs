@@ -4,8 +4,8 @@ use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
 struct TestSender;
 
 impl ActorRefSender for TestSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
   }
 }
 

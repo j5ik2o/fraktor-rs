@@ -11,6 +11,7 @@ use crate::core::{
       error::ActorError,
       messaging::{AnyMessage, AnyMessageView},
       props::Props,
+      scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     },
     system::ActorSystem,
   },
@@ -92,9 +93,7 @@ fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSy
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let router = system.user_guardian_ref();
   (system, router, records)
@@ -192,9 +191,7 @@ fn pool_router_public_type_with_broadcast_delivers_to_all_routees() {
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -236,9 +233,7 @@ fn pool_router_with_broadcast_predicate_only_broadcasts_matching_messages() {
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -372,9 +367,7 @@ fn pool_router_with_resizer_scales_up_to_lower_bound() {
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -426,9 +419,7 @@ fn pool_router_with_resizer_scales_down_to_upper_bound() {
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 
@@ -504,9 +495,7 @@ fn pool_router_with_routee_props_applies_tags_to_routees() {
     }
   });
 
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&props, tick_driver).expect("system");
   let mut router = system.user_guardian_ref();
 

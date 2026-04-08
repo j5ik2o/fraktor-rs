@@ -4,8 +4,9 @@ use core::any::{Any, TypeId, type_name};
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::serialization::{
-  builder::SerializationSetupBuilder, builder_error::SerializationBuilderError, call_scope::SerializationCallScope,
-  config_adapter::SerializationConfigAdapter, serializer::Serializer, serializer_id::SerializerId,
+  SerializationError, builder::SerializationSetupBuilder, builder_error::SerializationBuilderError,
+  call_scope::SerializationCallScope, config_adapter::SerializationConfigAdapter, serializer::Serializer,
+  serializer_id::SerializerId,
 };
 
 struct DummySerializer {
@@ -27,10 +28,7 @@ impl Serializer for DummySerializer {
     false
   }
 
-  fn to_binary(
-    &self,
-    _message: &(dyn Any + Send + Sync),
-  ) -> Result<Vec<u8>, crate::core::kernel::serialization::error::SerializationError> {
+  fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
     Ok(Vec::new())
   }
 
@@ -38,7 +36,7 @@ impl Serializer for DummySerializer {
     &self,
     _bytes: &[u8],
     _type_hint: Option<TypeId>,
-  ) -> Result<Box<dyn Any + Send + Sync>, crate::core::kernel::serialization::error::SerializationError> {
+  ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     Ok(Box::new(()))
   }
 

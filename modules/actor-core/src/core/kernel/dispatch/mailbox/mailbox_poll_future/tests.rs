@@ -7,7 +7,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
-use super::{super::mailbox_queue_state::QueueState, QueuePollFuture};
+use super::{super::mailbox_queue_state::QueueState, MailboxPollFuture, QueuePollFuture};
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{MailboxPolicy, QueueStateHandle},
@@ -22,7 +22,7 @@ where
   }
 }
 
-impl super::MailboxPollFuture {
+impl MailboxPollFuture {
   pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>) -> Self {
     Self { inner: QueuePollFuture::new(state) }
   }
@@ -48,12 +48,12 @@ fn noop_waker() -> Waker {
   unsafe { Waker::from_raw(noop_raw_waker()) }
 }
 
-fn create_poll_future(messages: &[i32]) -> super::MailboxPollFuture {
+fn create_poll_future(messages: &[i32]) -> MailboxPollFuture {
   let handle = QueueStateHandle::new_user(&MailboxPolicy::unbounded(None));
   for message in messages.iter().copied() {
     handle.offer(AnyMessage::new(message)).expect("enqueue failed");
   }
-  super::MailboxPollFuture::new(handle.state.clone())
+  MailboxPollFuture::new(handle.state.clone())
 }
 
 #[test]

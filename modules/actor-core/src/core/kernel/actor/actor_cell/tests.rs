@@ -3,7 +3,7 @@ use core::{hint::spin_loop, num::NonZeroUsize};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
-use super::ActorCell;
+use super::{super::actor_context::ReceiveTimeoutState, ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
@@ -290,7 +290,7 @@ fn create_system_message_runs_pre_start() {
     ActorCell::create(state.clone(), Pid::new(40, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
   let snapshot = log.lock().clone();
@@ -321,7 +321,7 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
   system.register_cell(target.clone());
   system.register_cell(reply_to.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: target.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: target.downgrade() };
   let identify = Identify::new(AnyMessage::new("corr"));
   let message = AnyMessage::new(identify).with_sender(reply_to.actor_ref());
 
@@ -348,7 +348,7 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
     ActorCell::create(state.clone(), Pid::new(41, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   invoker.invoke_system_message(SystemMessage::Recreate).expect("recreate");
 
@@ -368,7 +368,7 @@ fn poison_pill_system_message_invokes_post_stop() {
     ActorCell::create(state.clone(), Pid::new(410, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   invoker.invoke_system_message(SystemMessage::PoisonPill).expect("poison pill");
 
@@ -388,7 +388,7 @@ fn kill_system_message_reports_fatal_failure() {
     ActorCell::create(state.clone(), Pid::new(411, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   let error = invoker.invoke_system_message(SystemMessage::Kill).expect_err("kill should report failure");
 
@@ -407,7 +407,7 @@ fn poison_pill_user_message_preserves_user_ordering() {
     ActorCell::create(state.clone(), Pid::new(412, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
   assert!(cell.actor_ref().try_tell(AnyMessage::new(1_u8)).is_ok());
@@ -439,7 +439,7 @@ fn kill_user_message_reports_fatal_failure() {
     ActorCell::create(state.clone(), Pid::new(413, 0), None, "probe".to_string(), &props).expect("create actor cell");
   state.register_cell(cell.clone());
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
   let error = invoker.invoke_user_message(AnyMessage::new(SystemMessage::Kill)).expect_err("kill should fail");
   assert_eq!(error, ActorError::fatal("Kill"));
@@ -458,17 +458,17 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
   state.register_cell(parent.clone());
   state.register_cell(cell.clone());
 
-  let mut parent_invoker = super::ActorCellInvoker { cell: parent.downgrade() };
+  let mut parent_invoker = ActorCellInvoker { cell: parent.downgrade() };
   parent_invoker.invoke_system_message(SystemMessage::Create).expect("create parent");
 
-  let mut invoker = super::ActorCellInvoker { cell: cell.downgrade() };
+  let mut invoker = ActorCellInvoker { cell: cell.downgrade() };
   invoker.invoke_system_message(SystemMessage::Create).expect("create");
 
   let initial_handle = cell
     .receive_timeout
     .lock()
     .as_ref()
-    .and_then(super::super::actor_context::ReceiveTimeoutState::handle_raw)
+    .and_then(ReceiveTimeoutState::handle_raw)
     .expect("receive timeout handle should exist after pre_start");
 
   let error = invoker.invoke_user_message(AnyMessage::new(1_u32)).expect_err("user message should fail");
@@ -478,7 +478,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
     .receive_timeout
     .lock()
     .as_ref()
-    .and_then(super::super::actor_context::ReceiveTimeoutState::handle_raw)
+    .and_then(ReceiveTimeoutState::handle_raw)
     .expect("receive timeout handle should remain registered after failure");
 
   assert_eq!(current_handle, initial_handle, "failure path must not arm a fresh receive-timeout timer");

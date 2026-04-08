@@ -25,10 +25,11 @@ use crate::core::{
     system::ActorSystem,
   },
   typed::{
-    TypedActorRef,
+    LogOptions, TypedActorRef,
     actor::TypedActorContext,
     behavior::Behavior,
     behavior_interceptor::BehaviorInterceptor,
+    dsl::TimerKey,
     internal::ReceiveTimeoutConfig,
     message_and_signals::{BehaviorSignal, PostStop, PreRestart},
   },
@@ -147,7 +148,7 @@ fn with_timers_shared_handle_usable_in_closures() {
   let mut behavior = Behaviors::with_timers::<u32, _>(|timers| {
     let timers_for_handler = timers.clone();
     Behaviors::receive_message(move |_ctx, _msg: &u32| {
-      let key = crate::core::typed::dsl::TimerKey::new("dynamic");
+      let key = TimerKey::new("dynamic");
       assert!(!timers_for_handler.lock().is_timer_active(&key));
       Ok(Behaviors::same())
     })
@@ -831,7 +832,7 @@ fn log_messages_with_opts_records_level_and_logger_name() {
   let shared = collector.clone();
 
   with_default(shared, || {
-    let options = crate::core::typed::LogOptions::new().with_level(LogLevel::Info).with_logger_name("typed.behaviors");
+    let options = LogOptions::new().with_level(LogLevel::Info).with_logger_name("typed.behaviors");
     let mut behavior =
       Behaviors::log_messages_with_opts(options, Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())));
 
