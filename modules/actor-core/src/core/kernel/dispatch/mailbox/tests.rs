@@ -78,7 +78,9 @@ fn mailbox_schedule_requests_follow_state_engine() {
   mailbox.set_running();
   assert!(!mailbox.request_schedule(hints));
 
-  assert!(mailbox.set_idle());
+  assert!(matches!(mailbox.finish_run(), crate::core::kernel::dispatch::mailbox::RunFinishOutcome::Continue {
+    pending_reschedule: true,
+  }));
   assert!(mailbox.request_schedule(hints));
 }
 

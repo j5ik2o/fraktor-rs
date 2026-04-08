@@ -4,10 +4,12 @@ use core::{
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
+use std::sync::{Mutex as StdMutex, mpsc};
 
 use super::MessageDispatcherShared;
-use crate::core::kernel::dispatch::dispatcher::{
-  DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+use crate::core::kernel::{
+  actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView},
+  dispatch::dispatcher::{DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorShared},
 };
 
 struct CountingExecutor {
@@ -22,6 +24,31 @@ impl Executor for CountingExecutor {
   }
 
   fn shutdown(&mut self) {}
+}
+
+struct ProbeActor;
+
+impl Actor for ProbeActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
+struct BlockingActor {
+  seen:       Arc<AtomicUsize>,
+  started_tx: mpsc::Sender<()>,
+  resume_rx:  Arc<StdMutex<mpsc::Receiver<()>>>,
+}
+
+impl Actor for BlockingActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    let previous = self.seen.fetch_add(1, Ordering::SeqCst);
+    if previous == 0 {
+      self.started_tx.send(()).expect("blocking actor should signal first receive");
+      self.resume_rx.lock().expect("resume lock").recv().expect("resume signal");
+    }
+    Ok(())
+  }
 }
 
 fn nz(value: usize) -> NonZeroUsize {
@@ -124,4 +151,75 @@ fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   });
   let resolved = system.state().resolve_dispatcher("system-test-dispatch").expect("registered configurator");
   assert_eq!(resolved.id(), "system-test-dispatch");
+}
+
+#[test]
+fn detach_idle_mailbox_cleans_up_immediately() {
+  use crate::core::kernel::{
+    actor::{ActorCell, Pid, messaging::AnyMessage, props::Props},
+    system::ActorSystem,
+  };
+
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(state.clone(), Pid::new(700, 0), None, "idle-detach".into(), &props).expect("create");
+  state.register_cell(cell.clone());
+  cell.mailbox().enqueue_user(AnyMessage::new("queued")).expect("queued");
+
+  let _schedule = cell.new_dispatcher_shared().detach(&cell);
+
+  assert!(cell.mailbox().is_closed());
+  assert_eq!(cell.mailbox().user_len(), 0, "idle detach should clean user queue immediately");
+}
+
+#[test]
+fn detach_running_mailbox_returns_before_runner_finalizes() {
+  use alloc::sync::Arc as AllocArc;
+
+  use crate::core::kernel::{
+    actor::{ActorCell, Pid, messaging::AnyMessage, props::Props},
+    system::ActorSystem,
+  };
+
+  let system = ActorSystem::new_empty();
+  let state = system.state();
+  let seen = Arc::new(AtomicUsize::new(0));
+  let (started_tx, started_rx) = mpsc::channel();
+  let (resume_tx, resume_rx) = mpsc::channel();
+  let resume_rx = AllocArc::new(StdMutex::new(resume_rx));
+  let props = Props::from_fn({
+    let seen = seen.clone();
+    let resume_rx = resume_rx.clone();
+    move || BlockingActor { seen: seen.clone(), started_tx: started_tx.clone(), resume_rx: resume_rx.clone() }
+  });
+  let cell = ActorCell::create(state.clone(), Pid::new(701, 0), None, "running-detach".into(), &props).expect("create");
+  state.register_cell(cell.clone());
+  cell.mailbox().enqueue_user(AnyMessage::new(1_u32)).expect("first");
+  cell.mailbox().enqueue_user(AnyMessage::new(2_u32)).expect("second");
+
+  let mailbox = cell.mailbox();
+  let mailbox_for_run = mailbox.clone();
+  let run_handle = std::thread::spawn(move || mailbox_for_run.run(nz(8), None));
+
+  started_rx.recv().expect("runner should start first message");
+
+  let cell_for_detach = cell.clone();
+  let (detach_done_tx, detach_done_rx) = mpsc::channel();
+  let detach_handle = std::thread::spawn(move || {
+    let schedule = cell_for_detach.new_dispatcher_shared().detach(&cell_for_detach);
+    detach_done_tx.send(schedule).expect("detach result");
+  });
+
+  detach_done_rx
+    .recv_timeout(Duration::from_millis(200))
+    .expect("detach should return without waiting for the blocked runner");
+  assert!(mailbox.is_closed(), "detach should publish close request immediately");
+
+  resume_tx.send(()).expect("resume");
+
+  assert!(!run_handle.join().expect("runner should complete"));
+  detach_handle.join().expect("detach thread should complete");
+  assert_eq!(seen.load(Ordering::SeqCst), 1, "runner finalizer must suppress the second queued user message");
+  assert_eq!(mailbox.user_len(), 0, "runner finalizer should clean remaining queued user messages");
 }

@@ -121,6 +121,21 @@ fn try_create_shared_mailbox_returns_sharing_mailbox() {
 }
 
 #[test]
+fn sharing_mailbox_close_keeps_shared_queue_contents() {
+  use crate::core::kernel::dispatch::mailbox::MessageQueue;
+
+  let dispatcher = make_dispatcher();
+  let queue = dispatcher.shared_queue();
+  let mailbox =
+    dispatcher.try_create_shared_mailbox().expect("balancing dispatcher always hands out a sharing mailbox");
+
+  queue.enqueue(Envelope::new(AnyMessage::new(11_u32))).expect("shared enqueue");
+  mailbox.become_closed_and_clean_up();
+
+  assert_eq!(queue.number_of_messages(), 1, "LeaveSharedQueue mailbox must not drain the shared queue");
+}
+
+#[test]
 fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   // Phase 14.6: end-to-end load balancing check. Three actors are attached
   // to the same `BalancingDispatcherConfigurator`, then 9 envelopes are

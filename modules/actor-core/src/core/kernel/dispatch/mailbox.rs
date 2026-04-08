@@ -93,7 +93,7 @@ pub use message_queue::MessageQueue;
 pub use overflow_strategy::MailboxOverflowStrategy;
 pub use policy::MailboxPolicy;
 pub use schedule_hints::ScheduleHints;
-pub(crate) use schedule_state::MailboxScheduleState;
+pub(crate) use schedule_state::{CloseRequestOutcome, MailboxScheduleState, RunFinishOutcome};
 pub(crate) use system_queue::SystemQueue;
 pub use unbounded_control_aware_mailbox_type::UnboundedControlAwareMailboxType;
 pub use unbounded_control_aware_message_queue::UnboundedControlAwareMessageQueue;
