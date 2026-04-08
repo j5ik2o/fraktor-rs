@@ -886,6 +886,30 @@ PY
     fi
   fi
 
+  # redundant-fqcn-lint 専用の test ターゲット pass:
+  # 既定の `cargo dylint` は cargo check の既定ターゲット (lib のみ) で走るため、
+  # `#[cfg(test)]` モジュール (兄弟 `tests.rs` を含む) はどの lint からも visit されない。
+  # FQCN 整形はテストコードにも適用したいので、redundant-fqcn-lint だけを
+  # `--tests` 付きで再走させる。ビルドコストを抑えるためこの lint のみ対象。
+  local has_redundant_fqcn=""
+  local lint_entry
+  for lint_entry in "${selected[@]}"; do
+    if [[ "${lint_entry%%:*}" == "redundant-fqcn-lint" ]]; then
+      has_redundant_fqcn="yes"
+      break
+    fi
+  done
+
+  if [[ -n "${has_redundant_fqcn}" && ${#main_package_args[@]} -gt 0 ]]; then
+    local -a fqcn_tests_invocation=("${main_package_args[@]}" "--lib" "redundant_fqcn_lint" "--no-metadata")
+    local -a fqcn_tests_cargo_args=("--tests")
+    if [[ ${#trailing_args[@]} -gt 0 ]]; then
+      fqcn_tests_cargo_args+=("${trailing_args[@]}")
+    fi
+    log_step "cargo +${DEFAULT_TOOLCHAIN} dylint ${fqcn_tests_invocation[*]} -- ${fqcn_tests_cargo_args[*]} (redundant-fqcn-lint --tests pass, RUSTFLAGS=${rustflags_value}, CARGO_INCREMENTAL=${dylint_incremental})"
+    RUSTFLAGS="${rustflags_value}" CARGO_INCREMENTAL="${dylint_incremental}" DYLINT_LIBRARY_PATH="${dylint_library_path}" DYLD_FALLBACK_LIBRARY_PATH="${dynlib_path}" LD_LIBRARY_PATH="${dynlib_path}" CARGO_NET_OFFLINE="${CARGO_NET_OFFLINE:-true}" run_cargo dylint "${fqcn_tests_invocation[@]}" -- "${fqcn_tests_cargo_args[@]}" || return 1
+  fi
+
   if [[ ${#hardware_targets[@]} -gt 0 ]]; then
     local pkg
     for pkg in "${hardware_targets[@]}"; do

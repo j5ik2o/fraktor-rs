@@ -38,12 +38,57 @@ impl<'tcx> LateLintPass<'tcx> for RedundantFqcn {
       return;
     };
 
+    if is_external_crate_path(&path) {
+      return;
+    }
+
     if !self.processed.insert(path.clone()) {
       return;
     }
 
     analyze_file(cx, &path);
   }
+}
+
+/// Returns `true` when the path originates from an external crate cached under
+/// the cargo registry, git dependency store, or rustlib stdlib sources.
+///
+/// Without this filter, macro-expanded items (e.g. code produced by
+/// `proptest!`) leak their spans to the macro definition site, which lives in
+/// the registry cache. Analyzing those files would emit false positives against
+/// code the project does not own.
+///
+/// The component sequences checked here are independent of `CARGO_HOME`:
+/// cargo always lays the registry out as
+/// `<CARGO_HOME>/registry/{cache,src,index}/` and git deps as
+/// `<CARGO_HOME>/git/{checkouts,db}/`. CI environments that override
+/// `CARGO_HOME` (for example to an isolated `/tmp/.../cargo` directory
+/// without the leading dot) still produce paths whose `Path` components
+/// contain `["registry", "src"]` or similar sequences, so we cannot rely on
+/// a literal `/.cargo/` prefix.
+///
+/// Iteration is performed over [`Path::components`] (filtering down to
+/// [`Component::Normal`]) so the check stays correct on platforms whose path
+/// separator is not `/` (e.g. Windows uses `\`).
+fn is_external_crate_path(path: &Path) -> bool {
+  let normals: Vec<&str> = path
+    .components()
+    .filter_map(|component| match component {
+      | std::path::Component::Normal(name) => name.to_str(),
+      | _ => None,
+    })
+    .collect();
+
+  const EXTERNAL_SEQUENCES: &[&[&str]] = &[
+    &["registry", "src"],
+    &["registry", "cache"],
+    &["git", "checkouts"],
+    &["rustlib", "src", "rust", "library"],
+  ];
+
+  EXTERNAL_SEQUENCES.iter().any(|sequence| {
+    normals.len() >= sequence.len() && normals.windows(sequence.len()).any(|window| window == *sequence)
+  })
 }
 
 fn analyze_file(cx: &LateContext<'_>, path: &Path) {
