@@ -91,7 +91,9 @@ fn mailbox_new() {
 }
 
 #[test]
-fn mailbox_enqueue_user_returns_closed_when_queue_is_closed() {
+fn mailbox_enqueue_user_returns_closed_when_queue_enqueue_returns_closed() {
+  // Scripted queue enqueue surfaces `SendError::Closed` independently of
+  // mailbox close state; the wrapper must forward it verbatim.
   let outcomes = VecDeque::from([ScriptedEnqueue::Closed]);
   let queue = Box::new(ScriptedMessageQueue::new(outcomes));
   let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
@@ -330,4 +332,129 @@ fn mailbox_throughput_limit() {
   let policy_no_limit = MailboxPolicy::unbounded(None);
   let mailbox_no_limit = Mailbox::new(policy_no_limit);
   assert_eq!(mailbox_no_limit.throughput_limit(), None);
+}
+
+#[test]
+fn mailbox_is_closed_after_mailbox_close() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  assert!(!mailbox.is_closed());
+  mailbox.become_closed_and_clean_up();
+  assert!(mailbox.is_closed());
+}
+
+#[test]
+fn mailbox_enqueue_envelope_returns_closed_after_mailbox_close() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  mailbox.become_closed_and_clean_up();
+
+  let result = mailbox.enqueue_envelope(Envelope::new(AnyMessage::new("msg")));
+  assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
+}
+
+#[test]
+fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  mailbox.become_closed_and_clean_up();
+
+  let result = mailbox.enqueue_user(AnyMessage::new("msg"));
+  assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
+}
+
+#[test]
+fn mailbox_prepend_user_messages_returns_closed_after_mailbox_close() {
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  mailbox.become_closed_and_clean_up();
+
+  let messages = VecDeque::from([AnyMessage::new("msg")]);
+  let result = mailbox.prepend_user_messages(&messages);
+  assert!(matches!(result, Err(SendError::Closed(_))), "expected Closed, got {result:?}");
+}
+
+/// Regression for the "cleanup wins the lock race" scenario: a producer
+/// that has already passed the fast path and is executing the locked
+/// critical section must observe the authoritative `is_closed()` re-check
+/// when cleanup has closed the state.
+///
+/// The test thread takes `user_queue_lock`, starts a producer, waits until the
+/// producer is blocked on the same lock, then closes and cleans the mailbox
+/// while still holding the lock. Once the lock is released, the producer must
+/// observe the under-lock `is_closed()` re-check and fail with `Closed`.
+#[test]
+fn cleanup_close_wins_against_inflight_enqueue() {
+  use std::{
+    sync::{Arc, mpsc},
+    thread,
+    time::Duration,
+  };
+
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let guard = mailbox.user_queue_lock.lock();
+  let (started_tx, started_rx) = mpsc::channel();
+  let (result_tx, result_rx) = mpsc::channel();
+  let mailbox_for_enqueue = Arc::clone(&mailbox);
+  let enqueue_handle = thread::spawn(move || {
+    started_tx.send(()).expect("enqueue 開始シグナルが送信されるべき");
+    let result = mailbox_for_enqueue.enqueue_user(AnyMessage::new("inflight"));
+    result_tx.send(result).expect("enqueue 結果が送信されるべき");
+  });
+
+  started_rx.recv().expect("enqueue スレッドが起動するべき");
+  assert!(
+    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+    "producer は user_queue_lock 上でブロックされるべき",
+  );
+
+  mailbox.state.close();
+  mailbox.user.clean_up();
+  drop(guard);
+
+  let result = result_rx.recv().expect("enqueue 結果を受信できるべき");
+  enqueue_handle.join().expect("enqueue スレッドが完了するべき");
+  assert!(
+    matches!(result, Err(SendError::Closed(_))),
+    "under-lock re-check must reject inflight enqueue, got {result:?}",
+  );
+  assert_eq!(mailbox.user_len(), 0, "no phantom message should be in the queue");
+}
+
+/// Same invariant as [`cleanup_close_wins_against_inflight_enqueue`] but
+/// exercising the `prepend_user_messages` path used by
+/// `ActorCell::unstash_*`.
+#[test]
+fn cleanup_close_wins_against_inflight_prepend() {
+  use std::{
+    sync::{Arc, mpsc},
+    thread,
+    time::Duration,
+  };
+
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let guard = mailbox.user_queue_lock.lock();
+  let messages = VecDeque::from([AnyMessage::new("inflight-prepend")]);
+  let (started_tx, started_rx) = mpsc::channel();
+  let (result_tx, result_rx) = mpsc::channel();
+  let mailbox_for_prepend = Arc::clone(&mailbox);
+  let prepend_handle = thread::spawn(move || {
+    started_tx.send(()).expect("prepend 開始シグナルが送信されるべき");
+    let result = mailbox_for_prepend.prepend_user_messages(&messages);
+    result_tx.send(result).expect("prepend 結果が送信されるべき");
+  });
+
+  started_rx.recv().expect("prepend スレッドが起動するべき");
+  assert!(
+    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+    "prepend は user_queue_lock 上でブロックされるべき",
+  );
+
+  mailbox.state.close();
+  mailbox.user.clean_up();
+  drop(guard);
+
+  let result = result_rx.recv().expect("prepend 結果を受信できるべき");
+  prepend_handle.join().expect("prepend スレッドが完了するべき");
+  assert!(
+    matches!(result, Err(SendError::Closed(_))),
+    "under-lock re-check must reject inflight prepend, got {result:?}",
+  );
+  assert_eq!(mailbox.user_len(), 0, "no phantom prepended message should be in the queue");
 }

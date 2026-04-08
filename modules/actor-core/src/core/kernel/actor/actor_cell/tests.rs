@@ -412,7 +412,15 @@ fn poison_pill_user_message_preserves_user_ordering() {
 
   assert!(cell.actor_ref().try_tell(AnyMessage::new(1_u8)).is_ok());
   cell.actor_ref().poison_pill();
-  assert!(cell.actor_ref().try_tell(AnyMessage::new(2_u8)).is_ok());
+  // Message 2 races against the dispatcher processing PoisonPill. It is
+  // either accepted (and later drained at close) or rejected with
+  // `SendError::Closed` if the mailbox has already been closed. Either way,
+  // the ordering invariant below requires that it is not received.
+  let second_result = cell.actor_ref().try_tell(AnyMessage::new(2_u8));
+  assert!(
+    second_result.is_ok() || matches!(second_result, Err(crate::core::kernel::actor::error::SendError::Closed(_))),
+    "message 2 should be accepted or rejected as Closed, got {second_result:?}",
+  );
 
   wait_until(|| log.lock().len() >= 3);
   let snapshot = log.lock().clone();
