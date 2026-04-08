@@ -312,12 +312,33 @@ impl Mailbox {
   ///
   /// Returns an error if the mailbox is suspended, full, or closed.
   pub fn enqueue_envelope(&self, envelope: Envelope) -> Result<(), SendError> {
+    // Fast path: reject closed before suspended. `Closed` is terminal, so a
+    // mailbox observed as both closed and suspended MUST return `Closed`.
+    if self.is_closed() {
+      return Err(SendError::closed(envelope.into_payload()));
+    }
     if self.is_suspended() {
       return Err(SendError::suspended(envelope.into_payload()));
     }
+    self.enqueue_envelope_locked(envelope)
+  }
 
+  /// Locked critical section of [`Self::enqueue_envelope`].
+  ///
+  /// Acquires `user_queue_lock` and performs the authoritative close
+  /// re-check before handing the envelope to the underlying queue. This
+  /// must only be called from [`Self::enqueue_envelope`] in production
+  /// code; the fast path preceding this method is what makes the common
+  /// closed / suspended paths lock-free.
+  fn enqueue_envelope_locked(&self, envelope: Envelope) -> Result<(), SendError> {
     let enqueue_result = {
       let _guard = self.user_queue_lock.lock();
+      // Authoritative re-check under lock: cleanup may have won the lock
+      // race between the fast path and this acquisition. Without this, a
+      // producer could phantom-enqueue into a drained queue.
+      if self.is_closed() {
+        return Err(SendError::closed(envelope.into_payload()));
+      }
       self.user.enqueue(envelope)
     };
 
@@ -345,11 +366,36 @@ impl Mailbox {
       return Ok(());
     };
 
+    // Fast path: reject closed before suspended (same rationale as
+    // `enqueue_envelope`).
+    if self.is_closed() {
+      return Err(SendError::closed(first_message));
+    }
     if self.is_suspended() {
       return Err(SendError::suspended(first_message));
     }
+    self.prepend_user_messages_locked(messages, first_message)
+  }
 
+  /// Locked critical section of [`Self::prepend_user_messages`].
+  ///
+  /// Acquires `user_queue_lock`, performs the authoritative close re-check,
+  /// runs the capacity check, and dispatches to the deque or drain-and-
+  /// requeue path. Must only be called from
+  /// [`Self::prepend_user_messages`] in production code after the fast
+  /// path has cleared.
+  fn prepend_user_messages_locked(
+    &self,
+    messages: &VecDeque<AnyMessage>,
+    first_message: AnyMessage,
+  ) -> Result<(), SendError> {
     let _guard = self.user_queue_lock.lock();
+
+    // Authoritative re-check under lock: cleanup may have won the lock race
+    // between the fast path and this acquisition.
+    if self.is_closed() {
+      return Err(SendError::closed(first_message));
+    }
 
     let current_user_len = self.user.number_of_messages();
     if self.prepend_would_overflow(messages.len(), current_user_len) {
@@ -515,19 +561,28 @@ impl Mailbox {
   /// the cell is being torn down, no further executions can be scheduled and
   /// in-flight envelopes are observed exactly once.
   pub fn become_closed_and_clean_up(&self) {
-    self.state.close();
     let pid = self.pid();
     let system_state = self.system_state();
-    if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
+    // Acquire `user_queue_lock` before `state.close()` so that any in-flight
+    // `enqueue_envelope` / `prepend_user_messages` waiting on the lock will
+    // observe `is_closed() == true` in their under-lock re-check and reject
+    // instead of mutating a drained queue. This serialization boundary is
+    // maintained regardless of `cleanup_policy` to also protect direct
+    // mailbox APIs on sharing mailboxes.
+    let user_len_after_cleanup = {
       let _guard = self.user_queue_lock.lock();
-      while let Some(envelope) = self.user.dequeue() {
-        if let Some(ref state) = system_state {
-          state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+      self.state.close();
+      if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
+        while let Some(envelope) = self.user.dequeue() {
+          if let Some(ref state) = system_state {
+            state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+          }
         }
       }
-    }
-    self.user.clean_up();
-    self.publish_metrics_with_user_len(self.user.number_of_messages());
+      self.user.clean_up();
+      self.user.number_of_messages()
+    };
+    self.publish_metrics_with_user_len(user_len_after_cleanup);
   }
 
   /// Returns whether the mailbox is in the terminal closed state.
