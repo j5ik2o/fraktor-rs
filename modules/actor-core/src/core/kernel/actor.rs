@@ -33,7 +33,7 @@ pub mod supervision;
 
 pub use actor_cell::ActorCell;
 pub use actor_context::ActorContext;
-pub(crate) use actor_context::STASH_OVERFLOW_REASON;
+pub(crate) use actor_context::{STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON};
 pub use actor_lifecycle::Actor;
 pub(crate) use actor_shared::ActorShared;
 pub use address::Address;

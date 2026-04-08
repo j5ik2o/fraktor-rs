@@ -1,6 +1,11 @@
 use alloc::collections::BTreeSet;
 
-use crate::core::kernel::actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props};
+use crate::core::kernel::actor::{
+  Actor, ActorContext,
+  error::ActorError,
+  messaging::AnyMessageView,
+  props::{MailboxConfigError, Props},
+};
 
 struct TestActor;
 
@@ -45,4 +50,26 @@ fn clone_preserves_tags() {
   let props = Props::from_fn(|| TestActor).with_tags(["a", "b"]);
   let cloned = props.clone();
   assert_eq!(*cloned.tags(), *props.tags());
+}
+
+#[test]
+fn with_stash_mailbox_sets_stash_requirement() {
+  let props = Props::from_fn(|| TestActor).with_stash_mailbox();
+
+  assert_eq!(props.mailbox_requirement(), crate::core::kernel::actor::props::MailboxRequirement::for_stash());
+}
+
+#[test]
+fn with_stash_mailbox_rejects_bounded_mailbox_config() {
+  let props = Props::from_fn(|| TestActor)
+    .with_mailbox_config(crate::core::kernel::actor::props::MailboxConfig::new(
+      crate::core::kernel::dispatch::mailbox::MailboxPolicy::bounded(
+        core::num::NonZeroUsize::new(8).expect("non-zero"),
+        crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
+        None,
+      ),
+    ))
+    .with_stash_mailbox();
+
+  assert_eq!(props.mailbox_config().validate(), Err(MailboxConfigError::BoundedWithDeque));
 }

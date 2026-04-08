@@ -204,6 +204,12 @@ impl Props {
     self
   }
 
+  /// Configures the actor to use a deque-capable mailbox required by stash replay.
+  #[must_use]
+  pub fn with_stash_mailbox(self) -> Self {
+    self.with_mailbox_requirement(MailboxRequirement::for_stash())
+  }
+
   /// Overrides the mailbox via identifier.
   #[must_use]
   pub fn with_mailbox_id(mut self, id: impl Into<String>) -> Self {

@@ -377,6 +377,12 @@ impl Mailbox {
     self.prepend_user_messages_locked(messages, first_message)
   }
 
+  /// Returns whether the user queue supports deque-style prepend.
+  #[must_use]
+  pub(crate) fn user_queue_is_deque_capable(&self) -> bool {
+    self.user.as_deque().is_some()
+  }
+
   /// Locked critical section of [`Self::prepend_user_messages`].
   ///
   /// Acquires `user_queue_lock`, performs the authoritative close re-check,

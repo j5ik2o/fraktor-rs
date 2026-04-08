@@ -228,7 +228,7 @@ fn typed_behaviors_ignore_keeps_current_state() {
 
 #[test]
 fn typed_behaviors_stash_buffered_messages_across_transition() {
-  let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0));
+  let props = TypedProps::<StashCommand>::from_behavior_factory(|| stash_behavior(0)).with_stash_mailbox();
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
@@ -251,7 +251,8 @@ fn typed_behaviors_with_stash_limits_capacity() {
   let overflow_probe = Arc::clone(&overflow_count);
   let props = TypedProps::<StashCommand>::from_behavior_factory(move || {
     stash_behavior_with_capacity_limit(0, Arc::clone(&overflow_probe))
-  });
+  })
+  .with_stash_mailbox();
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
@@ -275,7 +276,8 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
   let props = TypedProps::<StashCommand>::from_behavior_factory({
     let slot = adapter_slot.clone();
     move || adapter_stash_behavior(0, &slot)
-  });
+  })
+  .with_stash_mailbox();
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );
@@ -297,7 +299,8 @@ fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
 
 #[test]
 fn typed_behaviors_unstash_replays_before_already_queued_messages() {
-  let props = TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new()));
+  let props =
+    TypedProps::<StashOrderCommand>::from_behavior_factory(|| stash_order_behavior(Vec::new())).with_stash_mailbox();
   let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
     crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
   );

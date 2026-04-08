@@ -149,7 +149,7 @@ impl PersistentActor for MismatchPersistentActor {
 
 fn build_context(system: &ActorSystem) -> ActorContext<'static> {
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| NoopActor);
+  let props = Props::from_fn(|| NoopActor).with_stash_mailbox();
   let cell = ActorCell::create(system.state(), pid, None, "test".into(), &props).expect("actor cell should be created");
   system.state().register_cell(cell);
   ActorContext::new(system, pid)

@@ -232,6 +232,10 @@ impl Behaviors {
   /// Creates a behavior using a bounded stash helper.
   ///
   /// This mirrors Pekko's `Behaviors.withStash`.
+  ///
+  /// This helper does not configure the actor mailbox. Pair it with
+  /// `TypedProps::with_stash_mailbox()` so unstash replay uses a deque-capable
+  /// mailbox instead of falling back to runtime contract violations.
   #[must_use]
   pub fn with_stash<M, F>(capacity: usize, factory: F) -> Behavior<M>
   where
