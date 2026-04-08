@@ -6,7 +6,7 @@ use crate::core::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   typed::{
-    TypedActorRef, TypedActorSystem, TypedProps,
+    Behavior, TypedActorRef, TypedActorSystem, TypedProps,
     dsl::{AskPattern, Behaviors, StatusReply, TypedAskError},
   },
 };
@@ -28,7 +28,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
   panic!("condition not met");
 }
 
-fn ask_pattern_behavior() -> crate::core::typed::Behavior<AskPatternCommand> {
+fn ask_pattern_behavior() -> Behavior<AskPatternCommand> {
   Behaviors::receive_message(|_ctx, message| {
     match message {
       | AskPatternCommand::Echo { value, reply_to } => {

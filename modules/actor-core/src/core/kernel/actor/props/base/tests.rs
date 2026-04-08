@@ -1,10 +1,13 @@
 use alloc::collections::BTreeSet;
 
-use crate::core::kernel::actor::{
-  Actor, ActorContext,
-  error::ActorError,
-  messaging::AnyMessageView,
-  props::{MailboxConfigError, Props},
+use crate::core::kernel::{
+  actor::{
+    Actor, ActorContext,
+    error::ActorError,
+    messaging::AnyMessageView,
+    props::{MailboxConfig, MailboxConfigError, Props},
+  },
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
 };
 
 struct TestActor;
@@ -62,13 +65,11 @@ fn with_stash_mailbox_sets_stash_requirement() {
 #[test]
 fn with_stash_mailbox_rejects_bounded_mailbox_config() {
   let props = Props::from_fn(|| TestActor)
-    .with_mailbox_config(crate::core::kernel::actor::props::MailboxConfig::new(
-      crate::core::kernel::dispatch::mailbox::MailboxPolicy::bounded(
-        core::num::NonZeroUsize::new(8).expect("non-zero"),
-        crate::core::kernel::dispatch::mailbox::MailboxOverflowStrategy::DropNewest,
-        None,
-      ),
-    ))
+    .with_mailbox_config(MailboxConfig::new(MailboxPolicy::bounded(
+      core::num::NonZeroUsize::new(8).expect("non-zero"),
+      MailboxOverflowStrategy::DropNewest,
+      None,
+    )))
     .with_stash_mailbox();
 
   assert_eq!(props.mailbox_config().validate(), Err(MailboxConfigError::BoundedWithDeque));

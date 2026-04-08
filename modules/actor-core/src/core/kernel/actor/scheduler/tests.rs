@@ -31,7 +31,7 @@ use super::{
 };
 use crate::core::kernel::actor::{
   Pid,
-  actor_ref::{ActorRef, ActorRefSender},
+  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
   error::SendError,
   messaging::AnyMessage,
   scheduler::SchedulerShared,
@@ -995,8 +995,8 @@ struct RecordingSender {
 }
 
 impl ActorRefSender for RecordingSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.inbox.lock().push(message);
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+    Ok(SendOutcome::Delivered)
   }
 }

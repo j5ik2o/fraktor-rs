@@ -8,7 +8,7 @@ use crate::core::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
-  typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{ExtensionSetup, TypedActorSystem, TypedProps, dsl::Behaviors, extension_setup::ActorSystem},
 };
 
 #[derive(Clone)]
@@ -30,7 +30,7 @@ impl Extension for ProbeExtension {}
 impl crate::core::kernel::actor::extension::ExtensionId for ProbeExtensionId {
   type Ext = ProbeExtension;
 
-  fn create_extension(&self, _system: &crate::core::kernel::system::ActorSystem) -> Self::Ext {
+  fn create_extension(&self, _system: &ActorSystem) -> Self::Ext {
     ProbeExtension::new("default")
   }
 }

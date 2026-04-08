@@ -12,7 +12,7 @@ use crate::core::{
     },
     system::ActorSystem,
   },
-  typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender},
+  typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender, adapter_ref_sender::SendOutcome},
 };
 
 struct ProbeSender {
@@ -26,9 +26,9 @@ impl ProbeSender {
 }
 
 impl ActorRefSender for ProbeSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.messages.lock().push(message);
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+    Ok(SendOutcome::Delivered)
   }
 }
 

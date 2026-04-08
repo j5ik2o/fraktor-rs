@@ -4,7 +4,10 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
 use crate::core::kernel::{
-  actor::actor_ref::dead_letter::DeadLetterEntry,
+  actor::{
+    actor_ref::dead_letter::{DeadLetterEntry, DeadLetterReason},
+    messaging::AnyMessage,
+  },
   event::{
     logging::{LogEvent, LogLevel, LoggerSubscriber, LoggerWriter},
     stream::{EventStreamEvent, EventStreamSubscriber},
@@ -80,8 +83,8 @@ fn on_event_ignores_non_log_events() {
   let mut subscriber = LoggerSubscriber::new(LogLevel::Info, Box::new(writer));
 
   subscriber.on_event(&EventStreamEvent::DeadLetter(DeadLetterEntry::new(
-    crate::core::kernel::actor::messaging::AnyMessage::new(()),
-    crate::core::kernel::actor::actor_ref::dead_letter::DeadLetterReason::MissingRecipient,
+    AnyMessage::new(()),
+    DeadLetterReason::MissingRecipient,
     None,
     Duration::ZERO,
   )));

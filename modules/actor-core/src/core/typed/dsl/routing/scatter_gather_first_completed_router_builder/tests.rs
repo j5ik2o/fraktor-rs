@@ -3,12 +3,18 @@ use core::{hint::spin_loop, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
-use crate::core::typed::{
-  TypedActorRef,
-  behavior::Behavior,
-  dsl::{Behaviors, routing::Routers},
-  props::TypedProps,
-  system::TypedActorSystem,
+use crate::core::{
+  kernel::actor::{
+    actor_ref::ActorRef,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  },
+  typed::{
+    TypedActorRef,
+    behavior::Behavior,
+    dsl::{Behaviors, routing::Routers},
+    props::TypedProps,
+    system::TypedActorSystem,
+  },
 };
 
 #[derive(Clone)]
@@ -179,13 +185,11 @@ fn scatter_gather_returns_first_reply() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
-  let dummy_reply_to = TypedActorRef::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::no_sender());
+  let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());
   guardian.tell(TestReq::Query { id: 42, reply_to: dummy_reply_to });
 
   wait_until(|| !replies_for_check.lock().is_empty());
@@ -265,13 +269,13 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let manual_driver = crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new();
+  let manual_driver = ManualTestDriver::new();
   let controller = manual_driver.controller();
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(manual_driver);
+  let tick_driver = TickDriverConfig::manual(manual_driver);
   let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
-  let dummy_reply_to = TypedActorRef::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::no_sender());
+  let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());
   guardian.tell(TestReq::Query { id: 99, reply_to: dummy_reply_to });
 
   // メッセージ伝播を待ち、スケジューラを駆動してタイムアウトを発火させる
@@ -339,9 +343,7 @@ fn scatter_gather_stops_when_all_routees_terminate() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
 
   // routee が即座に停止するため、Terminated シグナルでルーターも停止する
@@ -401,9 +403,7 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
 
   // spawn 失敗により routee_vec が空 → build 直後に Behaviors::stopped() → ルーター終了
@@ -477,13 +477,11 @@ fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<TestReq>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<TestReq>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
-  let dummy_reply_to = TypedActorRef::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::no_sender());
+  let dummy_reply_to = TypedActorRef::from_untyped(ActorRef::no_sender());
   guardian.tell(TestReq::Query { id: 77, reply_to: dummy_reply_to });
 
   // coordinator spawn 失敗 → 即時 timeout_reply が返るはず

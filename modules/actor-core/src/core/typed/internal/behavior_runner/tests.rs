@@ -14,6 +14,7 @@ use crate::core::{
     actor::{TypedActor, TypedActorContext},
     behavior::Behavior,
     dsl::Behaviors,
+    internal::behavior_runner::{AdapterFailureEvent, Pid},
     message_adapter::{AdapterError, MessageAdapterRegistry},
     message_and_signals::{BehaviorSignal, DeathPactError},
   },
@@ -64,7 +65,7 @@ fn build_context() -> (ActorContext<'static>, MessageAdapterRegistry<ProbeMessag
   (ctx, MessageAdapterRegistry::new())
 }
 
-fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<crate::core::kernel::actor::Pid>) {
+fn build_context_with_pids(count: usize) -> (ActorSystem, Vec<Pid>) {
   let system = ActorSystem::new_empty();
   let pids: Vec<_> = (0..count).map(|_| system.allocate_pid()).collect();
   (system, pids)
@@ -125,7 +126,7 @@ fn behavior_runner_publishes_adapter_failure_event() {
   assert_eq!(recorded.len(), 1);
   match &recorded[0] {
     | EventStreamEvent::AdapterFailure(event) => match event {
-      | crate::core::kernel::event::stream::AdapterFailureEvent::Custom { pid: event_pid, detail } => {
+      | AdapterFailureEvent::Custom { pid: event_pid, detail } => {
         assert_eq!(*event_pid, pid);
         assert_eq!(detail, "boom");
       },

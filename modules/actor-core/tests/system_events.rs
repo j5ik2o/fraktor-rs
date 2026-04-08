@@ -12,12 +12,13 @@ use fraktor_actor_core_rs::core::kernel::{
     lifecycle::LifecycleStage,
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
-  system::ActorSystem,
+  system::{ActorSystem, SpinBlocker},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -53,9 +54,7 @@ impl Actor for Guardian {
 #[test]
 fn lifecycle_and_log_events_are_published() {
   let props = Props::from_fn(|| Guardian);
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -74,7 +73,7 @@ fn lifecycle_and_log_events_are_published() {
   });
 
   system.terminate().expect("terminate");
-  system.run_until_terminated(&fraktor_actor_core_rs::core::kernel::system::SpinBlocker);
+  system.run_until_terminated(&SpinBlocker);
 
   wait_until(|| {
     events.lock().iter().any(

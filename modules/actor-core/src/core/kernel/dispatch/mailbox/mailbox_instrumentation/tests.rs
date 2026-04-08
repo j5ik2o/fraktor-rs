@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 use super::MailboxInstrumentation;
 use crate::core::kernel::{
   actor::Pid,
-  dispatch::mailbox::BackpressurePublisher,
+  dispatch::mailbox::{BackpressurePublisher, metrics_event::MailboxPressureEvent},
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
@@ -72,7 +72,7 @@ fn mailbox_instrumentation_notifies_backpressure_publisher() {
   let captured = ArcShared::new(NoStdMutex::new(Vec::new()));
   let publisher = BackpressurePublisher::from_fn({
     let captured = captured.clone();
-    move |event: &crate::core::kernel::dispatch::mailbox::metrics_event::MailboxPressureEvent| {
+    move |event: &MailboxPressureEvent| {
       captured.lock().push((event.pid(), event.user_len()));
     }
   });

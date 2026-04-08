@@ -1,7 +1,10 @@
 use core::{any::TypeId, time::Duration};
 
 use crate::core::{
-  kernel::actor::supervision::{SupervisorStrategy, SupervisorStrategyKind},
+  kernel::actor::{
+    error::ActorError,
+    supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyKind},
+  },
   typed::dsl::FailureHandler,
 };
 
@@ -11,12 +14,8 @@ struct MyError;
 fn should_store_type_id_and_name() {
   let strategy =
     SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |error| match error {
-      | crate::core::kernel::actor::error::ActorError::Recoverable(_) => {
-        crate::core::kernel::actor::supervision::SupervisorDirective::Restart
-      },
-      | crate::core::kernel::actor::error::ActorError::Fatal(_) => {
-        crate::core::kernel::actor::supervision::SupervisorDirective::Stop
-      },
+      | ActorError::Recoverable(_) => SupervisorDirective::Restart,
+      | ActorError::Fatal(_) => SupervisorDirective::Stop,
     });
   let handler = FailureHandler::new::<MyError>(strategy);
 

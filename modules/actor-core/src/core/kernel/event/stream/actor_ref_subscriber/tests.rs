@@ -5,7 +5,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 use crate::core::kernel::{
   actor::{
     Pid,
-    actor_ref::{ActorRef, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     error::SendError,
     messaging::AnyMessage,
   },
@@ -27,11 +27,11 @@ impl CollectorSender {
 }
 
 impl ActorRefSender for CollectorSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     if let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() {
       self.messages.lock().push(event.clone());
     }
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+    Ok(SendOutcome::Delivered)
   }
 }
 

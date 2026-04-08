@@ -1,4 +1,4 @@
-use crate::core::typed::message_adapter::{AdapterEntry, AdapterOutcome};
+use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 
 #[test]
 fn adapter_entry_type_id_round_trip() {
@@ -10,8 +10,8 @@ fn adapter_entry_type_id_round_trip() {
 fn adapter_entry_executes_handler() {
   let entry =
     AdapterEntry::<i32>::new::<alloc::string::String, _>(core::any::TypeId::of::<alloc::string::String>(), |value| {
-      value.parse::<i32>().map_err(|_| crate::core::typed::message_adapter::AdapterError::Custom("parse".into()))
+      value.parse::<i32>().map_err(|_| AdapterError::Custom("parse".into()))
     });
-  let payload = crate::core::typed::message_adapter::AdapterPayload::new(alloc::string::String::from("12"));
+  let payload = AdapterPayload::new(alloc::string::String::from("12"));
   assert_eq!(entry.invoke(payload), AdapterOutcome::Converted(12));
 }

@@ -11,10 +11,11 @@ use fraktor_actor_core_rs::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
-  system::ActorSystem,
+  system::{ActorSystem, SpinBlocker},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -79,9 +80,7 @@ fn dead_letter_event_is_published_when_send_fails() {
     let child_props = child_props.clone();
     move || TestGuardian::new(child_slot.clone(), child_props.clone())
   });
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -103,7 +102,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   child.resume().expect("resume child");
   system.terminate().expect("terminate");
-  system.run_until_terminated(&fraktor_actor_core_rs::core::kernel::system::SpinBlocker);
+  system.run_until_terminated(&SpinBlocker);
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

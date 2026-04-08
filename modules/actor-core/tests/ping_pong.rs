@@ -8,6 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     spawn::SpawnError,
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
@@ -111,9 +112,7 @@ fn spawn_and_tell_delivers_message() {
     let child_slot = child_slot.clone();
     move || RecordingGuardian::new(log.clone(), child_slot.clone())
   });
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
@@ -150,9 +149,7 @@ fn auto_naming_and_duplicate_detection() {
     move || NamingGuardian::new(conflict.clone(), spawned.clone())
   });
 
-  let tick_driver = fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 

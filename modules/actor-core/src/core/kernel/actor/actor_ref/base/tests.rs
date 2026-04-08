@@ -6,8 +6,8 @@ use super::ActorRef;
 use crate::core::kernel::{
   actor::{
     Pid,
-    actor_ref::{ActorRefSender, NullSender},
-    error::SendError,
+    actor_ref::{ActorRefSender, NullSender, SendOutcome},
+    error::{ActorError, SendError},
     messaging::AnyMessage,
   },
   system::ActorSystem,
@@ -26,10 +26,10 @@ impl RecordingSender {
 }
 
 impl ActorRefSender for RecordingSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
     use core::sync::atomic::Ordering;
     self.count.fetch_add(1, Ordering::Relaxed);
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+    Ok(SendOutcome::Delivered)
   }
 }
 
@@ -85,11 +85,7 @@ fn actor_ref_path_resolves_segments() {
 
   struct PathActor;
   impl Actor for PathActor {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_>,
-      _message: AnyMessageView<'_>,
-    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
       Ok(())
     }
   }
@@ -136,11 +132,7 @@ fn actor_ref_ask_reply_sender_uses_distinct_pid_and_no_target_path() {
 
   struct EchoActor;
   impl Actor for EchoActor {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_>,
-      message: AnyMessageView<'_>,
-    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
       if let Some(value) = message.downcast_ref::<u32>()
         && let Some(sender) = message.sender()
       {
@@ -236,11 +228,7 @@ fn actor_ref_poison_pill_with_system_enqueues_user_message() {
 
   struct ProbeActor;
   impl Actor for ProbeActor {
-    fn receive(
-      &mut self,
-      _ctx: &mut ActorContext<'_>,
-      _message: AnyMessageView<'_>,
-    ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
+    fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
       Ok(())
     }
   }

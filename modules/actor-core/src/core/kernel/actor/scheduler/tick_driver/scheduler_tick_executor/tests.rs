@@ -6,7 +6,7 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
 use crate::core::kernel::actor::scheduler::{
-  SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
+  ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
   tick_driver::{SchedulerTickExecutor, TickExecutorSignal, TickFeed},
 };
 
@@ -17,7 +17,7 @@ struct RecordingRunnable {
 }
 
 impl SchedulerRunnable for RecordingRunnable {
-  fn run(&self, _batch: &crate::core::kernel::actor::scheduler::ExecutionBatch) {
+  fn run(&self, _batch: &ExecutionBatch) {
     self.log.lock().push(self.label);
   }
 }

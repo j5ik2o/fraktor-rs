@@ -3,11 +3,14 @@ use core::hint::spin_loop;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
-use crate::core::typed::{
-  behavior::Behavior,
-  dsl::{Behaviors, routing::Routers},
-  props::TypedProps,
-  system::TypedActorSystem,
+use crate::core::{
+  kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
+  typed::{
+    behavior::Behavior,
+    dsl::{Behaviors, routing::Routers},
+    props::TypedProps,
+    system::TypedActorSystem,
+  },
 };
 
 #[derive(Clone, Debug)]
@@ -75,9 +78,7 @@ fn balancing_pool_distributes_to_idle_workers() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -155,9 +156,7 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -220,9 +219,7 @@ fn balancing_pool_stops_when_all_routees_terminate() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 
@@ -275,9 +272,7 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
 
   let ob = outer_behavior.clone();
   let props = TypedProps::<WorkItem>::from_behavior_factory(move || ob());
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<WorkItem>::new(&props, tick_driver).expect("system");
   let mut guardian = system.user_guardian_ref();
 

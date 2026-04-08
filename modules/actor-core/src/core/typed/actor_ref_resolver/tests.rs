@@ -13,7 +13,7 @@ use crate::core::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
-  typed::{ActorRefResolverSetup, TypedActorSystem, TypedProps, dsl::Behaviors},
+  typed::{ActorRefResolverSetup, TypedActorSystem, TypedProps, actor_ref_resolver::ActorSystem, dsl::Behaviors},
 };
 
 struct NoopActor;
@@ -26,7 +26,7 @@ impl Actor for NoopActor {
 
 #[test]
 fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
-  let system = crate::core::kernel::system::ActorSystem::new_empty();
+  let system = ActorSystem::new_empty();
   let pid = Pid::new(200, 0);
   let props = Props::from_fn(|| NoopActor);
   let cell = ActorCell::create(system.state(), pid, None, String::from("worker"), &props).expect("create worker cell");
@@ -41,8 +41,8 @@ fn actor_ref_resolver_serializes_and_resolves_spawned_actor_refs() {
 
 #[test]
 fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
-  let resolver_system = crate::core::kernel::system::ActorSystem::new_empty();
-  let foreign_system = crate::core::kernel::system::ActorSystem::new_empty();
+  let resolver_system = ActorSystem::new_empty();
+  let foreign_system = ActorSystem::new_empty();
   let pid = Pid::new(201, 0);
   let props = Props::from_fn(|| NoopActor);
   let cell =
@@ -60,7 +60,7 @@ fn actor_ref_resolver_setup_overrides_default_extension_factory() {
   let invoked = ArcShared::new(NoStdMutex::new(false));
   let setup = ActorRefResolverSetup::new({
     let invoked = invoked.clone();
-    move |system: &crate::core::kernel::system::ActorSystem| {
+    move |system: &ActorSystem| {
       *invoked.lock() = true;
       ActorRefResolver::new(system)
     }

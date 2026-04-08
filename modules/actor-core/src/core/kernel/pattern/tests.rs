@@ -13,13 +13,13 @@ use super::{graceful_stop, graceful_stop_with_message, retry};
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender},
+    actor_ref::{ActorRef, ActorRefSender, NullSender, SendOutcome},
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView, AskError},
     props::Props,
     scheduler::{ExecutionBatch, SchedulerCommand, SchedulerRunnable},
   },
-  system::ActorSystem,
+  system::{ActorSystem, state::SystemStateShared},
 };
 
 struct ReplyingSender {
@@ -27,12 +27,12 @@ struct ReplyingSender {
 }
 
 impl ActorRefSender for ReplyingSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     if let Some(mut sender) = message.sender().cloned() {
       sender.tell(AnyMessage::new(7_u32));
       self.replies.lock().push(7);
     }
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+    Ok(SendOutcome::Delivered)
   }
 }
 
@@ -47,18 +47,18 @@ impl Actor for NoopActor {
 struct SilentSender;
 
 impl ActorRefSender for SilentSender {
-  fn send(&mut self, _message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
-    Ok(crate::core::kernel::actor::actor_ref::SendOutcome::Delivered)
+  fn send(&mut self, _message: AnyMessage) -> Result<SendOutcome, SendError> {
+    Ok(SendOutcome::Delivered)
   }
 }
 
 struct DisappearingSender {
   pid:    Pid,
-  system: crate::core::kernel::system::state::SystemStateShared,
+  system: SystemStateShared,
 }
 
 impl ActorRefSender for DisappearingSender {
-  fn send(&mut self, message: AnyMessage) -> Result<crate::core::kernel::actor::actor_ref::SendOutcome, SendError> {
+  fn send(&mut self, message: AnyMessage) -> Result<SendOutcome, SendError> {
     self.system.remove_cell(&self.pid);
     Err(SendError::closed(message))
   }
@@ -66,7 +66,7 @@ impl ActorRefSender for DisappearingSender {
 
 struct RemoveCellRunnable {
   pid:    Pid,
-  system: crate::core::kernel::system::state::SystemStateShared,
+  system: SystemStateShared,
 }
 
 impl SchedulerRunnable for RemoveCellRunnable {
@@ -248,7 +248,7 @@ fn graceful_stop_returns_send_failed_when_stop_send_fails_and_target_stays_alive
 
   // stop message の同期送信が失敗し、actor がまだ生存している場合は
   // graceful_stop 自体も即座に SendFailed を返す。
-  let mut actor_ref = ActorRef::with_system(pid, crate::core::kernel::actor::actor_ref::NullSender, &state);
+  let mut actor_ref = ActorRef::with_system(pid, NullSender, &state);
   let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));

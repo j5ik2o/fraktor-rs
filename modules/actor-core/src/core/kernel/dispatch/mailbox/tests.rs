@@ -11,13 +11,14 @@ use crate::core::kernel::{
     error::ActorError,
     messaging::{AnyMessage, AnyMessageView},
     props::{MailboxConfig, Props},
+    scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   event::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
-  system::ActorSystem,
+  system::{ActorSystem, SpinBlocker},
 };
 
 struct PassiveActor;
@@ -45,9 +46,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let mailbox_config = MailboxConfig::new(MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None))
     .with_warn_threshold(Some(warn_threshold));
   let props = Props::from_fn(|| PassiveActor).with_mailbox_config(mailbox_config);
-  let tick_driver = crate::core::kernel::actor::scheduler::tick_driver::TickDriverConfig::manual(
-    crate::core::kernel::actor::scheduler::tick_driver::ManualTestDriver::new(),
-  );
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(NoStdMutex::new(Vec::new()));
@@ -65,7 +64,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   });
 
   system.terminate().expect("terminate");
-  system.run_until_terminated(&crate::core::kernel::system::SpinBlocker);
+  system.run_until_terminated(&SpinBlocker);
 }
 
 #[test]
