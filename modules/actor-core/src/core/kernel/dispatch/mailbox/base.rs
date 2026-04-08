@@ -209,9 +209,6 @@ impl Mailbox {
     let _ = throughput_deadline; // Deadline support is added in a follow-up change.
 
     while processed < limit {
-      if self.state.is_close_requested() {
-        break;
-      }
       match self.dequeue() {
         | Some(MailboxMessage::System(msg)) => {
           // Suspend / Resume are mailbox-local commands; everything else delegates to the invoker.
@@ -455,6 +452,10 @@ impl Mailbox {
   /// Dequeues the next available message, prioritising system queue.
   #[must_use]
   pub(crate) fn dequeue(&self) -> Option<MailboxMessage> {
+    if self.state.is_close_requested() {
+      return None;
+    }
+
     if let Some(system) = self.system.pop() {
       self.publish_metrics();
       return Some(MailboxMessage::System(system));
@@ -466,6 +467,9 @@ impl Mailbox {
 
     let result = {
       let _guard = self.user_queue_lock.lock();
+      if self.state.is_close_requested() {
+        return None;
+      }
       self.user.dequeue().map(MailboxMessage::User)
     };
     if result.is_some() {
