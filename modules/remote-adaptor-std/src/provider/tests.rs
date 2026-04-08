@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   actor_ref_provider::{ActorRefProviderShared, LocalActorRefProvider},
 };
 use fraktor_remote_core_rs::{
-  address::{Address, UniqueAddress},
+  address::{Address, RemoteNodeId, UniqueAddress},
   provider::{ProviderError, RemoteActorRef, RemoteActorRefProvider},
 };
 
@@ -31,7 +31,7 @@ struct StubRemoteProvider {
 impl RemoteActorRefProvider for StubRemoteProvider {
   fn actor_ref(&mut self, path: ActorPath) -> Result<RemoteActorRef, ProviderError> {
     self.actor_ref_calls.push(path.clone());
-    let node = fraktor_remote_core_rs::address::RemoteNodeId::new("remote", "10.0.0.1", Some(2552), 1);
+    let node = RemoteNodeId::new("remote", "10.0.0.1", Some(2552), 1);
     Ok(RemoteActorRef::new(path, node))
   }
 
