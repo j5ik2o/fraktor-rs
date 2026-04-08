@@ -23,6 +23,7 @@ use crate::core::kernel::{
 };
 
 pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
+pub(crate) const STASH_REQUIRES_DEQUE_REASON: &str = "stash requires deque-capable mailbox";
 
 pub(crate) struct ReceiveTimeoutState {
   duration: Duration,
@@ -146,6 +147,12 @@ impl ActorContext<'_> {
   #[must_use]
   pub fn is_stash_overflow_error(error: &ActorError) -> bool {
     matches!(error, ActorError::Recoverable(reason) if reason.as_str() == STASH_OVERFLOW_REASON)
+  }
+
+  /// Returns true when the provided error is caused by missing deque mailbox support for stash.
+  #[must_use]
+  pub fn is_stash_requires_deque_error(error: &ActorError) -> bool {
+    matches!(error, ActorError::Recoverable(reason) if reason.as_str() == STASH_REQUIRES_DEQUE_REASON)
   }
 
   /// Re-enqueues the oldest previously stashed message back to this actor mailbox.

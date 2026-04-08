@@ -77,7 +77,7 @@ fn main() {
     time::{Duration, Instant},
   };
 
-  let props = TypedProps::from_behavior_factory(|| buffering(0));
+  let props = TypedProps::from_behavior_factory(|| buffering(0)).with_stash_mailbox();
   let (tick_driver_config, _pulse_handle) = support::hardware_tick_driver_config();
   let system = TypedActorSystem::new(&props, tick_driver_config).expect("system");
   let mut actor = system.user_guardian_ref();

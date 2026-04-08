@@ -20,7 +20,7 @@ use portable_atomic::{AtomicBool, Ordering};
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON,
+      Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
       actor_context::ReceiveTimeoutState,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
@@ -451,6 +451,9 @@ impl ActorCell {
   ///
   /// Returns an overflow error when the stash already reached `max_messages`.
   pub(crate) fn stash_message_with_limit(&self, message: AnyMessage, max_messages: usize) -> Result<(), ActorError> {
+    if !self.mailbox().user_queue_is_deque_capable() {
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    }
     let mut state = self.state.lock();
     if state.stashed_messages.len() >= max_messages {
       return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
@@ -605,6 +608,14 @@ impl ActorCell {
   ///
   /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
   pub(crate) fn unstash_message(&self) -> Result<usize, ActorError> {
+    if self.stashed_message_len() == 0 {
+      return Ok(0);
+    }
+
+    if !self.mailbox().user_queue_is_deque_capable() {
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    }
+
     let message = {
       let mut state = self.state.lock();
       state.stashed_messages.pop_front()
@@ -637,6 +648,14 @@ impl ActorCell {
   ///
   /// Returns an error when mailbox enqueue fails. Remaining messages stay stashed.
   pub(crate) fn unstash_messages(&self) -> Result<usize, ActorError> {
+    if self.stashed_message_len() == 0 {
+      return Ok(0);
+    }
+
+    if !self.mailbox().user_queue_is_deque_capable() {
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
+    }
+
     let pending = {
       let mut state = self.state.lock();
       mem::take(&mut state.stashed_messages)
@@ -668,6 +687,14 @@ impl ActorCell {
     F: FnMut(AnyMessage) -> Result<AnyMessage, ActorError>, {
     if limit == 0 {
       return Ok(0);
+    }
+
+    if self.stashed_message_len() == 0 {
+      return Ok(0);
+    }
+
+    if !self.mailbox().user_queue_is_deque_capable() {
+      return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     }
 
     let original_messages = {

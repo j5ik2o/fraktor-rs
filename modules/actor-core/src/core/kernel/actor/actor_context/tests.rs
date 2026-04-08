@@ -253,7 +253,8 @@ fn actor_context_stash_and_unstash_replays_message() {
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
-  });
+  })
+  .with_stash_mailbox();
   let _cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -272,7 +273,7 @@ fn actor_context_stash_and_unstash_replays_message() {
 fn actor_context_stash_with_limit_detects_overflow() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -307,7 +308,8 @@ fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remainin
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
-  });
+  })
+  .with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -398,7 +400,7 @@ fn actor_context_stash_overflow_error_converts_from_actor_error() {
   // 前提: 既存の context API で stash overflow を発生させる
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
   let _cell = register_cell(&system, pid, "stash-overflow", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -413,6 +415,21 @@ fn actor_context_stash_overflow_error_converts_from_actor_error() {
 
   // 検証: 変換が成功し、公開エラー型として扱える
   let _ = overflow;
+}
+
+#[test]
+fn actor_context_stash_requires_deque_error_is_detected() {
+  let system = ActorSystem::new_empty();
+  let pid = system.allocate_pid();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let _cell = register_cell(&system, pid, "stash-deque", &props);
+
+  let mut context = ActorContext::new(&system, pid);
+  context.set_current_message(Some(AnyMessage::new(1_i32)));
+
+  let error = context.stash().expect_err("non-deque stash should fail");
+
+  assert!(ActorContext::is_stash_requires_deque_error(&error));
 }
 
 #[test]

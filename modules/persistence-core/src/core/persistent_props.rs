@@ -12,7 +12,7 @@ pub fn persistent_props<F, A>(mut factory: F) -> Props
 where
   F: FnMut() -> A + Send + Sync + 'static,
   A: PersistentActor + Sync + 'static, {
-  Props::from_fn(move || PersistentActorAdapter::new(factory()))
+  Props::from_fn(move || PersistentActorAdapter::new(factory())).with_stash_mailbox()
 }
 
 /// Spawns a persistent actor as a child of the provided context.

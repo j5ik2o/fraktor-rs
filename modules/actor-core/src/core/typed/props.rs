@@ -166,6 +166,12 @@ where
     self.with_mailbox_selector(MailboxSelector::from_config(id))
   }
 
+  /// Shorthand: require the deque-capable mailbox contract needed by stash replay.
+  #[must_use]
+  pub fn with_stash_mailbox(self) -> Self {
+    self.map_props(Props::with_stash_mailbox)
+  }
+
   /// Attaches metadata tags to the actor for observability and routing.
   ///
   /// This mirrors Pekko's `ActorTags`.

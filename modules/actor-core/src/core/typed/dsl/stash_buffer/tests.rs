@@ -62,7 +62,7 @@ fn stash_buffer_capacity_matches_constructor() {
 fn stash_buffer_inspects_and_clears_stashed_messages() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -97,7 +97,8 @@ fn stash_buffer_unstash_requeues_limited_messages_with_wrap() {
   let props = Props::from_fn({
     let received = received.clone();
     move || ProbeActor::new(received.clone())
-  });
+  })
+  .with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
