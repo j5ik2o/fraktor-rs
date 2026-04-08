@@ -1,0 +1,93 @@
+name: Setup isolated Rust environment
+description: |
+  Isolates CARGO_HOME, RUSTUP_HOME, and TMPDIR per-job to prevent races on
+  self-hosted runners that share the same home directory.
+
+  IMPORTANT: This action MUST be invoked BEFORE `dtolnay/rust-toolchain@master`
+  (or any other action that writes to CARGO_HOME / RUSTUP_HOME). Subsequent
+  steps will see the isolated paths via `GITHUB_ENV` / `GITHUB_PATH`.
+
+  Race conditions this action prevents:
+
+  1. `~/.rustup/settings.toml` truncation race — multiple concurrent jobs
+     calling `rustup default <toolchain>` simultaneously can truncate the
+     shared settings.toml, producing parse errors like `missing field
+     version`.
+  2. `~/.cargo/bin/rustup` ETXTBSY race — one job executing rustup while
+     another job's `dtolnay/rust-toolchain@master` tries to overwrite the
+     binary fails with `Text file busy` (exit 126).
+
+  Strategy:
+
+  - Create a fresh directory under `RUNNER_TEMP` (auto-cleaned by the runner)
+    and redirect CARGO_HOME, RUSTUP_HOME, TMPDIR there.
+  - Copy (NOT symlink) the rustup binary from the shared location so writes
+    to it by this job do not race with other jobs executing the shared
+    binary. Symlinks would still point at the shared inode and therefore
+    would not avoid ETXTBSY.
+  - Copy the entire `~/.rustup` tree (toolchains, settings) so that
+    `dtolnay/rust-toolchain@master` can re-use already-installed toolchains
+    without re-downloading, and without writing to the shared settings file.
+  - Copy every other binary under `~/.cargo/bin` as symlinks (safe, since
+    dtolnay only writes to `rustup`, `cargo`, `rustc` etc., which we handle
+    specially where needed).
+  - Export CARGO_HOME, RUSTUP_HOME, TMPDIR via GITHUB_ENV so downstream
+    steps pick them up.
+  - Prepend the isolated bin directory to GITHUB_PATH so PATH lookups
+    resolve against the isolated copies first.
+
+runs:
+  using: composite
+  steps:
+    - name: Create isolated CARGO_HOME / RUSTUP_HOME / TMPDIR
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Unique per-job root under RUNNER_TEMP (auto-cleaned by the runner).
+        iso_root="$(mktemp -d "${RUNNER_TEMP}/fraktor-ci-XXXXXXXX")"
+        iso_cargo="${iso_root}/cargo"
+        iso_rustup="${iso_root}/rustup"
+        iso_tmp="${iso_root}/tmp"
+        mkdir -p "${iso_cargo}/bin" "${iso_rustup}" "${iso_tmp}"
+
+        # Copy (NOT symlink) the rustup binary so a concurrent job overwriting
+        # the shared binary cannot race with this job executing it.
+        if [ -f "${HOME}/.cargo/bin/rustup" ]; then
+          cp -p "${HOME}/.cargo/bin/rustup" "${iso_cargo}/bin/rustup"
+        fi
+
+        # Copy other binaries as symlinks. These are not updated by dtolnay in
+        # the hot path, so sharing the inode is safe.
+        if [ -d "${HOME}/.cargo/bin" ]; then
+          for bin in "${HOME}/.cargo/bin/"*; do
+            [ -e "${bin}" ] || continue
+            name="$(basename "${bin}")"
+            # Skip rustup, which we already copied as a real file above.
+            if [ "${name}" = "rustup" ]; then
+              continue
+            fi
+            ln -sf "${bin}" "${iso_cargo}/bin/${name}"
+          done
+        fi
+
+        # Copy the entire ~/.rustup tree so dtolnay/rust-toolchain can reuse
+        # already-installed toolchains without re-downloading, and so this
+        # job's writes to settings.toml stay isolated from other jobs.
+        if [ -d "${HOME}/.rustup" ]; then
+          # cp -a preserves mode/ownership/timestamps and follows directory
+          # structure. "/." on the source side copies contents without
+          # creating an extra nested directory.
+          cp -a "${HOME}/.rustup/." "${iso_rustup}/" 2>/dev/null || true
+        fi
+
+        # Export isolated paths so subsequent steps pick them up.
+        {
+          echo "CARGO_HOME=${iso_cargo}"
+          echo "RUSTUP_HOME=${iso_rustup}"
+          echo "TMPDIR=${iso_tmp}"
+        } >> "${GITHUB_ENV}"
+
+        # Prepend isolated bin to PATH so lookups resolve the isolated rustup
+        # before the shared one.
+        echo "${iso_cargo}/bin" >> "${GITHUB_PATH}"
