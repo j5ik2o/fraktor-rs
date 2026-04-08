@@ -1133,19 +1133,88 @@ Phase VI: stream-core の二重ロック調査 (新規 change)         [FUTURE]
   └─ Phase VI: stream-core 調査
 ```
 
+### E.8 2026-04-08 再検証による訂正と計画改訂
+
+撤回された `remove-mailbox-outer-lock` proposal と、その後の `mailbox-close-reject-enqueue` proposal のレビューを通じて、上記の一部結論には**前提誤認**が含まれていたことが判明した。特に以下の 3 点は、**本節が旧記述を supersede する**:
+
+1. **`prepend_via_drain_and_requeue` は production reachable**
+   - `Behaviors::with_stash` / `TypedProps::from_behavior_factory` は現状 `MailboxRequirement::for_stash()` を伝播しない
+   - したがって typed/classic の unstash は default mailbox でも動き、non-deque queue 上の fallback が production で実行される
+   - 「dead code なので削除可能」という前提は誤り
+2. **`become_closed_and_clean_up` は `state.close()` だけでは barrier にならない**
+   - `MailboxScheduleState::close()` は `FLAG_CLOSED` を立てるだけで、suspend カウンタは変更しない
+   - `enqueue_envelope` / `prepend_user_messages` が `is_closed()` を見ないまま進むと、close 後でも phantom enqueue が起こり得る
+   - 旧記述の「close 後は `is_suspended()` で弾かれる」は誤り
+3. **案 a2 (`put_lock` 限定化) は前提条件なしには unsafe**
+   - close correctness を先に直さずに通常 enqueue/dequeue から outer lock を外すと、cleanup と in-flight producer の race を閉じられない
+   - したがって、旧 E.3 / E.7.3 / E.7.4 の「Phase II = `put_lock` 限定化」はそのままでは採用できない
+
+#### 改訂後の作業順序
+
+上の再検証を踏まえると、全体計画は次の順序に改めるのが妥当:
+
+```text
+Phase I:  調査 (本ドキュメント)                                  [COMPLETED]
+          └─ 三重ロック / 参照実装乖離 / contention 分類 / queue 候補
+
+Phase II: mailbox-close-reject-enqueue                          [NEXT]
+          ├─ B 案 (lock-based 再 check) を採用
+          ├─ become_closed_and_clean_up を user_queue_lock で直列化
+          ├─ enqueue_envelope / prepend_user_messages が lock 内で is_closed を再 check
+          └─ 目的: mailbox-owned user queue mutation の close correctness を回復
+
+Phase III: stash-requires-deque-mailbox                         [NEXT AFTER II]
+           ├─ stash 利用 actor が MailboxRequirement::for_stash() を確実に伝播
+           ├─ typed/classic unstash が deque-capable mailbox を獲得
+           └─ 目的: prepend_via_drain_and_requeue を production unreachable に近づける
+
+Phase IV:  outer lock reduction の再提案                        [RE-DESIGN REQUIRED]
+           ├─ Phase II/III 完了後に案 a1 / a2 を再評価
+           ├─ close correctness を壊さない形で lock 段数削減を設計
+           └─ 必要なら `remove-mailbox-outer-lock` を別 proposal として再作成
+
+Phase V:   lock-driver-port-adapter                             [PARALLEL / AFTER IV]
+           ├─ hot path 15 箇所を中心に factory genericization
+           └─ deadlock 検知 / driver 差し替えの土台を整備
+
+Phase VI:  driver 選定                                          [FUTURE]
+           └─ parking_lot など std 環境向け default の検討
+
+Phase VII: queue 置き換え                                       [FUTURE]
+           ├─ lock-free / low-contention queue への移行
+           └─ MessageQueue 実装の抜本見直し
+
+Phase VIII: BalancingDispatcher close semantics                 [FUTURE]
+            └─ shared queue は mailbox-level ではなく dispatcher-level に扱う
+
+Phase IX:  stream-core の同型問題調査                           [FUTURE]
+            └─ SinkQueue / SourceQueue / Hub 系の二重ロック検証
+```
+
+#### 改訂後の要点
+
+1. **close correctness が outer lock 削減より先**
+   - 先に `put_lock` 限定化へ進むのではなく、`Mailbox` の close と user queue mutation の race を塞ぐ必要がある
+2. **stash requirement の伝播が次の前提条件**
+   - `prepend_via_drain_and_requeue` を dead code 扱いするのは、`for_stash()` の伝播が実装された後でなければならない
+3. **BalancingDispatcher は別トラック**
+   - shared queue 経路は `Mailbox::enqueue_envelope` を通らないため、mailbox-level の close 修正と切り分ける
+4. **`lock-driver-port-adapter` は継続可能**
+   - ただし「Phase II = outer lock 削減」の前提は失効した。Port/Adapter change 自体は別 concern として維持する
+
 ### 最終結論
 
-本調査の結論を 3 行でまとめると:
+本ドキュメントの現時点の結論を 3 行でまとめると:
 
 1. **fraktor-rs の Mailbox は参照実装から大きく乖離している** (lock-based vs lock-free, 2〜3 段ロック vs atomic)
-2. **二重ロック (実は三重) は Pekko の `putLock` 方式で削減可能** — 現在の openspec change より先に小 change として実施すべき
-3. **現在の `lock-driver-port-adapter` change は Phase III として継続するが、対象スコープを hot path 15 個に縮小し、queue 置き換え・driver 選定・stream-core 調査は別 change で分離**
+2. **outer lock 削減の前に close correctness と stash requirement 伝播を直す必要がある** — 旧来の `put_lock` 限定化先行案は失効
+3. **`lock-driver-port-adapter` は継続するが、Mailbox 周辺は `close correctness → stash requires deque → outer lock reduction` の順で進めるのが妥当**
 
-次のアクション候補 (user に判断を仰ぐ):
+次のアクション候補:
 
-- **A**: 本ドキュメントと改訂版の openspec change を commit/push して進める
-- **B**: Phase II (二重ロック削減) の新規 openspec change をまず作成し、`lock-driver-port-adapter` より先に実施する
-- **C**: さらに調査が必要な論点があれば指示
+- **A**: `mailbox-close-reject-enqueue` を B 案前提で確定し、実装に進む
+- **B**: 続けて `stash-requires-deque-mailbox` の proposal/design を作る
+- **C**: Phase IV の outer lock reduction を、Phase II/III 完了後に再提案する前提で保留する
 
 ## 現時点で保留中の成果物
 
@@ -1183,3 +1252,4 @@ Phase VI: stream-core の二重ロック調査 (新規 change)         [FUTURE]
 ## 変更履歴
 
 - **2026-04-08**: 初版作成。3 つの課題、依存関係、4 案の比較、案 γ 推奨、調査項目の整理まで。
+- **2026-04-08**: `remove-mailbox-outer-lock` / `mailbox-close-reject-enqueue` のレビュー結果を反映。`prepend_via_drain_and_requeue` の production reachability、close semantics の race、案 a2 先行の危険性を追記し、Phase 順序を改訂。

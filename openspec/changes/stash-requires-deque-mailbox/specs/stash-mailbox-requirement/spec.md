@@ -1,0 +1,59 @@
+## ADDED Requirements
+
+### Requirement: Stash usage SHALL be backed by deque-capable mailbox or by an in-Behavior replay path
+
+`actor-core` の stash 機構 (`Behaviors::with_stash` および `ActorCell::stash_message_with_limit` 経路) は、以下のいずれかを **満たさなければならない**（MUST）:
+
+- **Path 1**: stash を使う actor が必ず **deque-capable mailbox** (`MailboxRequirement::for_stash() = requires_deque()` 強制) で spawn される。`unstash` は `Mailbox::prepend_user_messages` を経由するが、その内部は deque 専用 path (`UnboundedDequeMessageQueue::enqueue_first` 等の atomic prepend) のみを使う
+- **Path 2**: stash の replay (`unstash`) が `Mailbox::prepend_user_messages` を経由せず、Behavior interpreter / dispatcher loop の中で直接 stashed messages を replay する
+
+どちらの path を選ぶかは本 change の Phase 1 (探索) ではなく、Phase 1 完了後の合意で決定される。本 spec は **どちらの path でも満たすべき不変条件** だけを記述する。
+
+#### Scenario: stash backing is deterministic (no silent fallback)
+- **WHEN** stash 機能を使うコード (typed `Behaviors::with_stash` または classic `cell.stash_message_with_limit`) を実行する
+- **THEN** Phase 2 完了後は `Mailbox::prepend_via_drain_and_requeue` が **実行されない** (Path 1 では deque 経路だけが取られ、Path 2 では mailbox prepend 自体を経由しないため)
+- **AND** silent な性能劣化 (drain_and_requeue の暗黙 fallback) は発生しない
+
+### Requirement: Existing stash tests SHALL continue to pass after Phase 2
+
+`actor-core` の既存 stash 関連 test は、Phase 2 で選ばれた option を実装した後も **すべて pass しなければならない**（MUST）:
+
+- `typed_behaviors_stash_buffered_messages_across_transition` (`modules/actor-core/src/core/typed/tests.rs`)
+- `typed_behaviors_with_stash_limits_capacity` (同上)
+- `typed_behaviors_with_stash_keeps_adapter_payload_after_unstash` (同上)
+- `unstash_messages_are_replayed_before_existing_mailbox_messages` (`modules/actor-core/src/core/kernel/actor/actor_cell/tests.rs`)
+- その他 stash 関連 test 全般
+
+これらの test の期待値 (assert) は維持される。test の構築方法 (例: Props 構築の API、mailbox 構築方法) は **option 次第で書き換わる可能性がある** が、observable behavior (stashed → unstash 後の処理順) は不変である。
+
+#### Scenario: All existing stash tests pass after Phase 2
+- **WHEN** Phase 2 実装後に `cargo test -p fraktor-actor-core-rs --tests` を実行する
+- **THEN** stash 関連の全 test が pass する
+- **AND** test の assertion (受信 message の順序、count 等) は Phase 1 以前と同じ
+
+### Requirement: Stash → unstash ordering SHALL be preserved or explicitly documented
+
+Phase 2 の実装では、現状の **「stashed messages are processed before existing pending mailbox messages」** という order semantic を **維持する**（SHOULD）。維持できない場合 (Option D の middleware bypass 議論など) は、behavior change を **明示的に design.md と CHANGELOG に記録する**（MUST）。
+
+#### Scenario: Stashed messages observed before pending messages
+- **WHEN** actor が stash → 新着 message を受信 → unstash を順次行う
+- **THEN** unstashed messages が新着 message より **前に** 処理される
+- **AND** この order semantic は Phase 2 で維持される、または明示的な変更として記録される
+
+### Requirement: Phase 1 SHALL NOT modify implementation code
+
+本 change の Phase 1 (explore / proposal) では **実装コードを一切変更してはならない**（MUST NOT）。変更されるファイルは `openspec/changes/stash-requires-deque-mailbox/` 配下のみである。
+
+#### Scenario: Phase 1 git diff is documentation-only
+- **WHEN** 本 change Phase 1 の `git diff` を確認する
+- **THEN** 変更されたファイルは `openspec/changes/stash-requires-deque-mailbox/proposal.md` / `design.md` / `tasks.md` / `specs/stash-mailbox-requirement/spec.md` の 4 つだけである
+- **AND** `modules/` 配下のファイルは一切変更されていない
+
+### Requirement: Phase 2 implementation SHALL be tracked as a separate openspec change
+
+Phase 2 の実装は **本 change ではなく別の openspec change として追跡する**（MUST）。Phase 1 の design.md で recommend された option (または合意で選ばれた option) に対応する新規 change を作成し、固有の proposal / design / tasks / spec を持たせる。
+
+#### Scenario: Phase 2 is a separate openspec change
+- **WHEN** Phase 1 完了後に Phase 2 の作業を開始する
+- **THEN** `openspec/changes/<phase-2-change-name>/` という新しいディレクトリが作成される
+- **AND** 本 change `stash-requires-deque-mailbox` は変更されない (または archive 候補としてマーク)
