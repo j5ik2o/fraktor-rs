@@ -13,4 +13,4 @@ pub(crate) use debug_spin_lock::{DebugSpinLock, DebugSpinLockGuard};
 pub use debug_spin_lock_provider::DebugSpinLockProvider;
 pub(crate) use mailbox_shared_set::MailboxLocked;
 pub use mailbox_shared_set::MailboxSharedSet;
-pub(crate) use shared_lock::{SharedLock, SharedLockGuard};
+pub(crate) use shared_lock::SharedLock;
