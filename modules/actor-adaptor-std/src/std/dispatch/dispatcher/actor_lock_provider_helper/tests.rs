@@ -1,9 +1,6 @@
-use std::{
-  panic::{AssertUnwindSafe, catch_unwind},
-  sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-  },
+use std::sync::{
+  Arc,
+  atomic::{AtomicUsize, Ordering},
 };
 
 use fraktor_actor_core_rs::core::kernel::{
@@ -66,16 +63,11 @@ fn build_self_loop_actor(system: &ActorSystem) -> (ActorRef, Arc<AtomicUsize>) {
 }
 
 #[test]
-fn debug_helper_panics_on_same_thread_reentrant_tell() {
+fn debug_helper_allows_same_thread_reentrant_tell_after_sender_lock_release() {
   let system = build_debug_system();
   let (mut actor_ref, delivered) = build_self_loop_actor(&system);
-
-  let result = catch_unwind(AssertUnwindSafe(|| {
-    actor_ref.tell(AnyMessage::new(1_u32));
-  }));
-
-  assert!(result.is_err(), "debug provider must panic on hot-path re-entry");
-  assert_eq!(delivered.load(Ordering::SeqCst), 1, "initial delivery may happen before the nested tell panics");
+  actor_ref.tell(AnyMessage::new(1_u32));
+  assert_eq!(delivered.load(Ordering::SeqCst), 2, "debug provider should allow the nested self tell");
 }
 
 #[test]
@@ -87,11 +79,8 @@ fn default_fallback_and_system_scoped_override_remain_independent() {
 
   let debug_system = build_debug_system();
   let (mut debug_actor_ref, debug_delivered) = build_self_loop_actor(&debug_system);
-  let panic_result = catch_unwind(AssertUnwindSafe(|| {
-    debug_actor_ref.tell(AnyMessage::new(1_u32));
-  }));
-  assert!(panic_result.is_err(), "override on the second system must use the debug provider");
-  assert_eq!(debug_delivered.load(Ordering::SeqCst), 1, "debug system must fail on the nested tell only");
+  debug_actor_ref.tell(AnyMessage::new(1_u32));
+  assert_eq!(debug_delivered.load(Ordering::SeqCst), 2, "debug override should preserve the nested self tell contract");
 }
 
 #[test]
