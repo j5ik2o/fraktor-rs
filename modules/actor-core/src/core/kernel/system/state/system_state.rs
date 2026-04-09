@@ -62,7 +62,10 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
-  system::{RegisterExtraTopLevelError, ReservationPolicy},
+  system::{
+    RegisterExtraTopLevelError, ReservationPolicy,
+    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  },
   util::futures::ActorFutureShared,
 };
 
@@ -102,6 +105,7 @@ pub struct SystemState {
   actor_ref_providers: ActorRefProviders,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
+  lock_provider: ArcShared<dyn ActorLockProvider>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
@@ -121,8 +125,9 @@ impl SystemState {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = EventStreamShared::default();
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
+    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline();
+    dispatchers.ensure_default_inline_with_provider(&lock_provider);
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -154,6 +159,7 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
+      lock_provider,
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -231,6 +237,7 @@ impl SystemState {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfig) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
+    self.lock_provider = config.lock_provider().clone();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
@@ -780,6 +787,12 @@ impl SystemState {
   #[must_use]
   pub fn resolve_dispatcher(&self, id: &str) -> Option<MessageDispatcherShared> {
     self.dispatchers.resolve(id).ok()
+  }
+
+  /// Returns the actor-system scoped lock provider.
+  #[must_use]
+  pub fn lock_provider(&self) -> ArcShared<dyn ActorLockProvider> {
+    self.lock_provider.clone()
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations

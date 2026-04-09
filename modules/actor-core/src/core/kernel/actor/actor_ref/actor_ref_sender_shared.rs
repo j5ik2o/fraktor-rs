@@ -1,18 +1,24 @@
 //! Shared wrapper for actor reference senders.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::actor::{
-  actor_ref::{ActorRefSender, SendOutcome},
-  error::SendError,
-  messaging::AnyMessage,
+use crate::core::kernel::{
+  actor::{
+    actor_ref::{ActorRefSender, SendOutcome},
+    error::SendError,
+    messaging::AnyMessage,
+  },
+  system::lock_provider::SharedLock,
 };
 
 /// Shared wrapper for [`ActorRefSender`] with external mutex synchronization.
 pub struct ActorRefSenderShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn ActorRefSender>>>,
+  inner: SharedLock<Box<dyn ActorRefSender>>,
 }
 
 impl Clone for ActorRefSenderShared {
@@ -25,8 +31,17 @@ impl ActorRefSenderShared {
   /// Creates a new shared sender.
   #[must_use]
   pub fn new<S: ActorRefSender + 'static>(sender: S) -> Self {
-    let boxed: Box<dyn ActorRefSender> = Box::new(sender);
-    Self { inner: ArcShared::new(RuntimeMutex::new(boxed)) }
+    Self::from_boxed(Box::new(sender))
+  }
+
+  /// Creates a built-in shared sender from an already boxed sender.
+  #[must_use]
+  pub fn from_boxed(sender: Box<dyn ActorRefSender>) -> Self {
+    Self { inner: SharedLock::builtin(sender) }
+  }
+
+  pub(crate) fn from_boxed_debug(sender: Box<dyn ActorRefSender>) -> Self {
+    Self { inner: SharedLock::debug(sender, "actor_ref_sender_shared.inner") }
   }
 
   /// Sends a message through the wrapped sender.

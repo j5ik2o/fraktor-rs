@@ -24,9 +24,10 @@ use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
   default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
-  dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
+  dispatchers_error::DispatchersError, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
+use crate::core::kernel::system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider};
 
 /// Reserved registry identifier for the default dispatcher.
 pub const DEFAULT_DISPATCHER_ID: &str = "default";
@@ -137,6 +138,16 @@ impl Dispatchers {
     self.resolve_count.load(Ordering::Relaxed)
   }
 
+  fn build_default_inline_configurator(
+    provider: &ArcShared<dyn ActorLockProvider>,
+  ) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+    let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+    let executor = provider.create_executor_shared(Box::new(InlineExecutor::new()));
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new_with_provider(&settings, executor, provider));
+    ArcShared::new(configurator)
+  }
+
   /// Ensures the default dispatcher entry exists.
   ///
   /// If `default` is missing, the supplied factory closure is called to
@@ -159,13 +170,31 @@ impl Dispatchers {
   /// `tokio` or another runtime. Production users override the entry through
   /// `ActorSystemConfig::with_dispatcher_configurator`.
   pub fn ensure_default_inline(&mut self) {
-    self.ensure_default(|| {
-      let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = ExecutorShared::new(InlineExecutor::new());
-      let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
-      ArcShared::new(configurator)
-    });
+    let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    self.ensure_default_inline_with_provider(&provider);
+  }
+
+  /// Ensures the default dispatcher entry exists using the supplied provider.
+  pub fn ensure_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorLockProvider>) {
+    self.ensure_default(|| Self::build_default_inline_configurator(provider));
+  }
+
+  /// Replaces the seeded default inline dispatcher using the supplied provider.
+  ///
+  /// When the default blocking dispatcher still aliases the same configurator as
+  /// `default`, it is updated to keep both reserved ids on the same provider.
+  /// Explicit blocking-dispatcher overrides are preserved.
+  pub fn replace_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorLockProvider>) {
+    let replace_blocking = self
+      .entries
+      .get(DEFAULT_BLOCKING_DISPATCHER_ID)
+      .zip(self.entries.get(DEFAULT_DISPATCHER_ID))
+      .is_some_and(|(blocking, default)| ArcShared::ptr_eq(blocking, default));
+    let configurator = Self::build_default_inline_configurator(provider);
+    self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
+    if replace_blocking || !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
+      self.entries.insert(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned(), configurator);
+    }
   }
 
   /// Maps a Pekko-style dispatcher identifier to the canonical kernel id.

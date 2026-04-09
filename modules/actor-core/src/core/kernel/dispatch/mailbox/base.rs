@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
@@ -23,7 +23,10 @@ use crate::core::kernel::{
   },
   dispatch::mailbox::policy::MailboxPolicy,
   event::logging::LogLevel,
-  system::state::SystemStateShared,
+  system::{
+    lock_provider::{MailboxLocked, MailboxSharedSet},
+    state::SystemStateShared,
+  },
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
@@ -31,15 +34,15 @@ pub struct Mailbox {
   policy:          MailboxPolicy,
   system:          SystemQueue,
   user:            Box<dyn MessageQueue>,
-  user_queue_lock: ArcShared<RuntimeMutex<()>>,
+  user_queue_lock: MailboxLocked<()>,
   state:           MailboxScheduleState,
-  instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
+  instrumentation: MailboxLocked<Option<MailboxInstrumentation>>,
   cleanup_policy:  MailboxCleanupPolicy,
-  invoker:         ArcShared<RuntimeMutex<Option<MessageInvokerShared>>>,
+  invoker:         MailboxLocked<Option<MessageInvokerShared>>,
   /// Weak handle to the owning actor cell. Set by [`Mailbox::with_actor`] and
   /// observed by [`Mailbox::run`] so the drain loop can early-return when the
   /// cell has been dropped.
-  actor:           ArcShared<RuntimeMutex<Option<WeakShared<ActorCell>>>>,
+  actor:           MailboxLocked<Option<WeakShared<ActorCell>>>,
 }
 
 unsafe impl Send for Mailbox {}
@@ -53,6 +56,13 @@ impl Mailbox {
     Self::new_with_queue(policy, queue)
   }
 
+  /// Creates a mailbox using the provided policy and explicit lock bundle.
+  #[must_use]
+  pub fn new_with_shared_set(policy: MailboxPolicy, shared_set: &MailboxSharedSet) -> Self {
+    let queue = super::mailboxes::create_message_queue_from_policy(policy);
+    Self::new_with_queue_and_shared_set(policy, queue, shared_set)
+  }
+
   /// Creates a new mailbox from the provided configuration.
   ///
   /// When the config declares deque semantics and the policy is unbounded, this produces a
@@ -64,24 +74,48 @@ impl Mailbox {
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
   pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
+    let shared_set = MailboxSharedSet::builtin();
+    Self::new_from_config_with_shared_set(config, &shared_set)
+  }
+
+  /// Creates a mailbox from configuration using the supplied lock bundle.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
+  /// configuration contract is violated.
+  pub fn new_from_config_with_shared_set(
+    config: &MailboxConfig,
+    shared_set: &MailboxSharedSet,
+  ) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(config)?;
-    Ok(Self::new_with_queue(policy, queue))
+    Ok(Self::new_with_queue_and_shared_set(policy, queue, shared_set))
   }
 
   /// Creates a new mailbox using the provided policy and pre-built queue.
   #[must_use]
   pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+    let shared_set = MailboxSharedSet::builtin();
+    Self::new_with_queue_and_shared_set(policy, queue, &shared_set)
+  }
+
+  #[must_use]
+  pub(crate) fn new_with_queue_and_shared_set(
+    policy: MailboxPolicy,
+    queue: Box<dyn MessageQueue>,
+    shared_set: &MailboxSharedSet,
+  ) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
+      user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      instrumentation: shared_set.instrumentation(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(None)),
+      invoker: shared_set.invoker(),
+      actor: shared_set.actor(),
     }
   }
 
@@ -93,16 +127,27 @@ impl Mailbox {
   /// `BalancingDispatcher::create_mailbox`.
   #[must_use]
   pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+    let shared_set = MailboxSharedSet::builtin();
+    Self::new_sharing_with_shared_set(policy, queue, &shared_set)
+  }
+
+  /// Creates a sharing mailbox using the supplied lock bundle.
+  #[must_use]
+  pub fn new_sharing_with_shared_set(
+    policy: MailboxPolicy,
+    queue: Box<dyn MessageQueue>,
+    shared_set: &MailboxSharedSet,
+  ) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
+      user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      instrumentation: shared_set.instrumentation(),
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(None)),
+      invoker: shared_set.invoker(),
+      actor: shared_set.actor(),
     }
   }
 
@@ -119,16 +164,32 @@ impl Mailbox {
   /// queue (used by `BalancingDispatcher::create_mailbox`).
   #[must_use]
   pub fn with_actor(actor: WeakShared<ActorCell>, policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+    let shared_set = MailboxSharedSet::builtin();
+    Self::with_actor_and_shared_set(actor, policy, queue, &shared_set)
+  }
+
+  /// Creates a mailbox bound to a specific actor using the supplied lock bundle.
+  #[must_use]
+  pub fn with_actor_and_shared_set(
+    actor: WeakShared<ActorCell>,
+    policy: MailboxPolicy,
+    queue: Box<dyn MessageQueue>,
+    shared_set: &MailboxSharedSet,
+  ) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
+      user_queue_lock: shared_set.user_queue_lock(),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      instrumentation: shared_set.instrumentation(),
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(Some(actor))),
+      invoker: shared_set.invoker(),
+      actor: {
+        let actor_slot = shared_set.actor();
+        *actor_slot.lock() = Some(actor);
+        actor_slot
+      },
     }
   }
 

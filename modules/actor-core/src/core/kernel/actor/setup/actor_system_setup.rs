@@ -16,6 +16,7 @@ use crate::core::kernel::{
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,
+  system::lock_provider::ActorLockProvider,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -68,6 +69,14 @@ impl ActorSystemSetup {
   where
     P: ActorRefProviderInstaller + 'static, {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
+  }
+
+  /// Overrides the actor-system scoped lock provider.
+  #[must_use]
+  pub fn with_lock_provider<P>(self, provider: P) -> Self
+  where
+    P: ActorLockProvider + 'static, {
+    Self { config: self.config.with_lock_provider(provider) }
   }
 
   /// Registers a dispatcher configurator under the supplied id.

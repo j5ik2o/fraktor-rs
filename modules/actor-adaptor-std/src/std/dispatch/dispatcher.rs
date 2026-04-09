@@ -8,6 +8,7 @@
 #[cfg(all(test, feature = "tokio-executor"))]
 mod tests;
 
+mod actor_lock_provider_helper;
 mod pinned_executor;
 mod pinned_executor_factory;
 mod threaded_executor;
@@ -16,6 +17,7 @@ mod tokio_executor;
 #[cfg(feature = "tokio-executor")]
 mod tokio_executor_factory;
 
+pub use actor_lock_provider_helper::{debug_actor_lock_provider, std_actor_lock_provider};
 pub use pinned_executor::PinnedExecutor;
 pub use pinned_executor_factory::PinnedExecutorFactory;
 pub use threaded_executor::ThreadedExecutor;

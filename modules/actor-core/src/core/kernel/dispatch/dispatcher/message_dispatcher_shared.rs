@@ -12,7 +12,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   executor_shared::ExecutorShared, message_dispatcher::MessageDispatcher, shutdown_schedule::ShutdownSchedule,
@@ -20,11 +20,12 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
+  system::lock_provider::SharedLock,
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
 pub struct MessageDispatcherShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>,
+  inner: SharedLock<Box<dyn MessageDispatcher>>,
 }
 
 impl Clone for MessageDispatcherShared {
@@ -37,7 +38,17 @@ impl MessageDispatcherShared {
   /// Wraps the supplied dispatcher in a shared handle.
   #[must_use]
   pub fn new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(Box::new(dispatcher) as Box<dyn MessageDispatcher>)) }
+    Self::from_boxed(Box::new(dispatcher) as Box<dyn MessageDispatcher>)
+  }
+
+  /// Wraps an already boxed dispatcher in the built-in shared handle.
+  #[must_use]
+  pub fn from_boxed(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self { inner: SharedLock::builtin(dispatcher) }
+  }
+
+  pub(crate) fn from_boxed_debug(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self { inner: SharedLock::debug(dispatcher, "message_dispatcher_shared.inner") }
   }
 
   /// Returns the dispatcher identifier.

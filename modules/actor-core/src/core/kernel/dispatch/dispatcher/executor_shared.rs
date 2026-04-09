@@ -27,9 +27,10 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{execute_error::ExecuteError, executor::Executor};
+use crate::core::kernel::system::lock_provider::SharedLock;
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 
@@ -44,8 +45,8 @@ struct TrampolineState {
 /// individual `inner.execute(task)` invocation, not across the full queue
 /// drain — this keeps re-entrant inline executors deadlock-free.
 pub struct ExecutorShared {
-  inner:      ArcShared<RuntimeMutex<Box<dyn Executor>>>,
-  trampoline: ArcShared<RuntimeMutex<TrampolineState>>,
+  inner:      SharedLock<Box<dyn Executor>>,
+  trampoline: SharedLock<TrampolineState>,
   running:    ArcShared<AtomicBool>,
 }
 
@@ -60,8 +61,16 @@ impl ExecutorShared {
   #[must_use]
   pub fn from_boxed(executor: Box<dyn Executor>) -> Self {
     Self {
-      inner:      ArcShared::new(RuntimeMutex::new(executor)),
-      trampoline: ArcShared::new(RuntimeMutex::new(TrampolineState { pending: VecDeque::new() })),
+      inner:      SharedLock::builtin(executor),
+      trampoline: SharedLock::builtin(TrampolineState { pending: VecDeque::new() }),
+      running:    ArcShared::new(AtomicBool::new(false)),
+    }
+  }
+
+  pub(crate) fn from_boxed_debug(executor: Box<dyn Executor>) -> Self {
+    Self {
+      inner:      SharedLock::debug(executor, "executor_shared.inner"),
+      trampoline: SharedLock::debug(TrampolineState { pending: VecDeque::new() }, "executor_shared.trampoline"),
       running:    ArcShared::new(AtomicBool::new(false)),
     }
   }

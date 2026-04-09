@@ -1,21 +1,21 @@
 ## 1. utils-core に lock-driver seam を導入する
 
-- [ ] 1.1 `modules/utils-core/src/core/sync/` に `LockDriver` / `RwLockDriver` trait を追加する
-- [ ] 1.2 `LockDriver` / `RwLockDriver` の最小形を GAT ベースの static-dispatch 契約として定義する
-- [ ] 1.3 factory seam (`LockDriverFactory` / `RwLockDriverFactory`) を追加する
-- [ ] 1.4 no_std builtin driver として `SpinSyncMutex` / `SpinSyncRwLock` を新 trait に乗せる
-- [ ] 1.5 `RuntimeMutex` / `RuntimeRwLock` を alias から driver 差し替え可能な port surface へ昇格する
-- [ ] 1.6 `RuntimeMutex<T>` / `RuntimeRwLock<T>` は default-driver surface として維持し、既存 caller が一括書き換え不要であることを確認する
-- [ ] 1.7 `NoStdMutex<T>` が `RuntimeMutex<T>` の変更に追従することを確認する
-- [ ] 1.8 `RuntimeMutex` / `RuntimeRwLock` の port 化を workspace-wide な定義変更として適用し、旧 alias-to-SpinSync 定義だけを置き換える
+- [x] 1.1 `modules/utils-core/src/core/sync/` に `LockDriver` / `RwLockDriver` trait を追加する
+- [x] 1.2 `LockDriver` / `RwLockDriver` の最小形を GAT ベースの static-dispatch 契約として定義する
+- [x] 1.3 factory seam (`LockDriverFactory` / `RwLockDriverFactory`) を追加する
+- [x] 1.4 no_std builtin driver として `SpinSyncMutex` / `SpinSyncRwLock` を新 trait に乗せる
+- [x] 1.5 `RuntimeMutex` / `RuntimeRwLock` を alias から driver 差し替え可能な port surface へ昇格する
+- [x] 1.6 `RuntimeMutex<T>` / `RuntimeRwLock<T>` は default-driver surface として維持し、既存 caller が一括書き換え不要であることを確認する
+- [x] 1.7 `NoStdMutex<T>` が `RuntimeMutex<T>` の変更に追従することを確認する
+- [x] 1.8 `RuntimeMutex` / `RuntimeRwLock` の port 化を workspace-wide な定義変更として適用し、旧 alias-to-SpinSync 定義だけを置き換える
 
 ## 2. utils-adaptor-std に std adapter driver を追加する
 
-- [ ] 2.1 `DebugSpinSyncMutex` / `DebugSpinSyncRwLock` を再導入する
-- [ ] 2.2 `StdSyncMutex` / `StdSyncRwLock` を追加する
-- [ ] 2.3 debug/std driver に対応する factory を追加する
-- [ ] 2.4 poison を driver 実装側で吸収し、caller 側 contract に露出させない
-- [ ] 2.5 `test-support` 等の feature 境界を整理し、debug driver を明示的に選択できるようにする
+- [x] 2.1 `DebugSpinSyncMutex` / `DebugSpinSyncRwLock` を再導入する
+- [x] 2.2 `StdSyncMutex` / `StdSyncRwLock` を追加する
+- [x] 2.3 debug/std driver に対応する factory を追加する
+- [x] 2.4 poison を driver 実装側で吸収し、caller 側 contract に露出させない
+- [x] 2.5 `test-support` 等の feature 境界を整理し、debug driver を明示的に選択できるようにする
 
 ## 3. actor-core Phase V-A hot path を genericize する
 
