@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 use crate::core::kernel::{
   actor::{
@@ -13,68 +13,12 @@ use crate::core::kernel::{
     error::SendError,
     messaging::AnyMessage,
   },
-  system::lock_provider::{DebugSpinLock, DebugSpinLockGuard},
+  system::lock_provider::SharedLock,
 };
 
 /// Shared wrapper for [`ActorRefSender`] with external mutex synchronization.
 pub struct ActorRefSenderShared {
-  inner: ActorRefSenderLock,
-}
-
-enum ActorRefSenderGuard<'a> {
-  Builtin(spin::MutexGuard<'a, Box<dyn ActorRefSender>>),
-  Debug(DebugSpinLockGuard<'a, Box<dyn ActorRefSender>>),
-}
-
-impl core::ops::Deref for ActorRefSenderGuard<'_> {
-  type Target = Box<dyn ActorRefSender>;
-
-  fn deref(&self) -> &Self::Target {
-    match self {
-      | Self::Builtin(guard) => guard,
-      | Self::Debug(guard) => guard,
-    }
-  }
-}
-
-impl core::ops::DerefMut for ActorRefSenderGuard<'_> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    match self {
-      | Self::Builtin(guard) => guard,
-      | Self::Debug(guard) => guard,
-    }
-  }
-}
-
-enum ActorRefSenderLock {
-  Builtin(ArcShared<RuntimeMutex<Box<dyn ActorRefSender>>>),
-  Debug(ArcShared<DebugSpinLock<Box<dyn ActorRefSender>>>),
-}
-
-impl Clone for ActorRefSenderLock {
-  fn clone(&self) -> Self {
-    match self {
-      | Self::Builtin(inner) => Self::Builtin(inner.clone()),
-      | Self::Debug(inner) => Self::Debug(inner.clone()),
-    }
-  }
-}
-
-impl ActorRefSenderLock {
-  fn builtin(sender: Box<dyn ActorRefSender>) -> Self {
-    Self::Builtin(ArcShared::new(RuntimeMutex::new(sender)))
-  }
-
-  fn debug(sender: Box<dyn ActorRefSender>) -> Self {
-    Self::Debug(ArcShared::new(DebugSpinLock::new(sender, "actor_ref_sender_shared.inner")))
-  }
-
-  fn lock(&self) -> ActorRefSenderGuard<'_> {
-    match self {
-      | Self::Builtin(inner) => ActorRefSenderGuard::Builtin(inner.lock()),
-      | Self::Debug(inner) => ActorRefSenderGuard::Debug(inner.lock()),
-    }
-  }
+  inner: SharedLock<Box<dyn ActorRefSender>>,
 }
 
 impl Clone for ActorRefSenderShared {
@@ -93,11 +37,11 @@ impl ActorRefSenderShared {
   /// Creates a built-in shared sender from an already boxed sender.
   #[must_use]
   pub fn from_boxed(sender: Box<dyn ActorRefSender>) -> Self {
-    Self { inner: ActorRefSenderLock::builtin(sender) }
+    Self { inner: SharedLock::builtin(sender) }
   }
 
   pub(crate) fn from_boxed_debug(sender: Box<dyn ActorRefSender>) -> Self {
-    Self { inner: ActorRefSenderLock::debug(sender) }
+    Self { inner: SharedLock::debug(sender, "actor_ref_sender_shared.inner") }
   }
 
   /// Sends a message through the wrapped sender.
