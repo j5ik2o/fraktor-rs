@@ -33,7 +33,7 @@ impl DefaultDispatcherConfigurator {
     executor: ExecutorShared,
     provider: &ArcShared<dyn ActorLockProvider>,
   ) -> Self {
-    let dispatcher = DefaultDispatcher::new_with_provider(settings, executor, provider.clone());
+    let dispatcher = DefaultDispatcher::new(settings, executor);
     Self { shared: provider.create_message_dispatcher_shared(Box::new(dispatcher)) }
   }
 }

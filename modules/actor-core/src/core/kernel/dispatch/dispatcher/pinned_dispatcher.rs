@@ -15,10 +15,7 @@ use super::{
   dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
-use crate::core::kernel::{
-  actor::{ActorCell, Pid, spawn::SpawnError},
-  system::lock_provider::ActorLockProvider,
-};
+use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
 
 /// Dispatcher dedicated to a single actor.
 ///
@@ -41,18 +38,6 @@ impl PinnedDispatcher {
     let max_throughput = unsafe { NonZeroUsize::new_unchecked(usize::MAX) };
     let normalised = settings.clone().with_throughput(max_throughput).with_throughput_deadline(None);
     Self { core: DispatcherCore::new(&normalised, executor), owner: None }
-  }
-
-  /// Constructs a new pinned dispatcher with an explicit actor lock provider.
-  ///
-  /// This is a no-op wrapper for API compatibility. The lock provider parameter is ignored.
-  #[must_use]
-  pub fn new_with_provider(
-    settings: &DispatcherSettings,
-    executor: ExecutorShared,
-    _lock_provider: ArcShared<dyn ActorLockProvider>,
-  ) -> Self {
-    Self::new(settings, executor)
   }
 
   /// Returns the currently registered owner pid, if any.
