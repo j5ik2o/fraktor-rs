@@ -119,7 +119,7 @@ fn schedule_message_command(
   message: AnyMessage,
   sender: Option<ActorRef>,
 ) -> Result<SchedulerHandle, SchedulerError> {
-  scheduler.schedule_command(delay, SchedulerCommand::SendMessage { receiver, message, sender })
+  scheduler.schedule_command(delay, SchedulerCommand::send_message(receiver, message, sender))
 }
 
 fn schedule_runnable_command<F>(
@@ -229,14 +229,11 @@ fn schedule_command_records_send_message() {
   let receiver = ActorRef::null();
   let message = AnyMessage::new(42u32);
   let handle = scheduler
-    .schedule_command(Duration::from_millis(3), SchedulerCommand::SendMessage {
-      receiver: receiver.clone(),
-      message:  message.clone(),
-      sender:   None,
-    })
+    .schedule_command(Duration::from_millis(3), SchedulerCommand::send_message(receiver.clone(), message.clone(), None))
     .expect("handle");
   match scheduler.command_for_test(&handle) {
-    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, sender }) => {
+    | Some(command) => {
+      let (target, stored, sender) = command.send_message_parts().expect("send message command");
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<u32>());
       assert!(sender.is_none());
@@ -260,10 +257,11 @@ fn schedule_once_records_sender_metadata() {
   )
   .expect("handle");
   match scheduler.command_for_test(&handle) {
-    | Some(SchedulerCommand::SendMessage { receiver: target, message: stored, sender: stored_sender }) => {
+    | Some(command) => {
+      let (target, stored, stored_sender) = command.send_message_parts().expect("send message command");
       assert_eq!(target.pid(), receiver.pid());
       assert!(stored.payload().is::<String>());
-      assert_eq!(stored_sender.as_ref().map(ActorRef::pid), Some(sender.pid()));
+      assert_eq!(stored_sender.map(ActorRef::pid), Some(sender.pid()));
     },
     | other => panic!("unexpected command: {:?}", other),
   }
@@ -276,11 +274,11 @@ fn schedule_at_fixed_rate_executes_multiple_runs() {
   let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRef::new(Pid::new(2, 0), sender);
   scheduler
-    .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
-      receiver,
-      message: AnyMessage::new(11u32),
-      sender: None,
-    })
+    .schedule_at_fixed_rate(
+      Duration::from_millis(2),
+      Duration::from_millis(3),
+      SchedulerCommand::send_message(receiver, AnyMessage::new(11u32), None),
+    )
     .expect("handle");
   scheduler.run_for_test(2);
   scheduler.run_for_test(3);

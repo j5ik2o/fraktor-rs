@@ -27,6 +27,7 @@ use super::{
   dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
+use crate::core::kernel::runtime_lock_provider::{ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider};
 
 /// Reserved registry identifier for the default dispatcher.
 pub const DEFAULT_DISPATCHER_ID: &str = "default";
@@ -159,13 +160,30 @@ impl Dispatchers {
   /// `tokio` or another runtime. Production users override the entry through
   /// `ActorSystemConfig::with_dispatcher_configurator`.
   pub fn ensure_default_inline(&mut self) {
+    let provider = BuiltinSpinRuntimeLockProvider::shared();
+    self.ensure_default_inline_with_provider(&provider);
+  }
+
+  /// Ensures the default dispatcher entry exists using the supplied runtime lock provider.
+  pub fn ensure_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorRuntimeLockProvider>) {
     self.ensure_default(|| {
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = ExecutorShared::new(InlineExecutor::new());
+      let executor = ExecutorShared::new_with_provider(InlineExecutor::new(), provider.clone());
       let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+        Box::new(DefaultDispatcherConfigurator::new_with_provider(&settings, executor, provider.clone()));
       ArcShared::new(configurator)
     });
+  }
+
+  /// Re-seeds the default dispatcher entries using the supplied runtime lock provider.
+  pub fn seed_default_inline(&mut self, provider: ArcShared<dyn ActorRuntimeLockProvider>) {
+    let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
+    let executor = ExecutorShared::new_with_provider(InlineExecutor::new(), provider.clone());
+    let configurator: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(DefaultDispatcherConfigurator::new_with_provider(&settings, executor, provider));
+    let configurator = ArcShared::new(configurator);
+    self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
+    self.entries.insert(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned(), configurator);
   }
 
   /// Maps a Pekko-style dispatcher identifier to the canonical kernel id.

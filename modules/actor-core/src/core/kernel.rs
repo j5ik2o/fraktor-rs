@@ -6,6 +6,7 @@ pub mod event;
 mod io;
 pub mod pattern;
 pub mod routing;
+pub mod runtime_lock_provider;
 pub mod serialization;
 pub mod system;
 pub mod util;

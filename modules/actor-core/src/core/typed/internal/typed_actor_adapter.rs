@@ -140,11 +140,7 @@ where
       let duration = config.duration;
       let scheduler = ctx.system().scheduler();
       let result = scheduler.with_write(|guard| {
-        guard.schedule_once(duration, SchedulerCommand::SendMessage {
-          receiver: self_ref,
-          message:  AnyMessage::new(message),
-          sender:   None,
-        })
+        guard.schedule_once(duration, SchedulerCommand::send_message(self_ref, AnyMessage::new(message), None))
       });
       match result {
         | Ok(handle) => config.handle = Some(handle),

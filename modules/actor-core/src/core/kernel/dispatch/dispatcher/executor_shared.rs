@@ -30,6 +30,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{execute_error::ExecuteError, executor::Executor};
+use crate::core::kernel::runtime_lock_provider::{
+  ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider, ExecutorLockCell,
+};
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 
@@ -44,25 +47,51 @@ struct TrampolineState {
 /// individual `inner.execute(task)` invocation, not across the full queue
 /// drain — this keeps re-entrant inline executors deadlock-free.
 pub struct ExecutorShared {
-  inner:      ArcShared<RuntimeMutex<Box<dyn Executor>>>,
-  trampoline: ArcShared<RuntimeMutex<TrampolineState>>,
-  running:    ArcShared<AtomicBool>,
+  inner:                 ExecutorLockCell,
+  trampoline:            ArcShared<RuntimeMutex<TrampolineState>>,
+  running:               ArcShared<AtomicBool>,
+  runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>,
 }
 
 impl ExecutorShared {
   /// Wraps the provided executor in a shareable handle.
   #[must_use]
   pub fn new<E: Executor + 'static>(executor: E) -> Self {
-    Self::from_boxed(Box::new(executor))
+    Self::new_with_provider(executor, BuiltinSpinRuntimeLockProvider::shared())
+  }
+
+  /// Wraps the provided executor in a shareable handle using the given provider.
+  #[must_use]
+  pub fn new_with_provider<E: Executor + 'static>(
+    executor: E,
+    provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
+    Self::from_boxed_with_provider(Box::new(executor), provider)
   }
 
   /// Wraps an already-boxed executor in a shareable handle.
   #[must_use]
   pub fn from_boxed(executor: Box<dyn Executor>) -> Self {
+    Self::from_boxed_with_provider(executor, BuiltinSpinRuntimeLockProvider::shared())
+  }
+
+  /// Wraps an already-boxed executor in a shareable handle using the given provider.
+  #[must_use]
+  pub fn from_boxed_with_provider(
+    executor: Box<dyn Executor>,
+    provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
+    Self::from_cell(provider.new_executor_cell(executor), provider)
+  }
+
+  /// Builds a shared wrapper from an already materialized provider cell.
+  #[must_use]
+  pub fn from_cell(inner: ExecutorLockCell, runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self {
     Self {
-      inner:      ArcShared::new(RuntimeMutex::new(executor)),
+      inner,
       trampoline: ArcShared::new(RuntimeMutex::new(TrampolineState { pending: VecDeque::new() })),
-      running:    ArcShared::new(AtomicBool::new(false)),
+      running: ArcShared::new(AtomicBool::new(false)),
+      runtime_lock_provider,
     }
   }
 
@@ -148,18 +177,21 @@ impl ExecutorShared {
 
 impl Clone for ExecutorShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone(), trampoline: self.trampoline.clone(), running: self.running.clone() }
+    Self {
+      inner:                 self.inner.clone(),
+      trampoline:            self.trampoline.clone(),
+      running:               self.running.clone(),
+      runtime_lock_provider: self.runtime_lock_provider.clone(),
+    }
   }
 }
 
 impl SharedAccess<Box<dyn Executor>> for ExecutorShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Executor>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Executor>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

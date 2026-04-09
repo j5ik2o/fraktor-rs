@@ -509,7 +509,10 @@ impl Scheduler {
   fn execute_command(command: &SchedulerCommand, batch: &ExecutionBatch) {
     match command {
       | SchedulerCommand::Noop => {},
-      | SchedulerCommand::SendMessage { receiver, message, .. } => {
+      | SchedulerCommand::SendMessage(_) => {
+        let Some((receiver, message, _)) = command.send_message_parts() else {
+          return;
+        };
         let mut receiver = receiver.clone();
         // Best-effort delivery: scheduled messages may fail if the target
         // actor has already stopped; this is normal and not actionable.

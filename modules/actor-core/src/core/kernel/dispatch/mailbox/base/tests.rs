@@ -21,6 +21,7 @@ use crate::core::kernel::{
     CloseRequestOutcome, DequeMessageQueue, Envelope, Mailbox, MailboxInstrumentation, MailboxMessage,
     MailboxOverflowStrategy, MailboxPolicy, MessageQueue, UnboundedDequeMessageQueue,
   },
+  runtime_lock_provider::MailboxLockSet,
   system::ActorSystem,
 };
 
@@ -257,7 +258,7 @@ fn expect_next_user_message(mailbox: &Mailbox, expected: &str) {
 
 #[test]
 fn mailbox_new() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let _ = mailbox;
 }
 
@@ -267,7 +268,7 @@ fn mailbox_enqueue_user_returns_closed_when_queue_enqueue_returns_closed() {
   // mailbox close state; the wrapper must forward it verbatim.
   let outcomes = VecDeque::from([ScriptedEnqueue::Closed]);
   let queue = Box::new(ScriptedMessageQueue::new(outcomes));
-  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin());
 
   let result = mailbox.enqueue_user(AnyMessage::new("msg"));
   assert!(matches!(result, Err(SendError::Closed(_))));
@@ -275,7 +276,7 @@ fn mailbox_enqueue_user_returns_closed_when_queue_enqueue_returns_closed() {
 
 #[test]
 fn mailbox_set_instrumentation() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(1, 0);
   let instrumentation = MailboxInstrumentation::new(system_state, pid, None, None, None);
@@ -284,7 +285,7 @@ fn mailbox_set_instrumentation() {
 
 #[test]
 fn mailbox_enqueue_system_after_system_state_drop_does_not_panic() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let system_state = ActorSystem::new_empty().state();
   let pid = Pid::new(2, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(8), Some(4), Some(6));
@@ -298,7 +299,7 @@ fn mailbox_enqueue_system_after_system_state_drop_does_not_panic() {
 
 #[test]
 fn mailbox_enqueue_system() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let message = SystemMessage::Stop;
   let result = mailbox.enqueue_system(message);
   assert!(result.is_ok());
@@ -306,7 +307,7 @@ fn mailbox_enqueue_system() {
 
 #[test]
 fn mailbox_enqueue_user_unbounded() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let message = AnyMessage::new(42_u32);
   let result = mailbox.enqueue_user(message);
   assert!(result.is_ok());
@@ -314,7 +315,7 @@ fn mailbox_enqueue_user_unbounded() {
 
 #[test]
 fn mailbox_enqueue_user_suspended() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   mailbox.suspend();
   let message = AnyMessage::new(42_u32);
   let result = mailbox.enqueue_user(message);
@@ -327,7 +328,7 @@ fn mailbox_enqueue_user_bounded() {
 
   let capacity = NonZeroUsize::new(10).unwrap();
   let policy = MailboxPolicy::bounded(capacity, MailboxOverflowStrategy::DropNewest, None);
-  let mailbox = Mailbox::new(policy);
+  let mailbox = Mailbox::new(policy, MailboxLockSet::builtin_spin());
   let message = AnyMessage::new(42_u32);
   let result = mailbox.enqueue_user(message);
   assert!(result.is_ok());
@@ -342,7 +343,7 @@ fn mailbox_prepend_user_messages_deque_returns_error_and_keeps_existing_messages
     ]),
     VecDeque::from([ScriptedEnqueue::Full]),
   ));
-  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin());
 
   mailbox.enqueue_user(AnyMessage::new("existing-1")).expect("existing-1");
   mailbox.enqueue_user(AnyMessage::new("existing-2")).expect("existing-2");
@@ -376,7 +377,8 @@ fn mailbox_prepend_user_messages_deque_blocks_concurrent_enqueue_until_prepend_f
     VecDeque::from([ScriptedEnqueue::Full]),
     Some(ScriptedFullHook::new(before_error_tx, resume_rx)),
   ));
-  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
+  let mailbox =
+    Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin()));
 
   mailbox.enqueue_user(AnyMessage::new("existing-1")).expect("existing-1");
   mailbox.enqueue_user(AnyMessage::new("existing-2")).expect("existing-2");
@@ -416,7 +418,7 @@ fn mailbox_prepend_user_messages_deque_blocks_concurrent_enqueue_until_prepend_f
 #[test]
 fn mailbox_prepend_user_messages_deque_is_noop_for_empty_batch() {
   let queue = Box::new(UnboundedDequeMessageQueue::new());
-  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin());
 
   mailbox.enqueue_user(AnyMessage::new("existing")).expect("existing");
 
@@ -432,7 +434,7 @@ fn mailbox_prepend_user_messages_deque_is_noop_for_empty_batch() {
 #[test]
 fn mailbox_prepend_user_messages_deque_preserves_front_insertion_order() {
   let queue = Box::new(UnboundedDequeMessageQueue::new());
-  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin());
 
   mailbox.enqueue_user(AnyMessage::new("existing")).expect("existing");
 
@@ -448,14 +450,14 @@ fn mailbox_prepend_user_messages_deque_preserves_front_insertion_order() {
 
 #[test]
 fn mailbox_dequeue_empty() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let result = mailbox.dequeue();
   assert!(result.is_none());
 }
 
 #[test]
 fn mailbox_dequeue_user_message() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let message = AnyMessage::new(42_u32);
   mailbox.enqueue_user(message).unwrap();
   let result = mailbox.dequeue();
@@ -464,7 +466,7 @@ fn mailbox_dequeue_user_message() {
 
 #[test]
 fn mailbox_dequeue_system_message_priority() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let user_message = AnyMessage::new(1_u32);
   mailbox.enqueue_user(user_message).unwrap();
   let system_message = SystemMessage::Stop;
@@ -479,7 +481,7 @@ fn mailbox_dequeue_system_message_priority() {
 
 #[test]
 fn mailbox_dequeue_suspended() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let message = AnyMessage::new(42_u32);
   mailbox.enqueue_user(message).unwrap();
   mailbox.suspend();
@@ -489,7 +491,7 @@ fn mailbox_dequeue_suspended() {
 
 #[test]
 fn mailbox_suspend_resume() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   assert!(!mailbox.is_suspended());
   mailbox.suspend();
   assert!(mailbox.is_suspended());
@@ -499,7 +501,7 @@ fn mailbox_suspend_resume() {
 
 #[test]
 fn mailbox_user_len() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   assert_eq!(mailbox.user_len(), 0);
   mailbox.enqueue_user(AnyMessage::new(1_u32)).unwrap();
   assert_eq!(mailbox.user_len(), 1);
@@ -511,7 +513,7 @@ fn mailbox_user_len() {
 
 #[test]
 fn mailbox_system_len() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   assert_eq!(mailbox.system_len(), 0);
   mailbox.enqueue_system(SystemMessage::Stop).unwrap();
   assert_eq!(mailbox.system_len(), 1);
@@ -527,17 +529,17 @@ fn mailbox_throughput_limit() {
 
   let limit = NonZeroUsize::new(100).unwrap();
   let policy = MailboxPolicy::unbounded(Some(limit));
-  let mailbox = Mailbox::new(policy);
+  let mailbox = Mailbox::new(policy, MailboxLockSet::builtin_spin());
   assert_eq!(mailbox.throughput_limit(), Some(limit));
 
   let policy_no_limit = MailboxPolicy::unbounded(None);
-  let mailbox_no_limit = Mailbox::new(policy_no_limit);
+  let mailbox_no_limit = Mailbox::new(policy_no_limit, MailboxLockSet::builtin_spin());
   assert_eq!(mailbox_no_limit.throughput_limit(), None);
 }
 
 #[test]
 fn mailbox_is_closed_after_mailbox_close() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   assert!(!mailbox.is_closed());
   mailbox.become_closed_and_clean_up();
   assert!(mailbox.is_closed());
@@ -545,7 +547,7 @@ fn mailbox_is_closed_after_mailbox_close() {
 
 #[test]
 fn mailbox_enqueue_envelope_returns_closed_after_mailbox_close() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   mailbox.become_closed_and_clean_up();
 
   let result = mailbox.enqueue_envelope(Envelope::new(AnyMessage::new("msg")));
@@ -554,7 +556,7 @@ fn mailbox_enqueue_envelope_returns_closed_after_mailbox_close() {
 
 #[test]
 fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   mailbox.become_closed_and_clean_up();
 
   let result = mailbox.enqueue_user(AnyMessage::new("msg"));
@@ -564,7 +566,7 @@ fn mailbox_enqueue_user_returns_closed_after_mailbox_close() {
 #[test]
 fn mailbox_prepend_user_messages_deque_returns_closed_after_mailbox_close() {
   let queue = Box::new(UnboundedDequeMessageQueue::new());
-  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue);
+  let mailbox = Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin());
   mailbox.become_closed_and_clean_up();
 
   let messages = VecDeque::from([AnyMessage::new("msg")]);
@@ -590,8 +592,7 @@ fn cleanup_close_wins_against_inflight_enqueue() {
     time::Duration,
   };
 
-  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-  let guard = mailbox.user_queue_lock.lock();
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin()));
   let (started_tx, started_rx) = mpsc::channel();
   let (result_tx, result_rx) = mpsc::channel();
   let mailbox_for_enqueue = Arc::clone(&mailbox);
@@ -601,16 +602,17 @@ fn cleanup_close_wins_against_inflight_enqueue() {
     result_tx.send(result).expect("enqueue 結果が送信されるべき");
   });
 
-  started_rx.recv().expect("enqueue スレッドが起動するべき");
-  assert!(
-    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "producer は user_queue_lock 上でブロックされるべき",
-  );
+  mailbox.lock_set.with_user_queue_lock(|| {
+    started_rx.recv().expect("enqueue スレッドが起動するべき");
+    assert!(
+      result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+      "producer は user_queue_lock 上でブロックされるべき",
+    );
 
-  assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
-  mailbox.user.clean_up();
-  mailbox.state.finish_cleanup();
-  drop(guard);
+    assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
+    mailbox.user.clean_up();
+    mailbox.state.finish_cleanup();
+  });
 
   let result = result_rx.recv().expect("enqueue 結果を受信できるべき");
   enqueue_handle.join().expect("enqueue スレッドが完了するべき");
@@ -633,8 +635,8 @@ fn cleanup_close_wins_against_inflight_prepend() {
   };
 
   let queue = Box::new(UnboundedDequeMessageQueue::new());
-  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
-  let guard = mailbox.user_queue_lock.lock();
+  let mailbox =
+    Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin()));
   let messages = VecDeque::from([AnyMessage::new("inflight-prepend")]);
   let (started_tx, started_rx) = mpsc::channel();
   let (result_tx, result_rx) = mpsc::channel();
@@ -646,16 +648,17 @@ fn cleanup_close_wins_against_inflight_prepend() {
     result_tx.send(result).expect("prepend 結果が送信されるべき");
   });
 
-  started_rx.recv().expect("prepend スレッドが起動するべき");
-  assert!(
-    result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
-    "prepend は user_queue_lock 上でブロックされるべき",
-  );
+  mailbox.lock_set.with_user_queue_lock(|| {
+    started_rx.recv().expect("prepend スレッドが起動するべき");
+    assert!(
+      result_rx.recv_timeout(Duration::from_millis(200)).is_err(),
+      "prepend は user_queue_lock 上でブロックされるべき",
+    );
 
-  assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
-  mailbox.user.clean_up();
-  mailbox.state.finish_cleanup();
-  drop(guard);
+    assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
+    mailbox.user.clean_up();
+    mailbox.state.finish_cleanup();
+  });
 
   let result = result_rx.recv().expect("prepend 結果を受信できるべき");
   prepend_handle.join().expect("prepend スレッドが完了するべき");
@@ -673,7 +676,8 @@ fn runner_finalizer_cleans_up_exactly_once() {
 
   let clean_up_calls = Arc::new(AtomicUsize::new(0));
   let queue = Box::new(CleanupCountingQueue::new(clean_up_calls.clone()));
-  let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
+  let mailbox =
+    Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue, MailboxLockSet::builtin_spin()));
   let (entered_tx, entered_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
   let user_invocations = Arc::new(AtomicUsize::new(0));
@@ -707,7 +711,7 @@ fn close_request_does_not_dequeue_additional_system_messages() {
   use core::num::NonZeroUsize;
   use std::{sync::mpsc, thread};
 
-  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
+  let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin()));
   let (entered_tx, entered_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
   let user_invocations = Arc::new(AtomicUsize::new(0));

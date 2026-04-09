@@ -16,6 +16,7 @@ use crate::core::kernel::{
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,
+  runtime_lock_provider::ActorRuntimeLockProvider,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -68,6 +69,12 @@ impl ActorSystemSetup {
   where
     P: ActorRefProviderInstaller + 'static, {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
+  }
+
+  /// Replaces the runtime lock provider used to materialize actor-runtime hot paths.
+  #[must_use]
+  pub fn with_runtime_lock_provider(self, provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self {
+    Self { config: self.config.with_runtime_lock_provider(provider) }
   }
 
   /// Registers a dispatcher configurator under the supplied id.

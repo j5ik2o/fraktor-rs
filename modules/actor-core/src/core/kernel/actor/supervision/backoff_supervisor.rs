@@ -202,7 +202,7 @@ impl BackoffSupervisorActor {
   ) -> Result<(), ActorError> {
     let receiver =
       ctx.system().actor_ref(ctx.pid()).ok_or_else(|| ActorError::recoverable("backoff supervisor ref unavailable"))?;
-    let scheduled = SchedulerCommand::SendMessage { receiver, message: AnyMessage::new(command), sender: None };
+    let scheduled = SchedulerCommand::send_message(receiver, AnyMessage::new(command), None);
     ctx
       .system()
       .scheduler()

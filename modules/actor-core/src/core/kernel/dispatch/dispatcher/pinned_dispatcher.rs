@@ -15,7 +15,10 @@ use super::{
   dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
-use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
+use crate::core::kernel::{
+  actor::{ActorCell, Pid, spawn::SpawnError},
+  runtime_lock_provider::{ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider},
+};
 
 /// Dispatcher dedicated to a single actor.
 ///
@@ -23,8 +26,9 @@ use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
 /// deadline regardless of the supplied [`DispatcherSettings`], matching Pekko's
 /// behaviour for `PinnedDispatcher`.
 pub struct PinnedDispatcher {
-  core:  DispatcherCore,
-  owner: Option<Pid>,
+  core:                   DispatcherCore,
+  _runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  owner:                  Option<Pid>,
 }
 
 impl PinnedDispatcher {
@@ -34,10 +38,24 @@ impl PinnedDispatcher {
   /// `throughput_deadline = None` before being handed to [`DispatcherCore`].
   #[must_use]
   pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+    Self::new_with_provider(settings, executor, BuiltinSpinRuntimeLockProvider::shared())
+  }
+
+  /// Constructs a new `PinnedDispatcher` with the supplied runtime lock provider.
+  #[must_use]
+  pub fn new_with_provider(
+    settings: &DispatcherSettings,
+    executor: ExecutorShared,
+    provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
     // SAFETY: `usize::MAX` is non-zero on every supported target.
     let max_throughput = unsafe { NonZeroUsize::new_unchecked(usize::MAX) };
     let normalised = settings.clone().with_throughput(max_throughput).with_throughput_deadline(None);
-    Self { core: DispatcherCore::new(&normalised, executor), owner: None }
+    Self {
+      core:                   DispatcherCore::new(&normalised, executor),
+      _runtime_lock_provider: provider,
+      owner:                  None,
+    }
   }
 
   /// Returns the currently registered owner pid, if any.

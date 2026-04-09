@@ -12,7 +12,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
   executor_shared::ExecutorShared, message_dispatcher::MessageDispatcher, shutdown_schedule::ShutdownSchedule,
@@ -20,16 +20,20 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
+  runtime_lock_provider::{
+    ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider, DispatcherLockCell, MailboxLockSet,
+  },
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
 pub struct MessageDispatcherShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>,
+  inner:                 DispatcherLockCell,
+  runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>,
 }
 
 impl Clone for MessageDispatcherShared {
   fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+    Self { inner: self.inner.clone(), runtime_lock_provider: self.runtime_lock_provider.clone() }
   }
 }
 
@@ -37,7 +41,37 @@ impl MessageDispatcherShared {
   /// Wraps the supplied dispatcher in a shared handle.
   #[must_use]
   pub fn new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(Box::new(dispatcher) as Box<dyn MessageDispatcher>)) }
+    Self::new_with_provider(dispatcher, BuiltinSpinRuntimeLockProvider::shared())
+  }
+
+  /// Wraps the supplied dispatcher in a shared handle using the given provider.
+  #[must_use]
+  pub fn new_with_provider<D: MessageDispatcher + 'static>(
+    dispatcher: D,
+    provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
+    Self::from_cell(provider.new_dispatcher_cell(Box::new(dispatcher) as Box<dyn MessageDispatcher>), provider)
+  }
+
+  /// Builds a shared wrapper from an already materialized provider cell.
+  #[must_use]
+  pub const fn from_cell(
+    inner: DispatcherLockCell,
+    runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
+    Self { inner, runtime_lock_provider }
+  }
+
+  /// Creates a fresh mailbox lock set from the bound provider family.
+  #[must_use]
+  pub fn new_mailbox_lock_set(&self) -> MailboxLockSet {
+    self.runtime_lock_provider.new_mailbox_lock_set()
+  }
+
+  /// Returns the bound runtime lock provider.
+  #[must_use]
+  pub fn runtime_lock_provider(&self) -> ArcShared<dyn ActorRuntimeLockProvider> {
+    self.runtime_lock_provider.clone()
   }
 
   /// Returns the dispatcher identifier.
@@ -304,12 +338,10 @@ impl MessageDispatcherShared {
 
 impl SharedAccess<Box<dyn MessageDispatcher>> for MessageDispatcherShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageDispatcher>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

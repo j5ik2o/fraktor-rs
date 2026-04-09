@@ -87,11 +87,7 @@ where
     let scheduler = ctx.system().scheduler();
     let handle = scheduler
       .with_write(|guard| {
-        guard.schedule_once(timeout, SchedulerCommand::SendMessage {
-          receiver: self_ref,
-          message:  AnyMessage::new(tick),
-          sender:   None,
-        })
+        guard.schedule_once(timeout, SchedulerCommand::send_message(self_ref, AnyMessage::new(tick), None))
       })
       .map_err(|error| ActorError::fatal(format!("failed to schedule recovery timeout: {error}")))?;
     self.recovery_timeout_handle = Some(handle);

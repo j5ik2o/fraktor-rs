@@ -3,7 +3,7 @@ use core::time::Duration;
 use crate::core::{
   kernel::actor::{
     actor_ref::ActorRef,
-    scheduler::{Scheduler, SchedulerCommand, SchedulerConfig, SchedulerContext},
+    scheduler::{Scheduler, SchedulerConfig, SchedulerContext},
   },
   typed::{
     TypedActorRef,
@@ -27,8 +27,9 @@ fn typed_schedule_once_forwards_sender_metadata() {
       .schedule_once(Duration::from_millis(1), receiver.clone(), 7u32, Some(sender.clone()))
       .expect("handle");
     match scheduler.command_for_test(&handle) {
-      | Some(SchedulerCommand::SendMessage { sender: stored_sender, .. }) => {
-        assert!(stored_sender.is_some());
+      | Some(command) => {
+        let (_, _, sender) = command.send_message_parts().expect("send message command");
+        assert!(sender.is_some());
       },
       | other => panic!("unexpected command: {:?}", other),
     }

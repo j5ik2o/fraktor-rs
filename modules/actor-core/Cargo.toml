@@ -41,6 +41,7 @@ proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
+fraktor-utils-adaptor-std-rs = { workspace = true }
 
 [[test]]
 name = "actor_path_e2e"
@@ -75,6 +76,11 @@ required-features = ["test-support"]
 [[test]]
 name = "system_lifecycle"
 path = "tests/system_lifecycle.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "runtime_lock_provider"
+path = "tests/runtime_lock_provider.rs"
 required-features = ["test-support"]
 
 [lints]

@@ -190,10 +190,10 @@ impl ActorCell {
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue))
+      ArcShared::new(Mailbox::new_with_queue(mailbox_config.policy(), queue, new_dispatcher.new_mailbox_lock_set()))
     } else {
       ArcShared::new(
-        Mailbox::new_from_config(&mailbox_config)
+        Mailbox::new_from_config(&mailbox_config, new_dispatcher.new_mailbox_lock_set())
           .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };
@@ -209,7 +209,10 @@ impl ActorCell {
       mailbox.set_instrumentation(instrumentation);
     }
     use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
-    let sender = ActorRefSenderShared::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
+    let sender = ActorRefSenderShared::new_with_provider(
+      DispatcherSender::new(new_dispatcher.clone(), mailbox.clone()),
+      new_dispatcher.runtime_lock_provider(),
+    );
     let Some(factory) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
@@ -529,7 +532,7 @@ impl ActorCell {
     message: AnyMessage,
     delay: Duration,
   ) -> Result<(), SchedulerError> {
-    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, sender: None };
+    let command = SchedulerCommand::send_message(self.actor_ref(), message, None);
     self.schedule_timer_command(key, delay, command, None, false)
   }
 
@@ -545,7 +548,7 @@ impl ActorCell {
     initial_delay: Duration,
     delay: Duration,
   ) -> Result<(), SchedulerError> {
-    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, sender: None };
+    let command = SchedulerCommand::send_message(self.actor_ref(), message, None);
     self.schedule_timer_command(key, initial_delay, command, Some(delay), false)
   }
 
@@ -561,7 +564,7 @@ impl ActorCell {
     initial_delay: Duration,
     interval: Duration,
   ) -> Result<(), SchedulerError> {
-    let command = SchedulerCommand::SendMessage { receiver: self.actor_ref(), message, sender: None };
+    let command = SchedulerCommand::send_message(self.actor_ref(), message, None);
     self.schedule_timer_command(key, initial_delay, command, Some(interval), true)
   }
 

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::VecDeque, string::String};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, WeakShared};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, WeakShared};
 
 use super::{
   CloseRequestOutcome, DequeMessageQueue, MailboxScheduleState, RunFinishOutcome, ScheduleHints, SystemQueue,
@@ -23,23 +23,18 @@ use crate::core::kernel::{
   },
   dispatch::mailbox::policy::MailboxPolicy,
   event::logging::LogLevel,
+  runtime_lock_provider::MailboxLockSet,
   system::state::SystemStateShared,
 };
 
 /// Priority mailbox maintaining separate queues for system and user messages.
 pub struct Mailbox {
-  policy:          MailboxPolicy,
-  system:          SystemQueue,
-  user:            Box<dyn MessageQueue>,
-  user_queue_lock: ArcShared<RuntimeMutex<()>>,
-  state:           MailboxScheduleState,
-  instrumentation: ArcShared<RuntimeMutex<Option<MailboxInstrumentation>>>,
-  cleanup_policy:  MailboxCleanupPolicy,
-  invoker:         ArcShared<RuntimeMutex<Option<MessageInvokerShared>>>,
-  /// Weak handle to the owning actor cell. Set by [`Mailbox::with_actor`] and
-  /// observed by [`Mailbox::run`] so the drain loop can early-return when the
-  /// cell has been dropped.
-  actor:           ArcShared<RuntimeMutex<Option<WeakShared<ActorCell>>>>,
+  policy:         MailboxPolicy,
+  system:         SystemQueue,
+  user:           Box<dyn MessageQueue>,
+  state:          MailboxScheduleState,
+  lock_set:       MailboxLockSet,
+  cleanup_policy: MailboxCleanupPolicy,
 }
 
 unsafe impl Send for Mailbox {}
@@ -48,9 +43,9 @@ unsafe impl Sync for Mailbox {}
 impl Mailbox {
   /// Creates a new mailbox using the provided policy.
   #[must_use]
-  pub fn new(policy: MailboxPolicy) -> Self {
+  pub fn new(policy: MailboxPolicy, lock_set: MailboxLockSet) -> Self {
     let queue = super::mailboxes::create_message_queue_from_policy(policy);
-    Self::new_with_queue(policy, queue)
+    Self::new_with_queue(policy, queue, lock_set)
   }
 
   /// Creates a new mailbox from the provided configuration.
@@ -63,25 +58,22 @@ impl Mailbox {
   ///
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
-  pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
+  pub fn new_from_config(config: &MailboxConfig, lock_set: MailboxLockSet) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(config)?;
-    Ok(Self::new_with_queue(policy, queue))
+    Ok(Self::new_with_queue(policy, queue, lock_set))
   }
 
   /// Creates a new mailbox using the provided policy and pre-built queue.
   #[must_use]
-  pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+  pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>, lock_set: MailboxLockSet) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      lock_set,
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(None)),
     }
   }
 
@@ -92,17 +84,14 @@ impl Mailbox {
   /// drain the underlying queue. This is the constructor used by
   /// `BalancingDispatcher::create_mailbox`.
   #[must_use]
-  pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
+  pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>, lock_set: MailboxLockSet) -> Self {
     Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      lock_set,
       cleanup_policy: MailboxCleanupPolicy::LeaveSharedQueue,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(None)),
     }
   }
 
@@ -118,33 +107,38 @@ impl Mailbox {
   /// `queue` may be a freshly-built per-actor queue or a clone of a shared
   /// queue (used by `BalancingDispatcher::create_mailbox`).
   #[must_use]
-  pub fn with_actor(actor: WeakShared<ActorCell>, policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
-    Self {
+  pub fn with_actor(
+    actor: WeakShared<ActorCell>,
+    policy: MailboxPolicy,
+    queue: Box<dyn MessageQueue>,
+    lock_set: MailboxLockSet,
+  ) -> Self {
+    let mailbox = Self {
       policy,
       system: SystemQueue::new(),
       user: queue,
-      user_queue_lock: ArcShared::new(RuntimeMutex::new(())),
       state: MailboxScheduleState::new(),
-      instrumentation: ArcShared::new(RuntimeMutex::new(None)),
+      lock_set,
       cleanup_policy: MailboxCleanupPolicy::DrainToDeadLetters,
-      invoker: ArcShared::new(RuntimeMutex::new(None)),
-      actor: ArcShared::new(RuntimeMutex::new(Some(actor))),
-    }
+    };
+    mailbox.lock_set.with_actor_write(|slot| {
+      *slot = Some(actor);
+    });
+    mailbox
   }
 
   /// Replaces the weak actor handle, returning the previous one.
   ///
   /// `ActorCell::create` calls this once the cell `ArcShared` is materialised
-  /// so the legacy `Mailbox::new(policy)` constructor (which does not yet
-  /// know the cell) can be late-bound to its owner.
+  /// so the constructor path can be late-bound to its owner.
   pub fn install_actor(&self, actor: WeakShared<ActorCell>) -> Option<WeakShared<ActorCell>> {
-    self.actor.lock().replace(actor)
+    self.lock_set.with_actor_write(|slot| slot.replace(actor))
   }
 
   /// Returns a clone of the weak actor handle if one is installed.
   #[must_use]
   pub fn actor(&self) -> Option<WeakShared<ActorCell>> {
-    self.actor.lock().clone()
+    self.lock_set.with_actor_read(Clone::clone)
   }
 
   /// Installs the message invoker that [`run`](Self::run) drives.
@@ -153,7 +147,40 @@ impl Mailbox {
   /// drain the mailbox without needing a back-reference to the dispatcher
   /// itself.
   pub fn install_invoker(&self, invoker: MessageInvokerShared) {
-    *self.invoker.lock() = Some(invoker);
+    self.lock_set.with_invoker_write(|slot| {
+      *slot = Some(invoker);
+    });
+  }
+
+  /// Returns the cleanup policy configured for this mailbox.
+  #[must_use]
+  pub const fn cleanup_policy(&self) -> MailboxCleanupPolicy {
+    self.cleanup_policy
+  }
+
+  /// Installs instrumentation hooks for metrics emission.
+  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
+    self.lock_set.with_instrumentation_write(|slot| {
+      *slot = Some(instrumentation);
+    });
+  }
+
+  /// Returns the system state handle if instrumentation has been installed.
+  pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
+    self.lock_set.with_instrumentation_read(|slot| slot.as_ref().and_then(|inst| inst.system_state()))
+  }
+
+  /// Returns the actor pid associated with this mailbox when instrumentation is installed.
+  #[must_use]
+  pub(crate) fn pid(&self) -> Option<Pid> {
+    self.lock_set.with_instrumentation_read(|slot| slot.as_ref().map(|inst| inst.pid()))
+  }
+
+  /// Emits a log message tagged with this mailbox pid.
+  pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
+    if let Some(instrumentation) = self.lock_set.with_instrumentation_read(Clone::clone).as_ref() {
+      instrumentation.emit_log(level, message);
+    }
   }
 
   /// Drains the mailbox up to `throughput` messages, invoking each one through the installed
@@ -184,7 +211,7 @@ impl Mailbox {
     }
 
     let close_requested_at_start = self.state.is_close_requested();
-    let invoker = self.invoker.lock().clone();
+    let invoker = self.lock_set.with_invoker_read(Clone::clone);
     // invoker 不在で通常の drain path は早期終了してよい。ただし close が既に
     // 要求済みなら、これ以上 user/system delivery ができなくても terminal
     // cleanup を完了させるために run loop へ入る必要がある。
@@ -195,7 +222,7 @@ impl Mailbox {
     // Phase 9.2: bail out if the owning actor cell has been dropped. The
     // weak handle is optional so legacy `Mailbox::new(policy)` callers (which
     // never installed an actor) keep their existing semantics.
-    let actor_alive = match self.actor.lock().as_ref() {
+    let actor_alive = match self.lock_set.with_actor_read(Clone::clone).as_ref() {
       | Some(weak) => weak.upgrade().is_some(),
       | None => true,
     };
@@ -275,35 +302,6 @@ impl Mailbox {
     }
   }
 
-  /// Returns the cleanup policy configured for this mailbox.
-  #[must_use]
-  pub const fn cleanup_policy(&self) -> MailboxCleanupPolicy {
-    self.cleanup_policy
-  }
-
-  /// Installs instrumentation hooks for metrics emission.
-  pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
-    *self.instrumentation.lock() = Some(instrumentation);
-  }
-
-  /// Returns the system state handle if instrumentation has been installed.
-  pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
-    self.instrumentation.lock().as_ref().and_then(|inst| inst.system_state())
-  }
-
-  /// Returns the actor pid associated with this mailbox when instrumentation is installed.
-  #[must_use]
-  pub(crate) fn pid(&self) -> Option<Pid> {
-    self.instrumentation.lock().as_ref().map(|inst| inst.pid())
-  }
-
-  /// Emits a log message tagged with this mailbox pid.
-  pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
-    if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
-      instrumentation.emit_log(level, message);
-    }
-  }
-
   /// Enqueues a system message, bypassing suspension.
   ///
   /// # Errors
@@ -359,14 +357,15 @@ impl Mailbox {
   /// closed / suspended paths lock-free.
   fn enqueue_envelope_locked(&self, envelope: Envelope) -> Result<(), SendError> {
     let enqueue_result = {
-      let _guard = self.user_queue_lock.lock();
-      // Authoritative re-check under lock: cleanup may have won the lock
-      // race between the fast path and this acquisition. Without this, a
-      // producer could phantom-enqueue into a drained queue.
-      if self.is_closed() {
-        return Err(SendError::closed(envelope.into_payload()));
-      }
-      self.user.enqueue(envelope)
+      self.lock_set.with_user_queue_lock(|| {
+        // Authoritative re-check under lock: cleanup may have won the lock
+        // race between the fast path and this acquisition. Without this, a
+        // producer could phantom-enqueue into a drained queue.
+        if self.is_closed() {
+          return Err(SendError::closed(envelope.into_payload()));
+        }
+        self.user.enqueue(envelope)
+      })
     };
 
     match enqueue_result {
@@ -425,15 +424,15 @@ impl Mailbox {
     messages: &VecDeque<AnyMessage>,
     first_message: AnyMessage,
   ) -> Result<(), SendError> {
-    let _guard = self.user_queue_lock.lock();
+    self.lock_set.with_user_queue_lock(|| {
+      // Authoritative re-check under lock: cleanup may have won the lock race
+      // between the fast path and this acquisition.
+      if self.is_closed() {
+        return Err(SendError::closed(first_message));
+      }
 
-    // Authoritative re-check under lock: cleanup may have won the lock race
-    // between the fast path and this acquisition.
-    if self.is_closed() {
-      return Err(SendError::closed(first_message));
-    }
-
-    self.prepend_via_deque(deque, messages)
+      self.prepend_via_deque(deque, messages)
+    })
   }
 
   /// Efficient O(k) prepend path for deque-capable queues.
@@ -466,11 +465,12 @@ impl Mailbox {
     }
 
     let result = {
-      let _guard = self.user_queue_lock.lock();
-      if self.state.is_close_requested() {
-        return None;
-      }
-      self.user.dequeue().map(MailboxMessage::User)
+      self.lock_set.with_user_queue_lock(|| {
+        if self.state.is_close_requested() {
+          return None;
+        }
+        self.user.dequeue().map(MailboxMessage::User)
+      })
     };
     if result.is_some() {
       self.publish_metrics();
@@ -557,18 +557,20 @@ impl Mailbox {
     let pid = self.pid();
     let system_state = self.system_state();
     let user_len_after_cleanup = {
-      let _guard = self.user_queue_lock.lock();
-      if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
-        while let Some(envelope) = self.user.dequeue() {
-          if let Some(ref state) = system_state {
-            state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+      self.lock_set.with_user_queue_lock(|| {
+        if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
+          while let Some(envelope) = self.user.dequeue() {
+            if let Some(ref state) = system_state {
+              state.record_dead_letter(envelope.into_payload(), DeadLetterReason::Dropped, pid);
+            }
           }
         }
-      }
-      self.user.clean_up();
-      let user_len = self.user.number_of_messages();
-      self.state.finish_cleanup();
-      user_len
+
+        self.user.clean_up();
+        let user_len = self.user.number_of_messages();
+        self.state.finish_cleanup();
+        user_len
+      })
     };
     self.publish_metrics_with_user_len(user_len_after_cleanup);
   }
@@ -588,8 +590,7 @@ impl Mailbox {
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    let _guard = self.user_queue_lock.lock();
-    self.user.number_of_messages()
+    self.lock_set.with_user_queue_lock(|| self.user.number_of_messages())
   }
 
   /// Returns the number of system messages awaiting processing.
@@ -605,16 +606,12 @@ impl Mailbox {
   }
 
   fn publish_metrics(&self) {
-    let user_len = {
-      let _guard = self.user_queue_lock.lock();
-      self.user.number_of_messages()
-    };
+    let user_len = self.lock_set.with_user_queue_lock(|| self.user.number_of_messages());
     self.publish_metrics_with_user_len(user_len);
   }
 
   fn publish_metrics_with_user_len(&self, user_len: usize) {
-    let guard = self.instrumentation.lock();
-    if let Some(instrumentation) = guard.as_ref() {
+    if let Some(instrumentation) = self.lock_set.with_instrumentation_read(Clone::clone).as_ref() {
       instrumentation.publish(user_len, self.system_len());
     }
   }

@@ -18,13 +18,15 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
+  runtime_lock_provider::{ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider},
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
 pub struct BalancingDispatcher {
-  core:         DispatcherCore,
-  shared_queue: ArcShared<SharedMessageQueue>,
-  team:         Vec<WeakShared<ActorCell>>,
+  core:                  DispatcherCore,
+  runtime_lock_provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  shared_queue:          ArcShared<SharedMessageQueue>,
+  team:                  Vec<WeakShared<ActorCell>>,
 }
 
 impl BalancingDispatcher {
@@ -35,10 +37,21 @@ impl BalancingDispatcher {
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
   pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+    Self::new_with_provider(settings, executor, BuiltinSpinRuntimeLockProvider::shared())
+  }
+
+  /// Constructs a new `BalancingDispatcher` with the given runtime lock provider.
+  #[must_use]
+  pub fn new_with_provider(
+    settings: &DispatcherSettings,
+    executor: ExecutorShared,
+    provider: ArcShared<dyn ActorRuntimeLockProvider>,
+  ) -> Self {
     Self {
-      core:         DispatcherCore::new(settings, executor),
-      shared_queue: ArcShared::new(SharedMessageQueue::new()),
-      team:         Vec::new(),
+      core:                  DispatcherCore::new(settings, executor),
+      runtime_lock_provider: provider,
+      shared_queue:          ArcShared::new(SharedMessageQueue::new()),
+      team:                  Vec::new(),
     }
   }
 
@@ -109,7 +122,11 @@ impl MessageDispatcher for BalancingDispatcher {
     // for the dispatcher's lifetime, so every call returns a mailbox that
     // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    Some(ArcShared::new(Mailbox::new_sharing(MailboxPolicy::unbounded(None), queue)))
+    Some(ArcShared::new(Mailbox::new_sharing(
+      MailboxPolicy::unbounded(None),
+      queue,
+      self.runtime_lock_provider.new_mailbox_lock_set(),
+    )))
   }
 
   fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {

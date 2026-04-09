@@ -17,9 +17,10 @@ use crate::core::kernel::{
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
+    dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
+  runtime_lock_provider::{ActorRuntimeLockProvider, BuiltinSpinRuntimeLockProvider},
   system::remote::RemotingConfig,
 };
 
@@ -28,16 +29,18 @@ mod tests;
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name:          String,
-  default_guardian:     PathGuardianKind,
-  remoting_config:      Option<RemotingConfig>,
-  scheduler_config:     SchedulerConfig,
-  tick_driver_config:   Option<TickDriverConfig>,
-  extension_installers: Option<ExtensionInstallers>,
-  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  dispatchers:          Dispatchers,
-  mailboxes:            Mailboxes,
-  start_time:           Option<Duration>,
+  system_name:                String,
+  default_guardian:           PathGuardianKind,
+  remoting_config:            Option<RemotingConfig>,
+  scheduler_config:           SchedulerConfig,
+  tick_driver_config:         Option<TickDriverConfig>,
+  extension_installers:       Option<ExtensionInstallers>,
+  provider_installer:         Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  runtime_lock_provider:      ArcShared<dyn ActorRuntimeLockProvider>,
+  dispatchers:                Dispatchers,
+  mailboxes:                  Mailboxes,
+  start_time:                 Option<Duration>,
+  default_dispatchers_seeded: bool,
 }
 
 impl ActorSystemConfig {
@@ -92,6 +95,16 @@ impl ActorSystemConfig {
     self
   }
 
+  /// Replaces the runtime lock provider used to materialize actor-runtime hot paths.
+  #[must_use]
+  pub fn with_runtime_lock_provider(mut self, provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self {
+    self.runtime_lock_provider = provider.clone();
+    if self.default_dispatchers_seeded {
+      self.dispatchers.seed_default_inline(provider);
+    }
+    self
+  }
+
   /// Registers a dispatcher configurator under the supplied id.
   ///
   /// `ActorSystemConfig::default()` seeds the registry with an
@@ -104,6 +117,11 @@ impl ActorSystemConfig {
     id: impl Into<String>,
     configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
   ) -> Self {
+    let id = id.into();
+    let normalized = Dispatchers::normalize_dispatcher_id(&id);
+    if normalized == DEFAULT_DISPATCHER_ID || normalized == DEFAULT_BLOCKING_DISPATCHER_ID {
+      self.default_dispatchers_seeded = false;
+    }
     self.dispatchers.register_or_update(id, configurator);
     self
   }
@@ -180,6 +198,12 @@ impl ActorSystemConfig {
     self.provider_installer.as_ref()
   }
 
+  /// Returns the runtime lock provider configured for the system.
+  #[must_use]
+  pub fn runtime_lock_provider(&self) -> ArcShared<dyn ActorRuntimeLockProvider> {
+    self.runtime_lock_provider.clone()
+  }
+
   /// Takes the provider installer.
   #[must_use]
   pub const fn take_provider_installer(&mut self) -> Option<ArcShared<dyn ActorRefProviderInstaller>> {
@@ -209,8 +233,9 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
+    let runtime_lock_provider = BuiltinSpinRuntimeLockProvider::shared();
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline();
+    dispatchers.seed_default_inline(runtime_lock_provider.clone());
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -221,9 +246,11 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
+      runtime_lock_provider,
       dispatchers,
       mailboxes,
       start_time: None,
+      default_dispatchers_seeded: true,
     }
   }
 }

@@ -17,6 +17,8 @@ default = []
 
 [dependencies]
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+fraktor-actor-core-rs = { workspace = true, features = ["test-support"] }
+portable-atomic = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

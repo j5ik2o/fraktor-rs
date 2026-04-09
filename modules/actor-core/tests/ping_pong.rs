@@ -12,6 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
     spawn::SpawnError,
   },
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
+  runtime_lock_provider::MailboxLockSet,
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
@@ -130,8 +131,10 @@ fn spawn_and_tell_delivers_message() {
 fn tell_respects_mailbox_backpressure() {
   use core::num::NonZeroUsize;
 
-  let mailbox: Mailbox =
-    Mailbox::new(MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None));
+  let mailbox: Mailbox = Mailbox::new(
+    MailboxPolicy::bounded(NonZeroUsize::new(1).unwrap(), MailboxOverflowStrategy::DropNewest, None),
+    MailboxLockSet::builtin_spin(),
+  );
 
   assert!(mailbox.enqueue_user(AnyMessage::new("first")).is_ok());
   let result = mailbox.enqueue_user(AnyMessage::new("second"));

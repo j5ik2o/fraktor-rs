@@ -18,6 +18,7 @@ use crate::core::kernel::{
     logging::LogLevel,
     stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   },
+  runtime_lock_provider::MailboxLockSet,
   system::{ActorSystem, SpinBlocker},
 };
 
@@ -69,7 +70,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
 
 #[test]
 fn mailbox_schedule_requests_follow_state_engine() {
-  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None));
+  let mailbox = Mailbox::new(MailboxPolicy::unbounded(None), MailboxLockSet::builtin_spin());
   let hints = ScheduleHints { has_system_messages: true, has_user_messages: false, backpressure_active: false };
 
   assert!(mailbox.request_schedule(hints));
