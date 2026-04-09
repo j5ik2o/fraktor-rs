@@ -124,7 +124,7 @@ impl MessageDispatcher for BalancingDispatcher {
     // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
     let shared_set = self.lock_provider.create_mailbox_shared_set();
-    Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, shared_set)))
+    Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, &shared_set)))
   }
 
   fn register_actor(&mut self, actor: &ArcShared<ActorCell>) -> Result<(), SpawnError> {

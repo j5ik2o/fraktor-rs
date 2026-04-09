@@ -58,7 +58,7 @@ impl Mailbox {
 
   /// Creates a mailbox using the provided policy and explicit lock bundle.
   #[must_use]
-  pub fn new_with_shared_set(policy: MailboxPolicy, shared_set: MailboxSharedSet) -> Self {
+  pub fn new_with_shared_set(policy: MailboxPolicy, shared_set: &MailboxSharedSet) -> Self {
     let queue = super::mailboxes::create_message_queue_from_policy(policy);
     Self::new_with_queue_and_shared_set(policy, queue, shared_set)
   }
@@ -75,7 +75,7 @@ impl Mailbox {
   /// configuration contract is violated.
   pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
     let shared_set = MailboxSharedSet::builtin();
-    Self::new_from_config_with_shared_set(config, shared_set)
+    Self::new_from_config_with_shared_set(config, &shared_set)
   }
 
   /// Creates a mailbox from configuration using the supplied lock bundle.
@@ -86,7 +86,7 @@ impl Mailbox {
   /// configuration contract is violated.
   pub fn new_from_config_with_shared_set(
     config: &MailboxConfig,
-    shared_set: MailboxSharedSet,
+    shared_set: &MailboxSharedSet,
   ) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(config)?;
@@ -97,14 +97,14 @@ impl Mailbox {
   #[must_use]
   pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
     let shared_set = MailboxSharedSet::builtin();
-    Self::new_with_queue_and_shared_set(policy, queue, shared_set)
+    Self::new_with_queue_and_shared_set(policy, queue, &shared_set)
   }
 
   #[must_use]
   pub(crate) fn new_with_queue_and_shared_set(
     policy: MailboxPolicy,
     queue: Box<dyn MessageQueue>,
-    shared_set: MailboxSharedSet,
+    shared_set: &MailboxSharedSet,
   ) -> Self {
     Self {
       policy,
@@ -128,7 +128,7 @@ impl Mailbox {
   #[must_use]
   pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
     let shared_set = MailboxSharedSet::builtin();
-    Self::new_sharing_with_shared_set(policy, queue, shared_set)
+    Self::new_sharing_with_shared_set(policy, queue, &shared_set)
   }
 
   /// Creates a sharing mailbox using the supplied lock bundle.
@@ -136,7 +136,7 @@ impl Mailbox {
   pub fn new_sharing_with_shared_set(
     policy: MailboxPolicy,
     queue: Box<dyn MessageQueue>,
-    shared_set: MailboxSharedSet,
+    shared_set: &MailboxSharedSet,
   ) -> Self {
     Self {
       policy,
@@ -165,7 +165,7 @@ impl Mailbox {
   #[must_use]
   pub fn with_actor(actor: WeakShared<ActorCell>, policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
     let shared_set = MailboxSharedSet::builtin();
-    Self::with_actor_and_shared_set(actor, policy, queue, shared_set)
+    Self::with_actor_and_shared_set(actor, policy, queue, &shared_set)
   }
 
   /// Creates a mailbox bound to a specific actor using the supplied lock bundle.
@@ -174,7 +174,7 @@ impl Mailbox {
     actor: WeakShared<ActorCell>,
     policy: MailboxPolicy,
     queue: Box<dyn MessageQueue>,
-    shared_set: MailboxSharedSet,
+    shared_set: &MailboxSharedSet,
   ) -> Self {
     Self {
       policy,

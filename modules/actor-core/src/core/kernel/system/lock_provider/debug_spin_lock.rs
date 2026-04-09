@@ -1,7 +1,7 @@
 //! Panic-on-contention spin lock used by the debug actor lock provider.
 
 use core::{
-  fmt,
+  fmt, mem::ManuallyDrop,
   ops::{Deref, DerefMut},
   sync::atomic::{AtomicBool, Ordering},
 };
@@ -26,35 +26,36 @@ impl<T> DebugSpinLock<T> {
       self.label
     );
     let guard = self.inner.lock();
-    DebugSpinLockGuard { locked: &self.locked, guard: Some(guard) }
+    DebugSpinLockGuard { locked: &self.locked, guard: ManuallyDrop::new(guard) }
   }
 }
 
 pub(crate) struct DebugSpinLockGuard<'a, T> {
   locked: &'a AtomicBool,
-  guard:  Option<spin::MutexGuard<'a, T>>,
+  guard:  ManuallyDrop<spin::MutexGuard<'a, T>>,
 }
 
 impl<T> Deref for DebugSpinLockGuard<'_, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
-    self.guard.as_ref().expect("guard was taken during drop")
+    &self.guard
   }
 }
 
 impl<T> DerefMut for DebugSpinLockGuard<'_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.guard.as_mut().expect("guard was taken during drop")
+    &mut self.guard
   }
 }
 
 impl<T> Drop for DebugSpinLockGuard<'_, T> {
   fn drop(&mut self) {
-    // Drop the spin::MutexGuard FIRST to release the actual lock, then clear
-    // the debug flag. This prevents a TOCTOU race where another thread could
-    // observe locked=false before the underlying mutex is released.
-    drop(self.guard.take());
+    // guard を先に drop して実際の lock を解放してから、debug flag をクリアする。
+    // この順序により、他スレッドが locked=false を観測したとき実際の mutex は
+    // 確実に解放済みとなる (TOCTOU 回避)。
+    // SAFETY: drop は 1 回しか呼ばれず、ManuallyDrop 内の guard はまだ有効。
+    unsafe { ManuallyDrop::drop(&mut self.guard) };
     self.locked.store(false, Ordering::Release);
   }
 }
