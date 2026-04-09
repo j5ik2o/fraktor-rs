@@ -30,7 +30,7 @@ impl CountingLockProvider {
     let dispatcher_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let executor_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
-      inner: BuiltinSpinLockProvider::new(),
+      inner:                   BuiltinSpinLockProvider::new(),
       dispatcher_shared_calls: dispatcher_shared_calls.clone(),
       executor_shared_calls:   executor_shared_calls.clone(),
     };
