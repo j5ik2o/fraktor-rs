@@ -1,3 +1,5 @@
+use super::rwlock_driver::RwLockDriver;
+
 #[cfg(test)]
 mod tests;
 
@@ -33,5 +35,35 @@ impl<T> SpinSyncRwLock<T> {
   /// Acquires an exclusive write guard.
   pub fn write(&self) -> spin::RwLockWriteGuard<'_, T> {
     self.0.write()
+  }
+}
+
+impl<T> RwLockDriver<T> for SpinSyncRwLock<T> {
+  type ReadGuard<'a>
+    = spin::RwLockReadGuard<'a, T>
+  where
+    Self: 'a,
+    T: 'a;
+
+  type WriteGuard<'a>
+    = spin::RwLockWriteGuard<'a, T>
+  where
+    Self: 'a,
+    T: 'a;
+
+  fn new(value: T) -> Self {
+    Self::new(value)
+  }
+
+  fn read(&self) -> Self::ReadGuard<'_> {
+    self.read()
+  }
+
+  fn write(&self) -> Self::WriteGuard<'_> {
+    self.write()
+  }
+
+  fn into_inner(self) -> T {
+    self.into_inner()
   }
 }

@@ -1,8 +1,11 @@
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(unsafe_op_in_unsafe_fn)]
+#![allow(unknown_lints)]
+
 //! Std adapter helpers for `fraktor-utils-core-rs`.
-//!
-//! This crate is currently a placeholder reserving the std adapter slot
-//! for `fraktor-utils-core-rs`. The previous `DebugSpinSyncMutex`
-//! implementation has been removed and will be re-introduced after the
-//! `RuntimeMutex` Port + Adapter (`LockDriver` trait) refactoring lands.
-//! Future contents (test/debug instrumentation, std-only utilities) will
-//! be wired through that port contract.
+
+extern crate alloc;
+
+/// Standard-library-backed lock drivers.
+pub mod std;

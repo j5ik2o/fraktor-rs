@@ -14,9 +14,11 @@ autoexamples = false
 
 [features]
 default = []
+test-support = ["dep:spin"]
 
 [dependencies]
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+spin = { workspace = true, optional = true }
 
 [lints]
 workspace = true
