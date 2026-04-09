@@ -1,7 +1,9 @@
 //! Shared wrapper for actor reference senders.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
@@ -46,14 +48,14 @@ impl core::ops::DerefMut for ActorRefSenderGuard<'_> {
 
 enum ActorRefSenderLock {
   Builtin(ArcShared<RuntimeMutex<Box<dyn ActorRefSender>>>),
-  Debug { inner: ArcShared<DebugSpinLock<Box<dyn ActorRefSender>>>, active: ArcShared<AtomicBool> },
+  Debug(ArcShared<DebugSpinLock<Box<dyn ActorRefSender>>>),
 }
 
 impl Clone for ActorRefSenderLock {
   fn clone(&self) -> Self {
     match self {
       | Self::Builtin(inner) => Self::Builtin(inner.clone()),
-      | Self::Debug { inner, active } => Self::Debug { inner: inner.clone(), active: active.clone() },
+      | Self::Debug(inner) => Self::Debug(inner.clone()),
     }
   }
 }
@@ -64,40 +66,14 @@ impl ActorRefSenderLock {
   }
 
   fn debug(sender: Box<dyn ActorRefSender>) -> Self {
-    Self::Debug {
-      inner:  ArcShared::new(DebugSpinLock::new(sender, "actor_ref_sender_shared.inner")),
-      active: ArcShared::new(AtomicBool::new(false)),
-    }
+    Self::Debug(ArcShared::new(DebugSpinLock::new(sender, "actor_ref_sender_shared.inner")))
   }
 
   fn lock(&self) -> ActorRefSenderGuard<'_> {
     match self {
       | Self::Builtin(inner) => ActorRefSenderGuard::Builtin(inner.lock()),
-      | Self::Debug { inner, .. } => ActorRefSenderGuard::Debug(inner.lock()),
+      | Self::Debug(inner) => ActorRefSenderGuard::Debug(inner.lock()),
     }
-  }
-
-  fn enter_debug_scope(&self) -> Option<DebugSendScope> {
-    match self {
-      | Self::Builtin(_) => None,
-      | Self::Debug { active, .. } => {
-        assert!(
-          !active.swap(true, Ordering::AcqRel),
-          "debug actor lock provider detected nested tell on the same thread"
-        );
-        Some(DebugSendScope { active: active.clone() })
-      },
-    }
-  }
-}
-
-struct DebugSendScope {
-  active: ArcShared<AtomicBool>,
-}
-
-impl Drop for DebugSendScope {
-  fn drop(&mut self) {
-    self.active.store(false, Ordering::Release);
   }
 }
 
@@ -133,7 +109,6 @@ impl ActorRefSenderShared {
   ///
   /// Returns an error if the message cannot be delivered.
   pub fn send(&mut self, message: AnyMessage) -> Result<(), SendError> {
-    let _debug_scope = self.inner.enter_debug_scope();
     // ロック解放後にアウトカムを適用し、再入によるデッドロックを防ぐ
     let outcome = {
       let mut sender = self.inner.lock();
