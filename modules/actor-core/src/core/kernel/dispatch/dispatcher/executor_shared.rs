@@ -30,11 +30,127 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 
 use super::{execute_error::ExecuteError, executor::Executor};
+use crate::core::kernel::system::lock_provider::{DebugSpinLock, DebugSpinLockGuard};
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 
 struct TrampolineState {
   pending: VecDeque<BoxedTask>,
+}
+
+enum ExecutorGuard<'a> {
+  Builtin(spin::MutexGuard<'a, Box<dyn Executor>>),
+  Debug(DebugSpinLockGuard<'a, Box<dyn Executor>>),
+}
+
+impl core::ops::Deref for ExecutorGuard<'_> {
+  type Target = Box<dyn Executor>;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
+}
+
+impl core::ops::DerefMut for ExecutorGuard<'_> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
+}
+
+enum ExecutorLock {
+  Builtin(ArcShared<RuntimeMutex<Box<dyn Executor>>>),
+  Debug(ArcShared<DebugSpinLock<Box<dyn Executor>>>),
+}
+
+impl Clone for ExecutorLock {
+  fn clone(&self) -> Self {
+    match self {
+      | Self::Builtin(inner) => Self::Builtin(inner.clone()),
+      | Self::Debug(inner) => Self::Debug(inner.clone()),
+    }
+  }
+}
+
+impl ExecutorLock {
+  fn builtin(executor: Box<dyn Executor>) -> Self {
+    Self::Builtin(ArcShared::new(RuntimeMutex::new(executor)))
+  }
+
+  fn debug(executor: Box<dyn Executor>) -> Self {
+    Self::Debug(ArcShared::new(DebugSpinLock::new(executor, "executor_shared.inner")))
+  }
+
+  fn lock(&self) -> ExecutorGuard<'_> {
+    match self {
+      | Self::Builtin(inner) => ExecutorGuard::Builtin(inner.lock()),
+      | Self::Debug(inner) => ExecutorGuard::Debug(inner.lock()),
+    }
+  }
+}
+
+enum TrampolineLock {
+  Builtin(ArcShared<RuntimeMutex<TrampolineState>>),
+  Debug(ArcShared<DebugSpinLock<TrampolineState>>),
+}
+
+impl Clone for TrampolineLock {
+  fn clone(&self) -> Self {
+    match self {
+      | Self::Builtin(inner) => Self::Builtin(inner.clone()),
+      | Self::Debug(inner) => Self::Debug(inner.clone()),
+    }
+  }
+}
+
+impl TrampolineLock {
+  fn builtin() -> Self {
+    Self::Builtin(ArcShared::new(RuntimeMutex::new(TrampolineState { pending: VecDeque::new() })))
+  }
+
+  fn debug() -> Self {
+    Self::Debug(ArcShared::new(DebugSpinLock::new(
+      TrampolineState { pending: VecDeque::new() },
+      "executor_shared.trampoline",
+    )))
+  }
+
+  fn lock(&self) -> TrampolineGuard<'_> {
+    match self {
+      | Self::Builtin(inner) => TrampolineGuard::Builtin(inner.lock()),
+      | Self::Debug(inner) => TrampolineGuard::Debug(inner.lock()),
+    }
+  }
+}
+
+enum TrampolineGuard<'a> {
+  Builtin(spin::MutexGuard<'a, TrampolineState>),
+  Debug(DebugSpinLockGuard<'a, TrampolineState>),
+}
+
+impl core::ops::Deref for TrampolineGuard<'_> {
+  type Target = TrampolineState;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
+}
+
+impl core::ops::DerefMut for TrampolineGuard<'_> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
 }
 
 /// Multi-owner handle for a boxed [`Executor`].
@@ -44,8 +160,8 @@ struct TrampolineState {
 /// individual `inner.execute(task)` invocation, not across the full queue
 /// drain — this keeps re-entrant inline executors deadlock-free.
 pub struct ExecutorShared {
-  inner:      ArcShared<RuntimeMutex<Box<dyn Executor>>>,
-  trampoline: ArcShared<RuntimeMutex<TrampolineState>>,
+  inner:      ExecutorLock,
+  trampoline: TrampolineLock,
   running:    ArcShared<AtomicBool>,
 }
 
@@ -60,8 +176,16 @@ impl ExecutorShared {
   #[must_use]
   pub fn from_boxed(executor: Box<dyn Executor>) -> Self {
     Self {
-      inner:      ArcShared::new(RuntimeMutex::new(executor)),
-      trampoline: ArcShared::new(RuntimeMutex::new(TrampolineState { pending: VecDeque::new() })),
+      inner:      ExecutorLock::builtin(executor),
+      trampoline: TrampolineLock::builtin(),
+      running:    ArcShared::new(AtomicBool::new(false)),
+    }
+  }
+
+  pub(crate) fn from_boxed_debug(executor: Box<dyn Executor>) -> Self {
+    Self {
+      inner:      ExecutorLock::debug(executor),
+      trampoline: TrampolineLock::debug(),
       running:    ArcShared::new(AtomicBool::new(false)),
     }
   }

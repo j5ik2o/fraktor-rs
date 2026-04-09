@@ -33,6 +33,7 @@ erased-serde = { workspace = true }
 bincode = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
 tracing = { workspace = true, default-features = false }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex"] }
 
 [dev-dependencies]
 criterion = { workspace = true }

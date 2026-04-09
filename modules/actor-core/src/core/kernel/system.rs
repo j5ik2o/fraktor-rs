@@ -15,6 +15,8 @@ mod extensions;
 mod extra_top_levels;
 /// Guardian actor related types.
 pub mod guardian;
+/// Actor-system scoped lock-provider types.
+pub mod lock_provider;
 mod register_extra_top_level_error;
 mod registries;
 /// Remote watch hook and authority related types.

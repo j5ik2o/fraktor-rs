@@ -15,7 +15,10 @@ use super::{
   dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
-use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
+use crate::core::kernel::{
+  actor::{ActorCell, Pid, spawn::SpawnError},
+  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+};
 
 /// Dispatcher dedicated to a single actor.
 ///
@@ -23,8 +26,9 @@ use crate::core::kernel::actor::{ActorCell, Pid, spawn::SpawnError};
 /// deadline regardless of the supplied [`DispatcherSettings`], matching Pekko's
 /// behaviour for `PinnedDispatcher`.
 pub struct PinnedDispatcher {
-  core:  DispatcherCore,
-  owner: Option<Pid>,
+  core:           DispatcherCore,
+  owner:          Option<Pid>,
+  _lock_provider: ArcShared<dyn ActorLockProvider>,
 }
 
 impl PinnedDispatcher {
@@ -34,10 +38,25 @@ impl PinnedDispatcher {
   /// `throughput_deadline = None` before being handed to [`DispatcherCore`].
   #[must_use]
   pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
+    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    Self::new_with_provider(settings, executor, lock_provider)
+  }
+
+  /// Constructs a new pinned dispatcher with an explicit actor lock provider.
+  #[must_use]
+  pub fn new_with_provider(
+    settings: &DispatcherSettings,
+    executor: ExecutorShared,
+    lock_provider: ArcShared<dyn ActorLockProvider>,
+  ) -> Self {
     // SAFETY: `usize::MAX` is non-zero on every supported target.
     let max_throughput = unsafe { NonZeroUsize::new_unchecked(usize::MAX) };
     let normalised = settings.clone().with_throughput(max_throughput).with_throughput_deadline(None);
-    Self { core: DispatcherCore::new(&normalised, executor), owner: None }
+    Self {
+      core:           DispatcherCore::new(&normalised, executor),
+      owner:          None,
+      _lock_provider: lock_provider,
+    }
   }
 
   /// Returns the currently registered owner pid, if any.

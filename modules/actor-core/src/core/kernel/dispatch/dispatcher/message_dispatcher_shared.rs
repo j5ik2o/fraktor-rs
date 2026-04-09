@@ -20,11 +20,68 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
+  system::lock_provider::{DebugSpinLock, DebugSpinLockGuard},
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
 pub struct MessageDispatcherShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>,
+  inner: MessageDispatcherLock,
+}
+
+enum MessageDispatcherWriteGuard<'a> {
+  Builtin(spin::MutexGuard<'a, Box<dyn MessageDispatcher>>),
+  Debug(DebugSpinLockGuard<'a, Box<dyn MessageDispatcher>>),
+}
+
+impl core::ops::Deref for MessageDispatcherWriteGuard<'_> {
+  type Target = Box<dyn MessageDispatcher>;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
+}
+
+impl core::ops::DerefMut for MessageDispatcherWriteGuard<'_> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    match self {
+      | Self::Builtin(guard) => guard,
+      | Self::Debug(guard) => guard,
+    }
+  }
+}
+
+enum MessageDispatcherLock {
+  Builtin(ArcShared<RuntimeMutex<Box<dyn MessageDispatcher>>>),
+  Debug(ArcShared<DebugSpinLock<Box<dyn MessageDispatcher>>>),
+}
+
+impl Clone for MessageDispatcherLock {
+  fn clone(&self) -> Self {
+    match self {
+      | Self::Builtin(inner) => Self::Builtin(inner.clone()),
+      | Self::Debug(inner) => Self::Debug(inner.clone()),
+    }
+  }
+}
+
+impl MessageDispatcherLock {
+  fn builtin(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self::Builtin(ArcShared::new(RuntimeMutex::new(dispatcher)))
+  }
+
+  fn debug(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self::Debug(ArcShared::new(DebugSpinLock::new(dispatcher, "message_dispatcher_shared.inner")))
+  }
+
+  fn write(&self) -> MessageDispatcherWriteGuard<'_> {
+    match self {
+      | Self::Builtin(inner) => MessageDispatcherWriteGuard::Builtin(inner.lock()),
+      | Self::Debug(inner) => MessageDispatcherWriteGuard::Debug(inner.lock()),
+    }
+  }
 }
 
 impl Clone for MessageDispatcherShared {
@@ -37,7 +94,17 @@ impl MessageDispatcherShared {
   /// Wraps the supplied dispatcher in a shared handle.
   #[must_use]
   pub fn new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(Box::new(dispatcher) as Box<dyn MessageDispatcher>)) }
+    Self::from_boxed(Box::new(dispatcher) as Box<dyn MessageDispatcher>)
+  }
+
+  /// Wraps an already boxed dispatcher in the built-in shared handle.
+  #[must_use]
+  pub fn from_boxed(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self { inner: MessageDispatcherLock::builtin(dispatcher) }
+  }
+
+  pub(crate) fn from_boxed_debug(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self { inner: MessageDispatcherLock::debug(dispatcher) }
   }
 
   /// Returns the dispatcher identifier.
@@ -304,12 +371,12 @@ impl MessageDispatcherShared {
 
 impl SharedAccess<Box<dyn MessageDispatcher>> for MessageDispatcherShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageDispatcher>) -> R) -> R {
-    let guard = self.inner.lock();
+    let guard = self.inner.write();
     f(&guard)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R {
-    let mut guard = self.inner.lock();
+    let mut guard = self.inner.write();
     f(&mut guard)
   }
 }

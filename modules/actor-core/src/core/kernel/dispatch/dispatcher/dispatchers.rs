@@ -24,9 +24,10 @@ use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
   default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
-  dispatchers_error::DispatchersError, executor_shared::ExecutorShared, inline_executor::InlineExecutor,
+  dispatchers_error::DispatchersError, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
+use crate::core::kernel::system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider};
 
 /// Reserved registry identifier for the default dispatcher.
 pub const DEFAULT_DISPATCHER_ID: &str = "default";
@@ -159,11 +160,17 @@ impl Dispatchers {
   /// `tokio` or another runtime. Production users override the entry through
   /// `ActorSystemConfig::with_dispatcher_configurator`.
   pub fn ensure_default_inline(&mut self) {
+    let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    self.ensure_default_inline_with_provider(&provider);
+  }
+
+  /// Ensures the default dispatcher entry exists using the supplied provider.
+  pub fn ensure_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorLockProvider>) {
     self.ensure_default(|| {
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = ExecutorShared::new(InlineExecutor::new());
+      let executor = provider.create_executor_shared(Box::new(InlineExecutor::new()));
       let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+        Box::new(DefaultDispatcherConfigurator::new_with_provider(&settings, executor, provider));
       ArcShared::new(configurator)
     });
   }
