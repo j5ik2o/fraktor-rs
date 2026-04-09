@@ -192,11 +192,11 @@ impl ActorCell {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
       let shared_set = lock_provider.create_mailbox_shared_set();
-      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &shared_set))
+      ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, shared_set))
     } else {
       let shared_set = lock_provider.create_mailbox_shared_set();
       ArcShared::new(
-        Mailbox::new_from_config_with_shared_set(&mailbox_config, &shared_set)
+        Mailbox::new_from_config_with_shared_set(&mailbox_config, shared_set)
           .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };

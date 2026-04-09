@@ -13,30 +13,30 @@ use super::{
   dispatcher_core::DispatcherCore, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher::MessageDispatcher,
 };
-use crate::core::kernel::system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider};
+use crate::core::kernel::system::lock_provider::ActorLockProvider;
 
 /// Generic dispatcher that shares its executor across multiple actors.
 pub struct DefaultDispatcher {
-  core:           DispatcherCore,
-  _lock_provider: ArcShared<dyn ActorLockProvider>,
+  core: DispatcherCore,
 }
 
 impl DefaultDispatcher {
   /// Constructs a new `DefaultDispatcher` with the given settings and executor.
   #[must_use]
   pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_provider(settings, executor, lock_provider)
+    Self { core: DispatcherCore::new(settings, executor) }
   }
 
   /// Constructs a new dispatcher with an explicit actor lock provider.
+  ///
+  /// This is a no-op wrapper for API compatibility. The lock provider parameter is ignored.
   #[must_use]
   pub fn new_with_provider(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    lock_provider: ArcShared<dyn ActorLockProvider>,
+    _lock_provider: ArcShared<dyn ActorLockProvider>,
   ) -> Self {
-    Self { core: DispatcherCore::new(settings, executor), _lock_provider: lock_provider }
+    Self::new(settings, executor)
   }
 }
 

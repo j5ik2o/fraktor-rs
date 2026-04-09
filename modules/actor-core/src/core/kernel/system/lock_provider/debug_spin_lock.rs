@@ -26,31 +26,35 @@ impl<T> DebugSpinLock<T> {
       self.label
     );
     let guard = self.inner.lock();
-    DebugSpinLockGuard { locked: &self.locked, guard }
+    DebugSpinLockGuard { locked: &self.locked, guard: Some(guard) }
   }
 }
 
 pub(crate) struct DebugSpinLockGuard<'a, T> {
   locked: &'a AtomicBool,
-  guard:  spin::MutexGuard<'a, T>,
+  guard:  Option<spin::MutexGuard<'a, T>>,
 }
 
 impl<T> Deref for DebugSpinLockGuard<'_, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
-    &self.guard
+    self.guard.as_ref().expect("guard was taken during drop")
   }
 }
 
 impl<T> DerefMut for DebugSpinLockGuard<'_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.guard
+    self.guard.as_mut().expect("guard was taken during drop")
   }
 }
 
 impl<T> Drop for DebugSpinLockGuard<'_, T> {
   fn drop(&mut self) {
+    // Drop the spin::MutexGuard FIRST to release the actual lock, then clear
+    // the debug flag. This prevents a TOCTOU race where another thread could
+    // observe locked=false before the underlying mutex is released.
+    drop(self.guard.take());
     self.locked.store(false, Ordering::Release);
   }
 }
