@@ -102,7 +102,7 @@ impl ActorSystemConfig {
   where
     P: ActorLockProvider + 'static, {
     self.lock_provider = ArcShared::new(provider);
-    self.dispatchers.ensure_default_inline_with_provider(&self.lock_provider);
+    self.dispatchers.replace_default_inline_with_provider(&self.lock_provider);
     self
   }
 

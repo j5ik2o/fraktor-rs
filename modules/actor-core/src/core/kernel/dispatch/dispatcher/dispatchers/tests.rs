@@ -4,9 +4,12 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers, DispatchersError};
-use crate::core::kernel::dispatch::dispatcher::{
-  DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
-  MessageDispatcherConfigurator,
+use crate::core::kernel::{
+  dispatch::dispatcher::{
+    DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+    MessageDispatcherConfigurator,
+  },
+  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
 };
 
 struct NoopExecutor;
@@ -89,6 +92,55 @@ fn ensure_default_is_idempotent_when_present() {
   // The original configurator stays.
   let resolved = dispatchers.resolve(DEFAULT_DISPATCHER_ID).expect("resolve default");
   assert_eq!(resolved.id(), "first");
+}
+
+#[test]
+fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default_inline();
+  let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
+  let seeded_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("seeded blocking").clone();
+  assert!(
+    ArcShared::ptr_eq(&seeded_default, &seeded_blocking),
+    "seeded default/blocking dispatchers should share the same configurator"
+  );
+
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  dispatchers.replace_default_inline_with_provider(&provider);
+
+  let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");
+  let replaced_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("replaced blocking");
+  assert!(
+    !ArcShared::ptr_eq(&seeded_default, replaced_default),
+    "default dispatcher should be rebuilt when the lock provider changes"
+  );
+  assert!(
+    ArcShared::ptr_eq(replaced_default, replaced_blocking),
+    "seeded blocking alias should follow the rebuilt default dispatcher"
+  );
+}
+
+#[test]
+fn replace_default_inline_with_provider_preserves_custom_blocking_dispatcher() {
+  let mut dispatchers = Dispatchers::new();
+  dispatchers.ensure_default_inline();
+  let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
+  let custom_blocking = make_default_configurator("blocking");
+  dispatchers.register_or_update(DEFAULT_BLOCKING_DISPATCHER_ID, custom_blocking.clone());
+
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  dispatchers.replace_default_inline_with_provider(&provider);
+
+  let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");
+  let blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("blocking");
+  assert!(
+    !ArcShared::ptr_eq(&seeded_default, replaced_default),
+    "default dispatcher should still be rebuilt when blocking is overridden"
+  );
+  assert!(
+    ArcShared::ptr_eq(blocking, &custom_blocking),
+    "custom blocking dispatcher must not be overwritten by lock-provider replacement"
+  );
 }
 
 #[test]
