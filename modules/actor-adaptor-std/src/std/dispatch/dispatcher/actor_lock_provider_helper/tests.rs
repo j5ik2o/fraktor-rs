@@ -24,7 +24,11 @@ struct SelfLoopActor {
 impl Actor for SelfLoopActor {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     self.delivered.fetch_add(1, Ordering::SeqCst);
-    if self.forwards_remaining.fetch_sub(1, Ordering::SeqCst) > 0 {
+    let should_forward = self
+      .forwards_remaining
+      .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+      .is_ok();
+    if should_forward {
       let mut target = ctx.self_ref();
       target.tell(AnyMessage::new(1_u32));
     }

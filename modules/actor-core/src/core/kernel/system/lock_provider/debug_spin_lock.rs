@@ -1,7 +1,8 @@
 //! Panic-on-contention spin lock used by the debug actor lock provider.
 
 use core::{
-  fmt, mem::ManuallyDrop,
+  fmt,
+  mem::ManuallyDrop,
   ops::{Deref, DerefMut},
   sync::atomic::{AtomicBool, Ordering},
 };
