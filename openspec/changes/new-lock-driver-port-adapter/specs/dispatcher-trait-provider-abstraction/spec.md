@@ -37,9 +37,9 @@ dispatcher の public abstraction は Pekko の `MessageDispatcher` 抽象クラ
 #### Scenario: MessageDispatcherShared は AShared パターンに従う
 - **WHEN** `MessageDispatcherShared` の定義を確認する
 - **THEN** `MessageDispatcherShared` は `pub struct` として公開されている
-- **AND** 内部に runtime lock provider が生成した `DispatcherLockCell` を保持する
-- **AND** `DispatcherLockCell` は `Box<dyn MessageDispatcher>` に対する `with_read` / `with_write` 相当の操作を提供する
-- **AND** `Clone` を実装する（内部 cell の clone ベース）
+- **AND** 内部に `ActorLockProvider` が materialize した opaque lock backend を保持する
+- **AND** opaque lock backend の concrete 型・公開 trait 名は public API として露出しない
+- **AND** `Clone` を実装する（内部 backend の clone ベース）
 - **AND** `SharedAccess<Box<dyn MessageDispatcher>>` を実装し、`with_read` / `with_write` を提供する
 - **AND** 既存の AShared 系 (`ActorFactoryShared` など) と同じパターンに従っている
 
@@ -70,15 +70,15 @@ dispatcher の public abstraction は Pekko の `MessageDispatcher` 抽象クラ
 #### Scenario: DispatcherSettings は dispatcher / configurator のコンストラクタに渡される
 - **WHEN** dispatcher と configurator の `new` のシグネチャを確認する
 - **THEN** `DispatcherCore::new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self` が存在する
-- **AND** `DefaultDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self` が存在する
-- **AND** `PinnedDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self` が存在する
-- **AND** `BalancingDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorRuntimeLockProvider>) -> Self` が存在する
+- **AND** `DefaultDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorLockProvider>) -> Self` が存在する
+- **AND** `PinnedDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorLockProvider>) -> Self` が存在する
+- **AND** `BalancingDispatcher::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorLockProvider>) -> Self` が存在する
 - **AND** `PinnedDispatcher::new` は受け取った `settings` を `throughput = NonZeroUsize::MAX`, `throughput_deadline = None` に上書きしてから core に渡す
 - **AND** `BalancingDispatcher::new` は受け取った `settings` をそのまま core に渡し、内部で新しい `SharedMessageQueue` を生成する
-- **AND** `DefaultDispatcherConfigurator::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorRuntimeLockProvider>)` が存在する
-- **AND** `BalancingDispatcherConfigurator::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorRuntimeLockProvider>)` が存在する
-- **AND** `PinnedDispatcherConfigurator::new(settings: DispatcherSettings, executor_factory: ArcShared<Box<dyn ExecutorFactory>>, provider: ArcShared<dyn ActorRuntimeLockProvider>, thread_name_prefix: impl Into<String>)` が存在する
-- **AND** runtime lock provider は `DispatcherSettings` 自体には埋め込まれず、constructor 引数として別に渡される
+- **AND** `DefaultDispatcherConfigurator::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorLockProvider>)` が存在する
+- **AND** `BalancingDispatcherConfigurator::new(settings: &DispatcherSettings, executor: ExecutorShared, provider: ArcShared<dyn ActorLockProvider>)` が存在する
+- **AND** `PinnedDispatcherConfigurator::new(settings: DispatcherSettings, executor_factory: ArcShared<Box<dyn ExecutorFactory>>, provider: ArcShared<dyn ActorLockProvider>, thread_name_prefix: impl Into<String>)` が存在する
+- **AND** `ActorLockProvider` は `DispatcherSettings` 自体には埋め込まれず、constructor 引数として別に渡される
 
 #### Scenario: DispatcherSettings は public abstraction の主語ではない
 - **WHEN** dispatcher 公開抽象を確認する
@@ -92,20 +92,20 @@ configurator の `dispatcher()` は Pekko の `DispatcherConfigurator` / `Pinned
 
 #### Scenario: DefaultDispatcherConfigurator は同一 MessageDispatcherShared を clone して返す
 - **WHEN** `DefaultDispatcherConfigurator::dispatcher(&self)` を 2 回呼ぶ
-- **THEN** 返される `MessageDispatcherShared` は同じ `DispatcherLockCell` を共有する
+- **THEN** 返される `MessageDispatcherShared` は同じ shared instance を clone して指す
 - **AND** configurator の `new` で eager に 1 回だけ `DefaultDispatcher` を構築する
 - **AND** `OnceLock` などの内部可変性を configurator 内部に持たない
 
 #### Scenario: PinnedDispatcherConfigurator は毎回新規 MessageDispatcherShared を返す
 - **WHEN** `PinnedDispatcherConfigurator::dispatcher(&self)` を 2 回呼ぶ
-- **THEN** 返される `MessageDispatcherShared` は異なる `DispatcherLockCell` を指す
+- **THEN** 返される `MessageDispatcherShared` は毎回新規の shared instance を指す
 - **AND** 各 instance は 1 スレッド専用 executor を別々に保持する
 - **AND** 各 instance の `throughput` は `NonZeroUsize::MAX` を返す
 - **AND** configurator 自身は `&self` で呼び出し可能（内部可変性なし、引数なし）
 
 #### Scenario: BalancingDispatcherConfigurator は同一 MessageDispatcherShared を clone して返す
 - **WHEN** `BalancingDispatcherConfigurator::dispatcher(&self)` を 2 回呼ぶ
-- **THEN** 返される `MessageDispatcherShared` は同じ `DispatcherLockCell` を共有する
+- **THEN** 返される `MessageDispatcherShared` は同じ shared instance を clone して指す
 - **AND** これにより同じ id で resolve した複数 actor は同じ `SharedMessageQueue` を共有する (load balancing が成立する)
 - **AND** configurator の `new` で eager に 1 回だけ `BalancingDispatcher` (および `SharedMessageQueue`) を構築する
 - **AND** `OnceLock` などの内部可変性を configurator 内部に持たない
@@ -123,24 +123,24 @@ configurator の `dispatcher()` は Pekko の `DispatcherConfigurator` / `Pinned
 
 ## ADDED Requirements
 
-### Requirement: dispatcher configurator は runtime lock provider を束縛して dispatcher shared を生成する
+### Requirement: dispatcher configurator は `ActorLockProvider` を束縛して dispatcher shared を生成する
 
 この Requirement は、既存 Requirement「3 種の Configurator が異なるインスタンス戦略を取る」に対して、instance 戦略とは直交する「provider family をどこで束縛するか」という観点を追加しなければならない（MUST）。
 
-`MessageDispatcherConfigurator` 実装は、runtime lock provider を構築時に束縛し、その provider を使って `MessageDispatcherShared` を生成しなければならない（MUST）。`dispatcher()` 呼び出し時に global state から provider を解決したり、public generic parameter を通して driver family を露出したりしてはならない（MUST NOT）。
+`MessageDispatcherConfigurator` 実装は、`ActorLockProvider` を構築時に束縛し、その provider を使って `MessageDispatcherShared` を生成しなければならない（MUST）。`dispatcher()` 呼び出し時に global state から provider を解決したり、public generic parameter を通して driver family を露出したりしてはならない（MUST NOT）。
 
 #### Scenario: DefaultDispatcherConfigurator は provider を束縛した shared instance を返す
-- **WHEN** `DefaultDispatcherConfigurator` を同じ runtime lock provider で構築して `dispatcher()` を 2 回呼ぶ
+- **WHEN** `DefaultDispatcherConfigurator` を同じ `ActorLockProvider` で構築して `dispatcher()` を 2 回呼ぶ
 - **THEN** 返される `MessageDispatcherShared` は同じ provider family で構築された shared instance を指す
 - **AND** public abstraction は引き続き `MessageDispatcherShared` のままである
 
 #### Scenario: BalancingDispatcherConfigurator は provider を束縛した shared queue path を返す
-- **WHEN** `BalancingDispatcherConfigurator` を特定の runtime lock provider で構築する
+- **WHEN** `BalancingDispatcherConfigurator` を特定の `ActorLockProvider` で構築する
 - **THEN** `dispatcher()` が返す `MessageDispatcherShared`、その executor、mailbox hot path は同じ provider family で構築される
 - **AND** load balancing の公開契約は維持される
 
 #### Scenario: PinnedDispatcherConfigurator は毎回新規 instance でも provider family は固定される
-- **WHEN** `PinnedDispatcherConfigurator` を 1 つの runtime lock provider で構築して `dispatcher()` を複数回呼ぶ
+- **WHEN** `PinnedDispatcherConfigurator` を 1 つの `ActorLockProvider` で構築して `dispatcher()` を複数回呼ぶ
 - **THEN** 返される `MessageDispatcherShared` は毎回新しい instance である
-- **AND** すべて同じ runtime lock provider family で構築される
+- **AND** すべて同じ `ActorLockProvider` family で構築される
 - **AND** public API に driver generic parameter は現れない

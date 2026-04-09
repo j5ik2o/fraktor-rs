@@ -2,13 +2,13 @@
 
 ### Requirement: Mailbox コンストラクタは message queue を外部注入できる
 
-mailbox は message queue を外部から注入可能なコンストラクタを持ち、`BalancingDispatcher` の `SharingMailbox` が shared queue を差し込めるようにしなければならない (MUST)。加えて、mailbox は actor runtime lock provider が生成した `MailboxLockSet` を同一の constructor で受け取らなければならない (MUST)。
+mailbox は message queue を外部から注入可能なコンストラクタを持ち、`BalancingDispatcher` の `SharingMailbox` が shared queue を差し込めるようにしなければならない (MUST)。加えて、mailbox は `ActorLockProvider` が生成した `MailboxSharedSet` を同一の constructor で受け取らなければならない (MUST)。
 
-#### Scenario: Mailbox::new は queue と lock set を引数に取る
-- **WHEN** `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>, lock_set: MailboxLockSet)` のシグネチャを確認する
+#### Scenario: Mailbox::new は queue を引数に取る
+- **WHEN** `Mailbox::new(actor: Weak<ActorCell>, queue: ArcShared<dyn MessageQueue>, shared_set: MailboxSharedSet)` のシグネチャを確認する
 - **THEN** `actor` は `Weak<ActorCell>` で、circular reference 回避とライフサイクル分離のため
 - **AND** `queue` は外部から構築された `ArcShared<Box<dyn MessageQueue>>`（またはそれに相当する型）で受け取る
-- **AND** `lock_set` は actor runtime lock provider から同一 family で取得された `MailboxLockSet` を受け取る
+- **AND** `shared_set` は `ActorLockProvider` から同一 family で取得された `MailboxSharedSet` を受け取る
 - **AND** mailbox が message queue を内部で new する経路のみに限定されていない
 - **AND** `Mailbox::run()` は `Weak::upgrade()` で actor を取得し、None なら early return する
 
@@ -42,8 +42,8 @@ mailbox は message queue を外部から注入可能なコンストラクタを
 #### Scenario: SharingMailbox 概念は `Mailbox::new_sharing(...)` と cleanup policy で表現される
 - **WHEN** BalancingDispatcher 用 mailbox の定義を確認する
 - **THEN** 独立した `SharingMailbox` struct は存在しない
-- **AND** `Mailbox::new_sharing(actor: Weak<ActorCell>, shared_queue: ArcShared<SharedMessageQueue>, lock_set: MailboxLockSet)` が存在する
-- **AND** `lock_set` は actor runtime lock provider から同一 family で取得された `MailboxLockSet` を受け取る
+- **AND** `Mailbox::new_sharing(actor: Weak<ActorCell>, shared_queue: ArcShared<SharedMessageQueue>, shared_set: MailboxSharedSet)` が存在する
+- **AND** `shared_set` は `ActorLockProvider` から同一 family で取得された `MailboxSharedSet` を受け取る
 - **AND** `Mailbox` は `MailboxCleanupPolicy::LeaveSharedQueue` を保持できる
 - **AND** `run()` の挙動は通常 Mailbox と同じ（system 全件 → user throughput まで dequeue）
 - **AND** **`clean_up()` の挙動だけ通常 Mailbox と異なる**: `LeaveSharedQueue` の場合は shared queue を drain しない (queue は他の team member が引き続き使用するため)
