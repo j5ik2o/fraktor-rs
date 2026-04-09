@@ -20,6 +20,7 @@ use crate::core::kernel::{
 };
 
 struct CountingLockProvider {
+  inner:                   BuiltinSpinLockProvider,
   dispatcher_shared_calls: ArcShared<AtomicUsize>,
   executor_shared_calls:   ArcShared<AtomicUsize>,
 }
@@ -29,6 +30,7 @@ impl CountingLockProvider {
     let dispatcher_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let executor_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
+      inner: BuiltinSpinLockProvider::new(),
       dispatcher_shared_calls: dispatcher_shared_calls.clone(),
       executor_shared_calls:   executor_shared_calls.clone(),
     };
@@ -39,20 +41,20 @@ impl CountingLockProvider {
 impl ActorLockProvider for CountingLockProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.dispatcher_shared_calls.fetch_add(1, Ordering::SeqCst);
-    BuiltinSpinLockProvider::new().create_message_dispatcher_shared(dispatcher)
+    self.inner.create_message_dispatcher_shared(dispatcher)
   }
 
   fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
     self.executor_shared_calls.fetch_add(1, Ordering::SeqCst);
-    BuiltinSpinLockProvider::new().create_executor_shared(executor)
+    self.inner.create_executor_shared(executor)
   }
 
   fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    BuiltinSpinLockProvider::new().create_actor_ref_sender_shared(sender)
+    self.inner.create_actor_ref_sender_shared(sender)
   }
 
   fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
-    BuiltinSpinLockProvider::new().create_mailbox_shared_set()
+    self.inner.create_mailbox_shared_set()
   }
 }
 
