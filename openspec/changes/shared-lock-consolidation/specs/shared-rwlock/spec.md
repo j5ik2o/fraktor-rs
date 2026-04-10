@@ -83,6 +83,19 @@
 - **THEN** 内部の排他ロック（Mutex）を取得し、closure を実行する
 - **AND** `SharedLock::with_lock` と同一のロックセマンティクスを持つ
 
+### Requirement: SharedLock の固有メソッド with_read は廃止される
+
+`SharedLock<T>` の固有メソッド `with_read` は廃止されなければならない (MUST)。`SharedLock` の固有 API は `with_lock` のみとする。`with_read` / `with_write` は `SharedAccess` trait 経由でのみ提供される。
+
+#### Scenario: SharedLock の固有 API は with_lock のみである
+- **WHEN** `SharedLock<T>` の固有メソッド（trait 実装を除く）を確認する
+- **THEN** `with_lock` が存在する
+- **AND** `with_read` は固有メソッドとして存在しない
+
+#### Scenario: 既存の SharedLock::with_read 呼び出しは移行される
+- **WHEN** 既存コードが `SharedLock::with_read` を呼んでいる箇所を確認する
+- **THEN** `SharedLock::with_lock` または `SharedAccess::with_read`（trait メソッド）に移行されている
+
 ### Requirement: 移行時にロックセマンティクスを変更してはならない
 
 `RuntimeMutex` → `SharedLock` / `RuntimeRwLock` → `SharedRwLock` の移行において、ロックのセマンティクス（排他 / 共有読み取り）を変更してはならない (MUST NOT)。
@@ -107,8 +120,8 @@
 - **THEN** バックエンドは `D: LockDriver<T>` を直接フィールドとして保持する
 - **AND** `RuntimeMutex<T, D>` を経由しない
 
-#### Scenario: SharedLock の外部 API は変更されない
-- **WHEN** 既存コードが `SharedLock::new_with_driver`, `with_lock`, `with_read` を呼ぶ
+#### Scenario: SharedLock の with_lock API は変更されない
+- **WHEN** 既存コードが `SharedLock::new_with_driver`, `with_lock` を呼ぶ
 - **THEN** 動作は従来と同一である
 
 ### Requirement: 全 crate の RuntimeMutex / RuntimeRwLock 使用箇所は同一セマンティクスで移行される

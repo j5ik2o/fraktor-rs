@@ -118,9 +118,14 @@ API:
 既存の `SharedAccess<B>` trait は `with_read` / `with_write` を提供しており、`SharedLock`/`SharedRwLock` の closure API と同じシグネチャ。現在24箇所の `*Shared` 型が手動で `impl SharedAccess` を書いている。
 
 方針:
-- `SharedLock<T>` に `impl SharedAccess<T> for SharedLock<T>` を追加（`with_read` は `with_lock` に委譲、`with_write` も `with_lock` に委譲）
+- `SharedLock<T>` に `impl SharedAccess<T> for SharedLock<T>` を追加（`with_read` / `with_write` ともに内部で `with_lock` に委譲）
 - `SharedRwLock<T>` に `impl SharedAccess<T> for SharedRwLock<T>` を追加（`with_read` は共有ロック、`with_write` は排他ロック）
 - `*Shared` 型が内部に `SharedLock`/`SharedRwLock` を持つ場合、`impl SharedAccess` は委譲コードが削減される
+- **`SharedLock` の固有メソッド `with_read` は廃止する**。`SharedLock` の固有 API は `with_lock` のみとし、`with_read` / `with_write` は `SharedAccess` trait 実装経由でのみ提供する。理由：`SharedLock::with_read` は「排他ロックで読み取り」だが、名前が「read lock を取っている」と誤解を招く。`SharedRwLock::with_read`（共有ロック）とセマンティクスが異なるのに同じ固有メソッド名を持つことを避ける
+
+API の使い分け:
+- `SharedLock` を直接使うとき → `with_lock`（排他ロック、明示的）
+- `SharedAccess` trait 経由で抽象化するとき → `with_read` / `with_write`（ロック戦略は実装依存）
 
 **Mutex → RwLock への切り替え判定基準:**
 `ArcShared<RuntimeMutex<T>>` の移行時に `SharedLock`（排他）と `SharedRwLock`（共有読み取り）のどちらにすべきかの判断基準：
@@ -159,16 +164,16 @@ impl<T> WeakSharedRwLock<T> {
 
 1. **Phase 1**: `SharedLock` 内部の地層解消（`RuntimeMutex` 経由を除去）
 2. **Phase 2**: `SharedRwLock<T>` を新設
-3. **Phase 3**: `ArcShared<RuntimeRwLock<T>>` → `SharedRwLock<T>` に移行（約14箇所）
-4. **Phase 4**: `ArcShared<RuntimeMutex<T>>` パターンと `RuntimeMutex<T>` 直接保持パターンの両方を `SharedLock` に移行（多数。guard チェーン `.lock().method()` の closure 化を含む）
-5. **Phase 5**: 非推奨マークの付与（Phase 3-4 完了後。移行済みのため `#[allow(deprecated)]` 不要）
-6. **Phase 6**: `RuntimeMutex`, `RuntimeRwLock`, `NoStdMutex` を廃止
+3. **Phase 3**: 非推奨マークの付与（CI は `--force-warn deprecated` のため警告のまま通る。コンパイラが残存箇所を教えてくれるため移行漏れ防止に有効）
+4. **Phase 4**: `ArcShared<RuntimeRwLock<T>>` → `SharedRwLock<T>` に移行（約14箇所。deprecated 警告を手がかりに特定）
+5. **Phase 5**: `ArcShared<RuntimeMutex<T>>` パターンと `RuntimeMutex<T>` 直接保持パターンを `SharedLock` に移行（多数。guard チェーンの closure 化を含む）
+6. **Phase 6**: `RuntimeMutex`, `RuntimeRwLock`, `NoStdMutex` を廃止（deprecated 警告ゼロを確認してから削除）
 
-Phase 1-2 は独立。Phase 3-4 は並行可能。Phase 5 は 3-4 完了後。Phase 6 は 5 完了後。
+Phase 1-2 は独立。Phase 3 は 1-2 完了後。Phase 4-5 は並行可能。Phase 6 は 4-5 完了後。
 
 ## Risks / Trade-offs
 
-- **[guard チェーンの closure 化]** `ArcShared<RuntimeMutex<T>>` パターンでは `.lock().method()` のガードチェーンが大量に使われている（`.lock()` 呼び出しが全体で約1400箇所以上）。`SharedLock` 移行時にすべて `.with_lock(|v| v.method())` に書き換える必要がある。機械的だがボリュームが大きい → Phase 4 を対象ディレクトリごとに分割し、段階的に移行。
+- **[guard チェーンの closure 化]** `ArcShared<RuntimeMutex<T>>` パターンでは `.lock().method()` のガードチェーンが大量に使われている（`.lock()` 呼び出しが全体で約1400箇所以上）。`SharedLock` 移行時にすべて `.with_lock(|v| v.method())` に書き換える必要がある。機械的だがボリュームが大きい → Phase 5 を対象ディレクトリごとに分割し、段階的に移行。
 - **[closure API への統一]** guard 返却 API がなくなるため、ネストした lock 区間が必要な箇所では closure のネストが深くなる可能性がある → 該当箇所はプロジェクトポリシー（ロック区間はメソッド内に閉じる）により少数。個別に対処。
 - **[二重 Arc]** `SharedLock`/`SharedRwLock` が `ArcShared` を内蔵するため、既に `ArcShared` で包まれた構造体のフィールドとして使うと二重 Arc になる → メモリオーバーヘッドは軽微。一貫性を優先。
 - **[大規模リファクタリング]** `ArcShared<RuntimeMutex<T>>` パターンが多数のファイルに分散。移行漏れのリスク → Phase ごとに CI を通して段階的に確認。
