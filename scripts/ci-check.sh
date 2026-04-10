@@ -625,6 +625,7 @@ run_dylint() {
     "rustdoc-lint:lints/rustdoc-lint"
     "cfg-std-forbid-lint:lints/cfg-std-forbid-lint"
     "ambiguous-suffix-lint:lints/ambiguous-suffix-lint"
+    "actor-lock-construction-lint:lints/actor-lock-construction-lint"
   )
 
   local -a selected=()

@@ -1,10 +1,20 @@
 //! Actor-system scoped hot-path lock provider.
 
+#[cfg(test)]
+mod tests;
+
 use alloc::boxed::Box;
 
+use fraktor_utils_core_rs::core::sync::SharedLock;
+
 use crate::core::kernel::{
-  actor::actor_ref::{ActorRefSender, ActorRefSenderShared},
-  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared},
+  actor::{
+    Actor, ActorCellStateShared, ReceiveTimeoutStateShared,
+    actor_ref::{ActorRefSender, ActorRefSenderShared},
+    messaging::message_invoker::{MessageInvoker, MessageInvokerShared},
+  },
+  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
+  event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
   system::lock_provider::MailboxSharedSet,
 };
 
@@ -18,6 +28,30 @@ pub trait ActorLockProvider: Send + Sync {
 
   /// Materializes an actor-ref sender shared wrapper.
   fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared;
+
+  /// Materializes an actor instance lock for actor-cell owned runtime state.
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>>;
+
+  /// Materializes the shared actor-cell runtime state bundle.
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared;
+
+  /// Materializes the shared receive-timeout slot used by actor contexts.
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared;
+
+  /// Materializes a message invoker shared wrapper.
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared;
+
+  /// Materializes the shared queue used by balancing dispatchers.
+  fn create_shared_message_queue(&self) -> SharedMessageQueue;
+
+  /// Materializes an event-stream shared wrapper.
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared;
+
+  /// Materializes an event-stream subscriber shared wrapper.
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared;
 
   /// Materializes a mailbox lock bundle.
   fn create_mailbox_shared_set(&self) -> MailboxSharedSet;
