@@ -2,7 +2,7 @@
 
 use core::{future::Future, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
@@ -14,20 +14,20 @@ mod tests;
 
 /// Thread-safe, clonable circuit breaker.
 ///
-/// Wraps [`CircuitBreaker`] in `ArcShared<RuntimeMutex<..>>` and provides an
+/// Wraps [`CircuitBreaker`] in `SharedLock<..>` and provides an
 /// async [`call`](Self::call) method that checks permission, executes the
 /// operation, and records the outcome automatically.
-pub struct CircuitBreakerShared<C: Clock> {
-  inner: ArcShared<RuntimeMutex<CircuitBreaker<C>>>,
+pub struct CircuitBreakerShared<C: Clock + 'static> {
+  inner: SharedLock<CircuitBreaker<C>>,
 }
 
-impl<C: Clock> Clone for CircuitBreakerShared<C> {
+impl<C: Clock + 'static> Clone for CircuitBreakerShared<C> {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
   }
 }
 
-impl<C: Clock> CircuitBreakerShared<C> {
+impl<C: Clock + 'static> CircuitBreakerShared<C> {
   /// Creates a new shared circuit breaker in the **Closed** state.
   ///
   /// * `max_failures` — consecutive failure threshold before the circuit trips.
@@ -36,7 +36,11 @@ impl<C: Clock> CircuitBreakerShared<C> {
   #[must_use]
   pub fn new_with_clock(max_failures: u32, reset_timeout: Duration, clock: C) -> Self {
     Self {
-      inner: ArcShared::new(RuntimeMutex::new(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))),
+      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(CircuitBreaker::new_with_clock(
+        max_failures,
+        reset_timeout,
+        clock,
+      )),
     }
   }
 
@@ -104,13 +108,13 @@ impl<C: Clock> CircuitBreakerShared<C> {
 /// Used to ensure cancel safety: if the operation future is dropped mid-flight
 /// (e.g. via `tokio::time::timeout`), the circuit breaker transitions out of
 /// HalfOpen instead of getting stuck.
-struct CallGuard<C: Clock> {
+struct CallGuard<C: Clock + 'static> {
   cb:            CircuitBreakerShared<C>,
   was_half_open: bool,
   disarmed:      bool,
 }
 
-impl<C: Clock> Drop for CallGuard<C> {
+impl<C: Clock + 'static> Drop for CallGuard<C> {
   fn drop(&mut self) {
     if !self.disarmed {
       self.cb.with_write(|cb| cb.record_failure_for(self.was_half_open));
@@ -118,16 +122,14 @@ impl<C: Clock> Drop for CallGuard<C> {
   }
 }
 
-impl<C: Clock> SharedAccess<CircuitBreaker<C>> for CircuitBreakerShared<C> {
+impl<C: Clock + 'static> SharedAccess<CircuitBreaker<C>> for CircuitBreakerShared<C> {
   #[inline]
   fn with_read<R>(&self, f: impl FnOnce(&CircuitBreaker<C>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   #[inline]
   fn with_write<R>(&self, f: impl FnOnce(&mut CircuitBreaker<C>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::MailboxInstrumentation;
 use crate::core::kernel::{
@@ -54,7 +54,7 @@ fn mailbox_instrumentation_emits_pressure_event() {
   let pid = Pid::new(5, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
   let _subscription = system_state.event_stream().subscribe(&subscriber);
 
@@ -69,7 +69,7 @@ fn mailbox_instrumentation_notifies_backpressure_publisher() {
   let pid = Pid::new(6, 0);
   let mut instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, None);
 
-  let captured = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let captured = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let publisher = BackpressurePublisher::from_fn({
     let captured = captured.clone();
     move |event: &MailboxPressureEvent| {
@@ -92,7 +92,7 @@ fn mailbox_pressure_event_captures_threshold() {
   let pid = Pid::new(7, 0);
   let instrumentation = MailboxInstrumentation::new(system_state.clone(), pid, Some(4), None, Some(3));
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(TestSubscriber::new(events.clone()));
   let _subscription = system_state.event_stream().subscribe(&subscriber);
 
@@ -123,11 +123,11 @@ fn mailbox_instrumentation_is_no_op_after_system_state_drop() {
 }
 
 struct TestSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl TestSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }

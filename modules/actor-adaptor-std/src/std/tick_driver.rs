@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   next_tick_driver_id,
 };
 #[cfg(feature = "tokio-executor")]
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 #[cfg(feature = "tokio-executor")]
 use tokio::{
   runtime::Handle,
@@ -82,7 +82,7 @@ impl TickDriver for TokioTickDriver {
     });
 
     let control: Box<dyn TickDriverControl> = Box::new(TokioTickDriverControl { tick_task });
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, resolution, control))
   }
 }

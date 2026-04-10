@@ -22,14 +22,14 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct TriggerRecoverable;
 struct TriggerFatal;
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
@@ -40,8 +40,8 @@ impl EventStreamSubscriber for RecordingSubscriber {
 
 #[test]
 fn recoverable_failure_restarts_child() {
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
 
   let props = Props::from_fn({
     let log = log.clone();
@@ -63,7 +63,7 @@ fn recoverable_failure_restarts_child() {
 
 #[test]
 fn fatal_failure_stops_child() {
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
 
   let props = Props::from_fn({
     let child_slot = child_slot.clone();
@@ -73,7 +73,7 @@ fn fatal_failure_stops_child() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -96,10 +96,10 @@ fn fatal_failure_stops_child() {
 
 #[test]
 fn escalate_failure_restarts_supervisor() {
-  let supervisor_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let supervisor_slot = ArcShared::new(NoStdMutex::new(None));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let supervisor_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let supervisor_slot = ArcShared::new(SpinSyncMutex::new(None));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
 
   let props = Props::from_fn({
     let supervisor_slot = supervisor_slot.clone();
@@ -139,7 +139,7 @@ fn escalate_failure_restarts_supervisor() {
 
 #[test]
 fn panic_propagates_without_intervention() {
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let child_slot = child_slot.clone();
     move || PanicGuardian::new(child_slot.clone())
@@ -160,8 +160,8 @@ fn panic_propagates_without_intervention() {
 
 #[test]
 fn resume_directive_continues_child_without_restart() {
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
 
   let props = Props::from_fn({
     let log = log.clone();
@@ -201,12 +201,15 @@ fn wait_until(condition: impl Fn() -> bool, timeout: Duration) {
 }
 
 struct RestartGuardian {
-  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  log:        ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl RestartGuardian {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+  fn new(
+    log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  ) -> Self {
     Self { log, child_slot }
   }
 }
@@ -224,11 +227,11 @@ impl Actor for RestartGuardian {
 }
 
 struct RestartChild {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl RestartChild {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { log }
   }
 }
@@ -254,11 +257,11 @@ impl Actor for RestartChild {
 }
 
 struct FatalGuardian {
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl FatalGuardian {
-  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
     Self { child_slot }
   }
 }
@@ -286,18 +289,18 @@ impl Actor for FatalChild {
 }
 
 struct RootGuardian {
-  supervisor_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
-  child_slot:      ArcShared<NoStdMutex<Option<ChildRef>>>,
-  supervisor_log:  ArcShared<NoStdMutex<Vec<&'static str>>>,
-  child_log:       ArcShared<NoStdMutex<Vec<&'static str>>>,
+  supervisor_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  child_slot:      ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  supervisor_log:  ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  child_log:       ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl RootGuardian {
   fn new(
-    supervisor_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
-    child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
-    supervisor_log: ArcShared<NoStdMutex<Vec<&'static str>>>,
-    child_log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+    supervisor_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+    supervisor_log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+    child_log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   ) -> Self {
     Self { supervisor_slot, child_slot, supervisor_log, child_log }
   }
@@ -323,16 +326,16 @@ impl Actor for RootGuardian {
 }
 
 struct SupervisorActor {
-  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
-  child_log:  ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log:        ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  child_log:  ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl SupervisorActor {
   fn new(
-    log: ArcShared<NoStdMutex<Vec<&'static str>>>,
-    child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
-    child_log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+    log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+    child_log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   ) -> Self {
     Self { log, child_slot, child_log }
   }
@@ -373,11 +376,11 @@ impl Actor for SupervisorActor {
 }
 
 struct PanicGuardian {
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl PanicGuardian {
-  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
     Self { child_slot }
   }
 }
@@ -394,12 +397,15 @@ impl Actor for PanicGuardian {
 }
 
 struct ResumeGuardian {
-  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  log:        ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl ResumeGuardian {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+  fn new(
+    log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
+  ) -> Self {
     Self { log, child_slot }
   }
 }

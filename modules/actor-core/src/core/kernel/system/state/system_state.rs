@@ -18,7 +18,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
@@ -221,7 +221,7 @@ impl SystemState {
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
     let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
     TickDriverBundle::new(handle, feed)
   }
@@ -686,7 +686,7 @@ impl SystemState {
   pub(crate) fn install_actor_ref_provider<P>(&mut self, provider: &ActorRefProviderShared<P>)
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = provider.inner().clone();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(provider.inner().clone());
     self.actor_ref_providers.insert(TypeId::of::<P>(), erased);
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
@@ -703,8 +703,8 @@ impl SystemState {
       .actor_ref_providers
       .get(&TypeId::of::<P>())
       .cloned()
-      .and_then(|provider| provider.downcast::<RuntimeMutex<ActorRefProviderHandle<P>>>().ok())
-      .map(ActorRefProviderShared::from_shared)
+      .and_then(|provider| provider.downcast::<SharedLock<ActorRefProviderHandle<P>>>().ok())
+      .map(|provider| ActorRefProviderShared::from_shared((*provider).clone()))
   }
 
   pub(crate) fn actor_ref_provider_caller_for_scheme(&self, scheme: ActorPathScheme) -> Option<ActorRefProviderCaller> {

@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
 };
 use fraktor_utils_core_rs::core::{
   collections::queue::{OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  sync::{ArcShared, RuntimeMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
 };
 
 use super::{
@@ -39,7 +39,13 @@ impl BatchingProducer {
     config: BatchingProducerConfig,
   ) -> Self {
     let state = BatchingProducerState::new(config.max_queue_size);
-    let inner = BatchingProducerInner { state: RuntimeMutex::new(state), topic, publisher, scheduler, config };
+    let inner = BatchingProducerInner {
+      state: SharedLock::new_with_driver::<SpinSyncMutex<_>>(state),
+      topic,
+      publisher,
+      scheduler,
+      config,
+    };
     Self { inner: ArcShared::new(inner) }
   }
 
@@ -52,29 +58,27 @@ impl BatchingProducer {
     let mut schedule = false;
     let mut flush_messages: Vec<AnyMessage> = Vec::new();
 
-    {
-      let mut guard = self.inner.state.lock();
-      match guard.queue.offer(message) {
-        | Ok(_) => {
-          if !guard.timer_active {
-            guard.timer_active = true;
-            schedule = true;
-          }
+    let early_ack = self.inner.state.with_write(|guard| match guard.queue.offer(message) {
+      | Ok(_) => {
+        if !guard.timer_active {
+          guard.timer_active = true;
+          schedule = true;
+        }
 
-          if guard.queue.len() >= self.inner.config.batch_size {
-            flush_messages = guard.drain_batch(self.inner.config.batch_size);
-            if guard.queue.is_empty() {
-              guard.timer_active = false;
-            }
+        if guard.queue.len() >= self.inner.config.batch_size {
+          flush_messages = guard.drain_batch(self.inner.config.batch_size);
+          if guard.queue.is_empty() {
+            guard.timer_active = false;
           }
-        },
-        | Err(QueueError::Full(_)) => {
-          return Ok(PublishAck::rejected(PublishRejectReason::QueueFull));
-        },
-        | Err(error) => {
-          return Err(PubSubError::DeliveryFailed { reason: format!("{error:?}") });
-        },
-      }
+        }
+        Ok(None)
+      },
+      | Err(QueueError::Full(_)) => Ok(Some(PublishAck::rejected(PublishRejectReason::QueueFull))),
+      | Err(error) => Err(PubSubError::DeliveryFailed { reason: format!("{error:?}") }),
+    })?;
+
+    if let Some(ack) = early_ack {
+      return Ok(ack);
     }
 
     if schedule {
@@ -95,13 +99,12 @@ impl BatchingProducer {
   /// Returns `PubSubError` for system-level failures.
   pub fn flush(&self) -> Result<PublishAck, PubSubError> {
     let mut batches = Vec::new();
-    {
-      let mut guard = self.inner.state.lock();
+    self.inner.state.with_write(|guard| {
       guard.timer_active = false;
       while !guard.queue.is_empty() {
         batches.push(guard.drain_batch(self.inner.config.batch_size));
       }
-    }
+    });
 
     let mut last_ack = PublishAck::accepted();
     for batch in batches {
@@ -119,8 +122,9 @@ impl BatchingProducer {
     let result =
       self.inner.scheduler.with_write(|scheduler| scheduler.schedule_once(self.inner.config.max_wait, command));
     if let Err(error) = result {
-      let mut guard = self.inner.state.lock();
-      guard.timer_active = false;
+      self.inner.state.with_write(|guard| {
+        guard.timer_active = false;
+      });
       return Err(PubSubError::DeliveryFailed { reason: format!("{error:?}") });
     }
     Ok(())
@@ -136,8 +140,7 @@ impl BatchingProducer {
 
   fn on_timer(&self) {
     let mut batches = Vec::new();
-    {
-      let mut guard = self.inner.state.lock();
+    self.inner.state.with_write(|guard| {
       guard.timer_active = false;
       if guard.queue.is_empty() {
         return;
@@ -146,7 +149,7 @@ impl BatchingProducer {
       if !guard.queue.is_empty() {
         guard.timer_active = true;
       }
-    }
+    });
 
     for batch in batches {
       if batch.is_empty() {
@@ -155,14 +158,14 @@ impl BatchingProducer {
       let _ = self.flush_messages(batch);
     }
 
-    if self.inner.state.lock().timer_active {
+    if self.inner.state.with_read(|state| state.timer_active) {
       let _ = self.schedule_flush();
     }
   }
 }
 
 struct BatchingProducerInner {
-  state:     RuntimeMutex<BatchingProducerState>,
+  state:     SharedLock<BatchingProducerState>,
   topic:     PubSubTopic,
   publisher: PubSubPublisher,
   scheduler: SchedulerShared,

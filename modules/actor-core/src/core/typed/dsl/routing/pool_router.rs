@@ -3,7 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;
@@ -174,12 +174,12 @@ where
       let props_for_resize = resizer.as_ref().map(|_| props.clone());
 
       let routee_count = routee_vec.len();
-      let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
+      let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
 
-      let mut dispatch_counts_for_sig: Option<ArcShared<RuntimeMutex<Vec<usize>>>> = None;
-      let mut dispatch_counts_for_msg: Option<ArcShared<RuntimeMutex<Vec<usize>>>> = None;
+      let mut dispatch_counts_for_sig: Option<SharedLock<Vec<usize>>> = None;
+      let mut dispatch_counts_for_msg: Option<SharedLock<Vec<usize>>> = None;
 
       let select_targets: ArcShared<RouteSelector<M>> = match strategy.clone() {
         | PoolRouteStrategy::RoundRobin => {
@@ -205,7 +205,7 @@ where
           })
         },
         | PoolRouteStrategy::SmallestMailbox => {
-          let dispatch_counts = ArcShared::new(RuntimeMutex::new(vec![0_usize; routee_count]));
+          let dispatch_counts = SharedLock::new_with_driver::<SpinSyncMutex<_>>(vec![0_usize; routee_count]);
           dispatch_counts_for_sig = Some(dispatch_counts.clone());
           dispatch_counts_for_msg = Some(dispatch_counts.clone());
           ArcShared::new(move |guard: &[TypedActorRef<M>], _message: &M| {
@@ -223,7 +223,7 @@ where
         if let Some(ref resizer) = resizer_for_msg {
           let counter = message_counter.fetch_add(1, Ordering::Relaxed);
           if resizer.is_time_for_resize(counter) {
-            let current_count = routees_for_msg.lock().len();
+            let current_count = routees_for_msg.with_lock(|routees| routees.len());
             let delta = resizer.resize(current_count);
             if delta > 0 {
               if let Some(ref resize_props) = props_for_resize {
@@ -239,26 +239,26 @@ where
                   }
                 }
                 if !new_routees.is_empty() {
-                  let mut guard = routees_for_msg.lock();
-                  guard.extend(new_routees);
-                  if let Some(ref dc) = dispatch_counts_for_resize {
-                    let mut counts = dc.lock();
-                    counts.resize(guard.len(), 0);
-                  }
+                  routees_for_msg.with_lock(|guard| {
+                    guard.extend(new_routees);
+                    if let Some(ref dc) = dispatch_counts_for_resize {
+                      dc.with_lock(|counts| counts.resize(guard.len(), 0));
+                    }
+                  });
                 }
               }
             } else if delta < 0 {
               let abs_delta = (-delta) as usize;
               let to_stop: Vec<TypedActorRef<M>> = {
-                let mut guard = routees_for_msg.lock();
-                let remove_count = abs_delta.min(guard.len().saturating_sub(1));
-                let split_at = guard.len() - remove_count;
-                let removed = guard.split_off(split_at);
-                if let Some(ref dc) = dispatch_counts_for_resize {
-                  let mut counts = dc.lock();
-                  counts.truncate(guard.len());
-                }
-                removed
+                routees_for_msg.with_lock(|guard| {
+                  let remove_count = abs_delta.min(guard.len().saturating_sub(1));
+                  let split_at = guard.len() - remove_count;
+                  let removed = guard.split_off(split_at);
+                  if let Some(ref dc) = dispatch_counts_for_resize {
+                    dc.with_lock(|counts| counts.truncate(guard.len()));
+                  }
+                  removed
+                })
               };
               for routee in &to_stop {
                 if let Err(e) = ctx.stop_actor_by_ref(routee) {
@@ -275,7 +275,7 @@ where
         }
 
         let targets = {
-          let guard = routees_for_msg.lock();
+          let guard = routees_for_msg.with_lock(|routees| routees.clone());
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
@@ -299,17 +299,20 @@ where
       })
       .receive_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Terminated(pid) => {
-          let mut guard = routees_for_sig.lock();
-          if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
-            guard.remove(pos);
-            if let Some(ref dc) = dispatch_counts_for_sig {
-              let mut counts = dc.lock();
-              if pos < counts.len() {
-                counts.remove(pos);
+          let is_empty = routees_for_sig.with_lock(|guard| {
+            if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
+              guard.remove(pos);
+              if let Some(ref dc) = dispatch_counts_for_sig {
+                dc.with_lock(|counts| {
+                  if pos < counts.len() {
+                    counts.remove(pos);
+                  }
+                });
               }
             }
-          }
-          if guard.is_empty() {
+            guard.is_empty()
+          });
+          if is_empty {
             return Ok(Behaviors::stopped());
           }
           Ok(Behaviors::same())
@@ -347,7 +350,7 @@ pub(super) const fn pseudo_random_index(seed: u64, len: usize) -> usize {
 
 pub(super) fn select_smallest_mailbox_index<M>(
   routees: &[TypedActorRef<M>],
-  dispatch_counts: &ArcShared<RuntimeMutex<Vec<usize>>>,
+  dispatch_counts: &SharedLock<Vec<usize>>,
 ) -> usize
 where
   M: Send + Sync + Clone + 'static, {
@@ -367,19 +370,20 @@ where
   }
 
   if best_len == usize::MAX {
-    let mut counts = dispatch_counts.lock();
-    let mut selected = 0_usize;
-    let mut selected_count = usize::MAX;
-    for (index, count) in counts.iter().enumerate().take(routee_count) {
-      if *count < selected_count {
-        selected = index;
-        selected_count = *count;
+    return dispatch_counts.with_lock(|counts| {
+      let mut selected = 0_usize;
+      let mut selected_count = usize::MAX;
+      for (index, count) in counts.iter().enumerate().take(routee_count) {
+        if *count < selected_count {
+          selected = index;
+          selected_count = *count;
+        }
       }
-    }
-    if let Some(entry) = counts.get_mut(selected) {
-      *entry = entry.saturating_add(1);
-    }
-    return selected;
+      if let Some(entry) = counts.get_mut(selected) {
+        *entry = entry.saturating_add(1);
+      }
+      selected
+    });
   }
 
   best_index

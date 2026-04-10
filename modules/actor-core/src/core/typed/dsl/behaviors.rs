@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeMap, string::String};
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::{AbstractBehavior, receive::Receive, supervise::Supervise};
 use crate::core::{
@@ -409,7 +409,7 @@ impl Behaviors {
   ///
   /// This mirrors Pekko's `Behaviors.withTimers`. The factory receives a shared
   /// handle to a [`TimerScheduler`] that can be cloned into `Fn` closures.
-  /// Call `.lock()` on the handle to obtain mutable access to the timer scheduler.
+  /// Call `with_lock` on the handle to obtain mutable access to the timer scheduler.
   pub fn with_timers<M, F>(factory: F) -> Behavior<M>
   where
     M: Send + Sync + Clone + 'static,
@@ -418,12 +418,11 @@ impl Behaviors {
       let self_ref = ctx.self_ref();
       let scheduler = ctx.system().raw_scheduler();
       let timers = TimerScheduler::new(self_ref, scheduler);
-      let mutex = RuntimeMutex::new(timers);
-      let shared = ArcShared::new(mutex);
+      let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(timers);
       let shared_for_stop = shared.clone();
       factory(shared).compose_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::PostStop => {
-          shared_for_stop.lock().cancel_all();
+          shared_for_stop.with_lock(|timers| timers.cancel_all());
           Ok(Behavior::same())
         },
         | _ => Ok(Behavior::same()),
@@ -555,11 +554,11 @@ impl Behaviors {
     F: for<'a> Fn(&mut TypedActorContext<'a, M>) -> A + Send + Sync + 'static, {
     Behaviors::setup(move |ctx| {
       let ab = factory(ctx);
-      let shared = ArcShared::new(RuntimeMutex::new(ab));
+      let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ab);
       let shared_msg = shared.clone();
       let shared_sig = shared;
-      Behaviors::receive_message(move |ctx, msg| shared_msg.lock().on_message(ctx, msg))
-        .receive_signal(move |ctx, signal| shared_sig.lock().on_signal(ctx, signal))
+      Behaviors::receive_message(move |ctx, msg| shared_msg.with_lock(|behavior| behavior.on_message(ctx, msg)))
+        .receive_signal(move |ctx, signal| shared_sig.with_lock(|behavior| behavior.on_signal(ctx, signal)))
     })
   }
 }
@@ -579,28 +578,45 @@ where
     }
 
     let state = InterceptState { interceptor, inner };
-    let mutex = RuntimeMutex::new(state);
-    let shared = ArcShared::new(mutex);
+    let shared = SharedLock::new_with_driver::<SpinSyncMutex<_>>(state);
 
     let shared_msg = shared.clone();
     let shared_sig = shared;
 
     Ok(
       Behaviors::receive_message(move |ctx, msg| {
-        let mut guard = shared_msg.lock();
+        let mut next_inner = None;
         let next = {
-          let InterceptState { interceptor, inner } = &mut *guard;
-          interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?
+          shared_msg.with_lock(|guard| {
+            let InterceptState { interceptor, inner } = guard;
+            let next = interceptor.around_receive(ctx, msg, &mut |ctx, msg| inner.handle_message(ctx, msg))?;
+            next_inner = Some(next);
+            Ok::<(), ActorError>(())
+          })?;
+          // Safety: `next_inner` is guaranteed to be `Some` here because the
+          // `with_lock` closure above sets it before returning `Ok`, and we
+          // only reach this line when `?` did not propagate an error.
+          #[allow(clippy::expect_used)]
+          next_inner.take().expect("interceptor must produce next behavior")
         };
-        Ok(resolve_intercepted_directive(&mut guard.inner, next))
+        shared_msg.with_lock(|guard| Ok(resolve_intercepted_directive(&mut guard.inner, next)))
       })
       .receive_signal(move |ctx, signal| {
-        let mut guard = shared_sig.lock();
+        let mut next_inner = None;
         let next = {
-          let InterceptState { interceptor, inner } = &mut *guard;
-          interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?
+          shared_sig.with_lock(|guard| {
+            let InterceptState { interceptor, inner } = guard;
+            let next = interceptor.around_signal(ctx, signal, &mut |ctx, sig| inner.handle_signal(ctx, sig))?;
+            next_inner = Some(next);
+            Ok::<(), ActorError>(())
+          })?;
+          // Safety: `next_inner` is guaranteed to be `Some` here because the
+          // `with_lock` closure above sets it before returning `Ok`, and we
+          // only reach this line when `?` did not propagate an error.
+          #[allow(clippy::expect_used)]
+          next_inner.take().expect("interceptor must produce next behavior")
         };
-        Ok(resolve_intercepted_directive(&mut guard.inner, next))
+        shared_sig.with_lock(|guard| Ok(resolve_intercepted_directive(&mut guard.inner, next)))
       }),
     )
   })

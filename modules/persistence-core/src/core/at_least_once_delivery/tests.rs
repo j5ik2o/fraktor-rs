@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   messaging::AnyMessage,
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, RuntimeMutex},
+  sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -16,7 +16,7 @@ use crate::core::{
   redelivery_tick::RedeliveryTick, unconfirmed_delivery::UnconfirmedDelivery,
 };
 
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
+type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
@@ -38,7 +38,7 @@ impl ActorRefSender for FailingSender {
 }
 
 fn create_sender() -> (ActorRef, MessageStore) {
-  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }

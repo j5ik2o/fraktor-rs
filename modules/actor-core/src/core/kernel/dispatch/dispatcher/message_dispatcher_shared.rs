@@ -2,7 +2,7 @@
 //!
 //! `MessageDispatcherShared` is the only legal way to share a concrete
 //! [`MessageDispatcher`] across actor cells, dispatcher registries, and
-//! callers. It owns the `RuntimeMutex` so trait commands always run under
+//! callers. It owns the `SpinSyncMutex` so trait commands always run under
 //! `&mut self`, and it exposes the lifecycle and dispatch orchestration that
 //! must execute outside the lock (executor submission, delayed shutdown
 //! registration, etc.).

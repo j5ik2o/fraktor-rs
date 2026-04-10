@@ -1,19 +1,19 @@
 //! Shared wrapper for actor future.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::ActorFuture;
 
 /// Shared wrapper for [`ActorFuture`] with external mutex synchronization.
 ///
 /// This type provides thread-safe shared access to an `ActorFuture` by wrapping
-/// it in `ArcShared<RuntimeMutex<...>>`. This is a thin wrapper that delegates
+/// it in `SharedLock<...>`. This is a thin wrapper that delegates
 /// all operations to the inner type by acquiring a lock and calling the
 /// corresponding method on [`ActorFuture`].
 pub struct ActorFutureShared<T>
 where
   T: Send + 'static, {
-  inner: ArcShared<RuntimeMutex<ActorFuture<T>>>,
+  inner: SharedLock<ActorFuture<T>>,
 }
 
 impl<T> Clone for ActorFutureShared<T>
@@ -30,13 +30,11 @@ where
   T: Send + 'static,
 {
   fn with_read<R>(&self, f: impl FnOnce(&ActorFuture<T>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut ActorFuture<T>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }
 
@@ -44,10 +42,10 @@ impl<T> ActorFutureShared<T>
 where
   T: Send + 'static,
 {
-  /// Creates a new shared future wrapped in `ArcShared<RuntimeMutex<...>>`.
+  /// Creates a new shared future wrapped in `SharedLock<...>`.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(ActorFuture::new())) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(ActorFuture::new()) }
   }
 }
 

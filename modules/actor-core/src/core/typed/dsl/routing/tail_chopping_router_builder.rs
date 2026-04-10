@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -127,7 +127,7 @@ where
         return Behaviors::stopped();
       }
 
-      let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
+      let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let create_request = create_request.clone();
@@ -135,15 +135,12 @@ where
       let timeout_reply = timeout_reply.clone();
 
       Behaviors::receive_message(move |ctx, message: &M| {
-        let guard = routees_for_msg.lock();
-        if guard.is_empty() {
+        let routee_snapshot = routees_for_msg.with_lock(|guard| guard.clone());
+        if routee_snapshot.is_empty() {
           return Ok(Behaviors::same());
         }
 
         if let Some(original_reply_to) = (extract_reply_to)(message) {
-          let routee_snapshot: Vec<TypedActorRef<M>> = guard.to_vec();
-          drop(guard);
-
           spawn_chop_coordinator(ctx, ChopCoordinatorParams {
             routees: routee_snapshot,
             message: message.clone(),
@@ -155,7 +152,7 @@ where
           });
         } else {
           // reply_to なし（fire-and-forget）— 最初の1台のみに送信する（broadcast しない）
-          if let Some(first) = guard.first() {
+          if let Some(first) = routee_snapshot.first() {
             let mut r = first.clone();
             if let Err(error) = r.try_tell(message.clone()) {
               ctx.system().emit_log(
@@ -172,11 +169,13 @@ where
       })
       .receive_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Terminated(pid) => {
-          let mut guard = routees_for_sig.lock();
-          if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
-            guard.remove(pos);
-          }
-          if guard.is_empty() {
+          let is_empty = routees_for_sig.with_lock(|guard| {
+            if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
+              guard.remove(pos);
+            }
+            guard.is_empty()
+          });
+          if is_empty {
             return Ok(Behaviors::stopped());
           }
           Ok(Behaviors::same())
@@ -304,7 +303,7 @@ where
         );
       }
 
-      let current_index = ArcShared::new(RuntimeMutex::new(1_usize));
+      let current_index = SharedLock::new_with_driver::<SpinSyncMutex<_>>(1_usize);
       let routees = routees.clone();
       let message = message.clone();
       let create_request = create_request.clone();
@@ -318,29 +317,30 @@ where
           Ok(Behaviors::stopped())
         },
         | ChopCommand::SendNext => {
-          let mut idx = current_index.lock();
-          if *idx < routees.len() {
-            let mut r = routees[*idx].clone();
-            if let Err(error) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
-              ctx.system().emit_log(
-                LogLevel::Warn,
-                alloc::format!("tail-chopping coordinator failed to deliver request: {:?}", error),
-                Some(ctx.pid()),
-                None,
-              );
+          current_index.with_lock(|idx| {
+            if *idx < routees.len() {
+              let mut r = routees[*idx].clone();
+              if let Err(error) = r.try_tell((create_request)(&message, adapter_ref.clone())) {
+                ctx.system().emit_log(
+                  LogLevel::Warn,
+                  alloc::format!("tail-chopping coordinator failed to deliver request: {:?}", error),
+                  Some(ctx.pid()),
+                  None,
+                );
+              }
+              *idx += 1;
+              if *idx < routees.len()
+                && let Err(e) = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext)
+              {
+                ctx.system().emit_log(
+                  LogLevel::Warn,
+                  alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
+                  Some(ctx.pid()),
+                  None,
+                );
+              }
             }
-            *idx += 1;
-            if *idx < routees.len()
-              && let Err(e) = ctx.schedule_once(interval, ctx.self_ref(), ChopCommand::<R>::SendNext)
-            {
-              ctx.system().emit_log(
-                LogLevel::Warn,
-                alloc::format!("tail-chopping coordinator failed to schedule next send: {:?}", e),
-                Some(ctx.pid()),
-                None,
-              );
-            }
-          }
+          });
           Ok(Behaviors::same())
         },
         | ChopCommand::FinalTimeout => {

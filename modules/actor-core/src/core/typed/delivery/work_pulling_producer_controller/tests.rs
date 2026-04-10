@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::{any::TypeId, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::{
   PendingDurableStore, WorkPullingState, WorkerEntry, WppcDeferredAction, WppcDurableQueueTimeout,
@@ -44,11 +44,11 @@ impl ActorRefSender for FailingSender {
 }
 
 struct StopRecorderActor {
-  lifecycle: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  lifecycle: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl StopRecorderActor {
-  fn new(lifecycle: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(lifecycle: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { lifecycle }
   }
 }
@@ -308,7 +308,7 @@ fn durable_queue_store_ack_keeps_replayable_payload_in_flight() {
 fn durable_queue_send_failure_stops_work_pulling_controller() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let lifecycle = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let lifecycle = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let lifecycle = lifecycle.clone();
     move || StopRecorderActor::new(lifecycle.clone())
@@ -318,7 +318,8 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
 
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::<WorkPullingProducerControllerCommand<u32>>::from_untyped(&mut context, None);
-  let state = ArcShared::new(RuntimeMutex::new(WorkPullingState::<u32>::new("test-producer".to_string(), 16)));
+  let state =
+    SharedLock::new_with_driver::<SpinSyncMutex<_>>(WorkPullingState::<u32>::new("test-producer".to_string(), 16));
   let durable_queue = TypedActorRef::from_untyped(ActorRef::new(Pid::new(999, 0), FailingSender));
 
   execute_wppc_deferred(

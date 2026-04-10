@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_actor_core_rs::core::kernel::{actor::extension::ExtensionId, system::ActorSystem};
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   ClusterCore, ClusterExtension, ClusterExtensionConfig, ClusterProviderShared,
@@ -20,7 +20,7 @@ pub struct ClusterExtensionId {
   config:              ClusterExtensionConfig,
   provider:            ClusterProviderShared,
   block_list_provider: ArcShared<dyn crate::core::BlockListProvider>,
-  downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
+  downing_provider:    SharedLock<Box<dyn DowningProvider>>,
   gossiper:            GossiperShared,
   pubsub:              ClusterPubSubShared,
   identity_lookup:     IdentityLookupShared,
@@ -43,8 +43,7 @@ impl Clone for ClusterExtensionId {
 impl ClusterExtensionId {
   /// Creates a new identifier with injected dependencies.
   ///
-  /// The `identity_lookup`, `provider`, `gossiper`, and `pubsub` are wrapped in `RuntimeMutex`
-  /// for thread-safe mutable access.
+  /// Dependencies are wrapped in shared locks for thread-safe mutable access.
   #[must_use]
   pub fn new(
     config: ClusterExtensionConfig,
@@ -56,7 +55,7 @@ impl ClusterExtensionId {
     identity_lookup: Box<dyn IdentityLookup>,
   ) -> Self {
     let provider = ClusterProviderShared::new(provider);
-    let downing_provider = ArcShared::new(RuntimeMutex::new(downing_provider));
+    let downing_provider = SharedLock::new_with_driver::<SpinSyncMutex<_>>(downing_provider);
     let gossiper = GossiperShared::new(gossiper);
     let pubsub = ClusterPubSubShared::new(pubsub);
     let identity_lookup = IdentityLookupShared::new(identity_lookup);

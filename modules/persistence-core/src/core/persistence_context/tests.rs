@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   Recovery, event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced,
@@ -24,7 +24,7 @@ use crate::core::{
   write_event_adapter::WriteEventAdapter,
 };
 
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
+type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
 type DummyPendingHandler = Box<dyn FnOnce(&mut DummyActor, &PersistentRepr) + Send + Sync>;
 const ADD_TEN_MANIFEST: &str = "add-ten-v1";
 const SINGLE_MANIFEST: &str = "single-v1";
@@ -50,7 +50,7 @@ impl ActorRefSender for TestSender {
 }
 
 fn create_sender() -> (ActorRef, MessageStore) {
-  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::Pid,
@@ -14,7 +14,7 @@ use crate::core::kernel::{
 #[test]
 fn bus_logging_emits_event_without_actor_context() {
   let system = ActorSystem::new_empty();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.event_stream().subscribe(&subscriber);
 

@@ -6,7 +6,7 @@ mod tests;
 use alloc::{boxed::Box, collections::BTreeSet, format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use crate::core::kernel::{
   actor::{
@@ -43,7 +43,7 @@ pub struct ActorContext<'a> {
   pid:                   Pid,
   sender:                Option<ActorRef>,
   current_message:       Option<AnyMessage>,
-  receive_timeout_state: Option<NonNull<RuntimeMutex<Option<ReceiveTimeoutState>>>>,
+  receive_timeout_state: Option<NonNull<SharedLock<Option<ReceiveTimeoutState>>>>,
   receive_timeout_local: Option<ReceiveTimeoutState>,
   logger_name:           Option<String>,
   _marker:               PhantomData<&'a ()>,
@@ -66,7 +66,7 @@ impl ActorContext<'_> {
     }
   }
 
-  pub(crate) fn with_receive_timeout_state(mut self, state: &RuntimeMutex<Option<ReceiveTimeoutState>>) -> Self {
+  pub(crate) fn with_receive_timeout_state(mut self, state: &SharedLock<Option<ReceiveTimeoutState>>) -> Self {
     self.receive_timeout_state = Some(NonNull::from(state));
     self
   }
@@ -472,8 +472,7 @@ impl ActorContext<'_> {
     if let Some(ptr) = self.receive_timeout_state {
       // SAFETY: The actor cell owns this mutex and keeps it alive for the
       // duration of message processing.
-      let mut guard = unsafe { ptr.as_ref() }.lock();
-      f(&mut guard)
+      unsafe { ptr.as_ref() }.with_write(f)
     } else {
       f(&mut self.receive_timeout_local)
     }
@@ -483,8 +482,7 @@ impl ActorContext<'_> {
     if let Some(ptr) = self.receive_timeout_state {
       // SAFETY: The actor cell owns this mutex and keeps it alive for the
       // duration of message processing.
-      let guard = unsafe { ptr.as_ref() }.lock();
-      f(&guard)
+      unsafe { ptr.as_ref() }.with_read(f)
     } else {
       f(&self.receive_timeout_local)
     }

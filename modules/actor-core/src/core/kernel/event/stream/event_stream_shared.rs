@@ -4,7 +4,7 @@
 //! that subscriber callbacks are executed without holding the event stream lock,
 //! preventing potential deadlocks.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
 
 use crate::core::kernel::{
   actor::actor_ref::ActorRef,
@@ -39,14 +39,14 @@ use crate::core::kernel::{
 /// - Thread B holds a lock that Thread A's callback needs
 /// - Thread B tries to access EventStream → deadlock
 pub struct EventStreamShared {
-  inner: ArcShared<RuntimeRwLock<EventStream>>,
+  inner: SharedRwLock<EventStream>,
 }
 
 impl EventStreamShared {
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self { inner: ArcShared::new(RuntimeRwLock::new(EventStream::with_capacity(capacity))) }
+    Self { inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(EventStream::with_capacity(capacity)) }
   }
 
   /// Subscribes and replays buffered events to the subscriber.
@@ -55,10 +55,7 @@ impl EventStreamShared {
   #[must_use]
   pub fn subscribe(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
     // Phase 1: Acquire lock, register subscriber, get replay snapshot
-    let (id, snapshot) = {
-      let mut guard = self.inner.write();
-      guard.subscribe(subscriber.clone())
-    };
+    let (id, snapshot) = self.inner.with_write(|guard| guard.subscribe(subscriber.clone()));
     // Lock released here!
 
     // Phase 2: Replay buffered events without holding the lock
@@ -73,10 +70,7 @@ impl EventStreamShared {
   /// Subscribes without replaying buffered events.
   #[must_use]
   pub fn subscribe_no_replay(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
-    let id = {
-      let mut guard = self.inner.write();
-      guard.subscribe_no_replay(subscriber.clone())
-    };
+    let id = self.inner.with_write(|guard| guard.subscribe_no_replay(subscriber.clone()));
     EventStreamSubscription::new(self.clone(), id)
   }
 
@@ -95,8 +89,7 @@ impl EventStreamShared {
 
   /// Removes the subscriber associated with the identifier.
   pub fn unsubscribe(&self, id: u64) {
-    let mut guard = self.inner.write();
-    guard.unsubscribe(id);
+    self.inner.with_write(|guard| guard.unsubscribe(id));
   }
 
   /// Publishes the provided event to all registered subscribers.
@@ -104,10 +97,7 @@ impl EventStreamShared {
   /// Subscribers are notified after releasing the lock to prevent deadlocks.
   pub fn publish(&self, event: &EventStreamEvent) {
     // Phase 1: Acquire lock, store event, get subscriber snapshot
-    let subscribers = {
-      let mut guard = self.inner.write();
-      guard.publish_prepare(event.clone())
-    };
+    let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));
     // Lock released here!
 
     // Phase 2: Notify subscribers without holding the lock
@@ -133,7 +123,7 @@ impl Clone for EventStreamShared {
 
 impl PartialEq for EventStreamShared {
   fn eq(&self, other: &Self) -> bool {
-    ArcShared::ptr_eq(&self.inner, &other.inner)
+    SharedRwLock::ptr_eq(&self.inner, &other.inner)
   }
 }
 
@@ -141,12 +131,10 @@ impl Eq for EventStreamShared {}
 
 impl SharedAccess<EventStream> for EventStreamShared {
   fn with_read<R>(&self, f: impl FnOnce(&EventStream) -> R) -> R {
-    let guard = self.inner.read();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut EventStream) -> R) -> R {
-    let mut guard = self.inner.write();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

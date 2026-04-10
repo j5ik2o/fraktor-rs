@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{super::TerminationSignal, ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::kernel::actor::{
@@ -15,7 +15,7 @@ use crate::core::kernel::actor::{
 /// Shared wrapper that provides thread-safe access to a provider implementing
 /// both [`ActorRefProvider`] and [`RemoteWatchHook`].
 ///
-/// The handle is wrapped in `RuntimeMutex` and shared via `ArcShared`, while the
+/// The handle is wrapped in `SharedLock`, while the
 /// public surface is limited to `with_read` / `with_write` closures to hide the
 /// lock scope and reduce deadlock risk.
 ///
@@ -24,7 +24,7 @@ use crate::core::kernel::actor::{
 /// 2. Use clones for `ActorRefProvider` registration
 /// 3. Pass the same shared instance for `RemoteWatchHook` registration
 pub struct RemoteWatchHookShared<P: Send + 'static> {
-  inner:   ArcShared<RuntimeMutex<RemoteWatchHookHandle<P>>>,
+  inner:   SharedLock<RemoteWatchHookHandle<P>>,
   _marker: PhantomData<()>,
 }
 
@@ -35,42 +35,29 @@ impl<P: Send + 'static> RemoteWatchHookShared<P> {
   /// the underlying provider for `ActorRefProvider::supported_schemes()`.
   pub fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
     let handle = RemoteWatchHookHandle::new(provider, schemes);
-    Self { inner: ArcShared::new(RuntimeMutex::new(handle)), _marker: PhantomData }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(handle), _marker: PhantomData }
   }
 
   /// Acquires a write lock and applies the closure to the inner handle.
   #[inline]
   pub fn with_write<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 
   /// Acquires a read lock and applies the closure to the inner handle.
   #[inline]
   pub fn with_read<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
-  }
-
-  /// Returns a reference to the inner shared mutex.
-  ///
-  /// This method is intended for testing and debugging purposes only.
-  #[doc(hidden)]
-  #[must_use]
-  pub const fn inner(&self) -> &ArcShared<RuntimeMutex<RemoteWatchHookHandle<P>>> {
-    &self.inner
+    self.inner.with_read(f)
   }
 }
 
 impl<P: Send + 'static> SharedAccess<RemoteWatchHookHandle<P>> for RemoteWatchHookShared<P> {
   fn with_read<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut RemoteWatchHookHandle<P>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }
 

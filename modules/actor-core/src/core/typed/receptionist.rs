@@ -12,7 +12,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
 pub use deregistered::Deregistered;
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex, shared::Shared};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;
 pub use registered::Registered;
@@ -83,11 +83,11 @@ impl ExtensionId for ReceptionistExtensionId {
 }
 
 impl Receptionist {
-  fn empty_state() -> ArcShared<RuntimeMutex<ReceptionistState>> {
-    ArcShared::new(RuntimeMutex::new(ReceptionistState {
+  fn empty_state() -> SharedLock<ReceptionistState> {
+    SharedLock::new_with_driver::<SpinSyncMutex<_>>(ReceptionistState {
       registrations: BTreeMap::new(),
       subscribers:   BTreeMap::new(),
-    }))
+    })
   }
 
   const fn from_actor_ref(actor_ref: TypedActorRef<ReceptionistCommand>) -> Self {
@@ -159,15 +159,16 @@ impl Receptionist {
     Behaviors::receive_message(move |ctx, cmd| {
       let typed_system = ctx.system();
       let system = typed_system.as_untyped();
-      let mut guard = state_for_message.lock();
-      handle_command(&mut guard, system, Some(ctx.pid()), cmd, |watch_target| match watch_target {
-        | WatchTarget::RegisteredActor(actor_ref) => ctx
-          .as_untyped_mut()
-          .watch(&actor_ref)
-          .map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error))),
-        | WatchTarget::Subscriber(subscriber) => {
-          ctx.watch(&subscriber).map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error)))
-        },
+      state_for_message.with_lock(|guard| {
+        handle_command(guard, system, Some(ctx.pid()), cmd, |watch_target| match watch_target {
+          | WatchTarget::RegisteredActor(actor_ref) => ctx
+            .as_untyped_mut()
+            .watch(&actor_ref)
+            .map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error))),
+          | WatchTarget::Subscriber(subscriber) => {
+            ctx.watch(&subscriber).map_err(|error| ActorError::recoverable(alloc::format!("watch failed: {:?}", error)))
+          },
+        })
       })?;
       Ok(Behaviors::same())
     })
@@ -176,25 +177,26 @@ impl Receptionist {
         return Ok(Behaviors::same());
       };
 
-      let mut guard = state_for_signal.lock();
-      let mut updated_keys = Vec::new();
-      for (key, refs) in &mut guard.registrations {
-        let before = refs.len();
-        refs.retain(|entry| entry.pid() != *terminated_pid);
-        if refs.len() != before {
-          updated_keys.push(key.clone());
+      state_for_signal.with_lock(|guard| {
+        let mut updated_keys = Vec::new();
+        for (key, refs) in &mut guard.registrations {
+          let before = refs.len();
+          refs.retain(|entry| entry.pid() != *terminated_pid);
+          if refs.len() != before {
+            updated_keys.push(key.clone());
+          }
         }
-      }
-      guard.registrations.retain(|_, refs| !refs.is_empty());
+        guard.registrations.retain(|_, refs| !refs.is_empty());
 
-      for subscribers in guard.subscribers.values_mut() {
-        subscribers.retain(|subscriber| subscriber.pid() != *terminated_pid);
-      }
-      guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
+        for subscribers in guard.subscribers.values_mut() {
+          subscribers.retain(|subscriber| subscriber.pid() != *terminated_pid);
+        }
+        guard.subscribers.retain(|_, subscribers| !subscribers.is_empty());
 
-      for key in &updated_keys {
-        notify_subscribers(&guard.subscribers, key, &guard.registrations, ctx.system().as_untyped(), None);
-      }
+        for key in &updated_keys {
+          notify_subscribers(&guard.subscribers, key, &guard.registrations, ctx.system().as_untyped(), None);
+        }
+      });
       Ok(Behaviors::same())
     })
   }

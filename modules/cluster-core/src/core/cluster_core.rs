@@ -17,7 +17,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamShared},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, RuntimeMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SharedLock},
   time::TimerInstant,
 };
 
@@ -37,7 +37,7 @@ pub struct ClusterCore {
   provider:            ClusterProviderShared,
   block_list_provider: ArcShared<dyn BlockListProvider>,
   event_stream:        EventStreamShared,
-  downing_provider:    ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
+  downing_provider:    SharedLock<Box<dyn DowningProvider>>,
   gossiper:            GossiperShared,
   pub_sub:             ClusterPubSubShared,
   startup_state:       ClusterStartupState,
@@ -64,7 +64,7 @@ impl ClusterCore {
     provider: ClusterProviderShared,
     block_list_provider: ArcShared<dyn BlockListProvider>,
     event_stream: EventStreamShared,
-    downing_provider: ArcShared<RuntimeMutex<Box<dyn DowningProvider>>>,
+    downing_provider: SharedLock<Box<dyn DowningProvider>>,
     gossiper: GossiperShared,
     pubsub: ClusterPubSubShared,
     kind_registry: KindRegistry,
@@ -371,7 +371,7 @@ impl ClusterCore {
     if self.mode.is_none() {
       return Err(ClusterError::from(ClusterProviderError::down("cluster is not started")));
     }
-    self.downing_provider.lock().down(authority).map_err(ClusterError::from)?;
+    self.downing_provider.with_lock(|downing_provider| downing_provider.down(authority)).map_err(ClusterError::from)?;
     self.provider.with_write(|provider| provider.down(authority)).map_err(ClusterError::from)
   }
 

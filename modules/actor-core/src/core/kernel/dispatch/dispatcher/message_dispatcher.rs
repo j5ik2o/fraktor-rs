@@ -4,7 +4,7 @@
 //! orchestration side (lock-acquisition, mailbox installation, executor
 //! submission, delayed shutdown registration) lives on
 //! [`MessageDispatcherShared`](super::MessageDispatcherShared) so that the
-//! `RuntimeMutex` is acquired only briefly and never held while submitting
+//! `SpinSyncMutex` is acquired only briefly and never held while submitting
 //! work to an executor.
 //!
 //! # CQS contract

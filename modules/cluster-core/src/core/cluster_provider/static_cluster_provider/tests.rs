@@ -3,7 +3,7 @@ use alloc::{string::String, vec, vec::Vec};
 use fraktor_actor_core_rs::core::kernel::event::stream::{
   EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::*;
 use crate::core::{BlockListProvider, ClusterEvent, ClusterTopology, cluster_provider::ClusterProvider};
@@ -34,12 +34,12 @@ impl BlockListProvider for RecordingBlockList {
 
 #[derive(Clone)]
 struct RecordingClusterEvents {
-  events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
 }
 
 impl RecordingClusterEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<ClusterEvent> {

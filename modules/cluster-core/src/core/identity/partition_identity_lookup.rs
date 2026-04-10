@@ -21,8 +21,8 @@ mod tests;
 ///
 /// This component resolves grain keys to PIDs using rendezvous hashing
 /// to select owner nodes. All methods that modify state use `&mut self`,
-/// and callers should wrap the instance in `RuntimeMutex<Box<dyn IdentityLookup>>`
-/// for thread-safe access.
+/// and callers should wrap the instance in
+/// [`super::identity_lookup_shared::IdentityLookupShared`] for shared access.
 pub struct PartitionIdentityLookup {
   /// Placement coordinator core.
   coordinator:  PlacementCoordinatorCore,

@@ -7,7 +7,7 @@ use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::{ActorContext, error::ActorError, messaging::AnyMessageView};
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -84,14 +84,13 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = ArcShared::new(RuntimeMutex::new(handler_box));
+    let shared_handler = SharedLock::new_with_driver::<SpinSyncMutex<_>>(handler_box);
 
     for event in events {
       let handler_clone = shared_handler.clone();
       let handler_box = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
         if let Some(event) = repr.downcast_ref::<E>() {
-          let mut guard = handler_clone.lock();
-          (guard.as_mut())(actor, event);
+          handler_clone.with_lock(|guard| (guard.as_mut())(actor, event));
         }
       });
       let sender = ctx.sender().map(|sender| sender.pid());
@@ -107,14 +106,13 @@ where
     handler: impl FnMut(&mut Self, &E) + Send + Sync + 'static,
   ) {
     let handler_box = Box::new(handler);
-    let shared_handler = ArcShared::new(RuntimeMutex::new(handler_box));
+    let shared_handler = SharedLock::new_with_driver::<SpinSyncMutex<_>>(handler_box);
 
     for event in events {
       let handler_clone = shared_handler.clone();
       let handler_box = Box::new(move |actor: &mut Self, repr: &PersistentRepr| {
         if let Some(event) = repr.downcast_ref::<E>() {
-          let mut guard = handler_clone.lock();
-          (guard.as_mut())(actor, event);
+          handler_clone.with_lock(|guard| (guard.as_mut())(actor, event));
         }
       });
       let sender = ctx.sender().map(|sender| sender.pid());

@@ -18,17 +18,17 @@ use fraktor_actor_core_rs::core::kernel::{
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 struct Deliver(u32);
 
 struct RecordingChild {
-  log: ArcShared<NoStdMutex<Vec<u32>>>,
+  log: ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
 impl RecordingChild {
-  fn new(log: ArcShared<NoStdMutex<Vec<u32>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
     Self { log }
   }
 }
@@ -43,12 +43,12 @@ impl Actor for RecordingChild {
 }
 
 struct RecordingGuardian {
-  log:        ArcShared<NoStdMutex<Vec<u32>>>,
-  child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+  log:        ArcShared<SpinSyncMutex<Vec<u32>>>,
+  child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl RecordingGuardian {
-  fn new(log: ArcShared<NoStdMutex<Vec<u32>>>, child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<u32>>>, child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>) -> Self {
     Self { log, child_slot }
   }
 }
@@ -76,12 +76,12 @@ impl Actor for SilentActor {
 }
 
 struct NamingGuardian {
-  conflict: ArcShared<NoStdMutex<bool>>,
-  spawned:  ArcShared<NoStdMutex<Vec<u64>>>,
+  conflict: ArcShared<SpinSyncMutex<bool>>,
+  spawned:  ArcShared<SpinSyncMutex<Vec<u64>>>,
 }
 
 impl NamingGuardian {
-  fn new(conflict: ArcShared<NoStdMutex<bool>>, spawned: ArcShared<NoStdMutex<Vec<u64>>>) -> Self {
+  fn new(conflict: ArcShared<SpinSyncMutex<bool>>, spawned: ArcShared<SpinSyncMutex<Vec<u64>>>) -> Self {
     Self { conflict, spawned }
   }
 }
@@ -109,8 +109,8 @@ impl Actor for NamingGuardian {
 
 #[test]
 fn spawn_and_tell_delivers_message() {
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let log = log.clone();
     let child_slot = child_slot.clone();
@@ -144,8 +144,8 @@ fn tell_respects_mailbox_backpressure() {
 
 #[test]
 fn auto_naming_and_duplicate_detection() {
-  let conflict = ArcShared::new(NoStdMutex::new(false));
-  let spawned = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let conflict = ArcShared::new(SpinSyncMutex::new(false));
+  let spawned = ArcShared::new(SpinSyncMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let conflict = conflict.clone();

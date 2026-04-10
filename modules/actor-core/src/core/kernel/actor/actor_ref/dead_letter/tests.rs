@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -19,11 +19,11 @@ use crate::core::kernel::{
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -37,7 +37,7 @@ impl EventStreamSubscriber for RecordingSubscriber {
 #[test]
 fn record_entry_stores_and_publishes() {
   let stream = EventStreamShared::default();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe(&subscriber);
 
@@ -59,7 +59,7 @@ fn record_entry_stores_and_publishes() {
 #[test]
 fn record_send_error_converts_reason_and_honours_capacity() {
   let stream = EventStreamShared::default();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe(&subscriber);
 

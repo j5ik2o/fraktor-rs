@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex, shared::Shared};
 
 use super::{ReceptionistExtensionId, handle_command};
 use crate::core::{
@@ -27,11 +27,11 @@ use crate::core::{
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -43,11 +43,11 @@ impl EventStreamSubscriber for RecordingSubscriber {
 }
 
 struct ListingSender {
-  listings: ArcShared<NoStdMutex<Vec<Listing>>>,
+  listings: ArcShared<SpinSyncMutex<Vec<Listing>>>,
 }
 
 impl ListingSender {
-  fn new(listings: ArcShared<NoStdMutex<Vec<Listing>>>) -> Self {
+  fn new(listings: ArcShared<SpinSyncMutex<Vec<Listing>>>) -> Self {
     Self { listings }
   }
 }
@@ -80,14 +80,14 @@ fn new_test_system() -> TypedActorSystem<u32> {
 
 fn subscribe_log_recorder(
   system: &ActorSystem,
-) -> (ArcShared<NoStdMutex<Vec<EventStreamEvent>>>, EventStreamSubscription) {
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+) -> (ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>, EventStreamSubscription) {
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let subscription = system.event_stream().subscribe(&subscriber);
   (events, subscription)
 }
 
-fn has_warn_log(events: &ArcShared<NoStdMutex<Vec<EventStreamEvent>>>, needle: &str) -> bool {
+fn has_warn_log(events: &ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>, needle: &str) -> bool {
   events.lock().iter().any(|event| {
     matches!(event, EventStreamEvent::Log(log) if log.level() == LogLevel::Warn && log.message().contains(needle))
   })
@@ -111,7 +111,7 @@ fn unsubscribe_should_stop_listing_updates() {
   let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("svc");
 
-  let updates = ArcShared::new(NoStdMutex::new(0_usize));
+  let updates = ArcShared::new(SpinSyncMutex::new(0_usize));
   let subscriber_props = TypedProps::<Listing>::from_behavior_factory({
     let updates = updates.clone();
     move || {
@@ -171,8 +171,8 @@ fn register_with_ack_sends_registered_to_reply_to() {
   let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("ack-svc");
 
-  let ack_received = ArcShared::new(NoStdMutex::new(false));
-  let ack_service_id = ArcShared::new(NoStdMutex::new(String::new()));
+  let ack_received = ArcShared::new(SpinSyncMutex::new(false));
+  let ack_service_id = ArcShared::new(SpinSyncMutex::new(String::new()));
 
   // Spawn a receiver for Registered ack
   let ack_props = TypedProps::<Registered>::from_behavior_factory({
@@ -222,8 +222,8 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
   wait_until(|| !find_listing(&mut receptionist, &key).is_empty());
 
   // Spawn an ack receiver for Deregistered
-  let ack_received = ArcShared::new(NoStdMutex::new(false));
-  let ack_service_id = ArcShared::new(NoStdMutex::new(String::new()));
+  let ack_received = ArcShared::new(SpinSyncMutex::new(false));
+  let ack_service_id = ArcShared::new(SpinSyncMutex::new(String::new()));
 
   let ack_props = TypedProps::<Deregistered>::from_behavior_factory({
     let ack_received = ack_received.clone();
@@ -258,7 +258,7 @@ fn registered_is_for_key_returns_true_for_matching_key() {
   let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("key-check-svc");
 
-  let captured_registered = ArcShared::new(NoStdMutex::new(Option::<Registered>::None));
+  let captured_registered = ArcShared::new(SpinSyncMutex::new(Option::<Registered>::None));
 
   let ack_props = TypedProps::<Registered>::from_behavior_factory({
     let captured = captured_registered.clone();
@@ -322,14 +322,13 @@ fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
   let routee = ActorRef::new(Pid::new(701, 0), NullSender);
   let command = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
 
-  {
-    let mut guard = state.lock();
-    let error = handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
+  state.with_lock(|guard| {
+    let error = handle_command(guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
       .expect_err("watch failure should abort registration");
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(format!("{error:?}"), format!("{:?}", ActorError::fatal("watch failed")));
     assert!(!guard.registrations.contains_key(&registry_key));
-  }
+  });
 }
 
 #[test]
@@ -337,19 +336,18 @@ fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
   let system = ActorSystem::new_empty();
   let state = Receptionist::empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-subscriber");
-  let listings = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let listings = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber =
     TypedActorRef::<Listing>::from_untyped(ActorRef::new(Pid::new(702, 0), ListingSender::new(listings.clone())));
   let command = Receptionist::subscribe(&key, subscriber.clone());
 
-  {
-    let mut guard = state.lock();
-    let error = handle_command(&mut guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
+  state.with_lock(|guard| {
+    let error = handle_command(guard, &system, None, &command, |_| Err(ActorError::fatal("watch failed")))
       .expect_err("watch failure should abort subscription");
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(format!("{error:?}"), format!("{:?}", ActorError::fatal("watch failed")));
     assert!(!guard.subscribers.contains_key(&registry_key));
-  }
+  });
 
   assert_eq!(listings.lock().len(), 1, "initial listing should still be delivered");
 }
@@ -363,13 +361,12 @@ fn subscribe_logs_warn_and_preserves_subscriber_when_initial_listing_delivery_fa
   let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
   let command = Receptionist::subscribe(&key, subscriber.clone());
 
-  {
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Ok(())).expect("subscribe should succeed");
+  state.with_lock(|guard| {
+    handle_command(guard, &system, None, &command, |_| Ok(())).expect("subscribe should succeed");
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.subscribers.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.subscribers[&registry_key][0].pid(), subscriber.pid());
-  }
+  });
 
   assert!(has_warn_log(&events, "receptionist failed to send initial listing to subscriber"));
   assert!(has_warn_log(&events, "service_id=closed-subscriber"));
@@ -386,14 +383,13 @@ fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscribe
   let routee = ActorRef::new(Pid::new(705, 0), NullSender);
   let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
 
-  {
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &subscribe, |_| Ok(())).expect("seed subscriber");
-    handle_command(&mut guard, &system, None, &register, |_| Ok(())).expect("register should stay best-effort");
+  state.with_lock(|guard| {
+    handle_command(guard, &system, None, &subscribe, |_| Ok(())).expect("seed subscriber");
+    handle_command(guard, &system, None, &register, |_| Ok(())).expect("register should stay best-effort");
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.registrations.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.registrations[&registry_key][0].pid(), routee.pid());
-  }
+  });
 
   assert!(has_warn_log(&events, "receptionist failed to notify subscriber"));
   assert!(has_warn_log(&events, "service_id=notify-fail"));
@@ -409,13 +405,12 @@ fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_c
   let reply_to = TypedActorRef::from_untyped(ActorRef::null());
   let command = Receptionist::register_with_ack(&key, TypedActorRef::from_untyped(routee.clone()), reply_to);
 
-  {
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Ok(())).expect("register_with_ack should still succeed");
+  state.with_lock(|guard| {
+    handle_command(guard, &system, None, &command, |_| Ok(())).expect("register_with_ack should still succeed");
     let registry_key = (String::from(key.id()), key.type_id());
     assert_eq!(guard.registrations.get(&registry_key).map(Vec::len), Some(1));
     assert_eq!(guard.registrations[&registry_key][0].pid(), routee.pid());
-  }
+  });
 
   assert!(has_warn_log(&events, "receptionist failed to send Registered ack"));
 }
@@ -428,22 +423,19 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
   let key = ServiceKey::<u32>::new("ack-fail-deregister");
   let routee = ActorRef::new(Pid::new(704, 0), NullSender);
 
-  {
+  state.with_lock(|guard| {
     let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &register, |_| Ok(())).expect("seed registration");
-  }
+    handle_command(guard, &system, None, &register, |_| Ok(())).expect("seed registration");
+  });
 
   let reply_to = TypedActorRef::from_untyped(ActorRef::null());
   let deregister = Receptionist::deregister_with_ack(&key, TypedActorRef::from_untyped(routee), reply_to);
 
-  {
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &deregister, |_| Ok(()))
-      .expect("deregister_with_ack should still succeed");
+  state.with_lock(|guard| {
+    handle_command(guard, &system, None, &deregister, |_| Ok(())).expect("deregister_with_ack should still succeed");
     let registry_key = (String::from(key.id()), key.type_id());
     assert!(guard.registrations.get(&registry_key).is_none());
-  }
+  });
 
   assert!(has_warn_log(&events, "receptionist failed to send Deregistered ack"));
 }
@@ -456,10 +448,9 @@ fn find_logs_warn_and_returns_ok_when_reply_target_is_closed() {
   let key = ServiceKey::<u32>::new("find-closed-reply");
   let command = Receptionist::find(&key, TypedActorRef::from_untyped(ActorRef::null()));
 
-  {
-    let mut guard = state.lock();
-    handle_command(&mut guard, &system, None, &command, |_| Ok(())).expect("find should stay best-effort");
-  }
+  state.with_lock(|guard| {
+    handle_command(guard, &system, None, &command, |_| Ok(())).expect("find should stay best-effort");
+  });
 
   assert!(has_warn_log(&events, "receptionist failed to reply with listing"));
   assert!(has_warn_log(&events, "service_id=find-closed-reply"));
@@ -471,7 +462,7 @@ fn terminated_subscriber_should_be_cleaned_up() {
   let mut receptionist = system.receptionist();
   let key = ServiceKey::<u32>::new("svc");
 
-  let updates = ArcShared::new(NoStdMutex::new(0_usize));
+  let updates = ArcShared::new(SpinSyncMutex::new(0_usize));
   let subscriber_props = TypedProps::<Listing>::from_behavior_factory({
     let updates = updates.clone();
     move || {
@@ -583,7 +574,7 @@ fn get_cleans_up_terminated_subscriber_without_bootstrap_receptionist() {
   let mut receptionist = Receptionist::get(&system).r#ref();
   let key = ServiceKey::<u32>::new("standalone-subscriber-cleanup");
 
-  let updates = ArcShared::new(NoStdMutex::new(0_usize));
+  let updates = ArcShared::new(SpinSyncMutex::new(0_usize));
   let subscriber_props = TypedProps::<Listing>::from_behavior_factory({
     let updates = updates.clone();
     move || {

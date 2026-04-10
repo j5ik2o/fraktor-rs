@@ -1,6 +1,6 @@
 //! Shared wrapper for serialization extension instance.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::extension::SerializationExtension;
 use crate::core::kernel::actor::extension::Extension;
@@ -11,15 +11,14 @@ use crate::core::kernel::actor::extension::Extension;
 /// that internally lock the underlying extension, allowing safe
 /// concurrent access from multiple owners.
 pub struct SerializationExtensionShared {
-  inner: ArcShared<RuntimeMutex<SerializationExtension>>,
+  inner: SharedLock<SerializationExtension>,
 }
 
 impl SerializationExtensionShared {
   /// Creates a new shared wrapper around the provided extension instance.
   #[must_use]
   pub fn new(extension: SerializationExtension) -> Self {
-    let mutex = RuntimeMutex::new(extension);
-    Self { inner: ArcShared::new(mutex) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(extension) }
   }
 }
 
@@ -31,13 +30,11 @@ impl Clone for SerializationExtensionShared {
 
 impl SharedAccess<SerializationExtension> for SerializationExtensionShared {
   fn with_read<R>(&self, f: impl FnOnce(&SerializationExtension) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut SerializationExtension) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }
 

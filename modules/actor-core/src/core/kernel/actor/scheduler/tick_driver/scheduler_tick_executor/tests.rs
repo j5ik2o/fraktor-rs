@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use crate::core::kernel::actor::scheduler::{
   ExecutionBatch, SchedulerCommand, SchedulerConfig, SchedulerContext, SchedulerRunnable,
@@ -12,7 +12,7 @@ use crate::core::kernel::actor::scheduler::{
 
 #[derive(Clone)]
 struct RecordingRunnable {
-  log:   ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log:   ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   label: &'static str,
 }
 
@@ -31,7 +31,7 @@ fn drive_pending_executes_scheduled_job() {
   let feed = TickFeed::new(config.resolution(), 8, signal.clone());
   let mut executor = SchedulerTickExecutor::new(scheduler.clone(), feed.clone(), signal);
 
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let runnable = ArcShared::new(RecordingRunnable { log: log.clone(), label: "fired" });
   scheduler.with_write(|s| {
     s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable }).expect("schedule once");

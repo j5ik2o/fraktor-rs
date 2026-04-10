@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex},
+  sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -28,12 +28,12 @@ use crate::core::{
 /// EventStream イベントを収集するテスト用 subscriber
 #[derive(Clone)]
 struct TestSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl TestSubscriber {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<EventStreamEvent> {

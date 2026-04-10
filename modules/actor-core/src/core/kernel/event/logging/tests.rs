@@ -1,15 +1,15 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 
 pub(crate) struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  pub(crate) fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  pub(crate) fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }

@@ -26,18 +26,18 @@ use fraktor_cluster_core_rs::core::{
   },
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
 #[derive(Clone)]
 struct EventCollector {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventCollector {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<EventStreamEvent> {
@@ -180,7 +180,7 @@ fn topology_update_reactivates_suspended_subscribers() {
     provider,
     block_list_provider,
     event_stream.clone(),
-    ArcShared::new(NoStdMutex::new(Box::new(NoopDowningProvider::new()))),
+    SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(NoopDowningProvider::new())),
     gossiper,
     pubsub_shared.clone(),
     kind_registry,

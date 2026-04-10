@@ -1281,9 +1281,8 @@ fn buffer_rejects_zero_capacity() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn async_boundary_keeps_single_path_behavior() {
-  let values = Source::single(7_u32).via(Flow::new().async_boundary()).collect_values().expect("collect_values");
+  let values = Source::single(7_u32).via(Flow::new().r#async()).collect_values().expect("collect_values");
   assert_eq!(values, vec![7_u32]);
 }
 
@@ -2644,10 +2643,9 @@ fn operator_catalog_lookup_rejects_unknown_operator() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn detach_preserves_elements_and_order() {
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .via(Flow::new().detach())
+    .via(Flow::new().r#async())
     .collect_values()
     .expect("collect_values");
   assert_eq!(values, vec![1_u32, 2_u32, 3_u32]);

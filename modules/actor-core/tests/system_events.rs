@@ -20,12 +20,12 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
@@ -57,7 +57,7 @@ fn lifecycle_and_log_events_are_published() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 

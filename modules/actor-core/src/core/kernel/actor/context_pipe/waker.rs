@@ -5,7 +5,7 @@ use core::{
   task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{Pid, context_pipe::ContextPipeTaskId, messaging::system_message::SystemMessage},
@@ -28,23 +28,20 @@ impl ContextPipeWakerHandle {
 }
 
 struct ContextPipeWakerShared {
-  inner: ArcShared<RuntimeMutex<ContextPipeWakerHandle>>,
+  inner: SharedLock<ContextPipeWakerHandle>,
 }
 
 impl ContextPipeWakerShared {
   fn new(system: SystemStateShared, pid: Pid, task: ContextPipeTaskId) -> Self {
     let handle = ContextPipeWakerHandle::new(system, pid, task);
-    let inner = ArcShared::new(RuntimeMutex::new(handle));
+    let inner = SharedLock::new_with_driver::<SpinSyncMutex<_>>(handle);
     Self { inner }
   }
 
   fn wake(&self) {
     // ロック保持中に send_system_message を呼ぶとデッドロックするため、
     // ロックスコープ内でクローンを取得し、解放後に送信する
-    let (system, pid, task) = {
-      let guard = self.inner.lock();
-      (guard.system.clone(), guard.pid, guard.task)
-    };
+    let (system, pid, task) = self.inner.with_lock(|guard| (guard.system.clone(), guard.pid, guard.task));
     if let Err(error) = system.send_system_message(pid, SystemMessage::PipeTask(task)) {
       system.record_send_error(Some(pid), &error);
     }

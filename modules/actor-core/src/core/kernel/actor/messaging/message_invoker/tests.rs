@@ -2,7 +2,7 @@ extern crate alloc;
 
 use alloc::{format, string::String, vec, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{MessageInvokerMiddleware, MessageInvokerPipeline, middleware_shared::MiddlewareShared};
 use crate::core::kernel::{
@@ -24,13 +24,13 @@ impl ActorRefSender for RecordingSender {
 }
 
 struct CaptureActor {
-  payloads: NoStdMutex<Vec<u32>>,
-  replies:  NoStdMutex<Vec<Option<ActorRef>>>,
+  payloads: SpinSyncMutex<Vec<u32>>,
+  replies:  SpinSyncMutex<Vec<Option<ActorRef>>>,
 }
 
 impl CaptureActor {
   fn new() -> Self {
-    Self { payloads: NoStdMutex::new(Vec::new()), replies: NoStdMutex::new(Vec::new()) }
+    Self { payloads: SpinSyncMutex::new(Vec::new()), replies: SpinSyncMutex::new(Vec::new()) }
   }
 
   fn payloads(&self) -> Vec<u32> {
@@ -53,11 +53,11 @@ impl Actor for CaptureActor {
 }
 
 struct LoggingActor {
-  log: ArcShared<NoStdMutex<Vec<String>>>,
+  log: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl LoggingActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<String>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
     Self { log }
   }
 
@@ -75,11 +75,11 @@ impl Actor for LoggingActor {
 
 struct RecordingMiddleware {
   name: String,
-  log:  ArcShared<NoStdMutex<Vec<String>>>,
+  log:  ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl RecordingMiddleware {
-  fn new(name: &str, log: ArcShared<NoStdMutex<Vec<String>>>) -> Self {
+  fn new(name: &str, log: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
     Self { name: String::from(name), log }
   }
 
@@ -148,7 +148,7 @@ fn middleware_executes_in_expected_order() {
   let system = ActorSystem::new_empty();
   let pid = Pid::new(42, 0);
   let mut ctx = ActorContext::new(&system, pid);
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let mut actor = LoggingActor::new(log.clone());
 
   let middleware_a =

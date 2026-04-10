@@ -3,7 +3,7 @@
 use alloc::{format, string::String, vec, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 use portable_atomic::AtomicU64;
 
 use crate::core::{
@@ -85,7 +85,7 @@ where
   ) -> Behavior<M> {
     let key = self.service_key;
     let strategy = self.strategy;
-    let routees: ArcShared<RuntimeMutex<Vec<TypedActorRef<M>>>> = ArcShared::new(RuntimeMutex::new(Vec::new()));
+    let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::<TypedActorRef<M>>::new());
     let routees_for_listing = routees.clone();
     let routees_for_message = routees;
 
@@ -95,7 +95,7 @@ where
       else {
         return Behaviors::stopped();
       };
-      let receptionist = ArcShared::new(RuntimeMutex::new(receptionist_ref));
+      let receptionist = SharedLock::new_with_driver::<SpinSyncMutex<_>>(receptionist_ref);
 
       let routees_updater = routees_for_listing.clone();
       let listing_factory = ArcShared::new(move || -> Behavior<Listing> {
@@ -113,8 +113,7 @@ where
               return Ok(Behaviors::same());
             },
           };
-          let mut guard = routees_updater.lock();
-          *guard = typed_refs;
+          routees_updater.with_lock(|guard| *guard = typed_refs);
           Ok(Behaviors::same())
         })
       });
@@ -126,7 +125,7 @@ where
       };
 
       let subscribe_cmd = Receptionist::subscribe(&key, listing_ref.clone());
-      if let Err(error) = receptionist.lock().try_tell(subscribe_cmd) {
+      if let Err(error) = receptionist.with_lock(|receptionist| receptionist.try_tell(subscribe_cmd)) {
         ctx.system().emit_log(
           LogLevel::Warn,
           format!("group router failed to subscribe to receptionist: {:?}", error),
@@ -147,7 +146,7 @@ where
 
       Behaviors::receive_message(move |ctx, message: &M| {
         let targets = {
-          let guard = routees_for_receive.lock();
+          let guard = routees_for_receive.with_lock(|routees| routees.clone());
           if guard.is_empty() {
             return Ok(Behaviors::same());
           }
@@ -176,7 +175,7 @@ where
       .receive_signal(move |ctx, signal| {
         if matches!(signal, BehaviorSignal::PostStop) {
           let unsubscribe = Receptionist::unsubscribe(&key_for_signal, listing_ref_for_signal.clone());
-          if let Err(error) = receptionist_for_signal.lock().try_tell(unsubscribe) {
+          if let Err(error) = receptionist_for_signal.with_lock(|receptionist| receptionist.try_tell(unsubscribe)) {
             ctx.system().emit_log(
               LogLevel::Warn,
               format!("group router failed to unsubscribe from receptionist: {:?}", error),

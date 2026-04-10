@@ -1,6 +1,6 @@
 //! Shared wrapper for actor cell registry.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::cells::Cells;
 
@@ -10,14 +10,14 @@ use super::cells::Cells;
 /// that internally lock the underlying registry, allowing safe
 /// concurrent access from multiple owners.
 pub(crate) struct CellsShared {
-  inner: ArcShared<RuntimeMutex<Cells>>,
+  inner: SharedLock<Cells>,
 }
 #[allow(dead_code)]
 impl CellsShared {
   /// Creates a new shared wrapper around the provided registry.
   #[must_use]
   pub(crate) fn new(cells: Cells) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(cells)) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(cells) }
   }
 }
 
@@ -35,12 +35,10 @@ impl Clone for CellsShared {
 
 impl SharedAccess<Cells> for CellsShared {
   fn with_read<R>(&self, f: impl FnOnce(&Cells) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Cells) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

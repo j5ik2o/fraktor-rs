@@ -6,7 +6,7 @@ mod tests;
 use alloc::collections::BinaryHeap;
 use core::{cmp::Ordering, num::NonZeroUsize};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy};
 use crate::core::kernel::{
@@ -25,7 +25,7 @@ struct Inner {
 /// When the queue reaches capacity, the configured [`MailboxOverflowStrategy`]
 /// determines the behaviour.
 pub struct BoundedPriorityMessageQueue {
-  inner:     RuntimeMutex<Inner>,
+  inner:     SharedLock<Inner>,
   generator: ArcShared<dyn MessagePriorityGenerator>,
   capacity:  usize,
   overflow:  MailboxOverflowStrategy,
@@ -40,7 +40,7 @@ impl BoundedPriorityMessageQueue {
     overflow: MailboxOverflowStrategy,
   ) -> Self {
     Self {
-      inner: RuntimeMutex::new(Inner { heap: BinaryHeap::with_capacity(capacity.get()) }),
+      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner { heap: BinaryHeap::with_capacity(capacity.get()) }),
       generator,
       capacity: capacity.get(),
       overflow,
@@ -51,46 +51,43 @@ impl BoundedPriorityMessageQueue {
 impl MessageQueue for BoundedPriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
-    let mut guard = self.inner.lock();
     let entry = PriorityEntry { priority, envelope };
+    self.inner.with_write(|inner| {
+      if inner.heap.len() < self.capacity {
+        inner.heap.push(entry);
+        return Ok(());
+      }
 
-    if guard.heap.len() < self.capacity {
-      guard.heap.push(entry);
-      return Ok(());
-    }
-
-    match self.overflow {
-      | MailboxOverflowStrategy::DropNewest => {
-        // Capacity full — drop the incoming envelope.
-        Err(SendError::full(entry.envelope.into_payload()))
-      },
-      | MailboxOverflowStrategy::DropOldest => {
-        // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
-        let _ = guard.heap.pop();
-        guard.heap.push(entry);
-        Ok(())
-      },
-      | MailboxOverflowStrategy::Grow => {
-        // Ignore the bound and grow.
-        guard.heap.push(entry);
-        Ok(())
-      },
-    }
+      match self.overflow {
+        | MailboxOverflowStrategy::DropNewest => {
+          // Capacity full — drop the incoming envelope.
+          Err(SendError::full(entry.envelope.into_payload()))
+        },
+        | MailboxOverflowStrategy::DropOldest => {
+          // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
+          let _ = inner.heap.pop();
+          inner.heap.push(entry);
+          Ok(())
+        },
+        | MailboxOverflowStrategy::Grow => {
+          // Ignore the bound and grow.
+          inner.heap.push(entry);
+          Ok(())
+        },
+      }
+    })
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    let mut guard = self.inner.lock();
-    guard.heap.pop().map(|entry| entry.envelope)
+    self.inner.with_write(|inner| inner.heap.pop().map(|entry| entry.envelope))
   }
 
   fn number_of_messages(&self) -> usize {
-    let guard = self.inner.lock();
-    guard.heap.len()
+    self.inner.with_read(|inner| inner.heap.len())
   }
 
   fn clean_up(&self) {
-    let mut guard = self.inner.lock();
-    guard.heap.clear();
+    self.inner.with_write(|inner| inner.heap.clear());
   }
 }
 

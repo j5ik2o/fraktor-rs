@@ -23,7 +23,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -52,7 +52,7 @@ fn grain_ref_get_returns_resolved_ref_with_identity() {
 
 #[test]
 fn request_retries_on_timeout_until_policy_exhausted() {
-  let send_counter = ArcShared::new(NoStdMutex::new(0usize));
+  let send_counter = ArcShared::new(SpinSyncMutex::new(0usize));
   let send_counter_ref = Some(&send_counter);
   let (system, ext) = build_system_with_extension_config(
     || Box::new(StaticIdentityLookup::new("node1:8080")),
@@ -140,7 +140,7 @@ fn run_scheduler(system: &ActorSystem, duration: Duration) {
 
 fn build_system_with_extension<F>(
   identity_lookup_factory: F,
-  send_counter: Option<&ArcShared<NoStdMutex<usize>>>,
+  send_counter: Option<&ArcShared<SpinSyncMutex<usize>>>,
 ) -> (ActorSystem, ArcShared<ClusterExtension>)
 where
   F: Fn() -> Box<dyn IdentityLookup> + Send + Sync + 'static, {
@@ -149,7 +149,7 @@ where
 
 fn build_system_with_extension_config<F>(
   identity_lookup_factory: F,
-  send_counter: Option<&ArcShared<NoStdMutex<usize>>>,
+  send_counter: Option<&ArcShared<SpinSyncMutex<usize>>>,
   metrics_enabled: bool,
   send_behavior: SendBehavior,
 ) -> (ActorSystem, ArcShared<ClusterExtension>)
@@ -189,12 +189,12 @@ enum SendBehavior {
 
 #[derive(Clone)]
 struct RecordingGrainEvents {
-  events: ArcShared<NoStdMutex<Vec<GrainEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<GrainEvent>>>,
 }
 
 impl RecordingGrainEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<GrainEvent> {
@@ -259,12 +259,12 @@ impl IdentityLookup for StaticIdentityLookup {
 
 struct TestActorRefProvider {
   system:   ActorSystem,
-  counter:  Option<ArcShared<NoStdMutex<usize>>>,
+  counter:  Option<ArcShared<SpinSyncMutex<usize>>>,
   behavior: SendBehavior,
 }
 
 impl TestActorRefProvider {
-  fn new(system: ActorSystem, counter: Option<ArcShared<NoStdMutex<usize>>>, behavior: SendBehavior) -> Self {
+  fn new(system: ActorSystem, counter: Option<ArcShared<SpinSyncMutex<usize>>>, behavior: SendBehavior) -> Self {
     Self { system, counter, behavior }
   }
 }
@@ -289,7 +289,7 @@ impl ActorRefProvider for TestActorRefProvider {
 }
 
 struct TestSender {
-  counter:  Option<ArcShared<NoStdMutex<usize>>>,
+  counter:  Option<ArcShared<SpinSyncMutex<usize>>>,
   behavior: SendBehavior,
 }
 
@@ -405,12 +405,12 @@ fn request_with_sender_cleans_temp_actor_on_completion() {
 
 #[derive(Clone)]
 struct RecordingSender {
-  messages: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
 impl RecordingSender {
   fn new() -> Self {
-    Self { messages: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { messages: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn messages(&self) -> Vec<AnyMessage> {

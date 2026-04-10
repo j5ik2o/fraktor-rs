@@ -6,7 +6,7 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, RuntimeMutex},
+  sync::{ArcShared, SpinSyncMutex},
   timing::delay::{DelayFuture, DelayProvider, ManualDelayProvider},
 };
 use tokio::sync::Barrier;
@@ -15,12 +15,12 @@ use super::*;
 
 #[derive(Clone)]
 struct SharedManualDelayProvider {
-  inner: ArcShared<RuntimeMutex<ManualDelayProvider>>,
+  inner: ArcShared<SpinSyncMutex<ManualDelayProvider>>,
 }
 
 impl SharedManualDelayProvider {
   fn new() -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(ManualDelayProvider::new())) }
+    Self { inner: ArcShared::new(SpinSyncMutex::new(ManualDelayProvider::new())) }
   }
 
   fn trigger_all(&self) {
@@ -119,7 +119,7 @@ fn cyclic_dependency_detected() {
 #[tokio::test]
 async fn run_executes_tasks_in_phase_order() {
   let cs = default_shutdown();
-  let order = ArcShared::new(RuntimeMutex::new(Vec::<i32>::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::<i32>::new()));
 
   let o1 = order.clone();
   cs.add_task(CoordinatedShutdown::PHASE_SERVICE_STOP, "stop-task", move || async move {

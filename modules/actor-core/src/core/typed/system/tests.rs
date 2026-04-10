@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -49,11 +49,11 @@ impl ExtensionId for TestExtensionId {
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -65,11 +65,11 @@ impl EventStreamSubscriber for RecordingSubscriber {
 }
 
 struct CollectorSender {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl CollectorSender {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -486,7 +486,7 @@ fn receptionist_panics_when_missing() {
 fn log_configuration_emits_log_event_to_event_stream() {
   // Given: a typed actor system with a recording subscriber
   let system = new_test_system();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
   let baseline_len = events.lock().len();
@@ -508,7 +508,7 @@ fn log_configuration_emits_log_event_to_event_stream() {
 fn log_returns_facade_that_emits_log_events() {
   // Given: a typed actor system with a recording subscriber
   let system = new_test_system();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
   let baseline_len = events.lock().len();
@@ -557,7 +557,7 @@ fn get_when_terminated_tracks_same_lifecycle_as_when_terminated() {
 fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subscribers() {
   // 前提: 既存 helper で購読者を登録した typed actor system がある
   let system = new_test_system();
-  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(recorded_events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
   let baseline_len = recorded_events.lock().len();
@@ -590,7 +590,7 @@ fn event_stream_returns_typed_actor_ref_that_publishes_events_to_registered_subs
 fn event_stream_supports_subscribe_and_unsubscribe_commands() {
   // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
-  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(recorded_events.clone()));
   let mut subscribe_stream = system.event_stream();
   let mut publish_stream = system.event_stream();
@@ -645,7 +645,7 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
 fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscribe_state() {
   // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
-  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(901, 0), CollectorSender::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -709,7 +709,7 @@ fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
   // 前提: typed system と、同じ untyped actor system から作った別 wrapper がある
   let system = new_test_system();
   let other_wrapper = TypedActorSystem::<u32>::from_untyped(system.as_untyped().clone());
-  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(902, 0), CollectorSender::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,

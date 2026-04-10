@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::{
     receptionist::{Receptionist, ServiceKey},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 fn wait_until(mut condition: impl FnMut() -> bool) {
   for _ in 0..10_000 {
@@ -29,7 +29,7 @@ fn main() {
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
   let key = ServiceKey::<u32>::new("typed-receptionist-router-example");
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let receptionist = Receptionist::get(&system);
   let mut receptionist_ref = receptionist.r#ref();
 
@@ -39,7 +39,7 @@ fn main() {
       Behaviors::supervise(Behaviors::receive_message({
         let records = records.clone();
         move |_ctx, message: &u32| {
-          records.lock().push(*message);
+          records.with_lock(|records| records.push(*message));
           Ok(Behaviors::same())
         }
       }))
@@ -56,7 +56,7 @@ fn main() {
   let mut router_ref = system.system_actor_of(&router_props, "typed-receptionist-router").expect("spawn router");
 
   router_ref.tell(42);
-  wait_until(|| records.lock().as_slice() == [42]);
+  wait_until(|| records.with_lock(|records| records.as_slice() == [42]));
 
   system.terminate().expect("terminate");
 }

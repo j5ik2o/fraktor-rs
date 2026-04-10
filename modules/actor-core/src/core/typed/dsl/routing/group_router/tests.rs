@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{any::TypeId, hint::spin_loop};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::rendezvous_hash_index;
 use crate::core::{
@@ -64,7 +64,7 @@ fn group_router_should_route_via_system_receptionist() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let routee_props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
     move || {
@@ -102,7 +102,7 @@ fn group_router_public_type_routes_via_system_receptionist() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
@@ -156,7 +156,7 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
@@ -228,7 +228,7 @@ fn group_router_with_round_robin_routes_across_routees_in_order() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
@@ -282,7 +282,7 @@ fn group_router_with_random_routing_uses_random_selector_branch() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   for routee_index in 0..2_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
@@ -338,7 +338,7 @@ fn group_router_uses_random_routing_by_default() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut receptionist = system.receptionist();
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   for routee_index in 0..3_usize {
     let routee_props = TypedProps::<u32>::from_behavior_factory({
       let records = records.clone();
@@ -399,7 +399,7 @@ fn group_router_should_route_via_explicit_receptionist() {
   let mut router = TypedActorRef::<u32>::from_untyped(router.into_actor_ref());
   let mut explicit_receptionist = receptionist_ref;
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let routee_props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
     move || {
@@ -429,7 +429,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let routee_props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
     move || {
@@ -443,7 +443,7 @@ fn group_router_should_ignore_mismatched_listing_update() {
   let routee = system.as_untyped().spawn(routee_props.to_untyped()).expect("spawn routee");
   let routee_ref = TypedActorRef::<u32>::from_untyped(routee.into_actor_ref());
 
-  let mismatched_records = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let mismatched_records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let mismatched_routee_props = TypedProps::<u64>::from_behavior_factory({
     let mismatched_records = mismatched_records.clone();
     move || {
@@ -458,8 +458,8 @@ fn group_router_should_ignore_mismatched_listing_update() {
     system.as_untyped().spawn(mismatched_routee_props.to_untyped()).expect("spawn mismatched routee");
   let mismatched_routee_ref = TypedActorRef::<u64>::from_untyped(mismatched_routee.into_actor_ref());
 
-  let subscriber = ArcShared::new(NoStdMutex::new(None::<TypedActorRef<Listing>>));
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let subscriber = ArcShared::new(SpinSyncMutex::new(None::<TypedActorRef<Listing>>));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory({
     let key = key.clone();
     let routee_ref = routee_ref.clone();
@@ -538,7 +538,7 @@ fn group_router_should_unsubscribe_when_stopped() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let receptionist_props = TypedProps::<ReceptionistCommand>::from_behavior_factory({
     let events = events.clone();
     move || {

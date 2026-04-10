@@ -7,7 +7,7 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
 
 use crate::core::kernel::{
   actor::{
@@ -42,7 +42,7 @@ const DEFAULT_CAPACITY: usize = 256;
 ///   4. Publish events to event stream (no lock held)
 /// ```
 pub struct DeadLetterShared {
-  inner:        ArcShared<RuntimeRwLock<DeadLetter>>,
+  inner:        SharedRwLock<DeadLetter>,
   event_stream: EventStreamShared,
 }
 
@@ -50,7 +50,10 @@ impl DeadLetterShared {
   /// Creates a shared deadletter store with the specified capacity.
   #[must_use]
   pub fn with_capacity(event_stream: EventStreamShared, capacity: usize) -> Self {
-    Self { inner: ArcShared::new(RuntimeRwLock::new(DeadLetter::with_capacity(capacity))), event_stream }
+    Self {
+      inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(DeadLetter::with_capacity(capacity)),
+      event_stream,
+    }
   }
 
   /// Creates a shared deadletter store with the default capacity.
@@ -64,10 +67,7 @@ impl DeadLetterShared {
   /// Event stream notifications are sent after releasing the lock to prevent deadlocks.
   pub fn record_send_error(&self, target: Option<Pid>, error: &SendError, timestamp: Duration) {
     // Phase 1: Acquire lock, record entry, release lock
-    let entry = {
-      let mut guard = self.inner.write();
-      guard.record_send_error(target, error, timestamp)
-    };
+    let entry = self.inner.with_write(|guard| guard.record_send_error(target, error, timestamp));
     // Lock released here!
 
     // Phase 2: Publish events without holding the lock
@@ -79,10 +79,7 @@ impl DeadLetterShared {
   /// Event stream notifications are sent after releasing the lock to prevent deadlocks.
   pub fn record_entry(&self, message: AnyMessage, reason: DeadLetterReason, target: Option<Pid>, timestamp: Duration) {
     // Phase 1: Acquire lock, record entry, release lock
-    let entry = {
-      let mut guard = self.inner.write();
-      guard.record_entry(message, reason, target, timestamp)
-    };
+    let entry = self.inner.with_write(|guard| guard.record_entry(message, reason, target, timestamp));
     // Lock released here!
 
     // Phase 2: Publish events without holding the lock
@@ -92,7 +89,7 @@ impl DeadLetterShared {
   /// Returns a snapshot of stored deadletters.
   #[must_use]
   pub fn entries(&self) -> Vec<DeadLetterEntry> {
-    self.inner.read().snapshot()
+    self.inner.with_read(|inner| inner.snapshot())
   }
 
   fn publish(&self, entry: &DeadLetterEntry) {
@@ -114,7 +111,7 @@ impl Clone for DeadLetterShared {
 
 impl PartialEq for DeadLetterShared {
   fn eq(&self, other: &Self) -> bool {
-    ArcShared::ptr_eq(&self.inner, &other.inner)
+    SharedRwLock::ptr_eq(&self.inner, &other.inner)
   }
 }
 
@@ -122,12 +119,10 @@ impl Eq for DeadLetterShared {}
 
 impl SharedAccess<DeadLetter> for DeadLetterShared {
   fn with_read<R>(&self, f: impl FnOnce(&DeadLetter) -> R) -> R {
-    let guard = self.inner.read();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut DeadLetter) -> R) -> R {
-    let mut guard = self.inner.write();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

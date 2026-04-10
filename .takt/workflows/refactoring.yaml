@@ -1,0 +1,349 @@
+name: refactoring
+description: 大規模リファクタリング用ピース（Phase管理対応、計画→テスト作成→実装→AIレビュー→arch+QAレビュー→監督）
+piece_config:
+  provider_options:
+    codex:
+      network_access: true
+    opencode:
+      network_access: true
+max_movements: 100
+initial_movement: plan
+
+instructions:
+  plan-refactoring: ../facets/instructions/plan-refactoring.md
+  ai-review: ../facets/instructions/ai-review.md
+  arbitrate: ../facets/instructions/arbitrate.md
+  refactoring-implement: ../facets/instructions/refactoring-implement.md
+  refactoring-ai-fix: ../facets/instructions/refactoring-ai-fix.md
+  refactoring-fix: ../facets/instructions/refactoring-fix.md
+  refactoring-review-qa: ../facets/instructions/refactoring-review-qa.md
+  refactoring-supervise: ../facets/instructions/refactoring-supervise.md
+  loop-monitor-ai-review-fix-refactoring: ../facets/instructions/loop-monitor-ai-review-fix-refactoring.md
+  loop-monitor-reviewers-fix-refactoring: ../facets/instructions/loop-monitor-reviewers-fix-refactoring.md
+
+policies:
+  fraktor-coding: ../facets/policies/fraktor-coding.md
+
+report_formats:
+  ai-review: ../facets/output-contracts/ai-review.md
+  coder-scope: ../facets/output-contracts/coder-scope.md
+  coder-decisions: ../facets/output-contracts/coder-decisions.md
+  summary: ../facets/output-contracts/summary.md
+
+loop_monitors:
+  - cycle:
+      - ai_review
+      - ai_fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction: loop-monitor-ai-review-fix-refactoring
+      rules:
+        - condition: 健全（進捗あり）
+          next: ai_review
+        - condition: 非生産的（改善なし）
+          next: reviewers
+
+  - cycle:
+      - reviewers
+      - fix
+    threshold: 3
+    judge:
+      persona: supervisor
+      instruction: loop-monitor-reviewers-fix-refactoring
+      rules:
+        - condition: 健全（進捗あり）
+          next: reviewers
+        - condition: 非生産的（改善なし）
+          next: supervise
+
+movements:
+  - name: plan
+    edit: false
+    persona: planner
+    knowledge: architecture
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+          - WebSearch
+          - WebFetch
+    instruction: plan-refactoring
+    output_contracts:
+      report:
+        - name: plan.md
+          format: plan
+    rules:
+      - condition: 要件が明確で実装可能
+        next: write_tests
+      - condition: 要件が不明確、情報不足
+        next: ABORT
+        appendix: |
+          確認事項:
+          - {質問1}
+          - {質問2}
+
+  - name: write_tests
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    knowledge:
+      - architecture
+      - unit-testing
+      - e2e-testing
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: full
+    instruction: write-tests-first
+    output_contracts:
+      report:
+        - name: test-scope.md
+          format: coder-scope
+        - name: test-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: テスト作成が完了した
+        next: implement
+      - condition: テスト対象が未実装のためテスト作成をスキップする
+        next: implement
+      - condition: テスト作成を進行できない
+        next: plan
+      - condition: ユーザーへの確認事項があるためユーザー入力が必要
+        next: write_tests
+        requires_user_input: true
+        interactive_only: true
+
+  - name: implement
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    session: refresh
+    knowledge: architecture
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: full
+    instruction: refactoring-implement
+    output_contracts:
+      report:
+        - name: coder-scope.md
+          format: coder-scope
+        - name: coder-decisions.md
+          format: coder-decisions
+    rules:
+      - condition: 実装完了
+        next: ai_review
+      - condition: 実装未着手（レポートのみ）
+        next: ai_review
+      - condition: 判断できない、情報不足
+        next: ai_review
+      - condition: ユーザー入力が必要
+        next: plan
+
+  - name: ai_review
+    edit: false
+    persona: ai-antipattern-reviewer
+    policy:
+      - review
+      - ai-antipattern
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - WebSearch
+          - WebFetch
+    instruction: ai-review
+    output_contracts:
+      report:
+        - name: ai-review.md
+          format: ai-review
+    rules:
+      - condition: AI特有の問題なし
+        next: reviewers
+      - condition: AI特有の問題あり
+        next: ai_fix
+
+  - name: ai_fix
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    session: refresh
+    knowledge: architecture
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: full
+    pass_previous_response: false
+    instruction: refactoring-ai-fix
+    rules:
+      - condition: AI問題の修正完了
+        next: ai_review
+      - condition: 修正不要（指摘対象ファイル/仕様の確認済み）
+        next: ai_no_fix
+      - condition: 判断できない、情報不足
+        next: ai_no_fix
+
+  - name: ai_no_fix
+    edit: false
+    persona: architecture-reviewer
+    policy: review
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+    instruction: arbitrate
+    rules:
+      - condition: ai_reviewの指摘が妥当（修正すべき）
+        next: ai_fix
+      - condition: ai_fixの判断が妥当（修正不要）
+        next: reviewers
+
+  - name: reviewers
+    parallel:
+      - name: arch-review
+        edit: false
+        persona: architecture-reviewer
+        policy: review
+        knowledge: architecture
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - WebSearch
+              - WebFetch
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        instruction: review-arch
+        output_contracts:
+          report:
+            - name: architect-review.md
+              format: architecture-review
+      - name: qa-review
+        edit: false
+        persona: qa-reviewer
+        policy:
+          - review
+          - qa
+        provider_options:
+          claude:
+            allowed_tools:
+              - Read
+              - Glob
+              - Grep
+              - WebSearch
+              - WebFetch
+        rules:
+          - condition: approved
+          - condition: needs_fix
+        instruction: refactoring-review-qa
+        output_contracts:
+          report:
+            - name: qa-review.md
+              format: qa-review
+    rules:
+      - condition: all("approved")
+        next: supervise
+      - condition: any("needs_fix")
+        next: fix
+
+  - name: fix
+    edit: true
+    persona: coder
+    policy:
+      - coding
+      - testing
+      - fraktor-coding
+    knowledge: architecture
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Edit
+          - Write
+          - Bash
+          - WebSearch
+          - WebFetch
+    required_permission_mode: full
+    pass_previous_response: false
+    instruction: refactoring-fix
+    rules:
+      - condition: 修正完了（ci-check.sh ai all 通過済み）
+        next: reviewers
+      - condition: 判断できない、情報不足
+        next: plan
+
+  - name: supervise
+    edit: false
+    persona: supervisor
+    policy: review
+    provider_options:
+      claude:
+        allowed_tools:
+          - Read
+          - Glob
+          - Grep
+          - Bash
+          - WebSearch
+          - WebFetch
+    pass_previous_response: false
+    instruction: refactoring-supervise
+    output_contracts:
+      report:
+        - name: supervisor-validation.md
+          format: supervisor-validation
+        - name: summary.md
+          format: summary
+          use_judge: false
+    rules:
+      - condition: すべて問題なし
+        next: COMPLETE
+      - condition: テスト失敗、ビルドエラー、要件未達（修正で解決可能）
+        next: fix
+      - condition: 根本的な設計変更が必要
+        next: plan

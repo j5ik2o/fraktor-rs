@@ -1,8 +1,8 @@
 //! Shared test utilities for persistence integration tests.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
-/// Creates a shared mutex wrapping the given value.
-pub fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<RuntimeMutex<T>> {
-  ArcShared::new(RuntimeMutex::new(value))
+/// Creates a shared lock wrapping the given value.
+pub fn shared_mutex<T: Send + 'static>(value: T) -> ArcShared<SpinSyncMutex<T>> {
+  ArcShared::new(SpinSyncMutex::new(value))
 }

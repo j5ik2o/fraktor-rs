@@ -10,7 +10,7 @@ use alloc::{
 };
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -345,7 +345,8 @@ impl WorkPullingProducerController {
       // ワーカー検出のために Receptionist をサブスクライブする。
       subscribe_to_receptionist(ctx, &worker_service_key, &listing_adapter);
 
-      let state = ArcShared::new(RuntimeMutex::new(WorkPullingState::<A>::new(producer_id.clone(), buffer_size)));
+      let state =
+        SharedLock::new_with_driver::<SpinSyncMutex<_>>(WorkPullingState::<A>::new(producer_id.clone(), buffer_size));
       let load_state_adapter = if durable_queue_behavior.is_some() {
         match ctx.message_adapter(|loaded: DurableProducerQueueState<A>| {
           Ok(WorkPullingProducerControllerCommand::durable_queue_loaded(loaded))
@@ -388,14 +389,13 @@ impl WorkPullingProducerController {
       } else {
         None
       };
-      {
-        let mut s = state.lock();
+      state.with_lock(|s| {
         s.send_adapter = Some(send_adapter);
         s.demand_adapter = Some(demand_adapter);
         s.store_ack_adapter = store_ack_adapter;
         s.durable_queue = durable_queue.clone();
         s.awaiting_load = durable_queue.is_some();
-      }
+      });
       if let (Some(mut durable_queue), Some(load_state_adapter)) =
         (durable_queue.as_ref().cloned(), load_state_adapter.as_ref().cloned())
         && let Err(error) = durable_queue.try_tell(DurableProducerQueueCommand::load_state(load_state_adapter))
@@ -404,7 +404,7 @@ impl WorkPullingProducerController {
           alloc::format!("WorkPullingProducerController failed to request durable queue state: {:?}", error);
         ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
         return Behaviors::stopped();
-      } else if state.lock().awaiting_load
+      } else if state.with_lock(|state| state.awaiting_load)
         && let Err(error) = ctx.schedule_once(
           durable_queue_request_timeout,
           self_ref.clone(),
@@ -423,17 +423,16 @@ impl WorkPullingProducerController {
       Behaviors::receive_message(move |ctx, command: &WorkPullingProducerControllerCommand<A>| {
         let mut stop_self = None::<String>;
         let mut timeout_warning = None::<String>;
-        let deferred = {
-          let mut state = state.lock();
+        let deferred = state.with_lock(|state| {
           let mut deferred: Vec<WppcDeferredAction<A>> = Vec::new();
           match command.kind() {
             | WorkPullingProducerControllerCommandKind::Start { producer } => {
               state.producer = Some(producer.clone());
-              collect_maybe_request_next(&mut state, &mut deferred);
+              collect_maybe_request_next(state, &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::Msg { message } => {
               state.awaiting_msg = false;
-              collect_on_msg(&mut state, message.clone(), &mut deferred);
+              collect_on_msg(state, message.clone(), &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::GetWorkerStats { reply_to } => {
               let stats = WorkerStats::new(state.worker_count());
@@ -441,7 +440,7 @@ impl WorkPullingProducerController {
             },
             | WorkPullingProducerControllerCommandKind::WorkerListing { listing } => {
               collect_on_worker_listing(
-                &mut state,
+                state,
                 listing,
                 &producer_id_inner,
                 &self_ref,
@@ -450,7 +449,7 @@ impl WorkPullingProducerController {
               );
             },
             | WorkPullingProducerControllerCommandKind::InternalDemand { request } => {
-              collect_on_internal_demand(&mut state, request, &mut deferred);
+              collect_on_internal_demand(state, request, &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
               state.current_seq_nr = loaded.current_seq_nr();
@@ -462,11 +461,11 @@ impl WorkPullingProducerController {
                 ));
               }
               if loaded.unconfirmed().is_empty() {
-                collect_maybe_request_next(&mut state, &mut deferred);
+                collect_maybe_request_next(state, &mut deferred);
               }
             },
             | WorkPullingProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
-              collect_on_durable_queue_message_stored(&mut state, ack, &self_ref, &mut deferred);
+              collect_on_durable_queue_message_stored(state, ack, &self_ref, &mut deferred);
             },
             | WorkPullingProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
               if state.awaiting_load {
@@ -529,15 +528,15 @@ impl WorkPullingProducerController {
                     WorkPullingProducerControllerCommand::replay_stored_message(inflight),
                   ));
                 }
-                collect_maybe_request_next(&mut state, &mut deferred);
+                collect_maybe_request_next(state, &mut deferred);
               }
             },
             | WorkPullingProducerControllerCommandKind::ReplayStoredMessage { sent } => {
-              collect_on_replayed_message(&mut state, sent.clone(), &mut deferred);
+              collect_on_replayed_message(state, sent.clone(), &mut deferred);
             },
           }
           deferred
-        }; // ステートロックはここで解放される
+        }); // ステートロックはここで解放される
 
         execute_wppc_deferred(deferred, ctx, &state, internal_ask_timeout, runtime_durable_queue_request_timeout);
         if let Some(message) = timeout_warning {
@@ -896,7 +895,7 @@ fn collect_on_durable_queue_message_stored<A>(
 fn execute_wppc_deferred<A>(
   actions: Vec<WppcDeferredAction<A>>,
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
-  state: &ArcShared<RuntimeMutex<WorkPullingState<A>>>,
+  state: &SharedLock<WorkPullingState<A>>,
   internal_ask_timeout: Duration,
   durable_queue_request_timeout: Duration,
 ) where
@@ -984,7 +983,9 @@ fn execute_wppc_deferred<A>(
           spawn_worker_actor::<A>(ctx, &worker_ref, &pc_producer_id, &producer_controller_settings)
         {
           // 先にワーカーを登録する
-          state.lock().workers.insert(pid_key(&worker_ref), entry);
+          state.with_lock(|state| {
+            state.workers.insert(pid_key(&worker_ref), entry);
+          });
 
           // ワーカー PC に Start と RegisterConsumer を送信する。
           // InternalDemand がインラインで処理され、state.workers に
@@ -1007,11 +1008,12 @@ fn execute_wppc_deferred<A>(
           }
 
           // バッファ済みメッセージを排出する
-          let mut s = state.lock();
-          let mut drain_deferred = Vec::new();
-          collect_drain_buffered(&mut s, &mut drain_deferred);
-          collect_maybe_request_next(&mut s, &mut drain_deferred);
-          drop(s);
+          let drain_deferred = state.with_lock(|s| {
+            let mut drain_deferred = Vec::new();
+            collect_drain_buffered(s, &mut drain_deferred);
+            collect_maybe_request_next(s, &mut drain_deferred);
+            drain_deferred
+          });
           pending.extend(drain_deferred);
         }
       },

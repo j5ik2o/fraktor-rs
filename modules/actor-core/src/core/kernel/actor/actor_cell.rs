@@ -14,7 +14,7 @@ use alloc::{
 };
 use core::{mem, task::Poll, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
@@ -116,8 +116,8 @@ pub struct ActorCell {
   /// inhabitants counter when the cell is dropped.
   new_dispatcher:  MessageDispatcherShared,
   sender:          ActorRefSenderShared,
-  receive_timeout: RuntimeMutex<Option<ReceiveTimeoutState>>,
-  state:           RuntimeMutex<ActorCellState>,
+  receive_timeout: SharedLock<Option<ReceiveTimeoutState>>,
+  state:           SharedLock<ActorCellState>,
   terminated:      AtomicBool,
 }
 
@@ -218,8 +218,8 @@ impl ActorCell {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
     let actor = ActorShared::new(factory.with_write(|f| f.create()));
-    let receive_timeout = RuntimeMutex::new(None);
-    let state = RuntimeMutex::new(ActorCellState::new());
+    let receive_timeout = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
+    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ActorCellState::new());
 
     let tags = props.tags().clone();
     let cell = ArcShared::new(Self {
@@ -381,22 +381,24 @@ impl ActorCell {
 
   /// Registers a child pid for supervision.
   pub fn register_child(&self, pid: Pid) {
-    let mut state = self.state.lock();
-    if !state.children.contains(&pid) {
-      state.children.push(pid);
-    }
-    find_or_insert_stats(&mut state.child_stats, pid);
+    self.state.with_write(|state| {
+      if !state.children.contains(&pid) {
+        state.children.push(pid);
+      }
+      find_or_insert_stats(&mut state.child_stats, pid);
+    });
   }
 
   /// Removes a child pid from supervision tracking.
   pub fn unregister_child(&self, pid: &Pid) {
-    let mut state = self.state.lock();
-    state.children.retain(|child| child != pid);
-    state.child_stats.retain(|(child, _)| child != pid);
+    self.state.with_write(|state| {
+      state.children.retain(|child| child != pid);
+      state.child_stats.retain(|(child, _)| child != pid);
+    });
   }
 
   fn stop_child(&self, pid: Pid) {
-    let should_stop = { self.state.lock().children.contains(&pid) };
+    let should_stop = self.state.with_read(|state| state.children.contains(&pid));
     if should_stop && let Err(send_error) = self.system().send_system_message(pid, SystemMessage::Stop) {
       self.system().record_send_error(Some(pid), &send_error);
     }
@@ -405,12 +407,13 @@ impl ActorCell {
   /// Returns the current child pids supervised by this cell.
   #[must_use]
   pub fn children(&self) -> Vec<Pid> {
-    self.state.lock().children.clone()
+    self.state.with_read(|state| state.children.clone())
   }
 
   pub(crate) fn snapshot_child_restart_stats(&self, pid: Pid) -> Option<RestartStatistics> {
-    let state = self.state.lock();
-    state.child_stats.iter().find(|(child, _)| *child == pid).map(|(_, record)| record.clone())
+    self
+      .state
+      .with_read(|state| state.child_stats.iter().find(|(child, _)| *child == pid).map(|(_, record)| record.clone()))
   }
 
   fn mark_terminated(&self) {
@@ -431,22 +434,24 @@ impl ActorCell {
       return;
     }
 
-    let mut state = self.state.lock();
-    // ロック内で再確認し、TOCTOU競合を防ぐ
-    if self.is_terminated() {
-      drop(state);
-      if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
-        self.system().record_send_error(Some(watcher), &send_error);
+    let notify_immediately = self.state.with_write(|state| {
+      if self.is_terminated() {
+        return true;
       }
-      return;
-    }
-    if !state.watchers.contains(&watcher) {
-      state.watchers.push(watcher);
+      if !state.watchers.contains(&watcher) {
+        state.watchers.push(watcher);
+      }
+      false
+    });
+    if notify_immediately
+      && let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid))
+    {
+      self.system().record_send_error(Some(watcher), &send_error);
     }
   }
 
   pub(crate) fn handle_unwatch(&self, watcher: Pid) {
-    self.state.lock().watchers.retain(|pid| *pid != watcher);
+    self.state.with_write(|state| state.watchers.retain(|pid| *pid != watcher));
   }
 
   /// Stashes a user message with an explicit stash capacity limit.
@@ -458,49 +463,52 @@ impl ActorCell {
     if self.mailbox().user_deque().is_none() {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     }
-    let mut state = self.state.lock();
-    if state.stashed_messages.len() >= max_messages {
-      return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
-    }
-    state.stashed_messages.push_back(message);
-    Ok(())
+    self.state.with_write(|state| {
+      if state.stashed_messages.len() >= max_messages {
+        return Err(ActorError::recoverable(STASH_OVERFLOW_REASON));
+      }
+      state.stashed_messages.push_back(message);
+      Ok(())
+    })
   }
 
   /// Returns the number of messages currently held in the stash.
   #[must_use]
   pub(crate) fn stashed_message_len(&self) -> usize {
-    self.state.lock().stashed_messages.len()
+    self.state.with_read(|state| state.stashed_messages.len())
   }
 
   /// Applies a read-only closure to the current stashed messages.
   pub(crate) fn with_stashed_messages<R>(&self, f: impl FnOnce(&VecDeque<AnyMessage>) -> R) -> R {
-    let state = self.state.lock();
-    f(&state.stashed_messages)
+    self.state.with_read(|state| f(&state.stashed_messages))
   }
 
   /// Removes all currently stashed messages and returns how many were dropped.
   #[must_use]
   pub(crate) fn clear_stashed_messages(&self) -> usize {
-    let mut state = self.state.lock();
-    let count = state.stashed_messages.len();
-    state.stashed_messages.clear();
-    count
+    self.state.with_write(|state| {
+      let count = state.stashed_messages.len();
+      state.stashed_messages.clear();
+      count
+    })
   }
 
   fn take_timer_handle(&self, key: &str) -> Option<SchedulerHandle> {
-    let mut state = self.state.lock();
-    let index = state.timer_handles.iter().position(|(existing, _)| existing == key)?;
-    let (_, handle) = state.timer_handles.swap_remove(index);
-    Some(handle)
+    self.state.with_write(|state| {
+      let index = state.timer_handles.iter().position(|(existing, _)| existing == key)?;
+      let (_, handle) = state.timer_handles.swap_remove(index);
+      Some(handle)
+    })
   }
 
   fn store_timer_handle(&self, key: String, handle: SchedulerHandle) {
-    let mut state = self.state.lock();
-    if let Some((_, existing_handle)) = state.timer_handles.iter_mut().find(|(existing, _)| existing == &key) {
-      *existing_handle = handle;
-    } else {
-      state.timer_handles.push((key, handle));
-    }
+    self.state.with_write(|state| {
+      if let Some((_, existing_handle)) = state.timer_handles.iter_mut().find(|(existing, _)| existing == &key) {
+        *existing_handle = handle;
+      } else {
+        state.timer_handles.push((key, handle));
+      }
+    });
   }
 
   fn schedule_timer_command(
@@ -572,12 +580,13 @@ impl ActorCell {
   /// Returns whether the timer associated with `key` is currently active.
   #[must_use]
   pub(crate) fn is_timer_active(&self, key: &str) -> bool {
-    let state = self.state.lock();
-    state
-      .timer_handles
-      .iter()
-      .find(|(existing, _)| existing == key)
-      .is_some_and(|(_, handle)| !handle.is_cancelled() && !handle.is_completed())
+    self.state.with_read(|state| {
+      state
+        .timer_handles
+        .iter()
+        .find(|(existing, _)| existing == key)
+        .is_some_and(|(_, handle)| !handle.is_cancelled() && !handle.is_completed())
+    })
   }
 
   /// Cancels the timer associated with `key`.
@@ -592,10 +601,7 @@ impl ActorCell {
 
   /// Cancels every tracked timer for this actor.
   pub(crate) fn cancel_all_timers(&self) {
-    let handles = {
-      let mut state = self.state.lock();
-      mem::take(&mut state.timer_handles)
-    };
+    let handles = self.state.with_write(|state| mem::take(&mut state.timer_handles));
     if handles.is_empty() {
       return;
     }
@@ -621,10 +627,7 @@ impl ActorCell {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     };
 
-    let message = {
-      let mut state = self.state.lock();
-      state.stashed_messages.pop_front()
-    };
+    let message = self.state.with_write(|state| state.stashed_messages.pop_front());
 
     let Some(message) = message else {
       return Ok(0);
@@ -634,10 +637,11 @@ impl ActorCell {
     pending.push_back(message);
 
     if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
-      let mut state = self.state.lock();
-      if let Some(message) = pending.pop_front() {
-        state.stashed_messages.push_front(message);
-      }
+      self.state.with_write(|state| {
+        if let Some(message) = pending.pop_front() {
+          state.stashed_messages.push_front(message);
+        }
+      });
       return Err(ActorError::from_send_error(&error));
     }
 
@@ -661,18 +665,14 @@ impl ActorCell {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     };
 
-    let pending = {
-      let mut state = self.state.lock();
-      mem::take(&mut state.stashed_messages)
-    };
+    let pending = self.state.with_write(|state| mem::take(&mut state.stashed_messages));
 
     if pending.is_empty() {
       return Ok(0);
     }
 
     if let Err(error) = mailbox.prepend_user_messages_deque(user_deque, &pending) {
-      let mut state = self.state.lock();
-      state.stashed_messages = pending;
+      self.state.with_write(|state| state.stashed_messages = pending);
       return Err(ActorError::from_send_error(&error));
     }
 
@@ -702,8 +702,7 @@ impl ActorCell {
       return Err(ActorError::recoverable(STASH_REQUIRES_DEQUE_REASON));
     };
 
-    let original_messages = {
-      let mut state = self.state.lock();
+    let original_messages = self.state.with_write(|state| {
       let take_count = limit.min(state.stashed_messages.len());
       let mut messages = VecDeque::with_capacity(take_count);
       for _ in 0..take_count {
@@ -712,7 +711,7 @@ impl ActorCell {
         }
       }
       messages
-    };
+    });
 
     if original_messages.is_empty() {
       return Ok(0);
@@ -740,41 +739,45 @@ impl ActorCell {
   }
 
   fn restore_stashed_messages(&self, mut messages: VecDeque<AnyMessage>) {
-    let mut state = self.state.lock();
-    while let Some(message) = messages.pop_back() {
-      state.stashed_messages.push_front(message);
-    }
+    self.state.with_write(|state| {
+      while let Some(message) = messages.pop_back() {
+        state.stashed_messages.push_front(message);
+      }
+    });
   }
 
   /// Allocates and tracks a new adapter handle for message adapters.
   pub(crate) fn acquire_adapter_handle(&self) -> (AdapterRefHandleId, ArcShared<AdapterLifecycleState>) {
-    let mut state = self.state.lock();
-    let id = state.adapter_handle_counter.wrapping_add(1);
-    state.adapter_handle_counter = id;
-    let handle_id = id;
-    let lifecycle = ArcShared::new(AdapterLifecycleState::new());
-    let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
-    state.adapter_handles.push(handle);
-    (handle_id, lifecycle)
+    self.state.with_write(|state| {
+      let id = state.adapter_handle_counter.wrapping_add(1);
+      state.adapter_handle_counter = id;
+      let handle_id = id;
+      let lifecycle = ArcShared::new(AdapterLifecycleState::new());
+      let handle = AdapterRefHandle::new(handle_id, lifecycle.clone());
+      state.adapter_handles.push(handle);
+      (handle_id, lifecycle)
+    })
   }
 
   /// Removes the specified adapter handle and marks it as stopped.
   pub(crate) fn remove_adapter_handle(&self, handle_id: AdapterRefHandleId) {
-    let mut state = self.state.lock();
-    let handles = &mut state.adapter_handles;
-    if let Some(index) = handles.iter().position(|handle| handle.id() == handle_id) {
-      let handle = handles.remove(index);
-      handle.stop();
-    }
+    self.state.with_write(|state| {
+      let handles = &mut state.adapter_handles;
+      if let Some(index) = handles.iter().position(|handle| handle.id() == handle_id) {
+        let handle = handles.remove(index);
+        handle.stop();
+      }
+    });
   }
 
   /// Drops every tracked adapter handle, notifying senders that the actor stopped.
   pub(crate) fn drop_adapter_refs(&self) {
-    let mut state = self.state.lock();
-    for handle in state.adapter_handles.iter() {
-      handle.stop();
-    }
-    state.adapter_handles.clear();
+    self.state.with_write(|state| {
+      for handle in state.adapter_handles.iter() {
+        handle.stop();
+      }
+      state.adapter_handles.clear();
+    });
   }
 
   /// Registers a new pipe task targeting the actor itself and schedules its first poll.
@@ -791,30 +794,27 @@ impl ActorCell {
     if self.is_terminated() {
       return Err(PipeSpawnError::TargetStopped);
     }
-    let mut state = self.state.lock();
-    // ロック内で再確認し、TOCTOU競合を防ぐ
-    if self.is_terminated() {
-      return Err(PipeSpawnError::TargetStopped);
-    }
-    let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
-    state.pipe_task_counter = id.get();
-    let task = match target {
-      | Some(t) => ContextPipeTask::new_with_target(id, future, self.pid, self.system(), t),
-      | None => ContextPipeTask::new(id, future, self.pid, self.system()),
-    };
-    state.pipe_tasks.push(task);
-    drop(state);
+    let id = self.state.with_write(|state| {
+      if self.is_terminated() {
+        return Err(PipeSpawnError::TargetStopped);
+      }
+      let id = ContextPipeTaskId::new(state.pipe_task_counter.wrapping_add(1));
+      state.pipe_task_counter = id.get();
+      let task = match target {
+        | Some(t) => ContextPipeTask::new_with_target(id, future, self.pid, self.system(), t),
+        | None => ContextPipeTask::new(id, future, self.pid, self.system()),
+      };
+      state.pipe_tasks.push(task);
+      Ok(id)
+    })?;
     self.poll_pipe_task(id);
     Ok(())
   }
 
   fn poll_pipe_task(&self, task_id: ContextPipeTaskId) {
-    let result = {
-      let mut state = self.state.lock();
+    let result = self.state.with_write(|state| {
       let tasks = &mut state.pipe_tasks;
-      let Some(index) = tasks.iter().position(|task| task.id() == task_id) else {
-        return;
-      };
+      let index = tasks.iter().position(|task| task.id() == task_id)?;
       match tasks[index].poll() {
         | Poll::Ready(message) => {
           let mut task = tasks.swap_remove(index);
@@ -822,7 +822,7 @@ impl ActorCell {
         },
         | Poll::Pending => None,
       }
-    };
+    });
 
     if let Some((Some(message), target)) = result {
       if let Some(mut target_ref) = target {
@@ -853,11 +853,11 @@ impl ActorCell {
   }
 
   fn drop_pipe_tasks(&self) {
-    self.state.lock().pipe_tasks.clear();
+    self.state.with_write(|state| state.pipe_tasks.clear());
   }
 
   fn drop_stash_messages(&self) {
-    self.state.lock().stashed_messages.clear();
+    self.state.with_write(|state| state.stashed_messages.clear());
   }
 
   fn drop_timer_handles(&self) {
@@ -865,7 +865,7 @@ impl ActorCell {
   }
 
   fn drop_watch_with_messages(&self) {
-    self.state.lock().watch_with_messages.clear();
+    self.state.with_write(|state| state.watch_with_messages.clear());
   }
 
   fn handle_pipe_task_ready(&self, task_id: ContextPipeTaskId) {
@@ -873,12 +873,14 @@ impl ActorCell {
   }
 
   fn notify_watchers_on_stop(&self) {
-    let mut state = self.state.lock();
-    if state.watchers.is_empty() {
+    let Some(recipients) = self.state.with_write(|state| {
+      if state.watchers.is_empty() {
+        return None;
+      }
+      Some(mem::take(&mut state.watchers))
+    }) else {
       return;
-    }
-    let recipients = mem::take(&mut state.watchers);
-    drop(state);
+    };
 
     for watcher in recipients {
       if let Err(send_error) = self.system().send_system_message(watcher, SystemMessage::Terminated(self.pid)) {
@@ -907,24 +909,26 @@ impl ActorCell {
 
   /// Registers a custom message to deliver when the watched target terminates.
   pub(crate) fn register_watch_with(&self, target: Pid, message: AnyMessage) {
-    let mut state = self.state.lock();
-    state.watch_with_messages.retain(|(pid, _)| *pid != target);
-    state.watch_with_messages.push((target, message));
+    self.state.with_write(|state| {
+      state.watch_with_messages.retain(|(pid, _)| *pid != target);
+      state.watch_with_messages.push((target, message));
+    });
   }
 
   /// Removes any custom watch-with message for the given target.
   pub(crate) fn remove_watch_with(&self, target: Pid) {
-    self.state.lock().watch_with_messages.retain(|(pid, _)| *pid != target);
+    self.state.with_write(|state| state.watch_with_messages.retain(|(pid, _)| *pid != target));
   }
 
   fn take_watch_with_message(&self, target: Pid) -> Option<AnyMessage> {
-    let mut state = self.state.lock();
-    if let Some(index) = state.watch_with_messages.iter().position(|(pid, _)| *pid == target) {
-      let (_, message) = state.watch_with_messages.swap_remove(index);
-      Some(message)
-    } else {
-      None
-    }
+    self.state.with_write(|state| {
+      if let Some(index) = state.watch_with_messages.iter().position(|(pid, _)| *pid == target) {
+        let (_, message) = state.watch_with_messages.swap_remove(index);
+        Some(message)
+      } else {
+        None
+      }
+    })
   }
 
   fn handle_create(&self) -> Result<(), ActorError> {
@@ -958,7 +962,7 @@ impl ActorCell {
 
   #[cfg_attr(not(test), allow(dead_code))]
   pub(crate) fn watchers_snapshot(&self) -> Vec<Pid> {
-    self.state.lock().watchers.clone()
+    self.state.with_read(|state| state.watchers.clone())
   }
 
   fn handle_stop(&self) -> Result<(), ActorError> {
@@ -1238,14 +1242,15 @@ impl ActorCell {
     };
 
     let directive = {
-      let mut state = self.state.lock();
-      let entry = find_or_insert_stats(&mut state.child_stats, child);
-      strategy.handle_failure(entry, error, now)
+      self.state.with_write(|state| {
+        let entry = find_or_insert_stats(&mut state.child_stats, child);
+        strategy.handle_failure(entry, error, now)
+      })
     };
 
     let affected = match strategy.kind() {
       | SupervisorStrategyKind::OneForOne => vec![child],
-      | SupervisorStrategyKind::AllForOne => self.state.lock().children.clone(),
+      | SupervisorStrategyKind::AllForOne => self.state.with_read(|state| state.children.clone()),
     };
 
     if matches!(directive, SupervisorDirective::Stop) {
@@ -1259,8 +1264,7 @@ impl ActorCell {
     if children.is_empty() {
       return;
     }
-    let mut state = self.state.lock();
-    state.child_stats.retain(|(pid, _)| !children.contains(pid));
+    self.state.with_write(|state| state.child_stats.retain(|(pid, _)| !children.contains(pid)));
   }
 }
 

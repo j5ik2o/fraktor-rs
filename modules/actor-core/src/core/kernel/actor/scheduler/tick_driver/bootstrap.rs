@@ -9,7 +9,7 @@ use core::time::Duration;
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_core_rs::core::time::TimerInstant;
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, RuntimeMutex, SharedAccess},
+  sync::{SharedAccess, SharedLock, SpinSyncMutex},
   time::MonotonicClock,
 };
 
@@ -70,28 +70,19 @@ impl TickDriverBootstrap {
           let scheduler = ctx.scheduler();
           scheduler.with_read(|s| s.clock().now())
         };
-        let resolution = {
-          let driver = driver.lock();
-          driver.resolution()
-        };
+        let resolution = { driver.with_lock(|driver| driver.resolution()) };
         let capacity = {
           let scheduler = ctx.scheduler();
           scheduler.with_read(|s| s.config().profile().tick_buffer_quota())
         };
         let signal = TickExecutorSignal::new();
         let feed = TickFeed::new(resolution, capacity, signal.clone());
-        let handle = {
-          let mut driver = driver.lock();
-          driver.start(feed.clone())?
-        };
-        let auto_metadata = {
-          let executor_pump = executor_pump.lock();
-          executor_pump.auto_metadata(handle.id(), handle.resolution())
-        };
+        let handle = { driver.with_lock(|driver| driver.start(feed.clone()))? };
+        let auto_metadata =
+          { executor_pump.with_lock(|executor_pump| executor_pump.auto_metadata(handle.id(), handle.resolution())) };
         let executor = SchedulerTickExecutor::new(ctx.scheduler(), feed.clone(), signal);
         let executor_control = {
-          let mut executor_pump = executor_pump.lock();
-          match executor_pump.spawn(executor) {
+          match executor_pump.with_lock(|executor_pump| executor_pump.spawn(executor)) {
             | Ok(control) => control,
             | Err(error) => {
               let mut handle = handle;
@@ -133,7 +124,7 @@ impl TickDriverBootstrap {
     driver.attach(ctx);
     let state = driver.state();
     let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
     let bundle = TickDriverBundle::new_manual(handle.clone(), controller);
@@ -161,29 +152,26 @@ fn instant_to_duration(instant: TimerInstant) -> Duration {
 }
 
 struct CompositeTickDriverControl {
-  driver_control:   ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
-  executor_control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+  driver_control:   SharedLock<Box<dyn TickDriverControl>>,
+  executor_control: SharedLock<Box<dyn TickDriverControl>>,
 }
 
 impl CompositeTickDriverControl {
-  fn new(
-    driver_control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
-    executor_control: Box<dyn TickDriverControl>,
-  ) -> Self {
-    Self { driver_control, executor_control: ArcShared::new(RuntimeMutex::new(executor_control)) }
+  fn new(driver_control: SharedLock<Box<dyn TickDriverControl>>, executor_control: Box<dyn TickDriverControl>) -> Self {
+    Self { driver_control, executor_control: SharedLock::new_with_driver::<SpinSyncMutex<_>>(executor_control) }
   }
 }
 
 impl TickDriverControl for CompositeTickDriverControl {
   fn shutdown(&self) {
-    self.driver_control.lock().shutdown();
-    self.executor_control.lock().shutdown();
+    self.driver_control.with_lock(|control| control.shutdown());
+    self.executor_control.with_lock(|control| control.shutdown());
   }
 }
 
 fn compose_runtime_handle(handle: &TickDriverHandle, executor_control: Box<dyn TickDriverControl>) -> TickDriverHandle {
   let control: Box<dyn TickDriverControl> =
     Box::new(CompositeTickDriverControl::new(handle.control(), executor_control));
-  let control = ArcShared::new(RuntimeMutex::new(control));
+  let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
   TickDriverHandle::new(handle.id(), handle.kind(), handle.resolution(), control)
 }

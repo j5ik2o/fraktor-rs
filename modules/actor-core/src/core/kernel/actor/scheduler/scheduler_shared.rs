@@ -1,15 +1,27 @@
 //! Thin shared wrapper for `Scheduler`.
 //!
-//! Hides the `ArcShared<RuntimeRwLock<...>>` internals and exposes only
+//! Hides the `SharedRwLock<...>` internals and exposes only
 //! the `with_read` / `with_write` closure API.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock};
 
 use super::Scheduler;
 
-/// Thin shared wrapper around `ArcShared<RuntimeRwLock<Scheduler<..>>>`.
+/// Thin shared wrapper around [`SharedRwLock<Scheduler>`].
+///
+/// External callers obtain this handle from
+/// [`crate::core::kernel::actor::scheduler::SchedulerContext`] instead of
+/// constructing it from the raw lock.
+///
+/// ```compile_fail
+/// use fraktor_actor_core_rs::core::kernel::actor::scheduler::{Scheduler, SchedulerConfig, SchedulerShared};
+/// use fraktor_utils_core_rs::core::sync::{SharedRwLock, SpinSyncRwLock};
+///
+/// let scheduler = Scheduler::new(SchedulerConfig::default());
+/// let _ = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
+/// ```
 pub struct SchedulerShared {
-  inner: ArcShared<RuntimeRwLock<Scheduler>>,
+  inner: SharedRwLock<Scheduler>,
 }
 
 impl Clone for SchedulerShared {
@@ -19,9 +31,9 @@ impl Clone for SchedulerShared {
 }
 
 impl SchedulerShared {
-  /// Wrap an existing shared mutex.
+  /// Wrap an existing shared rw lock.
   #[must_use]
-  pub const fn new(inner: ArcShared<RuntimeRwLock<Scheduler>>) -> Self {
+  pub(crate) const fn new(inner: SharedRwLock<Scheduler>) -> Self {
     Self { inner }
   }
 }
@@ -29,13 +41,11 @@ impl SchedulerShared {
 impl SharedAccess<Scheduler> for SchedulerShared {
   #[inline]
   fn with_read<R>(&self, f: impl FnOnce(&Scheduler) -> R) -> R {
-    let guard = self.inner.read();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   #[inline]
   fn with_write<R>(&self, f: impl FnOnce(&mut Scheduler) -> R) -> R {
-    let mut guard = self.inner.write();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

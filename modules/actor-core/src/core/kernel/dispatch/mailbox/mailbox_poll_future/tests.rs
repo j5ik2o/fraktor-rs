@@ -5,7 +5,7 @@ use core::{
   task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use super::{super::mailbox_queue_state::QueueState, MailboxPollFuture, QueuePollFuture};
 use crate::core::kernel::{
@@ -17,13 +17,13 @@ impl<T> QueuePollFuture<T>
 where
   T: Send + 'static,
 {
-  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<T>>>) -> Self {
+  pub(crate) const fn new(state: SharedLock<QueueState<T>>) -> Self {
     Self { state, waiter: None }
   }
 }
 
 impl MailboxPollFuture {
-  pub(crate) const fn new(state: ArcShared<RuntimeMutex<QueueState<AnyMessage>>>) -> Self {
+  pub(crate) const fn new(state: SharedLock<QueueState<AnyMessage>>) -> Self {
     Self { inner: QueuePollFuture::new(state) }
   }
 }

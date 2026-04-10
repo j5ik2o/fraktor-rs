@@ -1,6 +1,6 @@
 use alloc::string::String;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::ActorRefResolver;
 use crate::core::{
@@ -57,7 +57,7 @@ fn actor_ref_resolver_rejects_actor_refs_from_another_actor_system() {
 #[test]
 fn actor_ref_resolver_setup_overrides_default_extension_factory() {
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
-  let invoked = ArcShared::new(NoStdMutex::new(false));
+  let invoked = ArcShared::new(SpinSyncMutex::new(false));
   let setup = ActorRefResolverSetup::new({
     let invoked = invoked.clone();
     move |system: &ActorSystem| {

@@ -3,7 +3,7 @@
 use core::time::Duration;
 use std::{env, thread, time::Instant};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -32,12 +32,12 @@ impl Actor for NoopActor {
 }
 
 struct SelectionProbeActor {
-  messages: ArcShared<NoStdMutex<Vec<String>>>,
-  senders:  ArcShared<NoStdMutex<Vec<Option<Pid>>>>,
+  messages: ArcShared<SpinSyncMutex<Vec<String>>>,
+  senders:  ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>,
 }
 
 impl SelectionProbeActor {
-  fn new(messages: ArcShared<NoStdMutex<Vec<String>>>, senders: ArcShared<NoStdMutex<Vec<Option<Pid>>>>) -> Self {
+  fn new(messages: ArcShared<SpinSyncMutex<Vec<String>>>, senders: ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>) -> Self {
     Self { messages, senders }
   }
 }
@@ -61,9 +61,9 @@ fn build_selection_system() -> ActorSystem {
 
 fn spawn_selection_probe(
   system: &ActorSystem,
-) -> (ChildRef, ArcShared<NoStdMutex<Vec<String>>>, ArcShared<NoStdMutex<Vec<Option<Pid>>>>) {
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let senders = ArcShared::new(NoStdMutex::new(Vec::new()));
+) -> (ChildRef, ArcShared<SpinSyncMutex<Vec<String>>>, ArcShared<SpinSyncMutex<Vec<Option<Pid>>>>) {
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let senders = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let messages = messages.clone();
     let senders = senders.clone();

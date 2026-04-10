@@ -72,14 +72,38 @@ mod trait_object_tests {
   #[test]
   fn arc_shared_into_dyn() {
     let shared = ArcShared::new(42i32);
-    let dyn_shared: ArcShared<dyn TestTrait> = shared.into_dyn(|v| v as &dyn TestTrait);
+    let dyn_shared: ArcShared<dyn TestTrait> = shared;
     assert_eq!(dyn_shared.get_value(), 42);
   }
 
   #[test]
   fn arc_shared_shared_dyn_into_dyn() {
     let shared = ArcShared::new(42i32);
-    let dyn_shared: ArcShared<dyn TestTrait> = SharedDyn::into_dyn(shared, |v| v as &dyn TestTrait);
+    let dyn_shared: ArcShared<dyn TestTrait> = shared;
+    assert_eq!(dyn_shared.get_value(), 42);
+  }
+}
+
+#[cfg(feature = "unsize")]
+mod unsize_trait_object_tests {
+  use super::*;
+  use crate::core::sync::shared::SharedDyn;
+
+  trait TestTrait {
+    fn get_value(&self) -> i32;
+  }
+
+  impl TestTrait for i32 {
+    fn get_value(&self) -> i32 {
+      *self
+    }
+  }
+
+  #[test]
+  fn shared_dyn_into_dyn_under_unsize_feature() {
+    let shared = ArcShared::new(42i32);
+    let dyn_shared: ArcShared<dyn TestTrait> =
+      <ArcShared<i32> as SharedDyn<i32>>::into_dyn(shared, |value| value as &dyn TestTrait);
     assert_eq!(dyn_shared.get_value(), 42);
   }
 }

@@ -84,9 +84,9 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
 
 #[test]
 fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
-  use alloc::{string::ToString, sync::Arc, vec::Vec};
+  use alloc::{string::ToString, vec::Vec};
 
-  use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+  use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
   use crate::core::kernel::{
     actor::{
@@ -101,13 +101,13 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
   };
 
   struct RecordingActor {
-    seen: Arc<RuntimeMutex<Vec<u32>>>,
+    seen: SharedLock<Vec<u32>>,
   }
 
   impl Actor for RecordingActor {
     fn receive(&mut self, _ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
       if let Some(value) = message.downcast_ref::<u32>() {
-        self.seen.lock().push(*value);
+        self.seen.with_lock(|seen| seen.push(*value));
       }
       Ok(())
     }
@@ -122,8 +122,8 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
     config.with_dispatcher_configurator("default", configurator_handle)
   });
   let state = system.state();
-  let seen = Arc::new(RuntimeMutex::new(Vec::new()));
-  let seen_clone = Arc::clone(&seen);
+  let seen = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
+  let seen_clone = seen.clone();
   let props = Props::from_fn(move || RecordingActor { seen: seen_clone.clone() });
   let pid = state.allocate_pid();
   let cell = ActorCell::create(state.clone(), pid, None, "recording-actor".to_string(), &props).expect("create cell");
@@ -134,7 +134,7 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
     actor_ref.tell(AnyMessage::new(i));
   }
 
-  let received = seen.lock().clone();
+  let received = seen.with_lock(|values| values.clone());
   assert_eq!(received, (0..10_u32).collect::<Vec<_>>(), "messages must be delivered in FIFO order");
 }
 
@@ -145,7 +145,7 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
   use alloc::{string::ToString, sync::Arc};
   use core::sync::atomic::{AtomicUsize, Ordering};
 
-  use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+  use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
   use crate::core::kernel::{
     actor::{
@@ -161,13 +161,13 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
 
   struct ForwardingActor {
     forwards_remaining: Arc<AtomicUsize>,
-    downstream:         Arc<RuntimeMutex<Option<ActorRef>>>,
+    downstream:         SharedLock<Option<ActorRef>>,
   }
 
   impl Actor for ForwardingActor {
     fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
       if self.forwards_remaining.fetch_sub(1, Ordering::SeqCst) > 0
-        && let Some(downstream_ref) = self.downstream.lock().clone()
+        && let Some(downstream_ref) = self.downstream.with_lock(|downstream| downstream.clone())
       {
         let mut fwd = downstream_ref;
         fwd.tell(AnyMessage::new(1_u32));
@@ -209,7 +209,7 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
 
   // Create forwarding actor with reference to downstream.
   let forwards_remaining = Arc::new(AtomicUsize::new(3));
-  let downstream = Arc::new(RuntimeMutex::new(Some(counter_ref)));
+  let downstream = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Some(counter_ref));
   let forwards_clone = forwards_remaining.clone();
   let downstream_clone = downstream.clone();
   let fwd_props = Props::from_fn(move || ForwardingActor {

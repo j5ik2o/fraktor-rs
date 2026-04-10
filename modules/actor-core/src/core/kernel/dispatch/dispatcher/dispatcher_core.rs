@@ -4,7 +4,7 @@
 //! that is identical across `DefaultDispatcher`, `PinnedDispatcher`, and
 //! `BalancingDispatcher`. The struct is intentionally CQS-strict and free of
 //! interior mutability: the surrounding `MessageDispatcherShared` provides the
-//! `RuntimeMutex` so callers can run command methods through `&mut self`.
+//! `SpinSyncMutex` so callers can run command methods through `&mut self`.
 
 #[cfg(test)]
 mod tests;

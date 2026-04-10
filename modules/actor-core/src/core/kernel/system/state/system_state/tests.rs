@@ -4,7 +4,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{super::booting_state::BootingSystemState, SystemState};
 use crate::core::kernel::{
@@ -136,7 +136,7 @@ impl TickDriver for StaticTickDriver {
 
   fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
   }
 }
@@ -472,7 +472,7 @@ fn system_state_emit_log() {
   use alloc::string::String;
 
   let state = build_state();
-  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events_shared: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
   let _subscription = state.event_stream().subscribe(&subscriber);
   let pid = state.allocate_pid();
@@ -539,7 +539,7 @@ fn system_state_temp_actor_round_trip() {
 fn system_state_remote_authority_events() {
   let mut state = build_state();
   let stream = state.event_stream();
-  let events_shared = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events_shared = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RemoteEventRecorder::new(events_shared.clone()));
   let _subscription = stream.subscribe(&subscriber);
 
@@ -676,7 +676,7 @@ fn remote_watch_hook_consumes_watch_skips_fallback() {
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
 
-  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
   state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), true, false)));
 
   state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
@@ -700,7 +700,7 @@ fn remote_watch_hook_non_consuming_watch_runs_fallback() {
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
 
-  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
   state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), false, false)));
 
   state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
@@ -724,7 +724,7 @@ fn remote_watch_hook_consumes_unwatch_is_invoked() {
   let watcher_pid = state.allocate_pid();
   let target_pid = state.allocate_pid();
 
-  let calls = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  let calls = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
   state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls.clone(), false, true)));
 
   state.send_system_message(target_pid, SystemMessage::Unwatch(watcher_pid)).expect("unwatch send ok");
@@ -745,10 +745,10 @@ fn remote_watch_hook_replaces_previous_registration() {
     ActorCell::create(state.clone(), watcher_pid, None, "watcher".to_string(), &props).expect("watcher cell");
   state.register_cell(watcher_cell);
 
-  let calls1 = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  let calls1 = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
   state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls1.clone(), false, false)));
 
-  let calls2 = ArcShared::new(NoStdMutex::new(RemoteWatchHookCalls::default()));
+  let calls2 = ArcShared::new(SpinSyncMutex::new(RemoteWatchHookCalls::default()));
   state.register_remote_watch_hook(Box::new(RecordingRemoteWatchHook::new(calls2.clone(), true, false)));
 
   state.send_system_message(target_pid, SystemMessage::Watch(watcher_pid)).expect("watch send ok");
@@ -779,7 +779,7 @@ fn system_state_logs_failure_with_pid_origin() {
   use core::time::Duration;
 
   let state = build_shared_state();
-  let events_shared: ArcShared<NoStdMutex<Vec<EventStreamEvent>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events_shared: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(events_shared.clone()));
   let _subscription = state.event_stream().subscribe(&subscriber);
 
@@ -810,13 +810,13 @@ struct RemoteWatchHookCalls {
 }
 
 struct RecordingRemoteWatchHook {
-  calls:           ArcShared<NoStdMutex<RemoteWatchHookCalls>>,
+  calls:           ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>,
   consume_watch:   bool,
   consume_unwatch: bool,
 }
 
 impl RecordingRemoteWatchHook {
-  fn new(calls: ArcShared<NoStdMutex<RemoteWatchHookCalls>>, consume_watch: bool, consume_unwatch: bool) -> Self {
+  fn new(calls: ArcShared<SpinSyncMutex<RemoteWatchHookCalls>>, consume_watch: bool, consume_unwatch: bool) -> Self {
     Self { calls, consume_watch, consume_unwatch }
   }
 }
@@ -838,18 +838,18 @@ impl crate::core::kernel::system::remote::RemoteWatchHook for RecordingRemoteWat
 }
 
 struct RemoteEventRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RemoteEventRecorder {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
 impl Default for RemoteEventRecorder {
   fn default() -> Self {
-    Self::new(ArcShared::new(NoStdMutex::new(Vec::new())))
+    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
   }
 }
 
@@ -881,18 +881,18 @@ fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigur
 }
 
 struct LogRecorder {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl LogRecorder {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
 
 impl Default for LogRecorder {
   fn default() -> Self {
-    Self::new(ArcShared::new(NoStdMutex::new(Vec::new())))
+    Self::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))
   }
 }
 

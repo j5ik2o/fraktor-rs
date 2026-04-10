@@ -1,7 +1,7 @@
 use alloc::{string::ToString, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{super::actor_context::ReceiveTimeoutState, ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
@@ -28,21 +28,21 @@ impl Actor for ProbeActor {
 }
 
 struct RecordingActor {
-  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl RecordingActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log }
   }
 }
 
 struct LifecycleRecorderActor {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl LifecycleRecorderActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { log }
   }
 }
@@ -76,11 +76,11 @@ impl Actor for RecordingActor {
 }
 
 struct OrderedMessageActor {
-  received: ArcShared<NoStdMutex<Vec<i32>>>,
+  received: ArcShared<SpinSyncMutex<Vec<i32>>>,
 }
 
 impl OrderedMessageActor {
-  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
     Self { received }
   }
 }
@@ -95,12 +95,12 @@ impl Actor for OrderedMessageActor {
 }
 
 struct IdentityProbeActor {
-  received: ArcShared<NoStdMutex<usize>>,
-  replies:  ArcShared<NoStdMutex<Vec<ActorIdentity>>>,
+  received: ArcShared<SpinSyncMutex<usize>>,
+  replies:  ArcShared<SpinSyncMutex<Vec<ActorIdentity>>>,
 }
 
 impl IdentityProbeActor {
-  fn new(received: ArcShared<NoStdMutex<usize>>, replies: ArcShared<NoStdMutex<Vec<ActorIdentity>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<usize>>, replies: ArcShared<SpinSyncMutex<Vec<ActorIdentity>>>) -> Self {
     Self { received, replies }
   }
 }
@@ -232,7 +232,7 @@ fn notify_watchers_sends_terminated() {
   let props = Props::from_fn(|| ProbeActor);
   let target =
     ActorCell::create(state.clone(), Pid::new(30, 0), None, "target".to_string(), &props).expect("create actor cell");
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let watcher_props = Props::from_fn({
     let log = log.clone();
     move || RecordingActor::new(log.clone())
@@ -281,7 +281,7 @@ fn remove_adapter_handle_stops_single_handle() {
 #[test]
 fn create_system_message_runs_pre_start() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -300,8 +300,8 @@ fn create_system_message_runs_pre_start() {
 #[test]
 fn identify_replies_with_actor_identity_without_invoking_actor() {
   let system = ActorSystem::new_empty().state();
-  let actor_received = ArcShared::new(NoStdMutex::new(0usize));
-  let actor_replies = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let actor_received = ArcShared::new(SpinSyncMutex::new(0usize));
+  let actor_replies = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let actor_props = Props::from_fn({
     let actor_received = actor_received.clone();
     let actor_replies = actor_replies.clone();
@@ -309,8 +309,8 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
   });
   let target =
     ActorCell::create(system.clone(), Pid::new(60, 0), None, "target".to_string(), &actor_props).expect("target");
-  let reply_received = ArcShared::new(NoStdMutex::new(0usize));
-  let reply_replies = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let reply_received = ArcShared::new(SpinSyncMutex::new(0usize));
+  let reply_replies = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_props = Props::from_fn({
     let reply_received = reply_received.clone();
     let reply_replies = reply_replies.clone();
@@ -339,7 +339,7 @@ fn identify_replies_with_actor_identity_without_invoking_actor() {
 #[test]
 fn recreate_system_message_invokes_post_stop_then_pre_start() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -359,7 +359,7 @@ fn recreate_system_message_invokes_post_stop_then_pre_start() {
 #[test]
 fn poison_pill_system_message_invokes_post_stop() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -379,7 +379,7 @@ fn poison_pill_system_message_invokes_post_stop() {
 #[test]
 fn kill_system_message_reports_fatal_failure() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -398,7 +398,7 @@ fn kill_system_message_reports_fatal_failure() {
 #[test]
 fn poison_pill_user_message_preserves_user_ordering() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -430,7 +430,7 @@ fn poison_pill_user_message_preserves_user_ordering() {
 #[test]
 fn kill_user_message_reports_fatal_failure() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -466,9 +466,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let initial_handle = cell
     .receive_timeout
-    .lock()
-    .as_ref()
-    .and_then(ReceiveTimeoutState::handle_raw)
+    .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should exist after pre_start");
 
   let error = invoker.invoke_user_message(AnyMessage::new(1_u32)).expect_err("user message should fail");
@@ -476,9 +474,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let current_handle = cell
     .receive_timeout
-    .lock()
-    .as_ref()
-    .and_then(ReceiveTimeoutState::handle_raw)
+    .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should remain registered after failure");
 
   assert_eq!(current_handle, initial_handle, "failure path must not arm a fresh receive-timeout timer");
@@ -487,7 +483,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 #[test]
 fn system_queue_is_drained_before_user_queue() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = log.clone();
     move || LifecycleRecorderActor::new(log.clone())
@@ -508,7 +504,7 @@ fn system_queue_is_drained_before_user_queue() {
 #[test]
 fn unstash_messages_are_replayed_before_existing_mailbox_messages() {
   let state = ActorSystem::new_empty().state();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let captured = received.clone();
     move || OrderedMessageActor::new(captured.clone())
@@ -550,7 +546,7 @@ fn unstash_message_rejects_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(62, 0), None, "unstash-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.lock().stashed_messages.push_back(AnyMessage::new(1_i32));
+  cell.state.with_lock(|state| state.stashed_messages.push_back(AnyMessage::new(1_i32)));
 
   let error = cell.unstash_message().expect_err("non-deque unstash should fail");
 
@@ -565,8 +561,10 @@ fn unstash_messages_reject_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(63, 0), None, "unstash-all-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.lock().stashed_messages.push_back(AnyMessage::new(1_i32));
-  cell.state.lock().stashed_messages.push_back(AnyMessage::new(2_i32));
+  cell.state.with_lock(|state| {
+    state.stashed_messages.push_back(AnyMessage::new(1_i32));
+    state.stashed_messages.push_back(AnyMessage::new(2_i32));
+  });
 
   let all_error = cell.unstash_messages().expect_err("non-deque unstash should fail");
   assert!(ActorContext::is_stash_requires_deque_error(&all_error));
@@ -640,7 +638,7 @@ fn register_watch_with_replaces_previous_entry_for_same_target() {
 #[test]
 fn handle_terminated_skips_on_terminated_when_watch_with_registered() {
   let state = ActorSystem::new_empty().state();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let watcher_props = Props::from_fn({
     let log = log.clone();
     move || RecordingActor::new(log.clone())

@@ -2,7 +2,7 @@ use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 use std::thread::yield_now;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{BackoffConfig, BackoffSupervisorActor};
 use crate::core::kernel::{
@@ -58,7 +58,7 @@ fn one_tick_strategy() -> BackoffSupervisorStrategy {
 }
 
 struct CapturingSender {
-  inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
 impl ActorRefSender for CapturingSender {
@@ -69,11 +69,11 @@ impl ActorRefSender for CapturingSender {
 }
 
 struct ForwardProbeActor {
-  received: ArcShared<NoStdMutex<Vec<i32>>>,
+  received: ArcShared<SpinSyncMutex<Vec<i32>>>,
 }
 
 impl ForwardProbeActor {
-  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
     Self { received }
   }
 }
@@ -96,7 +96,7 @@ impl Actor for FailingOnMessageActor {
 }
 
 fn current_child_pid(sup_ref: &mut ActorRef) -> Option<Pid> {
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetCurrentChild).with_sender(reply_ref);
   sup_ref.tell(msg);
@@ -148,7 +148,7 @@ fn get_current_child_returns_child_pid_when_child_is_running() {
   let mut sup_ref = sup_cell.actor_ref();
 
   // Capture reply
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
 
   // When: sending GetCurrentChild with a reply sender
@@ -177,7 +177,7 @@ fn get_restart_count_returns_zero_initially() {
   let mut sup_ref = sup_cell.actor_ref();
 
   // Capture reply
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
 
   // When: sending GetRestartCount
@@ -208,7 +208,7 @@ fn reset_command_resets_restart_count() {
   // When: sending Reset followed by GetRestartCount
   sup_ref.tell(AnyMessage::new(BackoffSupervisorCommand::Reset));
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetRestartCount).with_sender(reply_ref);
   sup_ref.tell(msg);
@@ -226,7 +226,7 @@ fn reset_command_resets_restart_count() {
 #[test]
 fn unrecognized_messages_are_forwarded_to_child() {
   // Given: a backoff supervisor wrapping a probe actor that records i32 messages
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let child_props = Props::from_fn({
     let received = received.clone();
     move || ForwardProbeActor::new(received.clone())
@@ -255,7 +255,7 @@ fn get_current_child_returns_none_when_no_child() {
   let config = BackoffConfig::from_stop(options);
   let mut actor = BackoffSupervisorActor::from_config(config);
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let mut ctx = ActorContext::new(&system, Pid::new(100, 0));
   ctx.set_sender(Some(reply_ref));
@@ -421,7 +421,7 @@ fn on_failure_forwarding_keeps_supervisor_responsive_until_backoff_restart() {
 
   assert_eq!(current_child_pid(&mut sup_ref), None, "supervisor should answer while waiting for backoff restart");
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let reply_ref = ActorRef::new(Pid::new(998, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetRestartCount).with_sender(reply_ref);
   sup_ref.tell(msg);

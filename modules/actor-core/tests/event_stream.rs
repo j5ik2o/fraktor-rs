@@ -17,14 +17,14 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -44,12 +44,12 @@ impl Actor for NullActor {
 }
 
 struct TestGuardian {
-  child_slot:  ArcShared<NoStdMutex<Option<ChildRef>>>,
+  child_slot:  ArcShared<SpinSyncMutex<Option<ChildRef>>>,
   child_props: Props,
 }
 
 impl TestGuardian {
-  fn new(child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>, child_props: Props) -> Self {
+  fn new(child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>, child_props: Props) -> Self {
     Self { child_slot, child_props }
   }
 }
@@ -68,7 +68,7 @@ impl Actor for TestGuardian {
 
 #[test]
 fn dead_letter_event_is_published_when_send_fails() {
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
 
   let mailbox_policy =
     MailboxPolicy::bounded(NonZeroUsize::new(1).expect("non-zero"), MailboxOverflowStrategy::DropNewest, None);
@@ -83,7 +83,7 @@ fn dead_letter_event_is_published_when_send_fails() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

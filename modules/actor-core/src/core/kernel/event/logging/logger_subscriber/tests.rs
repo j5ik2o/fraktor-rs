@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -15,12 +15,12 @@ use crate::core::kernel::{
 };
 
 struct TestWriter {
-  logs: ArcShared<NoStdMutex<Vec<String>>>,
+  logs: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl TestWriter {
-  fn new() -> (Self, ArcShared<NoStdMutex<Vec<String>>>) {
-    let logs = ArcShared::new(NoStdMutex::new(Vec::new()));
+  fn new() -> (Self, ArcShared<SpinSyncMutex<Vec<String>>>) {
+    let logs = ArcShared::new(SpinSyncMutex::new(Vec::new()));
     (Self { logs: logs.clone() }, logs)
   }
 }

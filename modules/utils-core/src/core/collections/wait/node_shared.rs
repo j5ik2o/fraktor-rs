@@ -1,7 +1,7 @@
 //! Shared wrapper for WaitNode enabling interior mutability.
 
 use super::node::WaitNode;
-use crate::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use crate::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.
 ///
@@ -9,14 +9,14 @@ use crate::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 /// that internally lock the underlying [`WaitNode`], allowing safe
 /// concurrent access from multiple owners.
 pub struct WaitNodeShared<E: Send + 'static> {
-  inner: ArcShared<RuntimeMutex<WaitNode<E>>>,
+  inner: SharedLock<WaitNode<E>>,
 }
 
 impl<E: Send + 'static> WaitNodeShared<E> {
   /// Creates a new shared wrapper around a fresh WaitNode.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(WaitNode::new())) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(WaitNode::new()) }
   }
 }
 
@@ -34,12 +34,10 @@ impl<E: Send + 'static> Clone for WaitNodeShared<E> {
 
 impl<E: Send + 'static> SharedAccess<WaitNode<E>> for WaitNodeShared<E> {
   fn with_read<R>(&self, f: impl FnOnce(&WaitNode<E>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut WaitNode<E>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

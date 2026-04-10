@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::{pseudo_random_index, select_smallest_mailbox_index};
 use crate::core::{
@@ -28,7 +28,7 @@ use crate::core::{
 };
 
 type RouteRecord = (usize, u32);
-type RouterSystemContext = (TypedActorSystem<u32>, TypedActorRef<u32>, ArcShared<NoStdMutex<Vec<RouteRecord>>>);
+type RouterSystemContext = (TypedActorSystem<u32>, TypedActorRef<u32>, ArcShared<SpinSyncMutex<Vec<RouteRecord>>>);
 
 #[derive(Clone, Copy)]
 enum PoolTestStrategy {
@@ -55,7 +55,10 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
   assert!(condition());
 }
 
-fn recording_routee_behavior(routee_index: usize, records: ArcShared<NoStdMutex<Vec<RouteRecord>>>) -> Behavior<u32> {
+fn recording_routee_behavior(
+  routee_index: usize,
+  records: ArcShared<SpinSyncMutex<Vec<RouteRecord>>>,
+) -> Behavior<u32> {
   Behaviors::receive_message(move |_ctx, message| {
     records.lock().push((routee_index, *message));
     Ok(Behaviors::same())
@@ -63,8 +66,8 @@ fn recording_routee_behavior(routee_index: usize, records: ArcShared<NoStdMutex<
 }
 
 fn spawn_router_system(pool_size: usize, strategy: PoolTestStrategy) -> RouterSystemContext {
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
@@ -166,8 +169,8 @@ fn pool_router_with_broadcast_delivers_to_all_routees() {
 #[test]
 fn pool_router_public_type_with_broadcast_delivers_to_all_routees() {
   let pool_size = 3_usize;
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
@@ -209,8 +212,8 @@ fn pool_router_public_type_with_broadcast_delivers_to_all_routees() {
 #[test]
 fn pool_router_with_broadcast_predicate_only_broadcasts_matching_messages() {
   let pool_size = 3_usize;
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
@@ -312,7 +315,7 @@ fn pool_router_with_smallest_mailbox_selects_lowest_queue() {
     TypedActorRef::<u32>::from_untyped(cell1.actor_ref()),
     TypedActorRef::<u32>::from_untyped(cell2.actor_ref()),
   ];
-  let dispatch_counts = ArcShared::new(NoStdMutex::new(vec![0_usize; routees.len()]));
+  let dispatch_counts = SharedLock::new_with_driver::<SpinSyncMutex<_>>(vec![0_usize; routees.len()]);
 
   let selected = select_smallest_mailbox_index(&routees, &dispatch_counts);
   assert_eq!(selected, 2);
@@ -341,8 +344,8 @@ fn pool_router_with_resizer_builds_behavior() {
 fn pool_router_with_resizer_scales_up_to_lower_bound() {
   let initial_pool_size = 2_usize;
   let lower_bound = 4_usize;
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
@@ -393,8 +396,8 @@ fn pool_router_with_resizer_scales_up_to_lower_bound() {
 fn pool_router_with_resizer_scales_down_to_upper_bound() {
   let initial_pool_size = 5_usize;
   let upper_bound = 3_usize;
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let next_routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let next_routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
@@ -463,8 +466,8 @@ fn pool_router_with_routee_props_builds_behavior() {
 #[test]
 fn pool_router_with_routee_props_applies_tags_to_routees() {
   let pool_size = 2_usize;
-  let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_tags: ArcShared<NoStdMutex<Vec<BTreeSet<String>>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let records = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_tags: ArcShared<SpinSyncMutex<Vec<BTreeSet<String>>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();
