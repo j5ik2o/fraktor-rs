@@ -1,5 +1,10 @@
-use alloc::{boxed::Box, collections::VecDeque};
-use core::{any::TypeId, future::Future, pin::Pin, task::Poll};
+use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
+use core::{
+  any::TypeId,
+  future::Future,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
 use fraktor_utils_core_rs::core::{
   collections::queue::OverflowPolicy,
@@ -328,7 +333,7 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     // Safety: pin 済みのフィールドを move しないため安全。
     let this = unsafe { self.get_unchecked_mut() };
     if this.pollings == 0 {
@@ -2406,12 +2411,12 @@ fn conflate_continues_aggregating_while_downstream_is_backpressured() {
 #[test]
 fn conflate_emits_aggregated_value_when_downstream_unblocks() {
   let gate_open = ArcShared::new(SpinSyncMutex::new(false));
-  let received = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let completion = StreamCompletion::new();
 
   struct GatedSinkLogic {
     gate_open:  ArcShared<SpinSyncMutex<bool>>,
-    received:   ArcShared<SpinSyncMutex<alloc::vec::Vec<u32>>>,
+    received:   ArcShared<SpinSyncMutex<Vec<u32>>>,
     completion: StreamCompletion<StreamDone>,
   }
 

@@ -1,18 +1,7 @@
-use super::{RuntimeMutex, RuntimeRwLock};
+use super::NoStdMutex;
 
 #[test]
-fn runtime_mutex_protects_value() {
-  let mutex: RuntimeMutex<_> = RuntimeMutex::new(5_u32);
-  assert_eq!(*mutex.lock(), 5);
-}
-
-#[test]
-fn runtime_rwlock_protects_value() {
-  let rwlock: RuntimeRwLock<_> = RuntimeRwLock::new(7_u32);
-  assert_eq!(*rwlock.read(), 7);
-  {
-    let mut guard = rwlock.write();
-    *guard = 9;
-  }
-  assert_eq!(*rwlock.read(), 9);
+fn no_std_mutex_alias_uses_default_spin_driver() {
+  let mutex: NoStdMutex<_> = NoStdMutex::new(3_u32);
+  assert_eq!(*mutex.lock(), 3);
 }

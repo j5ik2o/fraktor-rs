@@ -229,7 +229,7 @@ fn start_time_returns_non_zero_duration() {
 #[test]
 fn start_time_returns_configured_value() {
   // Given: a typed actor system with an explicit start_time
-  let expected_start = core::time::Duration::from_secs(1_700_000_000);
+  let expected_start = Duration::from_secs(1_700_000_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::default()
     .with_start_time(expected_start)
@@ -248,7 +248,7 @@ fn start_time_returns_configured_value() {
 #[test]
 fn uptime_returns_elapsed_since_start() {
   // Given: a system with a known start_time
-  let start = core::time::Duration::from_secs(1_000);
+  let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::default()
     .with_start_time(start)
@@ -256,11 +256,11 @@ fn uptime_returns_elapsed_since_start() {
   let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: uptime is calculated with a known "now"
-  let now = core::time::Duration::from_secs(1_042);
+  let now = Duration::from_secs(1_042);
   let uptime = system.uptime(now);
 
   // Then: uptime = now - start_time
-  assert_eq!(uptime, core::time::Duration::from_secs(42));
+  assert_eq!(uptime, Duration::from_secs(42));
 
   system.terminate().expect("terminate");
 }
@@ -268,7 +268,7 @@ fn uptime_returns_elapsed_since_start() {
 #[test]
 fn uptime_saturates_when_now_is_before_start() {
   // Given: a system with a start_time
-  let start = core::time::Duration::from_secs(1_000);
+  let start = Duration::from_secs(1_000);
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
   let config = ActorSystemConfig::default()
     .with_start_time(start)
@@ -276,11 +276,11 @@ fn uptime_saturates_when_now_is_before_start() {
   let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
 
   // When: now is before start_time (edge case)
-  let now = core::time::Duration::from_secs(500);
+  let now = Duration::from_secs(500);
   let uptime = system.uptime(now);
 
   // Then: uptime saturates to zero
-  assert_eq!(uptime, core::time::Duration::ZERO);
+  assert_eq!(uptime, Duration::ZERO);
 
   system.terminate().expect("terminate");
 }
@@ -295,7 +295,7 @@ fn scheduler_returns_facade_that_can_schedule_once() {
   // When: scheduler() is called and schedule_once is invoked
   let scheduler = system.scheduler();
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
-  let result = scheduler.schedule_once(core::time::Duration::from_millis(10), receiver, 42u32);
+  let result = scheduler.schedule_once(Duration::from_millis(10), receiver, 42u32);
 
   // Then: a SchedulerHandle is returned
   assert!(result.is_ok(), "scheduler().schedule_once() should succeed");
@@ -311,12 +311,7 @@ fn scheduler_returns_facade_that_can_schedule_at_fixed_rate() {
   // When: scheduler() returns a Scheduler and schedule_at_fixed_rate is called
   let scheduler = system.scheduler();
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
-  let result = scheduler.schedule_at_fixed_rate(
-    core::time::Duration::from_millis(5),
-    core::time::Duration::from_millis(10),
-    receiver,
-    7u32,
-  );
+  let result = scheduler.schedule_at_fixed_rate(Duration::from_millis(5), Duration::from_millis(10), receiver, 7u32);
 
   // Then: a SchedulerHandle is returned
   assert!(result.is_ok(), "scheduler().schedule_at_fixed_rate() should succeed");
@@ -332,12 +327,8 @@ fn scheduler_returns_facade_that_can_schedule_with_fixed_delay() {
   // When: scheduler() returns a Scheduler and schedule_with_fixed_delay is called
   let scheduler = system.scheduler();
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
-  let result = scheduler.schedule_with_fixed_delay(
-    core::time::Duration::from_millis(5),
-    core::time::Duration::from_millis(20),
-    receiver,
-    99u32,
-  );
+  let result =
+    scheduler.schedule_with_fixed_delay(Duration::from_millis(5), Duration::from_millis(20), receiver, 99u32);
 
   // Then: a SchedulerHandle is returned
   assert!(result.is_ok(), "scheduler().schedule_with_fixed_delay() should succeed");
@@ -447,7 +438,7 @@ fn address_uses_fraktor_protocol() {
 #[test]
 fn settings_returns_snapshot_preserved_through_from_untyped() {
   // Given: an untyped actor system with configured metadata
-  let expected_start_time = core::time::Duration::from_secs(1_234);
+  let expected_start_time = Duration::from_secs(1_234);
   let untyped = ActorSystem::new_empty_with(|config| {
     config.with_system_name("wrapped-system").with_start_time(expected_start_time)
   });

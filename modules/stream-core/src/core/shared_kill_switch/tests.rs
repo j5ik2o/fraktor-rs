@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use crate::core::{
   SharedKillSwitch, StreamError,
   dsl::{Sink, Source},
@@ -38,7 +40,7 @@ fn shared_kill_switch_keeps_first_control_signal_across_clones() {
 
 #[test]
 fn shared_kill_switch_flow_binds_state_to_graph() {
-  let switch = SharedKillSwitch::new_named(alloc::string::String::from("shared-flow"));
+  let switch = SharedKillSwitch::new_named(String::from("shared-flow"));
   let graph = Source::single(1_u32).via_mat(switch.flow::<u32>(), KeepRight).into_mat(Sink::head(), KeepLeft);
   let (plan, materialized) = graph.into_parts();
 
@@ -49,7 +51,7 @@ fn shared_kill_switch_flow_binds_state_to_graph() {
 
 #[test]
 fn shared_kill_switch_new_named_accepts_owned_string() {
-  let switch = SharedKillSwitch::new_named(alloc::string::String::from("owned-shared"));
+  let switch = SharedKillSwitch::new_named(String::from("owned-shared"));
 
   assert_eq!(switch.name(), Some("owned-shared"));
 }

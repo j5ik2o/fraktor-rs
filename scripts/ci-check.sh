@@ -765,9 +765,9 @@ run_dylint() {
 
   local rustflags_value
   if [[ -n "${RUSTFLAGS-}" ]]; then
-    rustflags_value="${RUSTFLAGS} -Dwarnings -Adeprecated"
+    rustflags_value="${RUSTFLAGS} -Dwarnings --force-warn deprecated"
   else
-    rustflags_value="-Dwarnings -Adeprecated"
+    rustflags_value="-Dwarnings --force-warn deprecated"
   fi
   local dylint_incremental="${DYLINT_CARGO_INCREMENTAL:-0}"
 
@@ -1162,9 +1162,9 @@ run_examples() {
 
   local rustflags_value
   if [[ -n "${RUSTFLAGS-}" ]]; then
-    rustflags_value="${RUSTFLAGS} -Dwarnings -Adeprecated"
+    rustflags_value="${RUSTFLAGS} -Dwarnings --force-warn deprecated"
   else
-    rustflags_value="-Dwarnings -Adeprecated"
+    rustflags_value="-Dwarnings --force-warn deprecated"
   fi
 
   local example_file

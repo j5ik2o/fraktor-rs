@@ -1,6 +1,9 @@
 //! Handle used by parents to interact with child actors.
 
-use core::{fmt, time::Duration};
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  time::Duration,
+};
 
 use crate::core::kernel::{
   actor::{
@@ -109,8 +112,8 @@ impl Clone for ChildRef {
   }
 }
 
-impl fmt::Debug for ChildRef {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ChildRef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ChildRef").field("pid", &self.pid()).finish()
   }
 }

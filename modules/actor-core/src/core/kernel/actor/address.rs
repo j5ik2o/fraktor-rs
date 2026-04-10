@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::string::String;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::actor_path::{ActorPathParts, ActorPathScheme};
 
@@ -126,8 +127,8 @@ impl Address {
   }
 }
 
-impl core::fmt::Display for Address {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for Address {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.write_str(&self.to_uri_string())
   }
 }

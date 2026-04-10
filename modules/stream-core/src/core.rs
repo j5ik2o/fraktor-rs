@@ -65,8 +65,8 @@ pub use completion_strategy::CompletionStrategy;
 pub use dsl::Compression;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use r#impl::{
-  RestartBackoff, fusing::DemandTracker as InternalDemandTracker,
-  validate_positive_argument as internal_validate_positive_argument,
+  RestartBackoff, StreamDslError as ImplStreamDslError, StreamError as ImplStreamError,
+  fusing::DemandTracker as InternalDemandTracker, validate_positive_argument as internal_validate_positive_argument,
 };
 pub use io_result::IOResult;
 pub use kill_switch::KillSwitch;
@@ -86,9 +86,9 @@ use stage::StageKind;
 /// Tracks downstream demand for sink stages.
 pub type DemandTracker = InternalDemandTracker;
 /// Public alias for stream DSL construction errors.
-pub type StreamDslError = r#impl::StreamDslError;
+pub type StreamDslError = ImplStreamDslError;
 /// Public alias for stream execution errors.
-pub type StreamError = r#impl::StreamError;
+pub type StreamError = ImplStreamError;
 // StatefulMapConcatAccumulator re-exported via dsl::StatefulMapConcatAccumulator
 pub use substream_cancel_strategy::SubstreamCancelStrategy;
 pub use supervision_strategy::SupervisionStrategy;
@@ -283,17 +283,17 @@ impl StreamPlan {
       return Err(StreamError::InvalidConnection);
     }
 
-    let mut incoming = alloc::vec::Vec::with_capacity(stages.len());
-    let mut outgoing = alloc::vec::Vec::with_capacity(stages.len());
-    let mut adjacency = alloc::vec::Vec::with_capacity(stages.len());
+    let mut incoming = Vec::with_capacity(stages.len());
+    let mut outgoing = Vec::with_capacity(stages.len());
+    let mut adjacency = Vec::with_capacity(stages.len());
 
     for _ in 0..stages.len() {
       incoming.push(0_usize);
       outgoing.push(0_usize);
-      adjacency.push(alloc::vec::Vec::new());
+      adjacency.push(Vec::new());
     }
 
-    let mut plan_edges = alloc::vec::Vec::with_capacity(edges.len());
+    let mut plan_edges = Vec::with_capacity(edges.len());
 
     for (from, to, mat) in edges {
       let Some(from_stage) = output_ports.iter().find(|(port, _)| *port == from).map(|(_, stage_index)| *stage_index)

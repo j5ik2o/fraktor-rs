@@ -1,6 +1,9 @@
 //! Actor reference provider registry.
 
-use core::any::{Any, TypeId};
+use core::{
+  any::{Any, TypeId},
+  marker::PhantomData,
+};
 
 use ahash::RandomState;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -9,14 +12,14 @@ use hashbrown::HashMap;
 /// Registry of actor reference providers by type.
 pub(crate) struct ActorRefProviders {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 #[allow(dead_code)]
 impl ActorRefProviders {
   /// Creates a new empty actor reference providers registry.
   #[must_use]
   pub(crate) fn new() -> Self {
-    Self { map: HashMap::with_hasher(RandomState::new()), _marker: core::marker::PhantomData }
+    Self { map: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
   /// Returns `true` when a provider for the provided [`TypeId`] is registered.

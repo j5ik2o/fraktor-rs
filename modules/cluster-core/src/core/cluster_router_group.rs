@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
+
 use crate::core::ClusterRouterGroupSettings;
 
 /// Group router that maps hash keys to configured routee paths.
@@ -25,7 +27,7 @@ impl ClusterRouterGroup {
 
   /// Returns configured routee paths.
   #[must_use]
-  pub fn routee_paths(&self) -> &[alloc::string::String] {
+  pub fn routee_paths(&self) -> &[String] {
     self.settings.routee_paths()
   }
 

@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use crate::core::{
   KillSwitches,
   dsl::{Sink, Source},
@@ -10,7 +12,7 @@ use crate::core::{
 
 #[test]
 fn kill_switches_shared_returns_shared_kill_switch() {
-  let switch = KillSwitches::shared(alloc::string::String::from("shared-switch"));
+  let switch = KillSwitches::shared(String::from("shared-switch"));
   assert_eq!(switch.name(), Some("shared-switch"));
   assert!(!switch.is_shutdown());
   assert!(!switch.is_aborted());

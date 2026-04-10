@@ -1,10 +1,15 @@
 //! Single outbound TCP connection with its reader / writer tasks.
 
 use alloc::string::String;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use fraktor_remote_core_rs::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
-use tokio::{net::TcpStream, sync::mpsc, task::JoinHandle};
+use tokio::{
+  net::TcpStream,
+  sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+  task::JoinHandle,
+};
 use tokio_util::codec::Framed;
 
 use crate::tcp_transport::{
@@ -20,12 +25,12 @@ use crate::tcp_transport::{
 /// the shared inbound channel owned by the transport.
 pub struct TcpClient {
   peer_addr: String,
-  writer_tx: mpsc::UnboundedSender<WireFrame>,
+  writer_tx: UnboundedSender<WireFrame>,
   task:      Option<JoinHandle<()>>,
 }
 
-impl core::fmt::Debug for TcpClient {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for TcpClient {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TcpClient")
       .field("peer_addr", &self.peer_addr)
       .field("alive", &self.task.as_ref().is_some_and(|t| !t.is_finished()))
@@ -44,7 +49,7 @@ impl TcpClient {
   /// established.
   pub async fn connect(
     peer_addr: String,
-    inbound_tx: mpsc::UnboundedSender<InboundFrameEvent>,
+    inbound_tx: UnboundedSender<InboundFrameEvent>,
   ) -> Result<Self, TransportError> {
     let stream = TcpStream::connect(&peer_addr).await.map_err(|_| TransportError::SendFailed)?;
     let (writer_tx, writer_rx) = mpsc::unbounded_channel::<WireFrame>();
@@ -80,8 +85,8 @@ impl TcpClient {
 async fn run(
   stream: TcpStream,
   peer_addr: String,
-  mut writer_rx: mpsc::UnboundedReceiver<WireFrame>,
-  inbound_tx: mpsc::UnboundedSender<InboundFrameEvent>,
+  mut writer_rx: UnboundedReceiver<WireFrame>,
+  inbound_tx: UnboundedSender<InboundFrameEvent>,
 ) {
   let mut framed = Framed::new(stream, WireFrameCodec::new());
   loop {

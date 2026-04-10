@@ -1,6 +1,6 @@
 //! Uniquely identified remote address (`Address` + monotonic UID).
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::address::Address;
 
@@ -34,8 +34,8 @@ impl UniqueAddress {
   }
 }
 
-impl fmt::Display for UniqueAddress {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for UniqueAddress {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}#{}", self.address, self.uid)
   }
 }

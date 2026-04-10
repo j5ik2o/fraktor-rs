@@ -5,8 +5,10 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 use std::collections::BTreeMap;
 
+use bytes::Bytes;
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId},
   association::QuarantineReason,
@@ -14,7 +16,7 @@ use fraktor_remote_core_rs::{
   transport::{RemoteTransport, TransportError},
   wire::EnvelopePdu,
 };
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::tcp_transport::{
   client::TcpClient, inbound_frame_event::InboundFrameEvent, server::TcpServer, wire_frame::WireFrame,
@@ -39,13 +41,13 @@ pub struct TcpRemoteTransport {
   bind_addr:       String,
   server:          TcpServer,
   clients:         BTreeMap<String, TcpClient>,
-  inbound_tx:      mpsc::UnboundedSender<InboundFrameEvent>,
-  inbound_rx:      Option<mpsc::UnboundedReceiver<InboundFrameEvent>>,
+  inbound_tx:      UnboundedSender<InboundFrameEvent>,
+  inbound_rx:      Option<UnboundedReceiver<InboundFrameEvent>>,
   running:         bool,
 }
 
-impl core::fmt::Debug for TcpRemoteTransport {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for TcpRemoteTransport {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TcpRemoteTransport")
       .field("bind_addr", &self.bind_addr)
       .field("running", &self.running)
@@ -80,7 +82,7 @@ impl TcpRemoteTransport {
   /// take the receiver to start processing inbound frames. Subsequent calls
   /// return `None`.
   #[must_use]
-  pub fn take_inbound_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<InboundFrameEvent>> {
+  pub fn take_inbound_receiver(&mut self) -> Option<UnboundedReceiver<InboundFrameEvent>> {
     self.inbound_rx.take()
   }
 
@@ -217,7 +219,6 @@ fn build_envelope_frame(envelope: &OutboundEnvelope) -> WireFrame {
   // Phase B minimum: an empty payload placeholder. The actual serialisation
   // of `AnyMessage` is a responsibility of the association_runtime layer
   // added in Section 19, which will invoke the serialization extension.
-  let pdu =
-    EnvelopePdu::new(recipient_path, sender_path, correlation.hi(), correlation.lo(), priority, bytes::Bytes::new());
+  let pdu = EnvelopePdu::new(recipient_path, sender_path, correlation.hi(), correlation.lo(), priority, Bytes::new());
   WireFrame::Envelope(pdu)
 }

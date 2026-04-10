@@ -33,7 +33,7 @@ impl Executor for RejectingExecutor {
 #[test]
 fn execute_delegates_to_inner() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
+  let shared = ExecutorShared::new_with_builtin_lock(CountingExecutor { count: Arc::clone(&count) });
   let observed = Arc::new(AtomicUsize::new(0));
   let observed_clone = Arc::clone(&observed);
   shared
@@ -47,7 +47,7 @@ fn execute_delegates_to_inner() {
 
 #[test]
 fn execute_propagates_errors() {
-  let shared = ExecutorShared::new(RejectingExecutor);
+  let shared = ExecutorShared::new_with_builtin_lock(RejectingExecutor);
   let result = shared.execute(Box::new(|| {}));
   assert!(matches!(result, Err(ExecuteError::Rejected)));
 }
@@ -55,7 +55,7 @@ fn execute_propagates_errors() {
 #[test]
 fn shutdown_invokes_inner_shutdown() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
+  let shared = ExecutorShared::new_with_builtin_lock(CountingExecutor { count: Arc::clone(&count) });
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 1);
   shared.shutdown();
@@ -65,7 +65,7 @@ fn shutdown_invokes_inner_shutdown() {
 #[test]
 fn clone_shares_inner_state() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorShared::new(CountingExecutor { count: Arc::clone(&count) });
+  let shared = ExecutorShared::new_with_builtin_lock(CountingExecutor { count: Arc::clone(&count) });
   let cloned = shared.clone();
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   cloned.execute(Box::new(|| {})).expect("execute should succeed");

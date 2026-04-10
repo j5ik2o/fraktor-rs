@@ -3,15 +3,18 @@
 #[cfg(test)]
 mod tests;
 
-use core::any::TypeId;
+use core::{
+  any::{Any, TypeId},
+  marker::PhantomData,
+};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 /// Owns a dynamically typed payload destined for message adapters.
 #[derive(Debug)]
 pub struct AdapterPayload {
-  inner:   ArcShared<dyn core::any::Any + Send + Sync + 'static>,
-  _marker: core::marker::PhantomData<()>,
+  inner:   ArcShared<dyn Any + Send + Sync + 'static>,
+  _marker: PhantomData<()>,
 }
 
 impl AdapterPayload {
@@ -20,7 +23,7 @@ impl AdapterPayload {
   pub fn new<T>(value: T) -> Self
   where
     T: Send + Sync + 'static, {
-    Self { inner: ArcShared::new(value), _marker: core::marker::PhantomData }
+    Self { inner: ArcShared::new(value), _marker: PhantomData }
   }
 
   /// Returns the [`TypeId`] of the stored payload.
@@ -39,7 +42,7 @@ impl AdapterPayload {
     T: Send + Sync + 'static, {
     match self.inner.downcast::<T>() {
       | Ok(concrete) => Ok(concrete),
-      | Err(original) => Err(Self { inner: original, _marker: core::marker::PhantomData }),
+      | Err(original) => Err(Self { inner: original, _marker: PhantomData }),
     }
   }
 
@@ -53,13 +56,13 @@ impl AdapterPayload {
 
   /// Returns the erased payload.
   #[must_use]
-  pub fn into_erased(self) -> ArcShared<dyn core::any::Any + Send + Sync + 'static> {
+  pub fn into_erased(self) -> ArcShared<dyn Any + Send + Sync + 'static> {
     self.inner
   }
 
   /// Creates a payload from an erased shared pointer.
-  pub(crate) fn from_erased(inner: ArcShared<dyn core::any::Any + Send + Sync + 'static>) -> Self {
-    Self { inner, _marker: core::marker::PhantomData }
+  pub(crate) fn from_erased(inner: ArcShared<dyn Any + Send + Sync + 'static>) -> Self {
+    Self { inner, _marker: PhantomData }
   }
 }
 

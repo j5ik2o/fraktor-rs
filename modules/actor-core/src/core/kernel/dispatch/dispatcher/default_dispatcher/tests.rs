@@ -22,7 +22,7 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_dispatcher() -> DefaultDispatcher {
   let settings = DispatcherSettings::new("default-id", nz(7), None, Duration::from_secs(1));
-  let executor = ExecutorShared::new(NoopExecutor);
+  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   DefaultDispatcher::new(&settings, executor)
 }
 

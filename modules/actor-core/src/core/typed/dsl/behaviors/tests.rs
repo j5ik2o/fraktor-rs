@@ -63,8 +63,7 @@ impl ActorRefSender for RecordingSender {
 }
 
 fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> ArcShared<ActorCell> {
-  let cell =
-    ActorCell::create(system.state(), pid, None, alloc::string::String::from(name), props).expect("create actor cell");
+  let cell = ActorCell::create(system.state(), pid, None, String::from(name), props).expect("create actor cell");
   system.state().register_cell(cell.clone());
   cell
 }

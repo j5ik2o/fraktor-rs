@@ -4,7 +4,10 @@
 mod tests;
 
 use alloc::{borrow::Cow, string::String};
-use core::{any::TypeId, fmt};
+use core::{
+  any::TypeId,
+  fmt::{Display, Formatter, Result as FmtResult},
+};
 
 /// Describes the reason behind an actor failure.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -64,8 +67,8 @@ impl From<Cow<'static, str>> for ActorErrorReason {
   }
 }
 
-impl fmt::Display for ActorErrorReason {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ActorErrorReason {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.write_str(&self.message)
   }
 }

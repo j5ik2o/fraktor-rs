@@ -1,6 +1,10 @@
 //! User message snapshot captured when a failure occurs.
 
-use core::{any::Any, ptr};
+use core::{
+  any::Any,
+  fmt::{Debug, Formatter, Result as FmtResult},
+  ptr,
+};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -13,8 +17,8 @@ pub struct FailureMessageSnapshot {
   sender:  Option<Pid>,
 }
 
-impl core::fmt::Debug for FailureMessageSnapshot {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for FailureMessageSnapshot {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("FailureMessageSnapshot").field("has_sender", &self.sender.is_some()).finish()
   }
 }

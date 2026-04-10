@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use super::{SharedKillSwitch, unique_kill_switch::UniqueKillSwitch};
 use crate::core::{
   dsl::{BidiFlow, Flow},
@@ -13,7 +15,7 @@ pub struct KillSwitches;
 impl KillSwitches {
   /// Creates a new shared kill switch.
   #[must_use]
-  pub fn shared(name: impl Into<alloc::string::String>) -> SharedKillSwitch {
+  pub fn shared(name: impl Into<String>) -> SharedKillSwitch {
     SharedKillSwitch::new_named(name)
   }
 

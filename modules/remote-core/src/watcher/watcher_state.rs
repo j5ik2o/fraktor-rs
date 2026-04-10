@@ -4,6 +4,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use ahash::RandomState;
 use fraktor_actor_core_rs::core::kernel::actor::actor_path::ActorPath;
@@ -46,8 +47,8 @@ pub struct WatcherState {
   detector_factory: DetectorFactory,
 }
 
-impl core::fmt::Debug for WatcherState {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for WatcherState {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("WatcherState")
       .field("watching", &self.watching.len())
       .field("targets_by_node", &self.targets_by_node.len())

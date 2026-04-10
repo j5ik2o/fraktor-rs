@@ -1,8 +1,8 @@
 extern crate std;
 
 use std::{
-  fs,
-  io::{BufWriter, Read, Seek, SeekFrom, Write},
+  fs::{self, File, OpenOptions},
+  io::{BufWriter, Error, ErrorKind, Read, Seek, SeekFrom, Write},
   path::{Path, PathBuf},
 };
 
@@ -56,12 +56,12 @@ impl FileIO {
     start_position: u64,
   ) -> Source<u8, IOResult> {
     if chunk_size == 0 {
-      let error = std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk_size must be greater than 0");
+      let error = Error::new(ErrorKind::InvalidInput, "chunk_size must be greater than 0");
       return Source::empty().map_materialized_value(move |_| IOResult::failed(0, io_error_to_stream_error(&error)));
     }
 
-    let result = (|| -> Result<Vec<u8>, std::io::Error> {
-      let mut file = fs::File::open(path.as_ref())?;
+    let result = (|| -> Result<Vec<u8>, Error> {
+      let mut file = File::open(path.as_ref())?;
       file.seek(SeekFrom::Start(start_position))?;
       let mut all_bytes = Vec::new();
       let mut buf = vec![0u8; chunk_size];
@@ -115,10 +115,7 @@ impl FileIO {
   /// The `options` parameter controls how the file is opened (e.g. append,
   /// create, truncate). Corresponds to Pekko's `FileIO.toPath(f, options)`.
   #[must_use]
-  pub fn to_path_with_options<P: AsRef<Path>>(
-    path: P,
-    options: fs::OpenOptions,
-  ) -> Sink<u8, StreamCompletion<IOResult>> {
+  pub fn to_path_with_options<P: AsRef<Path>>(path: P, options: OpenOptions) -> Sink<u8, StreamCompletion<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
     let completion = StreamCompletion::new();
     let logic = WriteToPathSinkLogic {
@@ -139,7 +136,7 @@ impl FileIO {
   #[must_use]
   pub fn to_path_with_position<P: AsRef<Path>>(
     path: P,
-    options: fs::OpenOptions,
+    options: OpenOptions,
     start_position: u64,
   ) -> Sink<u8, StreamCompletion<IOResult>> {
     let path_buf = path.as_ref().to_path_buf();
@@ -158,9 +155,9 @@ impl FileIO {
 
 struct WriteToPathSinkLogic {
   path:           PathBuf,
-  options:        Option<fs::OpenOptions>,
+  options:        Option<OpenOptions>,
   start_position: Option<u64>,
-  writer:         Option<BufWriter<fs::File>>,
+  writer:         Option<BufWriter<File>>,
   count:          u64,
   completion:     StreamCompletion<IOResult>,
 }
@@ -170,7 +167,7 @@ impl SinkLogic for WriteToPathSinkLogic {
     let mut file = if let Some(options) = self.options.take() {
       options.open(&self.path).map_err(|e| io_error_to_stream_error(&e))?
     } else {
-      fs::File::create(&self.path).map_err(|e| io_error_to_stream_error(&e))?
+      File::create(&self.path).map_err(|e| io_error_to_stream_error(&e))?
     };
     if let Some(pos) = self.start_position {
       file.seek(SeekFrom::Start(pos)).map_err(|e| io_error_to_stream_error(&e))?;

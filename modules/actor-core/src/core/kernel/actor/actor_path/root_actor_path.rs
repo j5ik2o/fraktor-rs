@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::fmt;
+use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use super::{ActorPath, ActorPathError, ActorPathParts, GuardianKind};
 
@@ -82,14 +82,14 @@ impl Default for RootActorPath {
   }
 }
 
-impl fmt::Display for RootActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt::Display::fmt(&self.inner, f)
+impl Display for RootActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    Display::fmt(&self.inner, f)
   }
 }
 
-impl fmt::Debug for RootActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for RootActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_tuple("RootActorPath").field(&self.inner.to_relative_string()).finish()
   }
 }

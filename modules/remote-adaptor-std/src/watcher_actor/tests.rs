@@ -5,7 +5,7 @@ use fraktor_remote_core_rs::{
   address::Address,
   watcher::{WatcherCommand, WatcherEffect},
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 
 use crate::watcher_actor::{base::WatcherActor, heartbeat_loop::run_heartbeat_loop};
 
@@ -91,8 +91,8 @@ async fn heartbeat_loop_delivers_ticks_at_configured_interval() {
 
   // Collect SendHeartbeat effects produced by periodic ticks.
   let mut tick_effects = 0_u32;
-  let deadline = tokio::time::Instant::now() + Duration::from_millis(150);
-  while tokio::time::Instant::now() < deadline {
+  let deadline = Instant::now() + Duration::from_millis(150);
+  while Instant::now() < deadline {
     match tokio::time::timeout(Duration::from_millis(30), effect_rx.recv()).await {
       | Ok(Some(WatcherEffect::SendHeartbeat { .. })) => tick_effects += 1,
       | Ok(Some(_)) => {},

@@ -5,7 +5,7 @@ use alloc::{
   vec,
   vec::Vec,
 };
-use core::any::{Any, TypeId};
+use core::any::{Any, TypeId, type_name};
 
 use ahash::RandomState;
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
@@ -25,7 +25,7 @@ use crate::core::kernel::{
   },
   event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
   serialization::{
-    SerializationSetupBuilder, builtin, call_scope::SerializationCallScope, error::SerializationError,
+    SerializationSetupBuilder, builtin::NullSerializer, call_scope::SerializationCallScope, error::SerializationError,
     error_event::SerializationErrorEvent, not_serializable_error::NotSerializableError,
     serialization_setup::SerializationSetup, serialized_message::SerializedMessage, serializer::Serializer,
     serializer_id::SerializerId, string_manifest_serializer::SerializerWithStringManifest,
@@ -336,7 +336,7 @@ fn not_serializable_publishes_event_and_deadletter() {
 
   let events = serialization_events.lock();
   assert_eq!(events.len(), 1);
-  assert_eq!(events[0].type_name(), core::any::type_name::<TestPayload>());
+  assert_eq!(events[0].type_name(), type_name::<TestPayload>());
 
   let dead_letters = system.dead_letters();
   assert!(dead_letters.iter().any(|entry| entry.reason() == DeadLetterReason::SerializationError));
@@ -476,7 +476,7 @@ fn runtime_binding_without_manifest_in_remote_scope_fails() {
   let extension = SerializationExtension::new(&system, setup);
 
   extension
-    .register_binding(TypeId::of::<SecondaryPayload>(), core::any::type_name::<SecondaryPayload>(), secondary_id)
+    .register_binding(TypeId::of::<SecondaryPayload>(), type_name::<SecondaryPayload>(), secondary_id)
     .expect("dynamic binding");
   let error =
     extension.serialize_for(&SecondaryPayload(1), SerializationCallScope::Remote, None).expect_err("manifest missing");
@@ -535,7 +535,7 @@ fn builtin_serializer_collision_emits_warning() {
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   let serializer_id = SerializerId::from_raw(1);
-  let serializer: ArcShared<dyn Serializer> = ArcShared::new(builtin::NullSerializer::new(serializer_id));
+  let serializer: ArcShared<dyn Serializer> = ArcShared::new(NullSerializer::new(serializer_id));
   let mut serializers = HashMap::with_hasher(RandomState::new());
   serializers.insert(serializer_id, serializer);
   let setup = SerializationSetup::testing_from_raw(
@@ -599,7 +599,7 @@ impl Serializer for FailingSerializer {
 
   fn to_binary(&self, _message: &(dyn Any + Send + Sync)) -> Result<Vec<u8>, SerializationError> {
     Err(SerializationError::NotSerializable(NotSerializableError::new(
-      core::any::type_name::<TestPayload>(),
+      type_name::<TestPayload>(),
       Some(self.id),
       None,
       None,

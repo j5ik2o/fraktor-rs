@@ -5,7 +5,11 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::event::stream::EventStreamShared;
 use fraktor_cluster_core_rs::core::membership::{Gossiper, MembershipCoordinatorShared};
 use fraktor_utils_core_rs::core::time::TimerInstant;
-use tokio::sync::oneshot;
+use tokio::{
+  runtime::Handle,
+  sync::oneshot::{self, Sender},
+  task::JoinHandle,
+};
 
 use crate::std::{
   membership_coordinator_driver::MembershipCoordinatorDriver, tokio_gossip_transport::TokioGossipTransport,
@@ -21,9 +25,9 @@ pub struct TokioGossiper {
   coordinator:  MembershipCoordinatorShared,
   transport:    Option<TokioGossipTransport>,
   event_stream: EventStreamShared,
-  runtime:      tokio::runtime::Handle,
-  shutdown:     Option<oneshot::Sender<()>>,
-  task:         Option<tokio::task::JoinHandle<()>>,
+  runtime:      Handle,
+  shutdown:     Option<Sender<()>>,
+  task:         Option<JoinHandle<()>>,
 }
 
 impl TokioGossiper {
@@ -34,7 +38,7 @@ impl TokioGossiper {
     coordinator: MembershipCoordinatorShared,
     transport: TokioGossipTransport,
     event_stream: EventStreamShared,
-    runtime: tokio::runtime::Handle,
+    runtime: Handle,
   ) -> Self {
     Self { config, coordinator, transport: Some(transport), event_stream, runtime, shutdown: None, task: None }
   }

@@ -1,8 +1,12 @@
 #[cfg(test)]
 mod tests;
 
-/// Thin wrapper around [`spin::Mutex`].
-pub struct SpinSyncMutex<T>(spin::Mutex<T>);
+use spin::{Mutex, MutexGuard};
+
+use crate::core::sync::LockDriver;
+
+/// Thin wrapper around [`Mutex`].
+pub struct SpinSyncMutex<T>(Mutex<T>);
 
 unsafe impl<T: Send> Send for SpinSyncMutex<T> {}
 unsafe impl<T: Send> Sync for SpinSyncMutex<T> {}
@@ -11,12 +15,12 @@ impl<T> SpinSyncMutex<T> {
   /// Creates a new spinlock-protected value.
   #[must_use]
   pub const fn new(value: T) -> Self {
-    Self(spin::Mutex::new(value))
+    Self(Mutex::new(value))
   }
 
   /// Returns a reference to the inner spin mutex.
   #[must_use]
-  pub const fn as_inner(&self) -> &spin::Mutex<T> {
+  pub const fn as_inner(&self) -> &Mutex<T> {
     &self.0
   }
 
@@ -44,7 +48,27 @@ impl<T> SpinSyncMutex<T> {
   /// is planned to be re-introduced once the `RuntimeMutex` Port + Adapter
   /// (`LockDriver` trait) refactoring lands; until then, deadlock symptoms
   /// must be diagnosed via stack traces of the spinning thread.
-  pub fn lock(&self) -> spin::MutexGuard<'_, T> {
+  pub fn lock(&self) -> MutexGuard<'_, T> {
     self.0.lock()
+  }
+}
+
+impl<T> LockDriver<T> for SpinSyncMutex<T> {
+  type Guard<'a>
+    = MutexGuard<'a, T>
+  where
+    Self: 'a,
+    T: 'a;
+
+  fn new(value: T) -> Self {
+    Self::new(value)
+  }
+
+  fn lock(&self) -> Self::Guard<'_> {
+    self.lock()
+  }
+
+  fn into_inner(self) -> T {
+    self.into_inner()
   }
 }

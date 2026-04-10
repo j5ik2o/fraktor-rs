@@ -2,15 +2,15 @@
 
 use core::{
   future::Future,
+  marker::Unpin,
   pin::Pin,
-  task::{Context, Poll},
+  ptr,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 use super::TickExecutorSignal;
 
-fn noop_waker() -> core::task::Waker {
-  use core::task::{RawWaker, RawWakerVTable, Waker};
-
+fn noop_waker() -> Waker {
   const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake, drop);
 
   unsafe fn clone(data: *const ()) -> RawWaker {
@@ -19,10 +19,10 @@ fn noop_waker() -> core::task::Waker {
   unsafe fn wake(_data: *const ()) {}
   unsafe fn drop(_data: *const ()) {}
 
-  unsafe { Waker::from_raw(RawWaker::new(core::ptr::null(), &VTABLE)) }
+  unsafe { Waker::from_raw(RawWaker::new(ptr::null(), &VTABLE)) }
 }
 
-fn poll_future<F: Future<Output = ()> + core::marker::Unpin>(future: &mut F) -> Poll<()> {
+fn poll_future<F: Future<Output = ()> + Unpin>(future: &mut F) -> Poll<()> {
   let waker = noop_waker();
   let mut cx = Context::from_waker(&waker);
   Pin::new(future).poll(&mut cx)

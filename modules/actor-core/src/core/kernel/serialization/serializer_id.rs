@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 use super::serializer_id_error::SerializerIdError;
 
@@ -26,7 +26,7 @@ impl SerializerId {
 }
 
 impl fmt::Debug for SerializerId {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_tuple("SerializerId").field(&self.0).finish()
   }
 }

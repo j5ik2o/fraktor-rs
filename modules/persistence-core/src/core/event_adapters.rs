@@ -5,7 +5,7 @@ mod tests;
 
 use core::{
   any::{Any, TypeId},
-  fmt::{Debug, Formatter},
+  fmt::{Debug, Formatter, Result as FmtResult},
 };
 
 use ahash::RandomState;
@@ -134,7 +134,7 @@ impl Default for EventAdapters {
 }
 
 impl Debug for EventAdapters {
-  fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("EventAdapters")
       .field("write_adapter_count", &self.write_adapters.len())
       .field("read_adapter_count", &self.read_adapters.len())

@@ -10,9 +10,10 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String, vec::Vec};
+use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{
   executor_shared::ExecutorShared, message_dispatcher::MessageDispatcher, shutdown_schedule::ShutdownSchedule,
@@ -20,7 +21,6 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
-  system::lock_provider::SharedLock,
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
@@ -35,44 +35,42 @@ impl Clone for MessageDispatcherShared {
 }
 
 impl MessageDispatcherShared {
-  /// Wraps the supplied dispatcher in a shared handle.
+  /// Wraps the supplied dispatcher in a shared handle backed by the built-in lock.
   #[must_use]
-  pub fn new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self::from_boxed(Box::new(dispatcher) as Box<dyn MessageDispatcher>)
+  pub fn new_with_builtin_lock<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<Box<dyn MessageDispatcher>>>(
+      Box::new(dispatcher) as Box<dyn MessageDispatcher>,
+    ))
   }
 
-  /// Wraps an already boxed dispatcher in the built-in shared handle.
+  /// Wraps an already materialized shared lock in a shared handle.
   #[must_use]
-  pub fn from_boxed(dispatcher: Box<dyn MessageDispatcher>) -> Self {
-    Self { inner: SharedLock::builtin(dispatcher) }
-  }
-
-  pub(crate) fn from_boxed_debug(dispatcher: Box<dyn MessageDispatcher>) -> Self {
-    Self { inner: SharedLock::debug(dispatcher, "message_dispatcher_shared.inner") }
+  pub fn from_shared_lock(inner: SharedLock<Box<dyn MessageDispatcher>>) -> Self {
+    Self { inner }
   }
 
   /// Returns the dispatcher identifier.
   #[must_use]
-  pub fn id(&self) -> alloc::string::String {
+  pub fn id(&self) -> String {
     use alloc::string::ToString;
     self.with_read(|inner| inner.id().to_string())
   }
 
   /// Returns the dispatcher throughput.
   #[must_use]
-  pub fn throughput(&self) -> core::num::NonZeroUsize {
+  pub fn throughput(&self) -> NonZeroUsize {
     self.with_read(|inner| inner.throughput())
   }
 
   /// Returns the dispatcher throughput deadline.
   #[must_use]
-  pub fn throughput_deadline(&self) -> Option<core::time::Duration> {
+  pub fn throughput_deadline(&self) -> Option<Duration> {
     self.with_read(|inner| inner.throughput_deadline())
   }
 
   /// Returns the dispatcher shutdown timeout.
   #[must_use]
-  pub fn shutdown_timeout(&self) -> core::time::Duration {
+  pub fn shutdown_timeout(&self) -> Duration {
     self.with_read(|inner| inner.shutdown_timeout())
   }
 
@@ -192,7 +190,7 @@ impl MessageDispatcherShared {
     &self,
     receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
-  ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
     self.with_write(|inner| inner.dispatch(receiver, envelope))
   }
 
@@ -315,12 +313,10 @@ impl MessageDispatcherShared {
 
 impl SharedAccess<Box<dyn MessageDispatcher>> for MessageDispatcherShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageDispatcher>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(|guard| f(guard))
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_lock(|guard| f(guard))
   }
 }

@@ -1,6 +1,9 @@
 //! Error type produced by [`crate::tcp_transport::WireFrameCodec`].
 
-use std::{fmt, io};
+use std::{
+  fmt::{Display, Formatter, Result as FmtResult},
+  io::Error as IoError,
+};
 
 use fraktor_remote_core_rs::wire::WireError;
 
@@ -14,13 +17,14 @@ use fraktor_remote_core_rs::wire::WireError;
 #[derive(Debug)]
 pub enum FrameCodecError {
   /// Underlying TCP stream I/O failure.
-  Io(io::Error),
+  Io(IoError),
+
   /// A frame could not be encoded or decoded.
   Wire(WireError),
 }
 
-impl fmt::Display for FrameCodecError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for FrameCodecError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | FrameCodecError::Io(err) => write!(f, "frame codec io error: {err}"),
       | FrameCodecError::Wire(err) => write!(f, "frame codec wire error: {err}"),
@@ -37,8 +41,8 @@ impl std::error::Error for FrameCodecError {
   }
 }
 
-impl From<io::Error> for FrameCodecError {
-  fn from(err: io::Error) -> Self {
+impl From<IoError> for FrameCodecError {
+  fn from(err: IoError) -> Self {
     Self::Io(err)
   }
 }

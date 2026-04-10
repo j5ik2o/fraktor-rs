@@ -1,5 +1,7 @@
 //! `AShared` wrapper around the pure `Association` state machine.
 
+use core::fmt::{Debug, Formatter, Result as FmtResult};
+
 use fraktor_remote_core_rs::association::Association;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -40,8 +42,8 @@ impl Clone for AssociationShared {
   }
 }
 
-impl core::fmt::Debug for AssociationShared {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for AssociationShared {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("AssociationShared").finish_non_exhaustive()
   }
 }

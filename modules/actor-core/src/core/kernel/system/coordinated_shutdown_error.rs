@@ -1,7 +1,7 @@
 //! Errors from coordinated shutdown operations.
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 /// Errors that can occur during coordinated shutdown operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +17,7 @@ pub enum CoordinatedShutdownError {
 }
 
 impl fmt::Display for CoordinatedShutdownError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::UnknownPhase(phase) => write!(f, "unknown phase [{phase}]"),
       | Self::CyclicDependency(phase) => {

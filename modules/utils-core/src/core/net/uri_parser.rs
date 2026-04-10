@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use super::{UriError, UriParts};
 
@@ -16,7 +16,7 @@ impl UriParser {
   /// # Errors
   ///
   /// Returns `UriError::InvalidPercentEncoding` if the input contains invalid percent encoding.
-  pub fn percent_decode(input: &str) -> Result<alloc::string::String, UriError> {
+  pub fn percent_decode(input: &str) -> Result<String, UriError> {
     let mut result = Vec::new();
     let mut chars = input.chars().peekable();
 
@@ -49,7 +49,7 @@ impl UriParser {
     }
 
     // Convert bytes to string, validating UTF-8
-    alloc::string::String::from_utf8(result).map_err(|_| UriError::InvalidPercentEncoding)
+    String::from_utf8(result).map_err(|_| UriError::InvalidPercentEncoding)
   }
 
   /// Validates a hostname according to RFC2396.

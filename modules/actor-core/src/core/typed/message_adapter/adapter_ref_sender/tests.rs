@@ -39,7 +39,7 @@ fn adapter_sender_wraps_payload_into_envelope() {
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
-  let target = ActorRefSenderShared::new(probe);
+  let target = ActorRefSenderShared::new_with_builtin_lock(probe);
   let mut sender = AdapterRefSender::new(Pid::new(1, 0), 1, target, lifecycle, system);
 
   sender.send(AnyMessage::new(9_u32)).expect("send succeeds");
@@ -58,7 +58,7 @@ fn adapter_sender_rejects_when_lifecycle_stopped() {
   let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
-  let target = ActorRefSenderShared::new(probe);
+  let target = ActorRefSenderShared::new_with_builtin_lock(probe);
   let mut sender = AdapterRefSender::new(Pid::new(1, 0), 2, target, lifecycle, system);
 
   let result = sender.send(AnyMessage::new(1_u8));

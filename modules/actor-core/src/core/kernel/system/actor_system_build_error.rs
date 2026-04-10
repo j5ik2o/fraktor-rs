@@ -1,5 +1,5 @@
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::{scheduler::tick_driver::TickDriverError, spawn::SpawnError};
 
@@ -17,7 +17,7 @@ pub enum ActorSystemBuildError {
 }
 
 impl fmt::Display for ActorSystemBuildError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::MissingTickDriver => write!(f, "tick driver configuration is required"),
       | Self::Spawn(err) => write!(f, "actor system bootstrap failed: {err:?}"),

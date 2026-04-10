@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors that may occur during URI parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,8 +24,8 @@ pub enum UriError {
   UnexpectedEof,
 }
 
-impl fmt::Display for UriError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for UriError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | UriError::InvalidScheme => write!(f, "invalid scheme format"),
       | UriError::InvalidAuthority => write!(f, "invalid authority format"),

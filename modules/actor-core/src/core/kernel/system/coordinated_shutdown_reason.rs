@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 /// Reason for the coordinated shutdown.
 ///
@@ -30,7 +30,7 @@ pub enum CoordinatedShutdownReason {
 }
 
 impl fmt::Display for CoordinatedShutdownReason {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Unknown => write!(f, "UnknownReason"),
       | Self::ActorSystemTerminate => write!(f, "ActorSystemTerminateReason"),

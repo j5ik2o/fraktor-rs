@@ -1,6 +1,6 @@
 //! Scheduler error types returned by public APIs.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors raised when scheduling requests fail.
 #[derive(Debug, PartialEq, Eq)]
@@ -19,8 +19,8 @@ pub enum SchedulerError {
   TaskRunCapacityExceeded,
 }
 
-impl fmt::Display for SchedulerError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for SchedulerError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::InvalidDelay => write!(f, "invalid delay or period"),
       | Self::ActorUnavailable => write!(f, "actor cell unavailable"),

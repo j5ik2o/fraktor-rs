@@ -137,7 +137,7 @@ impl TokioBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = ExecutorShared::new(TokioExecutor::new(handle));
+      let executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
       let configurator: Box<dyn MessageDispatcherConfigurator> =
         Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
       let config = ActorSystemConfig::default()

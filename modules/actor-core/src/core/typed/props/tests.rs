@@ -1,3 +1,5 @@
+use core::num::NonZeroUsize;
+
 use super::TypedProps;
 use crate::core::{kernel::actor::props::MailboxConfigError, typed::MailboxSelector};
 
@@ -38,7 +40,7 @@ fn with_stash_mailbox_sets_stash_requirement() {
 #[test]
 fn with_stash_mailbox_rejects_bounded_mailbox_config() {
   let props = TypedProps::<u32>::empty()
-    .with_mailbox_selector(MailboxSelector::Bounded(core::num::NonZeroUsize::new(8).expect("non-zero")))
+    .with_mailbox_selector(MailboxSelector::Bounded(NonZeroUsize::new(8).expect("non-zero")))
     .with_stash_mailbox();
 
   assert_eq!(props.to_untyped().mailbox_config().validate(), Err(MailboxConfigError::BoundedWithDeque));

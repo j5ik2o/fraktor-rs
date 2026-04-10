@@ -2,7 +2,7 @@ extern crate std;
 
 use std::{
   boxed::Box,
-  io::{BufReader, BufWriter, Read, Write},
+  io::{BufReader, BufWriter, Error, ErrorKind, Read, Write},
   vec::Vec,
 };
 
@@ -34,10 +34,10 @@ impl StreamConverters {
   #[must_use]
   pub fn from_reader<F>(factory: F, chunk_size: usize) -> Source<Vec<u8>, StreamCompletion<IOResult>>
   where
-    F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static, {
+    F: FnOnce() -> Box<dyn Read + Send> + Send + 'static, {
     let completion = StreamCompletion::new();
     if chunk_size == 0 {
-      let error = std::io::Error::new(std::io::ErrorKind::InvalidInput, "chunk_size must be greater than 0");
+      let error = Error::new(ErrorKind::InvalidInput, "chunk_size must be greater than 0");
       completion.complete(Ok(IOResult::failed(0, io_error_to_stream_error(&error))));
       return Source::empty().map_materialized_value(move |_| completion);
     }
@@ -63,7 +63,7 @@ impl StreamConverters {
   #[must_use]
   pub fn to_writer<F>(factory: F, auto_flush: bool) -> Sink<u8, StreamCompletion<IOResult>>
   where
-    F: FnOnce() -> Box<dyn std::io::Write + Send> + Send + 'static, {
+    F: FnOnce() -> Box<dyn Write + Send> + Send + 'static, {
     let completion = StreamCompletion::new();
     let logic = WriteToWriterSinkLogic {
       factory: Some(factory),
@@ -79,14 +79,14 @@ impl StreamConverters {
 struct WriteToWriterSinkLogic<F> {
   factory:    Option<F>,
   auto_flush: bool,
-  writer:     Option<BufWriter<Box<dyn std::io::Write + Send>>>,
+  writer:     Option<BufWriter<Box<dyn Write + Send>>>,
   count:      u64,
   completion: StreamCompletion<IOResult>,
 }
 
 struct ReaderSourceLogic<F> {
   factory:     Option<F>,
-  reader:      Option<BufReader<Box<dyn std::io::Read + Send>>>,
+  reader:      Option<BufReader<Box<dyn Read + Send>>>,
   chunk_size:  usize,
   total_bytes: u64,
   completion:  StreamCompletion<IOResult>,
@@ -95,7 +95,7 @@ struct ReaderSourceLogic<F> {
 
 impl<F> SourceLogic for ReaderSourceLogic<F>
 where
-  F: FnOnce() -> Box<dyn std::io::Read + Send> + Send + 'static,
+  F: FnOnce() -> Box<dyn Read + Send> + Send + 'static,
 {
   fn pull(&mut self) -> Result<Option<DynValue>, StreamError> {
     if self.done {
@@ -147,7 +147,7 @@ where
 
 impl<F> SinkLogic for WriteToWriterSinkLogic<F>
 where
-  F: FnOnce() -> Box<dyn std::io::Write + Send> + Send + 'static,
+  F: FnOnce() -> Box<dyn Write + Send> + Send + 'static,
 {
   fn on_start(&mut self, demand: &mut DemandTracker) -> Result<(), StreamError> {
     if let Some(factory) = self.factory.take() {

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -83,7 +83,7 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_dispatcher_configurator(
     self,
-    id: impl Into<alloc::string::String>,
+    id: impl Into<String>,
     configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>>,
   ) -> Self {
     Self { config: self.config.with_dispatcher_configurator(id, configurator) }
@@ -91,7 +91,7 @@ impl ActorSystemSetup {
 
   /// Registers or updates a mailbox configuration.
   #[must_use]
-  pub fn with_mailbox(self, id: impl Into<alloc::string::String>, config: MailboxConfig) -> Self {
+  pub fn with_mailbox(self, id: impl Into<String>, config: MailboxConfig) -> Self {
     Self { config: self.config.with_mailbox(id, config) }
   }
 

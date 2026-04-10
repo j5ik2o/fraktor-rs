@@ -1,3 +1,6 @@
+use alloc::vec::Vec;
+use core::ptr;
+
 use super::super::{random_routing_logic::RandomRoutingLogic, routee::Routee, routing_logic::RoutingLogic};
 use crate::core::kernel::actor::{
   Pid,
@@ -19,7 +22,7 @@ fn select_returns_valid_routee() {
   // When/Then — all selections must point to one of the routees
   for _ in 0..10 {
     let selected = logic.select(&message, &routees);
-    let found = routees.iter().any(|r| core::ptr::eq(r, selected));
+    let found = routees.iter().any(|r| ptr::eq(r, selected));
     assert!(found, "selected routee must be one of the provided routees");
   }
 }
@@ -33,16 +36,16 @@ fn select_with_same_seed_produces_same_sequence() {
   let message = AnyMessage::new(42_u32);
 
   // When
-  let mut seq_a = alloc::vec::Vec::new();
-  let mut seq_b = alloc::vec::Vec::new();
+  let mut seq_a = Vec::new();
+  let mut seq_b = Vec::new();
   for _ in 0..10 {
     let a = logic_a.select(&message, &routees);
     let b = logic_b.select(&message, &routees);
-    let idx_a = match routees.iter().position(|r| core::ptr::eq(r, a)) {
+    let idx_a = match routees.iter().position(|r| ptr::eq(r, a)) {
       | Some(index) => index,
       | None => panic!("selected routee for logic_a not found in routees"),
     };
-    let idx_b = match routees.iter().position(|r| core::ptr::eq(r, b)) {
+    let idx_b = match routees.iter().position(|r| ptr::eq(r, b)) {
       | Some(index) => index,
       | None => panic!("selected routee for logic_b not found in routees"),
     };

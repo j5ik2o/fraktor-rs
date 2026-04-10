@@ -1,6 +1,6 @@
 //! Process identifier allocated by the actor system.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Identifies an actor instance within the runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -29,8 +29,8 @@ impl Pid {
   }
 }
 
-impl fmt::Display for Pid {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Pid {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}:{}", self.value, self.generation)
   }
 }

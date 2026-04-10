@@ -874,7 +874,7 @@ impl Executor for NoopExecutor {
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = ExecutorShared::new(NoopExecutor);
+  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
   ArcShared::new(configurator)

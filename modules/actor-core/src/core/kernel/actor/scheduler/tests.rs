@@ -7,7 +7,8 @@ use core::{
   cmp,
   num::NonZeroU32,
   pin::Pin,
-  task::{Context, Poll},
+  ptr,
+  task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
   time::Duration,
 };
 
@@ -94,13 +95,11 @@ fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
   (shared, provider)
 }
 
-fn noop_waker() -> core::task::Waker {
-  use core::task::{RawWaker, RawWakerVTable, Waker};
-
+fn noop_waker() -> Waker {
   const VTABLE: RawWakerVTable = RawWakerVTable::new(|data| RawWaker::new(data, &VTABLE), |_| {}, |_| {}, |_| {});
 
   unsafe fn raw_waker() -> RawWaker {
-    RawWaker::new(core::ptr::null(), &VTABLE)
+    RawWaker::new(ptr::null(), &VTABLE)
   }
 
   unsafe { Waker::from_raw(raw_waker()) }

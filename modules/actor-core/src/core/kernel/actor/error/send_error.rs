@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::fmt;
+use alloc::fmt::{Debug, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::messaging::AnyMessage;
 
@@ -92,8 +92,8 @@ impl SendError {
   }
 }
 
-impl fmt::Debug for SendError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for SendError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | SendError::Full(_) => f.debug_tuple("Full").finish(),
       | SendError::Suspended(_) => f.debug_tuple("Suspended").finish(),

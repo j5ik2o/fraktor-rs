@@ -1,3 +1,6 @@
+use alloc::{vec, vec::Vec};
+use core::ptr;
+
 use super::super::{round_robin_routing_logic::RoundRobinRoutingLogic, routee::Routee, routing_logic::RoutingLogic};
 use crate::core::kernel::actor::{
   Pid,
@@ -25,15 +28,15 @@ fn select_cycles_through_routees() {
   let message = AnyMessage::new(42_u32);
 
   // When — select 6 times
-  let mut selected_indices = alloc::vec::Vec::new();
+  let mut selected_indices = Vec::new();
   for _ in 0..6 {
     let selected = logic.select(&message, &routees);
-    let idx = routees.iter().position(|r| core::ptr::eq(r, selected)).expect("selected routee not found in routees");
+    let idx = routees.iter().position(|r| ptr::eq(r, selected)).expect("selected routee not found in routees");
     selected_indices.push(idx);
   }
 
   // Then — round-robin pattern: [0, 1, 2, 0, 1, 2]
-  assert_eq!(selected_indices, alloc::vec![0, 1, 2, 0, 1, 2]);
+  assert_eq!(selected_indices, vec![0, 1, 2, 0, 1, 2]);
 }
 
 #[test]
@@ -46,7 +49,7 @@ fn select_single_routee_always_returns_it() {
   // When/Then — always returns the single routee
   for _ in 0..3 {
     let selected = logic.select(&message, &routees);
-    assert!(core::ptr::eq(selected, &routees[0]));
+    assert!(ptr::eq(selected, &routees[0]));
   }
 }
 
@@ -62,8 +65,8 @@ fn select_wraps_cleanly_after_counter_overflow() {
   let second = logic.select(&message, &routees);
 
   // Then
-  assert!(core::ptr::eq(first, &routees[1]));
-  assert!(core::ptr::eq(second, &routees[0]));
+  assert!(ptr::eq(first, &routees[1]));
+  assert!(ptr::eq(second, &routees[0]));
 }
 
 #[test]

@@ -7,7 +7,7 @@ use core::{
   future::Future,
   pin::Pin,
   sync::atomic::{AtomicBool, Ordering},
-  task::{Context, Poll},
+  task::{Context, Poll, Waker},
 };
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -42,7 +42,7 @@ impl TickExecutorSignal {
     TickExecutorSignalFuture { signal: self }
   }
 
-  pub(crate) fn register_waker(&self, waker: &core::task::Waker) {
+  pub(crate) fn register_waker(&self, waker: &Waker) {
     self.state.register_waker(waker);
   }
 }
@@ -72,7 +72,7 @@ impl TickExecutorSignalState {
     self.pending.swap(false, Ordering::AcqRel)
   }
 
-  fn register_waker(&self, waker: &core::task::Waker) {
+  fn register_waker(&self, waker: &Waker) {
     self.waker.register(waker);
   }
 }

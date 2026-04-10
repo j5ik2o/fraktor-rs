@@ -1,6 +1,7 @@
 //! Grain reference entry point.
 
 use alloc::{format, string::String};
+use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -340,7 +341,7 @@ impl SchedulerRunnable for GrainRetryRunnable {
 
 fn schedule_retry_with_system(
   system: &ActorSystem,
-  wait: core::time::Duration,
+  wait: Duration,
   runnable: ArcShared<GrainRetryRunnable>,
 ) -> Result<(), ClusterRequestError> {
   let command = SchedulerCommand::RunRunnable { runnable };

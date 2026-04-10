@@ -7,7 +7,8 @@ mod i32_serializer;
 mod null_serializer;
 mod string_serializer;
 
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
+use core::any::TypeId;
 
 pub use bool_serializer::BoolSerializer;
 pub use byte_string_serializer::ByteStringSerializer;
@@ -56,7 +57,7 @@ where
     NULL_ID,
     NullSerializer::new(NULL_ID),
     "null",
-    Some((core::any::TypeId::of::<()>(), "()".into())),
+    Some((TypeId::of::<()>(), "()".into())),
     &mut on_collision,
   )?;
   register::<_, _>(
@@ -64,7 +65,7 @@ where
     BOOL_ID,
     BoolSerializer::new(BOOL_ID),
     "bool",
-    Some((core::any::TypeId::of::<bool>(), "bool".into())),
+    Some((TypeId::of::<bool>(), "bool".into())),
     &mut on_collision,
   )?;
   register::<_, _>(
@@ -72,7 +73,7 @@ where
     I32_ID,
     I32Serializer::new(I32_ID),
     "i32",
-    Some((core::any::TypeId::of::<i32>(), "i32".into())),
+    Some((TypeId::of::<i32>(), "i32".into())),
     &mut on_collision,
   )?;
   register::<_, _>(
@@ -80,7 +81,7 @@ where
     STRING_ID,
     StringSerializer::new(STRING_ID),
     "string",
-    Some((core::any::TypeId::of::<alloc::string::String>(), "String".into())),
+    Some((TypeId::of::<String>(), "String".into())),
     &mut on_collision,
   )?;
   register::<_, _>(
@@ -88,7 +89,7 @@ where
     BYTES_ID,
     BytesSerializer::new(BYTES_ID),
     "bytes",
-    Some((core::any::TypeId::of::<alloc::vec::Vec<u8>>(), "Vec<u8>".into())),
+    Some((TypeId::of::<Vec<u8>>(), "Vec<u8>".into())),
     &mut on_collision,
   )?;
   register::<_, _>(
@@ -96,7 +97,7 @@ where
     BYTE_STRING_ID,
     ByteStringSerializer::new(BYTE_STRING_ID),
     "byte_string",
-    Some((core::any::TypeId::of::<ByteString>(), "ByteString".into())),
+    Some((TypeId::of::<ByteString>(), "ByteString".into())),
     &mut on_collision,
   )?;
   Ok(())
@@ -107,7 +108,7 @@ fn register<S, F>(
   id: SerializerId,
   serializer: S,
   name: &'static str,
-  binding: Option<(core::any::TypeId, String)>,
+  binding: Option<(TypeId, String)>,
   on_collision: &mut F,
 ) -> Result<(), SerializationError>
 where

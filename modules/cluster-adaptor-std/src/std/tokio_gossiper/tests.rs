@@ -11,6 +11,7 @@ use fraktor_cluster_core_rs::core::{
     Gossiper, MembershipCoordinator, MembershipCoordinatorConfig, MembershipCoordinatorShared, MembershipTable,
   },
 };
+use tokio::runtime::Handle;
 
 use crate::std::{TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig};
 
@@ -41,12 +42,11 @@ async fn start_then_stop_is_ok() {
   let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
 
-  let mut gossiper =
-    TokioGossiper::new(config, coordinator, transport, event_stream, tokio::runtime::Handle::current());
+  let mut gossiper = TokioGossiper::new(config, coordinator, transport, event_stream, Handle::current());
   assert!(gossiper.start().is_ok());
   assert!(gossiper.stop().is_ok());
 }
@@ -58,12 +58,11 @@ async fn stop_without_start_returns_err() {
   let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
 
-  let mut gossiper =
-    TokioGossiper::new(config, coordinator, transport, event_stream, tokio::runtime::Handle::current());
+  let mut gossiper = TokioGossiper::new(config, coordinator, transport, event_stream, Handle::current());
   assert!(gossiper.stop().is_err());
 }
 
@@ -74,12 +73,11 @@ async fn start_twice_returns_err() {
   let event_stream = EventStreamShared::default();
   let transport = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
 
-  let mut gossiper =
-    TokioGossiper::new(config, coordinator, transport, event_stream, tokio::runtime::Handle::current());
+  let mut gossiper = TokioGossiper::new(config, coordinator, transport, event_stream, Handle::current());
   assert!(gossiper.start().is_ok());
   assert!(gossiper.start().is_err());
   let _ = gossiper.stop();

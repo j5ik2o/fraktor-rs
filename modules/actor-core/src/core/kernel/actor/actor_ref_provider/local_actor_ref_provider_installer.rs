@@ -1,5 +1,7 @@
 //! Installer for local-only actor-ref provider.
 
+use core::marker::PhantomData;
+
 use super::{
   actor_ref_provider_installer::ActorRefProviderInstaller, actor_ref_provider_shared::ActorRefProviderShared,
   local_actor_ref_provider::LocalActorRefProvider,
@@ -14,12 +16,12 @@ use crate::core::kernel::system::{ActorSystem, ActorSystemBuildError};
 ///
 /// Using this installer makes the local-only intent explicit in the configuration.
 pub struct LocalActorRefProviderInstaller {
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 
 impl Default for LocalActorRefProviderInstaller {
   fn default() -> Self {
-    Self { _marker: core::marker::PhantomData }
+    Self { _marker: PhantomData }
   }
 }
 

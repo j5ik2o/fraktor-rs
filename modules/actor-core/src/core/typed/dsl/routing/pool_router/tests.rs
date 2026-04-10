@@ -1,4 +1,4 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{collections::BTreeSet, string::String, vec::Vec};
 use core::hint::spin_loop;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
@@ -464,8 +464,7 @@ fn pool_router_with_routee_props_builds_behavior() {
 fn pool_router_with_routee_props_applies_tags_to_routees() {
   let pool_size = 2_usize;
   let records = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_tags: ArcShared<NoStdMutex<Vec<alloc::collections::BTreeSet<String>>>> =
-    ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_tags: ArcShared<NoStdMutex<Vec<BTreeSet<String>>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
 
   let props = TypedProps::<u32>::from_behavior_factory({
     let records = records.clone();

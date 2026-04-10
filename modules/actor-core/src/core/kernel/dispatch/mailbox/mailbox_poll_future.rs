@@ -1,7 +1,7 @@
 //! Future monitoring the user queue for incoming messages.
 
 use core::{
-  fmt,
+  fmt::{Debug, Formatter, Result as FmtResult},
   future::Future,
   pin::Pin,
   task::{Context, Poll},
@@ -108,8 +108,8 @@ impl Future for MailboxPollFuture {
   }
 }
 
-impl fmt::Debug for MailboxPollFuture {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for MailboxPollFuture {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("MailboxPollFuture").finish()
   }
 }

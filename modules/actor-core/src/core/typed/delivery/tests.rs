@@ -1,6 +1,7 @@
 extern crate std;
 
 use alloc::vec::Vec;
+use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
 
@@ -352,13 +353,13 @@ fn consumer_controller_settings_accessors() {
 #[test]
 fn producer_controller_settings_accessors() {
   let settings = ProducerControllerSettings::new()
-    .with_durable_queue_request_timeout(core::time::Duration::from_millis(15))
+    .with_durable_queue_request_timeout(Duration::from_millis(15))
     .with_durable_queue_retry_attempts(2)
-    .with_durable_queue_resend_first_interval(core::time::Duration::from_millis(9));
+    .with_durable_queue_resend_first_interval(Duration::from_millis(9));
 
-  assert_eq!(settings.durable_queue_request_timeout(), core::time::Duration::from_millis(15));
+  assert_eq!(settings.durable_queue_request_timeout(), Duration::from_millis(15));
   assert_eq!(settings.durable_queue_retry_attempts(), 2);
-  assert_eq!(settings.durable_queue_resend_first_interval(), core::time::Duration::from_millis(9));
+  assert_eq!(settings.durable_queue_resend_first_interval(), Duration::from_millis(9));
 }
 
 #[test]
@@ -370,10 +371,10 @@ fn producer_controller_behavior_with_settings_is_publicly_usable() {
 #[test]
 fn work_pulling_producer_controller_settings_accessors() {
   let settings = WorkPullingProducerControllerSettings::new()
-    .with_internal_ask_timeout(core::time::Duration::from_millis(21))
+    .with_internal_ask_timeout(Duration::from_millis(21))
     .with_producer_controller_settings(ProducerControllerSettings::new().with_durable_queue_retry_attempts(4));
   assert_eq!(settings.buffer_size(), 1000);
-  assert_eq!(settings.internal_ask_timeout(), core::time::Duration::from_millis(21));
+  assert_eq!(settings.internal_ask_timeout(), Duration::from_millis(21));
   assert_eq!(settings.producer_controller_settings().durable_queue_retry_attempts(), 4);
 }
 
@@ -567,10 +568,10 @@ fn work_pulling_durable_queue_timeout_uses_nested_producer_settings() {
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("timeout-workers");
   let durable_events = ArcShared::new(NoStdMutex::new(Vec::<&'static str>::new()));
   let settings = WorkPullingProducerControllerSettings::new()
-    .with_internal_ask_timeout(core::time::Duration::from_millis(10))
+    .with_internal_ask_timeout(Duration::from_millis(10))
     .with_producer_controller_settings(
       ProducerControllerSettings::new()
-        .with_durable_queue_request_timeout(core::time::Duration::from_millis(30))
+        .with_durable_queue_request_timeout(Duration::from_millis(30))
         .with_durable_queue_retry_attempts(1),
     );
 

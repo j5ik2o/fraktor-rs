@@ -5,6 +5,8 @@ extern crate std;
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
+
 use fraktor_actor_core_rs::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber};
 use tracing::{Level, event};
 
@@ -37,8 +39,7 @@ impl Default for DeadLetterLogSubscriber {
 impl EventStreamSubscriber for DeadLetterLogSubscriber {
   fn on_event(&mut self, stream_event: &EventStreamEvent) {
     if let EventStreamEvent::DeadLetter(entry) = stream_event {
-      let recipient =
-        entry.recipient().map(|pid| alloc::format!("{}", pid)).unwrap_or_else(|| alloc::string::String::from("n/a"));
+      let recipient = entry.recipient().map(|pid| alloc::format!("{}", pid)).unwrap_or_else(|| String::from("n/a"));
       let reason = alloc::format!("{:?}", entry.reason());
       event!(
         target: DEAD_LETTER_TARGET,

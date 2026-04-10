@@ -3,19 +3,22 @@
 #[cfg(test)]
 mod tests;
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+  marker::PhantomData,
+  sync::atomic::{AtomicBool, Ordering},
+};
 
 /// Lifecycle guard shared between adapter handles and senders.
 pub(crate) struct AdapterLifecycleState {
   alive:    AtomicBool,
-  _toolbox: core::marker::PhantomData<()>,
+  _toolbox: PhantomData<()>,
 }
 
 impl AdapterLifecycleState {
   /// Creates a new lifecycle state.
   #[must_use]
   pub(crate) const fn new() -> Self {
-    Self { alive: AtomicBool::new(true), _toolbox: core::marker::PhantomData }
+    Self { alive: AtomicBool::new(true), _toolbox: PhantomData }
   }
 
   /// Returns whether the adapter is still alive.

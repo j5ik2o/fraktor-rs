@@ -17,6 +17,15 @@ LL |     fraktor_sample::domain::Widget::new()
    = help: `use fraktor_sample::domain::Widget;` を追加し、本文では `Widget::new` から始まる短い名前へ置き換えてください
    = note: AI向けアドバイス: 1. このパスと同じモジュールスコープの `use` ブロックに `use fraktor_sample::domain::Widget;` を追加する 2. この箇所の `fraktor_sample::domain::Widget::new` を `Widget::new` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
 
+warning: `domain::Mode` は `use` 以外で不要な FQCN です
+  --> $DIR/other_roots.rs:32:24
+   |
+LL |   pub fn is_idle(mode: domain::Mode) -> bool {
+   |                        ^^^^^^^^^^^^
+   |
+   = help: `use domain::Mode;` を追加し、本文では `Mode` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. このパスと同じモジュールスコープの `use` ブロックに `use domain::Mode;` を追加する 2. この箇所の `domain::Mode` を `Mode` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
 warning: `self::domain::Mode::Idle` は `use` 以外で不要な FQCN です
   --> $DIR/other_roots.rs:34:7
    |
@@ -26,5 +35,14 @@ LL |       self::domain::Mode::Idle => true,
    = help: `use self::domain::Mode;` を追加し、本文では `Mode::Idle` から始まる短い名前へ置き換えてください
    = note: AI向けアドバイス: 1. このパスと同じモジュールスコープの `use` ブロックに `use self::domain::Mode;` を追加する 2. この箇所の `self::domain::Mode::Idle` を `Mode::Idle` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
 
-warning: 3 warnings emitted
+warning: `nested::domain::Mode::Idle` は `use` 以外で不要な FQCN です
+  --> $DIR/other_roots.rs:41:27
+   |
+LL |   let _ = nested::is_idle(nested::domain::Mode::Idle);
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: `use nested::domain::Mode;` を追加し、本文では `Mode::Idle` から始まる短い名前へ置き換えてください
+   = note: AI向けアドバイス: 1. ファイル冒頭の `use` ブロックに `use nested::domain::Mode;` を追加する 2. この箇所の `nested::domain::Mode::Idle` を `Mode::Idle` から始まる短い表記に置き換える 3. 同じファイル内の同種の FQCN も同時に統一する 4. `use` 宣言以外の不要な変更は行わない
+
+warning: 5 warnings emitted
 

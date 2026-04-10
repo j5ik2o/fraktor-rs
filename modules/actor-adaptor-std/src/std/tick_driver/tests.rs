@@ -22,6 +22,7 @@ use fraktor_utils_core_rs::core::{
 };
 use tokio::{
   runtime::Handle,
+  task::JoinHandle,
   time::{MissedTickBehavior, interval},
 };
 
@@ -86,7 +87,7 @@ impl TickDriver for TokioMetricsDriver {
 }
 
 struct TokioMetricsDriverControl {
-  tick_task: tokio::task::JoinHandle<()>,
+  tick_task: JoinHandle<()>,
 }
 
 impl TickDriverControl for TokioMetricsDriverControl {
@@ -157,8 +158,8 @@ impl TickExecutorPump for TokioMetricsPump {
 }
 
 struct TokioMetricsPumpControl {
-  executor_task: tokio::task::JoinHandle<()>,
-  metrics_task:  Option<tokio::task::JoinHandle<()>>,
+  executor_task: JoinHandle<()>,
+  metrics_task:  Option<JoinHandle<()>>,
 }
 
 impl TickDriverControl for TokioMetricsPumpControl {

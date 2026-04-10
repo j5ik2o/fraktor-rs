@@ -1,3 +1,5 @@
+use alloc::{vec, vec::Vec};
+
 use crate::core::kernel::actor::{
   actor_ref::ActorRef,
   messaging::{AnyMessage, MessageBuffer},
@@ -55,11 +57,11 @@ fn for_each_visits_all_elements() {
   buf.append(AnyMessage::new(2_u32), ActorRef::null());
   buf.append(AnyMessage::new(3_u32), ActorRef::null());
 
-  let mut values = alloc::vec::Vec::new();
+  let mut values = Vec::new();
   buf.for_each(|msg, _| {
     values.push(*msg.payload().downcast_ref::<u32>().unwrap());
   });
-  assert_eq!(values, alloc::vec![1, 2, 3]);
+  assert_eq!(values, vec![1, 2, 3]);
 }
 
 #[test]

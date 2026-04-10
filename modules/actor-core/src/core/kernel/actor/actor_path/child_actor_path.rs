@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use super::{ActorPath, ActorPathError, ActorPathParts, PathSegment};
 
@@ -99,14 +99,14 @@ impl ChildActorPath {
   }
 }
 
-impl fmt::Display for ChildActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fmt::Display::fmt(&self.inner, f)
+impl Display for ChildActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+    Display::fmt(&self.inner, f)
   }
 }
 
-impl fmt::Debug for ChildActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ChildActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_tuple("ChildActorPath").field(&self.inner.to_relative_string()).finish()
   }
 }

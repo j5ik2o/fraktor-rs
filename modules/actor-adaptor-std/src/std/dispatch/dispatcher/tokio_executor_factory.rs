@@ -20,6 +20,6 @@ impl TokioExecutorFactory {
 
 impl ExecutorFactory for TokioExecutorFactory {
   fn create(&self, _id: &str) -> ExecutorShared {
-    ExecutorShared::new(TokioExecutor::new(self.handle.clone()))
+    ExecutorShared::new_with_builtin_lock(TokioExecutor::new(self.handle.clone()))
   }
 }

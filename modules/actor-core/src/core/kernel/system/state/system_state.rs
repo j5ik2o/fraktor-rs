@@ -21,7 +21,7 @@ use core::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
-use self::path_identity::PathIdentity;
+use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
 use super::{
   super::termination_state::TerminationState, ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller,
   ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared, ActorRefProviders, AskFutures,
@@ -247,7 +247,7 @@ impl SystemState {
     } else {
       self.path_identity.canonical_host = None;
       self.path_identity.canonical_port = None;
-      self.path_identity.quarantine_duration = path_identity::DEFAULT_QUARANTINE_DURATION;
+      self.path_identity.quarantine_duration = DEFAULT_QUARANTINE_DURATION;
     }
 
     if let Some(start_time) = config.start_time() {

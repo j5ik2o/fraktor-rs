@@ -24,19 +24,14 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
-use super::{execute_error::ExecuteError, executor::Executor};
-use crate::core::kernel::system::lock_provider::SharedLock;
+use super::{execute_error::ExecuteError, executor::Executor, trampoline_state::TrampolineState};
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
-
-struct TrampolineState {
-  pending: VecDeque<BoxedTask>,
-}
 
 /// Multi-owner handle for a boxed [`Executor`].
 ///
@@ -51,28 +46,19 @@ pub struct ExecutorShared {
 }
 
 impl ExecutorShared {
-  /// Wraps the provided executor in a shareable handle.
+  /// Wraps the provided executor in a shareable handle backed by the built-in lock.
   #[must_use]
-  pub fn new<E: Executor + 'static>(executor: E) -> Self {
-    Self::from_boxed(Box::new(executor))
+  pub fn new_with_builtin_lock<E: Executor + 'static>(executor: E) -> Self {
+    Self::from_parts(
+      SharedLock::new_with_driver::<SpinSyncMutex<Box<dyn Executor>>>(Box::new(executor)),
+      SharedLock::new_with_driver::<SpinSyncMutex<TrampolineState>>(TrampolineState::new()),
+    )
   }
 
-  /// Wraps an already-boxed executor in a shareable handle.
+  /// Wraps already constructed shared locks in a shareable handle.
   #[must_use]
-  pub fn from_boxed(executor: Box<dyn Executor>) -> Self {
-    Self {
-      inner:      SharedLock::builtin(executor),
-      trampoline: SharedLock::builtin(TrampolineState { pending: VecDeque::new() }),
-      running:    ArcShared::new(AtomicBool::new(false)),
-    }
-  }
-
-  pub(crate) fn from_boxed_debug(executor: Box<dyn Executor>) -> Self {
-    Self {
-      inner:      SharedLock::debug(executor, "executor_shared.inner"),
-      trampoline: SharedLock::debug(TrampolineState { pending: VecDeque::new() }, "executor_shared.trampoline"),
-      running:    ArcShared::new(AtomicBool::new(false)),
-    }
+  pub fn from_parts(inner: SharedLock<Box<dyn Executor>>, trampoline: SharedLock<TrampolineState>) -> Self {
+    Self { inner, trampoline, running: ArcShared::new(AtomicBool::new(false)) }
   }
 
   /// Submits the task to the inner executor.
@@ -86,7 +72,7 @@ impl ExecutorShared {
   /// Returns [`ExecuteError`] when the underlying executor rejects the task.
   pub fn execute(&self, task: BoxedTask) -> Result<(), ExecuteError> {
     // Phase 1: queue the task.
-    self.trampoline.lock().pending.push_back(task);
+    self.trampoline.with_lock(|state| state.pending.push_back(task));
 
     // Phase 2: become the drain owner. If someone else is already draining,
     // we simply return after queuing — they will pick up our task.
@@ -99,14 +85,14 @@ impl ExecutorShared {
     // task, so re-entrant calls from an inline task don't deadlock.
     let mut last_err: Option<ExecuteError> = None;
     loop {
-      let next = self.trampoline.lock().pending.pop_front();
+      let next = self.trampoline.with_lock(|state| state.pending.pop_front());
       match next {
         | Some(task) => {
           let result = self.with_write(|inner| inner.execute(task));
           if let Err(err) = result {
             last_err = Some(err);
             // Drop remaining queued tasks: the executor is in a bad state.
-            self.trampoline.lock().pending.clear();
+            self.trampoline.with_lock(|state| state.pending.clear());
             break;
           }
         },
@@ -121,18 +107,18 @@ impl ExecutorShared {
     // another caller should still be able to drain (they'll CAS
     // successfully), but to avoid lost wake-ups we nudge once here.
     if last_err.is_none()
-      && !self.trampoline.lock().pending.is_empty()
+      && self.trampoline.with_read(|state| !state.pending.is_empty())
       && self.running.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
     {
       // Tail drain: re-use the same loop body on the thin remaining tail.
       loop {
-        let next = self.trampoline.lock().pending.pop_front();
+        let next = self.trampoline.with_lock(|state| state.pending.pop_front());
         match next {
           | Some(task) => {
             let result = self.with_write(|inner| inner.execute(task));
             if let Err(err) = result {
               last_err = Some(err);
-              self.trampoline.lock().pending.clear();
+              self.trampoline.with_lock(|state| state.pending.clear());
               break;
             }
           },
@@ -151,7 +137,7 @@ impl ExecutorShared {
   /// Shuts the inner executor down.
   pub fn shutdown(&self) {
     self.with_write(|inner| inner.shutdown());
-    self.trampoline.lock().pending.clear();
+    self.trampoline.with_lock(|state| state.pending.clear());
   }
 }
 
@@ -163,12 +149,10 @@ impl Clone for ExecutorShared {
 
 impl SharedAccess<Box<dyn Executor>> for ExecutorShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Executor>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(|guard| f(guard))
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Executor>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_lock(|guard| f(guard))
   }
 }

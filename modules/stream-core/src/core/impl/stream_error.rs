@@ -1,8 +1,11 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::Cow, format};
-use core::{any::TypeId, fmt};
+use alloc::{borrow::Cow, format, string::String};
+use core::{
+  any::TypeId,
+  fmt::{self, Formatter, Result as FmtResult},
+};
 
 use fraktor_actor_core_rs::core::kernel::actor::error::SendError;
 
@@ -77,9 +80,9 @@ pub enum StreamError {
   /// Indicates an IO operation failed.
   IoError {
     /// IO error kind identifier (e.g. `"BrokenPipe"`, `"UnexpectedEof"`).
-    kind:    alloc::string::String,
+    kind:    String,
     /// Human-readable description of the error.
-    message: alloc::string::String,
+    message: String,
   },
 }
 
@@ -124,7 +127,7 @@ impl StreamError {
 }
 
 impl fmt::Display for StreamError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::InvalidDemand { requested } => write!(f, "invalid demand: {requested}"),
       | Self::DemandExceeded { requested, remaining } => {

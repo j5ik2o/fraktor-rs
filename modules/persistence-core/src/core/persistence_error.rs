@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::core::{journal_error::JournalError, snapshot_error::SnapshotError};
 
@@ -23,8 +23,8 @@ pub enum PersistenceError {
   MessagePassing(String),
 }
 
-impl fmt::Display for PersistenceError {
-  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for PersistenceError {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
       | PersistenceError::Journal(error) => write!(formatter, "journal error: {}", error),
       | PersistenceError::Snapshot(error) => write!(formatter, "snapshot error: {}", error),

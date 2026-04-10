@@ -1,6 +1,6 @@
 //! Error produced by [`CircuitBreakerShared::call`](super::CircuitBreakerShared::call).
 
-use alloc::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::circuit_breaker_open_error::CircuitBreakerOpenError;
 
@@ -13,8 +13,8 @@ pub enum CircuitBreakerCallError<E> {
   Failed(E),
 }
 
-impl<E: fmt::Display> fmt::Display for CircuitBreakerCallError<E> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<E: Display> Display for CircuitBreakerCallError<E> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Open(err) => write!(f, "{err}"),
       | Self::Failed(err) => write!(f, "call failed: {err}"),

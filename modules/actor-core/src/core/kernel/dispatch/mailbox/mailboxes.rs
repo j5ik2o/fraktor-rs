@@ -1,5 +1,5 @@
 use alloc::{borrow::ToOwned, boxed::Box, string::String};
-use core::num::NonZeroUsize;
+use core::{marker::PhantomData, num::NonZeroUsize};
 
 use ahash::RandomState;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -105,12 +105,12 @@ fn bounded_mailbox_type(capacity: NonZeroUsize, overflow: MailboxOverflowStrateg
 /// Registry that manages mailbox configurations keyed by identifier.
 pub struct Mailboxes {
   entries: HashMap<String, MailboxConfig, RandomState>,
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 
 impl Clone for Mailboxes {
   fn clone(&self) -> Self {
-    Self { entries: self.entries.clone(), _marker: core::marker::PhantomData }
+    Self { entries: self.entries.clone(), _marker: PhantomData }
   }
 }
 
@@ -118,7 +118,7 @@ impl Mailboxes {
   /// Creates an empty mailbox registry.
   #[must_use]
   pub fn new() -> Self {
-    Self { entries: HashMap::with_hasher(RandomState::new()), _marker: core::marker::PhantomData }
+    Self { entries: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
   /// Registers a mailbox configuration.

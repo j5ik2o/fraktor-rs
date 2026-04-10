@@ -6,7 +6,7 @@ mod tests;
 use alloc::{vec, vec::Vec};
 use core::{
   any::Any,
-  fmt::{Debug, Formatter},
+  fmt::{Debug, Formatter, Result as FmtResult},
 };
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -81,7 +81,7 @@ impl Default for EventSeq {
 }
 
 impl Debug for EventSeq {
-  fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | EventSeq::Empty => f.debug_tuple("EventSeq::Empty").finish(),
       | EventSeq::Single(_) => f.debug_tuple("EventSeq::Single").field(&"<any>").finish(),

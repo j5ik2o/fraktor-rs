@@ -1,15 +1,9 @@
-//! Runtime-selected lock type aliases shared across the crate.
+//! Runtime-selected lock aliases shared across the crate.
 
 #[cfg(test)]
 mod tests;
 
-use crate::core::sync::{SpinSyncMutex, SpinSyncRwLock};
-
-/// Runtime-selected mutex alias.
-pub type RuntimeMutex<T> = SpinSyncMutex<T>;
-
-/// Runtime-selected rwlock alias.
-pub type RuntimeRwLock<T> = SpinSyncRwLock<T>;
+use crate::core::sync::{RuntimeMutex, SpinSyncMutex};
 
 /// No-std mutex alias.
-pub type NoStdMutex<T> = RuntimeMutex<T>;
+pub type NoStdMutex<T> = RuntimeMutex<T, SpinSyncMutex<T>>;

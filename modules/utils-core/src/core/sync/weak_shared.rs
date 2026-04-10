@@ -2,6 +2,7 @@
 
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Weak;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 #[cfg(feature = "force-portable-arc")]
 use portable_atomic_util::Weak;
@@ -68,8 +69,8 @@ impl<T: ?Sized> Clone for WeakShared<T> {
   }
 }
 
-impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for WeakShared<T> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<T: ?Sized + Debug> Debug for WeakShared<T> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("WeakShared").finish()
   }
 }

@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::any::Any;
 
 use crate::core::attributes::{Attribute, LogLevel};
@@ -13,8 +14,8 @@ impl Attribute for InputBufferAttr {
     self
   }
 
-  fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
-    alloc::boxed::Box::new(self.clone())
+  fn clone_box(&self) -> Box<dyn Attribute> {
+    Box::new(self.clone())
   }
 
   fn eq_attr(&self, other: &dyn Any) -> bool {
@@ -25,7 +26,7 @@ impl Attribute for InputBufferAttr {
 #[test]
 fn attribute_trait_object_can_be_downcast() {
   let attr = InputBufferAttr { initial: 16, max: 64 };
-  let boxed: alloc::boxed::Box<dyn Attribute> = alloc::boxed::Box::new(attr.clone());
+  let boxed: Box<dyn Attribute> = Box::new(attr.clone());
   let downcast = boxed.as_any().downcast_ref::<InputBufferAttr>();
   assert!(downcast.is_some());
   assert_eq!(downcast.unwrap(), &attr);
@@ -41,8 +42,8 @@ fn different_attribute_types_are_distinguishable() {
       self
     }
 
-    fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
-      alloc::boxed::Box::new(self.clone())
+    fn clone_box(&self) -> Box<dyn Attribute> {
+      Box::new(self.clone())
     }
 
     fn eq_attr(&self, _other: &dyn Any) -> bool {
@@ -50,13 +51,13 @@ fn different_attribute_types_are_distinguishable() {
     }
   }
 
-  let boxed: alloc::boxed::Box<dyn Attribute> = alloc::boxed::Box::new(InputBufferAttr { initial: 8, max: 32 });
+  let boxed: Box<dyn Attribute> = Box::new(InputBufferAttr { initial: 8, max: 32 });
   assert!(boxed.as_any().downcast_ref::<OtherAttr>().is_none());
 }
 
 #[test]
 fn log_level_implements_attribute() {
-  let boxed: alloc::boxed::Box<dyn Attribute> = alloc::boxed::Box::new(LogLevel::Info);
+  let boxed: Box<dyn Attribute> = Box::new(LogLevel::Info);
   let downcast = boxed.as_any().downcast_ref::<LogLevel>();
   assert!(downcast.is_some());
   assert_eq!(*downcast.unwrap(), LogLevel::Info);

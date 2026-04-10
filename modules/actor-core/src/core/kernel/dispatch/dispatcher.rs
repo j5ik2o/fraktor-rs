@@ -21,6 +21,7 @@ mod pinned_dispatcher;
 mod pinned_dispatcher_configurator;
 mod shared_message_queue;
 mod shutdown_schedule;
+mod trampoline_state;
 
 pub use balancing_dispatcher::BalancingDispatcher;
 pub use balancing_dispatcher_configurator::BalancingDispatcherConfigurator;
@@ -43,3 +44,4 @@ pub use pinned_dispatcher::PinnedDispatcher;
 pub use pinned_dispatcher_configurator::PinnedDispatcherConfigurator;
 pub use shared_message_queue::SharedMessageQueue;
 pub use shutdown_schedule::ShutdownSchedule;
+pub use trampoline_state::TrampolineState;

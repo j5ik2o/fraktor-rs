@@ -4,7 +4,13 @@ use core::{
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
-use std::sync::{Mutex as StdMutex, mpsc};
+use std::{
+  sync::{
+    Mutex as StdMutex,
+    mpsc::{self, Receiver, Sender},
+  },
+  thread,
+};
 
 use super::MessageDispatcherShared;
 use crate::core::kernel::{
@@ -36,8 +42,8 @@ impl Actor for ProbeActor {
 
 struct BlockingActor {
   seen:       Arc<AtomicUsize>,
-  started_tx: mpsc::Sender<()>,
-  resume_rx:  Arc<StdMutex<mpsc::Receiver<()>>>,
+  started_tx: Sender<()>,
+  resume_rx:  Arc<StdMutex<Receiver<()>>>,
 }
 
 impl Actor for BlockingActor {
@@ -57,10 +63,10 @@ fn nz(value: usize) -> NonZeroUsize {
 
 #[test]
 fn shared_query_methods_delegate_to_inner() {
-  let executor = ExecutorShared::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
+  let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
   let settings = DispatcherSettings::new("shared", nz(11), Some(Duration::from_millis(7)), Duration::from_secs(2));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherShared::new(dispatcher);
+  let shared = MessageDispatcherShared::new_with_builtin_lock(dispatcher);
   assert_eq!(shared.id(), "shared");
   assert_eq!(shared.throughput(), nz(11));
   assert_eq!(shared.throughput_deadline(), Some(Duration::from_millis(7)));
@@ -70,10 +76,10 @@ fn shared_query_methods_delegate_to_inner() {
 
 #[test]
 fn clone_shares_inner_state() {
-  let executor = ExecutorShared::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
+  let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
   let settings = DispatcherSettings::with_defaults("clone-test");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherShared::new(dispatcher);
+  let shared = MessageDispatcherShared::new_with_builtin_lock(dispatcher);
   let cloned = shared.clone();
   // Both clones see the same id.
   assert_eq!(shared.id(), cloned.id());
@@ -81,10 +87,10 @@ fn clone_shares_inner_state() {
 
 #[test]
 fn shutdown_invokes_inner_shutdown() {
-  let executor = ExecutorShared::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
+  let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
   let settings = DispatcherSettings::with_defaults("shutdown");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherShared::new(dispatcher);
+  let shared = MessageDispatcherShared::new_with_builtin_lock(dispatcher);
   shared.shutdown();
 }
 
@@ -121,10 +127,10 @@ fn dispatch_drives_user_message_through_actor_invoker() {
   let cell = ActorCell::create(state.clone(), pid, None, "drive-test".into(), &props).expect("create cell");
   state.register_cell(cell.clone());
 
-  let executor = ExecutorShared::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
+  let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
   let settings = DispatcherSettings::new("dispatch-drive", nz(8), None, Duration::from_secs(1));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherShared::new(dispatcher);
+  let shared = MessageDispatcherShared::new_with_builtin_lock(dispatcher);
 
   shared.dispatch(&cell, Envelope::new(AnyMessage::new(7_u32))).expect("dispatch");
   assert_eq!(seen.load(Ordering::SeqCst), 1, "user message should be drained through invoker");
@@ -132,8 +138,6 @@ fn dispatch_drives_user_message_through_actor_invoker() {
 
 #[test]
 fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
-  use alloc::boxed::Box;
-
   use fraktor_utils_core_rs::core::sync::ArcShared;
 
   use crate::core::kernel::{
@@ -142,7 +146,7 @@ fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   };
 
   let system = ActorSystem::new_empty_with(|config| {
-    let executor = ExecutorShared::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
+    let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
     let settings = DispatcherSettings::new("system-test-dispatch", nz(4), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
@@ -175,8 +179,6 @@ fn detach_idle_mailbox_cleans_up_immediately() {
 
 #[test]
 fn detach_running_mailbox_returns_before_runner_finalizes() {
-  use alloc::sync::Arc as AllocArc;
-
   use crate::core::kernel::{
     actor::{ActorCell, Pid, messaging::AnyMessage, props::Props},
     system::ActorSystem,
@@ -187,7 +189,7 @@ fn detach_running_mailbox_returns_before_runner_finalizes() {
   let seen = Arc::new(AtomicUsize::new(0));
   let (started_tx, started_rx) = mpsc::channel();
   let (resume_tx, resume_rx) = mpsc::channel();
-  let resume_rx = AllocArc::new(StdMutex::new(resume_rx));
+  let resume_rx = Arc::new(StdMutex::new(resume_rx));
   let props = Props::from_fn({
     let seen = seen.clone();
     let resume_rx = resume_rx.clone();
@@ -200,13 +202,13 @@ fn detach_running_mailbox_returns_before_runner_finalizes() {
 
   let mailbox = cell.mailbox();
   let mailbox_for_run = mailbox.clone();
-  let run_handle = std::thread::spawn(move || mailbox_for_run.run(nz(8), None));
+  let run_handle = thread::spawn(move || mailbox_for_run.run(nz(8), None));
 
   started_rx.recv().expect("runner should start first message");
 
   let cell_for_detach = cell.clone();
   let (detach_done_tx, detach_done_rx) = mpsc::channel();
-  let detach_handle = std::thread::spawn(move || {
+  let detach_handle = thread::spawn(move || {
     let schedule = cell_for_detach.new_dispatcher_shared().detach(&cell_for_detach);
     detach_done_tx.send(schedule).expect("detach result");
   });

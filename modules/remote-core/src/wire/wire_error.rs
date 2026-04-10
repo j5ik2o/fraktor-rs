@@ -1,6 +1,6 @@
 //! Errors produced by the wire format encode / decode pipeline.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors raised while encoding or decoding a wire PDU.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,8 +22,8 @@ pub enum WireError {
   FrameTooLarge,
 }
 
-impl fmt::Display for WireError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for WireError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | WireError::InvalidFormat => f.write_str("wire: invalid format"),
       | WireError::UnknownVersion => f.write_str("wire: unknown version"),

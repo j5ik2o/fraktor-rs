@@ -36,7 +36,8 @@
 //! - `execute_task` is also absent: it is out of scope for the `dispatcher-pekko-1n-redesign`
 //!   change (YAGNI) and will be added when a concrete caller appears.
 
-use alloc::{boxed::Box, vec};
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -68,17 +69,17 @@ pub trait MessageDispatcher: Send + Sync {
   }
 
   /// Returns the configured throughput.
-  fn throughput(&self) -> core::num::NonZeroUsize {
+  fn throughput(&self) -> NonZeroUsize {
     self.core().throughput()
   }
 
   /// Returns the configured throughput deadline.
-  fn throughput_deadline(&self) -> Option<core::time::Duration> {
+  fn throughput_deadline(&self) -> Option<Duration> {
     self.core().throughput_deadline()
   }
 
   /// Returns the configured shutdown timeout.
-  fn shutdown_timeout(&self) -> core::time::Duration {
+  fn shutdown_timeout(&self) -> Duration {
     self.core().shutdown_timeout()
   }
 
@@ -147,7 +148,7 @@ pub trait MessageDispatcher: Send + Sync {
     &mut self,
     receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
-  ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
     let mailbox = receiver.mailbox();
     mailbox.enqueue_envelope(envelope)?;
     Ok(vec![mailbox])
@@ -165,7 +166,7 @@ pub trait MessageDispatcher: Send + Sync {
     &mut self,
     receiver: &ArcShared<ActorCell>,
     message: SystemMessage,
-  ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
     let mailbox = receiver.mailbox();
     mailbox.enqueue_system(message)?;
     Ok(vec![mailbox])

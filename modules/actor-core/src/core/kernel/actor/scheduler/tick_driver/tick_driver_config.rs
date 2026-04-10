@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::boxed::Box;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 
@@ -40,8 +41,8 @@ impl TickDriverConfig {
   }
 }
 
-impl core::fmt::Debug for TickDriverConfig {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for TickDriverConfig {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Runtime { .. } => f.debug_struct("Runtime").finish_non_exhaustive(),
       #[cfg(any(test, feature = "test-support"))]

@@ -1,6 +1,6 @@
 //! Error type returned by [`crate::provider::StdRemoteActorRefProvider`].
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use fraktor_actor_core_rs::core::kernel::actor::error::ActorError;
 use fraktor_remote_core_rs::provider::ProviderError;
@@ -31,8 +31,8 @@ pub enum StdRemoteActorRefProviderError {
   RemoteSenderBuildFailed,
 }
 
-impl fmt::Display for StdRemoteActorRefProviderError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for StdRemoteActorRefProviderError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | StdRemoteActorRefProviderError::NotRemote => {
         f.write_str("std remote provider: local path passed to remote-only entry point")

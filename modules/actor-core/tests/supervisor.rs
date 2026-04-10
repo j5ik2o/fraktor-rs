@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use std::{
   panic::{AssertUnwindSafe, catch_unwind},
   thread,
-  time::Duration,
+  time::{Duration, Instant},
 };
 
 use fraktor_actor_core_rs::core::kernel::{
@@ -194,8 +194,8 @@ fn resume_directive_continues_child_without_restart() {
 }
 
 fn wait_until(condition: impl Fn() -> bool, timeout: Duration) {
-  let dead_line = std::time::Instant::now() + timeout;
-  while !condition() && std::time::Instant::now() < dead_line {
+  let dead_line = Instant::now() + timeout;
+  while !condition() && Instant::now() < dead_line {
     thread::yield_now();
   }
 }

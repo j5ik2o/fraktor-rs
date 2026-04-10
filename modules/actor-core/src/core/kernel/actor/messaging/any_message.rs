@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::fmt;
+use alloc::fmt::{Debug, Formatter, Result as FmtResult};
 use core::any::Any;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -109,8 +109,8 @@ impl Clone for AnyMessage {
   }
 }
 
-impl fmt::Debug for AnyMessage {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for AnyMessage {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("AnyMessage")
       .field("type_id", &self.payload.type_id())
       .field("has_sender", &self.sender.is_some())

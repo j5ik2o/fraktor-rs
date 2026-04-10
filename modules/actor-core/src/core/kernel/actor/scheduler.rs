@@ -42,7 +42,7 @@ pub use execution_batch::{BatchMode, ExecutionBatch};
 ///
 /// This preserves the existing `SchedulerHandle` surface while exposing the
 /// name used by Pekko's scheduler APIs.
-pub type Cancellable = handle::SchedulerHandle;
+pub type Cancellable = SchedulerHandle;
 pub use handle::SchedulerHandle;
 pub use metrics::SchedulerMetrics;
 pub use mode::SchedulerMode;

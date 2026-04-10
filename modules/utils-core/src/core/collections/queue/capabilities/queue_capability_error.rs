@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 use super::{super::QueueError, QueueCapability};
 
 /// Error returned when required capabilities are missing from the runtime.
@@ -20,8 +22,8 @@ impl QueueCapabilityError {
   }
 }
 
-impl core::fmt::Display for QueueCapabilityError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for QueueCapabilityError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "missing queue capability: {:?}", self.missing)
   }
 }

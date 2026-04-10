@@ -28,6 +28,12 @@ use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
 };
 #[cfg(feature = "advanced")]
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+#[cfg(feature = "advanced")]
+use tokio::{
+  runtime::Handle as TokioHandle,
+  task::JoinHandle,
+  time::{MissedTickBehavior, interval, sleep},
+};
 
 const PULSE_PERIOD_NANOS: u64 = 10_000_000; // 10ms
 
@@ -229,11 +235,11 @@ impl TickDriver for TokioDemoTickDriver {
   }
 
   fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
-    let handle = tokio::runtime::Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
+    let handle = TokioHandle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
     let tick_task = handle.spawn(async move {
-      let mut ticker = tokio::time::interval(resolution);
-      ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+      let mut ticker = interval(resolution);
+      ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
       loop {
         ticker.tick().await;
         feed.enqueue(1);
@@ -248,7 +254,7 @@ impl TickDriver for TokioDemoTickDriver {
 
 #[cfg(feature = "advanced")]
 struct TokioDemoTickDriverControl {
-  tick_task: tokio::task::JoinHandle<()>,
+  tick_task: JoinHandle<()>,
 }
 
 #[cfg(feature = "advanced")]
@@ -273,12 +279,12 @@ impl TokioDemoTickExecutorPump {
 #[cfg(feature = "advanced")]
 impl TickExecutorPump for TokioDemoTickExecutorPump {
   fn spawn(&mut self, mut executor: SchedulerTickExecutor) -> Result<Box<dyn TickDriverControl>, TickDriverError> {
-    let handle = tokio::runtime::Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
+    let handle = TokioHandle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
     let executor_task = handle.spawn(async move {
       loop {
         executor.drive_pending();
-        tokio::time::sleep(resolution / 10).await;
+        sleep(resolution / 10).await;
       }
     });
     Ok(Box::new(TokioDemoTickExecutorControl { executor_task }))
@@ -291,7 +297,7 @@ impl TickExecutorPump for TokioDemoTickExecutorPump {
 
 #[cfg(feature = "advanced")]
 struct TokioDemoTickExecutorControl {
-  executor_task: tokio::task::JoinHandle<()>,
+  executor_task: JoinHandle<()>,
 }
 
 #[cfg(feature = "advanced")]

@@ -591,7 +591,16 @@ fn cleanup_close_wins_against_inflight_enqueue() {
   };
 
   let mailbox = Arc::new(Mailbox::new(MailboxPolicy::unbounded(None)));
-  let guard = mailbox.user_queue_lock.lock();
+  let (lock_held_tx, lock_held_rx) = mpsc::channel();
+  let (release_lock_tx, release_lock_rx) = mpsc::channel();
+  let mailbox_for_lock = Arc::clone(&mailbox);
+  let lock_handle = thread::spawn(move || {
+    mailbox_for_lock.user_queue_lock.with_lock(|_| {
+      lock_held_tx.send(()).expect("lock 取得シグナルが送信されるべき");
+      release_lock_rx.recv().expect("lock 解放シグナルを受信できるべき");
+    });
+  });
+  lock_held_rx.recv().expect("lock 保持スレッドが起動するべき");
   let (started_tx, started_rx) = mpsc::channel();
   let (result_tx, result_rx) = mpsc::channel();
   let mailbox_for_enqueue = Arc::clone(&mailbox);
@@ -610,10 +619,11 @@ fn cleanup_close_wins_against_inflight_enqueue() {
   assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
   mailbox.state.finish_cleanup();
-  drop(guard);
+  release_lock_tx.send(()).expect("lock 解放シグナルが送信されるべき");
 
   let result = result_rx.recv().expect("enqueue 結果を受信できるべき");
   enqueue_handle.join().expect("enqueue スレッドが完了するべき");
+  lock_handle.join().expect("lock 保持スレッドが完了するべき");
   assert!(
     matches!(result, Err(SendError::Closed(_))),
     "under-lock re-check must reject inflight enqueue, got {result:?}",
@@ -634,7 +644,16 @@ fn cleanup_close_wins_against_inflight_prepend() {
 
   let queue = Box::new(UnboundedDequeMessageQueue::new());
   let mailbox = Arc::new(Mailbox::new_with_queue(MailboxPolicy::unbounded(None), queue));
-  let guard = mailbox.user_queue_lock.lock();
+  let (lock_held_tx, lock_held_rx) = mpsc::channel();
+  let (release_lock_tx, release_lock_rx) = mpsc::channel();
+  let mailbox_for_lock = Arc::clone(&mailbox);
+  let lock_handle = thread::spawn(move || {
+    mailbox_for_lock.user_queue_lock.with_lock(|_| {
+      lock_held_tx.send(()).expect("lock 取得シグナルが送信されるべき");
+      release_lock_rx.recv().expect("lock 解放シグナルを受信できるべき");
+    });
+  });
+  lock_held_rx.recv().expect("lock 保持スレッドが起動するべき");
   let messages = VecDeque::from([AnyMessage::new("inflight-prepend")]);
   let (started_tx, started_rx) = mpsc::channel();
   let (result_tx, result_rx) = mpsc::channel();
@@ -655,10 +674,11 @@ fn cleanup_close_wins_against_inflight_prepend() {
   assert_eq!(mailbox.state.request_close(), CloseRequestOutcome::CallerOwnsFinalizer);
   mailbox.user.clean_up();
   mailbox.state.finish_cleanup();
-  drop(guard);
+  release_lock_tx.send(()).expect("lock 解放シグナルが送信されるべき");
 
   let result = result_rx.recv().expect("prepend 結果を受信できるべき");
   prepend_handle.join().expect("prepend スレッドが完了するべき");
+  lock_handle.join().expect("lock 保持スレッドが完了するべき");
   assert!(
     matches!(result, Err(SendError::Closed(_))),
     "under-lock re-check must reject inflight prepend, got {result:?}",

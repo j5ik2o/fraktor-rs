@@ -10,7 +10,12 @@ use std::sync::Arc;
 use fraktor_cluster_core_rs::core::membership::{
   GossipOutbound, GossipTransport, GossipTransportError, MembershipDelta,
 };
-use tokio::{net::UdpSocket, sync::mpsc};
+use tokio::{
+  net::UdpSocket,
+  runtime::Handle,
+  sync::mpsc::{self, Receiver, Sender, error::TryRecvError},
+  task::JoinHandle,
+};
 
 use crate::std::{gossip_wire_delta_v1::GossipWireDeltaV1, tokio_gossip_transport_config::TokioGossipTransportConfig};
 
@@ -25,17 +30,14 @@ struct OutboundPacket {
 /// Tokio-based gossip transport.
 pub struct TokioGossipTransport {
   local_addr:  SocketAddr,
-  outbound_tx: mpsc::Sender<OutboundPacket>,
-  inbound_rx:  mpsc::Receiver<(String, MembershipDelta)>,
-  _tasks:      Vec<tokio::task::JoinHandle<()>>,
+  outbound_tx: Sender<OutboundPacket>,
+  inbound_rx:  Receiver<(String, MembershipDelta)>,
+  _tasks:      Vec<JoinHandle<()>>,
 }
 
 impl TokioGossipTransport {
   /// Binds a new transport.
-  pub fn bind(
-    config: TokioGossipTransportConfig,
-    runtime: tokio::runtime::Handle,
-  ) -> Result<Self, GossipTransportError> {
+  pub fn bind(config: TokioGossipTransportConfig, runtime: Handle) -> Result<Self, GossipTransportError> {
     if config.max_datagram_bytes == 0 {
       return Err(GossipTransportError::SendFailed { reason: String::from("max_datagram_bytes must be > 0") });
     }
@@ -119,8 +121,8 @@ impl GossipTransport for TokioGossipTransport {
     loop {
       match self.inbound_rx.try_recv() {
         | Ok(delta) => deltas.push(delta),
-        | Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
-        | Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+        | Err(TryRecvError::Empty) => break,
+        | Err(TryRecvError::Disconnected) => break,
       }
     }
     deltas

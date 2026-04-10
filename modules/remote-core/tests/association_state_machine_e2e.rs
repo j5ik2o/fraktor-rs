@@ -5,7 +5,7 @@
 //! through `Handshaking` → `Active` → `Quarantined` while verifying the
 //! emitted side-effects are consistent with the design specification.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 extern crate alloc;
 
@@ -38,7 +38,7 @@ fn user_envelope(payload: &str) -> OutboundEnvelope {
   OutboundEnvelope::new(
     path,
     None,
-    AnyMessage::new(alloc::string::String::from(payload)),
+    AnyMessage::new(String::from(payload)),
     OutboundPriority::User,
     remote_node(),
     CorrelationId::nil(),
@@ -51,7 +51,7 @@ fn system_envelope(payload: &str) -> OutboundEnvelope {
   OutboundEnvelope::new(
     path,
     None,
-    AnyMessage::new(alloc::string::String::from(payload)),
+    AnyMessage::new(String::from(payload)),
     OutboundPriority::System,
     remote_node(),
     CorrelationId::nil(),

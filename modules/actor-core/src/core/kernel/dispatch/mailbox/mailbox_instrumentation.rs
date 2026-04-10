@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::{format, string::String};
+use core::time::Duration;
 
 use super::BackpressurePublisher;
 use crate::core::kernel::{
@@ -63,7 +64,7 @@ impl MailboxInstrumentation {
     }
   }
 
-  fn publish_pressure(&self, system_state: &SystemStateShared, user_len: usize, timestamp: core::time::Duration) {
+  fn publish_pressure(&self, system_state: &SystemStateShared, user_len: usize, timestamp: Duration) {
     let Some(capacity) = self.capacity else {
       return;
     };

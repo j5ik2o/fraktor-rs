@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::marker::PhantomData;
+use core::{marker::PhantomData, num::NonZeroUsize};
 
 use crate::core::{
   kernel::{
@@ -150,7 +150,7 @@ where
 
   /// Shorthand: use a bounded mailbox with the given capacity.
   #[must_use]
-  pub fn with_mailbox_bounded(self, capacity: core::num::NonZeroUsize) -> Self {
+  pub fn with_mailbox_bounded(self, capacity: NonZeroUsize) -> Self {
     self.with_mailbox_selector(MailboxSelector::bounded(capacity))
   }
 
@@ -179,13 +179,13 @@ where
   pub fn with_tags<I, S>(self, tags: I) -> Self
   where
     I: IntoIterator<Item = S>,
-    S: Into<alloc::string::String>, {
+    S: Into<String>, {
     self.map_props(|p| p.with_tags(tags))
   }
 
   /// Adds a single metadata tag to the actor.
   #[must_use]
-  pub fn with_tag(self, tag: impl Into<alloc::string::String>) -> Self {
+  pub fn with_tag(self, tag: impl Into<String>) -> Self {
     self.map_props(|p| p.with_tag(tag))
   }
 }

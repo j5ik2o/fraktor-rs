@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use core::time::Duration;
 
 use super::Actor;
 use crate::core::kernel::{
@@ -85,6 +86,6 @@ fn actor_box_delegates_on_mailbox_pressure() {
   let pid = system.allocate_pid();
   let mut ctx = ActorContext::new(&system, pid);
   let mut actor: Box<dyn Actor> = Box::new(TestActor::default());
-  let event = MailboxPressureEvent::new(pid, 8, 8, 100, core::time::Duration::from_millis(1), Some(6));
+  let event = MailboxPressureEvent::new(pid, 8, 8, 100, Duration::from_millis(1), Some(6));
   assert!(actor.on_mailbox_pressure(&mut ctx, &event).is_ok());
 }

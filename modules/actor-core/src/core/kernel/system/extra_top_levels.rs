@@ -1,5 +1,7 @@
 //! Extra top-level actor registry for custom top-level paths.
 
+use alloc::string::String;
+
 use ahash::RandomState;
 use hashbrown::HashMap;
 
@@ -7,7 +9,7 @@ use crate::core::kernel::actor::actor_ref::ActorRef;
 
 /// Registry of extra top-level actor references.
 pub(crate) struct ExtraTopLevels {
-  map: HashMap<alloc::string::String, ActorRef, RandomState>,
+  map: HashMap<String, ActorRef, RandomState>,
 }
 #[allow(dead_code)]
 impl ExtraTopLevels {
@@ -24,7 +26,7 @@ impl ExtraTopLevels {
   }
 
   /// Inserts an actor reference under the given name.
-  pub(crate) fn insert(&mut self, name: alloc::string::String, actor: ActorRef) {
+  pub(crate) fn insert(&mut self, name: String, actor: ActorRef) {
     self.map.insert(name, actor);
   }
 

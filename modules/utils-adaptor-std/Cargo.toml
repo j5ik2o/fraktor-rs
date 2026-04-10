@@ -17,6 +17,7 @@ default = []
 
 [dependencies]
 fraktor-utils-core-rs = { workspace = true, features = ["alloc", "unsize"] }
+spin = { workspace = true, default-features = false, features = ["mutex", "spin_mutex", "rwlock", "portable_atomic"] }
 
 [lints]
 workspace = true

@@ -4,7 +4,7 @@
 mod tests;
 
 use core::{
-  fmt,
+  fmt::{Debug, Formatter, Result as FmtResult},
   hash::{Hash, Hasher},
   time::Duration,
 };
@@ -93,7 +93,7 @@ impl ActorRef {
   fn from_parts<T>(pid: Pid, sender: T, system: Option<SystemStateWeak>) -> Self
   where
     T: ActorRefSender + 'static, {
-    Self { pid, sender: ActorRefSenderShared::new(sender), system }
+    Self { pid, sender: ActorRefSenderShared::new_with_builtin_lock(sender), system }
   }
 
   /// Creates an actor reference from an existing shared sender.
@@ -228,7 +228,7 @@ impl ActorRef {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    Self { pid: Pid::new(0, 0), sender: ActorRefSenderShared::new(NullSender), system: None }
+    Self { pid: Pid::new(0, 0), sender: ActorRefSenderShared::new_with_builtin_lock(NullSender), system: None }
   }
 
   /// Returns a sentinel reference indicating "no sender".
@@ -252,8 +252,8 @@ unsafe impl Send for ActorRef {}
 
 unsafe impl Sync for ActorRef {}
 
-impl fmt::Debug for ActorRef {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ActorRef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ActorRef").field("pid", &self.pid).finish()
   }
 }

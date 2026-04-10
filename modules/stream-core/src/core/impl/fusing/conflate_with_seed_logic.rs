@@ -1,4 +1,5 @@
 use alloc::{boxed::Box, vec, vec::Vec};
+use core::marker::PhantomData;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 
@@ -7,7 +8,7 @@ pub(in crate::core) struct ConflateWithSeedLogic<In, T, FS, FA> {
   pub(in crate::core) aggregate:    FA,
   pub(in crate::core) pending:      Option<T>,
   pub(in crate::core) just_updated: bool,
-  pub(in crate::core) _pd:          core::marker::PhantomData<fn(In) -> T>,
+  pub(in crate::core) _pd:          PhantomData<fn(In) -> T>,
 }
 
 impl<In, T, FS, FA> FlowLogic for ConflateWithSeedLogic<In, T, FS, FA>

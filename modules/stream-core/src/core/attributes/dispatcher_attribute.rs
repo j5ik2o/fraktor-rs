@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{boxed::Box, string::String};
 use core::any::Any;
 
 use super::Attribute;
@@ -33,8 +33,8 @@ impl Attribute for DispatcherAttribute {
     self
   }
 
-  fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
-    alloc::boxed::Box::new(self.clone())
+  fn clone_box(&self) -> Box<dyn Attribute> {
+    Box::new(self.clone())
   }
 
   fn eq_attr(&self, other: &dyn Any) -> bool {

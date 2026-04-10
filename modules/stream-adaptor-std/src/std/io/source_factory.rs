@@ -1,6 +1,11 @@
 extern crate std;
 
-use std::{boxed::Box, panic, string::ToString, thread};
+use std::{
+  boxed::Box,
+  panic::{self, AssertUnwindSafe},
+  string::ToString,
+  thread::Builder,
+};
 
 use fraktor_stream_core_rs::core::{
   BoundedSourceQueue, DynValue, OverflowStrategy, SourceLogic, StreamDslError, StreamError, dsl::Source,
@@ -30,8 +35,8 @@ impl<T, F> CreateSourceLogic<T, F> {
 
     let producer_queue = self.queue.clone();
     let termination_queue = self.queue.clone();
-    let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
-      let result = panic::catch_unwind(panic::AssertUnwindSafe(|| producer(producer_queue)));
+    let spawn_result = Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
+      let result = panic::catch_unwind(AssertUnwindSafe(|| producer(producer_queue)));
       match result {
         | Ok(()) => {
           let _completed = termination_queue.complete_if_open();

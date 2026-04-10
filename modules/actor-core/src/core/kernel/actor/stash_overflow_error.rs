@@ -1,6 +1,6 @@
 //! Public error type for classic stash overflow.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::{ActorContext, STASH_OVERFLOW_REASON, error::ActorError};
 
@@ -22,8 +22,8 @@ impl From<StashOverflowError> for ActorError {
   }
 }
 
-impl fmt::Display for StashOverflowError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for StashOverflowError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", STASH_OVERFLOW_REASON)
   }
 }

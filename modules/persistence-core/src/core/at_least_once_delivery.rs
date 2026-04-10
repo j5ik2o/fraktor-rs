@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::{format, vec::Vec};
-use core::any::Any;
+use core::{any::Any, time::Duration};
 
 use fraktor_actor_core_rs::core::kernel::actor::{actor_ref::ActorRef, messaging::AnyMessage};
 use fraktor_utils_core_rs::core::{sync::ArcShared, time::TimerInstant};
@@ -167,7 +167,7 @@ impl AtLeastOnceDelivery {
     if warnings.is_empty() { None } else { Some(UnconfirmedWarning::new(warnings)) }
   }
 
-  fn is_overdue(delivery: &UnconfirmedDelivery, now: TimerInstant, redeliver_interval: core::time::Duration) -> bool {
+  fn is_overdue(delivery: &UnconfirmedDelivery, now: TimerInstant, redeliver_interval: Duration) -> bool {
     if delivery.attempt() == 0 {
       return true;
     }
@@ -183,12 +183,12 @@ impl AtLeastOnceDelivery {
     u128::from(instant.ticks()).saturating_mul(tick_nanos)
   }
 
-  fn redelivery_base_timestamp(now: TimerInstant, redeliver_interval: core::time::Duration) -> TimerInstant {
+  fn redelivery_base_timestamp(now: TimerInstant, redeliver_interval: Duration) -> TimerInstant {
     let ticks = Self::duration_to_ticks(redeliver_interval, now.resolution());
     TimerInstant::from_ticks(now.ticks().saturating_sub(ticks), now.resolution())
   }
 
-  fn duration_to_ticks(duration: core::time::Duration, resolution: core::time::Duration) -> u64 {
+  fn duration_to_ticks(duration: Duration, resolution: Duration) -> u64 {
     let resolution_nanos = resolution.as_nanos().max(1);
     let ticks = duration.as_nanos().div_ceil(resolution_nanos);
     ticks.min(u128::from(u64::MAX)) as u64

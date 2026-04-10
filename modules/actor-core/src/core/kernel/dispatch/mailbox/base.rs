@@ -187,7 +187,7 @@ impl Mailbox {
       invoker: shared_set.invoker(),
       actor: {
         let actor_slot = shared_set.actor();
-        *actor_slot.lock() = Some(actor);
+        actor_slot.with_lock(|slot| *slot = Some(actor));
         actor_slot
       },
     }
@@ -199,13 +199,13 @@ impl Mailbox {
   /// so the legacy `Mailbox::new(policy)` constructor (which does not yet
   /// know the cell) can be late-bound to its owner.
   pub fn install_actor(&self, actor: WeakShared<ActorCell>) -> Option<WeakShared<ActorCell>> {
-    self.actor.lock().replace(actor)
+    self.actor.with_lock(|slot| slot.replace(actor))
   }
 
   /// Returns a clone of the weak actor handle if one is installed.
   #[must_use]
   pub fn actor(&self) -> Option<WeakShared<ActorCell>> {
-    self.actor.lock().clone()
+    self.actor.with_read(|slot| slot.clone())
   }
 
   /// Installs the message invoker that [`run`](Self::run) drives.
@@ -214,7 +214,7 @@ impl Mailbox {
   /// drain the mailbox without needing a back-reference to the dispatcher
   /// itself.
   pub fn install_invoker(&self, invoker: MessageInvokerShared) {
-    *self.invoker.lock() = Some(invoker);
+    self.invoker.with_lock(|slot| *slot = Some(invoker));
   }
 
   /// Drains the mailbox up to `throughput` messages, invoking each one through the installed
@@ -245,7 +245,7 @@ impl Mailbox {
     }
 
     let close_requested_at_start = self.state.is_close_requested();
-    let invoker = self.invoker.lock().clone();
+    let invoker = self.invoker.with_read(|slot| slot.clone());
     // invoker 不在で通常の drain path は早期終了してよい。ただし close が既に
     // 要求済みなら、これ以上 user/system delivery ができなくても terminal
     // cleanup を完了させるために run loop へ入る必要がある。
@@ -256,10 +256,10 @@ impl Mailbox {
     // Phase 9.2: bail out if the owning actor cell has been dropped. The
     // weak handle is optional so legacy `Mailbox::new(policy)` callers (which
     // never installed an actor) keep their existing semantics.
-    let actor_alive = match self.actor.lock().as_ref() {
+    let actor_alive = self.actor.with_read(|slot| match slot.as_ref() {
       | Some(weak) => weak.upgrade().is_some(),
       | None => true,
-    };
+    });
     if !actor_alive && !close_requested_at_start {
       return false;
     }
@@ -344,23 +344,23 @@ impl Mailbox {
 
   /// Installs instrumentation hooks for metrics emission.
   pub(crate) fn set_instrumentation(&self, instrumentation: MailboxInstrumentation) {
-    *self.instrumentation.lock() = Some(instrumentation);
+    self.instrumentation.with_lock(|slot| *slot = Some(instrumentation));
   }
 
   /// Returns the system state handle if instrumentation has been installed.
   pub(crate) fn system_state(&self) -> Option<SystemStateShared> {
-    self.instrumentation.lock().as_ref().and_then(|inst| inst.system_state())
+    self.instrumentation.with_read(|slot| slot.as_ref().and_then(|inst| inst.system_state()))
   }
 
   /// Returns the actor pid associated with this mailbox when instrumentation is installed.
   #[must_use]
   pub(crate) fn pid(&self) -> Option<Pid> {
-    self.instrumentation.lock().as_ref().map(|inst| inst.pid())
+    self.instrumentation.with_read(|slot| slot.as_ref().map(|inst| inst.pid()))
   }
 
   /// Emits a log message tagged with this mailbox pid.
   pub(crate) fn emit_log(&self, level: LogLevel, message: impl Into<String>) {
-    if let Some(instrumentation) = self.instrumentation.lock().as_ref() {
+    if let Some(instrumentation) = self.instrumentation.with_read(|slot| slot.clone()) {
       instrumentation.emit_log(level, message);
     }
   }
@@ -419,8 +419,7 @@ impl Mailbox {
   /// code; the fast path preceding this method is what makes the common
   /// closed / suspended paths lock-free.
   fn enqueue_envelope_locked(&self, envelope: Envelope) -> Result<(), SendError> {
-    let enqueue_result = {
-      let _guard = self.user_queue_lock.lock();
+    let enqueue_result = self.user_queue_lock.with_lock(|_| {
       // Authoritative re-check under lock: cleanup may have won the lock
       // race between the fast path and this acquisition. Without this, a
       // producer could phantom-enqueue into a drained queue.
@@ -428,7 +427,7 @@ impl Mailbox {
         return Err(SendError::closed(envelope.into_payload()));
       }
       self.user.enqueue(envelope)
-    };
+    });
 
     match enqueue_result {
       | Ok(()) => {
@@ -486,15 +485,15 @@ impl Mailbox {
     messages: &VecDeque<AnyMessage>,
     first_message: AnyMessage,
   ) -> Result<(), SendError> {
-    let _guard = self.user_queue_lock.lock();
+    self.user_queue_lock.with_lock(|_| {
+      // Authoritative re-check under lock: cleanup may have won the lock race
+      // between the fast path and this acquisition.
+      if self.is_closed() {
+        return Err(SendError::closed(first_message));
+      }
 
-    // Authoritative re-check under lock: cleanup may have won the lock race
-    // between the fast path and this acquisition.
-    if self.is_closed() {
-      return Err(SendError::closed(first_message));
-    }
-
-    self.prepend_via_deque(deque, messages)
+      self.prepend_via_deque(deque, messages)
+    })
   }
 
   /// Efficient O(k) prepend path for deque-capable queues.
@@ -526,13 +525,12 @@ impl Mailbox {
       return None;
     }
 
-    let result = {
-      let _guard = self.user_queue_lock.lock();
+    let result = self.user_queue_lock.with_lock(|_| {
       if self.state.is_close_requested() {
         return None;
       }
       self.user.dequeue().map(MailboxMessage::User)
-    };
+    });
     if result.is_some() {
       self.publish_metrics();
     }
@@ -617,8 +615,7 @@ impl Mailbox {
   fn finalize_cleanup(&self) {
     let pid = self.pid();
     let system_state = self.system_state();
-    let user_len_after_cleanup = {
-      let _guard = self.user_queue_lock.lock();
+    let user_len_after_cleanup = self.user_queue_lock.with_lock(|_| {
       if matches!(self.cleanup_policy, MailboxCleanupPolicy::DrainToDeadLetters) {
         while let Some(envelope) = self.user.dequeue() {
           if let Some(ref state) = system_state {
@@ -630,7 +627,7 @@ impl Mailbox {
       let user_len = self.user.number_of_messages();
       self.state.finish_cleanup();
       user_len
-    };
+    });
     self.publish_metrics_with_user_len(user_len_after_cleanup);
   }
 
@@ -649,8 +646,7 @@ impl Mailbox {
   /// Returns the number of user messages awaiting processing.
   #[must_use]
   pub(crate) fn user_len(&self) -> usize {
-    let _guard = self.user_queue_lock.lock();
-    self.user.number_of_messages()
+    self.user_queue_lock.with_read(|_| self.user.number_of_messages())
   }
 
   /// Returns the number of system messages awaiting processing.
@@ -666,16 +662,12 @@ impl Mailbox {
   }
 
   fn publish_metrics(&self) {
-    let user_len = {
-      let _guard = self.user_queue_lock.lock();
-      self.user.number_of_messages()
-    };
+    let user_len = self.user_queue_lock.with_read(|_| self.user.number_of_messages());
     self.publish_metrics_with_user_len(user_len);
   }
 
   fn publish_metrics_with_user_len(&self, user_len: usize) {
-    let guard = self.instrumentation.lock();
-    if let Some(instrumentation) = guard.as_ref() {
+    if let Some(instrumentation) = self.instrumentation.with_read(|slot| slot.clone()) {
       instrumentation.publish(user_len, self.system_len());
     }
   }

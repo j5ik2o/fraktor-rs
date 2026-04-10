@@ -1,4 +1,7 @@
-use core::ops::{Deref, DerefMut};
+use core::{
+  ops::{Deref, DerefMut},
+  time::Duration,
+};
 
 use crate::core::{
   kernel::actor::scheduler::{Scheduler, SchedulerError, SchedulerHandle},
@@ -22,7 +25,7 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
   pub fn schedule_once<M>(
     &mut self,
-    delay: core::time::Duration,
+    delay: Duration,
     receiver: TypedActorRef<M>,
     message: M,
     sender: Option<TypedActorRef<M>>,
@@ -39,8 +42,8 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
   pub fn schedule_at_fixed_rate<M>(
     &mut self,
-    initial_delay: core::time::Duration,
-    interval: core::time::Duration,
+    initial_delay: Duration,
+    interval: Duration,
     receiver: TypedActorRef<M>,
     message: M,
     sender: Option<TypedActorRef<M>>,
@@ -57,8 +60,8 @@ impl<'a> TypedSchedulerGuard<'a> {
   /// Returns [`SchedulerError`] when the scheduler is not ready or command enqueue fails.
   pub fn schedule_with_fixed_delay<M>(
     &mut self,
-    initial_delay: core::time::Duration,
-    delay: core::time::Duration,
+    initial_delay: Duration,
+    delay: Duration,
     receiver: TypedActorRef<M>,
     message: M,
     sender: Option<TypedActorRef<M>>,

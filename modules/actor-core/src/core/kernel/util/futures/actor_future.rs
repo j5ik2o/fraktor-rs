@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use core::task::Waker;
+use core::{marker::PhantomData, task::Waker};
 
 /// Represents a future that resolves with a message.
 ///
@@ -15,7 +15,7 @@ where
   T: Send + 'static, {
   value:   Option<T>,
   waker:   Option<Waker>,
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 
 impl<T> ActorFuture<T>
@@ -25,7 +25,7 @@ where
   /// Creates a new future in the pending state.
   #[must_use]
   pub const fn new() -> Self {
-    Self { value: None, waker: None, _marker: core::marker::PhantomData }
+    Self { value: None, waker: None, _marker: PhantomData }
   }
 
   /// Completes the future with a value and returns the waker if registered.

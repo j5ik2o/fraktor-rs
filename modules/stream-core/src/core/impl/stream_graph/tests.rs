@@ -1,3 +1,4 @@
+use alloc::string::String;
 use core::any::TypeId;
 
 use crate::core::{
@@ -31,7 +32,7 @@ impl StreamGraph {
     self.edges.iter().map(|edge| (edge.from, edge.to, edge.mat)).collect()
   }
 
-  fn attribute_names(&self) -> &[alloc::string::String] {
+  fn attribute_names(&self) -> &[String] {
     self.attributes.names()
   }
 }
@@ -146,7 +147,7 @@ fn graph_tracks_attributes() {
   graph.set_attributes(Attributes::named("base"));
   graph.add_attributes(Attributes::named("extra"));
 
-  assert_eq!(graph.attribute_names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
+  assert_eq!(graph.attribute_names(), &[String::from("base"), String::from("extra")]);
 }
 
 // --- B-1: Per-node attribute infrastructure ---

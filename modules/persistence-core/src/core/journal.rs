@@ -1,5 +1,6 @@
 //! Journal storage abstraction.
 
+use alloc::vec::Vec;
 use core::future::Future;
 
 use crate::core::{journal_error::JournalError, persistent_repr::PersistentRepr};
@@ -12,7 +13,7 @@ pub trait Journal: Send + Sync + 'static {
     Self: 'a;
 
   /// Future returned by replay operations.
-  type ReplayFuture<'a>: Future<Output = Result<alloc::vec::Vec<PersistentRepr>, JournalError>> + Send + 'a
+  type ReplayFuture<'a>: Future<Output = Result<Vec<PersistentRepr>, JournalError>> + Send + 'a
   where
     Self: 'a;
 

@@ -24,7 +24,7 @@ impl Executor for NoopExecutor {
 
 fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
   let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
-  let executor = ExecutorShared::new(NoopExecutor);
+  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
   ArcShared::new(configurator)

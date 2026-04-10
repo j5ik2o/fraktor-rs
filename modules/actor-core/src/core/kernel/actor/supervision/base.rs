@@ -1,6 +1,9 @@
 //! Supervisor configuration and decision logic.
 
-use core::time::Duration;
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -34,8 +37,8 @@ pub struct SupervisorStrategy {
   log_level:       LogLevel,
 }
 
-impl core::fmt::Debug for SupervisorStrategy {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for SupervisorStrategy {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("SupervisorStrategy")
       .field("kind", &self.kind)
       .field("max_restarts", &self.max_restarts)
