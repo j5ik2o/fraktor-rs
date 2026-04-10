@@ -44,10 +44,10 @@ impl<T> SpinSyncMutex<T> {
   /// it structurally harder to nest lock acquisitions because the callee
   /// cannot easily call back into the same shared state.
   ///
-  /// A drop-in instrumented variant for re-entry detection during testing
-  /// is planned to be re-introduced once the `RuntimeMutex` Port + Adapter
-  /// (`LockDriver` trait) refactoring lands; until then, deadlock symptoms
-  /// must be diagnosed via stack traces of the spinning thread.
+  /// A drop-in instrumented variant for re-entry detection during testing can
+  /// be reintroduced on top of the current `LockDriver` abstraction when the
+  /// project needs it again; until then, deadlock symptoms must be diagnosed
+  /// via stack traces of the spinning thread.
   pub fn lock(&self) -> MutexGuard<'_, T> {
     self.0.lock()
   }

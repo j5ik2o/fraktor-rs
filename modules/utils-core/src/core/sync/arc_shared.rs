@@ -156,9 +156,12 @@ impl<T: ?Sized> SharedDyn<T> for ArcShared<T> {
   fn into_dyn<U: ?Sized + 'static, F>(self, cast: F) -> Self::Dyn<U>
   where
     F: FnOnce(&T) -> &U, {
-    #[allow(deprecated)]
-    {
-      self.into_dyn(cast)
+    let raw = self.into_raw();
+    unsafe {
+      let reference = &*raw;
+      let trait_reference = cast(reference);
+      let trait_ptr = core::ptr::from_ref(trait_reference);
+      ArcShared::from_raw(trait_ptr)
     }
   }
 }
