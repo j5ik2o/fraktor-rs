@@ -13,10 +13,14 @@ use spin::Mutex;
 
 use super::debug_spin_sync_mutex_guard::DebugSpinSyncMutexGuard;
 
-fn current_thread_id_u64() -> u64 {
+/// Returns a non-zero u64 identifying the current thread.
+///
+/// The lowest bit is force-set so the result is never `0`,
+/// which is reserved as the "no owner" sentinel in [`DebugSpinSyncMutex`].
+pub(super) fn current_thread_id_u64() -> u64 {
   let mut hasher = DefaultHasher::new();
   thread::current().id().hash(&mut hasher);
-  hasher.finish()
+  hasher.finish() | 1
 }
 
 /// Re-entry detecting spin-based mutex for debug/test instrumentation.
