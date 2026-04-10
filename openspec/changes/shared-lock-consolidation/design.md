@@ -102,6 +102,7 @@ API:
 - **AdaptMessage / AdapterEnvelope**: `payload`。`Option` の take 用。`SharedLock` に移行。
 - **cluster-core**: `ClusterExtensionInstaller` の `subscription`, `terminated`, `BatchingProducerState` の `state`。
 - **persistence-core**: `JournalActorAdapter`, `SnapshotActorAdapter` の `inner`。
+- **RuntimeRwLock 直接保持**: `SerializationRegistry` の各 registry フィールドなど、所有型に直接ぶら下がる RwLock は `SharedRwLock<T>` に移行する。
 
 **二重 Arc の判定基準:**
 
