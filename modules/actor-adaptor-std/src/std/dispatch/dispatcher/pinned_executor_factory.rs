@@ -5,7 +5,11 @@ extern crate std;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::string::String;
 
-use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecutorFactory, ExecutorShared};
+use fraktor_actor_core_rs::core::kernel::{
+  dispatch::dispatcher::{ExecutorFactory, ExecutorShared},
+  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+};
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::pinned_executor::PinnedExecutor;
 
@@ -16,13 +20,28 @@ use super::pinned_executor::PinnedExecutor;
 pub struct PinnedExecutorFactory {
   thread_name_prefix: String,
   counter:            AtomicUsize,
+  lock_provider:      ArcShared<dyn ActorLockProvider>,
 }
 
 impl PinnedExecutorFactory {
   /// Creates a factory using the supplied thread name prefix.
   #[must_use]
   pub fn new(thread_name_prefix: impl Into<String>) -> Self {
-    Self { thread_name_prefix: thread_name_prefix.into(), counter: AtomicUsize::new(0) }
+    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    Self::new_with_provider(thread_name_prefix, &lock_provider)
+  }
+
+  /// Creates a factory using the supplied thread name prefix and actor lock provider.
+  #[must_use]
+  pub fn new_with_provider(
+    thread_name_prefix: impl Into<String>,
+    lock_provider: &ArcShared<dyn ActorLockProvider>,
+  ) -> Self {
+    Self {
+      thread_name_prefix: thread_name_prefix.into(),
+      counter:            AtomicUsize::new(0),
+      lock_provider:      lock_provider.clone(),
+    }
   }
 
   fn allocate_name(&self, dispatcher_id: &str) -> String {
@@ -34,6 +53,6 @@ impl PinnedExecutorFactory {
 impl ExecutorFactory for PinnedExecutorFactory {
   fn create(&self, dispatcher_id: &str) -> ExecutorShared {
     let name = self.allocate_name(dispatcher_id);
-    ExecutorShared::new_with_builtin_lock(PinnedExecutor::with_name(name))
+    self.lock_provider.create_executor_shared(Box::new(PinnedExecutor::with_name(name)))
   }
 }

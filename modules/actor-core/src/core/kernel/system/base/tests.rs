@@ -40,7 +40,7 @@ use crate::core::{
       DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
       MessageDispatcherConfigurator,
     },
-    event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::{
       TerminationSignal,
       base::LogLevel,

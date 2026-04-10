@@ -34,7 +34,7 @@ impl ActorRefSender for TestSender {
 #[test]
 fn try_tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   assert!(reference.try_tell(AnyMessage::new("ping")).is_ok());
 }
 
@@ -57,7 +57,7 @@ fn try_tell_on_failing_sender_returns_error() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
@@ -66,7 +66,7 @@ fn try_tell_on_failing_sender_returns_error() {
 #[test]
 fn try_tell_returns_result_on_success() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   assert!(reference.try_tell(AnyMessage::new("ask-payload")).is_ok());
 }
 
@@ -82,7 +82,7 @@ fn try_tell_returns_error_on_failure() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
@@ -90,7 +90,7 @@ fn try_tell_returns_error_on_failure() {
 #[test]
 fn ask_returns_response_handle() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   let _response = reference.ask(AnyMessage::new("ask-payload"));
 }
 
@@ -106,7 +106,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_ne!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
@@ -180,6 +180,6 @@ fn canonical_path_returns_local_when_remoting_disabled() {
 
 #[test]
 fn canonical_path_is_none_without_system_state() {
-  let reference: ActorRef = ActorRef::new(Pid::new(1, 0), TestSender);
+  let reference: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(1, 0), TestSender);
   assert!(reference.canonical_path().is_none());
 }

@@ -50,7 +50,7 @@ impl BalancingDispatcher {
   ) -> Self {
     Self {
       core: DispatcherCore::new(settings, executor),
-      shared_queue: ArcShared::new(SharedMessageQueue::new()),
+      shared_queue: ArcShared::new(lock_provider.create_shared_message_queue()),
       team: Vec::new(),
       lock_provider,
     }

@@ -367,7 +367,7 @@ fn actor_selection_forward_preserves_sender() {
   let (child, messages, senders) = spawn_selection_probe(&system);
   let path = child.actor_ref().path().expect("path");
   let selection = system.actor_selection_from_path(&path);
-  let sender = ActorRef::new(Pid::new(9000, 0), NullSender);
+  let sender = ActorRef::new_with_builtin_lock(Pid::new(9000, 0), NullSender);
 
   selection.forward(AnyMessage::new(String::from("forwarded")), &sender).expect("forward");
 
@@ -426,7 +426,7 @@ fn actor_selection_forward_rejects_quarantined_authority() {
   let path = ActorPath::from_parts(ActorPathParts::with_authority("selection-spec", Some(("peer.example.com", 2553))))
     .child("worker");
   let selection = ActorSelection::from_path(system.state(), &path);
-  let sender = ActorRef::new(Pid::new(9001, 0), NullSender);
+  let sender = ActorRef::new_with_builtin_lock(Pid::new(9001, 0), NullSender);
 
   let error =
     selection.forward(AnyMessage::new(String::from("quarantined")), &sender).expect_err("quarantined authority");

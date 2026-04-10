@@ -52,7 +52,7 @@ fn make_counting_routee(
   messages: &ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 ) -> Routee {
   let sender = CountingSender { count: counter.clone(), messages: messages.clone() };
-  Routee::ActorRef(ActorRef::new(pid, sender))
+  Routee::ActorRef(ActorRef::new_with_builtin_lock(pid, sender))
 }
 
 fn routee_pids(routees: &[Routee]) -> Vec<Pid> {
@@ -149,7 +149,7 @@ fn route_broadcast_continues_after_first_send_error() {
   let m1 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let m2 = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let routees = vec![
-    Routee::ActorRef(ActorRef::new(Pid::new(1, 0), ClosedSender)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(1, 0), ClosedSender)),
     make_counting_routee(Pid::new(2, 0), &c1, &m1),
     make_counting_routee(Pid::new(3, 0), &c2, &m2),
   ];

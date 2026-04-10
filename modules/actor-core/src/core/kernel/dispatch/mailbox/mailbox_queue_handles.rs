@@ -4,10 +4,10 @@ use core::cmp;
 
 use fraktor_utils_core_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{SharedAccess, SharedLock},
 };
 
-use super::{UserQueueShared, mailbox_queue_state::QueueState};
+use super::mailbox_queue_state::{QueueState, queue_state_shared};
 use crate::core::kernel::dispatch::mailbox::{
   capacity::MailboxCapacity, overflow_strategy::MailboxOverflowStrategy, policy::MailboxPolicy,
 };
@@ -45,9 +45,7 @@ where
   fn new_with(capacity: usize, overflow: OverflowPolicy) -> Self {
     let backend = VecDequeBackend::with_capacity(capacity, overflow);
     let sync_queue = SyncQueue::new(backend);
-    let mutex = SpinSyncMutex::new(sync_queue);
-    let queue = UserQueueShared::<T>::new(ArcShared::new(mutex));
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(QueueState::new(queue));
+    let state = queue_state_shared(sync_queue);
     Self { state }
   }
 

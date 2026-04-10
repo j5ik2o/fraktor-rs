@@ -1,15 +1,21 @@
 use alloc::{string::String, vec::Vec};
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorCellStateShared, ActorContext, Pid, ReceiveTimeoutStateShared,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{
+      AnyMessage, AnyMessageView,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
+    },
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
@@ -17,13 +23,18 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
+  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscription, subscriber_handle_with_lock_provider,
   },
-  system::{ActorSystem, TerminationSignal},
+  system::{
+    ActorSystem, TerminationSignal,
+    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+  },
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -37,6 +48,92 @@ use crate::core::{
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup},
   placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
 };
+
+struct CountingSubscriberLockProvider {
+  inner: BuiltinSpinLockProvider,
+  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+}
+
+impl CountingSubscriberLockProvider {
+  fn new() -> (ArcShared<AtomicUsize>, Self) {
+    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinLockProvider::new(),
+      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
+    };
+    (event_stream_subscriber_shared, provider)
+  }
+}
+
+impl ActorLockProvider for CountingSubscriberLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    self.inner.create_message_dispatcher_shared(dispatcher)
+  }
+
+  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    self.inner.create_executor_shared(executor)
+  }
+
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.inner.create_actor_ref_sender_shared(sender)
+  }
+
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.inner.create_actor_shared_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    self.inner.create_actor_cell_state_shared()
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    self.inner.create_receive_timeout_state_shared()
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    self.inner.create_message_invoker_shared(invoker)
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    self.inner.create_shared_message_queue()
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    self.inner.create_event_stream_shared(stream)
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_event_stream_subscriber_shared(subscriber)
+  }
+
+  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.inner.create_mailbox_shared_set()
+  }
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
+}
+
+#[test]
+fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
+  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(lock_provider);
+  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
+
+  let _subscriber = subscriber_handle_with_lock_provider(&lock_provider, RecordingClusterEvents::new());
+
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
+    1,
+    "external subscribers should materialize via the supplied lock provider"
+  );
+}
 
 #[test]
 fn try_from_system_fails_when_extension_missing() {
@@ -276,7 +373,7 @@ fn subscribe_and_unsubscribe_control_event_stream_registration() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[ClusterEventType::TopologyUpdated]);
 
@@ -304,7 +401,7 @@ fn subscribe_snapshot_mode_sends_current_cluster_state_first() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -339,7 +436,7 @@ fn subscribe_snapshot_mode_sends_self_member_before_topology_events() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -365,7 +462,7 @@ fn subscribe_snapshot_mode_keeps_current_cluster_state_first_when_topology_updat
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -396,7 +493,7 @@ fn subscribe_no_replay_skips_buffered_cluster_events() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
   assert!(recorder.events().is_empty());
 
@@ -416,9 +513,53 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder);
+  let subscriber = test_subscriber_handle(recorder);
 
   let _ = api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]);
+}
+
+#[test]
+fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_provider() {
+  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  })
+  .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
+  let config = ActorSystemConfig::default()
+    .with_scheduler_config(scheduler_config)
+    .with_tick_driver(tick_driver)
+    .with_lock_provider(lock_provider)
+    .with_extension_installers(extensions)
+    .with_actor_ref_provider_installer(|system: &ActorSystem| {
+      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&provider)
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
+  extension.start_member().expect("start member");
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder);
+  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
+
+  let subscription =
+    api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[ClusterEventType::TopologyUpdated]);
+  let no_replay = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
+
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
+    2,
+    "cluster api should materialize both filtered subscribers via the actor-system lock provider"
+  );
+
+  api.unsubscribe(subscription.id());
+  api.unsubscribe(no_replay.id());
 }
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {
@@ -495,7 +636,7 @@ impl EventStreamSubscriber for RecordingGrainEvents {
 
 fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEvents, EventStreamSubscription) {
   let recorder = RecordingGrainEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
 }
@@ -761,8 +902,7 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender);
-    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+    Ok(ActorRef::with_system(Pid::new(1, 0), TestSender, &self.system.state()))
   }
 
   fn termination_signal(&self) -> TerminationSignal {

@@ -1,22 +1,35 @@
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, string::ToString, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_adaptor_std_rs::std::sync::{DebugSpinSyncMutex, DebugSpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SharedRwLock, SpinSyncMutex, WeakShared};
 
-use super::{super::actor_context::ReceiveTimeoutState, ActorCell, ActorCellInvoker};
+use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorCell as KernelActorCell, ActorCellStateShared, ActorContext, ActorRuntimeLockFactory, Pid,
+    ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    actor_ref::{ActorRefSender, ActorRefSenderShared},
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker,
+      ActorIdentity, AnyMessage, AnyMessageView, Identify,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  system::ActorSystem,
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue, TrampolineState,
+    },
+    mailbox::{MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy},
+  },
+  event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
+  system::{
+    ActorSystem,
+    lock_provider::{ActorLockProvider, MailboxSharedSet},
+  },
 };
 
 struct ProbeActor;
@@ -146,6 +159,88 @@ impl Actor for ResumeSupervisorActor {
   }
 }
 
+struct TestDebugActorLockProvider;
+
+impl TestDebugActorLockProvider {
+  const fn new() -> Self {
+    Self
+  }
+
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    SharedLock::new_with_driver::<DebugSpinSyncMutex<_>>(value)
+  }
+
+  fn create_rw_lock<T>(&self, value: T) -> SharedRwLock<T>
+  where
+    T: Send + Sync + 'static, {
+    SharedRwLock::new_with_driver::<DebugSpinSyncRwLock<_>>(value)
+  }
+}
+
+impl ActorRuntimeLockFactory for TestDebugActorLockProvider {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.create_lock(value)
+  }
+}
+
+impl ActorLockProvider for TestDebugActorLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherShared::from_shared_lock(self.create_lock(dispatcher))
+  }
+
+  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    ExecutorShared::from_parts(self.create_lock(executor), self.create_lock(TrampolineState::new()))
+  }
+
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    ActorRefSenderShared::from_shared_lock(self.create_lock(sender))
+  }
+
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.create_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    ActorCellStateShared::new_with_lock_factory(self)
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateShared::new_with_lock_factory(self)
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    MessageInvokerShared::from_shared_lock(self.create_rw_lock(invoker))
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    SharedMessageQueue::from_shared_lock(self.create_lock(VecDeque::new()))
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    EventStreamShared::from_shared_lock(self.create_rw_lock(stream))
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.create_lock(subscriber)
+  }
+
+  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    MailboxSharedSet::new(
+      self.create_lock(()),
+      self.create_lock(Option::<MailboxInstrumentation>::None),
+      self.create_lock(Option::<MessageInvokerShared>::None),
+      self.create_lock(Option::<WeakShared<KernelActorCell>>::None),
+    )
+  }
+}
+
 #[test]
 fn actor_cell_holds_components() {
   let system = ActorSystem::new_empty().state();
@@ -156,20 +251,6 @@ fn actor_cell_holds_components() {
   assert_eq!(cell.name(), "worker");
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
-}
-
-#[test]
-#[should_panic(expected = "ActorCell::install_mailbox called twice for the same cell")]
-fn actor_cell_install_mailbox_panics_on_double_install() {
-  let system = ActorSystem::new_empty().state();
-  let props = Props::from_fn(|| ProbeActor);
-  let cell =
-    ActorCell::create(system.clone(), Pid::new(7, 0), None, "double-install".to_string(), &props).expect("cell");
-  // The cell already installed its mailbox during `create`. Re-installing it
-  // must trip the debug-build assertion that enforces the install-once
-  // contract.
-  let mailbox = cell.mailbox();
-  cell.install_mailbox(mailbox);
 }
 
 #[test]
@@ -196,6 +277,18 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
   let second = mailbox.enqueue_user(AnyMessage::new(2_u32));
   assert!(matches!(second, Err(_)), "DropNewest should reject the second enqueue past capacity 1");
   assert_eq!(mailbox.user_len(), 1);
+}
+
+#[test]
+fn actor_cell_mailbox_accessor_returns_stable_shared_handle() {
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_lock_provider(TestDebugActorLockProvider::new())).state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system, Pid::new(701, 0), None, "mailbox-slot".to_string(), &props).expect("cell");
+
+  let first = cell.mailbox();
+  let second = cell.mailbox();
+  assert!(ArcShared::ptr_eq(&first, &second));
 }
 
 #[test]
@@ -466,6 +559,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let initial_handle = cell
     .receive_timeout
+    .as_shared_lock()
     .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should exist after pre_start");
 
@@ -474,6 +568,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let current_handle = cell
     .receive_timeout
+    .as_shared_lock()
     .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should remain registered after failure");
 
@@ -546,7 +641,7 @@ fn unstash_message_rejects_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(62, 0), None, "unstash-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.with_lock(|state| state.stashed_messages.push_back(AnyMessage::new(1_i32)));
+  cell.state.with_write(|state| state.stashed_messages.push_back(AnyMessage::new(1_i32)));
 
   let error = cell.unstash_message().expect_err("non-deque unstash should fail");
 
@@ -561,7 +656,7 @@ fn unstash_messages_reject_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(63, 0), None, "unstash-all-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.with_lock(|state| {
+  cell.state.with_write(|state| {
     state.stashed_messages.push_back(AnyMessage::new(1_i32));
     state.stashed_messages.push_back(AnyMessage::new(2_i32));
   });

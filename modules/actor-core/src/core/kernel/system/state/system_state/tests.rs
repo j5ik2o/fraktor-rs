@@ -36,7 +36,7 @@ use crate::core::kernel::{
     },
     mailbox::MailboxMessage,
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,

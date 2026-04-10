@@ -52,7 +52,7 @@ impl ActorRefSender for ClosedSender {
 fn actorref_variant_is_constructible() {
   // 前提: 有効な ActorRef がある
   let (_, sender) = CapturingSender::new();
-  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
 
   // 実行: Routee::ActorRef で包む
   let routee = Routee::ActorRef(actor_ref);
@@ -90,7 +90,7 @@ fn several_variant_is_constructible() {
 fn variants_are_distinct() {
   // Given: different variant kinds
   let (_, sender) = CapturingSender::new();
-  let actor_ref_routee = Routee::ActorRef(ActorRef::new(Pid::new(1, 0), sender));
+  let actor_ref_routee = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender));
   let no_routee = Routee::NoRoutee;
   let several = Routee::Several(vec![Routee::NoRoutee]);
 
@@ -105,8 +105,8 @@ fn partial_eq_actorref_compares_by_pid() {
   // Given: two ActorRef routees with the same pid
   let (_, sender1) = CapturingSender::new();
   let (_, sender2) = CapturingSender::new();
-  let routee1 = Routee::ActorRef(ActorRef::new(Pid::new(42, 0), sender1));
-  let routee2 = Routee::ActorRef(ActorRef::new(Pid::new(42, 0), sender2));
+  let routee1 = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(42, 0), sender1));
+  let routee2 = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(42, 0), sender2));
 
   // Then: they should be equal (ActorRef compares by pid)
   assert_eq!(routee1, routee2);
@@ -130,7 +130,7 @@ fn partial_eq_no_routee_is_equal() {
 fn send_on_actorref_delegates_to_try_tell() {
   // Given: an ActorRef routee backed by a capturing sender
   let (count, sender) = CapturingSender::new();
-  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
   let mut routee = Routee::ActorRef(actor_ref);
 
   // When: sending a message
@@ -160,9 +160,9 @@ fn send_on_several_sends_to_all() {
   let (count2, sender2) = CapturingSender::new();
   let (count3, sender3) = CapturingSender::new();
   let mut routee = Routee::Several(vec![
-    Routee::ActorRef(ActorRef::new(Pid::new(1, 0), sender1)),
-    Routee::ActorRef(ActorRef::new(Pid::new(2, 0), sender2)),
-    Routee::ActorRef(ActorRef::new(Pid::new(3, 0), sender3)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender1)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(2, 0), sender2)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(3, 0), sender3)),
   ]);
 
   // When: sending a message
@@ -181,9 +181,9 @@ fn send_on_several_keeps_delivering_after_first_error() {
   let (count_ok, sender_ok) = CapturingSender::new();
   let (count_ok2, sender_ok2) = CapturingSender::new();
   let mut routee = Routee::Several(vec![
-    Routee::ActorRef(ActorRef::new(Pid::new(1, 0), sender_ok)),
-    Routee::ActorRef(ActorRef::new(Pid::new(2, 0), ClosedSender)),
-    Routee::ActorRef(ActorRef::new(Pid::new(3, 0), sender_ok2)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender_ok)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(2, 0), ClosedSender)),
+    Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(3, 0), sender_ok2)),
   ]);
 
   // When: sending a message

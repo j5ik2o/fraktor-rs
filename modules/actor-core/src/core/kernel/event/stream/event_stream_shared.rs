@@ -6,13 +6,9 @@
 
 use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
 
-use crate::core::kernel::{
-  actor::actor_ref::ActorRef,
-  event::stream::{
-    ActorRefEventStreamSubscriber, EventStream, EventStreamEvent, EventStreamSubscriberShared,
-    event_stream_events::DEFAULT_CAPACITY, event_stream_subscriber::subscriber_handle,
-    event_stream_subscription::EventStreamSubscription,
-  },
+use crate::core::kernel::event::stream::{
+  EventStream, EventStreamEvent, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,
+  event_stream_subscription::EventStreamSubscription,
 };
 
 /// Shared wrapper that provides thread-safe access to [`EventStream`].
@@ -43,10 +39,16 @@ pub struct EventStreamShared {
 }
 
 impl EventStreamShared {
+  /// Creates a shared wrapper from an already materialized event-stream lock.
+  #[must_use]
+  pub const fn from_shared_lock(inner: SharedRwLock<EventStream>) -> Self {
+    Self { inner }
+  }
+
   /// Creates a shared event stream with the specified buffer capacity.
   #[must_use]
   pub fn with_capacity(capacity: usize) -> Self {
-    Self { inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(EventStream::with_capacity(capacity)) }
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(EventStream::with_capacity(capacity)))
   }
 
   /// Subscribes and replays buffered events to the subscriber.
@@ -60,8 +62,7 @@ impl EventStreamShared {
 
     // Phase 2: Replay buffered events without holding the lock
     for event in snapshot.iter() {
-      let mut guard = subscriber.lock();
-      guard.on_event(event);
+      subscriber.with_lock(|guard| guard.on_event(event));
     }
 
     EventStreamSubscription::new(self.clone(), id)
@@ -72,19 +73,6 @@ impl EventStreamShared {
   pub fn subscribe_no_replay(&self, subscriber: &EventStreamSubscriberShared) -> EventStreamSubscription {
     let id = self.inner.with_write(|guard| guard.subscribe_no_replay(subscriber.clone()));
     EventStreamSubscription::new(self.clone(), id)
-  }
-
-  /// Subscribes an ActorRef to this event stream.
-  ///
-  /// Events will be delivered **asynchronously** to the actor's mailbox.
-  /// This is the **recommended way** for actor-based subscribers as it provides:
-  /// - Non-blocking `publish()` (immediate return)
-  /// - Better scalability with many subscribers
-  /// - Natural actor processing model
-  #[must_use]
-  pub fn subscribe_actor(&self, actor_ref: ActorRef) -> EventStreamSubscription {
-    let subscriber = subscriber_handle(ActorRefEventStreamSubscriber::new(actor_ref));
-    self.subscribe(&subscriber)
   }
 
   /// Removes the subscriber associated with the identifier.
@@ -103,8 +91,7 @@ impl EventStreamShared {
     // Phase 2: Notify subscribers without holding the lock
     for entry in subscribers.iter() {
       let handle = entry.subscriber();
-      let mut guard = handle.lock();
-      guard.on_event(event);
+      handle.with_lock(|guard| guard.on_event(event));
     }
   }
 }

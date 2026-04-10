@@ -114,7 +114,7 @@ fn pipeline_sets_and_clears_sender() {
   let pipeline = MessageInvokerPipeline::new();
 
   let reply_sender = RecordingSender;
-  let reply_ref = ActorRef::new(Pid::new(2, 0), reply_sender);
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(2, 0), reply_sender);
 
   let message = AnyMessage::new(123_u32).with_sender(reply_ref.clone());
   pipeline.invoke_user(&mut actor, &mut ctx, message).expect("invoke user message");
@@ -133,7 +133,7 @@ fn pipeline_restores_previous_sender() {
   let pipeline = MessageInvokerPipeline::new();
 
   let previous_sender = RecordingSender;
-  let previous_ref = ActorRef::new(Pid::new(3, 0), previous_sender);
+  let previous_ref = ActorRef::new_with_builtin_lock(Pid::new(3, 0), previous_sender);
   ctx.set_sender(Some(previous_ref.clone()));
 
   pipeline.invoke_user(&mut actor, &mut ctx, AnyMessage::new(7_u32)).expect("invoke");

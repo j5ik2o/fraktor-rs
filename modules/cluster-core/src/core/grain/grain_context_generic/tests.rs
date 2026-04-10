@@ -4,7 +4,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
@@ -124,8 +124,7 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender);
-    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+    Ok(ActorRef::with_system(Pid::new(1, 0), TestSender, &self.system.state()))
   }
 
   fn termination_signal(&self) -> TerminationSignal {

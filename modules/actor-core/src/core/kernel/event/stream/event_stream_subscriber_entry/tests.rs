@@ -1,5 +1,5 @@
 use super::EventStreamSubscriberEntry;
-use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle};
+use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle};
 
 struct MockSubscriber;
 

@@ -3,12 +3,15 @@
 //! This module provides Transport event auto-detection functionality
 //! that is only available in std environments.
 
-use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-  RemotingLifecycleEvent, subscriber_handle,
+use fraktor_actor_core_rs::core::kernel::{
+  event::stream::{
+    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    RemotingLifecycleEvent, subscriber_handle_with_lock_provider,
+  },
+  system::lock_provider::ActorLockProvider,
 };
 use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -17,7 +20,10 @@ use fraktor_utils_core_rs::core::sync::SharedAccess;
 /// triggering `TopologyUpdated` events when nodes join or leave.
 ///
 /// **Note**: This function is only available in std environments.
-pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
+pub fn subscribe_remoting_events(
+  provider: &LocalClusterProviderShared,
+  lock_provider: &ArcShared<dyn ActorLockProvider>,
+) {
   struct RemotingEventHandler {
     provider: LocalClusterProviderShared,
   }
@@ -49,7 +55,7 @@ pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
   // event_stream への参照を取得
   let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
-  let subscriber: EventStreamSubscriberShared = subscriber_handle(handler);
+  let subscriber: EventStreamSubscriberShared = subscriber_handle_with_lock_provider(lock_provider, handler);
   let _subscription: EventStreamSubscription = event_stream.subscribe(&subscriber);
   // Note: subscription は provider のライフタイムに依存するので、
   // provider がドロップされるまで有効

@@ -28,27 +28,122 @@ use std::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext,
-    actor_ref::ActorRef,
+    Actor, ActorCellStateShared, ActorContext, ReceiveTimeoutStateShared,
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared},
     error::ActorError,
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{
+      AnyMessage, AnyMessageView,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
+    },
     props::Props,
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
     BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
-    ExecutorShared, MessageDispatcherConfigurator,
+    ExecuteError, Executor, ExecutorFactory, ExecutorShared, MessageDispatcher, MessageDispatcherConfigurator,
+    MessageDispatcherShared, PinnedDispatcherConfigurator, SharedMessageQueue,
   },
-  system::ActorSystem,
+  event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
+  system::{
+    ActorSystem,
+    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+  },
 };
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
 use tokio::runtime::Handle;
 
-use crate::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
+use crate::std::{
+  default_tick_driver_config,
+  dispatch::dispatcher::{PinnedExecutorFactory, TokioExecutor, TokioExecutorFactory},
+};
 
 const BALANCING_DISPATCHER_ID: &str = "balancing-contention";
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(5);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+
+struct NoopExecutor;
+
+impl Executor for NoopExecutor {
+  fn execute(&mut self, _task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
+    Ok(())
+  }
+
+  fn shutdown(&mut self) {}
+}
+
+struct CountingLockProvider {
+  inner: BuiltinSpinLockProvider,
+  executor_shared_calls: Arc<AtomicUsize>,
+  dispatcher_shared_calls: Arc<AtomicUsize>,
+  shared_message_queue_calls: Arc<AtomicUsize>,
+}
+
+impl CountingLockProvider {
+  fn new() -> (Arc<AtomicUsize>, Arc<AtomicUsize>, Arc<AtomicUsize>, Self) {
+    let executor_shared_calls = Arc::new(AtomicUsize::new(0));
+    let dispatcher_shared_calls = Arc::new(AtomicUsize::new(0));
+    let shared_message_queue_calls = Arc::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinLockProvider::new(),
+      executor_shared_calls: Arc::clone(&executor_shared_calls),
+      dispatcher_shared_calls: Arc::clone(&dispatcher_shared_calls),
+      shared_message_queue_calls: Arc::clone(&shared_message_queue_calls),
+    };
+    (executor_shared_calls, dispatcher_shared_calls, shared_message_queue_calls, provider)
+  }
+}
+
+impl ActorLockProvider for CountingLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    self.dispatcher_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_message_dispatcher_shared(dispatcher)
+  }
+
+  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    self.executor_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_executor_shared(executor)
+  }
+
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.inner.create_actor_ref_sender_shared(sender)
+  }
+
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.inner.create_actor_shared_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    self.inner.create_actor_cell_state_shared()
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    self.inner.create_receive_timeout_state_shared()
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    self.inner.create_message_invoker_shared(invoker)
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    self.shared_message_queue_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_shared_message_queue()
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    self.inner.create_event_stream_shared(stream)
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.inner.create_event_stream_subscriber_shared(subscriber)
+  }
+
+  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.inner.create_mailbox_shared_set()
+  }
+}
 
 struct CountingActor {
   per_actor: Arc<AtomicUsize>,
@@ -170,6 +265,73 @@ fn flood_and_wait(receiver: &ActorRef, total: &Arc<AtomicUsize>, count: usize) -
 
 fn snapshot(per_actor: &[Arc<AtomicUsize>]) -> Vec<usize> {
   per_actor.iter().map(|c| c.load(Ordering::Acquire)).collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn tokio_executor_factory_new_with_provider_materializes_executor_shared_via_provider() {
+  let (executor_shared_calls, dispatcher_shared_calls, _, provider) = CountingLockProvider::new();
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let factory = TokioExecutorFactory::new_with_provider(Handle::current(), &provider);
+
+  let _executor = factory.create(DEFAULT_DISPATCHER_ID);
+
+  assert_eq!(
+    executor_shared_calls.load(Ordering::SeqCst),
+    1,
+    "tokio executor factory should route executor shared construction through the configured provider"
+  );
+  assert_eq!(
+    dispatcher_shared_calls.load(Ordering::SeqCst),
+    0,
+    "tokio executor factory should only materialize executor shared handles"
+  );
+}
+
+#[test]
+fn pinned_dispatcher_configurator_uses_provider_aware_executor_factory_for_each_dispatcher_instance() {
+  let (executor_shared_calls, dispatcher_shared_calls, _, provider) = CountingLockProvider::new();
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let settings = DispatcherSettings::with_defaults("pinned-provider-test");
+  let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
+    ArcShared::new(Box::new(PinnedExecutorFactory::new_with_provider("provider-aware", &provider)));
+  let configurator =
+    PinnedDispatcherConfigurator::new_with_provider(settings, executor_factory, &provider, "provider-aware");
+
+  let _first = configurator.dispatcher();
+  let _second = configurator.dispatcher();
+
+  assert_eq!(
+    executor_shared_calls.load(Ordering::SeqCst),
+    2,
+    "pinned dispatcher should obtain a provider-built executor for each fresh dispatcher instance"
+  );
+  assert_eq!(
+    dispatcher_shared_calls.load(Ordering::SeqCst),
+    2,
+    "pinned dispatcher should keep using the provider for dispatcher shared wrapping"
+  );
+}
+
+#[test]
+fn balancing_dispatcher_configurator_materializes_shared_queue_via_provider() {
+  let (_, dispatcher_shared_calls, shared_message_queue_calls, provider) = CountingLockProvider::new();
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let settings = DispatcherSettings::with_defaults("balancing-provider-test");
+  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let configurator = BalancingDispatcherConfigurator::new_with_provider(&settings, executor, &provider);
+
+  let _dispatcher = configurator.dispatcher();
+
+  assert_eq!(
+    dispatcher_shared_calls.load(Ordering::SeqCst),
+    1,
+    "balancing dispatcher configurator should still materialize the dispatcher wrapper via the provider"
+  );
+  assert_eq!(
+    shared_message_queue_calls.load(Ordering::SeqCst),
+    1,
+    "balancing dispatcher should materialize its shared queue via the configured lock provider"
+  );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

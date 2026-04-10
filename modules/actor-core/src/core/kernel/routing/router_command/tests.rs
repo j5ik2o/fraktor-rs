@@ -16,7 +16,7 @@ fn get_routees_variant_is_constructible() {
 #[test]
 fn add_routee_variant_is_constructible() {
   // Given
-  let routee = Routee::ActorRef(ActorRef::new(Pid::new(1, 0), NullSender));
+  let routee = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender));
 
   // When
   let cmd = RouterCommand::AddRoutee(routee);
@@ -28,7 +28,7 @@ fn add_routee_variant_is_constructible() {
 #[test]
 fn remove_routee_variant_is_constructible() {
   // Given
-  let routee = Routee::ActorRef(ActorRef::new(Pid::new(2, 0), NullSender));
+  let routee = Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(2, 0), NullSender));
 
   // When
   let cmd = RouterCommand::RemoveRoutee(routee);

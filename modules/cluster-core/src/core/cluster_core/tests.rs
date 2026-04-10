@@ -4,8 +4,10 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    subscriber_handle_with_lock_provider,
   },
+  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedLock, SpinSyncMutex},
@@ -422,9 +424,14 @@ impl EventStreamSubscriber for RecordingClusterEvents {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let subscriber_impl = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(subscriber_impl.clone());
+  let subscriber = test_subscriber_handle(subscriber_impl.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (subscriber_impl, subscription)
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
 }
 
 /// Helper wrapping an `IdentityLookup` in `IdentityLookupShared`.

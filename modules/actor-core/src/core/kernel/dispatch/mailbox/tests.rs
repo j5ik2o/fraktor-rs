@@ -16,7 +16,7 @@ use crate::core::kernel::{
   dispatch::mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy, ScheduleHints},
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   },
   system::{ActorSystem, SpinBlocker},
 };

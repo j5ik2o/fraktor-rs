@@ -60,7 +60,7 @@ use crate::core::kernel::{
   },
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
+    stream::{EventStream, EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
   system::{
     RegisterExtraTopLevelError, ReservationPolicy,
@@ -119,13 +119,11 @@ pub struct SystemState {
 }
 
 impl SystemState {
-  /// Creates a fresh state container without any registered actors.
-  #[must_use]
-  pub fn new() -> Self {
+  fn new_with_lock_provider(lock_provider: ArcShared<dyn ActorLockProvider>) -> Self {
     const DEAD_LETTER_CAPACITY: usize = 512;
-    let event_stream = EventStreamShared::default();
+    const EVENT_STREAM_CAPACITY: usize = 256;
+    let event_stream = lock_provider.create_event_stream_shared(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let mut dispatchers = Dispatchers::new();
     dispatchers.ensure_default_inline_with_provider(&lock_provider);
     let mut mailboxes = Mailboxes::new();
@@ -174,10 +172,17 @@ impl SystemState {
     }
   }
 
+  /// Creates a fresh state container without any registered actors.
+  #[must_use]
+  pub fn new() -> Self {
+    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    Self::new_with_lock_provider(lock_provider)
+  }
+
   pub(crate) fn build_from_config(config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
 
-    let mut state = Self::new();
+    let mut state = Self::new_with_lock_provider(config.lock_provider().clone());
     state.start_time = config.start_time().unwrap_or_else(|| state.monotonic_now());
     state.apply_actor_system_config(config);
 

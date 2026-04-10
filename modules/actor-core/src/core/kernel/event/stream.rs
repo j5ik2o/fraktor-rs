@@ -17,6 +17,7 @@ mod event_stream_subscription;
 mod remote_authority_event;
 mod remoting_backpressure_event;
 mod remoting_lifecycle_event;
+pub(crate) mod tests;
 mod tick_driver_snapshot;
 mod typed_unhandled_message_event;
 mod unhandled_message;
@@ -29,7 +30,9 @@ pub use correlation_id::CorrelationId;
 pub use event_stream_event::EventStreamEvent;
 pub(crate) use event_stream_events::EventStreamEvents;
 pub use event_stream_shared::EventStreamShared;
-pub use event_stream_subscriber::{EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle};
+pub use event_stream_subscriber::{
+  EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle_with_lock_provider,
+};
 pub(crate) use event_stream_subscriber_entries::EventStreamSubscriberEntries;
 pub(crate) use event_stream_subscriber_entry::EventStreamSubscriberEntry;
 pub use event_stream_subscription::EventStreamSubscription;

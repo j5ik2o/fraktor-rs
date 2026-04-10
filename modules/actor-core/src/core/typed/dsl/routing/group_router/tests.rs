@@ -191,15 +191,15 @@ fn group_router_with_consistent_hash_routes_same_message_to_same_routee() {
 #[test]
 fn consistent_hash_routing_is_stable_across_routee_order_changes() {
   let routees = vec![
-    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new(
+    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new_with_builtin_lock(
       crate::core::kernel::actor::Pid::new(11, 0),
       crate::core::kernel::actor::actor_ref::NullSender,
     )),
-    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new(
+    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new_with_builtin_lock(
       crate::core::kernel::actor::Pid::new(22, 0),
       crate::core::kernel::actor::actor_ref::NullSender,
     )),
-    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new(
+    TypedActorRef::<u32>::from_untyped(crate::core::kernel::actor::actor_ref::ActorRef::new_with_builtin_lock(
       crate::core::kernel::actor::Pid::new(33, 0),
       crate::core::kernel::actor::actor_ref::NullSender,
     )),

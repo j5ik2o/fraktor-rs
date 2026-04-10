@@ -14,7 +14,7 @@ use crate::core::kernel::{
   },
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, tests::subscriber_handle},
   },
 };
 

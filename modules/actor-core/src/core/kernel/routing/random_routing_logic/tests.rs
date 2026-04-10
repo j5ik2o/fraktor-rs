@@ -9,7 +9,7 @@ use crate::core::kernel::actor::{
 };
 
 fn make_routee(id: u64) -> Routee {
-  Routee::ActorRef(ActorRef::new(Pid::new(id, 0), NullSender))
+  Routee::ActorRef(ActorRef::new_with_builtin_lock(Pid::new(id, 0), NullSender))
 }
 
 #[test]

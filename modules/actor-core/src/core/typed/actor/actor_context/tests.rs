@@ -12,7 +12,7 @@ use crate::core::{
     },
     event::{
       logging::{LogEvent, LogLevel},
-      stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+      stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     },
   },
   typed::{
@@ -493,10 +493,10 @@ fn forward_preserves_sender_through_typed_context() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let target_untyped = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let target_untyped = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
   let mut target = TypedActorRef::<u32>::from_untyped(target_untyped);
 
-  let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
+  let original_sender = ActorRef::new_with_builtin_lock(Pid::new(800, 0), NullSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -735,7 +735,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   let mut context = ActorContext::new(&system, pid);
   let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
   let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let collector = ActorRef::new(Pid::new(903, 0), EventCollector::new(recorded_events.clone()));
+  let collector = ActorRef::new_with_builtin_lock(Pid::new(903, 0), EventCollector::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "phase2-context-first-event".into(),

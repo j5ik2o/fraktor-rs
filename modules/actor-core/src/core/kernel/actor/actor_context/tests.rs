@@ -447,9 +447,9 @@ fn actor_context_forward_preserves_sender() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
-  let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
+  let original_sender = ActorRef::new_with_builtin_lock(Pid::new(800, 0), NullSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -480,7 +480,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -653,7 +653,7 @@ fn actor_context_reply_with_sender_returns_ok() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let sender_ref = ActorRef::new(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
+  let sender_ref = ActorRef::new_with_builtin_lock(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -680,7 +680,7 @@ fn actor_context_reply_with_failing_sender_returns_err() {
     }
   }
 
-  let sender_ref = ActorRef::new(Pid::new(800, 0), FailingSender);
+  let sender_ref = ActorRef::new_with_builtin_lock(Pid::new(800, 0), FailingSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -705,7 +705,7 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
     }
   }
 
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), FailingSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();

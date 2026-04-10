@@ -18,7 +18,7 @@ impl ActorRefSender for StubSender {
 }
 
 fn stub_actor_ref(id: u64) -> ActorRef {
-  ActorRef::new(Pid::new(id, 0), StubSender)
+  ActorRef::new_with_builtin_lock(Pid::new(id, 0), StubSender)
 }
 
 // --- new / getter tests ---

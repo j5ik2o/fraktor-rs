@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
 use core::{
   fmt::{Debug, Formatter, Result as FmtResult},
   hash::{Hash, Hasher},
@@ -16,7 +17,7 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_path::ActorPath,
-    actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
+    actor_ref::{ActorRefSender, ActorRefSenderShared, ask_reply_sender::AskReplySender},
     error::SendError,
     messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   },
@@ -62,7 +63,7 @@ impl ActorRef {
     if path_aware_reply && let Some(system) = system {
       return Self::with_system(pid, reply_sender, system);
     }
-    Self::new(pid, reply_sender)
+    Self::new(pid, ActorRefSenderShared::from_builtin_sender(Box::new(reply_sender)))
   }
 
   fn next_ask_reply_pid(system: Option<&SystemStateShared>) -> Pid {
@@ -74,12 +75,28 @@ impl ActorRef {
     Pid::new(raw, 0)
   }
 
-  /// Creates a new actor reference backed by the provided sender.
+  /// Creates a new actor reference backed by an existing shared sender.
   #[must_use]
-  pub fn new<T>(pid: Pid, sender: T) -> Self
+  pub const fn new(pid: Pid, sender: ActorRefSenderShared) -> Self {
+    Self { pid, sender, system: None }
+  }
+
+  /// Creates a new actor reference backed by the built-in sender lock.
+  ///
+  /// This helper is public only for tests and `test-support` consumers.
+  #[must_use]
+  #[cfg(any(test, feature = "test-support"))]
+  pub fn new_with_builtin_lock<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender + 'static, {
-    Self::from_parts(pid, sender, None)
+    Self::new_with_builtin_lock_impl(pid, sender)
+  }
+
+  #[cfg(any(test, feature = "test-support"))]
+  fn new_with_builtin_lock_impl<T>(pid: Pid, sender: T) -> Self
+  where
+    T: ActorRefSender + 'static, {
+    Self { pid, sender: ActorRefSenderShared::new_with_builtin_lock(sender), system: None }
   }
 
   /// Creates an actor reference backed by the given sender and system state (path-aware).
@@ -87,13 +104,8 @@ impl ActorRef {
   pub fn with_system<T>(pid: Pid, sender: T, system: &SystemStateShared) -> Self
   where
     T: ActorRefSender + 'static, {
-    Self::from_parts(pid, sender, Some(system.downgrade()))
-  }
-
-  fn from_parts<T>(pid: Pid, sender: T, system: Option<SystemStateWeak>) -> Self
-  where
-    T: ActorRefSender + 'static, {
-    Self { pid, sender: ActorRefSenderShared::new_with_builtin_lock(sender), system }
+    let sender = system.lock_provider().create_actor_ref_sender_shared(Box::new(sender));
+    Self::from_shared(pid, sender, system)
   }
 
   /// Creates an actor reference from an existing shared sender.
@@ -228,7 +240,7 @@ impl ActorRef {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    Self { pid: Pid::new(0, 0), sender: ActorRefSenderShared::new_with_builtin_lock(NullSender), system: None }
+    Self::new(Pid::new(0, 0), ActorRefSenderShared::null_sender())
   }
 
   /// Returns a sentinel reference indicating "no sender".

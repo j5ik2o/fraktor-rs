@@ -16,10 +16,15 @@ pub(crate) struct ActorShared {
 }
 #[allow(dead_code)]
 impl ActorShared {
+  #[must_use]
+  pub(crate) const fn from_shared_lock(inner: SharedLock<Box<dyn Actor + Send + Sync>>) -> Self {
+    Self { inner }
+  }
+
   /// Creates a new shared wrapper around the provided actor instance.
   #[must_use]
   pub(crate) fn new(actor: Box<dyn Actor + Send + Sync>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(actor) }
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(actor))
   }
 }
 

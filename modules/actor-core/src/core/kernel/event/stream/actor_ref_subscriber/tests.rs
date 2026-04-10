@@ -41,7 +41,7 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -65,7 +65,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
 
   let mut subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 
@@ -88,7 +88,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
 fn actor_ref_returns_correct_reference() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = CollectorSender::new(messages);
-  let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
 
   let subscriber = ActorRefEventStreamSubscriber::new(actor_ref.clone());
 

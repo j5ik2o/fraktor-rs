@@ -21,7 +21,7 @@ impl ActorRefSender for StubSender {
 /// `EventStreamCommand::Subscribe` can be constructed with an actor reference.
 #[test]
 fn subscribe_variant_holds_actor_ref() {
-  let subscriber = ActorRef::new(Pid::new(10, 0), StubSender);
+  let subscriber = ActorRef::new_with_builtin_lock(Pid::new(10, 0), StubSender);
   let pid = subscriber.pid();
 
   let command = EventStreamCommand::Subscribe { subscriber };
@@ -37,7 +37,7 @@ fn subscribe_variant_holds_actor_ref() {
 /// `EventStreamCommand::Unsubscribe` can be constructed with an actor reference.
 #[test]
 fn unsubscribe_variant_holds_actor_ref() {
-  let subscriber = ActorRef::new(Pid::new(20, 0), StubSender);
+  let subscriber = ActorRef::new_with_builtin_lock(Pid::new(20, 0), StubSender);
   let pid = subscriber.pid();
 
   let command = EventStreamCommand::Unsubscribe { subscriber };
@@ -64,8 +64,10 @@ fn all_variants_are_distinguishable() {
   let lifecycle_event =
     LifecycleEvent::new(Pid::new(1, 0), None, "test".to_string(), LifecycleStage::Started, Duration::ZERO);
   let publish = EventStreamCommand::Publish(EventStreamEvent::Lifecycle(lifecycle_event));
-  let subscribe = EventStreamCommand::Subscribe { subscriber: ActorRef::new(Pid::new(2, 0), StubSender) };
-  let unsubscribe = EventStreamCommand::Unsubscribe { subscriber: ActorRef::new(Pid::new(3, 0), StubSender) };
+  let subscribe =
+    EventStreamCommand::Subscribe { subscriber: ActorRef::new_with_builtin_lock(Pid::new(2, 0), StubSender) };
+  let unsubscribe =
+    EventStreamCommand::Unsubscribe { subscriber: ActorRef::new_with_builtin_lock(Pid::new(3, 0), StubSender) };
 
   assert!(matches!(publish, EventStreamCommand::Publish(_)));
   assert!(matches!(subscribe, EventStreamCommand::Subscribe { .. }));

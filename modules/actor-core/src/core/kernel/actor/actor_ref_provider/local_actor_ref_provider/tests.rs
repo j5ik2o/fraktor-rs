@@ -73,7 +73,7 @@ fn local_actor_ref_provider_supports_temp_actor_round_trip() {
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
-  let temp_ref = ActorRef::new(Pid::new(4242, 0), TempProbeSender);
+  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(4242, 0), TempProbeSender);
 
   let name = provider.register_temp_actor(temp_ref.clone()).expect("temp actor name");
   let path = provider.temp_path().child(&name);
@@ -106,7 +106,7 @@ fn local_actor_ref_provider_exposes_classic_contract_helpers() {
   let temp_container = provider.temp_container().expect("temp container");
   assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
 
-  let temp_ref = ActorRef::new(Pid::new(5252, 0), TempProbeSender);
+  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(5252, 0), TempProbeSender);
   let name = provider.register_temp_actor(temp_ref).expect("temp actor");
   let path = provider.temp_path().child(&name);
   provider.unregister_temp_actor_path(&path).expect("unregister by path");

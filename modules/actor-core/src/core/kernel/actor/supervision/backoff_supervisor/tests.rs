@@ -97,7 +97,7 @@ impl Actor for FailingOnMessageActor {
 
 fn current_child_pid(sup_ref: &mut ActorRef) -> Option<Pid> {
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetCurrentChild).with_sender(reply_ref);
   sup_ref.tell(msg);
   wait_until(|| !inbox.lock().is_empty());
@@ -149,7 +149,7 @@ fn get_current_child_returns_child_pid_when_child_is_running() {
 
   // Capture reply
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
 
   // When: sending GetCurrentChild with a reply sender
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetCurrentChild).with_sender(reply_ref);
@@ -178,7 +178,7 @@ fn get_restart_count_returns_zero_initially() {
 
   // Capture reply
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
 
   // When: sending GetRestartCount
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetRestartCount).with_sender(reply_ref);
@@ -209,7 +209,7 @@ fn reset_command_resets_restart_count() {
   sup_ref.tell(AnyMessage::new(BackoffSupervisorCommand::Reset));
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetRestartCount).with_sender(reply_ref);
   sup_ref.tell(msg);
 
@@ -256,7 +256,7 @@ fn get_current_child_returns_none_when_no_child() {
   let mut actor = BackoffSupervisorActor::from_config(config);
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(999, 0), CapturingSender { inbox: inbox.clone() });
   let mut ctx = ActorContext::new(&system, Pid::new(100, 0));
   ctx.set_sender(Some(reply_ref));
 
@@ -337,7 +337,7 @@ fn on_stop_restart_count_saturates_at_u32_max() {
   let config = BackoffConfig::from_stop(options);
   let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(42, 0);
-  actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
+  actor.child = Some(ChildRef::new(ActorRef::new_with_builtin_lock(child_pid, NullSender), system.state()));
   actor.restart_count = u32::MAX;
 
   let mut ctx = ActorContext::new(&system, Pid::new(999, 0));
@@ -354,7 +354,7 @@ fn on_failure_restart_count_saturates_at_u32_max() {
   let config = BackoffConfig::from_failure(options);
   let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(43, 0);
-  actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
+  actor.child = Some(ChildRef::new(ActorRef::new_with_builtin_lock(child_pid, NullSender), system.state()));
   actor.restart_count = u32::MAX;
   actor.pending_restart = true;
 
@@ -422,7 +422,7 @@ fn on_failure_forwarding_keeps_supervisor_responsive_until_backoff_restart() {
   assert_eq!(current_child_pid(&mut sup_ref), None, "supervisor should answer while waiting for backoff restart");
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let reply_ref = ActorRef::new(Pid::new(998, 0), CapturingSender { inbox: inbox.clone() });
+  let reply_ref = ActorRef::new_with_builtin_lock(Pid::new(998, 0), CapturingSender { inbox: inbox.clone() });
   let msg = AnyMessage::new(BackoffSupervisorCommand::GetRestartCount).with_sender(reply_ref);
   sup_ref.tell(msg);
   wait_until(|| !inbox.lock().is_empty());
@@ -462,7 +462,7 @@ fn on_failure_with_stop_strategy_does_not_mark_pending_restart() {
   let config = BackoffConfig::from_failure(options);
   let mut actor = BackoffSupervisorActor::from_config(config);
   let child_pid = Pid::new(42, 0);
-  actor.child = Some(ChildRef::new(ActorRef::new(child_pid, NullSender), system.state()));
+  actor.child = Some(ChildRef::new(ActorRef::new_with_builtin_lock(child_pid, NullSender), system.state()));
 
   let mut ctx = ActorContext::new(&system, Pid::new(100, 0));
   actor.on_child_failed(&mut ctx, child_pid, &ActorError::recoverable("boom")).expect("record child failure");

@@ -73,7 +73,7 @@ fn receive_and_reply_sends_response_to_sender() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let sender = ActorRef::new(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
+  let sender = ActorRef::new_with_builtin_lock(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
 
   let mut context = ActorContext::new(&system, pid);
   context.set_sender(Some(sender));
@@ -429,7 +429,7 @@ fn cancel_receive_timeout_clears_state() {
 fn monitor_sends_clone_to_monitor_ref() {
   let monitor_inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let monitor_sender = RecordingSender::new(monitor_inbox.clone());
-  let monitor_actor_ref = ActorRef::new(Pid::new(800, 0), monitor_sender);
+  let monitor_actor_ref = ActorRef::new_with_builtin_lock(Pid::new(800, 0), monitor_sender);
   let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
 
   let mut behavior =
@@ -457,7 +457,7 @@ fn monitor_passes_message_to_inner_behavior() {
 
   let monitor_inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let monitor_sender = RecordingSender::new(monitor_inbox.clone());
-  let monitor_actor_ref = ActorRef::new(Pid::new(801, 0), monitor_sender);
+  let monitor_actor_ref = ActorRef::new_with_builtin_lock(Pid::new(801, 0), monitor_sender);
   let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
 
   let mut behavior = Behaviors::monitor(monitor_typed_ref, move || {

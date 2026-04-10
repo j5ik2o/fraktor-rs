@@ -2,9 +2,12 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::collections::{
-  queue::{OfferOutcome, QueueError},
-  wait::{WaitError, WaitQueue, WaitShared},
+use fraktor_utils_core_rs::core::{
+  collections::{
+    queue::{OfferOutcome, QueueError, SyncQueue, backend::VecDequeBackend},
+    wait::{WaitError, WaitQueue, WaitShared},
+  },
+  sync::{SharedLock, SpinSyncMutex},
 };
 
 use super::UserQueueShared;
@@ -70,4 +73,11 @@ where
   pub(crate) fn len(&self) -> usize {
     self.size.load(Ordering::Acquire)
   }
+}
+
+pub(crate) fn queue_state_shared<T>(queue: SyncQueue<T, VecDequeBackend<T>>) -> SharedLock<QueueState<T>>
+where
+  T: Send + 'static, {
+  let queue = UserQueueShared::new_with_builtin_lock(queue);
+  SharedLock::new_with_driver::<SpinSyncMutex<_>>(QueueState::new(queue))
 }

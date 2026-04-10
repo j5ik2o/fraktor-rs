@@ -4,37 +4,99 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
 
 use crate::core::kernel::{
   actor::{
+    Actor, ActorCell, ActorCellStateShared, ActorContext, ReceiveTimeoutStateShared,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::{ActorRefSender, ActorRefSenderShared},
+    error::ActorError,
+    messaging::{
+      AnyMessageView,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
+    },
+    props::Props,
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared},
+  dispatch::dispatcher::{
+    DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue,
+  },
+  event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
   system::{
+    ActorSystem,
     lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
     remote::RemotingConfig,
   },
 };
 
+struct NoopActor;
+
+impl Actor for NoopActor {
+  fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
+    Ok(())
+  }
+}
+
 struct CountingLockProvider {
-  inner:                   BuiltinSpinLockProvider,
+  inner: BuiltinSpinLockProvider,
+  event_stream_shared_calls: ArcShared<AtomicUsize>,
   dispatcher_shared_calls: ArcShared<AtomicUsize>,
-  executor_shared_calls:   ArcShared<AtomicUsize>,
+  executor_shared_calls: ArcShared<AtomicUsize>,
+  actor_ref_sender_shared_calls: ArcShared<AtomicUsize>,
+  actor_shared_lock_calls: ArcShared<AtomicUsize>,
+  actor_cell_state_shared_calls: ArcShared<AtomicUsize>,
+  receive_timeout_state_shared_calls: ArcShared<AtomicUsize>,
+  message_invoker_shared_calls: ArcShared<AtomicUsize>,
+  mailbox_shared_set_calls: ArcShared<AtomicUsize>,
 }
 
 impl CountingLockProvider {
-  fn new() -> (ArcShared<AtomicUsize>, ArcShared<AtomicUsize>, Self) {
+  fn new() -> (
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    ArcShared<AtomicUsize>,
+    Self,
+  ) {
+    let event_stream_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let dispatcher_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let executor_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let actor_ref_sender_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let actor_shared_lock_calls = ArcShared::new(AtomicUsize::new(0));
+    let actor_cell_state_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let receive_timeout_state_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let message_invoker_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let mailbox_shared_set_calls = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
-      inner:                   BuiltinSpinLockProvider::new(),
+      inner: BuiltinSpinLockProvider::new(),
+      event_stream_shared_calls: event_stream_shared_calls.clone(),
       dispatcher_shared_calls: dispatcher_shared_calls.clone(),
-      executor_shared_calls:   executor_shared_calls.clone(),
+      executor_shared_calls: executor_shared_calls.clone(),
+      actor_ref_sender_shared_calls: actor_ref_sender_shared_calls.clone(),
+      actor_shared_lock_calls: actor_shared_lock_calls.clone(),
+      actor_cell_state_shared_calls: actor_cell_state_shared_calls.clone(),
+      receive_timeout_state_shared_calls: receive_timeout_state_shared_calls.clone(),
+      message_invoker_shared_calls: message_invoker_shared_calls.clone(),
+      mailbox_shared_set_calls: mailbox_shared_set_calls.clone(),
     };
-    (executor_shared_calls, dispatcher_shared_calls, provider)
+    (
+      event_stream_shared_calls,
+      dispatcher_shared_calls,
+      executor_shared_calls,
+      actor_ref_sender_shared_calls,
+      actor_shared_lock_calls,
+      actor_cell_state_shared_calls,
+      receive_timeout_state_shared_calls,
+      message_invoker_shared_calls,
+      mailbox_shared_set_calls,
+      provider,
+    )
   }
 }
 
@@ -50,10 +112,48 @@ impl ActorLockProvider for CountingLockProvider {
   }
 
   fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.actor_ref_sender_shared_calls.fetch_add(1, Ordering::SeqCst);
     self.inner.create_actor_ref_sender_shared(sender)
   }
 
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.actor_shared_lock_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_actor_shared_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    self.actor_cell_state_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_actor_cell_state_shared()
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    self.receive_timeout_state_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_receive_timeout_state_shared()
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    self.message_invoker_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_message_invoker_shared(invoker)
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    self.inner.create_shared_message_queue()
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    self.event_stream_shared_calls.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_event_stream_shared(stream)
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.inner.create_event_stream_subscriber_shared(subscriber)
+  }
+
   fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.mailbox_shared_set_calls.fetch_add(1, Ordering::SeqCst);
     self.inner.create_mailbox_shared_set()
   }
 }
@@ -125,7 +225,18 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
 
 #[test]
 fn test_actor_system_config_with_lock_provider_rebuilds_default_dispatcher() {
-  let (executor_shared_calls, dispatcher_shared_calls, provider) = CountingLockProvider::new();
+  let (
+    _event_stream_shared_calls,
+    dispatcher_shared_calls,
+    executor_shared_calls,
+    _actor_ref_sender_shared_calls,
+    _actor_shared_lock_calls,
+    _actor_cell_state_shared_calls,
+    _receive_timeout_state_shared_calls,
+    _message_invoker_shared_calls,
+    _mailbox_shared_set_calls,
+    provider,
+  ) = CountingLockProvider::new();
 
   let config = ActorSystemConfig::default().with_lock_provider(provider);
 
@@ -142,5 +253,64 @@ fn test_actor_system_config_with_lock_provider_rebuilds_default_dispatcher() {
   assert!(
     config.dispatchers().resolve(DEFAULT_DISPATCHER_ID).is_ok(),
     "Rebuilt default dispatcher should remain resolvable"
+  );
+}
+
+#[test]
+fn test_actor_system_config_with_lock_provider_routes_spawn_path_through_sender_and_mailbox_helpers() {
+  let (
+    event_stream_shared_calls,
+    _dispatcher_shared_calls,
+    _executor_shared_calls,
+    actor_ref_sender_shared_calls,
+    actor_shared_lock_calls,
+    actor_cell_state_shared_calls,
+    receive_timeout_state_shared_calls,
+    message_invoker_shared_calls,
+    mailbox_shared_set_calls,
+    provider,
+  ) = CountingLockProvider::new();
+  let system = ActorSystem::new_empty_with(|config| config.with_lock_provider(provider));
+
+  let props = Props::from_fn(|| NoopActor);
+  let state = system.state();
+  let pid = state.allocate_pid();
+  let cell = ActorCell::create(state.clone(), pid, None, "counting-actor".into(), &props).expect("counting actor");
+  state.register_cell(cell);
+
+  assert_eq!(
+    event_stream_shared_calls.load(Ordering::SeqCst),
+    1,
+    "system bootstrap should materialize EventStreamShared via the configured lock provider"
+  );
+  assert_eq!(
+    actor_ref_sender_shared_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize ActorRefSenderShared via the configured lock provider"
+  );
+  assert_eq!(
+    actor_shared_lock_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize the actor instance lock via the configured lock provider"
+  );
+  assert_eq!(
+    actor_cell_state_shared_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize ActorCellStateShared via the configured lock provider"
+  );
+  assert_eq!(
+    receive_timeout_state_shared_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize ReceiveTimeoutStateShared via the configured lock provider"
+  );
+  assert_eq!(
+    message_invoker_shared_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize the mailbox invoker via the configured lock provider"
+  );
+  assert_eq!(
+    mailbox_shared_set_calls.load(Ordering::SeqCst),
+    1,
+    "spawn path should materialize mailbox shared locks via the configured lock provider"
   );
 }

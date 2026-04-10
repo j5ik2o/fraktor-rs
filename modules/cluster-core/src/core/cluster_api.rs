@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle,
+    subscriber_handle_with_lock_provider,
   },
   system::ActorSystem,
   util::futures::ActorFutureShared,
@@ -61,8 +61,7 @@ impl ClusterEventFilterSubscriber {
 impl EventStreamSubscriber for ClusterEventFilterSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if Self::matches_event(event, &self.event_types) {
-      let mut subscriber = self.subscriber.lock();
-      subscriber.on_event(event);
+      self.subscriber.with_lock(|subscriber| subscriber.on_event(event));
     }
   }
 }
@@ -187,15 +186,18 @@ impl ClusterApi {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
     let event_type_set = to_event_type_set(event_types);
-    let filtered = subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set));
+    let lock_provider = self.system.state().lock_provider();
+    let filtered = subscriber_handle_with_lock_provider(
+      &lock_provider,
+      ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set),
+    );
     let event_stream = self.system.event_stream();
 
     match initial_state_mode {
       | ClusterSubscriptionInitialStateMode::AsEvents => {
         let (subscription_id, snapshot) = event_stream.with_write(|stream| stream.subscribe(filtered.clone()));
         for event in &snapshot {
-          let mut guard = filtered.lock();
-          guard.on_event(event);
+          filtered.with_lock(|guard| guard.on_event(event));
         }
         EventStreamSubscription::new(event_stream, subscription_id)
       },
@@ -209,8 +211,7 @@ impl ClusterApi {
         };
         let payload = AnyMessage::new(initial_event);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
-        let mut guard = subscriber.lock();
-        guard.on_event(&extension_event);
+        subscriber.with_lock(|guard| guard.on_event(&extension_event));
         EventStreamSubscription::new(event_stream, subscription_id)
       },
     }
@@ -231,8 +232,11 @@ impl ClusterApi {
   ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
-    let filtered =
-      subscriber_handle(ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)));
+    let lock_provider = self.system.state().lock_provider();
+    let filtered = subscriber_handle_with_lock_provider(
+      &lock_provider,
+      ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)),
+    );
     let event_stream = self.system.event_stream();
     let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
     EventStreamSubscription::new(event_stream, subscription_id)

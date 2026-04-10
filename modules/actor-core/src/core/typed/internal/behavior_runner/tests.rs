@@ -7,7 +7,7 @@ use super::BehaviorRunner;
 use crate::core::{
   kernel::{
     actor::{ActorContext, error::ActorError},
-    event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
     system::ActorSystem,
   },
   typed::{

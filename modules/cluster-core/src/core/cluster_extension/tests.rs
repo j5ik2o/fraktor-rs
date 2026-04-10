@@ -1,15 +1,30 @@
 use alloc::{boxed::Box, string::String, vec, vec::Vec};
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
-  actor::messaging::AnyMessage,
-  event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+  actor::{
+    Actor, ActorCellStateShared, ReceiveTimeoutStateShared,
+    actor_ref::{ActorRefSender, ActorRefSenderShared},
+    messaging::{
+      AnyMessage,
+      message_invoker::{MessageInvoker, MessageInvokerShared},
+    },
   },
-  system::ActorSystem,
+  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
+  event::stream::{
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscription, subscriber_handle_with_lock_provider,
+  },
+  system::{
+    ActorSystem,
+    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+  },
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SpinSyncMutex},
+  sync::{ArcShared, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -24,6 +39,77 @@ use crate::core::{
   placement::{ActivatedKind, PlacementResolution},
   pub_sub::{PubSubError, PubSubSubscriber, PubSubTopic, PublishAck, PublishRequest, cluster_pub_sub::ClusterPubSub},
 };
+
+struct CountingSubscriberLockProvider {
+  inner: BuiltinSpinLockProvider,
+  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+}
+
+impl CountingSubscriberLockProvider {
+  fn new() -> (ArcShared<AtomicUsize>, Self) {
+    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinLockProvider::new(),
+      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
+    };
+    (event_stream_subscriber_shared, provider)
+  }
+}
+
+impl ActorLockProvider for CountingSubscriberLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    self.inner.create_message_dispatcher_shared(dispatcher)
+  }
+
+  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    self.inner.create_executor_shared(executor)
+  }
+
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.inner.create_actor_ref_sender_shared(sender)
+  }
+
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.inner.create_actor_shared_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    self.inner.create_actor_cell_state_shared()
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    self.inner.create_receive_timeout_state_shared()
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    self.inner.create_message_invoker_shared(invoker)
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    self.inner.create_shared_message_queue()
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    self.inner.create_event_stream_shared(stream)
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_event_stream_subscriber_shared(subscriber)
+  }
+
+  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.inner.create_mailbox_shared_set()
+  }
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
+}
 
 fn build_update(
   hash: u64,
@@ -360,6 +446,25 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
 }
 
 #[test]
+fn cluster_extension_materializes_internal_subscribers_via_system_lock_provider() {
+  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let system = ActorSystem::new_empty_with(|config| config.with_lock_provider(lock_provider));
+  let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
+  let ext_shared = system.extended().register_extension(&ext_id);
+
+  ext_shared.start_member().expect("start member");
+  let _up = ext_shared.register_on_member_up(|_, _| {});
+  ext_shared.shutdown(true).expect("shutdown");
+  let _removed = ext_shared.register_on_member_removed(|_, _| {});
+
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst),
+    4,
+    "cluster extension should materialize startup and callback subscribers via the actor-system lock provider"
+  );
+}
+
+#[test]
 fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_id_is_unknown() {
   let system = ActorSystem::new_empty();
 
@@ -599,7 +704,7 @@ impl EventStreamSubscriber for RecordingClusterEvents {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
 }

@@ -1,26 +1,39 @@
 extern crate alloc;
 
-use alloc::vec::Vec;
-use core::time::Duration;
+use alloc::{boxed::Box, vec::Vec};
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
     actor::{
-      Pid,
-      actor_ref::{ActorRef, ActorRefSender, SendOutcome, dead_letter::DeadLetterReason},
+      Actor, ActorCellStateShared, Pid, ReceiveTimeoutStateShared,
+      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome, dead_letter::DeadLetterReason},
       error::SendError,
       extension::{Extension, ExtensionId},
-      messaging::AnyMessage,
+      messaging::{
+        AnyMessage,
+        message_invoker::{MessageInvoker, MessageInvokerShared},
+      },
       scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
       setup::ActorSystemConfig,
     },
+    dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
     event::{
       logging::{LogEvent, LogLevel},
-      stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+      stream::{
+        EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
+        tests::subscriber_handle,
+      },
     },
-    system::ActorSystem,
+    system::{
+      ActorSystem,
+      lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+    },
   },
   typed::{
     DispatcherSelector, TypedActorRef, TypedActorSystem, TypedProps,
@@ -80,6 +93,72 @@ impl ActorRefSender for CollectorSender {
       self.events.lock().push(event.clone());
     }
     Ok(SendOutcome::Delivered)
+  }
+}
+
+struct CountingSubscriberLockProvider {
+  inner: BuiltinSpinLockProvider,
+  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+}
+
+impl CountingSubscriberLockProvider {
+  fn new() -> (ArcShared<AtomicUsize>, Self) {
+    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinLockProvider::new(),
+      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
+    };
+    (event_stream_subscriber_shared, provider)
+  }
+}
+
+impl ActorLockProvider for CountingSubscriberLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    self.inner.create_message_dispatcher_shared(dispatcher)
+  }
+
+  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    self.inner.create_executor_shared(executor)
+  }
+
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.inner.create_actor_ref_sender_shared(sender)
+  }
+
+  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    self.inner.create_actor_shared_lock(actor)
+  }
+
+  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+    self.inner.create_actor_cell_state_shared()
+  }
+
+  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+    self.inner.create_receive_timeout_state_shared()
+  }
+
+  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    self.inner.create_message_invoker_shared(invoker)
+  }
+
+  fn create_shared_message_queue(&self) -> SharedMessageQueue {
+    self.inner.create_shared_message_queue()
+  }
+
+  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+    self.inner.create_event_stream_shared(stream)
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
+    self.inner.create_event_stream_subscriber_shared(subscriber)
+  }
+
+  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+    self.inner.create_mailbox_shared_set()
   }
 }
 
@@ -591,7 +670,7 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
   // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
   let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(recorded_events.clone()));
+  let collector = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CollectorSender::new(recorded_events.clone()));
   let mut subscribe_stream = system.event_stream();
   let mut publish_stream = system.event_stream();
   let mut unsubscribe_stream = system.event_stream();
@@ -642,11 +721,39 @@ fn event_stream_supports_subscribe_and_unsubscribe_commands() {
 }
 
 #[test]
+fn event_stream_subscribe_command_uses_system_scoped_lock_provider_for_actor_subscribers() {
+  // 前提: system に束縛された lock provider を持つ typed actor system がある
+  let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let (event_stream_subscriber_shared, provider) = CountingSubscriberLockProvider::new();
+  let config = ActorSystemConfig::default().with_lock_provider(provider).with_tick_driver(tick_driver);
+  let system = TypedActorSystem::<u32>::new_with_config(&guardian_props, &config).expect("system");
+  let collector = ActorRef::new_with_builtin_lock(
+    Pid::new(902, 0),
+    CollectorSender::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))),
+  );
+  let mut stream = system.event_stream();
+
+  // 実行: 公開 subscribe command だけで actor-ref 購読を登録する
+  let subscribe = stream.try_tell(EventStreamCommand::Subscribe { subscriber: collector });
+
+  // 検証: caller 側から provider を渡さなくても、system に束縛された provider が使われる
+  assert!(subscribe.is_ok(), "subscribe command should be accepted without an external lock provider");
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst),
+    1,
+    "typed event stream should materialize actor subscribers via the system-scoped lock provider"
+  );
+
+  system.terminate().expect("terminate");
+}
+
+#[test]
 fn event_stream_subscription_survives_ephemeral_facade_drop_and_shared_unsubscribe_state() {
   // 前提: typed actor system と actor-ref ベースの購読者がある
   let system = new_test_system();
   let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let collector = ActorRef::new(Pid::new(901, 0), CollectorSender::new(recorded_events.clone()));
+  let collector = ActorRef::new_with_builtin_lock(Pid::new(901, 0), CollectorSender::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "phase2-ephemeral-first-event".into(),
@@ -710,7 +817,7 @@ fn event_stream_from_untyped_wrapper_reuses_shared_subscription_state() {
   let system = new_test_system();
   let other_wrapper = TypedActorSystem::<u32>::from_untyped(system.as_untyped().clone());
   let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let collector = ActorRef::new(Pid::new(902, 0), CollectorSender::new(recorded_events.clone()));
+  let collector = ActorRef::new_with_builtin_lock(Pid::new(902, 0), CollectorSender::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "phase2-from-untyped-first-event".into(),

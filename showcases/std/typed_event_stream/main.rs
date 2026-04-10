@@ -7,7 +7,7 @@ use fraktor_actor_core_rs::core::{
   kernel::{
     actor::{
       Pid,
-      actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
       error::SendError,
       messaging::AnyMessage,
       scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -47,7 +47,10 @@ fn main() {
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(events.clone()));
+  let collector_sender = ActorRefSenderShared::from_shared_lock(SharedLock::new_with_driver::<
+    SpinSyncMutex<Box<dyn ActorRefSender>>,
+  >(Box::new(CollectorSender::new(events.clone()))));
+  let collector = ActorRef::new(Pid::new(900, 0), collector_sender);
 
   {
     let mut event_stream = system.event_stream();
