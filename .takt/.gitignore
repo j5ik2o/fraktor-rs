@@ -8,8 +8,8 @@
 !config.yaml
 
 # Pieces (version-controlled)
-!pieces/
-!pieces/**
+!workflows/
+!workflows/**
 
 # Facets (version-controlled, 0.22.0+ layout)
 !facets/
