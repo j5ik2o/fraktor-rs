@@ -285,7 +285,7 @@ fn build_occurrence(path: &SynPath, module_scope: ModuleScope) -> Option<PathOcc
   let segments = path.segments.iter().collect::<Vec<_>>();
   let first = segments.first()?;
   let first_name = first.ident.to_string();
-  if !is_supported_root(&first_name) {
+  if is_primitive_root(&first_name) {
     return None;
   }
 
@@ -310,12 +310,31 @@ fn is_type_like_ident(name: &str) -> bool {
   name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
 }
 
-fn is_supported_root(name: &str) -> bool {
-  matches!(name, "crate" | "self" | "super") || name.starts_with("fraktor_")
-}
-
 fn join_segment_idents(segments: &[&syn::PathSegment]) -> String {
   segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
+}
+
+fn is_primitive_root(name: &str) -> bool {
+  matches!(
+    name,
+    "bool"
+      | "char"
+      | "str"
+      | "u8"
+      | "u16"
+      | "u32"
+      | "u64"
+      | "u128"
+      | "usize"
+      | "i8"
+      | "i16"
+      | "i32"
+      | "i64"
+      | "i128"
+      | "isize"
+      | "f32"
+      | "f64"
+  )
 }
 
 #[derive(Clone)]

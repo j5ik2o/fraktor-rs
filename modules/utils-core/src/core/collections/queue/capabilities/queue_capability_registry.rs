@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 use super::{QueueCapability, QueueCapabilityError, QueueCapabilitySet};
 
 /// Registry that validates queue capability availability.
@@ -47,8 +49,8 @@ impl Default for QueueCapabilityRegistry {
   }
 }
 
-impl core::fmt::Display for QueueCapabilityRegistry {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for QueueCapabilityRegistry {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "QueueCapabilityRegistry")
   }
 }

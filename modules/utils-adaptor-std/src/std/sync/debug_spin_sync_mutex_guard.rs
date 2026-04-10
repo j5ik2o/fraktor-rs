@@ -1,11 +1,15 @@
-use core::ops::{Deref, DerefMut};
+use core::{
+  mem::ManuallyDrop,
+  ops::{Deref, DerefMut},
+  sync::atomic::Ordering,
+};
 
 use super::debug_spin_sync_mutex::DebugSpinSyncMutex;
 
 /// Guard for [`DebugSpinSyncMutex`](super::DebugSpinSyncMutex).
 pub struct DebugSpinSyncMutexGuard<'a, T> {
   pub(super) parent: &'a DebugSpinSyncMutex<T>,
-  pub(super) guard:  spin::MutexGuard<'a, T>,
+  pub(super) guard:  ManuallyDrop<spin::MutexGuard<'a, T>>,
 }
 
 impl<T> Deref for DebugSpinSyncMutexGuard<'_, T> {
@@ -24,6 +28,11 @@ impl<T> DerefMut for DebugSpinSyncMutexGuard<'_, T> {
 
 impl<T> Drop for DebugSpinSyncMutexGuard<'_, T> {
   fn drop(&mut self) {
-    self.parent.owner.store(0, core::sync::atomic::Ordering::Release);
+    // 実際の mutex を先に解放してから owner をクリアする。
+    // この順序により、owner=0 を観測した他スレッドは必ず実ロックも
+    // 解放済みとなり、debug 検知の TOCTOU 窓を作らない。
+    // SAFETY: Drop は 1 回だけ呼ばれ、guard はまだ有効。
+    unsafe { ManuallyDrop::drop(&mut self.guard) };
+    self.parent.owner.store(0, Ordering::Release);
   }
 }

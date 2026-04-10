@@ -1,3 +1,5 @@
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 /// Errors that can occur when registering a waiter in a WaitQueue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WaitError {
@@ -7,8 +9,8 @@ pub enum WaitError {
   QueueClosed,
 }
 
-impl core::fmt::Display for WaitError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for WaitError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::AllocationFailure => write!(f, "failed to allocate memory for waiter"),
       | Self::QueueClosed => write!(f, "queue is closed and cannot accept new waiters"),

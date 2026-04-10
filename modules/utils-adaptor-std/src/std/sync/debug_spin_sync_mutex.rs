@@ -3,6 +3,7 @@ mod tests;
 
 use core::{
   hash::{Hash, Hasher},
+  mem::ManuallyDrop,
   sync::atomic::{AtomicU64, Ordering},
 };
 use std::{collections::hash_map::DefaultHasher, thread};
@@ -40,7 +41,7 @@ impl<T> DebugSpinSyncMutex<T> {
     assert_ne!(observed, current, "DebugSpinSyncMutex detected same-thread re-entry");
     let guard = self.inner.lock();
     self.owner.store(current, Ordering::Release);
-    DebugSpinSyncMutexGuard { parent: self, guard }
+    DebugSpinSyncMutexGuard { parent: self, guard: ManuallyDrop::new(guard) }
   }
 
   /// Consumes the mutex and returns the inner value.

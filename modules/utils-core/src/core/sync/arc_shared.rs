@@ -1,8 +1,11 @@
 #[cfg(not(feature = "force-portable-arc"))]
 use alloc::sync::Arc;
-use core::any::Any;
 #[cfg(not(feature = "unsize"))]
 use core::ptr;
+use core::{
+  any::Any,
+  fmt::{Debug, Formatter, Result as FmtResult},
+};
 #[cfg(feature = "unsize")]
 use core::{marker::Unsize, ops::CoerceUnsized};
 
@@ -113,8 +116,8 @@ impl<T: ?Sized> core::ops::Deref for ArcShared<T> {
   }
 }
 
-impl<T: ?Sized + core::fmt::Debug> core::fmt::Debug for ArcShared<T> {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<T: ?Sized + Debug> Debug for ArcShared<T> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ArcShared").finish()
   }
 }
