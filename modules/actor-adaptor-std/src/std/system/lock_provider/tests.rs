@@ -1,10 +1,13 @@
 use std::{
+  env,
+  process::{Command, Stdio},
   sync::{
     Arc, Barrier,
     atomic::{AtomicUsize, Ordering},
     mpsc::{self, Sender},
   },
   thread,
+  time::{Duration, Instant},
 };
 
 use fraktor_actor_core_rs::core::kernel::{
@@ -14,6 +17,10 @@ use fraktor_actor_core_rs::core::kernel::{
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
+  },
+  event::{
+    logging::{LogEvent, LogLevel},
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_lock_provider},
   },
   system::ActorSystem,
 };
@@ -121,6 +128,34 @@ impl ActorRefSender for DeferredScheduleSender {
   }
 }
 
+struct ReentrantPublishSubscriber {
+  stream:      EventStreamShared,
+  delivered:   Arc<AtomicUsize>,
+  republished: bool,
+}
+
+impl ReentrantPublishSubscriber {
+  fn new(stream: EventStreamShared, delivered: Arc<AtomicUsize>) -> Self {
+    Self { stream, delivered, republished: false }
+  }
+}
+
+impl EventStreamSubscriber for ReentrantPublishSubscriber {
+  fn on_event(&mut self, _event: &EventStreamEvent) {
+    self.delivered.fetch_add(1, Ordering::SeqCst);
+    if !self.republished {
+      self.republished = true;
+      self.stream.publish(&EventStreamEvent::Log(LogEvent::new(
+        LogLevel::Info,
+        "nested event".into(),
+        Duration::from_millis(2),
+        None,
+        None,
+      )));
+    }
+  }
+}
+
 #[test]
 fn debug_driver_allows_parallel_send_after_releasing_sender_lock() {
   let (first_schedule_entered_tx, first_schedule_entered_rx) = mpsc::channel();
@@ -149,4 +184,65 @@ fn debug_driver_allows_parallel_send_after_releasing_sender_lock() {
 
   assert!(first_result.is_ok(), "first send should succeed");
   assert!(second_result.is_ok(), "second send should succeed without false nested-send detection");
+}
+
+#[test]
+fn debug_provider_should_detect_reentrant_event_stream_subscriber_locking() {
+  let exe = env::current_exe().expect("current test binary");
+  let mut child = Command::new(exe)
+    .arg("--exact")
+    .arg("std::system::lock_provider::tests::debug_provider_reentrant_event_stream_publish_worker")
+    .env("FRAKTOR_REENTRANT_EVENT_STREAM_CHILD", "1")
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .expect("spawn worker test");
+  let deadline = Instant::now() + Duration::from_millis(200);
+
+  loop {
+    if let Some(status) = child.try_wait().expect("poll worker status") {
+      assert!(
+        !status.success(),
+        "after section 3 the worker should fail fast with debug reentry detection instead of completing successfully"
+      );
+      return;
+    }
+    if Instant::now() >= deadline {
+      child.kill().expect("terminate hung worker");
+      panic!(
+        "debug provider path still hangs on built-in event stream subscriber locking; section 3 should make it fail fast"
+      );
+    }
+    thread::yield_now();
+  }
+}
+
+#[test]
+fn debug_provider_reentrant_event_stream_publish_worker() {
+  if env::var_os("FRAKTOR_REENTRANT_EVENT_STREAM_CHILD").is_none() {
+    return;
+  }
+
+  let system = build_debug_system();
+  let stream = system.event_stream();
+  let delivered = Arc::new(AtomicUsize::new(0));
+  let subscriber = subscriber_handle_with_lock_provider(
+    &system.state().lock_provider(),
+    ReentrantPublishSubscriber::new(stream.clone(), delivered.clone()),
+  );
+  let _subscription = stream.subscribe(&subscriber);
+
+  stream.publish(&EventStreamEvent::Log(LogEvent::new(
+    LogLevel::Info,
+    "outer event".into(),
+    Duration::from_millis(1),
+    None,
+    None,
+  )));
+
+  assert_eq!(
+    delivered.load(Ordering::SeqCst),
+    1,
+    "after section 3 the nested publish should panic before a second callback acquires the same subscriber lock"
+  );
 }
