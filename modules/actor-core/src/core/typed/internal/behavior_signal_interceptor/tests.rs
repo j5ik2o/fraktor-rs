@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::BehaviorSignalInterceptor;
 use crate::core::{
@@ -12,8 +12,8 @@ use crate::core::{
 };
 
 struct SignalProbe {
-  start_count:  ArcShared<NoStdMutex<u32>>,
-  signal_count: ArcShared<NoStdMutex<u32>>,
+  start_count:  ArcShared<SpinSyncMutex<u32>>,
+  signal_count: ArcShared<SpinSyncMutex<u32>>,
 }
 
 impl BehaviorSignalInterceptor<u32> for SignalProbe {
@@ -41,8 +41,8 @@ impl BehaviorSignalInterceptor<u32> for SignalProbe {
 
 #[test]
 fn behavior_signal_interceptor_default_handlers_delegate() {
-  let start_count = ArcShared::new(NoStdMutex::new(0u32));
-  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
+  let signal_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let mut interceptor = SignalProbe { start_count: start_count.clone(), signal_count: signal_count.clone() };
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -62,8 +62,8 @@ fn behavior_signal_interceptor_default_handlers_delegate() {
 
 #[test]
 fn intercept_signal_delegates_to_signal_interceptor() {
-  let start_count = ArcShared::new(NoStdMutex::new(0u32));
-  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
+  let signal_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let start_count_clone = start_count.clone();
   let signal_count_clone = signal_count.clone();
 

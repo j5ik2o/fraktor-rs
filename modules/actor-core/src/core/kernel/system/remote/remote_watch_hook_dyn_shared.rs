@@ -2,14 +2,14 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{RemoteWatchHook, noop_remote_watch_hook::NoopRemoteWatchHook};
 use crate::core::kernel::actor::Pid;
 
 /// Shared wrapper that provides thread-safe access to a boxed [`RemoteWatchHook`].
 ///
-/// The hook is wrapped in `RuntimeMutex` and shared via `ArcShared`, while the
+/// The hook is wrapped in `SharedLock`, while the
 /// public surface is limited to `with_read` / `with_write` closures to hide the
 /// lock scope and reduce deadlock risk.
 ///
@@ -19,14 +19,14 @@ use crate::core::kernel::actor::Pid;
 /// - The underlying `Box<dyn RemoteWatchHook>` does not need internal locks
 /// - Lock acquisition is hidden from callers via closure-based API
 pub(crate) struct RemoteWatchHookDynShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn RemoteWatchHook>>>,
+  inner: SharedLock<Box<dyn RemoteWatchHook>>,
 }
 
 impl RemoteWatchHookDynShared {
   /// Creates a new shared wrapper around the provided hook.
   #[must_use]
   pub(crate) fn new(hook: Box<dyn RemoteWatchHook>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(hook)) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(hook) }
   }
 
   /// Creates a new shared wrapper with the default no-op hook.
@@ -38,8 +38,7 @@ impl RemoteWatchHookDynShared {
   /// Acquires a write lock and applies the closure to the inner hook.
   #[inline]
   pub(crate) fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 
   /// Replaces the current hook with a new one.
@@ -60,13 +59,11 @@ impl RemoteWatchHookDynShared {
 
 impl SharedAccess<Box<dyn RemoteWatchHook>> for RemoteWatchHookDynShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn RemoteWatchHook>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn RemoteWatchHook>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }
 

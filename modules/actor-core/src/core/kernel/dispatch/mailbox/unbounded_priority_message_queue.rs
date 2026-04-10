@@ -6,7 +6,7 @@ mod tests;
 use alloc::collections::BinaryHeap;
 use core::cmp::Ordering;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::{
@@ -21,7 +21,7 @@ const DEFAULT_CAPACITY: usize = 11;
 /// Inspired by Pekko's `UnboundedPriorityMailbox`. A [`MessagePriorityGenerator`]
 /// assigns an integer priority to each message; lower values are dequeued first.
 pub struct UnboundedPriorityMessageQueue {
-  inner:     RuntimeMutex<BinaryHeap<PriorityEntry>>,
+  inner:     SharedLock<BinaryHeap<PriorityEntry>>,
   generator: ArcShared<dyn MessagePriorityGenerator>,
 }
 
@@ -29,31 +29,30 @@ impl UnboundedPriorityMessageQueue {
   /// Creates a new unbounded priority message queue.
   #[must_use]
   pub fn new(generator: ArcShared<dyn MessagePriorityGenerator>) -> Self {
-    Self { inner: RuntimeMutex::new(BinaryHeap::with_capacity(DEFAULT_CAPACITY)), generator }
+    Self {
+      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(BinaryHeap::with_capacity(DEFAULT_CAPACITY)),
+      generator,
+    }
   }
 }
 
 impl MessageQueue for UnboundedPriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
-    let mut guard = self.inner.lock();
-    guard.push(PriorityEntry { priority, envelope });
+    self.inner.with_write(|inner| inner.push(PriorityEntry { priority, envelope }));
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    let mut guard = self.inner.lock();
-    guard.pop().map(|entry| entry.envelope)
+    self.inner.with_write(|inner| inner.pop().map(|entry| entry.envelope))
   }
 
   fn number_of_messages(&self) -> usize {
-    let guard = self.inner.lock();
-    guard.len()
+    self.inner.with_read(|inner| inner.len())
   }
 
   fn clean_up(&self) {
-    let mut guard = self.inner.lock();
-    guard.clear();
+    self.inner.with_write(|inner| inner.clear());
   }
 }
 

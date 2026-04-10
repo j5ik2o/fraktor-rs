@@ -3,7 +3,7 @@ extern crate std;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::{
@@ -94,8 +94,8 @@ fn tail_chopping_builder_rejects_zero_pool_size() {
 #[test]
 fn tail_chopping_returns_first_reply() {
   let pool_size = 3_usize;
-  let next_source = ArcShared::new(NoStdMutex::new(0_usize));
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let next_source = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
 
   let ns = next_source.clone();
@@ -191,10 +191,10 @@ fn tail_chopping_returns_first_reply() {
 #[test]
 fn tail_chopping_retries_to_next_routee_after_interval() {
   let pool_size = 2_usize;
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
   // routee 0 は silent（無応答）、routee 1 は responsive
-  let routee_index = ArcShared::new(NoStdMutex::new(0_usize));
+  let routee_index = ArcShared::new(SpinSyncMutex::new(0_usize));
 
   let ri = routee_index.clone();
   let routee_factory = ArcShared::new(move || -> Behavior<TestReq> {
@@ -301,7 +301,7 @@ fn tail_chopping_retries_to_next_routee_after_interval() {
 #[test]
 fn tail_chopping_returns_timeout_reply_when_no_routee_responds() {
   let pool_size = 2_usize;
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
   let timeout_reply = TestReply { id: 0, source: usize::MAX };
 

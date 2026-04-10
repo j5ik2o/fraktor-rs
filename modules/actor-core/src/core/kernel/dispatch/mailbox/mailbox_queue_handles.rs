@@ -4,7 +4,7 @@ use core::cmp;
 
 use fraktor_utils_core_rs::core::{
   collections::queue::{OfferOutcome, OverflowPolicy, QueueError, SyncQueue, backend::VecDequeBackend},
-  sync::{ArcShared, RuntimeMutex, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
 };
 
 use super::{UserQueueShared, mailbox_queue_state::QueueState};
@@ -18,7 +18,7 @@ const DEFAULT_QUEUE_CAPACITY: usize = 16;
 pub(crate) struct QueueStateHandle<T>
 where
   T: Send + 'static, {
-  pub(crate) state: ArcShared<RuntimeMutex<QueueState<T>>>,
+  pub(crate) state: SharedLock<QueueState<T>>,
 }
 
 impl<T> Clone for QueueStateHandle<T>
@@ -47,42 +47,41 @@ where
     let sync_queue = SyncQueue::new(backend);
     let mutex = SpinSyncMutex::new(sync_queue);
     let queue = UserQueueShared::<T>::new(ArcShared::new(mutex));
-    let state_mutex = RuntimeMutex::new(QueueState::new(queue));
-    let state = ArcShared::new(state_mutex);
+    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(QueueState::new(queue));
     Self { state }
   }
 
   pub(crate) fn offer(&self, message: T) -> Result<OfferOutcome, QueueError<T>> {
-    let mut state = self.state.lock();
-    state.offer(message)
+    self.state.with_write(|state| state.offer(message))
   }
 
   pub(crate) fn offer_if_room(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
-    let mut state = self.state.lock();
-    if state.len() >= capacity {
-      return Err(QueueError::Full(message));
-    }
-    state.offer(message)
+    self.state.with_write(|state| {
+      if state.len() >= capacity {
+        return Err(QueueError::Full(message));
+      }
+      state.offer(message)
+    })
   }
 
   pub(crate) fn drop_oldest_and_offer(&self, message: T, capacity: usize) -> Result<OfferOutcome, QueueError<T>> {
-    let mut state = self.state.lock();
-    if state.len() >= capacity {
-      // Intentionally discard the oldest element to make room for the new message.
-      let _oldest = state.poll();
-    }
-    state.offer(message)
+    self.state.with_write(|state| {
+      if state.len() >= capacity {
+        // Intentionally discard the oldest element to make room for the new message.
+        let _oldest = state.poll();
+      }
+      state.offer(message)
+    })
   }
 
   pub(crate) fn poll(&self) -> Result<T, QueueError<T>> {
-    let mut state = self.state.lock();
-    state.poll()
+    self.state.with_write(|state| state.poll())
   }
 
   /// Returns the current queue size without acquiring a lock.
   #[must_use]
   pub(crate) fn len(&self) -> usize {
-    self.state.lock().len()
+    self.state.with_read(|state| state.len())
   }
 }
 

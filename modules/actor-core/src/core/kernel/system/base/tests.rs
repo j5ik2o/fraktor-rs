@@ -8,7 +8,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
-  sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   timing::delay::{DelayFuture, DelayProvider},
 };
 
@@ -60,11 +60,11 @@ impl Actor for TestActor {
 }
 
 struct SpawnRecorderActor {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl SpawnRecorderActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { log }
   }
 }
@@ -94,11 +94,11 @@ impl Actor for FailingStartActor {
 }
 
 struct LifecycleEventWatcher {
-  stages: ArcShared<NoStdMutex<Vec<LifecycleStage>>>,
+  stages: ArcShared<SpinSyncMutex<Vec<LifecycleStage>>>,
 }
 
 impl LifecycleEventWatcher {
-  fn new(stages: ArcShared<NoStdMutex<Vec<LifecycleStage>>>) -> Self {
+  fn new(stages: ArcShared<SpinSyncMutex<Vec<LifecycleStage>>>) -> Self {
     Self { stages }
   }
 }
@@ -181,7 +181,7 @@ impl TickDriver for StaticTickDriver {
 
   fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     Ok(TickDriverHandle::new(self.id, self.kind, self.resolution, control))
   }
 }
@@ -627,7 +627,7 @@ fn spawn_does_not_block_when_dispatcher_never_runs() {
   // Register NoopExecutor as "noop" dispatcher
   let system =
     ActorSystem::new_empty_with(|config| config.with_dispatcher_configurator("noop", noop_dispatcher_configurator()));
-  let log: ArcShared<NoStdMutex<Vec<&'static str>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log: ArcShared<SpinSyncMutex<Vec<&'static str>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
 
   let props = Props::from_fn({
     let log = log.clone();
@@ -735,7 +735,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
   let props = Props::from_fn(|| TestActor);
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   {
     let scheduler = system.scheduler();
     scheduler.with_write(|s| {
@@ -750,7 +750,7 @@ fn actor_system_terminate_runs_scheduler_tasks() {
 }
 
 struct RecordingShutdownTask {
-  log: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl crate::core::kernel::actor::scheduler::task_run::TaskRunOnClose for RecordingShutdownTask {
@@ -793,7 +793,7 @@ fn actor_system_installs_scheduler() {
 #[test]
 fn lifecycle_events_cover_restart_transitions() {
   let system = ActorSystem::new_empty();
-  let stages: ArcShared<NoStdMutex<Vec<LifecycleStage>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let stages: ArcShared<SpinSyncMutex<Vec<LifecycleStage>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LifecycleEventWatcher::new(stages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -808,11 +808,11 @@ fn lifecycle_events_cover_restart_transitions() {
 }
 
 struct DummyActorRefProvider {
-  last_path: ArcShared<NoStdMutex<Option<ActorPath>>>,
+  last_path: ArcShared<SpinSyncMutex<Option<ActorPath>>>,
 }
 
 impl DummyActorRefProvider {
-  fn new(last_path: ArcShared<NoStdMutex<Option<ActorPath>>>) -> Self {
+  fn new(last_path: ArcShared<SpinSyncMutex<Option<ActorPath>>>) -> Self {
     Self { last_path }
   }
 }
@@ -840,7 +840,7 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let state = SystemState::build_from_config(&config).expect("state");
   let system = ActorSystem::from_state(SystemStateShared::new(state));
 
-  let recorded = ArcShared::new(NoStdMutex::new(None));
+  let recorded = ArcShared::new(SpinSyncMutex::new(None));
   let provider = ActorRefProviderShared::new(DummyActorRefProvider::new(recorded.clone()));
   system.extended().register_actor_ref_provider(&provider).expect("register provider");
   system.state().mark_root_started();

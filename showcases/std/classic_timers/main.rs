@@ -13,17 +13,17 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 struct Tick;
 
 struct TimerActor {
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  events: SharedLock<Vec<&'static str>>,
 }
 
 impl TimerActor {
-  fn new(events: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(events: SharedLock<Vec<&'static str>>) -> Self {
     Self { events }
   }
 }
@@ -38,7 +38,7 @@ impl Actor for TimerActor {
       return Ok(());
     }
     if message.downcast_ref::<Tick>().is_some() {
-      self.events.lock().push("tick");
+      self.events.with_lock(|events| events.push("tick"));
     }
     Ok(())
   }
@@ -47,7 +47,7 @@ impl Actor for TimerActor {
 fn main() {
   let driver = ManualTestDriver::new();
   let controller = driver.controller();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let props = Props::from_fn({
     let events = events.clone();
     move || TimerActor::new(events.clone())
@@ -57,8 +57,8 @@ fn main() {
   system.user_guardian_ref().tell(AnyMessage::new(Start));
   controller.inject_and_drive(1);
 
-  wait_until(|| !events.lock().is_empty());
-  assert_eq!(events.lock().clone(), vec!["tick"]);
+  wait_until(|| events.with_lock(|events| !events.is_empty()));
+  assert_eq!(events.with_lock(|events| events.clone()), vec!["tick"]);
 
   system.terminate().expect("terminate");
 }

@@ -8,7 +8,7 @@ use alloc::{
 use core::any::{Any, TypeId, type_name};
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use hashbrown::HashMap;
 use portable_atomic::{AtomicUsize, Ordering};
 
@@ -315,8 +315,8 @@ fn deserialize_prefers_from_binary_with_manifest() {
 #[test]
 fn not_serializable_publishes_event_and_deadletter() {
   let system = ActorSystem::new_empty();
-  let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber =
     subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -347,8 +347,8 @@ fn not_serializable_publishes_event_and_deadletter() {
 #[test]
 fn not_serializable_event_records_pid_and_transport() {
   let system = ActorSystem::new_empty();
-  let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber =
     subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -416,8 +416,8 @@ fn manifest_route_falls_back_to_legacy_serializer() {
 #[test]
 fn manifest_route_failure_surfaces_not_serializable_with_manifest() {
   let system = ActorSystem::new_empty();
-  let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber =
     subscriber_handle(SerializationEventWatcher::new(serialization_events.clone(), log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
@@ -500,8 +500,8 @@ fn shutdown_blocks_deserialize_and_actor_path_calls() {
 #[test]
 fn cache_resolution_emits_hit_and_binding_logs() {
   let system = ActorSystem::new_empty();
-  let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -529,8 +529,8 @@ fn cache_resolution_emits_hit_and_binding_logs() {
 #[test]
 fn builtin_serializer_collision_emits_warning() {
   let system = ActorSystem::new_empty();
-  let serialization_events = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let serialization_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(SerializationEventWatcher::new(serialization_events, log_messages.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -555,14 +555,14 @@ fn builtin_serializer_collision_emits_warning() {
 }
 
 struct SerializationEventWatcher {
-  serialization_events: ArcShared<NoStdMutex<Vec<SerializationErrorEvent>>>,
-  log_messages:         ArcShared<NoStdMutex<Vec<String>>>,
+  serialization_events: ArcShared<SpinSyncMutex<Vec<SerializationErrorEvent>>>,
+  log_messages:         ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl SerializationEventWatcher {
   fn new(
-    serialization_events: ArcShared<NoStdMutex<Vec<SerializationErrorEvent>>>,
-    log_messages: ArcShared<NoStdMutex<Vec<String>>>,
+    serialization_events: ArcShared<SpinSyncMutex<Vec<SerializationErrorEvent>>>,
+    log_messages: ArcShared<SpinSyncMutex<Vec<String>>>,
   ) -> Self {
     Self { serialization_events, log_messages }
   }

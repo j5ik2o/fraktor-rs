@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::{hint::spin_loop, num::NonZeroUsize};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -30,7 +30,7 @@ impl Actor for PassiveActor {
 }
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
@@ -49,7 +49,7 @@ fn mailbox_metrics_and_warnings_are_emitted() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber { events: events.clone() });
   let _subscription = system.subscribe_event_stream(&subscriber);
 

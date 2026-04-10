@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use super::InlineExecutor;
 use crate::core::kernel::dispatch::dispatcher::Executor;
@@ -9,10 +9,10 @@ use crate::core::kernel::dispatch::dispatcher::Executor;
 #[test]
 fn execute_runs_task_on_current_thread() {
   let mut executor = InlineExecutor::new();
-  let log: Arc<RuntimeMutex<Vec<u32>>> = Arc::new(RuntimeMutex::new(Vec::new()));
+  let log = Arc::new(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new()));
   let log_clone = Arc::clone(&log);
-  executor.execute(Box::new(move || log_clone.lock().push(42))).expect("execute should succeed");
-  assert_eq!(*log.lock(), alloc::vec![42]);
+  executor.execute(Box::new(move || log_clone.with_lock(|values| values.push(42)))).expect("execute should succeed");
+  assert_eq!(log.with_lock(|values| values.clone()), alloc::vec![42]);
 }
 
 #[test]

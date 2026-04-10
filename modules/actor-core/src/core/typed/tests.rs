@@ -11,7 +11,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::NoStdMutex;
+use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 
 use crate::core::{
   kernel::{
@@ -265,7 +265,7 @@ fn typed_behaviors_with_stash_limits_capacity() {
 
 #[test]
 fn typed_behaviors_with_stash_keeps_adapter_payload_after_unstash() {
-  let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<i32>>>> = Arc::new(NoStdMutex::new(None));
+  let adapter_slot: Arc<SpinSyncMutex<Option<TypedActorRef<i32>>>> = Arc::new(SpinSyncMutex::new(None));
   let props = TypedProps::<StashCommand>::from_behavior_factory({
     let slot = adapter_slot.clone();
     move || adapter_stash_behavior(0, &slot)
@@ -465,7 +465,7 @@ fn stash_behavior(total: u32) -> Behavior<StashCommand> {
   Behaviors::with_stash(32, move |stash| stash_locked_behavior(total, stash))
 }
 
-fn adapter_stash_behavior(total: u32, slot: &Arc<NoStdMutex<Option<TypedActorRef<i32>>>>) -> Behavior<StashCommand> {
+fn adapter_stash_behavior(total: u32, slot: &Arc<SpinSyncMutex<Option<TypedActorRef<i32>>>>) -> Behavior<StashCommand> {
   let slot = Arc::clone(slot);
   Behaviors::setup(move |ctx| {
     let adapter = ctx
@@ -786,7 +786,9 @@ fn backoff_strategy_stores_config_in_behavior() {
   assert!(matches!(config, SupervisorStrategyConfig::Backoff(_)));
 }
 
-fn adapter_counter_behavior(slot: &Arc<NoStdMutex<Option<TypedActorRef<String>>>>) -> Behavior<AdapterCounterCommand> {
+fn adapter_counter_behavior(
+  slot: &Arc<SpinSyncMutex<Option<TypedActorRef<String>>>>,
+) -> Behavior<AdapterCounterCommand> {
   let slot = Arc::clone(slot);
   Behaviors::setup(move |ctx| {
     let adapter = ctx
@@ -812,7 +814,7 @@ fn counter_behavior(value: i32) -> Behavior<AdapterCounterCommand> {
 
 #[test]
 fn message_adapter_converts_external_messages() {
-  let adapter_slot: Arc<NoStdMutex<Option<TypedActorRef<String>>>> = Arc::new(NoStdMutex::new(None));
+  let adapter_slot: Arc<SpinSyncMutex<Option<TypedActorRef<String>>>> = Arc::new(SpinSyncMutex::new(None));
   let props = TypedProps::<AdapterCounterCommand>::from_behavior_factory({
     let slot = adapter_slot.clone();
     move || adapter_counter_behavior(&slot)

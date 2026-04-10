@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
   SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
@@ -33,7 +33,7 @@ impl TickDriver for RuntimeTestDriver {
 
   fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = ArcShared::new(RuntimeMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     Ok(TickDriverHandle::new(self.id(), self.kind(), self.resolution(), control))
   }
 }

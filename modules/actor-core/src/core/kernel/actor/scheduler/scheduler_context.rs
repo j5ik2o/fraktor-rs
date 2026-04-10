@@ -1,5 +1,5 @@
 //! Scheduler runtime container used across the actor system.
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, SpinSyncRwLock};
 
 use super::{Scheduler, SchedulerBackedDelayProvider, SchedulerConfig, SchedulerShared, task_run::TaskRunSummary};
 use crate::core::kernel::event::stream::EventStreamShared;
@@ -22,8 +22,7 @@ impl SchedulerContext {
   #[must_use]
   pub fn with_event_stream(config: SchedulerConfig, event_stream: EventStreamShared) -> Self {
     let scheduler = Scheduler::new(config);
-    let rwlock: RuntimeRwLock<_> = RuntimeRwLock::new(scheduler);
-    let shared = SchedulerShared::new(ArcShared::new(rwlock));
+    let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
     let provider = SchedulerBackedDelayProvider::new(shared.clone());
     Self { scheduler: shared, provider, event_stream }
   }

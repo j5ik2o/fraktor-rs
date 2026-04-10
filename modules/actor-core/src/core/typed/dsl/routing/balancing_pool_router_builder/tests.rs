@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -44,7 +44,7 @@ fn balancing_pool_builder_rejects_zero_pool_size() {
 #[test]
 fn balancing_pool_distributes_to_idle_workers() {
   let pool_size = 3_usize;
-  let processed = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let processed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let processed_check = processed.clone();
 
   let p = processed.clone();
@@ -121,7 +121,7 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
   // Regression test for PEKKO-NEW-balancing_pool_router_builder-L100:
   // 2 routees, 3 messages. Each routee stops after 1 message.
   // The 3rd message must NOT be delivered to a stopping routee.
-  let processed = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let processed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let processed_check = processed.clone();
 
   let p = processed.clone();
@@ -184,7 +184,7 @@ fn balancing_pool_stopped_routee_does_not_receive_pending_work() {
 
 #[test]
 fn balancing_pool_stops_when_all_routees_terminate() {
-  let processed = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let processed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let processed_check = processed.clone();
 
   let p = processed.clone();
@@ -240,7 +240,7 @@ fn balancing_pool_routee_stopped_on_start_does_not_receive_work() {
   // Regression test for PEKKO-NEW-balancing_pool_router_builder-L89:
   // A routee whose behavior returns Stopped during startup (around_start)
   // must NOT be registered as an idle worker and must NOT receive work.
-  let processed = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let processed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let processed_check = processed.clone();
 
   let p = processed.clone();

@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{AbstractFsm, Fsm, FsmReason, FsmStateTimeout, FsmTransition, LoggingFsm};
 use crate::core::kernel::{
@@ -56,7 +56,7 @@ fn build_context() -> (ActorSystem, ActorContext<'static>) {
 #[test]
 fn fsm_transitions_and_reports_transition_callback() {
   let (_system, mut ctx) = build_context();
-  let transitions = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let transitions = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let transitions_for_cb = transitions.clone();
 
   let mut fsm = Fsm::<ProbeState, usize>::new();
@@ -139,7 +139,7 @@ fn fsm_stay_does_not_reschedule_state_timeout() {
 #[test]
 fn fsm_goto_same_state_rearms_timeout_and_notifies_transition_observer() {
   let (_system, mut ctx) = build_context();
-  let transitions = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let transitions = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let transitions_for_cb = transitions.clone();
 
   let mut fsm = Fsm::<ProbeState, usize>::new();
@@ -185,7 +185,7 @@ fn fsm_goto_same_state_rearms_timeout_and_notifies_transition_observer() {
 #[test]
 fn fsm_stop_records_reason_and_invokes_termination_callback() {
   let (_system, mut ctx) = build_context();
-  let terminations = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let terminations = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let terminations_for_cb = terminations.clone();
 
   let mut fsm = Fsm::<ProbeState, usize>::new();
@@ -344,11 +344,11 @@ fn fsm_unhandled_message_does_not_reschedule_state_timeout() {
 }
 
 struct LogRecorder {
-  messages: ArcShared<NoStdMutex<Vec<String>>>,
+  messages: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl LogRecorder {
-  fn new(messages: ArcShared<NoStdMutex<Vec<String>>>) -> Self {
+  fn new(messages: ArcShared<SpinSyncMutex<Vec<String>>>) -> Self {
     Self { messages }
   }
 }
@@ -364,7 +364,7 @@ impl EventStreamSubscriber for LogRecorder {
 #[test]
 fn logging_fsm_emits_transition_and_termination_logs() {
   let (system, mut ctx) = build_context();
-  let logs = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let logs = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(LogRecorder::new(logs.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

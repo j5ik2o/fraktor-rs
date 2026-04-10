@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex},
+  sync::{ArcShared, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -219,12 +219,12 @@ struct IdentityCall {
 
 #[derive(Clone)]
 struct StubIdentityLookup {
-  calls: ArcShared<NoStdMutex<Vec<IdentityCall>>>,
+  calls: ArcShared<SpinSyncMutex<Vec<IdentityCall>>>,
 }
 
 impl StubIdentityLookup {
   fn new() -> Self {
-    Self { calls: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { calls: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn record(&self, mode: IdentityMode, kinds: &[ActivatedKind]) {
@@ -258,8 +258,8 @@ impl IdentityLookup for StubIdentityLookup {
 
 #[derive(Clone)]
 struct StubGossiper {
-  started:    ArcShared<NoStdMutex<bool>>,
-  stopped:    ArcShared<NoStdMutex<bool>>,
+  started:    ArcShared<SpinSyncMutex<bool>>,
+  stopped:    ArcShared<SpinSyncMutex<bool>>,
   fail_start: bool,
   fail_stop:  bool,
 }
@@ -267,8 +267,8 @@ struct StubGossiper {
 impl StubGossiper {
   fn new() -> Self {
     Self {
-      started:    ArcShared::new(NoStdMutex::new(false)),
-      stopped:    ArcShared::new(NoStdMutex::new(false)),
+      started:    ArcShared::new(SpinSyncMutex::new(false)),
+      stopped:    ArcShared::new(SpinSyncMutex::new(false)),
       fail_start: false,
       fail_stop:  false,
     }
@@ -320,8 +320,8 @@ impl Default for StubGossiper {
 
 #[derive(Clone)]
 struct StubPubSub {
-  started:    ArcShared<NoStdMutex<bool>>,
-  stopped:    ArcShared<NoStdMutex<bool>>,
+  started:    ArcShared<SpinSyncMutex<bool>>,
+  stopped:    ArcShared<SpinSyncMutex<bool>>,
   fail_start: bool,
   fail_stop:  bool,
 }
@@ -329,8 +329,8 @@ struct StubPubSub {
 impl StubPubSub {
   fn new() -> Self {
     Self {
-      started:    ArcShared::new(NoStdMutex::new(false)),
-      stopped:    ArcShared::new(NoStdMutex::new(false)),
+      started:    ArcShared::new(SpinSyncMutex::new(false)),
+      stopped:    ArcShared::new(SpinSyncMutex::new(false)),
       fail_start: false,
       fail_stop:  false,
     }
@@ -396,12 +396,12 @@ impl Default for StubPubSub {
 
 #[derive(Clone)]
 struct RecordingClusterEvents {
-  events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
 }
 
 impl RecordingClusterEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<ClusterEvent> {
@@ -439,10 +439,8 @@ fn wrap_provider<P: ClusterProvider + 'static>(provider: P) -> ClusterProviderSh
   ClusterProviderShared::new(boxed)
 }
 
-fn wrap_downing_provider<D: DowningProvider + 'static>(
-  downing_provider: D,
-) -> ArcShared<NoStdMutex<Box<dyn DowningProvider>>> {
-  ArcShared::new(NoStdMutex::new(Box::new(downing_provider)))
+fn wrap_downing_provider<D: DowningProvider + 'static>(downing_provider: D) -> SharedLock<Box<dyn DowningProvider>> {
+  SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(downing_provider))
 }
 
 /// Helper wrapping a `ClusterPubSub` in `ClusterPubSubShared`.
@@ -533,7 +531,7 @@ fn setup_member_kinds_registers_and_updates_virtual_actor_count() {
   let event_stream = EventStreamShared::default();
   let kind_registry = KindRegistry::new();
   // calls を共有して後で参照できるようにする
-  let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let calls: ArcShared<SpinSyncMutex<Vec<IdentityCall>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper = wrap_gossiper(StubGossiper::new());
   let pubsub = wrap_pubsub(StubPubSub::new());
@@ -570,7 +568,7 @@ fn setup_client_kinds_registers_and_updates_virtual_actor_count() {
   let event_stream = EventStreamShared::default();
   let kind_registry = KindRegistry::new();
   // calls を共有して後で参照できるようにする
-  let calls: ArcShared<NoStdMutex<Vec<IdentityCall>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let calls: ArcShared<SpinSyncMutex<Vec<IdentityCall>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let identity_lookup = StubIdentityLookup { calls: calls.clone() };
   let gossiper = wrap_gossiper(StubGossiper::new());
   let pubsub = wrap_pubsub(StubPubSub::new());
@@ -960,16 +958,16 @@ fn shutdown_stops_pubsub_then_gossip() {
   let event_stream = EventStreamShared::default();
   let kind_registry = KindRegistry::new();
   let identity_lookup = wrap_identity_lookup(StubIdentityLookup::new());
-  let gossiper_stopped: ArcShared<NoStdMutex<bool>> = ArcShared::new(NoStdMutex::new(false));
-  let pubsub_stopped: ArcShared<NoStdMutex<bool>> = ArcShared::new(NoStdMutex::new(false));
+  let gossiper_stopped: ArcShared<SpinSyncMutex<bool>> = ArcShared::new(SpinSyncMutex::new(false));
+  let pubsub_stopped: ArcShared<SpinSyncMutex<bool>> = ArcShared::new(SpinSyncMutex::new(false));
   let gossiper = wrap_gossiper(StubGossiper {
-    started:    ArcShared::new(NoStdMutex::new(false)),
+    started:    ArcShared::new(SpinSyncMutex::new(false)),
     stopped:    gossiper_stopped.clone(),
     fail_start: false,
     fail_stop:  false,
   });
   let pubsub = wrap_pubsub(StubPubSub {
-    started:    ArcShared::new(NoStdMutex::new(false)),
+    started:    ArcShared::new(SpinSyncMutex::new(false)),
     stopped:    pubsub_stopped.clone(),
     fail_start: false,
     fail_stop:  false,
@@ -1079,7 +1077,7 @@ fn down_fails_when_cluster_is_not_started() {
 fn down_invokes_strategy_before_provider_down() {
   #[derive(Clone)]
   struct RecordingProvider {
-    calls: ArcShared<NoStdMutex<Vec<String>>>,
+    calls: ArcShared<SpinSyncMutex<Vec<String>>>,
   }
 
   impl ClusterProvider for RecordingProvider {
@@ -1110,7 +1108,7 @@ fn down_invokes_strategy_before_provider_down() {
   }
 
   struct RecordingDowningProvider {
-    calls: ArcShared<NoStdMutex<Vec<String>>>,
+    calls: ArcShared<SpinSyncMutex<Vec<String>>>,
   }
 
   impl DowningProvider for RecordingDowningProvider {
@@ -1120,7 +1118,7 @@ fn down_invokes_strategy_before_provider_down() {
     }
   }
 
-  let calls: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let calls: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let provider = wrap_provider(RecordingProvider { calls: calls.clone() });
   let block_list_provider = ArcShared::new(StubBlockListProvider::new(vec![]));
   let event_stream = EventStreamShared::default();

@@ -1,6 +1,6 @@
 //! Weak reference wrapper for system state.
 
-use fraktor_utils_core_rs::core::sync::{RuntimeRwLock, WeakShared};
+use fraktor_utils_core_rs::core::sync::WeakSharedRwLock;
 
 use super::{system_state::SystemState, system_state_shared::SystemStateShared};
 
@@ -8,7 +8,7 @@ use super::{system_state::SystemState, system_state_shared::SystemStateShared};
 ///
 /// This wrapper avoids circular reference issues between system state and actor cells.
 pub struct SystemStateWeak {
-  pub(crate) inner: WeakShared<RuntimeRwLock<SystemState>>,
+  pub(crate) inner: WeakSharedRwLock<SystemState>,
 }
 
 impl Clone for SystemStateWeak {
@@ -23,6 +23,6 @@ impl SystemStateWeak {
   /// Returns `None` if the system state has been dropped.
   #[must_use]
   pub fn upgrade(&self) -> Option<SystemStateShared> {
-    self.inner.upgrade().map(SystemStateShared::from_arc_shared)
+    self.inner.upgrade().map(SystemStateShared::from_shared_rw_lock)
   }
 }

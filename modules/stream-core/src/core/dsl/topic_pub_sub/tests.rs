@@ -25,7 +25,7 @@ use fraktor_actor_core_rs::core::{
     pubsub::{Topic, TopicCommand, TopicStats},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   OverflowStrategy,
@@ -241,7 +241,7 @@ fn topic_pub_sub_sink_should_publish_stream_elements_to_topic() {
   let mut topic = spawn_topic::<u32>(&system, "test-sink");
 
   // Set up a subscriber to receive messages published via the sink
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let subscriber_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {

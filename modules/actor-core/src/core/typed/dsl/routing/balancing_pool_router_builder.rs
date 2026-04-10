@@ -9,7 +9,7 @@ mod tests;
 
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -76,16 +76,14 @@ where
   }
 }
 
-fn try_dispatch_or_requeue<M>(
-  queue: &ArcShared<RuntimeMutex<SharedWorkQueue<M>>>,
-  dispatch: Option<(TypedActorRef<M>, M)>,
-) where
+fn try_dispatch_or_requeue<M>(queue: &SharedLock<SharedWorkQueue<M>>, dispatch: Option<(TypedActorRef<M>, M)>)
+where
   M: Send + Sync + Clone + 'static, {
   let Some((mut worker, message)) = dispatch else {
     return;
   };
   if worker.try_tell(message.clone()).is_err() {
-    queue.lock().pending.push_front(message);
+    queue.with_lock(|queue| queue.pending.push_front(message));
   }
 }
 
@@ -97,7 +95,7 @@ fn try_dispatch_or_requeue<M>(
 struct WorkPullInterceptor<M>
 where
   M: Send + Sync + Clone + 'static, {
-  queue: ArcShared<RuntimeMutex<SharedWorkQueue<M>>>,
+  queue: SharedLock<SharedWorkQueue<M>>,
 }
 
 impl<M> BehaviorInterceptor<M> for WorkPullInterceptor<M>
@@ -113,7 +111,7 @@ where
     // Only register as idle if the inner behavior did NOT return Stopped.
     // A routee that returns Stopped on start must not appear in the idle queue.
     if result.directive() != BehaviorDirective::Stopped {
-      let dispatch = self.queue.lock().register_idle(ctx.self_ref());
+      let dispatch = self.queue.with_lock(|queue| queue.register_idle(ctx.self_ref()));
       try_dispatch_or_requeue(&self.queue, dispatch);
     }
     Ok(result)
@@ -129,11 +127,11 @@ where
     // Only re-register as idle if the routee is NOT stopping.
     // A routee that returned Stopped must not receive further work.
     if result.directive() != BehaviorDirective::Stopped {
-      let dispatch = self.queue.lock().register_idle(ctx.self_ref());
+      let dispatch = self.queue.with_lock(|queue| queue.register_idle(ctx.self_ref()));
       try_dispatch_or_requeue(&self.queue, dispatch);
     } else {
       // Remove from idle list in case it was previously registered.
-      self.queue.lock().remove_worker(&ctx.self_ref().pid());
+      self.queue.with_lock(|queue| queue.remove_worker(&ctx.self_ref().pid()));
     }
     Ok(result)
   }
@@ -193,7 +191,7 @@ where
     let behavior_factory = self.behavior_factory;
 
     Behaviors::setup(move |ctx| {
-      let queue = ArcShared::new(RuntimeMutex::new(SharedWorkQueue::new()));
+      let queue = SharedLock::new_with_driver::<SpinSyncMutex<_>>(SharedWorkQueue::new());
 
       let mut routee_pids: Vec<Pid> = Vec::with_capacity(pool_size);
       for _ in 0..pool_size {
@@ -230,22 +228,24 @@ where
 
       let queue_for_msg = queue.clone();
       let queue_for_sig = queue;
-      let routee_pids = ArcShared::new(RuntimeMutex::new(routee_pids));
+      let routee_pids = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_pids);
       let routee_pids_for_sig = routee_pids;
 
       Behaviors::receive_message(move |_ctx, message: &M| {
-        let dispatch = queue_for_msg.lock().take_worker_for_message(message.clone());
+        let dispatch = queue_for_msg.with_lock(|queue| queue.take_worker_for_message(message.clone()));
         try_dispatch_or_requeue(&queue_for_msg, dispatch);
         Ok(Behaviors::same())
       })
       .receive_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Terminated(pid) => {
-          queue_for_sig.lock().remove_worker(pid);
-          let mut pids = routee_pids_for_sig.lock();
-          if let Some(pos) = pids.iter().position(|p| p == pid) {
-            pids.remove(pos);
-          }
-          if pids.is_empty() {
+          queue_for_sig.with_lock(|queue| queue.remove_worker(pid));
+          let is_empty = routee_pids_for_sig.with_lock(|pids| {
+            if let Some(pos) = pids.iter().position(|p| p == pid) {
+              pids.remove(pos);
+            }
+            pids.is_empty()
+          });
+          if is_empty {
             return Ok(Behaviors::stopped());
           }
           Ok(Behaviors::same())

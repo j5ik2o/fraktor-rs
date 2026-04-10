@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -48,7 +48,7 @@ fn make_ctx(system: &ActorSystem) -> (Pid, ActorContext<'_>) {
 
 #[test]
 fn transform_messages_forwards_matched_message_to_inner() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let inner: Behavior<u32> = Behaviors::receive_message(move |_ctx, msg: &u32| {
@@ -99,7 +99,7 @@ fn transform_messages_returns_unhandled_for_non_matching_message() {
 
 #[test]
 fn transform_messages_forwards_signals_to_inner() {
-  let signal_received = ArcShared::new(NoStdMutex::new(false));
+  let signal_received = ArcShared::new(SpinSyncMutex::new(false));
   let signal_clone = signal_received.clone();
 
   let inner: Behavior<u32> =
@@ -151,7 +151,7 @@ fn transform_messages_propagates_stopped_from_inner() {
 
 #[test]
 fn narrow_converts_via_into() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let inner: Behavior<u32> = Behaviors::receive_message(move |_ctx, msg: &u32| {
@@ -177,7 +177,7 @@ fn narrow_converts_via_into() {
 
 #[test]
 fn behaviors_transform_messages_delegates_to_behavior_method() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let inner: Behavior<u32> = Behaviors::receive_message(move |_ctx, msg: &u32| {
@@ -205,7 +205,7 @@ fn behaviors_transform_messages_delegates_to_behavior_method() {
 
 #[test]
 fn transform_messages_inner_behavior_evolves_on_active() {
-  let call_count = ArcShared::new(NoStdMutex::new(0u32));
+  let call_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = call_count.clone();
 
   // Inner behavior returns a new active behavior on first message.
@@ -239,9 +239,9 @@ fn transform_messages_inner_behavior_evolves_on_active() {
 
 #[test]
 fn narrow_clone_restarts_with_fresh_inner_behavior() {
-  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let start_count_clone = start_count.clone();
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {
@@ -295,7 +295,7 @@ fn transform_messages_propagates_supervisor_override_from_started_inner() {
 
 #[test]
 fn transform_messages_preserves_post_stop_handler_from_started_stopped_inner() {
-  let signal_received = ArcShared::new(NoStdMutex::new(false));
+  let signal_received = ArcShared::new(SpinSyncMutex::new(false));
   let signal_clone = signal_received.clone();
 
   let inner: Behavior<u32> = Behaviors::setup(move |_ctx| {

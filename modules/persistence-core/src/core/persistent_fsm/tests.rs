@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   eventsourced::Eventsourced, journal_message::JournalMessage, journal_response::JournalResponse,
@@ -22,7 +22,7 @@ use crate::core::{
   recovery::Recovery, snapshot::Snapshot, snapshot_response::SnapshotResponse,
 };
 
-type MessageStore = ArcShared<RuntimeMutex<Vec<AnyMessage>>>;
+type MessageStore = ArcShared<SpinSyncMutex<Vec<AnyMessage>>>;
 
 struct TestSender {
   messages: MessageStore,
@@ -36,7 +36,7 @@ impl ActorRefSender for TestSender {
 }
 
 fn create_sender_with_pid(pid: Pid) -> (ActorRef, MessageStore) {
-  let messages = ArcShared::new(RuntimeMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new(pid, TestSender { messages: messages.clone() });
   (sender, messages)
 }

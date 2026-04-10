@@ -4,9 +4,48 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::SystemStateShared;
 use crate::core::kernel::{
-  actor::actor_ref::ActorRef,
-  system::{RegisterExtraTopLevelError, guardian::GuardianKind, state::system_state::SystemState},
+  actor::{actor_ref::ActorRef, error::ActorError, messaging::system_message::FailurePayload},
+  system::{
+    RegisterExtraTopLevelError,
+    guardian::GuardianKind,
+    state::system_state::{FailureOutcome, SystemState},
+  },
 };
+
+fn assert_operation_does_not_block_on_read_lock(
+  shared: SystemStateShared,
+  operation_name: &'static str,
+  operation: impl FnOnce(SystemStateShared) + Send + 'static,
+) {
+  let inner = shared.inner().clone();
+  let shared_for_operation = shared.clone();
+
+  let (locked_tx, locked_rx) = std::sync::mpsc::channel::<()>();
+  let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+  let (result_tx, result_rx) = std::sync::mpsc::channel::<()>();
+
+  let reader = std::thread::spawn(move || {
+    inner.with_read(|_| {
+      locked_tx.send(()).expect("locked");
+      release_rx.recv().expect("release");
+    });
+  });
+
+  locked_rx.recv_timeout(Duration::from_secs(1)).expect("lock ready");
+
+  let worker = std::thread::spawn(move || {
+    operation(shared_for_operation);
+    result_tx.send(()).expect("result");
+  });
+
+  let early = result_rx.recv_timeout(Duration::from_millis(200)).ok();
+
+  release_tx.send(()).expect("release send");
+  reader.join().expect("reader join");
+  worker.join().expect("worker join");
+
+  assert!(early.is_some(), "{operation_name} は outer read lock 中でもブロックしないはず");
+}
 
 #[test]
 fn register_extra_top_level_after_root_started_does_not_block_on_read_lock() {
@@ -21,9 +60,10 @@ fn register_extra_top_level_after_root_started_does_not_block_on_read_lock() {
   let (result_tx, result_rx) = std::sync::mpsc::channel();
 
   let reader = std::thread::spawn(move || {
-    let _guard = inner.read();
-    locked_tx.send(()).expect("locked");
-    release_rx.recv().expect("release");
+    inner.with_read(|_| {
+      locked_tx.send(()).expect("locked");
+      release_rx.recv().expect("release");
+    });
   });
 
   locked_rx.recv_timeout(Duration::from_secs(1)).expect("lock ready");
@@ -138,6 +178,61 @@ fn extension_or_insert_with_after_root_started_succeeds() {
 }
 
 #[test]
+fn extension_or_insert_with_returns_registered_instance_when_concurrent_factory_loses_race() {
+  use core::any::TypeId;
+
+  struct TestExtension;
+
+  let shared = SystemStateShared::new(SystemState::new());
+
+  let shared_for_first = shared.clone();
+  let shared_for_second = shared.clone();
+
+  let (first_factory_started_tx, first_factory_started_rx) = std::sync::mpsc::channel::<()>();
+  let (release_first_factory_tx, release_first_factory_rx) = std::sync::mpsc::channel::<()>();
+  let (second_factory_started_tx, second_factory_started_rx) = std::sync::mpsc::channel::<()>();
+  let (first_result_tx, first_result_rx) = std::sync::mpsc::channel();
+  let (second_result_tx, second_result_rx) = std::sync::mpsc::channel();
+
+  let first_thread = std::thread::spawn(move || {
+    let extension = shared_for_first.extension_or_insert_with(TypeId::of::<TestExtension>(), || {
+      first_factory_started_tx.send(()).expect("first factory started");
+      release_first_factory_rx.recv().expect("release first factory");
+      ArcShared::new(TestExtension)
+    });
+    first_result_tx.send(extension).expect("first result");
+  });
+
+  first_factory_started_rx.recv_timeout(Duration::from_secs(1)).expect("first factory should start quickly");
+
+  let second_thread = std::thread::spawn(move || {
+    let extension = shared_for_second.extension_or_insert_with(TypeId::of::<TestExtension>(), || {
+      second_factory_started_tx.send(()).expect("second factory started");
+      ArcShared::new(TestExtension)
+    });
+    second_result_tx.send(extension).expect("second result");
+  });
+
+  second_factory_started_rx.recv_timeout(Duration::from_secs(1)).expect("second factory should start quickly");
+
+  let second = second_result_rx.recv_timeout(Duration::from_secs(1)).expect("second result should arrive");
+
+  release_first_factory_tx.send(()).expect("release first factory");
+
+  let first = first_result_rx.recv_timeout(Duration::from_secs(1)).expect("first result should arrive");
+
+  first_thread.join().expect("first join");
+  second_thread.join().expect("second join");
+
+  assert!(ArcShared::ptr_eq(&first, &second), "競合した extension 登録は同じ共有インスタンスを返すべき");
+
+  let registered =
+    shared.extension::<TestExtension>(TypeId::of::<TestExtension>()).expect("registered extension should exist");
+
+  assert!(ArcShared::ptr_eq(&registered, &first), "返却値は登録済みインスタンスと一致するべき");
+}
+
+#[test]
 fn clear_guardian_does_not_block_on_read_lock() {
   let shared = SystemStateShared::new(SystemState::new());
 
@@ -152,9 +247,10 @@ fn clear_guardian_does_not_block_on_read_lock() {
   let (result_tx, result_rx) = std::sync::mpsc::channel();
 
   let reader = std::thread::spawn(move || {
-    let _guard = inner.read();
-    locked_tx.send(()).expect("locked");
-    release_rx.recv().expect("release");
+    inner.with_read(|_| {
+      locked_tx.send(()).expect("locked");
+      release_rx.recv().expect("release");
+    });
   });
 
   locked_rx.recv_timeout(Duration::from_secs(1)).expect("lock ready");
@@ -176,4 +272,44 @@ fn clear_guardian_does_not_block_on_read_lock() {
   assert!(early.is_some(), "clear_guardianはreadロック中でもブロックしないはず");
   assert!(matches!(early.unwrap(), Some(GuardianKind::Root)));
   assert!(!shared.guardian_alive(GuardianKind::Root));
+}
+
+#[test]
+fn atomic_state_transitions_do_not_block_on_read_lock() {
+  assert_operation_does_not_block_on_read_lock(
+    SystemStateShared::new(SystemState::new()),
+    "mark_root_started",
+    |shared| shared.mark_root_started(),
+  );
+
+  assert_operation_does_not_block_on_read_lock(
+    SystemStateShared::new(SystemState::new()),
+    "begin_termination",
+    |shared| {
+      assert!(shared.begin_termination());
+    },
+  );
+
+  assert_operation_does_not_block_on_read_lock(
+    SystemStateShared::new(SystemState::new()),
+    "mark_terminated",
+    |shared| shared.mark_terminated(),
+  );
+}
+
+#[test]
+fn failure_accounting_does_not_block_on_read_lock() {
+  let shared = SystemStateShared::new(SystemState::new());
+  let child = shared.allocate_pid();
+  assert_operation_does_not_block_on_read_lock(shared, "record_failure_outcome", move |shared| {
+    let payload = FailurePayload::from_error(child, &ActorError::recoverable("boom"), None, Duration::ZERO);
+    shared.record_failure_outcome(child, FailureOutcome::Stop, &payload);
+  });
+
+  let shared = SystemStateShared::new(SystemState::new());
+  let child = shared.allocate_pid();
+  assert_operation_does_not_block_on_read_lock(shared, "report_failure", move |shared| {
+    let payload = FailurePayload::from_error(child, &ActorError::recoverable("boom"), None, Duration::ZERO);
+    shared.report_failure(payload);
+  });
 }

@@ -2,36 +2,31 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::cluster_provider::ClusterProvider;
 
 /// Shared wrapper enabling interior mutability for [`ClusterProvider`].
 ///
-/// This adapter wraps a provider in a `RuntimeMutex`, allowing callers to
+/// This adapter wraps a provider in a `SharedLock`, allowing callers to
 /// obtain mutable access through [`SharedAccess`] without requiring a mutable
 /// handle to the wrapper itself.
+///
+/// ```compile_fail
+/// use fraktor_cluster_core_rs::core::cluster_provider_shared::ClusterProviderShared;
+///
+/// let shared: ClusterProviderShared = todo!();
+/// let _ = shared.inner();
+/// ```
 pub struct ClusterProviderShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>>,
+  inner: SharedLock<Box<dyn ClusterProvider>>,
 }
 
 impl ClusterProviderShared {
   /// Creates a new shared wrapper around the given provider.
   #[must_use]
   pub fn new(provider: Box<dyn ClusterProvider>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(provider)) }
-  }
-
-  /// Creates a wrapper from an existing shared mutex.
-  #[must_use]
-  pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>>) -> Self {
-    Self { inner }
-  }
-
-  /// Returns a cloned handle to the inner shared mutex.
-  #[must_use]
-  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn ClusterProvider>>> {
-    self.inner.clone()
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(provider) }
   }
 }
 
@@ -43,12 +38,10 @@ impl Clone for ClusterProviderShared {
 
 impl SharedAccess<Box<dyn ClusterProvider>> for ClusterProviderShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ClusterProvider>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ClusterProvider>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

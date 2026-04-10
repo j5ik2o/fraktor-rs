@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::RecipientRef;
 use crate::core::{
@@ -19,11 +19,11 @@ use crate::core::{
 };
 
 struct ProbeActor {
-  received: ArcShared<NoStdMutex<Vec<u32>>>,
+  received: ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
 impl ProbeActor {
-  fn new(received: ArcShared<NoStdMutex<Vec<u32>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<u32>>>) -> Self {
     Self { received }
   }
 }
@@ -80,7 +80,7 @@ where
 fn recipient_ref_is_implemented_for_typed_actor_ref() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let received = received.clone();
     move || ProbeActor::new(received.clone())
@@ -96,7 +96,7 @@ fn recipient_ref_is_implemented_for_typed_actor_ref() {
 fn recipient_ref_is_implemented_for_untyped_actor_ref() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let received = received.clone();
     move || ProbeActor::new(received.clone())
@@ -112,7 +112,7 @@ fn recipient_ref_is_implemented_for_untyped_actor_ref() {
 fn typed_recipient_ref_supports_ask() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let cell = register_cell(&system, pid, "typed-ask", &props);
   let mut recipient = TypedActorRef::<EchoRequest>::from_untyped(cell.actor_ref());
 
@@ -129,7 +129,7 @@ fn typed_recipient_ref_supports_ask() {
 fn untyped_recipient_ref_supports_ask() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let cell = register_cell(&system, pid, "untyped-ask", &props);
   let mut recipient = cell.actor_ref();
 
@@ -157,7 +157,7 @@ fn untyped_recipient_ref_ask_preserves_send_failure_semantics() {
 fn typed_actor_ref_tell_returns_unit() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let received = received.clone();
     move || ProbeActor::new(received.clone())

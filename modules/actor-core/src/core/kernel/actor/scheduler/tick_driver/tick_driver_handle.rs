@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::SharedLock;
 
 use super::{TickDriverControl, TickDriverId, TickDriverKind};
 
@@ -12,7 +12,7 @@ pub struct TickDriverHandle {
   id:         TickDriverId,
   kind:       TickDriverKind,
   resolution: Duration,
-  control:    ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+  control:    SharedLock<Box<dyn TickDriverControl>>,
   _marker:    PhantomData<()>,
 }
 
@@ -35,7 +35,7 @@ impl TickDriverHandle {
     id: TickDriverId,
     kind: TickDriverKind,
     resolution: Duration,
-    control: ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>>,
+    control: SharedLock<Box<dyn TickDriverControl>>,
   ) -> Self {
     Self { id, kind, resolution, control, _marker: PhantomData }
   }
@@ -59,12 +59,12 @@ impl TickDriverHandle {
   }
 
   #[must_use]
-  pub(crate) fn control(&self) -> ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>> {
+  pub(crate) fn control(&self) -> SharedLock<Box<dyn TickDriverControl>> {
     self.control.clone()
   }
 
   /// Stops the underlying driver.
   pub fn shutdown(&mut self) {
-    self.control.lock().shutdown();
+    self.control.with_lock(|control| control.shutdown());
   }
 }

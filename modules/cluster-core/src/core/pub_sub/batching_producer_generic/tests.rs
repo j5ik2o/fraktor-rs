@@ -8,7 +8,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::BatchingProducer;
 use crate::core::{
@@ -21,12 +21,12 @@ use crate::core::{
 
 #[derive(Clone)]
 struct RecordingPubSub {
-  batches: ArcShared<NoStdMutex<Vec<usize>>>,
+  batches: ArcShared<SpinSyncMutex<Vec<usize>>>,
 }
 
 impl RecordingPubSub {
   fn new() -> Self {
-    Self { batches: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { batches: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn batches(&self) -> Vec<usize> {

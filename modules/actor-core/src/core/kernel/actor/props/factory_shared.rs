@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::factory::ActorFactory;
 
@@ -12,14 +12,14 @@ use super::factory::ActorFactory;
 /// that internally lock the underlying factory, allowing safe
 /// concurrent access from multiple owners.
 pub struct ActorFactoryShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn ActorFactory>>>,
+  inner: SharedLock<Box<dyn ActorFactory>>,
 }
 
 impl ActorFactoryShared {
   /// Creates a new shared wrapper around the provided actor factory.
   #[must_use]
   pub fn new(factory: Box<dyn ActorFactory>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(factory)) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(factory) }
   }
 }
 
@@ -31,12 +31,10 @@ impl Clone for ActorFactoryShared {
 
 impl SharedAccess<Box<dyn ActorFactory>> for ActorFactoryShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn ActorFactory>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn ActorFactory>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

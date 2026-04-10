@@ -23,7 +23,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::{ActorSystem, TerminationSignal},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex, SharedAccess},
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -197,8 +197,8 @@ fn request_future_completes_with_timeout_payload() {
 
 #[test]
 fn down_delegates_to_cluster_provider() {
-  let downed_provider: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let downed_strategy: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let downed_provider: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let downed_strategy: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let downed_for_provider = downed_provider.clone();
   let downed_for_strategy = downed_strategy.clone();
 
@@ -234,8 +234,8 @@ fn down_delegates_to_cluster_provider() {
 
 #[test]
 fn join_and_leave_delegate_to_cluster_provider() {
-  let joined_provider: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let left_provider: ArcShared<NoStdMutex<Vec<String>>> = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let joined_provider: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let left_provider: ArcShared<SpinSyncMutex<Vec<String>>> = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let joined_for_provider = joined_provider.clone();
   let left_for_provider = left_provider.clone();
 
@@ -469,12 +469,12 @@ where
 
 #[derive(Clone)]
 struct RecordingGrainEvents {
-  events: ArcShared<NoStdMutex<Vec<GrainEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<GrainEvent>>>,
 }
 
 impl RecordingGrainEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<GrainEvent> {
@@ -502,12 +502,12 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
 
 #[derive(Clone)]
 struct RecordingClusterEvents {
-  events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
 }
 
 impl RecordingClusterEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<ClusterEvent> {
@@ -670,7 +670,7 @@ impl IdentityLookup for PendingIdentityLookup {
 }
 
 struct RecordingDownProvider {
-  downed: ArcShared<NoStdMutex<Vec<String>>>,
+  downed: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl ClusterProvider for RecordingDownProvider {
@@ -701,8 +701,8 @@ impl ClusterProvider for RecordingDownProvider {
 }
 
 struct RecordingMembershipProvider {
-  joined: ArcShared<NoStdMutex<Vec<String>>>,
-  left:   ArcShared<NoStdMutex<Vec<String>>>,
+  joined: ArcShared<SpinSyncMutex<Vec<String>>>,
+  left:   ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl ClusterProvider for RecordingMembershipProvider {
@@ -734,7 +734,7 @@ impl ClusterProvider for RecordingMembershipProvider {
 }
 
 struct RecordingDowningProvider {
-  downed: ArcShared<NoStdMutex<Vec<String>>>,
+  downed: ArcShared<SpinSyncMutex<Vec<String>>>,
 }
 
 impl DowningProvider for RecordingDowningProvider {

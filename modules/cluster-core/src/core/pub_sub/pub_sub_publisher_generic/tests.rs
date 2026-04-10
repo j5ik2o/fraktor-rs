@@ -2,7 +2,7 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::PubSubPublisher;
 use crate::core::{
@@ -15,12 +15,12 @@ use crate::core::{
 
 #[derive(Clone)]
 struct StubPubSub {
-  publish_calls: ArcShared<NoStdMutex<usize>>,
+  publish_calls: ArcShared<SpinSyncMutex<usize>>,
 }
 
 impl StubPubSub {
   fn new() -> Self {
-    Self { publish_calls: ArcShared::new(NoStdMutex::new(0)) }
+    Self { publish_calls: ArcShared::new(SpinSyncMutex::new(0)) }
   }
 
   fn publish_calls(&self) -> usize {

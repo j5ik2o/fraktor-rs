@@ -7,7 +7,7 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex, SharedAccess, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -220,7 +220,7 @@ impl TickDriver for RuntimeTestDriver {
   fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
     *self.started_feed.lock() = Some(feed.clone());
     let control: Box<dyn TickDriverControl> = Box::new(NoopTickDriverControl);
-    let control = ArcShared::new(NoStdMutex::new(control));
+    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
   }
 }
@@ -365,7 +365,7 @@ fn hardware_driver_isr_bridge_behaviors() {
 }
 
 struct ManualRunnable {
-  log:   ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log:   ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   label: &'static str,
 }
 
@@ -387,7 +387,7 @@ fn manual_driver_runs_jobs_without_executor() {
   assert!(bundle.feed().is_none());
   let controller = bundle.manual_controller().expect("manual controller");
 
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "manual" });
   ctx.scheduler().with_write(|s| {
     s.schedule_once(Duration::from_millis(10), SchedulerCommand::RunRunnable { runnable }).expect("schedule");
@@ -420,7 +420,7 @@ fn embedded_quickstart_template_runs_ticks() {
   let (mut bundle, _) = TickDriverBootstrap::provision(&config, &ctx).expect("bundle");
 
   let scheduler = ctx.scheduler();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let runnable: ArcShared<ManualRunnable> = ArcShared::new(ManualRunnable { log: log.clone(), label: "embedded" });
   scheduler.with_write(|s| {
     s.schedule_once(Duration::from_millis(2), SchedulerCommand::RunRunnable { runnable }).expect("schedule job");

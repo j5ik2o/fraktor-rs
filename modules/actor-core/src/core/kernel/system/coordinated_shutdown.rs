@@ -16,7 +16,7 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, RuntimeMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   timing::delay::DelayProvider,
 };
 use futures::{
@@ -69,11 +69,11 @@ pub struct CoordinatedShutdown {
   phases:         BTreeMap<String, CoordinatedShutdownPhase>,
   ordered:        Vec<String>,
   known_phases:   BTreeSet<String>,
-  tasks:          RuntimeMutex<BTreeMap<String, Vec<ShutdownTask>>>,
+  tasks:          SharedLock<BTreeMap<String, Vec<ShutdownTask>>>,
   run_started:    AtomicBool,
   run_done:       AtomicBool,
-  reason:         RuntimeMutex<Option<CoordinatedShutdownReason>>,
-  delay_provider: Option<RuntimeMutex<Box<dyn DelayProvider>>>,
+  reason:         SharedLock<Option<CoordinatedShutdownReason>>,
+  delay_provider: Option<SharedLock<Box<dyn DelayProvider>>>,
 }
 
 impl CoordinatedShutdown {
@@ -213,11 +213,11 @@ impl CoordinatedShutdown {
       phases,
       ordered,
       known_phases,
-      tasks: RuntimeMutex::new(BTreeMap::new()),
+      tasks: SharedLock::new_with_driver::<SpinSyncMutex<_>>(BTreeMap::new()),
       run_started: AtomicBool::new(false),
       run_done: AtomicBool::new(false),
-      reason: RuntimeMutex::new(None),
-      delay_provider: delay_provider.map(RuntimeMutex::new),
+      reason: SharedLock::new_with_driver::<SpinSyncMutex<_>>(None),
+      delay_provider: delay_provider.map(SharedLock::new_with_driver::<SpinSyncMutex<_>>),
     })
   }
 
@@ -244,8 +244,9 @@ impl CoordinatedShutdown {
       return Err(CoordinatedShutdownError::EmptyTaskName);
     }
     let shutdown_task = ShutdownTask { task: Box::new(move || Box::pin(task())) };
-    let mut guard = self.tasks.lock();
-    guard.entry(phase.to_string()).or_default().push(shutdown_task);
+    self.tasks.with_write(|tasks| {
+      tasks.entry(phase.to_string()).or_default().push(shutdown_task);
+    });
     Ok(())
   }
 
@@ -261,14 +262,18 @@ impl CoordinatedShutdown {
   /// Returns the total timeout across all phases that have registered tasks.
   #[must_use]
   pub fn total_timeout(&self) -> Duration {
-    let guard = self.tasks.lock();
-    guard.keys().filter_map(|phase| self.phases.get(phase).map(|p| p.timeout())).fold(Duration::ZERO, |acc, t| acc + t)
+    self.tasks.with_read(|tasks| {
+      tasks
+        .keys()
+        .filter_map(|phase| self.phases.get(phase).map(|p| p.timeout()))
+        .fold(Duration::ZERO, |acc, t| acc + t)
+    })
   }
 
   /// Returns the shutdown reason if the shutdown has been started.
   #[must_use]
   pub fn shutdown_reason(&self) -> Option<CoordinatedShutdownReason> {
-    self.reason.lock().clone()
+    self.reason.with_read(Clone::clone)
   }
 
   /// Returns `true` if the shutdown sequence has been started.
@@ -313,10 +318,7 @@ impl CoordinatedShutdown {
     }
     let _done_guard = DoneGuard(&self.run_done);
 
-    {
-      let mut guard = self.reason.lock();
-      *guard = Some(reason);
-    }
+    self.reason.with_write(|stored_reason| *stored_reason = Some(reason));
 
     for phase_name in &self.ordered {
       let Some(phase_config) = self.phases.get(phase_name) else {
@@ -326,10 +328,7 @@ impl CoordinatedShutdown {
         continue;
       }
 
-      let phase_tasks = {
-        let mut guard = self.tasks.lock();
-        guard.remove(phase_name).unwrap_or_default()
-      };
+      let phase_tasks = self.tasks.with_write(|tasks| tasks.remove(phase_name).unwrap_or_default());
 
       if phase_tasks.is_empty() {
         continue;
@@ -358,12 +357,7 @@ impl CoordinatedShutdown {
       return phase_future.await;
     };
 
-    let timeout_future = {
-      let mut provider = delay_provider.lock();
-      provider.delay(timeout)
-    }
-    .map(|_| true)
-    .boxed();
+    let timeout_future = delay_provider.with_write(|provider| provider.delay(timeout)).map(|_| true).boxed();
 
     match select(phase_future, timeout_future).await {
       | Either::Left((completed, _)) => completed,
@@ -433,6 +427,6 @@ impl CoordinatedShutdown {
   }
 }
 
-// `ArcShared` requires `Sync` on inner types. `RuntimeMutex` is `Send + Sync`,
+// `ArcShared` requires `Sync` on inner types. `SharedLock` is `Send + Sync`,
 // and `AtomicBool` is `Sync`, so the struct is `Send + Sync` by derivation.
 impl Extension for CoordinatedShutdown {}

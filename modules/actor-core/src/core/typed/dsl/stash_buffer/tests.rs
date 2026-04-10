@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::StashBuffer;
 use crate::core::{
@@ -18,11 +18,11 @@ use crate::core::{
 };
 
 struct ProbeActor {
-  received: ArcShared<NoStdMutex<Vec<i32>>>,
+  received: ArcShared<SpinSyncMutex<Vec<i32>>>,
 }
 
 impl ProbeActor {
-  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
     Self { received }
   }
 }
@@ -62,7 +62,7 @@ fn stash_buffer_capacity_matches_constructor() {
 fn stash_buffer_inspects_and_clears_stashed_messages() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))).with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -79,7 +79,7 @@ fn stash_buffer_inspects_and_clears_stashed_messages() {
   assert!(stash.contains(&typed_ctx, &2).expect("contains"));
   assert!(stash.exists(&typed_ctx, |message| *message == 1).expect("exists"));
 
-  let seen = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let seen = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let seen_clone = seen.clone();
   stash.foreach(&typed_ctx, move |message| seen_clone.lock().push(*message)).expect("foreach");
   assert_eq!(seen.lock().as_slice(), &[1, 2]);
@@ -93,7 +93,7 @@ fn stash_buffer_inspects_and_clears_stashed_messages() {
 fn stash_buffer_unstash_requeues_limited_messages_with_wrap() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let received = received.clone();
     move || ProbeActor::new(received.clone())

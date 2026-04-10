@@ -3,7 +3,7 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -18,11 +18,11 @@ use crate::core::kernel::{
 };
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -40,7 +40,7 @@ fn event_stream_replays_buffer_for_new_subscribers() {
   let log = LogEvent::new(LogLevel::Info, String::from("boot"), Duration::from_millis(1), None, None);
   stream.publish(&EventStreamEvent::Log(log));
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe(&subscriber);
 
@@ -65,7 +65,7 @@ fn subscribe_no_replay_skips_buffered_events() {
     None,
   )));
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe_no_replay(&subscriber);
 
@@ -103,7 +103,7 @@ fn capacity_limits_buffer_size() {
     None,
   )));
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe(&subscriber);
 
@@ -122,7 +122,7 @@ fn extension_events_are_buffered_and_delivered() {
     payload: AnyMessage::new(String::from("startup")),
   });
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = stream.subscribe(&subscriber);
 
@@ -150,7 +150,7 @@ fn extension_events_are_buffered_and_delivered() {
 #[test]
 fn unsubscribe_removes_subscriber() {
   let stream = EventStreamShared::default();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let subscription = stream.subscribe(&subscriber);
 

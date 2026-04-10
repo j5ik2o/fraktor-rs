@@ -7,7 +7,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{graceful_stop, graceful_stop_with_message, retry};
 use crate::core::kernel::{
@@ -23,7 +23,7 @@ use crate::core::kernel::{
 };
 
 struct ReplyingSender {
-  replies: ArcShared<NoStdMutex<Vec<u32>>>,
+  replies: ArcShared<SpinSyncMutex<Vec<u32>>>,
 }
 
 impl ActorRefSender for ReplyingSender {
@@ -112,7 +112,7 @@ fn noop_waker() -> Waker {
 #[test]
 fn ask_with_timeout_preserves_immediate_reply_without_installing_timeout() {
   let system = ActorSystem::new_empty().state();
-  let replies = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let mut actor = ActorRef::with_system(Pid::new(40, 0), ReplyingSender { replies }, &system);
 
   let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));

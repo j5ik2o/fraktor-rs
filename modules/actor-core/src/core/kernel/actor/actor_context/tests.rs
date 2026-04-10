@@ -1,7 +1,7 @@
 use alloc::{string::String, vec, vec::Vec};
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{ActorContext, ReceiveTimeoutState};
 use crate::core::kernel::{
@@ -33,11 +33,11 @@ impl Actor for TestActor {
 }
 
 struct RecordingActor {
-  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl RecordingActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log }
   }
 }
@@ -54,11 +54,11 @@ impl Actor for RecordingActor {
 }
 
 struct ProbeActor {
-  received: ArcShared<NoStdMutex<Vec<i32>>>,
+  received: ArcShared<SpinSyncMutex<Vec<i32>>>,
 }
 
 impl ProbeActor {
-  fn new(received: ArcShared<NoStdMutex<Vec<i32>>>) -> Self {
+  fn new(received: ArcShared<SpinSyncMutex<Vec<i32>>>) -> Self {
     Self { received }
   }
 }
@@ -75,11 +75,11 @@ impl Actor for ProbeActor {
 struct ReceiveTimeoutTick;
 
 struct ReceiveTimeoutOnlyActor {
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl ReceiveTimeoutOnlyActor {
-  fn new(events: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { events }
   }
 }
@@ -193,7 +193,7 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 fn actor_context_pipe_to_self_enqueues_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
@@ -211,7 +211,7 @@ fn actor_context_pipe_to_self_enqueues_message() {
 fn actor_context_pipe_to_self_handles_async_future() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
@@ -249,7 +249,7 @@ fn actor_context_stash_requires_active_message() {
 fn actor_context_stash_and_unstash_replays_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
@@ -273,7 +273,7 @@ fn actor_context_stash_and_unstash_replays_message() {
 fn actor_context_stash_with_limit_detects_overflow() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))).with_stash_mailbox();
   let cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -291,7 +291,7 @@ fn actor_context_stash_with_limit_detects_overflow() {
 fn actor_context_stash_with_limit_requires_active_message() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "self", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -304,7 +304,7 @@ fn actor_context_stash_with_limit_requires_active_message() {
 fn actor_context_unstash_replays_single_message_and_unstash_all_replays_remaining() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())
@@ -337,7 +337,7 @@ fn actor_context_timers_start_single_timer_and_cancel_tracks_active_state() {
   // 前提: self actor が登録済みの classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "timer-self", &props);
   let context = ActorContext::new(&system, pid);
 
@@ -356,7 +356,7 @@ fn actor_context_timers_persist_keys_across_fresh_contexts() {
   // 前提: self actor が登録済みの classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "timer-persist", &props);
 
   let first_context = ActorContext::new(&system, pid);
@@ -376,7 +376,7 @@ fn actor_context_timers_cancel_all_clears_periodic_entries() {
   // 前提: periodic timer が有効な classic actor context がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "timer-periodic", &props);
   let context = ActorContext::new(&system, pid);
   let timers = context.timers();
@@ -400,7 +400,7 @@ fn actor_context_stash_overflow_error_converts_from_actor_error() {
   // 前提: 既存の context API で stash overflow を発生させる
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new())))).with_stash_mailbox();
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new())))).with_stash_mailbox();
   let _cell = register_cell(&system, pid, "stash-overflow", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -420,7 +420,7 @@ fn actor_context_stash_overflow_error_converts_from_actor_error() {
 fn actor_context_stash_requires_deque_error_is_detected() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(NoStdMutex::new(Vec::new()))));
+  let props = Props::from_fn(|| ProbeActor::new(ArcShared::new(SpinSyncMutex::new(Vec::new()))));
   let _cell = register_cell(&system, pid, "stash-deque", &props);
 
   let mut context = ActorContext::new(&system, pid);
@@ -436,7 +436,7 @@ fn actor_context_forward_preserves_sender() {
   use crate::core::kernel::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
 
   struct CapturingSender {
-    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+    inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
   }
 
   impl ActorRefSender for CapturingSender {
@@ -446,7 +446,7 @@ fn actor_context_forward_preserves_sender() {
     }
   }
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
@@ -469,7 +469,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   use crate::core::kernel::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
 
   struct CapturingSender {
-    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+    inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
   }
 
   impl ActorRefSender for CapturingSender {
@@ -479,7 +479,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
     }
   }
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
@@ -519,7 +519,7 @@ fn actor_context_watch_missing_actor_notifies_self() {
   let system = ActorSystem::new_empty();
   let watcher_pid = system.allocate_pid();
   let target_pid = system.allocate_pid();
-  let watcher_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let watcher_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let watcher_props = Props::from_fn({
     let log = watcher_log.clone();
     move || RecordingActor::new(log.clone())
@@ -642,7 +642,7 @@ fn actor_context_reply_with_sender_returns_ok() {
   use crate::core::kernel::actor::actor_ref::{ActorRef, ActorRefSender, SendOutcome};
 
   struct CapturingSender {
-    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+    inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
   }
 
   impl ActorRefSender for CapturingSender {
@@ -652,7 +652,7 @@ fn actor_context_reply_with_sender_returns_ok() {
     }
   }
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender_ref = ActorRef::new(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
@@ -797,13 +797,13 @@ fn has_receive_timeout_returns_false_initially() {
 fn receive_timeout_state_resets_across_fresh_contexts() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let events = events.clone();
     move || ReceiveTimeoutOnlyActor::new(events.clone())
   });
   let _cell = register_cell(&system, pid, "timeout-state", &props);
-  let timeout_state = RuntimeMutex::new(None);
+  let timeout_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
 
   // Configure the timeout via one context instance.
   {
@@ -834,13 +834,13 @@ fn receive_timeout_state_resets_across_fresh_contexts() {
 fn receive_timeout_state_can_be_armed_again_after_later_delivery() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let events = events.clone();
     move || ReceiveTimeoutOnlyActor::new(events.clone())
   });
   let _cell = register_cell(&system, pid, "timeout-state-repeat", &props);
-  let timeout_state = RuntimeMutex::new(None);
+  let timeout_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
 
   {
     let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
@@ -913,7 +913,7 @@ fn actor_context_pipe_to_delivers_to_external_target() {
   let system = ActorSystem::new_empty();
   let source_pid = system.allocate_pid();
   let target_pid = system.allocate_pid();
-  let target_received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let target_received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
 
   let source_props = Props::from_fn(|| TestActor);
   register_cell(&system, source_pid, "source", &source_props);
@@ -940,7 +940,7 @@ fn actor_context_pipe_to_self_still_works_after_pipe_to_added() {
   // 前提: pipe_to_self を使う actor がある
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log = received.clone();
     move || ProbeActor::new(log.clone())

@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -16,11 +16,11 @@ use crate::core::{
 };
 
 struct ProbeSender {
-  messages: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
 impl ProbeSender {
-  fn new(messages: ArcShared<NoStdMutex<Vec<AnyMessage>>>) -> Self {
+  fn new(messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>) -> Self {
     Self { messages }
   }
 }
@@ -36,7 +36,7 @@ impl ActorRefSender for ProbeSender {
 fn adapter_sender_wraps_payload_into_envelope() {
   let system = ActorSystem::new_empty().state();
   let lifecycle = ArcShared::new(AdapterLifecycleState::new());
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
   let target = ActorRefSenderShared::new_with_builtin_lock(probe);
@@ -55,7 +55,7 @@ fn adapter_sender_rejects_when_lifecycle_stopped() {
   let system = ActorSystem::new_empty().state();
   let lifecycle = ArcShared::new(AdapterLifecycleState::new());
   lifecycle.mark_stopped();
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
   let target = ActorRefSenderShared::new_with_builtin_lock(probe);

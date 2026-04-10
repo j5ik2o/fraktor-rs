@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::{
@@ -50,7 +50,7 @@ fn responding_routee_behavior(source: usize) -> Behavior<TestReq> {
 }
 
 // fan-out 検証用: クエリ受信を共有コレクションに記録した上で応答する routee
-fn tracking_routee_behavior(source: usize, tracker: ArcShared<NoStdMutex<Vec<usize>>>) -> Behavior<TestReq> {
+fn tracking_routee_behavior(source: usize, tracker: ArcShared<SpinSyncMutex<Vec<usize>>>) -> Behavior<TestReq> {
   Behaviors::receive_message(move |_ctx, msg: &TestReq| {
     match msg {
       | TestReq::Query { id, reply_to } => {
@@ -108,11 +108,11 @@ fn scatter_gather_builder_rejects_zero_pool_size() {
 #[test]
 fn scatter_gather_returns_first_reply() {
   let pool_size = 3_usize;
-  let next_source = ArcShared::new(NoStdMutex::new(0_usize));
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let next_source = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
   // fan-out 検証用: 各 routee がクエリを受信したことを記録する
-  let fanout_tracker = ArcShared::new(NoStdMutex::new(Vec::<usize>::new()));
+  let fanout_tracker = ArcShared::new(SpinSyncMutex::new(Vec::<usize>::new()));
   let fanout_for_check = fanout_tracker.clone();
 
   let ns = next_source.clone();
@@ -210,7 +210,7 @@ fn scatter_gather_returns_first_reply() {
 #[test]
 fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
   let pool_size = 2_usize;
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
   let timeout_reply = TestReply { id: 0, source: usize::MAX };
 
@@ -298,7 +298,7 @@ fn scatter_gather_returns_timeout_reply_when_no_routee_responds() {
 #[test]
 fn scatter_gather_stops_when_all_routees_terminate() {
   let pool_size = 2_usize;
-  let router_stopped = ArcShared::new(NoStdMutex::new(false));
+  let router_stopped = ArcShared::new(SpinSyncMutex::new(false));
   let router_stopped_check = router_stopped.clone();
 
   let rs = router_stopped.clone();
@@ -357,7 +357,7 @@ fn scatter_gather_stops_when_all_routees_terminate() {
 #[test]
 fn scatter_gather_stops_when_all_routee_spawns_fail() {
   let pool_size = 3_usize;
-  let router_stopped = ArcShared::new(NoStdMutex::new(false));
+  let router_stopped = ArcShared::new(SpinSyncMutex::new(false));
   let router_stopped_check = router_stopped.clone();
 
   let rs = router_stopped.clone();
@@ -417,7 +417,7 @@ fn scatter_gather_stops_when_all_routee_spawns_fail() {
 #[test]
 fn scatter_gather_returns_timeout_reply_on_coordinator_spawn_failure() {
   let pool_size = 2_usize;
-  let replies = ArcShared::new(NoStdMutex::new(Vec::<TestReply>::new()));
+  let replies = ArcShared::new(SpinSyncMutex::new(Vec::<TestReply>::new()));
   let replies_for_check = replies.clone();
   let timeout_reply = TestReply { id: 0, source: usize::MAX };
 

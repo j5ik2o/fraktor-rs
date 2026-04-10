@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex},
+  sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -220,7 +220,7 @@ fn register_on_member_up_invokes_callback_for_up_transition() {
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -242,7 +242,7 @@ fn register_on_member_removed_invokes_callback_for_removed_transition() {
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -266,7 +266,7 @@ fn register_on_member_up_invokes_callback_immediately_when_self_already_up() {
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -296,7 +296,7 @@ fn run_member_up_during_start_test(start_fn: impl FnOnce(&ClusterExtension) -> R
 
   start_fn(&ext_shared).expect("start");
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -326,7 +326,7 @@ fn register_on_member_removed_invokes_callback_immediately_when_self_already_rem
 
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -349,7 +349,7 @@ fn register_on_member_removed_invokes_callback_immediately_after_shutdown() {
   publish_member_status(&event_stream, "node-self", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
   ext_shared.shutdown(true).expect("shutdown");
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -368,7 +368,7 @@ fn register_on_member_removed_after_shutdown_falls_back_to_authority_when_node_i
   ext_shared.start_member().expect("start member");
   ext_shared.shutdown(true).expect("shutdown");
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -389,7 +389,7 @@ fn register_on_member_up_does_not_fire_for_buffered_old_up_events() {
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -414,7 +414,7 @@ fn register_on_member_removed_does_not_fire_for_buffered_old_removed_events() {
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Exiting, NodeStatus::Removed);
   publish_member_status(&event_stream, "node-old", "fraktor://demo", NodeStatus::Joining, NodeStatus::Up);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -438,7 +438,7 @@ fn register_on_member_up_does_not_fire_for_events_buffered_before_extension_inst
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_up(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -462,7 +462,7 @@ fn register_on_member_removed_does_not_fire_for_events_buffered_before_extension
   let ext_id = stub_extension_id(ClusterExtensionConfig::new().with_advertised_address("fraktor://demo"));
   let ext_shared = system.extended().register_extension(&ext_id);
 
-  let calls = ArcShared::new(NoStdMutex::new(Vec::<(String, String)>::new()));
+  let calls = ArcShared::new(SpinSyncMutex::new(Vec::<(String, String)>::new()));
   let calls_for_callback = calls.clone();
   let _subscription = ext_shared.register_on_member_removed(move |node_id, authority| {
     calls_for_callback.lock().push((String::from(node_id), String::from(authority)));
@@ -569,12 +569,12 @@ impl BlockListProvider for RecordingBlockList {
 /// ClusterEvent を記録する EventStream subscriber
 #[derive(Clone)]
 struct RecordingClusterEvents {
-  events: ArcShared<NoStdMutex<Vec<ClusterEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<ClusterEvent>>>,
 }
 
 impl RecordingClusterEvents {
   fn new() -> Self {
-    Self { events: ArcShared::new(NoStdMutex::new(Vec::new())) }
+    Self { events: ArcShared::new(SpinSyncMutex::new(Vec::new())) }
   }
 
   fn events(&self) -> Vec<ClusterEvent> {

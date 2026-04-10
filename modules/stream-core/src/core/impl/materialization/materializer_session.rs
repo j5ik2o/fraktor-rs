@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::StreamState;
 use crate::core::{
@@ -84,7 +84,7 @@ impl Stream {
 
 /// Shared wrapper for [`Stream`].
 pub(crate) struct StreamShared {
-  inner: ArcShared<RuntimeMutex<Stream>>,
+  inner: SharedLock<Stream>,
 }
 
 impl Clone for StreamShared {
@@ -95,19 +95,17 @@ impl Clone for StreamShared {
 
 impl StreamShared {
   pub(crate) fn new(stream: Stream) -> Self {
-    let inner = ArcShared::new(RuntimeMutex::new(stream));
+    let inner = SharedLock::new_with_driver::<SpinSyncMutex<_>>(stream);
     Self { inner }
   }
 }
 
 impl SharedAccess<Stream> for StreamShared {
   fn with_read<R>(&self, f: impl FnOnce(&Stream) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Stream) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

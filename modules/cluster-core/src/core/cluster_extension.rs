@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, ActorSystemWeak},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   ClusterCore, ClusterError, ClusterEvent, ClusterMetricsSnapshot, MetricsError, TopologyUpdate,
@@ -27,12 +27,12 @@ const CLUSTER_EVENT_STREAM_NAME: &str = "cluster";
 
 /// Internal subscriber that applies topology updates to ClusterCore.
 struct ClusterTopologySubscriber {
-  core:         ArcShared<RuntimeMutex<ClusterCore>>,
+  core:         SharedLock<ClusterCore>,
   event_stream: EventStreamShared,
 }
 
 impl ClusterTopologySubscriber {
-  const fn new(core: ArcShared<RuntimeMutex<ClusterCore>>, event_stream: EventStreamShared) -> Self {
+  fn new(core: SharedLock<ClusterCore>, event_stream: EventStreamShared) -> Self {
     Self { core, event_stream }
   }
 }
@@ -45,7 +45,7 @@ impl EventStreamSubscriber for ClusterTopologySubscriber {
       && name == CLUSTER_EVENT_STREAM_NAME
       && let Some(ClusterEvent::TopologyUpdated { update }) = payload.payload().downcast_ref::<ClusterEvent>()
     {
-      let result = self.core.lock().try_apply_topology(update);
+      let result = self.core.with_lock(|core| core.try_apply_topology(update));
       if let Err(error) = result {
         let reason = format!("{error:?}");
         let failed = ClusterEvent::TopologyApplyFailed { reason, observed_at: update.observed_at };
@@ -80,19 +80,20 @@ impl<F> MemberStatusCallbackState<F> {
 }
 
 fn trigger_member_status_callback<F>(
-  callback_state: &ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
+  callback_state: &SharedLock<MemberStatusCallbackState<F>>,
   node_id: &str,
   authority: &str,
 ) -> bool
 where
   F: FnMut(&str, &str) + Send + Sync + 'static, {
-  let mut state = callback_state.lock();
-  if state.fired {
-    return false;
-  }
-  state.fired = true;
-  (state.callback)(node_id, authority);
-  true
+  callback_state.with_lock(|state| {
+    if state.fired {
+      return false;
+    }
+    state.fired = true;
+    (state.callback)(node_id, authority);
+    true
+  })
 }
 
 #[derive(Clone)]
@@ -104,11 +105,11 @@ struct SelfMemberStatus {
 
 struct SelfMemberStatusTrackerSubscriber {
   self_address: String,
-  self_status:  ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
+  self_status:  SharedLock<Option<SelfMemberStatus>>,
 }
 
 impl SelfMemberStatusTrackerSubscriber {
-  const fn new(self_address: String, self_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>) -> Self {
+  fn new(self_address: String, self_status: SharedLock<Option<SelfMemberStatus>>) -> Self {
     Self { self_address, self_status }
   }
 }
@@ -122,7 +123,7 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
       && authority == &self.self_address
     {
       let status = SelfMemberStatus { node_id: node_id.clone(), authority: authority.clone(), status: *to };
-      *self.self_status.lock() = Some(status);
+      self.self_status.with_lock(|self_status| *self_status = Some(status));
     }
   }
 }
@@ -130,17 +131,17 @@ impl EventStreamSubscriber for SelfMemberStatusTrackerSubscriber {
 struct MemberStatusSubscriber<F: FnMut(&str, &str) + Send + Sync + 'static> {
   target:         NodeStatus,
   self_address:   String,
-  callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
-  state:          ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
+  callback_state: SharedLock<MemberStatusCallbackState<F>>,
+  state:          SharedLock<MemberStatusSubscriberState>,
   event_stream:   EventStreamShared,
 }
 
 impl<F: FnMut(&str, &str) + Send + Sync + 'static> MemberStatusSubscriber<F> {
-  const fn new(
+  fn new(
     target: NodeStatus,
     self_address: String,
-    callback_state: ArcShared<RuntimeMutex<MemberStatusCallbackState<F>>>,
-    state: ArcShared<RuntimeMutex<MemberStatusSubscriberState>>,
+    callback_state: SharedLock<MemberStatusCallbackState<F>>,
+    state: SharedLock<MemberStatusSubscriberState>,
     event_stream: EventStreamShared,
   ) -> Self {
     Self { target, self_address, callback_state, state, event_stream }
@@ -160,11 +161,10 @@ where
       && *to == self.target
       && trigger_member_status_callback::<F>(&self.callback_state, node_id, authority)
     {
-      let subscription_id = {
-        let mut state = self.state.lock();
+      let subscription_id = self.state.with_lock(|state| {
         state.unsubscribe_requested = true;
         state.subscription_id
-      };
+      });
       if let Some(id) = subscription_id {
         self.event_stream.unsubscribe(id);
       }
@@ -180,12 +180,12 @@ impl EventStreamSubscriber for NoopMemberStatusSubscriber {
 
 /// Cluster extension registered into `ActorSystem`.
 pub struct ClusterExtension {
-  core: ArcShared<RuntimeMutex<ClusterCore>>,
+  core: SharedLock<ClusterCore>,
   event_stream: EventStreamShared,
   grain_metrics: Option<GrainMetricsShared>,
-  subscription: RuntimeMutex<Option<EventStreamSubscription>>,
-  terminated: RuntimeMutex<bool>,
-  self_member_status: ArcShared<RuntimeMutex<Option<SelfMemberStatus>>>,
+  subscription: SharedLock<Option<EventStreamSubscription>>,
+  terminated: SharedLock<bool>,
+  self_member_status: SharedLock<Option<SelfMemberStatus>>,
   _self_member_status_subscription: EventStreamSubscription,
   _system: ActorSystemWeak,
 }
@@ -199,15 +199,15 @@ impl ClusterExtension {
     let event_stream = system.event_stream();
     let self_address = core.startup_address();
     let grain_metrics = if core.metrics_enabled() { Some(GrainMetricsShared::new(GrainMetrics::new())) } else { None };
-    let self_member_status = ArcShared::new(RuntimeMutex::new(None));
+    let self_member_status = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
     let status_subscriber =
       subscriber_handle(SelfMemberStatusTrackerSubscriber::new(self_address, self_member_status.clone()));
     let self_member_status_subscription = event_stream.subscribe_no_replay(&status_subscriber);
-    let locked = RuntimeMutex::new(core);
-    let subscription = RuntimeMutex::new(None);
-    let terminated = RuntimeMutex::new(false);
+    let locked = SharedLock::new_with_driver::<SpinSyncMutex<_>>(core);
+    let subscription = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
+    let terminated = SharedLock::new_with_driver::<SpinSyncMutex<_>>(false);
     Self {
-      core: ArcShared::new(locked),
+      core: locked,
       event_stream,
       grain_metrics,
       subscription,
@@ -220,14 +220,14 @@ impl ClusterExtension {
 
   /// Returns the shared cluster core handle.
   #[must_use]
-  pub(crate) fn core_shared(&self) -> ArcShared<RuntimeMutex<ClusterCore>> {
+  pub(crate) fn core_shared(&self) -> SharedLock<ClusterCore> {
     self.core.clone()
   }
 
   /// Returns the shared pub/sub handle.
   #[must_use]
   pub(crate) fn pub_sub_shared(&self) -> ClusterPubSubShared {
-    self.core.lock().pub_sub_shared()
+    self.core.with_lock(|core| core.pub_sub_shared())
   }
 
   /// Returns the shared grain metrics handle if enabled.
@@ -239,7 +239,7 @@ impl ClusterExtension {
   /// Subscribes to the event stream for topology updates.
   fn subscribe_topology_events(&self) {
     // 既に購読中なら何もしない
-    if self.subscription.lock().is_some() {
+    if self.subscription.with_lock(|subscription| subscription.is_some()) {
       return;
     }
 
@@ -248,7 +248,7 @@ impl ClusterExtension {
       ClusterTopologySubscriber::new(self.core.clone(), self.event_stream.clone());
     let subscriber_handle = subscriber_handle(subscriber);
     let sub = self.event_stream.subscribe(&subscriber_handle);
-    *self.subscription.lock() = Some(sub);
+    self.subscription.with_lock(|subscription| *subscription = Some(sub));
   }
 
   /// Starts member mode.
@@ -257,10 +257,10 @@ impl ClusterExtension {
   ///
   /// Returns an error if pub/sub, gossiper, or provider startup fails.
   pub fn start_member(&self) -> Result<(), ClusterError> {
-    *self.self_member_status.lock() = None;
-    let result = self.core.lock().start_member();
+    self.self_member_status.with_lock(|self_member_status| *self_member_status = None);
+    let result = self.core.with_lock(|core| core.start_member());
     if result.is_ok() {
-      *self.terminated.lock() = false;
+      self.terminated.with_lock(|terminated| *terminated = false);
       self.subscribe_topology_events();
     }
     result
@@ -272,10 +272,10 @@ impl ClusterExtension {
   ///
   /// Returns an error if pub/sub or provider startup fails.
   pub fn start_client(&self) -> Result<(), ClusterError> {
-    *self.self_member_status.lock() = None;
-    let result = self.core.lock().start_client();
+    self.self_member_status.with_lock(|self_member_status| *self_member_status = None);
+    let result = self.core.with_lock(|core| core.start_client());
     if result.is_ok() {
-      *self.terminated.lock() = false;
+      self.terminated.with_lock(|terminated| *terminated = false);
       self.subscribe_topology_events();
     }
     result
@@ -288,10 +288,10 @@ impl ClusterExtension {
   /// Returns an error if pub/sub, gossiper, or provider shutdown fails.
   pub fn shutdown(&self, graceful: bool) -> Result<(), ClusterError> {
     // 購読を解除
-    *self.subscription.lock() = None;
-    let result = self.core.lock().shutdown(graceful);
+    self.subscription.with_lock(|subscription| *subscription = None);
+    let result = self.core.with_lock(|core| core.shutdown(graceful));
     if result.is_ok() {
-      *self.terminated.lock() = true;
+      self.terminated.with_lock(|terminated| *terminated = true);
     }
     result
   }
@@ -302,7 +302,7 @@ impl ClusterExtension {
   ///
   /// Returns an error when the cluster is not started or the provider cannot process downing.
   pub fn down(&self, authority: &str) -> Result<(), ClusterError> {
-    self.core.lock().down(authority)
+    self.core.with_lock(|core| core.down(authority))
   }
 
   /// Requests a member join for the provided authority.
@@ -311,7 +311,7 @@ impl ClusterExtension {
   ///
   /// Returns an error when the cluster is not started or join processing fails.
   pub fn join(&self, authority: &str) -> Result<(), ClusterError> {
-    self.core.lock().join(authority)
+    self.core.with_lock(|core| core.join(authority))
   }
 
   /// Requests a graceful member leave for the provided authority.
@@ -320,7 +320,7 @@ impl ClusterExtension {
   ///
   /// Returns an error when the cluster is not started or leave processing fails.
   pub fn leave(&self, authority: &str) -> Result<(), ClusterError> {
-    self.core.lock().leave(authority)
+    self.core.with_lock(|core| core.leave(authority))
   }
 
   /// Registers kinds for member mode.
@@ -329,7 +329,7 @@ impl ClusterExtension {
   ///
   /// Returns an error if identity lookup setup fails.
   pub fn setup_member_kinds(&self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
-    self.core.lock().setup_member_kinds(kinds)
+    self.core.with_lock(|core| core.setup_member_kinds(kinds))
   }
 
   /// Registers kinds for client mode.
@@ -338,7 +338,7 @@ impl ClusterExtension {
   ///
   /// Returns an error if identity lookup setup fails.
   pub fn setup_client_kinds(&self, kinds: Vec<ActivatedKind>) -> Result<(), IdentitySetupError> {
-    self.core.lock().setup_client_kinds(kinds)
+    self.core.with_lock(|core| core.setup_client_kinds(kinds))
   }
 
   /// Applies topology updates.
@@ -348,7 +348,7 @@ impl ClusterExtension {
   pub fn on_topology(&self, update: &TopologyUpdate) {
     // ロックを保持したまま publish するとデッドロックするため、
     // イベントを取得してからロックを解放し、その後に publish する
-    let result = { self.core.lock().try_apply_topology(update) };
+    let result = self.core.with_lock(|core| core.try_apply_topology(update));
 
     match result {
       | Ok(Some(event)) => {
@@ -380,10 +380,10 @@ impl ClusterExtension {
   pub fn register_on_member_removed<F>(&self, callback: F) -> EventStreamSubscription
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
-    if *self.terminated.lock() {
-      let self_address = self.core.lock().startup_address();
+    if self.terminated.with_lock(|terminated| *terminated) {
+      let self_address = self.core.with_lock(|core| core.startup_address());
       let node_id = {
-        let current = self.self_member_status.lock();
+        let current = self.self_member_status.with_lock(|self_member_status| self_member_status.clone());
         if let Some(status) = current.as_ref() { status.node_id.clone() } else { self_address.clone() }
       };
       let mut immediate = callback;
@@ -399,7 +399,7 @@ impl ClusterExtension {
   ///
   /// Returns [`MetricsError::Disabled`] if metrics collection is not enabled.
   pub fn metrics(&self) -> Result<ClusterMetricsSnapshot, MetricsError> {
-    self.core.lock().metrics()
+    self.core.with_lock(|core| core.metrics())
   }
 
   /// Returns grain metrics snapshot if enabled.
@@ -416,20 +416,20 @@ impl ClusterExtension {
 
   /// Returns virtual actor count.
   pub fn virtual_actor_count(&self) -> i64 {
-    self.core.lock().virtual_actor_count()
+    self.core.with_lock(|core| core.virtual_actor_count())
   }
 
   /// Returns blocked members cache.
   pub fn blocked_members(&self) -> Vec<String> {
-    self.core.lock().blocked_members().to_vec()
+    self.core.with_lock(|core| core.blocked_members().to_vec())
   }
 
   fn register_on_member_status<F>(&self, target: NodeStatus, callback: F) -> EventStreamSubscription
   where
     F: FnMut(&str, &str) + Send + Sync + 'static, {
-    let self_address = self.core.lock().startup_address();
-    let state = ArcShared::new(RuntimeMutex::new(MemberStatusSubscriberState::new()));
-    let callback_state = ArcShared::new(RuntimeMutex::new(MemberStatusCallbackState::new(callback)));
+    let self_address = self.core.with_lock(|core| core.startup_address());
+    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusSubscriberState::new());
+    let callback_state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(MemberStatusCallbackState::new(callback));
     let subscriber = subscriber_handle(MemberStatusSubscriber::new(
       target,
       self_address.clone(),
@@ -439,18 +439,17 @@ impl ClusterExtension {
     ));
     let subscription = self.event_stream.subscribe_no_replay(&subscriber);
     let subscription_id = subscription.id();
-    {
-      let mut guard = state.lock();
+    state.with_lock(|guard| {
       guard.subscription_id = Some(subscription_id);
-    }
-    if let Some(current) = self.self_member_status.lock().clone()
+    });
+    if let Some(current) = self.self_member_status.with_lock(|self_member_status| self_member_status.clone())
       && current.authority == self_address.as_str()
       && current.status == target
       && trigger_member_status_callback::<F>(&callback_state, &current.node_id, &current.authority)
     {
-      state.lock().unsubscribe_requested = true;
+      state.with_lock(|state| state.unsubscribe_requested = true);
     }
-    let unsubscribe_now = state.lock().unsubscribe_requested;
+    let unsubscribe_now = state.with_lock(|state| state.unsubscribe_requested);
     if unsubscribe_now {
       self.event_stream.unsubscribe(subscription_id);
     }

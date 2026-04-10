@@ -65,11 +65,29 @@ fn flow_definition_by_kind<In, Out, Mat>(flow: Flow<In, Out, Mat>, kind: StageKi
     .expect("flow should contain requested definition")
 }
 
-#[allow(deprecated)]
 fn async_boundary_definition<Out>() -> FlowDefinition
 where
   Out: Send + Sync + 'static, {
-  flow_definition_by_kind(Flow::<Out, Out, StreamNotUsed>::new().async_boundary(), StageKind::FlowAsyncBoundary)
+  use crate::core::{
+    r#impl::fusing::AsyncBoundaryLogic,
+    shape::{Inlet, Outlet},
+    stage::StageKind,
+  };
+  let inlet: Inlet<Out> = Inlet::new();
+  let outlet: Outlet<Out> = Outlet::new();
+  let logic = AsyncBoundaryLogic::<Out> { pending: VecDeque::new(), capacity: 16, enforcing: false };
+  FlowDefinition {
+    kind:        StageKind::FlowAsyncBoundary,
+    inlet:       inlet.id(),
+    outlet:      outlet.id(),
+    input_type:  TypeId::of::<Out>(),
+    output_type: TypeId::of::<Out>(),
+    mat_combine: MatCombine::Left,
+    supervision: SupervisionStrategy::Stop,
+    restart:     None,
+    logic:       Box::new(logic),
+    attributes:  Attributes::new(),
+  }
 }
 
 fn buffer_definition<Out>(capacity: usize, overflow_strategy: OverflowStrategy) -> FlowDefinition
@@ -2491,7 +2509,6 @@ fn conflate_emits_aggregated_value_when_downstream_unblocks() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
   struct FailingInnerSourceLogic;
 
@@ -2501,14 +2518,16 @@ fn cross_operator_failure_propagates_from_flat_map_to_substream_merge_chain() {
     }
   }
 
-  let graph = Source::single(1_u32)
+  // Build the graph up to merge_substreams, then manually append the async
+  // boundary stage definition so we avoid calling the deprecated
+  // Flow::async_boundary() method.
+  let base = Source::single(1_u32)
     .flat_map_merge(1, |_| Source::<u32, _>::from_logic(StageKind::Custom, FailingInnerSourceLogic))
     .expect("flat_map_merge")
     .split_after(|_| true)
     .merge_substreams_with_parallelism(1)
-    .expect("merge_substreams_with_parallelism")
-    .async_boundary()
-    .into_mat(Sink::head(), KeepRight);
+    .expect("merge_substreams_with_parallelism");
+  let graph = base.r#async().into_mat(Sink::head(), KeepRight);
   let (plan, completion) = graph.into_parts();
   let mut interpreter = GraphInterpreter::new(plan, StreamBufferConfig::new(1, OverflowPolicy::Block));
   drive_to_completion(&mut interpreter);

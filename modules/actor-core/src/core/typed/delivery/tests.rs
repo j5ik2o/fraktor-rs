@@ -3,7 +3,7 @@ extern crate std;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::{
@@ -42,7 +42,7 @@ fn test_system() -> TypedActorSystem<u32> {
 }
 
 fn durable_queue_probe_behavior<A>(
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 ) -> Behavior<DurableProducerQueueCommand<A>>
 where
   A: Clone + Send + Sync + 'static, {
@@ -67,7 +67,7 @@ where
 }
 
 fn durable_queue_probe_behavior_with_loaded_state<A>(
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   loaded_state: DurableProducerQueueState<A>,
 ) -> Behavior<DurableProducerQueueCommand<A>>
 where
@@ -93,7 +93,7 @@ where
 }
 
 fn durable_queue_probe_behavior_without_reply<A>(
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 ) -> Behavior<DurableProducerQueueCommand<A>>
 where
   A: Clone + Send + Sync + 'static, {
@@ -114,8 +114,8 @@ where
 }
 
 fn durable_queue_probe_behavior_with_pid<A>(
-  events: ArcShared<NoStdMutex<Vec<&'static str>>>,
-  durable_pid: ArcShared<NoStdMutex<Option<Pid>>>,
+  events: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  durable_pid: ArcShared<SpinSyncMutex<Option<Pid>>>,
 ) -> Behavior<DurableProducerQueueCommand<A>>
 where
   A: Clone + Send + Sync + 'static, {
@@ -158,7 +158,7 @@ fn producer_start_and_register_consumer_connect() {
   let cc_ref = TypedActorRef::<ConsumerControllerCommand<u32>>::from_untyped(cc_cell.into_actor_ref());
 
   // 受信した RequestNext シグナルを追跡する。
-  let request_next_received = ArcShared::new(NoStdMutex::new(Vec::<u64>::new()));
+  let request_next_received = ArcShared::new(SpinSyncMutex::new(Vec::<u64>::new()));
   let request_next_received_clone = request_next_received.clone();
 
   // RequestNext シグナルを記録するモックプロデューサーを生成する。
@@ -192,7 +192,7 @@ fn consumer_controller_delivers_to_consumer() {
   let system = test_system();
 
   // 配達を追跡する。
-  let delivered = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let delivered = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let delivered_clone = delivered.clone();
 
   // コンシューマーコントローラーを生成する。
@@ -258,8 +258,8 @@ fn consumer_controller_delivers_to_consumer() {
 #[test]
 fn producer_controller_with_durable_queue_loads_state_on_startup() {
   let system = test_system();
-  let durable_events = ArcShared::new(NoStdMutex::new(Vec::<&'static str>::new()));
-  let durable_pid = ArcShared::new(NoStdMutex::new(None));
+  let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
+  let durable_pid = ArcShared::new(SpinSyncMutex::new(None));
 
   let pc_props = TypedProps::<ProducerControllerCommand<u32>>::from_behavior_factory({
     let durable_events = durable_events.clone();
@@ -290,7 +290,7 @@ fn producer_controller_with_durable_queue_loads_state_on_startup() {
 #[test]
 fn producer_controller_with_durable_queue_persists_sent_and_confirmed_flow() {
   let system = test_system();
-  let durable_events = ArcShared::new(NoStdMutex::new(Vec::<&'static str>::new()));
+  let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
 
   let cc_props =
     TypedProps::<ConsumerControllerCommand<u32>>::from_behavior_factory(|| ConsumerController::behavior::<u32>());
@@ -402,7 +402,7 @@ fn work_pulling_start_and_get_worker_stats() {
     TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.into_actor_ref());
 
   // ワーカー統計のレスポンスを追跡する。
-  let stats_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let stats_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let stats_received_clone = stats_received.clone();
 
   // 統計収集アクターを生成する。
@@ -443,7 +443,7 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
     TypedActorRef::<WorkPullingProducerControllerCommand<u32>>::from_untyped(wppc_cell.into_actor_ref());
 
   // 配達を追跡する。
-  let delivered = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let delivered = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let delivered_clone = delivered.clone();
 
   // ワーカー（コンシューマーコントローラー + コンシューマーアクター）を生成する。
@@ -502,8 +502,8 @@ fn work_pulling_delivers_to_worker_via_receptionist() {
 fn work_pulling_with_durable_queue_replays_loaded_unconfirmed_messages() {
   let system = test_system();
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("durable-workers");
-  let durable_events = ArcShared::new(NoStdMutex::new(Vec::<&'static str>::new()));
-  let delivered = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
+  let delivered = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let loaded_state = DurableProducerQueueState::empty().add_message_sent(MessageSent::new(
     1,
     99_u32,
@@ -566,7 +566,7 @@ fn work_pulling_with_durable_queue_replays_loaded_unconfirmed_messages() {
 fn work_pulling_durable_queue_timeout_uses_nested_producer_settings() {
   let system = test_system();
   let worker_key = ServiceKey::<ConsumerControllerCommand<u32>>::new("timeout-workers");
-  let durable_events = ArcShared::new(NoStdMutex::new(Vec::<&'static str>::new()));
+  let durable_events = ArcShared::new(SpinSyncMutex::new(Vec::<&'static str>::new()));
   let settings = WorkPullingProducerControllerSettings::new()
     .with_internal_ask_timeout(Duration::from_millis(10))
     .with_producer_controller_settings(

@@ -1,6 +1,6 @@
 //! Shared wrapper for LocalClusterProvider implementations.
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::LocalClusterProvider;
 
@@ -10,14 +10,14 @@ use super::LocalClusterProvider;
 /// that internally lock the underlying provider, allowing safe
 /// concurrent access from multiple owners.
 pub struct LocalClusterProviderShared {
-  inner: ArcShared<RuntimeMutex<LocalClusterProvider>>,
+  inner: SharedLock<LocalClusterProvider>,
 }
 
 impl LocalClusterProviderShared {
   /// Creates a new shared wrapper around the provided provider.
   #[must_use]
   pub fn new(provider: LocalClusterProvider) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(provider)) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(provider) }
   }
 }
 
@@ -29,12 +29,10 @@ impl Clone for LocalClusterProviderShared {
 
 impl SharedAccess<LocalClusterProvider> for LocalClusterProviderShared {
   fn with_read<R>(&self, f: impl FnOnce(&LocalClusterProvider) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut LocalClusterProvider) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::{error::ActorError, supervision::SupervisorStrategyConfig},
@@ -353,28 +353,28 @@ where
       let final_supervisor_override = inner.supervisor_override().cloned();
       let outer_directive = inner.directive();
 
-      let state = ArcShared::new(RuntimeMutex::new(inner));
+      let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(inner);
       let state_msg = state.clone();
       let state_sig = state;
       let mapper_msg = mapper.clone();
 
       let outer_signal = move |ctx: &mut TypedActorContext<'_, Outer>, signal: &BehaviorSignal| {
-        let mut guard = state_sig.lock();
-        let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
-        let next = guard.handle_signal(&mut inner_ctx, signal)?.resolve_started_behavior(&mut inner_ctx)?;
-        Ok(resolve_transform_directive(&mut guard, next))
+        state_sig.with_lock(|guard| {
+          let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
+          let next = guard.handle_signal(&mut inner_ctx, signal)?.resolve_started_behavior(&mut inner_ctx)?;
+          Ok(resolve_transform_directive(guard, next))
+        })
       };
 
       let mut outer = match outer_directive {
         | BehaviorDirective::Stopped => Behavior::<Outer>::stopped().receive_signal(outer_signal),
         | BehaviorDirective::Empty => Behavior::<Outer>::empty().receive_signal(outer_signal),
         | _ => Behavior::<Outer>::from_message_handler(move |ctx, msg: &Outer| match mapper_msg(msg) {
-          | Some(inner_msg) => {
-            let mut guard = state_msg.lock();
+          | Some(inner_msg) => state_msg.with_lock(|guard| {
             let mut inner_ctx = TypedActorContext::<M>::from_untyped(ctx.as_untyped_mut(), None);
             let next = guard.handle_message(&mut inner_ctx, &inner_msg)?.resolve_started_behavior(&mut inner_ctx)?;
-            Ok(resolve_transform_directive(&mut guard, next))
-          },
+            Ok(resolve_transform_directive(guard, next))
+          }),
           | None => Ok(Behavior::unhandled()),
         })
         .receive_signal(outer_signal),

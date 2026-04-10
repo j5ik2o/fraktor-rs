@@ -4,7 +4,7 @@ use crate::core::kernel::actor::Pid;
 
 /// Allows custom providers to reroute `SystemMessage::Watch/Unwatch` for remote actors.
 ///
-/// Implementations should be wrapped in a `RuntimeMutex` by callers to ensure thread-safe access.
+/// Implementations should be wrapped in a `SpinSyncMutex` by callers to ensure thread-safe access.
 /// The `&mut self` signature makes state changes explicit in the type system.
 pub trait RemoteWatchHook: Send + 'static {
   /// Handles a watch request. Returns `true` when the provider consumed the message.

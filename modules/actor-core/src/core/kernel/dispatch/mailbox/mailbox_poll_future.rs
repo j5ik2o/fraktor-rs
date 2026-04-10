@@ -9,7 +9,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::{
   collections::{queue::QueueError, wait::WaitShared},
-  sync::{ArcShared, RuntimeMutex},
+  sync::{SharedAccess, SharedLock},
 };
 
 use super::{mailbox_queue_state::QueueState, map_user_queue_error};
@@ -22,7 +22,7 @@ mod tests;
 struct QueuePollFuture<T>
 where
   T: Send + 'static, {
-  state:  ArcShared<RuntimeMutex<QueueState<T>>>,
+  state:  SharedLock<QueueState<T>>,
   waiter: Option<WaitShared<QueueError<T>>>,
 }
 
@@ -32,10 +32,8 @@ where
 {
   fn ensure_waiter(&mut self) -> Result<&mut WaitShared<QueueError<T>>, QueueError<T>> {
     if self.waiter.is_none() {
-      let waiter = {
-        let mut state = self.state.lock();
-        state.register_consumer_waiter().map_err(|_| QueueError::Disconnected)?
-      };
+      let waiter =
+        self.state.with_write(|state| state.register_consumer_waiter().map_err(|_| QueueError::Disconnected))?;
       self.waiter = Some(waiter);
     }
     // 安全性: 上のチェックで waiter が Some であることが保証される。
@@ -54,10 +52,7 @@ where
   fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     loop {
-      let poll_result = {
-        let mut state = this.state.lock();
-        state.poll()
-      };
+      let poll_result = this.state.with_write(|state| state.poll());
       match poll_result {
         | Ok(item) => {
           this.waiter.take();

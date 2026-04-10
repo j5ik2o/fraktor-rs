@@ -2,7 +2,7 @@ use alloc::{borrow::ToOwned, collections::BTreeMap, string::String, vec::Vec};
 use core::time::Duration;
 use std::sync::{Arc, Mutex, Once};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 use tracing::{
   Event, Level, Metadata, Subscriber,
   field::{Field, Visit},
@@ -46,11 +46,11 @@ impl Actor for TestActor {
 }
 
 struct RecordingSender {
-  inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
 impl RecordingSender {
-  fn new(inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>) -> Self {
+  fn new(inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>) -> Self {
     Self { inbox }
   }
 }
@@ -72,7 +72,7 @@ fn register_cell(system: &ActorSystem, pid: Pid, name: &str, props: &Props) -> A
 fn receive_and_reply_sends_response_to_sender() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = ActorRef::new(Pid::new(900, 0), RecordingSender::new(inbox.clone()));
 
   let mut context = ActorContext::new(&system, pid);
@@ -90,7 +90,7 @@ fn receive_and_reply_sends_response_to_sender() {
 
 #[test]
 fn receive_message_handles_message() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let received_clone = received.clone();
 
   let system = ActorSystem::new_empty();
@@ -148,7 +148,7 @@ fn with_timers_shared_handle_usable_in_closures() {
     let timers_for_handler = timers.clone();
     Behaviors::receive_message(move |_ctx, _msg: &u32| {
       let key = TimerKey::new("dynamic");
-      assert!(!timers_for_handler.lock().is_timer_active(&key));
+      assert!(!timers_for_handler.with_lock(|timers| timers.is_timer_active(&key)));
       Ok(Behaviors::same())
     })
   });
@@ -226,9 +226,9 @@ fn receive_partial_chains_with_receive_signal() {
 }
 
 struct RecordingInterceptor {
-  receive_count: ArcShared<NoStdMutex<u32>>,
-  start_count:   ArcShared<NoStdMutex<u32>>,
-  signal_count:  ArcShared<NoStdMutex<u32>>,
+  receive_count: ArcShared<SpinSyncMutex<u32>>,
+  start_count:   ArcShared<SpinSyncMutex<u32>>,
+  signal_count:  ArcShared<SpinSyncMutex<u32>>,
 }
 
 impl BehaviorInterceptor<u32> for RecordingInterceptor {
@@ -264,15 +264,15 @@ impl BehaviorInterceptor<u32> for RecordingInterceptor {
 
 #[test]
 fn intercept_delegates_started_to_interceptor() {
-  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let start_count_clone = start_count.clone();
-  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let signal_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let signal_count_clone = signal_count.clone();
 
   let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
-        receive_count: ArcShared::new(NoStdMutex::new(0)),
+        receive_count: ArcShared::new(SpinSyncMutex::new(0)),
         start_count:   start_count_clone.clone(),
         signal_count:  signal_count_clone.clone(),
       })
@@ -293,15 +293,15 @@ fn intercept_delegates_started_to_interceptor() {
 
 #[test]
 fn intercept_delegates_message_to_interceptor() {
-  let receive_count = ArcShared::new(NoStdMutex::new(0u32));
+  let receive_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let receive_count_clone = receive_count.clone();
 
   let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
         receive_count: receive_count_clone.clone(),
-        start_count:   ArcShared::new(NoStdMutex::new(0)),
-        signal_count:  ArcShared::new(NoStdMutex::new(0)),
+        start_count:   ArcShared::new(SpinSyncMutex::new(0)),
+        signal_count:  ArcShared::new(SpinSyncMutex::new(0)),
       })
     },
     || Behaviors::receive_message(|_ctx, _msg: &u32| Ok(Behaviors::same())),
@@ -321,14 +321,14 @@ fn intercept_delegates_message_to_interceptor() {
 
 #[test]
 fn intercept_delegates_signal_to_interceptor() {
-  let signal_count = ArcShared::new(NoStdMutex::new(0u32));
+  let signal_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let signal_count_clone = signal_count.clone();
 
   let mut behavior = Behaviors::intercept::<u32, _, _>(
     move || {
       Box::new(RecordingInterceptor {
-        receive_count: ArcShared::new(NoStdMutex::new(0)),
-        start_count:   ArcShared::new(NoStdMutex::new(0)),
+        receive_count: ArcShared::new(SpinSyncMutex::new(0)),
+        start_count:   ArcShared::new(SpinSyncMutex::new(0)),
         signal_count:  signal_count_clone.clone(),
       })
     },
@@ -349,9 +349,9 @@ fn intercept_delegates_signal_to_interceptor() {
 
 #[test]
 fn intercept_behavior_clone_restarts_with_fresh_inner_behavior() {
-  let start_count = ArcShared::new(NoStdMutex::new(0u32));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let start_count_clone = start_count.clone();
-  let receive_count = ArcShared::new(NoStdMutex::new(0u32));
+  let receive_count = ArcShared::new(SpinSyncMutex::new(0u32));
   let receive_count_clone = receive_count.clone();
 
   let inner = Behaviors::setup(move |_ctx| {
@@ -363,8 +363,8 @@ fn intercept_behavior_clone_restarts_with_fresh_inner_behavior() {
     move || {
       Box::new(RecordingInterceptor {
         receive_count: receive_count_clone.clone(),
-        start_count:   ArcShared::new(NoStdMutex::new(0)),
-        signal_count:  ArcShared::new(NoStdMutex::new(0)),
+        start_count:   ArcShared::new(SpinSyncMutex::new(0)),
+        signal_count:  ArcShared::new(SpinSyncMutex::new(0)),
       })
     },
     inner,
@@ -427,7 +427,7 @@ fn cancel_receive_timeout_clears_state() {
 
 #[test]
 fn monitor_sends_clone_to_monitor_ref() {
-  let monitor_inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let monitor_inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let monitor_sender = RecordingSender::new(monitor_inbox.clone());
   let monitor_actor_ref = ActorRef::new(Pid::new(800, 0), monitor_sender);
   let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
@@ -452,10 +452,10 @@ fn monitor_sends_clone_to_monitor_ref() {
 
 #[test]
 fn monitor_passes_message_to_inner_behavior() {
-  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 
-  let monitor_inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let monitor_inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let monitor_sender = RecordingSender::new(monitor_inbox.clone());
   let monitor_actor_ref = ActorRef::new(Pid::new(801, 0), monitor_sender);
   let monitor_typed_ref = TypedActorRef::<u32>::from_untyped(monitor_actor_ref);
@@ -486,7 +486,7 @@ fn monitor_passes_message_to_inner_behavior() {
 /// `receive_message_with_same` invokes the handler and returns `Same` directive.
 #[test]
 fn receive_message_with_same_invokes_handler_and_returns_same() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let system = ActorSystem::new_empty();
@@ -509,7 +509,7 @@ fn receive_message_with_same_invokes_handler_and_returns_same() {
 /// `receive_message_with_same` handles multiple messages with the same behavior.
 #[test]
 fn receive_message_with_same_handles_multiple_messages() {
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let received_clone = received.clone();
 
   let system = ActorSystem::new_empty();
@@ -531,7 +531,7 @@ fn receive_message_with_same_handles_multiple_messages() {
 /// `receive_message_with_same` provides context access to the handler.
 #[test]
 fn receive_message_with_same_provides_context() {
-  let captured_pid = ArcShared::new(NoStdMutex::new(0u64));
+  let captured_pid = ArcShared::new(SpinSyncMutex::new(0u64));
   let captured_pid_clone = captured_pid.clone();
 
   let system = ActorSystem::new_empty();
@@ -562,7 +562,7 @@ fn stopped_with_post_stop_has_stopped_directive() {
 /// `stopped_with_post_stop` executes the callback when `PostStop` signal is received.
 #[test]
 fn stopped_with_post_stop_executes_callback_on_post_stop_signal() {
-  let called = ArcShared::new(NoStdMutex::new(false));
+  let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
   let system = ActorSystem::new_empty();
@@ -599,7 +599,7 @@ fn stopped_with_post_stop_returns_stopped_directive() {
 /// `stopped_with_post_stop` does not invoke callback for non-PostStop signals.
 #[test]
 fn stopped_with_post_stop_ignores_non_post_stop_signals() {
-  let called = ArcShared::new(NoStdMutex::new(false));
+  let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
   let system = ActorSystem::new_empty();
@@ -621,7 +621,7 @@ fn stopped_with_post_stop_ignores_non_post_stop_signals() {
 
 #[test]
 fn stopped_with_post_stop_accepts_public_post_stop_conversion() {
-  let called = ArcShared::new(NoStdMutex::new(false));
+  let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
   let system = ActorSystem::new_empty();
@@ -640,7 +640,7 @@ fn stopped_with_post_stop_accepts_public_post_stop_conversion() {
 
 #[test]
 fn stopped_with_post_stop_ignores_public_pre_restart_conversion() {
-  let called = ArcShared::new(NoStdMutex::new(false));
+  let called = ArcShared::new(SpinSyncMutex::new(false));
   let called_clone = called.clone();
 
   let system = ActorSystem::new_empty();
@@ -806,7 +806,7 @@ impl Subscriber for SpanRecordingSubscriber {
 
 #[test]
 fn log_messages_delegates_to_inner_behavior() {
-  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 
   let system = ActorSystem::new_empty();
@@ -907,7 +907,7 @@ fn with_static_mdc_creates_span_on_signal() {
 #[test]
 fn with_mdc_delegates_to_inner_behavior() {
   ensure_tracing_interest_cache_permissive();
-  let inner_received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let inner_received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let inner_received_clone = inner_received.clone();
 
   let mut static_mdc = BTreeMap::new();

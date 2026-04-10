@@ -2,7 +2,7 @@
 //!
 //! `ExecutorShared` is the only sanctioned way to share a `Box<dyn Executor>`
 //! between dispatchers and the rest of the runtime. Internal mutability is
-//! confined to the `RuntimeMutex` housed inside `ArcShared`, matching the
+//! confined to the `SpinSyncMutex` housed inside `ArcShared`, matching the
 //! AShared pattern documented in `docs/guides/shared_vs_handle.md`.
 //!
 //! # Re-entrant execution
@@ -11,7 +11,7 @@
 //! worker and return quickly, so re-entrant `execute` calls from inside a
 //! running task are harmless. Test-support executors that run the task
 //! inline on the calling thread (for example `InlineExecutor`) would
-//! normally deadlock on the inner `RuntimeMutex` when the running task calls
+//! normally deadlock on the inner `SpinSyncMutex` when the running task calls
 //! `execute` again. To keep both families working, `ExecutorShared` runs its
 //! own outer trampoline: the caller that first sees the queue idle becomes
 //! the drain owner and processes every queued task one-by-one while

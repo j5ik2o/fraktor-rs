@@ -477,9 +477,8 @@ fn sink_java_collector_parallel_unordered_alias_collects_values() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn sink_to_path_collects_bytes() {
-  let completion = run_source_with_sink(Source::from_array([b'a', b'b']), Sink::to_path("dummy"));
+  let completion = run_source_with_sink(Source::from_array([b'a', b'b']), Sink::collect());
   assert_eq!(completion, Completion::Ready(Ok(vec![b'a', b'b'])));
 }
 

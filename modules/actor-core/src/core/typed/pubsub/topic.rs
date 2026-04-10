@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use super::{
   topic_command::{TopicCommand, TopicCommandKind},
@@ -59,8 +59,10 @@ impl Topic {
     M: Clone + Send + Sync + 'static, {
     let topic_name = topic_name.into();
     let topic_key = ServiceKey::<TopicCommand<M>>::new(topic_name);
-    let state =
-      ArcShared::new(RuntimeMutex::new(TopicState { topic_instances: Vec::new(), local_subscribers: Vec::new() }));
+    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(TopicState {
+      topic_instances:   Vec::new(),
+      local_subscribers: Vec::new(),
+    });
 
     Behaviors::setup(move |ctx| {
       let Some(receptionist) = ctx.system().receptionist_ref() else {
@@ -86,58 +88,60 @@ impl Topic {
       let state_for_message = state.clone();
       let topic_key_for_messages = topic_key.clone();
       Behaviors::receive_message(move |ctx, command: &TopicCommand<M>| {
-        let mut state = state_for_message.lock();
-        match command.clone().into_kind() {
-          | TopicCommandKind::Publish(message) => {
-            if state.topic_instances.is_empty() {
-              publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
-            } else {
-              publish_instances(&state.topic_instances, &message, ctx, &topic_key_for_messages);
-            }
-          },
-          | TopicCommandKind::Subscribe(subscriber) => {
-            if !state.local_subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
-              ctx
-                .watch_with(&subscriber, TopicCommand::subscriber_terminated(subscriber.pid()))
-                .map_err(|error| ActorError::from_send_error(&error))?;
-              state.local_subscribers.push(subscriber);
-              if state.local_subscribers.len() == 1 {
-                let mut receptionist = receptionist.clone();
-                receptionist
-                  .try_tell(Receptionist::register(&topic_key_for_messages, ctx.self_ref()))
-                  .map_err(|error| ActorError::from_send_error(&error))?;
+        state_for_message.with_lock(|state| -> Result<(), ActorError> {
+          match command.clone().into_kind() {
+            | TopicCommandKind::Publish(message) => {
+              if state.topic_instances.is_empty() {
+                publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
+              } else {
+                publish_instances(&state.topic_instances, &message, ctx, &topic_key_for_messages);
               }
-            }
-          },
-          | TopicCommandKind::Unsubscribe(subscriber) => {
-            if let Err(e) = ctx.unwatch(&subscriber) {
-              ctx.system().emit_log(
-                LogLevel::Warn,
-                alloc::format!("topic failed to unwatch subscriber: {:?}", e),
-                Some(ctx.pid()),
-                None,
-              );
-            }
-            remove_subscriber(&mut state.local_subscribers, subscriber.pid());
-            deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx);
-          },
-          | TopicCommandKind::GetTopicStats { reply_to } => {
-            let mut reply_to = reply_to;
-            reply_to
-              .try_tell(TopicStats::new(state.local_subscribers.len(), state.topic_instances.len()))
-              .map_err(|error| ActorError::from_send_error(&error))?;
-          },
-          | TopicCommandKind::TopicInstancesUpdated(listing) => {
-            state.topic_instances = listing.typed_refs::<TopicCommand<M>>()?;
-          },
-          | TopicCommandKind::MessagePublished(message) => {
-            publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
-          },
-          | TopicCommandKind::SubscriberTerminated(pid) => {
-            remove_subscriber(&mut state.local_subscribers, pid);
-            deregister_if_empty(&state, &mut receptionist.clone(), &topic_key_for_messages, ctx);
-          },
-        }
+            },
+            | TopicCommandKind::Subscribe(subscriber) => {
+              if !state.local_subscribers.iter().any(|existing| existing.pid() == subscriber.pid()) {
+                ctx
+                  .watch_with(&subscriber, TopicCommand::subscriber_terminated(subscriber.pid()))
+                  .map_err(|error| ActorError::from_send_error(&error))?;
+                state.local_subscribers.push(subscriber);
+                if state.local_subscribers.len() == 1 {
+                  let mut receptionist = receptionist.clone();
+                  receptionist
+                    .try_tell(Receptionist::register(&topic_key_for_messages, ctx.self_ref()))
+                    .map_err(|error| ActorError::from_send_error(&error))?;
+                }
+              }
+            },
+            | TopicCommandKind::Unsubscribe(subscriber) => {
+              if let Err(e) = ctx.unwatch(&subscriber) {
+                ctx.system().emit_log(
+                  LogLevel::Warn,
+                  alloc::format!("topic failed to unwatch subscriber: {:?}", e),
+                  Some(ctx.pid()),
+                  None,
+                );
+              }
+              remove_subscriber(&mut state.local_subscribers, subscriber.pid());
+              deregister_if_empty(state, &mut receptionist.clone(), &topic_key_for_messages, ctx);
+            },
+            | TopicCommandKind::GetTopicStats { reply_to } => {
+              let mut reply_to = reply_to;
+              reply_to
+                .try_tell(TopicStats::new(state.local_subscribers.len(), state.topic_instances.len()))
+                .map_err(|error| ActorError::from_send_error(&error))?;
+            },
+            | TopicCommandKind::TopicInstancesUpdated(listing) => {
+              state.topic_instances = listing.typed_refs::<TopicCommand<M>>()?;
+            },
+            | TopicCommandKind::MessagePublished(message) => {
+              publish_local(&state.local_subscribers, &message, ctx, &topic_key_for_messages);
+            },
+            | TopicCommandKind::SubscriberTerminated(pid) => {
+              remove_subscriber(&mut state.local_subscribers, pid);
+              deregister_if_empty(state, &mut receptionist.clone(), &topic_key_for_messages, ctx);
+            },
+          }
+          Ok(())
+        })?;
         Ok(Behaviors::same())
       })
     })

@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{deque_message_queue::DequeMessageQueue, envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;
@@ -19,14 +19,14 @@ const DEFAULT_CAPACITY: usize = 16;
 /// enabling efficient prepend operations for stash-based actors instead of the
 /// generic prepend fallback removed from the base [`Mailbox`](super::Mailbox).
 pub struct UnboundedDequeMessageQueue {
-  inner: RuntimeMutex<VecDeque<Envelope>>,
+  inner: SharedLock<VecDeque<Envelope>>,
 }
 
 impl UnboundedDequeMessageQueue {
   /// Creates a new unbounded deque message queue.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: RuntimeMutex::new(VecDeque::with_capacity(DEFAULT_CAPACITY)) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::with_capacity(DEFAULT_CAPACITY)) }
   }
 }
 
@@ -38,24 +38,20 @@ impl Default for UnboundedDequeMessageQueue {
 
 impl MessageQueue for UnboundedDequeMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    let mut guard = self.inner.lock();
-    guard.push_back(envelope);
+    self.inner.with_write(|inner| inner.push_back(envelope));
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    let mut guard = self.inner.lock();
-    guard.pop_front()
+    self.inner.with_write(|inner| inner.pop_front())
   }
 
   fn number_of_messages(&self) -> usize {
-    let guard = self.inner.lock();
-    guard.len()
+    self.inner.with_read(|inner| inner.len())
   }
 
   fn clean_up(&self) {
-    let mut guard = self.inner.lock();
-    guard.clear();
+    self.inner.with_write(|inner| inner.clear());
   }
 
   fn as_deque(&self) -> Option<&dyn DequeMessageQueue> {
@@ -65,8 +61,7 @@ impl MessageQueue for UnboundedDequeMessageQueue {
 
 impl DequeMessageQueue for UnboundedDequeMessageQueue {
   fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError> {
-    let mut guard = self.inner.lock();
-    guard.push_front(envelope);
+    self.inner.with_write(|inner| inner.push_front(envelope));
     Ok(())
   }
 }

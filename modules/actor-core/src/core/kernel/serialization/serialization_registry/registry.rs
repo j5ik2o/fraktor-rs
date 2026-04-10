@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedRwLock, SpinSyncRwLock};
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::SerializerResolutionOrigin;
@@ -15,11 +15,11 @@ use crate::core::kernel::serialization::{
 /// Registry that resolves serializers based on type identifiers.
 #[allow(clippy::type_complexity)]
 pub struct SerializationRegistry {
-  serializers:     RuntimeRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
-  bindings:        RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
-  binding_names:   RuntimeRwLock<HashMap<TypeId, String, RandomState>>,
-  manifest_routes: RuntimeRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
-  cache:           RuntimeRwLock<HashMap<TypeId, SerializerId, RandomState>>,
+  serializers:     SharedRwLock<HashMap<SerializerId, ArcShared<dyn Serializer>, RandomState>>,
+  bindings:        SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
+  binding_names:   SharedRwLock<HashMap<TypeId, String, RandomState>>,
+  manifest_routes: SharedRwLock<HashMap<String, Vec<(u8, SerializerId)>, RandomState>>,
+  cache:           SharedRwLock<HashMap<TypeId, SerializerId, RandomState>>,
   fallback:        SerializerId,
 }
 
@@ -37,17 +37,17 @@ impl SerializationRegistry {
     manifest_routes
       .extend(setup.manifest_routes_ref().iter().map(|(manifest, routes)| (manifest.clone(), routes.clone())));
     Self {
-      serializers:     RuntimeRwLock::new(serializers),
-      bindings:        RuntimeRwLock::new(bindings),
-      binding_names:   RuntimeRwLock::new(binding_names),
-      manifest_routes: RuntimeRwLock::new(manifest_routes),
-      cache:           RuntimeRwLock::new(HashMap::with_hasher(RandomState::new())),
+      serializers:     SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(serializers),
+      bindings:        SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(bindings),
+      binding_names:   SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(binding_names),
+      manifest_routes: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(manifest_routes),
+      cache:           SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(HashMap::with_hasher(RandomState::new())),
       fallback:        setup.fallback_serializer(),
     }
   }
 
   fn serializer_by_id_raw(&self, id: SerializerId) -> Option<ArcShared<dyn Serializer>> {
-    self.serializers.read().get(&id).cloned()
+    self.serializers.with_read(|serializers| serializers.get(&id).cloned())
   }
 
   fn not_serializable(
@@ -59,11 +59,15 @@ impl SerializationRegistry {
   }
 
   fn cache_insert(&self, type_id: TypeId, serializer_id: SerializerId) {
-    self.cache.write().insert(type_id, serializer_id);
+    self.cache.with_write(|cache| {
+      cache.insert(type_id, serializer_id);
+    });
   }
 
   fn cache_remove(&self, type_id: TypeId) {
-    self.cache.write().remove(&type_id);
+    self.cache.with_write(|cache| {
+      cache.remove(&type_id);
+    });
   }
 
   /// Returns the serializer registered for the type, performing fallback resolution if required.
@@ -78,14 +82,14 @@ impl SerializationRegistry {
     type_name: &str,
     transport_hint: Option<TransportInformation>,
   ) -> Result<(ArcShared<dyn Serializer>, SerializerResolutionOrigin), SerializationError> {
-    if let Some(existing) = self.cache.read().get(&type_id).copied() {
+    if let Some(existing) = self.cache.with_read(|cache| cache.get(&type_id).copied()) {
       if let Some(serializer) = self.serializer_by_id_raw(existing) {
         return Ok((serializer, SerializerResolutionOrigin::Cache));
       }
       self.cache_remove(type_id);
     }
 
-    let (resolved, origin) = if let Some(bound) = self.bindings.read().get(&type_id).copied() {
+    let (resolved, origin) = if let Some(bound) = self.bindings.with_read(|bindings| bindings.get(&type_id).copied()) {
       (bound, SerializerResolutionOrigin::Binding)
     } else {
       (self.fallback, SerializerResolutionOrigin::Fallback)
@@ -110,15 +114,15 @@ impl SerializationRegistry {
   }
 
   /// Inserts a serializer instance if absent.
+  #[must_use]
   pub fn register_serializer(&self, id: SerializerId, serializer: ArcShared<dyn Serializer>) -> bool {
-    let mut guard = self.serializers.write();
-    match guard.entry(id) {
+    self.serializers.with_write(|guard| match guard.entry(id) {
       | Entry::Occupied(_) => false,
       | Entry::Vacant(slot) => {
         slot.insert(serializer);
         true
       },
-    }
+    })
   }
 
   /// Registers a binding at runtime (used by adapters/extensions).
@@ -136,8 +140,12 @@ impl SerializationRegistry {
     if self.serializer_by_id_raw(serializer_id).is_none() {
       return Err(SerializationError::UnknownSerializer(serializer_id));
     }
-    self.bindings.write().insert(type_id, serializer_id);
-    self.binding_names.write().insert(type_id, type_name.into());
+    self.bindings.with_write(|bindings| {
+      bindings.insert(type_id, serializer_id);
+    });
+    self.binding_names.with_write(|binding_names| {
+      binding_names.insert(type_id, type_name.into());
+    });
     self.cache_remove(type_id);
     Ok(())
   }
@@ -145,11 +153,12 @@ impl SerializationRegistry {
   /// Returns the serializers registered for the specified manifest in priority order.
   #[must_use]
   pub fn serializers_for_manifest(&self, manifest: &str) -> Vec<ArcShared<dyn Serializer>> {
-    let routes = self.manifest_routes.read();
-    routes
-      .get(manifest)
-      .map(|entries| {
-        entries.iter().filter_map(|(_, serializer_id)| self.serializer_by_id_raw(*serializer_id)).collect::<Vec<_>>()
+    self
+      .manifest_routes
+      .with_read(|routes| {
+        routes.get(manifest).map(|entries| {
+          entries.iter().filter_map(|(_, serializer_id)| self.serializer_by_id_raw(*serializer_id)).collect::<Vec<_>>()
+        })
       })
       .unwrap_or_default()
   }
@@ -157,11 +166,11 @@ impl SerializationRegistry {
   /// Returns the recorded binding name for the provided type identifier.
   #[must_use]
   pub fn binding_name(&self, type_id: TypeId) -> Option<String> {
-    self.binding_names.read().get(&type_id).cloned()
+    self.binding_names.with_read(|binding_names| binding_names.get(&type_id).cloned())
   }
 
   /// Clears cached lookups (used during shutdown).
   pub fn clear_cache(&self) {
-    self.cache.write().clear();
+    self.cache.with_write(|cache| cache.clear());
   }
 }

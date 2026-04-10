@@ -16,23 +16,23 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 struct Start;
 
 struct RecordingSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: SharedLock<Vec<EventStreamEvent>>,
 }
 
 impl RecordingSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
     Self { events }
   }
 }
 
 impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
-    self.events.lock().push(event.clone());
+    self.events.with_lock(|events| events.push(event.clone()));
   }
 }
 
@@ -60,7 +60,7 @@ impl Actor for LoggingActor {
 }
 
 fn main() {
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let props = Props::from_fn(|| LoggingActor);
   let system = ActorSystem::new(&props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
@@ -69,27 +69,28 @@ fn main() {
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
   wait_until(|| {
-    let events = events.lock();
-    let has_info = events
-      .iter()
-      .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "classic actor logging facade"));
-    let has_warning = events.iter().any(|event| {
-      matches!(
-        event,
-        EventStreamEvent::Log(log)
-          if log.message() == "classic diagnostic logging facade"
-            && log.marker_name() == Some("pekkoDeadLetter")
-            && log.marker_properties().get("pekkoMessageClass").map(String::as_str) == Some("Start")
-            && log.mdc().get("iam").map(String::as_str) == Some("example.logging.actor")
-      )
-    });
-    let has_debug = events
-      .iter()
-      .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "classic actor context debug"));
-    let has_receive = events
-      .iter()
-      .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message().contains("received handled message \"Start\"")));
-    has_info && has_warning && has_debug && has_receive
+    events.with_lock(|events| {
+      let has_info = events
+        .iter()
+        .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "classic actor logging facade"));
+      let has_warning = events.iter().any(|event| {
+        matches!(
+          event,
+          EventStreamEvent::Log(log)
+            if log.message() == "classic diagnostic logging facade"
+              && log.marker_name() == Some("pekkoDeadLetter")
+              && log.marker_properties().get("pekkoMessageClass").map(String::as_str) == Some("Start")
+              && log.mdc().get("iam").map(String::as_str) == Some("example.logging.actor")
+        )
+      });
+      let has_debug = events
+        .iter()
+        .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "classic actor context debug"));
+      let has_receive = events
+        .iter()
+        .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message().contains("received handled message \"Start\"")));
+      has_info && has_warning && has_debug && has_receive
+    })
   });
 
   system.terminate().expect("terminate");

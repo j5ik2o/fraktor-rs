@@ -46,26 +46,27 @@ fn timer_demo() -> Behavior<Command> {
         println!("=== Part 1: One-shot timer ===");
         let once_key = TimerKey::new("delayed-hello");
         timers
-          .lock()
-          .start_single_timer(once_key, Command::DelayedHello, Duration::from_millis(50))
+          .with_lock(|timers| timers.start_single_timer(once_key, Command::DelayedHello, Duration::from_millis(50)))
           .expect("schedule once");
 
         // Part 2: 定期実行
         println!("=== Part 2: Periodic timer ===");
         let periodic_key = TimerKey::new("periodic-tick");
         timers
-          .lock()
-          .start_timer_at_fixed_rate(periodic_key, Command::PeriodicTick, Duration::from_millis(40))
+          .with_lock(|timers| {
+            timers.start_timer_at_fixed_rate(periodic_key, Command::PeriodicTick, Duration::from_millis(40))
+          })
           .expect("schedule periodic");
 
         // Part 3: キャンセル
         println!("=== Part 3: Cancellation ===");
         let cancel_key = TimerKey::new("cancel-me");
         timers
-          .lock()
-          .start_single_timer(cancel_key.clone(), Command::ShouldNotArrive, Duration::from_millis(200))
+          .with_lock(|timers| {
+            timers.start_single_timer(cancel_key.clone(), Command::ShouldNotArrive, Duration::from_millis(200))
+          })
           .expect("schedule to cancel");
-        timers.lock().cancel(&cancel_key);
+        timers.with_lock(|timers| timers.cancel(&cancel_key));
         println!("  timer 'cancel-me' をキャンセルしました");
 
         Ok(Behaviors::same())

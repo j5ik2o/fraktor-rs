@@ -18,7 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::{ActorSystem, SpinBlocker},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct Start;
 
@@ -35,7 +35,7 @@ fn terminate_signals_future() {
 
 #[test]
 fn stop_self_propagates_to_children() {
-  let child_states = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let child_states = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let child_states = child_states.clone();
     move || ParentGuardian::new(child_states.clone())
@@ -62,11 +62,11 @@ impl Actor for IdleGuardian {
 }
 
 struct ParentGuardian {
-  child_states: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  child_states: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl ParentGuardian {
-  fn new(child_states: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(child_states: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { child_states }
   }
 }
@@ -84,11 +84,11 @@ impl Actor for ParentGuardian {
 }
 
 struct RecordingChild {
-  states: ArcShared<NoStdMutex<Vec<&'static str>>>,
+  states: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
 }
 
 impl RecordingChild {
-  fn new(states: ArcShared<NoStdMutex<Vec<&'static str>>>) -> Self {
+  fn new(states: ArcShared<SpinSyncMutex<Vec<&'static str>>>) -> Self {
     Self { states }
   }
 }

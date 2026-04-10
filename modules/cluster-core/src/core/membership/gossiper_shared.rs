@@ -2,36 +2,24 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::Gossiper;
 
 /// Shared wrapper enabling interior mutability for [`Gossiper`].
 ///
-/// This adapter wraps a gossiper in a `RuntimeMutex`, allowing callers to
+/// This adapter wraps a gossiper in a `SharedLock`, allowing callers to
 /// access mutable methods via [`SharedAccess`] without requiring a mutable
 /// handle to the wrapper itself.
 pub struct GossiperShared {
-  inner: ArcShared<RuntimeMutex<Box<dyn Gossiper>>>,
+  inner: SharedLock<Box<dyn Gossiper>>,
 }
 
 impl GossiperShared {
   /// Creates a new shared wrapper around the given gossiper.
   #[must_use]
   pub fn new(gossiper: Box<dyn Gossiper>) -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(gossiper)) }
-  }
-
-  /// Creates a wrapper from an existing shared mutex.
-  #[must_use]
-  pub fn from_inner(inner: ArcShared<RuntimeMutex<Box<dyn Gossiper>>>) -> Self {
-    Self { inner }
-  }
-
-  /// Returns a cloned handle to the inner shared mutex.
-  #[must_use]
-  pub fn inner(&self) -> ArcShared<RuntimeMutex<Box<dyn Gossiper>>> {
-    self.inner.clone()
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(gossiper) }
   }
 }
 
@@ -43,12 +31,10 @@ impl Clone for GossiperShared {
 
 impl SharedAccess<Box<dyn Gossiper>> for GossiperShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Gossiper>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(f)
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Gossiper>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_write(f)
   }
 }

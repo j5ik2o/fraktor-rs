@@ -6,7 +6,7 @@ mod tests;
 use alloc::vec::Vec;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -135,7 +135,7 @@ where
         return Behaviors::stopped();
       }
 
-      let routees = ArcShared::new(RuntimeMutex::new(routee_vec));
+      let routees = SharedLock::new_with_driver::<SpinSyncMutex<_>>(routee_vec);
       let routees_for_msg = routees.clone();
       let routees_for_sig = routees;
       let create_request = create_request.clone();
@@ -145,13 +145,10 @@ where
       let force_coord = force_coord_spawn_failure;
 
       Behaviors::receive_message(move |ctx, message: &M| {
-        let routee_snapshot: Vec<TypedActorRef<M>> = {
-          let guard = routees_for_msg.lock();
-          if guard.is_empty() {
-            return Ok(Behaviors::same());
-          }
-          guard.to_vec()
-        };
+        let routee_snapshot = routees_for_msg.with_lock(|routees| routees.clone());
+        if routee_snapshot.is_empty() {
+          return Ok(Behaviors::same());
+        }
 
         if let Some(original_reply_to) = (extract_reply_to)(message) {
           spawn_gather_coordinator(
@@ -182,11 +179,13 @@ where
       })
       .receive_signal(move |_ctx, signal| match signal {
         | BehaviorSignal::Terminated(pid) => {
-          let mut guard = routees_for_sig.lock();
-          if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
-            guard.remove(pos);
-          }
-          if guard.is_empty() {
+          let is_empty = routees_for_sig.with_lock(|guard| {
+            if let Some(pos) = guard.iter().position(|r| r.pid() == *pid) {
+              guard.remove(pos);
+            }
+            guard.is_empty()
+          });
+          if is_empty {
             return Ok(Behaviors::stopped());
           }
           Ok(Behaviors::same())

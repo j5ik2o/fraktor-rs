@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::hint::spin_loop;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::actor::scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -32,7 +32,7 @@ fn topic_should_publish_to_subscribers_and_report_stats() {
   let topic = system.as_untyped().spawn(topic_props.to_untyped()).expect("spawn topic");
   let mut topic = TypedActorRef::<TopicCommand<u32>>::from_untyped(topic.into_actor_ref());
 
-  let received = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {

@@ -6,7 +6,7 @@ mod tests;
 use alloc::string::String;
 use core::any::TypeId;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::typed::message_adapter::{AdapterEntry, AdapterError, AdapterOutcome, AdapterPayload};
 
@@ -15,7 +15,7 @@ pub(crate) struct AdaptMessage<M>
 where
   M: Send + Sync + 'static, {
   entry:   ArcShared<AdapterEntry<M>>,
-  payload: RuntimeMutex<Option<AdapterPayload>>,
+  payload: SharedLock<Option<AdapterPayload>>,
 }
 
 impl<M> AdaptMessage<M>
@@ -29,13 +29,13 @@ where
     F: Fn(U) -> Result<M, AdapterError> + Send + Sync + 'static, {
     let payload = AdapterPayload::new(value);
     let entry = ArcShared::new(AdapterEntry::<M>::new::<U, F>(TypeId::of::<U>(), adapter));
-    let storage = RuntimeMutex::new(Some(payload));
+    let storage = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Some(payload));
     Self { entry, payload: storage }
   }
 
   /// Executes the adapter and returns the outcome.
   pub(crate) fn execute(&self) -> AdapterOutcome<M> {
-    match self.payload.lock().take() {
+    match self.payload.with_lock(|payload| payload.take()) {
       | Some(payload) => self.entry.invoke(payload),
       | None => AdapterOutcome::Failure(AdapterError::Custom(String::from("payload_consumed"))),
     }

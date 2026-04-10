@@ -19,14 +19,14 @@ use fraktor_actor_core_rs::core::{
   },
   typed::{TypedActorSystem, TypedProps, dsl::Behaviors, eventstream::EventStreamCommand},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 struct CollectorSender {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: SharedLock<Vec<EventStreamEvent>>,
 }
 
 impl CollectorSender {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: SharedLock<Vec<EventStreamEvent>>) -> Self {
     Self { events }
   }
 }
@@ -36,7 +36,7 @@ impl ActorRefSender for CollectorSender {
     let Some(event) = message.payload().downcast_ref::<EventStreamEvent>() else {
       return Err(SendError::invalid_payload(message, "expected EventStreamEvent"));
     };
-    self.events.lock().push(event.clone());
+    self.events.with_lock(|events| events.push(event.clone()));
     Ok(SendOutcome::Delivered)
   }
 }
@@ -46,7 +46,7 @@ fn main() {
   let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
   let system = TypedActorSystem::<u32>::new(&guardian_props, tick_driver).expect("system");
 
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
   let collector = ActorRef::new(Pid::new(900, 0), CollectorSender::new(events.clone()));
 
   {
@@ -67,12 +67,11 @@ fn main() {
     let mut event_stream = system.event_stream();
     event_stream.try_tell(EventStreamCommand::Publish(event)).expect("publish command should be accepted");
   }
-  assert!(
+  assert!(events.with_lock(|events| {
     events
-      .lock()
       .iter()
-      .any(|event| { matches!(event, EventStreamEvent::Log(log) if log.message() == "typed-event-stream-example") })
-  );
+      .any(|event| matches!(event, EventStreamEvent::Log(log) if log.message() == "typed-event-stream-example"))
+  }));
 
   {
     let mut event_stream = system.event_stream();
@@ -80,7 +79,7 @@ fn main() {
       .try_tell(EventStreamCommand::Unsubscribe { subscriber: collector.clone() })
       .expect("unsubscribe command should be accepted");
   }
-  let baseline_after_unsubscribe = events.lock().len();
+  let baseline_after_unsubscribe = events.with_lock(|events| events.len());
   let after_unsubscribe = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
     "typed-event-stream-after-unsubscribe".into(),
@@ -94,7 +93,11 @@ fn main() {
       .try_tell(EventStreamCommand::Publish(after_unsubscribe))
       .expect("publish after unsubscribe should be accepted");
   }
-  assert_eq!(events.lock().len(), baseline_after_unsubscribe, "collector should not receive events after unsubscribe");
+  assert_eq!(
+    events.with_lock(|events| events.len()),
+    baseline_after_unsubscribe,
+    "collector should not receive events after unsubscribe",
+  );
 
   let mut ignore_ref = system.ignore_ref::<u32>();
   ignore_ref.try_tell(7_u32).expect("ignore_ref should accept messages");

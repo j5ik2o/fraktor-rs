@@ -8,7 +8,7 @@ mod tests;
 
 use alloc::collections::BinaryHeap;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue, stable_priority_entry::StablePriorityEntry};
 use crate::core::kernel::{
@@ -29,7 +29,7 @@ struct Inner {
 ///
 /// Inspired by Pekko's `UnboundedStablePriorityMailbox`.
 pub struct UnboundedStablePriorityMessageQueue {
-  inner:     RuntimeMutex<Inner>,
+  inner:     SharedLock<Inner>,
   generator: ArcShared<dyn MessagePriorityGenerator>,
 }
 
@@ -38,7 +38,10 @@ impl UnboundedStablePriorityMessageQueue {
   #[must_use]
   pub fn new(generator: ArcShared<dyn MessagePriorityGenerator>) -> Self {
     Self {
-      inner: RuntimeMutex::new(Inner { heap: BinaryHeap::with_capacity(DEFAULT_CAPACITY), sequence: 0 }),
+      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner {
+        heap:     BinaryHeap::with_capacity(DEFAULT_CAPACITY),
+        sequence: 0,
+      }),
       generator,
     }
   }
@@ -47,25 +50,23 @@ impl UnboundedStablePriorityMessageQueue {
 impl MessageQueue for UnboundedStablePriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
-    let mut guard = self.inner.lock();
-    let sequence = guard.sequence;
-    guard.sequence += 1;
-    guard.heap.push(StablePriorityEntry { priority, sequence, envelope });
+    self.inner.with_write(|inner| {
+      let sequence = inner.sequence;
+      inner.sequence += 1;
+      inner.heap.push(StablePriorityEntry { priority, sequence, envelope });
+    });
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    let mut guard = self.inner.lock();
-    guard.heap.pop().map(|entry| entry.envelope)
+    self.inner.with_write(|inner| inner.heap.pop().map(|entry| entry.envelope))
   }
 
   fn number_of_messages(&self) -> usize {
-    let guard = self.inner.lock();
-    guard.heap.len()
+    self.inner.with_read(|inner| inner.heap.len())
   }
 
   fn clean_up(&self) {
-    let mut guard = self.inner.lock();
-    guard.heap.clear();
+    self.inner.with_write(|inner| inner.heap.clear());
   }
 }

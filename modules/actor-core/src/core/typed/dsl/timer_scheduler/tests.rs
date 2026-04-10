@@ -1,6 +1,6 @@
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock};
+use fraktor_utils_core_rs::core::sync::{SharedRwLock, SpinSyncRwLock};
 
 use crate::core::{
   kernel::actor::{
@@ -17,8 +17,7 @@ use crate::core::{
 fn build_scheduler_pair() -> (TypedSchedulerShared, TypedActorRef<u32>) {
   let config = SchedulerConfig::default();
   let scheduler = Scheduler::new(config);
-  let rwlock = RuntimeRwLock::new(scheduler);
-  let shared = SchedulerShared::new(ArcShared::new(rwlock));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
   let typed_shared = TypedSchedulerShared::new(shared);
   let receiver = TypedActorRef::<u32>::from_untyped(ActorRef::null());
   (typed_shared, receiver)

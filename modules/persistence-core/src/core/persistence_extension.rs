@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::{
   journal::Journal, journal_actor::JournalActor, persistence_error::PersistenceError, snapshot_actor::SnapshotActor,
@@ -81,7 +81,7 @@ where
 }
 
 struct JournalActorWrapper<J: Journal> {
-  inner: RuntimeMutex<JournalActor<J>>,
+  inner: SharedLock<JournalActor<J>>,
 }
 
 impl<J: Journal> JournalActorWrapper<J>
@@ -91,8 +91,8 @@ where
   for<'a> J::DeleteFuture<'a>: Send + 'static,
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
-  const fn new(journal: J) -> Self {
-    Self { inner: RuntimeMutex::new(JournalActor::new(journal)) }
+  fn new(journal: J) -> Self {
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(JournalActor::new(journal)) }
   }
 }
 
@@ -104,12 +104,12 @@ where
   for<'a> J::HighestSeqNrFuture<'a>: Send + 'static,
 {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    self.inner.lock().receive(ctx, message)
+    self.inner.with_lock(|inner| inner.receive(ctx, message))
   }
 }
 
 struct SnapshotActorWrapper<S: SnapshotStore> {
-  inner: RuntimeMutex<SnapshotActor<S>>,
+  inner: SharedLock<SnapshotActor<S>>,
 }
 
 impl<S: SnapshotStore> SnapshotActorWrapper<S>
@@ -119,8 +119,8 @@ where
   for<'a> S::DeleteOneFuture<'a>: Send + 'static,
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
-  const fn new(snapshot_store: S) -> Self {
-    Self { inner: RuntimeMutex::new(SnapshotActor::new(snapshot_store)) }
+  fn new(snapshot_store: S) -> Self {
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(SnapshotActor::new(snapshot_store)) }
   }
 }
 
@@ -132,6 +132,6 @@ where
   for<'a> S::DeleteManyFuture<'a>: Send + 'static,
 {
   fn receive(&mut self, ctx: &mut ActorContext<'_>, message: AnyMessageView<'_>) -> Result<(), ActorError> {
-    self.inner.lock().receive(ctx, message)
+    self.inner.with_lock(|inner| inner.receive(ctx, message))
   }
 }

@@ -204,7 +204,7 @@ impl ClusterApi {
         let subscription_id = event_stream.with_write(|stream| stream.subscribe_no_replay(filtered));
         let initial_event = {
           let core = self.extension.core_shared();
-          let (state, observed_at) = core.lock().current_cluster_state_snapshot();
+          let (state, observed_at) = core.with_lock(|core| core.current_cluster_state_snapshot());
           ClusterEvent::CurrentClusterState { state, observed_at }
         };
         let payload = AnyMessage::new(initial_event);
@@ -248,19 +248,20 @@ impl ClusterApi {
     let now = self.current_time_secs();
     let (pid_result, placement_events) = {
       let core = self.extension.core_shared();
-      let mut guard = core.lock();
-      if guard.mode().is_none() {
-        return Err(ClusterResolveError::ClusterNotStarted);
-      }
-      if !guard.is_kind_registered(identity.kind()) {
-        return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
-      }
-      let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
-        | LookupError::Pending => ClusterResolveError::LookupPending,
-        | _ => ClusterResolveError::LookupFailed,
-      });
-      let events = guard.drain_placement_events();
-      (resolution.map(|value| value.pid), events)
+      core.with_lock(|guard| {
+        if guard.mode().is_none() {
+          return Err(ClusterResolveError::ClusterNotStarted);
+        }
+        if !guard.is_kind_registered(identity.kind()) {
+          return Err(ClusterResolveError::KindNotRegistered { kind: identity.kind().to_string() });
+        }
+        let resolution = guard.resolve_pid(&key, now).map_err(|error| match error {
+          | LookupError::Pending => ClusterResolveError::LookupPending,
+          | _ => ClusterResolveError::LookupFailed,
+        });
+        let events = guard.drain_placement_events();
+        Ok((resolution.map(|value| value.pid), events))
+      })?
     };
     self.publish_activation_events(placement_events);
     let pid = pid_result?;

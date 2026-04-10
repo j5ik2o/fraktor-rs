@@ -6,7 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;
@@ -17,9 +17,9 @@ pub enum TickDriverConfig {
   /// Runtime-wired configuration built from a driver and executor pump.
   Runtime {
     /// Driver source that publishes ticks into the core feed.
-    driver:        RuntimeMutex<Box<dyn TickDriver>>,
+    driver:        SharedLock<Box<dyn TickDriver>>,
     /// Runtime pump that drives the core scheduler executor.
-    executor_pump: RuntimeMutex<Box<dyn TickExecutorPump>>,
+    executor_pump: SharedLock<Box<dyn TickExecutorPump>>,
   },
   /// Manual test driver (test-only).
   #[cfg(any(test, feature = "test-support"))]
@@ -30,7 +30,10 @@ impl TickDriverConfig {
   /// Creates a runtime-wired tick driver configuration.
   #[must_use]
   pub fn runtime(driver: Box<dyn TickDriver>, executor_pump: Box<dyn TickExecutorPump>) -> Self {
-    Self::Runtime { driver: RuntimeMutex::new(driver), executor_pump: RuntimeMutex::new(executor_pump) }
+    Self::Runtime {
+      driver:        SharedLock::new_with_driver::<SpinSyncMutex<_>>(driver),
+      executor_pump: SharedLock::new_with_driver::<SpinSyncMutex<_>>(executor_pump),
+    }
   }
 
   /// Creates a manual test driver configuration.

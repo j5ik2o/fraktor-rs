@@ -1,7 +1,7 @@
 use alloc::{string::String, vec::Vec};
 use core::{hint::spin_loop, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -39,11 +39,11 @@ fn wait_until(mut condition: impl FnMut() -> bool) {
 }
 
 struct RecordingLogSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingLogSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -62,8 +62,8 @@ fn delegate_returns_delegatee_when_behavior_reports_same() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let outer_count = ArcShared::new(NoStdMutex::new(0_usize));
-  let inner_count = ArcShared::new(NoStdMutex::new(0_usize));
+  let outer_count = ArcShared::new(SpinSyncMutex::new(0_usize));
+  let inner_count = ArcShared::new(SpinSyncMutex::new(0_usize));
   let actor_props = TypedProps::<u32>::from_behavior_factory({
     let outer_count = outer_count.clone();
     let inner_count = inner_count.clone();
@@ -136,7 +136,7 @@ impl From<AnonymousRestartWrappedChildMsg> for AnonymousRestartChildMsg {
 }
 
 struct AnonymousSpawnCounterBehavior {
-  count: ArcShared<NoStdMutex<u32>>,
+  count: ArcShared<SpinSyncMutex<u32>>,
 }
 
 impl AbstractBehavior<u32> for AnonymousSpawnCounterBehavior {
@@ -167,9 +167,9 @@ fn ask_sends_request_and_delivers_adapted_response() {
     TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
       .expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(0_u32));
-  let responder_ref_slot: ArcShared<NoStdMutex<Option<TypedActorRef<ResponderMsg>>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let received = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
 
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
@@ -246,9 +246,9 @@ fn ask_with_status_sends_request_and_delivers_adapted_success() {
     TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
       .expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(0_u32));
-  let responder_ref_slot: ArcShared<NoStdMutex<Option<TypedActorRef<ResponderMsg>>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let received = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
 
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
@@ -320,9 +320,9 @@ fn ask_timeout_delivers_error_to_actor() {
   let system =
     TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(manual.clone())).expect("system");
 
-  let got_failure = ArcShared::new(NoStdMutex::new(false));
-  let responder_ref_slot: ArcShared<NoStdMutex<Option<TypedActorRef<ResponderMsg>>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let got_failure = ArcShared::new(SpinSyncMutex::new(false));
+  let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
 
   // Responder that never replies
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
@@ -387,9 +387,9 @@ fn ask_concurrent_same_response_type_delivers_both() {
     TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
       .expect("system");
 
-  let total_received = ArcShared::new(NoStdMutex::new(0_u32));
-  let responder_ref_slot: ArcShared<NoStdMutex<Option<TypedActorRef<ResponderMsg>>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let total_received = ArcShared::new(SpinSyncMutex::new(0_u32));
+  let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
 
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
@@ -482,7 +482,7 @@ fn forward_preserves_sender_through_typed_context() {
   };
 
   struct CapturingSender {
-    inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+    inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
   }
 
   impl ActorRefSender for CapturingSender {
@@ -492,7 +492,7 @@ fn forward_preserves_sender_through_typed_context() {
     }
   }
 
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let target_untyped = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
   let mut target = TypedActorRef::<u32>::from_untyped(target_untyped);
 
@@ -551,9 +551,9 @@ fn ask_with_status_error_preserves_failure_reason() {
     TypedActorSystem::<RequesterMsg>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new()))
       .expect("system");
 
-  let captured_reason = ArcShared::new(NoStdMutex::new(String::new()));
-  let responder_ref_slot: ArcShared<NoStdMutex<Option<TypedActorRef<ResponderMsg>>>> =
-    ArcShared::new(NoStdMutex::new(None));
+  let captured_reason = ArcShared::new(SpinSyncMutex::new(String::new()));
+  let responder_ref_slot: ArcShared<SpinSyncMutex<Option<TypedActorRef<ResponderMsg>>>> =
+    ArcShared::new(SpinSyncMutex::new(None));
 
   let responder_props = TypedProps::<ResponderMsg>::from_behavior_factory(|| {
     Behaviors::receive_message(|_ctx, msg: &ResponderMsg| match msg {
@@ -705,11 +705,11 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   };
 
   struct EventCollector {
-    events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+    events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
   }
 
   impl EventCollector {
-    fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+    fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
       Self { events }
     }
   }
@@ -734,7 +734,7 @@ fn typed_context_system_reuses_shared_event_stream_endpoint() {
   system.state().register_cell(cell);
   let mut context = ActorContext::new(&system, pid);
   let typed_ctx = TypedActorContext::<u32>::from_untyped(&mut context, None);
-  let recorded_events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let recorded_events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let collector = ActorRef::new(Pid::new(903, 0), EventCollector::new(recorded_events.clone()));
   let first = EventStreamEvent::Log(LogEvent::new(
     LogLevel::Info,
@@ -799,7 +799,7 @@ fn spawn_anonymous_creates_child_actor_that_receives_messages() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(0_u32));
+  let received = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let parent_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
@@ -838,7 +838,7 @@ fn spawn_anonymous_child_has_no_explicit_name() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let child_pid_slot: ArcShared<NoStdMutex<Option<Pid>>> = ArcShared::new(NoStdMutex::new(None));
+  let child_pid_slot: ArcShared<SpinSyncMutex<Option<Pid>>> = ArcShared::new(SpinSyncMutex::new(None));
 
   let parent_props = TypedProps::<u32>::from_behavior_factory({
     let child_pid_slot = child_pid_slot.clone();
@@ -875,7 +875,7 @@ fn spawn_anonymous_multiple_children_are_independent() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let count = ArcShared::new(NoStdMutex::new(0_u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let parent_props = TypedProps::<u32>::from_behavior_factory({
     let count = count.clone();
@@ -925,7 +925,7 @@ fn spawn_anonymous_can_spawn_same_from_abstract_behavior_twice() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let count = ArcShared::new(NoStdMutex::new(0_u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0_u32));
 
   let parent_props = TypedProps::<u32>::from_behavior_factory({
     let count = count.clone();
@@ -966,7 +966,7 @@ fn spawn_anonymous_child_restarts_under_supervision() {
   )
   .expect("system");
 
-  let start_count = ArcShared::new(NoStdMutex::new(0_usize));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0_usize));
   let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
     SupervisorDirective::Restart
   });
@@ -1020,7 +1020,7 @@ fn spawn_anonymous_narrowed_child_restarts_under_supervision() {
   )
   .expect("system");
 
-  let start_count = ArcShared::new(NoStdMutex::new(0_usize));
+  let start_count = ArcShared::new(SpinSyncMutex::new(0_usize));
   let restart_strategy = SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 5, Duration::from_secs(1), |_| {
     SupervisorDirective::Restart
   });
@@ -1075,7 +1075,7 @@ fn spawn_anonymous_narrowed_child_restarts_under_supervision() {
 #[test]
 fn typed_context_set_logger_name_delegates_to_untyped() {
   // Given: a typed actor system with a behavior that sets logger_name
-  let observed_name = ArcShared::new(NoStdMutex::new(None::<String>));
+  let observed_name = ArcShared::new(SpinSyncMutex::new(None::<String>));
   let observed_name_clone = observed_name.clone();
 
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -1110,7 +1110,7 @@ fn typed_context_set_logger_name_delegates_to_untyped() {
 #[test]
 fn typed_context_logger_name_initially_none() {
   // Given: a typed actor system with a behavior that reads logger_name
-  let observed_name = ArcShared::new(NoStdMutex::new(None::<Option<String>>));
+  let observed_name = ArcShared::new(SpinSyncMutex::new(None::<Option<String>>));
   let observed_name_clone = observed_name.clone();
 
   let guardian_props = TypedProps::<u32>::from_behavior_factory(Behaviors::ignore);
@@ -1151,7 +1151,7 @@ fn typed_pipe_to_delivers_ok_result_to_external_target() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {
@@ -1166,7 +1166,7 @@ fn typed_pipe_to_delivers_ok_result_to_external_target() {
   let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
 
   // Create a sender actor that calls pipe_to
-  let sender_done = ArcShared::new(NoStdMutex::new(false));
+  let sender_done = ArcShared::new(SpinSyncMutex::new(false));
   let sender_props = TypedProps::<u32>::from_behavior_factory({
     let receiver_ref = receiver_ref.clone();
     let sender_done = sender_done.clone();
@@ -1202,7 +1202,7 @@ fn typed_pipe_to_delivers_err_result_to_external_target() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {
@@ -1248,7 +1248,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {
@@ -1262,7 +1262,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_ok_returns_adapter_error() {
   let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
   let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
 
-  let logs = ArcShared::new(NoStdMutex::new(Vec::<EventStreamEvent>::new()));
+  let logs = ArcShared::new(SpinSyncMutex::new(Vec::<EventStreamEvent>::new()));
   let subscriber = subscriber_handle(RecordingLogSubscriber::new(logs.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -1309,7 +1309,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_err_returns_adapter_error() {
   let system =
     TypedActorSystem::<u32>::new(&guardian_props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
 
-  let received = ArcShared::new(NoStdMutex::new(Vec::<u32>::new()));
+  let received = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let receiver_props = TypedProps::<u32>::from_behavior_factory({
     let received = received.clone();
     move || {
@@ -1323,7 +1323,7 @@ fn typed_pipe_to_drops_message_and_logs_when_map_err_returns_adapter_error() {
   let receiver_child = system.as_untyped().spawn(receiver_props.to_untyped()).expect("spawn receiver");
   let receiver_ref = TypedActorRef::<u32>::from_untyped(receiver_child.into_actor_ref());
 
-  let logs = ArcShared::new(NoStdMutex::new(Vec::<EventStreamEvent>::new()));
+  let logs = ArcShared::new(SpinSyncMutex::new(Vec::<EventStreamEvent>::new()));
   let subscriber = subscriber_handle(RecordingLogSubscriber::new(logs.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

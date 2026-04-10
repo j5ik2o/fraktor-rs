@@ -5,7 +5,7 @@ use std::sync::{
   mpsc::{Receiver, Sender},
 };
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -31,9 +31,9 @@ enum ScriptedEnqueue {
 }
 
 struct ScriptedMessageQueue {
-  messages:  RuntimeMutex<VecDeque<Envelope>>,
-  outcomes:  RuntimeMutex<VecDeque<ScriptedEnqueue>>,
-  full_hook: RuntimeMutex<Option<ScriptedFullHook>>,
+  messages:  SharedLock<VecDeque<Envelope>>,
+  outcomes:  SharedLock<VecDeque<ScriptedEnqueue>>,
+  full_hook: SharedLock<Option<ScriptedFullHook>>,
 }
 
 struct ScriptedFullHook {
@@ -54,23 +54,23 @@ impl ScriptedMessageQueue {
 
   fn new_with_full_hook(outcomes: VecDeque<ScriptedEnqueue>, full_hook: Option<ScriptedFullHook>) -> Self {
     Self {
-      messages:  RuntimeMutex::new(VecDeque::new()),
-      outcomes:  RuntimeMutex::new(outcomes),
-      full_hook: RuntimeMutex::new(full_hook),
+      messages:  SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()),
+      outcomes:  SharedLock::new_with_driver::<SpinSyncMutex<_>>(outcomes),
+      full_hook: SharedLock::new_with_driver::<SpinSyncMutex<_>>(full_hook),
     }
   }
 }
 
 impl MessageQueue for ScriptedMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    let outcome = self.outcomes.lock().pop_front().expect("enqueue outcome must be configured");
+    let outcome = self.outcomes.with_lock(|outcomes| outcomes.pop_front()).expect("enqueue outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
-        self.messages.lock().push_back(envelope);
+        self.messages.with_lock(|messages| messages.push_back(envelope));
         Ok(())
       },
       | ScriptedEnqueue::Full => {
-        if let Some(hook) = self.full_hook.lock().take() {
+        if let Some(hook) = self.full_hook.with_lock(|full_hook| full_hook.take()) {
           hook.before_error_tx.send(()).expect("full hook notification must be delivered");
           hook.resume_rx.recv().expect("full hook resume signal must be delivered");
         }
@@ -81,23 +81,23 @@ impl MessageQueue for ScriptedMessageQueue {
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.messages.lock().pop_front()
+    self.messages.with_lock(|messages| messages.pop_front())
   }
 
   fn number_of_messages(&self) -> usize {
-    self.messages.lock().len()
+    self.messages.with_lock(|messages| messages.len())
   }
 
   fn clean_up(&self) {
-    self.messages.lock().clear();
+    self.messages.with_lock(|messages| messages.clear());
   }
 }
 
 struct ScriptedDequeMessageQueue {
-  messages:                RuntimeMutex<VecDeque<Envelope>>,
-  enqueue_outcomes:        RuntimeMutex<VecDeque<ScriptedEnqueue>>,
-  enqueue_first_outcomes:  RuntimeMutex<VecDeque<ScriptedEnqueue>>,
-  enqueue_first_full_hook: RuntimeMutex<Option<ScriptedFullHook>>,
+  messages:                SharedLock<VecDeque<Envelope>>,
+  enqueue_outcomes:        SharedLock<VecDeque<ScriptedEnqueue>>,
+  enqueue_first_outcomes:  SharedLock<VecDeque<ScriptedEnqueue>>,
+  enqueue_first_full_hook: SharedLock<Option<ScriptedFullHook>>,
 }
 
 impl ScriptedDequeMessageQueue {
@@ -111,20 +111,23 @@ impl ScriptedDequeMessageQueue {
     enqueue_first_full_hook: Option<ScriptedFullHook>,
   ) -> Self {
     Self {
-      messages:                RuntimeMutex::new(VecDeque::new()),
-      enqueue_outcomes:        RuntimeMutex::new(enqueue_outcomes),
-      enqueue_first_outcomes:  RuntimeMutex::new(enqueue_first_outcomes),
-      enqueue_first_full_hook: RuntimeMutex::new(enqueue_first_full_hook),
+      messages:                SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()),
+      enqueue_outcomes:        SharedLock::new_with_driver::<SpinSyncMutex<_>>(enqueue_outcomes),
+      enqueue_first_outcomes:  SharedLock::new_with_driver::<SpinSyncMutex<_>>(enqueue_first_outcomes),
+      enqueue_first_full_hook: SharedLock::new_with_driver::<SpinSyncMutex<_>>(enqueue_first_full_hook),
     }
   }
 }
 
 impl MessageQueue for ScriptedDequeMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    let outcome = self.enqueue_outcomes.lock().pop_front().expect("enqueue outcome must be configured");
+    let outcome = self
+      .enqueue_outcomes
+      .with_lock(|enqueue_outcomes| enqueue_outcomes.pop_front())
+      .expect("enqueue outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
-        self.messages.lock().push_back(envelope);
+        self.messages.with_lock(|messages| messages.push_back(envelope));
         Ok(())
       },
       | ScriptedEnqueue::Full => Err(SendError::full(envelope.into_payload())),
@@ -133,15 +136,15 @@ impl MessageQueue for ScriptedDequeMessageQueue {
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.messages.lock().pop_front()
+    self.messages.with_lock(|messages| messages.pop_front())
   }
 
   fn number_of_messages(&self) -> usize {
-    self.messages.lock().len()
+    self.messages.with_lock(|messages| messages.len())
   }
 
   fn clean_up(&self) {
-    self.messages.lock().clear();
+    self.messages.with_lock(|messages| messages.clear());
   }
 
   fn as_deque(&self) -> Option<&dyn DequeMessageQueue> {
@@ -151,14 +154,17 @@ impl MessageQueue for ScriptedDequeMessageQueue {
 
 impl DequeMessageQueue for ScriptedDequeMessageQueue {
   fn enqueue_first(&self, envelope: Envelope) -> Result<(), SendError> {
-    let outcome = self.enqueue_first_outcomes.lock().pop_front().expect("enqueue_first outcome must be configured");
+    let outcome = self
+      .enqueue_first_outcomes
+      .with_lock(|enqueue_first_outcomes| enqueue_first_outcomes.pop_front())
+      .expect("enqueue_first outcome must be configured");
     match outcome {
       | ScriptedEnqueue::Enqueued => {
-        self.messages.lock().push_front(envelope);
+        self.messages.with_lock(|messages| messages.push_front(envelope));
         Ok(())
       },
       | ScriptedEnqueue::Full => {
-        if let Some(hook) = self.enqueue_first_full_hook.lock().take() {
+        if let Some(hook) = self.enqueue_first_full_hook.with_lock(|full_hook| full_hook.take()) {
           hook.before_error_tx.send(()).expect("full hook notification must be delivered");
           hook.resume_rx.recv().expect("full hook resume signal must be delivered");
         }
@@ -177,7 +183,7 @@ enum BlockingInvocationKind {
 struct BlockingInvoker {
   block_kind:         BlockingInvocationKind,
   entered_tx:         Sender<()>,
-  resume_rx:          RuntimeMutex<Receiver<()>>,
+  resume_rx:          SharedLock<Receiver<()>>,
   user_invocations:   Arc<AtomicUsize>,
   system_invocations: Arc<AtomicUsize>,
 }
@@ -190,12 +196,18 @@ impl BlockingInvoker {
     user_invocations: Arc<AtomicUsize>,
     system_invocations: Arc<AtomicUsize>,
   ) -> Self {
-    Self { block_kind, entered_tx, resume_rx: RuntimeMutex::new(resume_rx), user_invocations, system_invocations }
+    Self {
+      block_kind,
+      entered_tx,
+      resume_rx: SharedLock::new_with_driver::<SpinSyncMutex<_>>(resume_rx),
+      user_invocations,
+      system_invocations,
+    }
   }
 
   fn block_once(&self) {
     self.entered_tx.send(()).expect("blocking invoker should signal entry");
-    self.resume_rx.lock().recv().expect("blocking invoker should receive resume");
+    self.resume_rx.with_lock(|resume_rx| resume_rx.recv().expect("blocking invoker should receive resume"));
   }
 }
 
@@ -218,33 +230,33 @@ impl MessageInvoker for BlockingInvoker {
 }
 
 struct CleanupCountingQueue {
-  messages:       RuntimeMutex<VecDeque<Envelope>>,
+  messages:       SharedLock<VecDeque<Envelope>>,
   clean_up_calls: Arc<AtomicUsize>,
 }
 
 impl CleanupCountingQueue {
   fn new(clean_up_calls: Arc<AtomicUsize>) -> Self {
-    Self { messages: RuntimeMutex::new(VecDeque::new()), clean_up_calls }
+    Self { messages: SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()), clean_up_calls }
   }
 }
 
 impl MessageQueue for CleanupCountingQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    self.messages.lock().push_back(envelope);
+    self.messages.with_lock(|messages| messages.push_back(envelope));
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.messages.lock().pop_front()
+    self.messages.with_lock(|messages| messages.pop_front())
   }
 
   fn number_of_messages(&self) -> usize {
-    self.messages.lock().len()
+    self.messages.with_lock(|messages| messages.len())
   }
 
   fn clean_up(&self) {
     self.clean_up_calls.fetch_add(1, Ordering::SeqCst);
-    self.messages.lock().clear();
+    self.messages.with_lock(|messages| messages.clear());
   }
 }
 

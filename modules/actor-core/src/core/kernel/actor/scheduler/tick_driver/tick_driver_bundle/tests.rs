@@ -6,7 +6,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverId,
@@ -34,7 +34,7 @@ impl TickDriverControl for RecordingControl {
 
 fn runtime_bundle(shutdown_calls: ArcShared<AtomicUsize>) -> TickDriverBundle {
   let control: Box<dyn TickDriverControl> = Box::new(RecordingControl::new(shutdown_calls));
-  let control = ArcShared::new(RuntimeMutex::new(control));
+  let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
   let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
   let feed = TickFeed::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
   let metadata = AutoDriverMetadata {

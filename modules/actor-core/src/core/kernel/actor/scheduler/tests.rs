@@ -14,7 +14,7 @@ use core::{
 
 use ahash::RandomState;
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, NoStdMutex, RuntimeRwLock, SharedAccess},
+  sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncMutex, SpinSyncRwLock},
   time::{SchedulerCapacityProfile, SchedulerTickHandle},
   timing::delay::{DelayFuture, DelayProvider},
 };
@@ -63,17 +63,17 @@ fn nz(value: u32) -> NonZeroU32 {
 
 #[derive(Clone)]
 struct RecordingTask {
-  log:        ArcShared<NoStdMutex<Vec<&'static str>>>,
+  log:        ArcShared<SpinSyncMutex<Vec<&'static str>>>,
   label:      &'static str,
   should_err: bool,
 }
 
 impl RecordingTask {
-  fn succeed(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> Self {
+  fn succeed(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>, label: &'static str) -> Self {
     Self { log, label, should_err: false }
   }
 
-  fn fail(log: ArcShared<NoStdMutex<Vec<&'static str>>>, label: &'static str) -> Self {
+  fn fail(log: ArcShared<SpinSyncMutex<Vec<&'static str>>>, label: &'static str) -> Self {
     Self { log, label, should_err: true }
   }
 }
@@ -89,8 +89,7 @@ type SharedScheduler = SchedulerShared;
 
 fn shared_scheduler_state() -> (SharedScheduler, SchedulerBackedDelayProvider) {
   let scheduler = Scheduler::new(SchedulerConfig::default());
-  let rwlock = RuntimeRwLock::new(scheduler);
-  let shared = SchedulerShared::new(ArcShared::new(rwlock));
+  let shared = SchedulerShared::new(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(scheduler));
   let provider = SchedulerBackedDelayProvider::new(shared.clone());
   (shared, provider)
 }
@@ -271,7 +270,7 @@ fn schedule_once_records_sender_metadata() {
 #[test]
 fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRef::new(Pid::new(2, 0), sender);
   scheduler
@@ -299,7 +298,7 @@ fn schedule_with_fixed_delay_rejects_zero_initial_delay() {
 #[test]
 fn schedule_once_fn_executes_runnable() {
   let mut scheduler = build_scheduler();
-  let counter = ArcShared::new(NoStdMutex::new(0usize));
+  let counter = ArcShared::new(SpinSyncMutex::new(0usize));
   let captured = counter.clone();
   schedule_runnable_command(&mut scheduler, Duration::from_millis(1), move |batch: &ExecutionBatch| {
     assert_eq!(batch.runs().get(), 1);
@@ -314,7 +313,7 @@ fn schedule_once_fn_executes_runnable() {
 #[test]
 fn run_for_test_executes_send_message() {
   let mut scheduler = build_scheduler();
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRef::new(Pid::new(1, 0), sender);
   schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessage::new(7u32), None)
@@ -326,7 +325,7 @@ fn run_for_test_executes_send_message() {
 #[test]
 fn schedule_once_fn_records_execution_batch() {
   let mut scheduler = build_scheduler();
-  let observed = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let capture = observed.clone();
   schedule_runnable_command(&mut scheduler, Duration::from_millis(1), move |batch: &ExecutionBatch| {
     capture.lock().push((batch.runs().get(), batch.missed_runs()));
@@ -341,7 +340,7 @@ fn schedule_once_fn_records_execution_batch() {
 #[test]
 fn runner_manual_processes_ticks_in_order() {
   let mut scheduler = build_scheduler();
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRef::new(Pid::new(7, 0), sender);
 
@@ -396,7 +395,7 @@ fn handle_reports_cancelled_state() {
 #[test]
 fn cancelled_job_is_not_delivered() {
   let mut scheduler = build_scheduler();
-  let inbox = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
   let receiver = ActorRef::new(Pid::new(3, 0), sender);
   let handle =
@@ -434,7 +433,7 @@ fn fixed_rate_runnable_reports_missed_runs() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_backlog_limit(10);
   let mut scheduler = Scheduler::new(config);
-  let batches = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let batches = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let capture = batches.clone();
   let runnable: ArcShared<dyn SchedulerRunnable> = ArcShared::new(move |batch: &ExecutionBatch| {
     capture.lock().push((batch.mode(), batch.runs().get(), batch.missed_runs()));
@@ -951,7 +950,7 @@ fn deterministic_log_records_schedule_fire_cancel() {
 #[test]
 fn shutdown_executes_task_run_on_close_in_priority_order() {
   let mut scheduler = build_scheduler();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   scheduler.register_on_close(RecordingTask::succeed(log.clone(), "user"), TaskRunPriority::User).expect("user");
   scheduler
     .register_on_close(RecordingTask::succeed(log.clone(), "runtime"), TaskRunPriority::Runtime)
@@ -972,7 +971,7 @@ fn task_run_capacity_limits_registrations() {
   let profile = SchedulerCapacityProfile::standard();
   let config = SchedulerConfig::new(Duration::from_millis(1), profile).with_task_run_capacity(1);
   let mut scheduler = Scheduler::new(config);
-  let task = RecordingTask::succeed(ArcShared::new(NoStdMutex::new(Vec::new())), "only");
+  let task = RecordingTask::succeed(ArcShared::new(SpinSyncMutex::new(Vec::new())), "only");
   scheduler.register_on_close(task.clone(), TaskRunPriority::User).expect("first");
   let err = scheduler.register_on_close(task, TaskRunPriority::User).expect_err("capacity");
   assert_eq!(err, SchedulerError::TaskRunCapacityExceeded);
@@ -981,7 +980,7 @@ fn task_run_capacity_limits_registrations() {
 #[test]
 fn shutdown_reports_failed_tasks() {
   let mut scheduler = build_scheduler();
-  let log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   scheduler.register_on_close(RecordingTask::fail(log.clone(), "boom"), TaskRunPriority::Runtime).expect("fail");
   let summary = scheduler.shutdown();
   assert_eq!(summary.executed_tasks, 0);
@@ -990,7 +989,7 @@ fn shutdown_reports_failed_tasks() {
 }
 
 struct RecordingSender {
-  inbox: ArcShared<NoStdMutex<Vec<AnyMessage>>>,
+  inbox: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
 }
 
 impl ActorRefSender for RecordingSender {

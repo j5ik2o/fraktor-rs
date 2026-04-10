@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -208,7 +208,8 @@ impl ProducerController {
         },
       };
 
-      let state = ArcShared::new(RuntimeMutex::new(ProducerControllerState::<A>::new(producer_id.clone())));
+      let state =
+        SharedLock::new_with_driver::<SpinSyncMutex<_>>(ProducerControllerState::<A>::new(producer_id.clone()));
       let load_state_adapter = if durable_queue_behavior.is_some() {
         match ctx.message_adapter(|loaded: DurableProducerQueueState<A>| {
           Ok(ProducerControllerCommand::durable_queue_loaded(loaded))
@@ -249,13 +250,12 @@ impl ProducerController {
       } else {
         None
       };
-      {
-        let mut s = state.lock();
+      state.with_lock(|s| {
         s.send_adapter = Some(send_adapter);
         s.store_ack_adapter = store_ack_adapter;
         s.awaiting_load = durable_queue.is_some();
         s.durable_queue = durable_queue.clone();
-      }
+      });
       if let (Some(mut durable_queue), Some(load_state_adapter)) =
         (durable_queue.as_ref().cloned(), load_state_adapter.as_ref().cloned())
         && let Err(error) = durable_queue.try_tell(DurableProducerQueueCommand::load_state(load_state_adapter))
@@ -263,7 +263,7 @@ impl ProducerController {
         let message = alloc::format!("ProducerController failed to request durable queue state: {:?}", error);
         ctx.system().emit_log(LogLevel::Error, message, Some(ctx.pid()), None);
         return Behaviors::stopped();
-      } else if state.lock().awaiting_load
+      } else if state.with_lock(|state| state.awaiting_load)
         && let Err(error) = ctx.schedule_once(
           settings.durable_queue_request_timeout(),
           self_ref.clone(),
@@ -280,13 +280,12 @@ impl ProducerController {
         let mut stop_self = None::<String>;
         // ロック保持中に遅延アクションを収集し、ロック解放後に実行する。
         // メッセージアダプタ経由の再入デッドロックを回避するため。
-        let deferred = {
-          let mut state = state.lock();
+        let deferred = state.with_lock(|state| {
           let mut deferred = Vec::new();
           match command.kind() {
             | ProducerControllerCommandKind::Start { producer } => {
               state.producer = Some(producer.clone());
-              collect_request_next(&mut state, &mut deferred);
+              collect_request_next(state, &mut deferred);
             },
             | ProducerControllerCommandKind::RegisterConsumer { consumer_controller } => {
               state.consumer_controller = Some(consumer_controller.clone());
@@ -296,15 +295,15 @@ impl ProducerController {
               state.requested = false;
               state.requested_seq_nr = 0;
               state.awaiting_msg = false;
-              collect_request_next(&mut state, &mut deferred);
+              collect_request_next(state, &mut deferred);
             },
             | ProducerControllerCommandKind::Msg { message } => {
               state.awaiting_msg = false;
-              collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
+              collect_on_msg(state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::MsgWithConfirmation { message, .. } => {
               state.awaiting_msg = false;
-              collect_on_msg(&mut state, message.clone(), &self_ref, &mut deferred);
+              collect_on_msg(state, message.clone(), &self_ref, &mut deferred);
             },
             | ProducerControllerCommandKind::Request {
               confirmed_seq_nr, request_up_to_seq_nr, support_resend, ..
@@ -312,18 +311,18 @@ impl ProducerController {
               let previous_confirmed_seq_nr = state.confirmed_seq_nr;
               state.support_resend = *support_resend;
               state.on_confirmed(*confirmed_seq_nr);
-              collect_store_confirmed(&state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
+              collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
               state.requested_seq_nr = *request_up_to_seq_nr;
               state.requested = true;
-              collect_request_next(&mut state, &mut deferred);
+              collect_request_next(state, &mut deferred);
             },
             | ProducerControllerCommandKind::Resend { from_seq_nr } => {
-              collect_resend(&state, *from_seq_nr, &mut deferred);
+              collect_resend(state, *from_seq_nr, &mut deferred);
             },
             | ProducerControllerCommandKind::Ack { confirmed_seq_nr } => {
               let previous_confirmed_seq_nr = state.confirmed_seq_nr;
               state.on_confirmed(*confirmed_seq_nr);
-              collect_store_confirmed(&state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
+              collect_store_confirmed(state, previous_confirmed_seq_nr, state.confirmed_seq_nr, &mut deferred);
             },
             | ProducerControllerCommandKind::DurableQueueLoaded { state: loaded } => {
               state.current_seq_nr = loaded.current_seq_nr();
@@ -343,10 +342,10 @@ impl ProducerController {
                 })
                 .collect();
               state.awaiting_load = false;
-              collect_request_next(&mut state, &mut deferred);
+              collect_request_next(state, &mut deferred);
             },
             | ProducerControllerCommandKind::DurableQueueMessageStored { ack } => {
-              collect_on_durable_queue_message_stored(&mut state, ack, &mut deferred);
+              collect_on_durable_queue_message_stored(state, ack, &mut deferred);
             },
             | ProducerControllerCommandKind::DurableQueueLoadTimedOut { attempt } => {
               if state.awaiting_load {
@@ -405,9 +404,9 @@ impl ProducerController {
               }
             },
           }
-          maybe_schedule_resend_first(&mut state, &runtime_settings, &self_ref, ctx);
+          maybe_schedule_resend_first(state, &runtime_settings, &self_ref, ctx);
           deferred
-        }; // ステートロックはここで解放される
+        }); // ステートロックはここで解放される
 
         execute_deferred(ctx, deferred, &runtime_settings, &self_ref);
         if let Some(message) = stop_self {

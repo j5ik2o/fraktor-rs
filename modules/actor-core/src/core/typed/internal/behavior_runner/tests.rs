@@ -1,7 +1,7 @@
 use alloc::{string::String, sync::Arc};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::BehaviorRunner;
 use crate::core::{
@@ -23,11 +23,11 @@ use crate::core::{
 struct ProbeMessage;
 
 struct RecordingUnhandledSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingUnhandledSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -41,11 +41,11 @@ impl EventStreamSubscriber for RecordingUnhandledSubscriber {
 }
 
 struct RecordingAdapterFailureSubscriber {
-  events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl RecordingAdapterFailureSubscriber {
-  fn new(events: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(events: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { events }
   }
 }
@@ -108,7 +108,7 @@ fn behavior_runner_allows_handled_adapter_failure() {
 #[test]
 fn behavior_runner_publishes_adapter_failure_event() {
   let system = ActorSystem::new_empty();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingAdapterFailureSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -139,7 +139,7 @@ fn behavior_runner_publishes_adapter_failure_event() {
 #[test]
 fn behavior_runner_publishes_unhandled_message_event_for_unhandled_behavior() {
   let system = ActorSystem::new_empty();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -168,7 +168,7 @@ fn behavior_runner_publishes_unhandled_message_event_for_unhandled_behavior() {
 #[test]
 fn behavior_runner_publishes_unhandled_message_event_for_empty_behavior() {
   let system = ActorSystem::new_empty();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
@@ -395,7 +395,7 @@ fn behavior_runner_post_stop_callback_runs_when_stopped_returned_from_message_ha
 #[test]
 fn behavior_runner_post_stop_from_empty_does_not_publish_unhandled_message() {
   let system = ActorSystem::new_empty();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingUnhandledSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 

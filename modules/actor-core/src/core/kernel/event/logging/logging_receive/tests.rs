@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::ActorContext,
@@ -15,7 +15,7 @@ use crate::core::kernel::{
 fn logging_receive_logs_handled_message_with_label() {
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
-  let events = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
   let _subscription = system.event_stream().subscribe(&subscriber);
   let mut context = ActorContext::new(&system, pid);

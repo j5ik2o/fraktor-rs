@@ -15,7 +15,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   system::ActorSystem,
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 struct SpawnChild;
 struct StopChild;
@@ -23,7 +23,7 @@ struct UnwatchChild;
 struct WatchAfterStop;
 struct QueueUserEvent;
 struct SpawnSecondaryWatcherMessage {
-  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 struct StartCycle;
 struct UserProbe;
@@ -40,16 +40,16 @@ impl Actor for PassiveChild {
 }
 
 struct HarnessWatcher {
-  terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
-  order_log:      ArcShared<NoStdMutex<Vec<&'static str>>>,
-  child_slot:     ArcShared<NoStdMutex<Option<ChildRef>>>,
+  terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+  order_log:      ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+  child_slot:     ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl HarnessWatcher {
   fn new(
-    terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
-    order_log: ArcShared<NoStdMutex<Vec<&'static str>>>,
-    child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+    terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+    order_log: ArcShared<SpinSyncMutex<Vec<&'static str>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
   ) -> Self {
     Self { terminated_log, order_log, child_slot }
   }
@@ -127,11 +127,11 @@ impl Actor for HarnessWatcher {
 }
 
 struct SecondaryWatcher {
-  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl SecondaryWatcher {
-  fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log }
   }
 }
@@ -151,11 +151,11 @@ impl Actor for SecondaryWatcher {
 }
 
 struct SpawnWatchedGuardian {
-  terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl SpawnWatchedGuardian {
-  fn new(terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { terminated_log }
   }
 }
@@ -179,11 +179,11 @@ impl Actor for SpawnWatchedGuardian {
 }
 
 struct CycleActor {
-  log: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl CycleActor {
-  fn new(log: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(log: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log }
   }
 }
@@ -205,12 +205,12 @@ impl Actor for CycleActor {
 }
 
 struct CycleGuardian {
-  log_a: ArcShared<NoStdMutex<Vec<Pid>>>,
-  log_b: ArcShared<NoStdMutex<Vec<Pid>>>,
+  log_a: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+  log_b: ArcShared<SpinSyncMutex<Vec<Pid>>>,
 }
 
 impl CycleGuardian {
-  fn new(log_a: ArcShared<NoStdMutex<Vec<Pid>>>, log_b: ArcShared<NoStdMutex<Vec<Pid>>>) -> Self {
+  fn new(log_a: ArcShared<SpinSyncMutex<Vec<Pid>>>, log_b: ArcShared<SpinSyncMutex<Vec<Pid>>>) -> Self {
     Self { log_a, log_b }
   }
 }
@@ -256,9 +256,9 @@ fn wait_until(deadline_ms: u64, predicate: &dyn Fn() -> bool) -> bool {
 
 #[test]
 fn death_watch_notifies_parent_on_child_stop() {
-  let terminated = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let order = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let terminated = terminated.clone();
     let order = order.clone();
@@ -280,9 +280,9 @@ fn death_watch_notifies_parent_on_child_stop() {
 
 #[test]
 fn death_watch_unwatch_suppresses_notifications() {
-  let terminated = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let order = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let terminated = terminated.clone();
     let order = order.clone();
@@ -302,10 +302,10 @@ fn death_watch_unwatch_suppresses_notifications() {
 
 #[test]
 fn death_watch_handles_multiple_watchers() {
-  let primary_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let order = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
-  let secondary_log = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let primary_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
+  let secondary_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let primary_log = primary_log.clone();
     let order = order.clone();
@@ -329,9 +329,9 @@ fn death_watch_handles_multiple_watchers() {
 
 #[test]
 fn watch_after_stop_triggers_immediate_notification() {
-  let terminated = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let order = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let terminated = terminated.clone();
     let order = order.clone();
@@ -355,7 +355,7 @@ fn watch_after_stop_triggers_immediate_notification() {
 
 #[test]
 fn spawn_child_watched_notifies_on_stop() {
-  let terminated = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let terminated = terminated.clone();
     move || SpawnWatchedGuardian::new(terminated.clone())
@@ -377,9 +377,9 @@ fn spawn_child_watched_notifies_on_stop() {
 /// behavior in an async actor system where cross-actor timing is non-deterministic.
 #[test]
 fn terminated_and_user_messages_are_both_processed() {
-  let terminated = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let order = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let terminated = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let order = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let terminated = terminated.clone();
     let order = order.clone();
@@ -402,8 +402,8 @@ fn terminated_and_user_messages_are_both_processed() {
 
 #[test]
 fn cyclic_watchers_do_not_deadlock() {
-  let log_a = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let log_b = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let log_a = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let log_b = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let props = Props::from_fn({
     let log_a = log_a.clone();
     let log_b = log_b.clone();
@@ -426,16 +426,16 @@ struct WatchWithNotification {
 }
 
 struct WatchWithHarness {
-  custom_log:     ArcShared<NoStdMutex<Vec<Pid>>>,
-  terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
-  child_slot:     ArcShared<NoStdMutex<Option<ChildRef>>>,
+  custom_log:     ArcShared<SpinSyncMutex<Vec<Pid>>>,
+  terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+  child_slot:     ArcShared<SpinSyncMutex<Option<ChildRef>>>,
 }
 
 impl WatchWithHarness {
   fn new(
-    custom_log: ArcShared<NoStdMutex<Vec<Pid>>>,
-    terminated_log: ArcShared<NoStdMutex<Vec<Pid>>>,
-    child_slot: ArcShared<NoStdMutex<Option<ChildRef>>>,
+    custom_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+    terminated_log: ArcShared<SpinSyncMutex<Vec<Pid>>>,
+    child_slot: ArcShared<SpinSyncMutex<Option<ChildRef>>>,
   ) -> Self {
     Self { custom_log, terminated_log, child_slot }
   }
@@ -482,9 +482,9 @@ impl Actor for WatchWithHarness {
 
 #[test]
 fn watch_with_delivers_custom_message_instead_of_on_terminated() {
-  let custom_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let terminated_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let custom_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let terminated_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let custom_log = custom_log.clone();
     let terminated_log = terminated_log.clone();
@@ -506,9 +506,9 @@ fn watch_with_delivers_custom_message_instead_of_on_terminated() {
 
 #[test]
 fn watch_with_unwatch_clears_custom_message_registration() {
-  let custom_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let terminated_log = ArcShared::new(NoStdMutex::new(Vec::new()));
-  let child_slot = ArcShared::new(NoStdMutex::new(None));
+  let custom_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let terminated_log = ArcShared::new(SpinSyncMutex::new(Vec::new()));
+  let child_slot = ArcShared::new(SpinSyncMutex::new(None));
   let props = Props::from_fn({
     let custom_log = custom_log.clone();
     let terminated_log = terminated_log.clone();

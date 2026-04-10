@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 use core::{ffi::c_void, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
@@ -60,9 +60,9 @@ impl TickDriver for HardwareTickDriver {
   }
 }
 
-fn build_control(ctx: *mut c_void, feed: TickFeedHandle) -> ArcShared<RuntimeMutex<Box<dyn TickDriverControl>>> {
+fn build_control(ctx: *mut c_void, feed: TickFeedHandle) -> SharedLock<Box<dyn TickDriverControl>> {
   let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(ctx, feed));
-  ArcShared::new(RuntimeMutex::new(control))
+  SharedLock::new_with_driver::<SpinSyncMutex<_>>(control)
 }
 
 struct PulseContext {

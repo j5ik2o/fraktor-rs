@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{envelope::Envelope, message_queue::MessageQueue};
 use crate::core::kernel::actor::error::SendError;
@@ -20,7 +20,7 @@ const DEFAULT_CAPACITY: usize = 16;
 /// queue that is drained before the normal queue during
 /// [`dequeue`](MessageQueue::dequeue).
 pub struct UnboundedControlAwareMessageQueue {
-  inner: RuntimeMutex<Inner>,
+  inner: SharedLock<Inner>,
 }
 
 struct Inner {
@@ -33,7 +33,7 @@ impl UnboundedControlAwareMessageQueue {
   #[must_use]
   pub fn new() -> Self {
     Self {
-      inner: RuntimeMutex::new(Inner {
+      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner {
         control_queue: VecDeque::with_capacity(DEFAULT_CAPACITY),
         normal_queue:  VecDeque::with_capacity(DEFAULT_CAPACITY),
       }),
@@ -49,28 +49,28 @@ impl Default for UnboundedControlAwareMessageQueue {
 
 impl MessageQueue for UnboundedControlAwareMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    let mut guard = self.inner.lock();
-    if envelope.payload().is_control() {
-      guard.control_queue.push_back(envelope);
-    } else {
-      guard.normal_queue.push_back(envelope);
-    }
+    self.inner.with_write(|inner| {
+      if envelope.payload().is_control() {
+        inner.control_queue.push_back(envelope);
+      } else {
+        inner.normal_queue.push_back(envelope);
+      }
+    });
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    let mut guard = self.inner.lock();
-    guard.control_queue.pop_front().or_else(|| guard.normal_queue.pop_front())
+    self.inner.with_write(|inner| inner.control_queue.pop_front().or_else(|| inner.normal_queue.pop_front()))
   }
 
   fn number_of_messages(&self) -> usize {
-    let guard = self.inner.lock();
-    guard.control_queue.len() + guard.normal_queue.len()
+    self.inner.with_read(|inner| inner.control_queue.len() + inner.normal_queue.len())
   }
 
   fn clean_up(&self) {
-    let mut guard = self.inner.lock();
-    guard.control_queue.clear();
-    guard.normal_queue.clear();
+    self.inner.with_write(|inner| {
+      inner.control_queue.clear();
+      inner.normal_queue.clear();
+    });
   }
 }

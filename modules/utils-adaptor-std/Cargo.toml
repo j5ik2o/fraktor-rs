@@ -2,7 +2,7 @@
 name = "fraktor-utils-adaptor-std-rs"
 version = "0.2.11"
 edition = "2024"
-description = "Std adapter helpers for fraktor-utils-core-rs (placeholder pending RuntimeMutex Port/Adapter)"
+description = "Std adapter helpers for fraktor-utils-core-rs"
 license = "MIT OR Apache-2.0"
 keywords = ["fraktor", "utils", "adaptor", "std"]
 categories = ["concurrency"]

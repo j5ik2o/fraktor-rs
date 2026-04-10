@@ -1,4 +1,4 @@
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
   kernel::{
@@ -18,7 +18,7 @@ use crate::core::{
 /// A counter actor that increments on each message and participates in
 /// behavior transitions (returns `Behaviors::same()`).
 struct CounterBehavior {
-  count: ArcShared<NoStdMutex<u32>>,
+  count: ArcShared<SpinSyncMutex<u32>>,
 }
 
 impl AbstractBehavior<u32> for CounterBehavior {
@@ -39,7 +39,7 @@ impl AbstractBehavior<u32> for StoppingBehavior {
 
 /// An actor with a custom signal handler.
 struct SignalAwareBehavior {
-  signal_received: ArcShared<NoStdMutex<bool>>,
+  signal_received: ArcShared<SpinSyncMutex<bool>>,
 }
 
 impl AbstractBehavior<u32> for SignalAwareBehavior {
@@ -60,7 +60,7 @@ impl AbstractBehavior<u32> for SignalAwareBehavior {
 #[test]
 fn from_abstract_creates_behavior_that_handles_messages() {
   // Given: an AbstractBehavior implementation that counts messages
-  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
   let system = ActorSystem::new_empty();
@@ -87,7 +87,7 @@ fn from_abstract_creates_behavior_that_handles_messages() {
 #[test]
 fn from_abstract_handles_multiple_messages_with_state() {
   // Given: an AbstractBehavior that accumulates state
-  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
   let system = ActorSystem::new_empty();
@@ -134,7 +134,7 @@ fn from_abstract_supports_behavior_transition_to_stopped() {
 #[test]
 fn from_abstract_delegates_signals_to_on_signal() {
   // Given: an AbstractBehavior with a custom on_signal implementation
-  let signal_received = ArcShared::new(NoStdMutex::new(false));
+  let signal_received = ArcShared::new(SpinSyncMutex::new(false));
   let signal_clone = signal_received.clone();
 
   let system = ActorSystem::new_empty();
@@ -157,7 +157,7 @@ fn from_abstract_delegates_signals_to_on_signal() {
 #[test]
 fn from_abstract_default_on_signal_returns_unhandled() {
   // Given: an AbstractBehavior that does NOT override on_signal (uses default)
-  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
 
   let system = ActorSystem::new_empty();
@@ -183,7 +183,7 @@ fn from_abstract_default_on_signal_returns_unhandled() {
 #[test]
 fn from_abstract_factory_receives_context() {
   // Given: a factory that captures the pid from context
-  let captured_pid = ArcShared::new(NoStdMutex::new(0u64));
+  let captured_pid = ArcShared::new(SpinSyncMutex::new(0u64));
   let captured_pid_clone = captured_pid.clone();
 
   let system = ActorSystem::new_empty();
@@ -191,7 +191,7 @@ fn from_abstract_factory_receives_context() {
   let mut context = ActorContext::new(&system, pid);
   let mut typed_ctx = TypedActorContext::from_untyped(&mut context, None);
 
-  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let mut behavior = Behaviors::from_abstract(move |ctx: &mut TypedActorContext<'_, u32>| {
     *captured_pid_clone.lock() = ctx.pid().value();
     CounterBehavior { count: count.clone() }
@@ -205,9 +205,9 @@ fn from_abstract_factory_receives_context() {
 
 #[test]
 fn from_abstract_clone_recreates_behavior_on_started() {
-  let count = ArcShared::new(NoStdMutex::new(0u32));
+  let count = ArcShared::new(SpinSyncMutex::new(0u32));
   let count_clone = count.clone();
-  let factory_calls = ArcShared::new(NoStdMutex::new(0u32));
+  let factory_calls = ArcShared::new(SpinSyncMutex::new(0u32));
   let factory_calls_clone = factory_calls.clone();
 
   let system = ActorSystem::new_empty();

@@ -6,7 +6,7 @@ use core::{
   task::Waker,
 };
 
-use fraktor_utils_core_rs::core::sync::RuntimeMutex;
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 /// Tracks actor system termination as the single source of truth.
 ///
@@ -17,17 +17,17 @@ use fraktor_utils_core_rs::core::sync::RuntimeMutex;
 pub(crate) struct TerminationState {
   terminating: AtomicBool,
   terminated:  AtomicBool,
-  wakers:      RuntimeMutex<Vec<Waker>>,
+  wakers:      SharedLock<Vec<Waker>>,
 }
 
 impl TerminationState {
   /// Creates a new state in the not-yet-terminating condition.
   #[must_use]
-  pub(crate) const fn new() -> Self {
+  pub(crate) fn new() -> Self {
     Self {
       terminating: AtomicBool::new(false),
       terminated:  AtomicBool::new(false),
-      wakers:      <RuntimeMutex<Vec<Waker>>>::new(Vec::new()),
+      wakers:      SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new()),
     }
   }
 
@@ -61,10 +61,7 @@ impl TerminationState {
       return;
     }
     // ロック中に waker を取り出し、ロック外で wake してデッドロックを避ける
-    let wakers = {
-      let mut guard = self.wakers.lock();
-      core::mem::take(&mut *guard)
-    };
+    let wakers = self.wakers.with_write(core::mem::take);
     for w in wakers {
       w.wake();
     }
@@ -78,15 +75,18 @@ impl TerminationState {
       waker.wake_by_ref();
       return;
     }
-    let mut guard = self.wakers.lock();
-    // Double-check after acquiring the lock to avoid lost wakeups.
-    if self.terminated.load(Ordering::Acquire) {
-      drop(guard);
+    let should_wake = self.wakers.with_write(|guard| {
+      // Double-check after acquiring the lock to avoid lost wakeups.
+      if self.terminated.load(Ordering::Acquire) {
+        return true;
+      }
+      if !guard.iter().any(|registered| registered.will_wake(waker)) {
+        guard.push(waker.clone());
+      }
+      false
+    });
+    if should_wake {
       waker.wake_by_ref();
-      return;
-    }
-    if !guard.iter().any(|registered| registered.will_wake(waker)) {
-      guard.push(waker.clone());
     }
   }
 }

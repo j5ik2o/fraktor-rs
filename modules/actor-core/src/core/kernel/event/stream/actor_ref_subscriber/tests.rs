@@ -1,7 +1,7 @@
 use alloc::{format, vec::Vec};
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::{
@@ -18,11 +18,11 @@ use crate::core::kernel::{
 
 // Test sender that collects messages
 struct CollectorSender {
-  messages: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
+  messages: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>,
 }
 
 impl CollectorSender {
-  fn new(messages: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
+  fn new(messages: ArcShared<SpinSyncMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { messages }
   }
 }
@@ -38,7 +38,7 @@ impl ActorRefSender for CollectorSender {
 
 #[test]
 fn actor_ref_subscriber_forwards_events_to_actor() {
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
@@ -62,7 +62,7 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
 
 #[test]
 fn actor_ref_subscriber_handles_multiple_events() {
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
@@ -86,7 +86,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
 
 #[test]
 fn actor_ref_returns_correct_reference() {
-  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
+  let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 

@@ -18,7 +18,7 @@ use super::{execute_error::ExecuteError, executor::Executor};
 ///
 /// **Restriction**: this executor must not be installed inside an
 /// [`super::ExecutorShared`] used by a production dispatcher. The shared
-/// wrapper acquires `RuntimeMutex` (which is non-reentrant) before delegating
+/// wrapper acquires `SpinSyncMutex` (which is non-reentrant) before delegating
 /// to `Executor::execute`; running a task synchronously inside that lock would
 /// deadlock as soon as the task tried to submit a follow-up task. Pekko's
 /// `CallingThreadExecutor` is restricted in the same way.

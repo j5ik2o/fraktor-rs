@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::vec::Vec;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 
 use crate::core::{
   kernel::event::logging::LogLevel,
@@ -130,7 +130,7 @@ impl ConsumerController {
   pub fn behavior_with_settings<A>(settings: ConsumerControllerSettings) -> Behavior<ConsumerControllerCommand<A>>
   where
     A: Clone + Send + Sync + 'static, {
-    let state = ArcShared::new(RuntimeMutex::new(ConsumerControllerState::<A>::new(settings)));
+    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ConsumerControllerState::<A>::new(settings));
 
     Behaviors::setup(move |ctx| {
       let self_ref = ctx.self_ref();
@@ -146,15 +146,14 @@ impl ConsumerController {
       let state_for_msg = state.clone();
 
       Behaviors::receive_message(move |ctx, command: &ConsumerControllerCommand<A>| {
-        let (deferred, should_stop) = {
-          let mut state = state_for_msg.lock();
+        let (deferred, should_stop) = state_for_msg.with_lock(|state| {
           let mut deferred = Vec::new();
           let mut should_stop = false;
 
           match command.kind() {
             | ConsumerControllerCommandKind::Start { deliver_to } => {
               state.deliver_to = Some(deliver_to.clone());
-              collect_try_deliver_stashed(&mut state, &confirm_adapter, &mut deferred);
+              collect_try_deliver_stashed(state, &confirm_adapter, &mut deferred);
             },
             | ConsumerControllerCommandKind::RegisterToProducerController { producer_controller } => {
               let register_cmd = ProducerControllerCommand::register_consumer(self_ref.clone());
@@ -162,10 +161,10 @@ impl ConsumerController {
               state.producer_controller = Some(producer_controller.clone());
             },
             | ConsumerControllerCommandKind::SequencedMsg(seq_msg) => {
-              collect_on_sequenced_message(&mut state, seq_msg.clone(), &self_ref, &confirm_adapter, &mut deferred);
+              collect_on_sequenced_message(state, seq_msg.clone(), &self_ref, &confirm_adapter, &mut deferred);
             },
             | ConsumerControllerCommandKind::Confirmed => {
-              collect_on_confirmed(&mut state, &self_ref, &confirm_adapter, &mut deferred);
+              collect_on_confirmed(state, &self_ref, &confirm_adapter, &mut deferred);
             },
             | ConsumerControllerCommandKind::DeliverThenStop => {
               state.stopping = true;
@@ -174,7 +173,7 @@ impl ConsumerController {
               }
             },
             | ConsumerControllerCommandKind::Retry => {
-              collect_send_request(&mut state, &self_ref, true, &mut deferred);
+              collect_send_request(state, &self_ref, true, &mut deferred);
             },
             | ConsumerControllerCommandKind::ConsumerTerminated => {
               should_stop = true;
@@ -184,7 +183,7 @@ impl ConsumerController {
             should_stop = true;
           }
           (deferred, should_stop)
-        }; // state lock released here
+        }); // state lock released here
 
         execute_deferred(deferred, ctx);
         if should_stop {

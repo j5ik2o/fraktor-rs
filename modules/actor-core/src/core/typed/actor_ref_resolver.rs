@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::string::String;
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedRwLock};
 
 use crate::core::{
   kernel::{
@@ -57,7 +57,7 @@ impl ActorRefResolver {
   pub fn to_serialization_format(&self, actor_ref: &ActorRef) -> Result<String, ActorRefResolveError> {
     let system = self.system.upgrade().ok_or(ActorRefResolveError::SystemNotBootstrapped)?;
     if let Some(actor_system) = actor_ref.system_state()
-      && !ArcShared::ptr_eq(system.state().inner(), actor_system.inner())
+      && !SharedRwLock::ptr_eq(system.state().inner(), actor_system.inner())
     {
       return Err(ActorRefResolveError::NotFound(
         "actor ref belongs to another actor system; use that system's resolver".into(),

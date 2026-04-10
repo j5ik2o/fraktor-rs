@@ -7,7 +7,7 @@
 //!
 //! Production dispatchers always wrap an executor in
 //! [`ExecutorShared`](super::ExecutorShared) so that the `&mut self` contract
-//! is observed under a `RuntimeMutex`.
+//! is observed under a `SpinSyncMutex`.
 
 use alloc::boxed::Box;
 

@@ -31,22 +31,6 @@ impl<P> ActorRefProviderHandle<P> {
   const fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     self.schemes
   }
-
-  /// Returns a reference to the inner provider.
-  ///
-  /// This method is intended for testing and debugging purposes only.
-  #[doc(hidden)]
-  pub const fn inner(&self) -> &P {
-    &self.provider
-  }
-
-  /// Returns a mutable reference to the inner provider.
-  ///
-  /// This method is intended for testing and debugging purposes only.
-  #[doc(hidden)]
-  pub const fn inner_mut(&mut self) -> &mut P {
-    &mut self.provider
-  }
 }
 
 impl<P> ActorRefProvider for ActorRefProviderHandle<P>

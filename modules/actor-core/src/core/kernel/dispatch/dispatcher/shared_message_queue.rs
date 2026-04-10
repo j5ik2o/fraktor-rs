@@ -2,7 +2,7 @@
 //!
 //! `SharedMessageQueue` is a thread-safe FIFO that multiple actors share to
 //! achieve the load-balancing semantics of Pekko's `BalancingDispatcher`. The
-//! initial implementation is a plain `RuntimeMutex<VecDeque<Envelope>>`; a
+//! initial implementation is a plain `SharedLock<VecDeque<Envelope>>`; a
 //! lock-free replacement is intentionally out of scope for the
 //! dispatcher-pekko-1n-redesign change.
 
@@ -11,7 +11,7 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::{
   actor::error::SendError,
@@ -20,14 +20,14 @@ use crate::core::kernel::{
 
 /// Thread-safe FIFO queue shared by all actors of a `BalancingDispatcher`.
 pub struct SharedMessageQueue {
-  inner: ArcShared<RuntimeMutex<VecDeque<Envelope>>>,
+  inner: SharedLock<VecDeque<Envelope>>,
 }
 
 impl SharedMessageQueue {
   /// Creates an empty shared message queue.
   #[must_use]
   pub fn new() -> Self {
-    Self { inner: ArcShared::new(RuntimeMutex::new(VecDeque::new())) }
+    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()) }
   }
 }
 
@@ -45,20 +45,20 @@ impl Default for SharedMessageQueue {
 
 impl MessageQueue for SharedMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
-    self.inner.lock().push_back(envelope);
+    self.inner.with_write(|inner| inner.push_back(envelope));
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.inner.lock().pop_front()
+    self.inner.with_write(|inner| inner.pop_front())
   }
 
   fn number_of_messages(&self) -> usize {
-    self.inner.lock().len()
+    self.inner.with_read(|inner| inner.len())
   }
 
   fn has_messages(&self) -> bool {
-    !self.inner.lock().is_empty()
+    self.inner.with_read(|inner| !inner.is_empty())
   }
 
   fn clean_up(&self) {

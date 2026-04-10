@@ -10,7 +10,7 @@ use core::{
 };
 
 use ahash::{AHasher, RandomState};
-use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
+use fraktor_utils_core_rs::core::sync::SharedLock;
 use hashbrown::HashMap;
 
 use crate::core::{
@@ -32,12 +32,7 @@ where
 }
 
 /// Shared handle for [`TimerScheduler`], suitable for use in `Fn` closures.
-///
-/// Users call `.lock()` on the inherent
-/// [`SpinSyncMutex`](fraktor_utils_core_rs::core::sync::SpinSyncMutex) API
-/// (reachable via the `RuntimeMutex` alias) to obtain mutable access to the
-/// underlying timer scheduler.
-pub type TimerSchedulerShared<M> = ArcShared<RuntimeMutex<TimerScheduler<M>>>;
+pub type TimerSchedulerShared<M> = SharedLock<TimerScheduler<M>>;
 
 impl<M> TimerScheduler<M>
 where
