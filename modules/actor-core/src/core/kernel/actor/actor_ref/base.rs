@@ -4,7 +4,7 @@
 mod tests;
 
 use core::{
-  fmt,
+  fmt::{Debug, Formatter, Result as FmtResult},
   hash::{Hash, Hasher},
   time::Duration,
 };
@@ -252,8 +252,8 @@ unsafe impl Send for ActorRef {}
 
 unsafe impl Sync for ActorRef {}
 
-impl fmt::Debug for ActorRef {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ActorRef {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ActorRef").field("pid", &self.pid).finish()
   }
 }

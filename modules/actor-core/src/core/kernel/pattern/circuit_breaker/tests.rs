@@ -2,6 +2,7 @@
 // および std 側の同名テストファイルに重複して定義されている。
 // テスト専用ユーティリティへの共通化は別タスクとして実施する（今回のスコープ外）。
 
+use alloc::sync::Arc;
 use core::{
   sync::atomic::{AtomicU64, Ordering},
   time::Duration,
@@ -13,12 +14,12 @@ use crate::core::kernel::pattern::{CircuitBreakerState, Clock};
 /// A deterministic clock for unit tests that does not depend on `std::time`.
 #[derive(Clone)]
 struct FakeClock {
-  offset_millis: alloc::sync::Arc<AtomicU64>,
+  offset_millis: Arc<AtomicU64>,
 }
 
 impl FakeClock {
   fn new() -> Self {
-    Self { offset_millis: alloc::sync::Arc::new(AtomicU64::new(0)) }
+    Self { offset_millis: Arc::new(AtomicU64::new(0)) }
   }
 
   fn advance(&self, duration: Duration) {

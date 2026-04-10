@@ -2,6 +2,7 @@
 
 use core::{
   cmp::Ordering,
+  fmt::{Debug, Formatter, Result as FmtResult},
   hash::{Hash, Hasher},
   marker::PhantomData,
 };
@@ -157,11 +158,11 @@ where
   }
 }
 
-impl<M> core::fmt::Debug for TypedActorRef<M>
+impl<M> Debug for TypedActorRef<M>
 where
   M: Send + Sync + 'static,
 {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TypedActorRef").field("pid", &self.pid()).finish()
   }
 }

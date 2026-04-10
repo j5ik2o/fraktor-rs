@@ -122,7 +122,7 @@ pub(crate) fn map_user_queue_error(error: QueueError<AnyMessage>) -> SendError {
   }
 }
 
-pub(crate) fn map_user_envelope_queue_error(error: QueueError<envelope::Envelope>) -> SendError {
+pub(crate) fn map_user_envelope_queue_error(error: QueueError<Envelope>) -> SendError {
   match error {
     | QueueError::Full(item) | QueueError::OfferError(item) => SendError::full(item.into_payload()),
     | QueueError::Closed(item) | QueueError::AllocError(item) => SendError::closed(item.into_payload()),

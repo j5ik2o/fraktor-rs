@@ -1,5 +1,7 @@
 //! Error returned by typed ask futures.
 
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::core::{kernel::actor::messaging::AskError, typed::dsl::StatusReplyError};
 
 /// Reports failures during typed ask resolution.
@@ -15,8 +17,8 @@ pub enum TypedAskError {
   StatusError(StatusReplyError),
 }
 
-impl core::fmt::Display for TypedAskError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for TypedAskError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | TypedAskError::TypeMismatch => f.write_str("typed ask received unexpected reply type"),
       | TypedAskError::SharedReferences => f.write_str("typed ask reply still has outstanding references"),

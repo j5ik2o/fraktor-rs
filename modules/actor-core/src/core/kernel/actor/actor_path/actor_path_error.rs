@@ -1,6 +1,6 @@
 //! Error types for actor path construction.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors that can occur while constructing or formatting actor paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,8 +34,8 @@ pub enum ActorPathError {
   NotChildPath,
 }
 
-impl fmt::Display for ActorPathError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ActorPathError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | ActorPathError::EmptySegment => write!(f, "path segment must not be empty"),
       | ActorPathError::ReservedSegment => write!(f, "path segment must not start with '$'"),

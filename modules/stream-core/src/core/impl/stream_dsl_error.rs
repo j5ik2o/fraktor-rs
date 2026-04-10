@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 use super::OperatorKey;
 
@@ -22,7 +22,7 @@ pub enum StreamDslError {
 }
 
 impl fmt::Display for StreamDslError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::InvalidArgument { name, value, reason } => {
         write!(f, "invalid argument `{name}` ({value}): {reason}")

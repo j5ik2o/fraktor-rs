@@ -1,3 +1,5 @@
+use alloc::{boxed::Box, string::String};
+
 use super::Attributes;
 use crate::core::attributes::{
   AsyncBoundaryAttr, Attribute, CancellationStrategyKind, DispatcherAttribute, InputBuffer, LogLevel, LogLevels,
@@ -6,13 +8,13 @@ use crate::core::attributes::{
 #[test]
 fn named_creates_single_name_attribute() {
   let attributes = Attributes::named("stage-a");
-  assert_eq!(attributes.names(), &[alloc::string::String::from("stage-a")]);
+  assert_eq!(attributes.names(), &[String::from("stage-a")]);
 }
 
 #[test]
 fn and_appends_names() {
   let attributes = Attributes::named("left").and(Attributes::named("right"));
-  assert_eq!(attributes.names(), &[alloc::string::String::from("left"), alloc::string::String::from("right")]);
+  assert_eq!(attributes.names(), &[String::from("left"), String::from("right")]);
 }
 
 #[test]
@@ -63,8 +65,8 @@ fn get_returns_none_for_unrelated_type() {
       self
     }
 
-    fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
-      alloc::boxed::Box::new(self.clone())
+    fn clone_box(&self) -> Box<dyn Attribute> {
+      Box::new(self.clone())
     }
 
     fn eq_attr(&self, _other: &dyn core::any::Any) -> bool {

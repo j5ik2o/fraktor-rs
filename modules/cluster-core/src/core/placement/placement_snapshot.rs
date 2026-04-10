@@ -1,6 +1,6 @@
 //! Snapshot of placement coordinator state.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use super::placement_coordinator_state::PlacementCoordinatorState;
 
@@ -10,7 +10,7 @@ pub struct PlacementSnapshot {
   /// Current coordinator state.
   pub state:           PlacementCoordinatorState,
   /// Known authority list.
-  pub authorities:     Vec<alloc::string::String>,
+  pub authorities:     Vec<String>,
   /// Local authority identifier if configured.
-  pub local_authority: Option<alloc::string::String>,
+  pub local_authority: Option<String>,
 }

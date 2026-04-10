@@ -1,6 +1,7 @@
 //! System guardian responsible for `/system` supervision and termination hooks.
 
 use alloc::vec::Vec;
+use core::time::Duration;
 
 use crate::core::kernel::{
   actor::{
@@ -141,7 +142,7 @@ impl Actor for SystemGuardianActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_error| {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, Duration::from_secs(0), |_error| {
       SupervisorDirective::Stop
     })
     .into()

@@ -1,6 +1,6 @@
 //! Errors raised by [`crate::transport::RemoteTransport`] implementations.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Failure categories surfaced by a [`crate::transport::RemoteTransport`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,8 +20,8 @@ pub enum TransportError {
   ConnectionClosed,
 }
 
-impl fmt::Display for TransportError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for TransportError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | TransportError::UnsupportedScheme => f.write_str("transport: unsupported scheme"),
       | TransportError::NotAvailable => f.write_str("transport: not available"),

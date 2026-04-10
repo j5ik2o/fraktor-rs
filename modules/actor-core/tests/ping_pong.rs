@@ -1,6 +1,10 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{thread, time::Duration, vec::Vec};
+use std::{
+  thread,
+  time::{Duration, Instant},
+  vec::Vec,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -117,8 +121,8 @@ fn spawn_and_tell_delivers_message() {
 
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  let dead_line = std::time::Instant::now() + Duration::from_millis(20);
-  while log.lock().is_empty() && std::time::Instant::now() < dead_line {
+  let dead_line = Instant::now() + Duration::from_millis(20);
+  while log.lock().is_empty() && Instant::now() < dead_line {
     thread::yield_now();
   }
 
@@ -153,8 +157,8 @@ fn auto_naming_and_duplicate_detection() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  let dead_line = std::time::Instant::now() + Duration::from_millis(20);
-  while spawned.lock().len() < 3 && std::time::Instant::now() < dead_line {
+  let dead_line = Instant::now() + Duration::from_millis(20);
+  while spawned.lock().len() < 3 && Instant::now() < dead_line {
     thread::yield_now();
   }
 

@@ -1,7 +1,7 @@
 //! Built-in serializer for `String`.
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::any::Any;
+use core::any::{Any, TypeId};
 
 use crate::core::kernel::serialization::{
   error::SerializationError, serializer::Serializer, serializer_id::SerializerId,
@@ -37,7 +37,7 @@ impl Serializer for StringSerializer {
   fn from_binary(
     &self,
     bytes: &[u8],
-    _type_hint: Option<core::any::TypeId>,
+    _type_hint: Option<TypeId>,
   ) -> Result<Box<dyn Any + Send + Sync>, SerializationError> {
     if bytes.len() < 4 {
       return Err(SerializationError::InvalidFormat);

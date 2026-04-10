@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use std::{
   thread,
   time::{Duration, Instant},
@@ -56,7 +56,7 @@ fn build_system() -> ActorSystem {
 fn spawn_topic<T>(system: &ActorSystem, name: &str) -> TypedActorRef<TopicCommand<T>>
 where
   T: Clone + Send + Sync + 'static, {
-  let name = alloc::string::String::from(name);
+  let name = String::from(name);
   let topic_props = TypedProps::<TopicCommand<T>>::from_behavior_factory(move || Topic::behavior(name.clone()));
   let child = system.extended().spawn_system_actor(&topic_props.to_untyped()).expect("spawn topic");
   TypedActorRef::<TopicCommand<T>>::from_untyped(child.into_actor_ref())

@@ -1,6 +1,7 @@
 //! Result of a send operation, used to defer scheduling until locks are released.
 
 use alloc::boxed::Box;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 /// Outcome returned by `ActorRefSender::send`.
 pub enum SendOutcome {
@@ -10,8 +11,8 @@ pub enum SendOutcome {
   Schedule(Box<dyn FnOnce() + Send + 'static>),
 }
 
-impl core::fmt::Debug for SendOutcome {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for SendOutcome {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | SendOutcome::Delivered => f.write_str("Delivered"),
       | SendOutcome::Schedule(_) => f.write_str("Schedule(<deferred>)"),

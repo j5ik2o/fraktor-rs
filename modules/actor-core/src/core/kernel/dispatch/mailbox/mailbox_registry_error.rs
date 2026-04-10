@@ -1,5 +1,5 @@
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::props::MailboxConfigError;
 
@@ -34,8 +34,8 @@ impl From<MailboxConfigError> for MailboxRegistryError {
   }
 }
 
-impl fmt::Display for MailboxRegistryError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for MailboxRegistryError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Duplicate(id) => write!(f, "mailbox id '{}' already exists", id),
       | Self::Unknown(id) => write!(f, "mailbox id '{}' not found", id),

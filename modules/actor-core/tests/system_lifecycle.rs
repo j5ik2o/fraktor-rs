@@ -3,7 +3,10 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use std::{thread, time::Duration};
+use std::{
+  thread,
+  time::{Duration, Instant},
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -42,8 +45,8 @@ fn stop_self_propagates_to_children() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
   system.user_guardian_ref().tell(AnyMessage::new(Start));
 
-  let dead_line = std::time::Instant::now() + Duration::from_millis(20);
-  while child_states.lock().len() < 2 && std::time::Instant::now() < dead_line {
+  let dead_line = Instant::now() + Duration::from_millis(20);
+  while child_states.lock().len() < 2 && Instant::now() < dead_line {
     thread::yield_now();
   }
 

@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::any::TypeId;
 
 use super::super::IslandSplitter;
@@ -22,7 +23,7 @@ impl SourceLogic for EmptySourceLogic {
 struct PassthroughFlowLogic;
 
 impl FlowLogic for PassthroughFlowLogic {
-  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     Ok(alloc::vec![input])
   }
 }
@@ -86,10 +87,7 @@ fn make_sink(inlet: &Inlet<u32>, attrs: Attributes) -> StageDefinition {
   })
 }
 
-fn build_plan(
-  stages: alloc::vec::Vec<StageDefinition>,
-  edges: alloc::vec::Vec<(PortId, PortId, MatCombine)>,
-) -> StreamPlan {
+fn build_plan(stages: Vec<StageDefinition>, edges: Vec<(PortId, PortId, MatCombine)>) -> StreamPlan {
   StreamPlan::from_parts(stages, edges).expect("build_plan")
 }
 

@@ -6,7 +6,7 @@ mod tests;
 extern crate std;
 
 use alloc::boxed::Box;
-use std::{string::String, thread};
+use std::{string::String, thread::Builder};
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
 
@@ -41,7 +41,7 @@ impl Default for ThreadedExecutor {
 
 impl Executor for ThreadedExecutor {
   fn execute(&mut self, task: Box<dyn FnOnce() + Send + 'static>) -> Result<(), ExecuteError> {
-    let mut builder = thread::Builder::new();
+    let mut builder = Builder::new();
     if let Some(name) = &self.name {
       builder = builder.name(name.clone());
     }

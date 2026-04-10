@@ -1,6 +1,6 @@
 //! Identifier for context pipe tasks scheduled within an actor cell.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Unique identifier assigned to each pipe task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -20,8 +20,8 @@ impl ContextPipeTaskId {
   }
 }
 
-impl fmt::Display for ContextPipeTaskId {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ContextPipeTaskId {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", self.0)
   }
 }

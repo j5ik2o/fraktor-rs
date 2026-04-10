@@ -1,5 +1,5 @@
 use alloc::{string::ToString, vec, vec::Vec};
-use core::{hint::spin_loop, num::NonZeroUsize};
+use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
 
@@ -119,7 +119,7 @@ struct ReceiveTimeoutFailingActor;
 
 impl Actor for ReceiveTimeoutFailingActor {
   fn pre_start(&mut self, ctx: &mut ActorContext<'_>) -> Result<(), ActorError> {
-    ctx.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new("timeout"));
+    ctx.set_receive_timeout(Duration::from_millis(20), AnyMessage::new("timeout"));
     Ok(())
   }
 
@@ -139,7 +139,7 @@ impl Actor for ResumeSupervisorActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, core::time::Duration::from_secs(1), |_| {
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 1, Duration::from_secs(1), |_| {
       SupervisorDirective::Resume
     })
     .into()

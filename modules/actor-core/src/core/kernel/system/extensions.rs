@@ -1,6 +1,9 @@
 //! Extension registry for actor system extensions.
 
-use core::any::{Any, TypeId};
+use core::{
+  any::{Any, TypeId},
+  marker::PhantomData,
+};
 
 use ahash::RandomState;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -9,14 +12,14 @@ use hashbrown::HashMap;
 /// Registry of actor system extensions.
 pub(crate) struct Extensions {
   map:     HashMap<TypeId, ArcShared<dyn Any + Send + Sync + 'static>, RandomState>,
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 #[allow(dead_code)]
 impl Extensions {
   /// Creates a new empty extensions registry.
   #[must_use]
   pub(crate) fn new() -> Self {
-    Self { map: HashMap::with_hasher(RandomState::new()), _marker: core::marker::PhantomData }
+    Self { map: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
   /// Returns `true` when an extension for the provided [`TypeId`] is registered.

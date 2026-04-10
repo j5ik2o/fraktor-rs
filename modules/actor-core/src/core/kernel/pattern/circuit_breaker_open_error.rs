@@ -1,7 +1,9 @@
 //! Error returned when a circuit breaker rejects a call.
 
-use alloc::fmt;
-use core::time::Duration;
+use core::{
+  fmt::{Display, Formatter, Result as FmtResult},
+  time::Duration,
+};
 
 /// Error indicating that the circuit breaker is open and rejecting calls.
 #[derive(Debug, Clone)]
@@ -23,8 +25,8 @@ impl CircuitBreakerOpenError {
   }
 }
 
-impl fmt::Display for CircuitBreakerOpenError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for CircuitBreakerOpenError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "circuit breaker is open; remaining {:?}", self.remaining)
   }
 }

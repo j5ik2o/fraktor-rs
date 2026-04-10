@@ -8,6 +8,8 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::ToString;
+
 use crate::core::{
   kernel::{
     dispatch::dispatcher::{DEFAULT_BLOCKING_DISPATCHER_ID, DispatchersError, MessageDispatcherShared},
@@ -73,7 +75,7 @@ impl Dispatchers {
       | DispatcherSelector::FromConfig(id) => Self::normalize_dispatcher_id(id),
       | DispatcherSelector::Blocking => DEFAULT_BLOCKING_DISPATCHER_ID,
     };
-    self.state.resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(alloc::string::ToString::to_string(id)))
+    self.state.resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(id.to_string()))
   }
 
   /// Shuts down the typed dispatcher facade.

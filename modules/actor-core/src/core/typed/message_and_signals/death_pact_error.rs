@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use core::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::core::kernel::actor::Pid;
 
 /// Exception thrown when a watched actor terminates and the watcher
@@ -34,8 +36,8 @@ impl DeathPactError {
   }
 }
 
-impl core::fmt::Display for DeathPactError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for DeathPactError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "death pact with {} was triggered", self.terminated)
   }
 }

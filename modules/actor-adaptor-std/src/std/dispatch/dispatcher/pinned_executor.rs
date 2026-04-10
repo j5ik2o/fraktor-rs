@@ -9,7 +9,7 @@ use alloc::boxed::Box;
 use std::{
   string::String,
   sync::mpsc::{Sender, channel},
-  thread::{self, JoinHandle, ThreadId},
+  thread::{self, Builder, JoinHandle, ThreadId},
 };
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{ExecuteError, Executor};
@@ -36,7 +36,7 @@ impl PinnedExecutor {
   #[must_use]
   pub fn with_name(name: impl Into<String>) -> Self {
     let (tx, rx) = channel::<Task>();
-    let builder = thread::Builder::new().name(name.into());
+    let builder = Builder::new().name(name.into());
     let join = builder
       .spawn(move || {
         while let Ok(task) = rx.recv() {

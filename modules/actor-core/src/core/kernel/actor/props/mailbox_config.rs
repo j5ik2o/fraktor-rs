@@ -1,4 +1,7 @@
-use core::num::NonZeroUsize;
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  num::NonZeroUsize,
+};
 
 use fraktor_utils_core_rs::core::{collections::queue::capabilities::QueueCapabilityRegistry, sync::ArcShared};
 
@@ -160,8 +163,8 @@ impl Default for MailboxConfig {
   }
 }
 
-impl core::fmt::Debug for MailboxConfig {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for MailboxConfig {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("MailboxConfig")
       .field("policy", &self.policy)
       .field("warn_threshold", &self.warn_threshold)

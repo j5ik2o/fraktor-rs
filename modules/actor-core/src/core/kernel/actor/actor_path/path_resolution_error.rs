@@ -1,6 +1,6 @@
 //! Path resolution error types.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::ActorUid;
 
@@ -20,8 +20,8 @@ pub enum PathResolutionError {
   },
 }
 
-impl fmt::Display for PathResolutionError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for PathResolutionError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | PathResolutionError::PidUnknown => write!(f, "PID not found in registry"),
       | PathResolutionError::AuthorityUnresolved => write!(f, "authority is not resolved"),

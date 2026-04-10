@@ -1,7 +1,7 @@
 //! Failure modes reported by [`Executor::execute`](super::Executor::execute) submissions.
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors returned when an executor cannot accept a submitted task.
 ///
@@ -18,8 +18,8 @@ pub enum ExecuteError {
   Backend(String),
 }
 
-impl fmt::Display for ExecuteError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ExecuteError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Rejected => f.write_str("executor rejected the submitted task"),
       | Self::Shutdown => f.write_str("executor is shut down"),

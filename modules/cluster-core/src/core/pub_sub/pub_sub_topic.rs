@@ -1,6 +1,7 @@
 //! Pub/Sub topic identifier.
 
 use alloc::string::{String, ToString};
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Pub/Sub topic name wrapper.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -38,8 +39,8 @@ impl From<&str> for PubSubTopic {
   }
 }
 
-impl core::fmt::Display for PubSubTopic {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for PubSubTopic {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", self.0)
   }
 }

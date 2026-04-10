@@ -4,7 +4,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::fmt;
+use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use super::{ActorPathError, ActorPathParts, ActorUid, GuardianKind, PathSegment, formatter::ActorPathFormatter};
 
@@ -169,14 +169,14 @@ impl ActorPath {
   }
 }
 
-impl fmt::Display for ActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.write_str(&self.to_relative_string())
   }
 }
 
-impl fmt::Debug for ActorPath {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for ActorPath {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_tuple("ActorPath").field(&self.to_relative_string()).finish()
   }
 }

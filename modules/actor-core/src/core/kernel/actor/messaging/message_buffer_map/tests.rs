@@ -1,3 +1,5 @@
+use alloc::{vec, vec::Vec};
+
 use crate::core::kernel::actor::{
   actor_ref::ActorRef,
   messaging::{AnyMessage, MessageBufferMap},
@@ -66,12 +68,12 @@ fn for_each_visits_all_entries() {
   map.append(1, AnyMessage::new(10_u32), ActorRef::null());
   map.append(2, AnyMessage::new(20_u32), ActorRef::null());
 
-  let mut visited = alloc::vec::Vec::new();
+  let mut visited = Vec::new();
   map.for_each(|id, buf| {
     visited.push((*id, buf.size()));
   });
   visited.sort_by_key(|(id, _)| *id);
-  assert_eq!(visited, alloc::vec![(1, 1), (2, 1)]);
+  assert_eq!(visited, vec![(1, 1), (2, 1)]);
 }
 
 #[test]

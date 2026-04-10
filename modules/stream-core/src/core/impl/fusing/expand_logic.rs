@@ -1,11 +1,12 @@
 use alloc::{boxed::Box, vec, vec::Vec};
+use core::iter::Peekable;
 
 use super::super::super::{DynValue, FlowLogic, StreamError, downcast_value};
 
 pub(in crate::core) struct ExpandLogic<In, F> {
   pub(in crate::core) expander:                F,
   pub(in crate::core) last:                    Option<In>,
-  pub(in crate::core) pending: Option<core::iter::Peekable<Box<dyn Iterator<Item = In> + Send + 'static>>>,
+  pub(in crate::core) pending:                 Option<Peekable<Box<dyn Iterator<Item = In> + Send + 'static>>>,
   pub(in crate::core) tick_count:              u64,
   pub(in crate::core) last_input_tick:         Option<u64>,
   pub(in crate::core) last_extrapolation_tick: Option<u64>,

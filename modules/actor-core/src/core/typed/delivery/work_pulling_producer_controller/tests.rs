@@ -1,5 +1,5 @@
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
-use core::any::TypeId;
+use core::{any::TypeId, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex, RuntimeMutex};
 
@@ -329,8 +329,8 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
     }],
     &mut typed_ctx,
     &state,
-    core::time::Duration::from_millis(1),
-    core::time::Duration::from_millis(1),
+    Duration::from_millis(1),
+    Duration::from_millis(1),
   );
 
   assert_eq!(lifecycle.lock().as_slice(), &["pre_start", "post_stop"]);

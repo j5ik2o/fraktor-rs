@@ -1,12 +1,13 @@
 //! TCP accept loop.
 
 use alloc::{string::String, sync::Arc};
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use fraktor_remote_core_rs::transport::TransportError;
 use futures::{SinkExt as _, StreamExt as _};
 use tokio::{
   net::{TcpListener, TcpStream},
-  sync::mpsc,
+  sync::mpsc::UnboundedSender,
   task::JoinHandle,
 };
 use tokio_util::codec::Framed;
@@ -24,8 +25,8 @@ pub struct TcpServer {
   accept_task: Option<JoinHandle<()>>,
 }
 
-impl core::fmt::Debug for TcpServer {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for TcpServer {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TcpServer")
       .field("bind_addr", &self.bind_addr)
       .field("running", &self.accept_task.is_some())
@@ -53,7 +54,7 @@ impl TcpServer {
   /// # Errors
   ///
   /// Returns [`TransportError::SendFailed`] if the listener cannot be bound.
-  pub async fn start(&mut self, inbound_tx: mpsc::UnboundedSender<InboundFrameEvent>) -> Result<(), TransportError> {
+  pub async fn start(&mut self, inbound_tx: UnboundedSender<InboundFrameEvent>) -> Result<(), TransportError> {
     if self.accept_task.is_some() {
       return Err(TransportError::AlreadyRunning);
     }
@@ -86,7 +87,7 @@ impl TcpServer {
   }
 }
 
-async fn read_loop(stream: TcpStream, peer: String, inbound_tx: Arc<mpsc::UnboundedSender<InboundFrameEvent>>) {
+async fn read_loop(stream: TcpStream, peer: String, inbound_tx: Arc<UnboundedSender<InboundFrameEvent>>) {
   let mut framed = Framed::new(stream, WireFrameCodec::new());
   while let Some(next) = framed.next().await {
     match next {

@@ -3,7 +3,8 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String};
+use core::any::Any;
 
 use fraktor_actor_core_rs::core::kernel::actor::Pid;
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -14,7 +15,7 @@ type PersistentHandler<A> = Box<dyn FnOnce(&mut A, &PersistentRepr) + Send + Syn
 
 /// Persistent envelope holding event and handler.
 pub struct PersistentEnvelope<A> {
-  event:       ArcShared<dyn core::any::Any + Send + Sync>,
+  event:       ArcShared<dyn Any + Send + Sync>,
   sequence_nr: u64,
   handler:     PersistentHandler<A>,
   stashing:    bool,
@@ -25,7 +26,7 @@ impl<A> PersistentEnvelope<A> {
   /// Creates a new persistent envelope.
   #[must_use]
   pub fn new(
-    event: ArcShared<dyn core::any::Any + Send + Sync>,
+    event: ArcShared<dyn Any + Send + Sync>,
     sequence_nr: u64,
     handler: PersistentHandler<A>,
     stashing: bool,
@@ -48,11 +49,7 @@ impl<A> PersistentEnvelope<A> {
 
   /// Converts the envelope into a persistent representation.
   #[must_use]
-  pub fn into_persistent_repr(
-    &self,
-    persistence_id: impl Into<alloc::string::String>,
-    adapters: EventAdapters,
-  ) -> PersistentRepr {
+  pub fn into_persistent_repr(&self, persistence_id: impl Into<String>, adapters: EventAdapters) -> PersistentRepr {
     PersistentRepr::new(persistence_id, self.sequence_nr, self.event.clone())
       .with_sender(self.sender)
       .with_adapters(adapters)

@@ -10,7 +10,8 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String, vec::Vec};
+use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
@@ -50,26 +51,26 @@ impl MessageDispatcherShared {
 
   /// Returns the dispatcher identifier.
   #[must_use]
-  pub fn id(&self) -> alloc::string::String {
+  pub fn id(&self) -> String {
     use alloc::string::ToString;
     self.with_read(|inner| inner.id().to_string())
   }
 
   /// Returns the dispatcher throughput.
   #[must_use]
-  pub fn throughput(&self) -> core::num::NonZeroUsize {
+  pub fn throughput(&self) -> NonZeroUsize {
     self.with_read(|inner| inner.throughput())
   }
 
   /// Returns the dispatcher throughput deadline.
   #[must_use]
-  pub fn throughput_deadline(&self) -> Option<core::time::Duration> {
+  pub fn throughput_deadline(&self) -> Option<Duration> {
     self.with_read(|inner| inner.throughput_deadline())
   }
 
   /// Returns the dispatcher shutdown timeout.
   #[must_use]
-  pub fn shutdown_timeout(&self) -> core::time::Duration {
+  pub fn shutdown_timeout(&self) -> Duration {
     self.with_read(|inner| inner.shutdown_timeout())
   }
 
@@ -189,7 +190,7 @@ impl MessageDispatcherShared {
     &self,
     receiver: &ArcShared<ActorCell>,
     envelope: Envelope,
-  ) -> Result<alloc::vec::Vec<ArcShared<Mailbox>>, SendError> {
+  ) -> Result<Vec<ArcShared<Mailbox>>, SendError> {
     self.with_write(|inner| inner.dispatch(receiver, envelope))
   }
 

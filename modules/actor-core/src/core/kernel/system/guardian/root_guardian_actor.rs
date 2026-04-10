@@ -1,5 +1,7 @@
 //! Internal root guardian that supervises `/user` and `/system`.
 
+use core::time::Duration;
+
 use crate::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
@@ -51,9 +53,7 @@ impl Actor for RootGuardianActor {
   }
 
   fn supervisor_strategy(&self, _ctx: &mut ActorContext<'_>) -> SupervisorStrategyConfig {
-    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, core::time::Duration::from_secs(0), |_| {
-      SupervisorDirective::Stop
-    })
-    .into()
+    SupervisorStrategy::new(SupervisorStrategyKind::OneForOne, 0, Duration::from_secs(0), |_| SupervisorDirective::Stop)
+      .into()
   }
 }

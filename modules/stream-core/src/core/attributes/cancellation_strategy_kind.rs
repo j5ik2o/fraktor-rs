@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::boxed::Box;
 use core::any::Any;
 
 use super::Attribute;
@@ -21,8 +22,8 @@ impl Attribute for CancellationStrategyKind {
     self
   }
 
-  fn clone_box(&self) -> alloc::boxed::Box<dyn Attribute> {
-    alloc::boxed::Box::new(*self)
+  fn clone_box(&self) -> Box<dyn Attribute> {
+    Box::new(*self)
   }
 
   fn eq_attr(&self, other: &dyn Any) -> bool {

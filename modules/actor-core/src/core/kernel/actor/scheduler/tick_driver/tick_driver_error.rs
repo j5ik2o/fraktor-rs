@@ -1,6 +1,6 @@
 //! Tick driver error types.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors that can occur during tick driver operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,8 +19,8 @@ pub enum TickDriverError {
   ManualDriverDisabled,
 }
 
-impl fmt::Display for TickDriverError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for TickDriverError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::SpawnFailed => write!(f, "failed to spawn tick driver background task"),
       | Self::HandleUnavailable => write!(f, "runtime handle not available"),

@@ -18,6 +18,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 #[cfg(feature = "tokio-executor")]
 use tokio::{
   runtime::Handle,
+  task::JoinHandle,
   time::{MissedTickBehavior, interval},
 };
 
@@ -88,7 +89,7 @@ impl TickDriver for TokioTickDriver {
 
 #[cfg(feature = "tokio-executor")]
 struct TokioTickDriverControl {
-  tick_task: tokio::task::JoinHandle<()>,
+  tick_task: JoinHandle<()>,
 }
 
 #[cfg(feature = "tokio-executor")]
@@ -131,7 +132,7 @@ impl TickExecutorPump for TokioTickExecutorPump {
 
 #[cfg(feature = "tokio-executor")]
 struct TokioTickExecutorControl {
-  executor_task: tokio::task::JoinHandle<()>,
+  executor_task: JoinHandle<()>,
 }
 
 #[cfg(feature = "tokio-executor")]

@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use core::time::Duration;
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -67,15 +68,15 @@ fn request_retries_on_timeout_until_policy_exhausted() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
-  let options = GrainCallOptions::new(Some(core::time::Duration::from_millis(1)), GrainRetryPolicy::Fixed {
+  let options = GrainCallOptions::new(Some(Duration::from_millis(1)), GrainRetryPolicy::Fixed {
     max_retries: 2,
-    delay:       core::time::Duration::from_millis(1),
+    delay:       Duration::from_millis(1),
   });
   let grain_ref = GrainRef::new(api, identity).with_options(options);
 
   let response = grain_ref.request(&AnyMessage::new(())).expect("request");
 
-  run_scheduler(&system, core::time::Duration::from_millis(10));
+  run_scheduler(&system, Duration::from_millis(10));
 
   let result = response.future().with_write(|inner| inner.try_take()).expect("timeout payload");
   assert!(result.is_err(), "expect timeout error");
@@ -126,7 +127,7 @@ fn request_emits_failure_event_and_updates_metrics() {
   assert_eq!(metrics.call_failures(), 1);
 }
 
-fn run_scheduler(system: &ActorSystem, duration: core::time::Duration) {
+fn run_scheduler(system: &ActorSystem, duration: Duration) {
   let scheduler: SchedulerShared = system.state().scheduler();
   let resolution = scheduler.with_read(|inner| inner.config().resolution());
   let resolution_ns = resolution.as_nanos().max(1);

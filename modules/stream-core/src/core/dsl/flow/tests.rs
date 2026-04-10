@@ -1,5 +1,10 @@
 use alloc::{boxed::Box, collections::VecDeque, vec::Vec};
-use core::{future::Future, marker::PhantomData, pin::Pin, task::Poll};
+use core::{
+  future::Future,
+  marker::PhantomData,
+  pin::Pin,
+  task::{Context, Poll},
+};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -1417,7 +1422,7 @@ fn map_async_logic_keeps_order_and_tracks_pending_output() {
     func:        |value: u32| YieldThenOutputFuture::new(value.saturating_add(1)),
     parallelism: 2,
     pending:     VecDeque::new(),
-    _pd:         core::marker::PhantomData,
+    _pd:         PhantomData,
   };
 
   assert!(logic.can_accept_input());
@@ -1447,7 +1452,7 @@ fn conflate_with_seed_logic_defers_and_merges_pending_values() {
     aggregate:    |acc, value| acc + value,
     pending:      None,
     just_updated: false,
-    _pd:          core::marker::PhantomData,
+    _pd:          PhantomData,
   };
 
   assert!(logic.can_accept_input());
@@ -1495,7 +1500,7 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
@@ -1543,7 +1548,7 @@ impl PartitionedYieldFuture {
 impl Future for PartitionedYieldFuture {
   type Output = u32;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     // Safety: pin 済みのフィールドを move しないため安全。
     let this = unsafe { self.get_unchecked_mut() };
     if this.poll_count < this.ready_after {
@@ -1815,7 +1820,7 @@ fn stateful_map_concat_with_accumulator_processes_elements() {
   struct DoublingAccumulator;
 
   impl StatefulMapConcatAccumulator<u32, u32> for DoublingAccumulator {
-    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+    fn apply(&mut self, input: u32) -> Vec<u32> {
       vec![input, input * 2]
     }
   }
@@ -1835,24 +1840,24 @@ fn stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
   use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct BufferingAccumulator {
-    buffer: alloc::vec::Vec<u32>,
+    buffer: Vec<u32>,
   }
 
   impl StatefulMapConcatAccumulator<u32, u32> for BufferingAccumulator {
-    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+    fn apply(&mut self, input: u32) -> Vec<u32> {
       self.buffer.push(input);
       // バッファが2つ溜まったら排出
       if self.buffer.len() >= 2 { core::mem::take(&mut self.buffer) } else { vec![] }
     }
 
-    fn on_complete(&mut self) -> alloc::vec::Vec<u32> {
+    fn on_complete(&mut self) -> Vec<u32> {
       // 残りのバッファを排出
       core::mem::take(&mut self.buffer)
     }
   }
 
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .via(Flow::new().stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: alloc::vec::Vec::new() }))
+    .via(Flow::new().stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: Vec::new() }))
     .collect_values()
     .expect("collect_values");
 
@@ -2425,7 +2430,7 @@ fn or_else_source_logic_on_restart_keeps_secondary_stream() {
 
 #[test]
 fn zip_with_index_logic_on_restart_resets_counter() {
-  let mut logic = ZipWithIndexLogic::<u32> { next_index: 0, _pd: core::marker::PhantomData };
+  let mut logic = ZipWithIndexLogic::<u32> { next_index: 0, _pd: PhantomData };
   let first = logic.apply(Box::new(10_u32)).expect("first apply");
   let second = logic.apply(Box::new(11_u32)).expect("second apply");
   assert_eq!(first.len(), 1);
@@ -2447,7 +2452,7 @@ fn stateful_map_logic_on_restart_recreates_mapper() {
     }
   };
   let mapper = factory();
-  let mut logic = StatefulMapLogic::<u32, u32, _, _> { factory, mapper, _pd: core::marker::PhantomData };
+  let mut logic = StatefulMapLogic::<u32, u32, _, _> { factory, mapper, _pd: PhantomData };
 
   let first = logic.apply(Box::new(1_u32)).expect("first apply");
   let second = logic.apply(Box::new(2_u32)).expect("second apply");
@@ -2473,8 +2478,7 @@ fn stateful_map_concat_logic_on_restart_recreates_mapper() {
     }
   };
   let mapper = factory();
-  let mut logic =
-    StatefulMapConcatLogic::<u32, u32, _, _, [u32; 1]> { factory, mapper, _pd: core::marker::PhantomData };
+  let mut logic = StatefulMapConcatLogic::<u32, u32, _, _, [u32; 1]> { factory, mapper, _pd: PhantomData };
 
   let first = logic.apply(Box::new(1_u32)).expect("first apply");
   let second = logic.apply(Box::new(2_u32)).expect("second apply");
@@ -3369,7 +3373,7 @@ fn wire_tap_mat_preserves_all_main_path_elements_with_multiple_inputs() {
 #[test]
 fn wire_tap_mat_callback_version_observes_all_elements() {
   // 準備: callback 版 wire_tap で全要素を観測する
-  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::<u32>::new()));
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::<u32>::new()));
   let observed_clone = observed.clone();
 
   let values = Source::from_array([10_u32, 20, 30])
@@ -4133,7 +4137,7 @@ struct ShutdownFlagFlowLogic {
 }
 
 impl FlowLogic for ShutdownFlagFlowLogic {
-  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     Ok(alloc::vec![input])
   }
 
@@ -4149,7 +4153,7 @@ struct MultiOutputRetryTestLogic {
 }
 
 impl FlowLogic for MultiOutputRetryTestLogic {
-  fn apply(&mut self, input: DynValue) -> Result<alloc::vec::Vec<DynValue>, StreamError> {
+  fn apply(&mut self, input: DynValue) -> Result<Vec<DynValue>, StreamError> {
     let value = *input.downcast::<u32>().map_err(|_| StreamError::TypeMismatch)?;
     Ok(alloc::vec![Box::new(value.saturating_add(1)) as DynValue, Box::new(value.saturating_add(2)) as DynValue,])
   }
@@ -4210,13 +4214,13 @@ fn retry_flow_logic_queues_multiple_retries_before_restarting_inner() {
   assert!(logic.has_pending_output());
 
   let first_retry = logic.drain_pending().expect("first retry");
-  let first_values: alloc::vec::Vec<u32> =
+  let first_values: Vec<u32> =
     first_retry.into_iter().map(|value| *value.downcast::<u32>().expect("u32 output")).collect();
   assert_eq!(first_values, vec![103_u32, 104_u32]);
   assert!(logic.has_pending_output());
 
   let second_retry = logic.drain_pending().expect("second retry");
-  let second_values: alloc::vec::Vec<u32> =
+  let second_values: Vec<u32> =
     second_retry.into_iter().map(|value| *value.downcast::<u32>().expect("u32 output")).collect();
   assert_eq!(second_values, vec![104_u32, 105_u32]);
   assert!(!logic.has_pending_output());
@@ -4236,7 +4240,7 @@ fn throttle_enforcing_mode_fails_on_capacity_overflow() {
   // map_concat は1入力から複数出力を生成し、スロットルの内部バッファを
   // 下流が排出できるより速く飽和させる。
   let result = Source::single(alloc::vec![1_u32, 2, 3])
-    .via(Flow::new().map_concat(|v: alloc::vec::Vec<u32>| v))
+    .via(Flow::new().map_concat(|v: Vec<u32>| v))
     .via(Flow::new().throttle(1, ThrottleMode::Enforcing).expect("throttle"))
     .collect_values();
   assert_eq!(result, Err(StreamError::BufferOverflow));

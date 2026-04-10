@@ -1,3 +1,4 @@
+use alloc::{format, vec::Vec};
 use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, NoStdMutex};
@@ -17,11 +18,11 @@ use crate::core::kernel::{
 
 // Test sender that collects messages
 struct CollectorSender {
-  messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent>>>,
+  messages: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>,
 }
 
 impl CollectorSender {
-  fn new(messages: ArcShared<NoStdMutex<alloc::vec::Vec<EventStreamEvent>>>) -> Self {
+  fn new(messages: ArcShared<NoStdMutex<Vec<EventStreamEvent>>>) -> Self {
     Self { messages }
   }
 }
@@ -37,7 +38,7 @@ impl ActorRefSender for CollectorSender {
 
 #[test]
 fn actor_ref_subscriber_forwards_events_to_actor() {
-  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
@@ -54,14 +55,14 @@ fn actor_ref_subscriber_forwards_events_to_actor() {
 
   subscriber.on_event(&event);
 
-  let captured: alloc::vec::Vec<_> = messages_clone.lock().drain(..).collect();
+  let captured: Vec<_> = messages_clone.lock().drain(..).collect();
   assert_eq!(captured.len(), 1);
   assert!(matches!(captured[0], EventStreamEvent::Log(_)));
 }
 
 #[test]
 fn actor_ref_subscriber_handles_multiple_events() {
-  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
@@ -71,7 +72,7 @@ fn actor_ref_subscriber_handles_multiple_events() {
   for i in 0..10 {
     let event = EventStreamEvent::Log(LogEvent::new(
       LogLevel::Info,
-      alloc::format!("message {}", i),
+      format!("message {}", i),
       Duration::from_millis(i as u64),
       Some(Pid::new(1, 0)),
       None,
@@ -79,13 +80,13 @@ fn actor_ref_subscriber_handles_multiple_events() {
     subscriber.on_event(&event);
   }
 
-  let captured: alloc::vec::Vec<_> = messages_clone.lock().drain(..).collect();
+  let captured: Vec<_> = messages_clone.lock().drain(..).collect();
   assert_eq!(captured.len(), 10);
 }
 
 #[test]
 fn actor_ref_returns_correct_reference() {
-  let messages = ArcShared::new(NoStdMutex::new(alloc::vec::Vec::new()));
+  let messages = ArcShared::new(NoStdMutex::new(Vec::new()));
   let sender = CollectorSender::new(messages);
   let actor_ref = ActorRef::new(Pid::new(1, 0), sender);
 

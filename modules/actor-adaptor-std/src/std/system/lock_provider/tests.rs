@@ -2,7 +2,7 @@ use std::{
   sync::{
     Arc, Barrier,
     atomic::{AtomicUsize, Ordering},
-    mpsc,
+    mpsc::{self, Sender},
   },
   thread,
 };
@@ -101,7 +101,7 @@ fn std_provider_builds_a_system_and_delivers_messages() {
 
 struct DeferredScheduleSender {
   send_count:             Arc<AtomicUsize>,
-  first_schedule_entered: mpsc::Sender<()>,
+  first_schedule_entered: Sender<()>,
   first_schedule_release: Arc<Barrier>,
 }
 

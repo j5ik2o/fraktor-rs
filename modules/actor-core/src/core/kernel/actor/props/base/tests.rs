@@ -1,4 +1,5 @@
 use alloc::collections::BTreeSet;
+use core::num::NonZeroUsize;
 
 use crate::core::kernel::{
   actor::{
@@ -66,7 +67,7 @@ fn with_stash_mailbox_sets_stash_requirement() {
 fn with_stash_mailbox_rejects_bounded_mailbox_config() {
   let props = Props::from_fn(|| TestActor)
     .with_mailbox_config(MailboxConfig::new(MailboxPolicy::bounded(
-      core::num::NonZeroUsize::new(8).expect("non-zero"),
+      NonZeroUsize::new(8).expect("non-zero"),
       MailboxOverflowStrategy::DropNewest,
       None,
     )))

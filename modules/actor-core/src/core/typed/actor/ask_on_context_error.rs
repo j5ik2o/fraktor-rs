@@ -1,6 +1,6 @@
 //! Error type for ask operations initiated from an actor context.
 
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::error::{PipeSpawnError, SendError};
 
@@ -14,7 +14,7 @@ pub enum AskOnContextError {
 }
 
 impl fmt::Display for AskOnContextError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | AskOnContextError::SendFailed(error) => write!(f, "ask send failed: {error:?}"),
       | AskOnContextError::PipeSpawnFailed(error) => write!(f, "ask pipe spawn failed: {error}"),

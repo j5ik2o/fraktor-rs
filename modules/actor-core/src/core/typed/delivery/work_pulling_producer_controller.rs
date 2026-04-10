@@ -8,6 +8,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 
@@ -896,8 +897,8 @@ fn execute_wppc_deferred<A>(
   actions: Vec<WppcDeferredAction<A>>,
   ctx: &mut TypedActorContext<'_, WorkPullingProducerControllerCommand<A>>,
   state: &ArcShared<RuntimeMutex<WorkPullingState<A>>>,
-  internal_ask_timeout: core::time::Duration,
-  durable_queue_request_timeout: core::time::Duration,
+  internal_ask_timeout: Duration,
+  durable_queue_request_timeout: Duration,
 ) where
   A: Clone + Send + Sync + 'static, {
   let mut pending: VecDeque<WppcDeferredAction<A>> = actions.into_iter().collect();

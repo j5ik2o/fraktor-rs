@@ -42,6 +42,7 @@ proptest = "1.5"
 critical-section = { workspace = true, features = ["std"] }
 serde_json = { workspace = true }
 tracing = { workspace = true, features = ["std"] }
+fraktor-utils-adaptor-std-rs = { workspace = true }
 
 [[test]]
 name = "actor_path_e2e"

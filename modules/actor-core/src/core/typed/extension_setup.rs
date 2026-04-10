@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use core::any::TypeId;
+
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
@@ -58,7 +60,7 @@ where
     (self.create_extension)(system)
   }
 
-  fn id(&self) -> core::any::TypeId {
+  fn id(&self) -> TypeId {
     self.extension_id.id()
   }
 }

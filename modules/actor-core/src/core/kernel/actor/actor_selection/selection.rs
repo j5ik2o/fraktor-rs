@@ -4,7 +4,10 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::time::Duration;
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  time::Duration,
+};
 
 use super::{ActorSelectionError, ActorSelectionResolver};
 use crate::core::kernel::{
@@ -162,8 +165,8 @@ impl ActorSelection {
   }
 }
 
-impl core::fmt::Debug for ActorSelection {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for ActorSelection {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ActorSelection").field("base_path", &self.base_path).field("selection", &self.selection).finish()
   }
 }

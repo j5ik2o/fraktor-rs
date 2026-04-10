@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors returned by snapshot store operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,8 +17,8 @@ pub enum SnapshotError {
   DeleteFailed(String),
 }
 
-impl fmt::Display for SnapshotError {
-  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for SnapshotError {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
       | SnapshotError::SaveFailed(reason) => write!(formatter, "save snapshot failed: {}", reason),
       | SnapshotError::LoadFailed(reason) => write!(formatter, "load snapshot failed: {}", reason),

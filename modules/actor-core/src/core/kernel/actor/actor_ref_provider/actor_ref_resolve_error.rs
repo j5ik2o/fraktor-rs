@@ -1,6 +1,7 @@
 //! Errors returned by `ActorSystem::resolve_actor_ref`.
 
 use alloc::string::String;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Resolution failures for actor references.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +18,8 @@ pub enum ActorRefResolveError {
   NotFound(String),
 }
 
-impl core::fmt::Display for ActorRefResolveError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for ActorRefResolveError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::UnsupportedScheme => write!(f, "unsupported actor path scheme"),
       | Self::ProviderMissing => write!(f, "no actor-ref provider registered for scheme"),

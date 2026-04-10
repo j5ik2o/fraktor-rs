@@ -1,4 +1,5 @@
-use alloc::vec;
+use alloc::{vec, vec::Vec};
+use core::future::{Pending, Ready, pending, ready};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -67,24 +68,24 @@ struct PendingJournal;
 
 impl crate::core::journal::Journal for PendingJournal {
   type DeleteFuture<'a>
-    = core::future::Pending<Result<(), JournalError>>
+    = Pending<Result<(), JournalError>>
   where
     Self: 'a;
   type HighestSeqNrFuture<'a>
-    = core::future::Pending<Result<u64, JournalError>>
+    = Pending<Result<u64, JournalError>>
   where
     Self: 'a;
   type ReplayFuture<'a>
-    = core::future::Pending<Result<alloc::vec::Vec<PersistentRepr>, JournalError>>
+    = Pending<Result<Vec<PersistentRepr>, JournalError>>
   where
     Self: 'a;
   type WriteFuture<'a>
-    = core::future::Pending<Result<(), JournalError>>
+    = Pending<Result<(), JournalError>>
   where
     Self: 'a;
 
   fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn replay_messages<'a>(
@@ -94,15 +95,15 @@ impl crate::core::journal::Journal for PendingJournal {
     _to_sequence_nr: u64,
     _max: u64,
   ) -> Self::ReplayFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn delete_messages_to<'a>(&'a mut self, _persistence_id: &'a str, _to_sequence_nr: u64) -> Self::DeleteFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn highest_sequence_nr<'a>(&'a self, _persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a> {
-    core::future::pending()
+    pending()
   }
 }
 
@@ -118,28 +119,28 @@ impl RetryJournal {
 
 impl crate::core::journal::Journal for RetryJournal {
   type DeleteFuture<'a>
-    = core::future::Ready<Result<(), JournalError>>
+    = Ready<Result<(), JournalError>>
   where
     Self: 'a;
   type HighestSeqNrFuture<'a>
-    = core::future::Ready<Result<u64, JournalError>>
+    = Ready<Result<u64, JournalError>>
   where
     Self: 'a;
   type ReplayFuture<'a>
-    = core::future::Ready<Result<alloc::vec::Vec<PersistentRepr>, JournalError>>
+    = Ready<Result<Vec<PersistentRepr>, JournalError>>
   where
     Self: 'a;
   type WriteFuture<'a>
-    = core::future::Ready<Result<(), JournalError>>
+    = Ready<Result<(), JournalError>>
   where
     Self: 'a;
 
   fn write_messages<'a>(&'a mut self, _messages: &'a [PersistentRepr]) -> Self::WriteFuture<'a> {
     if self.failures_left > 0 {
       self.failures_left -= 1;
-      core::future::ready(Err(JournalError::WriteFailed("boom".into())))
+      ready(Err(JournalError::WriteFailed("boom".into())))
     } else {
-      core::future::ready(Ok(()))
+      ready(Ok(()))
     }
   }
 
@@ -150,15 +151,15 @@ impl crate::core::journal::Journal for RetryJournal {
     _to_sequence_nr: u64,
     _max: u64,
   ) -> Self::ReplayFuture<'a> {
-    core::future::ready(Ok(alloc::vec::Vec::new()))
+    ready(Ok(Vec::new()))
   }
 
   fn delete_messages_to<'a>(&'a mut self, _persistence_id: &'a str, _to_sequence_nr: u64) -> Self::DeleteFuture<'a> {
-    core::future::ready(Ok(()))
+    ready(Ok(()))
   }
 
   fn highest_sequence_nr<'a>(&'a self, _persistence_id: &'a str) -> Self::HighestSeqNrFuture<'a> {
-    core::future::ready(Ok(0))
+    ready(Ok(0))
   }
 }
 

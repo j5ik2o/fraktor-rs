@@ -18,6 +18,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
+use tokio::runtime::Handle;
 
 struct EventSink {
   events: Arc<Mutex<Vec<ClusterEvent>>>,
@@ -83,7 +84,7 @@ async fn gossip_delta_triggers_topology_update() {
   let coordinator = build_coordinator();
   let transport_b = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
   let target_b = transport_b.local_addr().to_string();
@@ -92,13 +93,13 @@ async fn gossip_delta_triggers_topology_update() {
     coordinator,
     transport_b,
     event_stream.clone(),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   );
   gossiper.start().expect("start");
 
   let mut transport_a = TokioGossipTransport::bind(
     TokioGossipTransportConfig::new(String::from("127.0.0.1:0"), 1024, 8),
-    tokio::runtime::Handle::current(),
+    Handle::current(),
   )
   .expect("transport bind");
   let local_a = transport_a.local_addr().to_string();

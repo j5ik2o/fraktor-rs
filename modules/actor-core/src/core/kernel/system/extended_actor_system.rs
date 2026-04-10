@@ -1,6 +1,6 @@
 //! Extended ActorSystem API surface for infrastructure components.
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::ToString};
 use core::any::Any;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -56,11 +56,7 @@ impl ExtendedActorSystem {
   /// Returns [`DispatchersError::Unknown`] when the identifier has not been
   /// registered in the dispatcher registry.
   pub fn resolve_dispatcher(&self, id: &str) -> Result<MessageDispatcherShared, DispatchersError> {
-    self
-      .inner
-      .state()
-      .resolve_dispatcher(id)
-      .ok_or_else(|| DispatchersError::Unknown(alloc::string::ToString::to_string(id)))
+    self.inner.state().resolve_dispatcher(id).ok_or_else(|| DispatchersError::Unknown(ToString::to_string(id)))
   }
 
   /// Resolves the mailbox configuration for the identifier.

@@ -1,7 +1,8 @@
+use alloc::{string::String, vec::Vec};
 use core::{
   future::{Future, ready},
   pin::Pin,
-  task::Poll,
+  task::{Context, Poll},
 };
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
@@ -73,7 +74,7 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
@@ -630,16 +631,16 @@ fn sink_lazy_sink_delegates_pending_inner_lifecycle() {
 
 #[test]
 fn sink_contramap_transforms_input_type() {
-  let sink = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
+  let sink = Sink::<u32, StreamCompletion<Vec<u32>>>::collect().contramap(|s: &str| s.len() as u32);
   let completion = run_source_with_sink(Source::from_array(["hello", "hi", "hey"]), sink);
   assert_eq!(completion, Completion::Ready(Ok(alloc::vec![5_u32, 2, 3])));
 }
 
 #[test]
 fn sink_from_graph_creates_sink_from_existing_graph() {
-  let original = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::collect();
+  let original = Sink::<u32, StreamCompletion<Vec<u32>>>::collect();
   let (graph, mat) = original.into_parts();
-  let reconstructed = Sink::<u32, StreamCompletion<alloc::vec::Vec<u32>>>::from_graph(graph, mat);
+  let reconstructed = Sink::<u32, StreamCompletion<Vec<u32>>>::from_graph(graph, mat);
   let completion = run_source_with_sink(Source::from_array([1_u32, 2, 3]), reconstructed);
   assert_eq!(completion, Completion::Ready(Ok(alloc::vec![1_u32, 2, 3])));
 }
@@ -651,7 +652,7 @@ fn sink_named_keeps_behavior_and_sets_attributes() {
   assert_eq!(completion, Completion::Ready(Ok(StreamDone::new())));
 
   let (graph, _mat) = Sink::<u32, _>::ignore().named("test-sink").into_parts();
-  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-sink")]);
+  assert_eq!(graph.attributes().names(), &[String::from("test-sink")]);
 }
 
 #[test]
@@ -660,7 +661,7 @@ fn sink_with_and_add_attributes_merge_names() {
     .with_attributes(Attributes::named("base"))
     .add_attributes(Attributes::named("extra"))
     .into_parts();
-  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
+  assert_eq!(graph.attributes().names(), &[String::from("base"), String::from("extra")]);
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::{
     Arc,
     atomic::{AtomicUsize, Ordering},
   },
-  task::Wake,
+  task::{Wake, Waker},
 };
 
 use super::StreamCompletion;
@@ -74,7 +74,7 @@ fn completion_preserves_first_error_on_duplicate_complete() {
 fn completion_wakes_registered_waker_when_completed() {
   let completion: StreamCompletion<u32> = StreamCompletion::new();
   let wake_counter = Arc::new(WakeCounter::new());
-  let waker = std::task::Waker::from(wake_counter.clone());
+  let waker = Waker::from(wake_counter.clone());
 
   assert_eq!(completion.poll_with_waker(&waker), Completion::Pending);
   assert_eq!(wake_counter.wake_count(), 0);
@@ -90,8 +90,8 @@ fn completion_wakes_all_registered_wakers_when_completed() {
   let completion: StreamCompletion<u32> = StreamCompletion::new();
   let first = Arc::new(WakeCounter::new());
   let second = Arc::new(WakeCounter::new());
-  let first_waker = std::task::Waker::from(first.clone());
-  let second_waker = std::task::Waker::from(second.clone());
+  let first_waker = Waker::from(first.clone());
+  let second_waker = Waker::from(second.clone());
 
   assert_eq!(completion.poll_with_waker(&first_waker), Completion::Pending);
   assert_eq!(completion.poll_with_waker(&second_waker), Completion::Pending);

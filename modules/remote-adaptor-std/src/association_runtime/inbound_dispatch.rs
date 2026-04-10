@@ -2,7 +2,7 @@
 //! `Association`.
 
 use fraktor_remote_core_rs::address::RemoteNodeId;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{
   association_runtime::{apply_effects_in_place, association_shared::AssociationShared},
@@ -22,7 +22,7 @@ use crate::{
 /// - `inbound_rx` is closed by the transport, or
 /// - `now_ms_provider` returns a value indicating the runtime is shutting down (currently never).
 pub async fn run_inbound_dispatch(
-  mut inbound_rx: mpsc::UnboundedReceiver<InboundFrameEvent>,
+  mut inbound_rx: UnboundedReceiver<InboundFrameEvent>,
   target: AssociationShared,
   now_ms_provider: impl Fn() -> u64 + Send + 'static,
 ) {

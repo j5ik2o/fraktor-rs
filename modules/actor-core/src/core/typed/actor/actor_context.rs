@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{collections::BTreeSet, format, string::String, vec::Vec};
 use core::{future::Future, marker::PhantomData, ptr::NonNull, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, shared::Shared};
@@ -97,14 +97,14 @@ where
 
   /// Returns the metadata tags associated with the running actor.
   #[must_use]
-  pub fn tags(&self) -> alloc::collections::BTreeSet<alloc::string::String> {
+  pub fn tags(&self) -> BTreeSet<String> {
     self.inner().tags()
   }
 
   /// Sets a custom logger name for this actor context.
   ///
   /// Corresponds to Pekko's `ActorContext.setLoggerName(String)`.
-  pub fn set_logger_name(&mut self, name: impl Into<alloc::string::String>) {
+  pub fn set_logger_name(&mut self, name: impl Into<String>) {
     self.inner_mut().set_logger_name(name);
   }
 

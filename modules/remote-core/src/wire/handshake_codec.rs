@@ -1,5 +1,7 @@
 //! Codec for [`HandshakePdu`].
 
+use alloc::string::String;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::wire::{
@@ -38,7 +40,7 @@ fn encode_body(
   Ok(())
 }
 
-fn decode_body(buf: &mut Bytes) -> Result<(alloc::string::String, alloc::string::String, u16, u64), WireError> {
+fn decode_body(buf: &mut Bytes) -> Result<(String, String, u16, u64), WireError> {
   let origin_system = decode_string(buf)?;
   let origin_host = decode_string(buf)?;
   if buf.remaining() < 2 + 8 {

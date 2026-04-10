@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::{
@@ -35,7 +37,7 @@ fn drive_to_terminal(interpreter: &mut GraphInterpreter) {
 
 #[test]
 fn graph_chain_source_to_sink_directly() -> Result<(), StreamError> {
-  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::new()));
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let observed_ref = observed.clone();
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 
@@ -124,7 +126,7 @@ fn manual_wiring_source_three_flows_sink() -> Result<(), StreamError> {
 
 #[test]
 fn graph_chain_macro_builds_graph() -> Result<(), StreamError> {
-  let observed = ArcShared::new(SpinSyncMutex::new(alloc::vec::Vec::new()));
+  let observed = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let observed_ref = observed.clone();
   let mut builder = GraphDslBuilder::<u32, u32, StreamNotUsed>::new();
 

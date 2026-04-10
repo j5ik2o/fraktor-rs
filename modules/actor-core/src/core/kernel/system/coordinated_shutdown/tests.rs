@@ -1,5 +1,6 @@
 use alloc::{collections::BTreeMap, format, string::ToString, vec, vec::Vec};
 use core::{
+  future::pending,
   sync::atomic::{AtomicU32, Ordering},
   time::Duration,
 };
@@ -8,6 +9,7 @@ use fraktor_utils_core_rs::core::{
   sync::{ArcShared, RuntimeMutex},
   timing::delay::{DelayFuture, DelayProvider, ManualDelayProvider},
 };
+use tokio::sync::Barrier;
 
 use super::*;
 
@@ -188,7 +190,7 @@ async fn run_skips_disabled_phases() {
 async fn tasks_within_phase_run_concurrently() {
   let cs = default_shutdown();
   let counter = ArcShared::new(AtomicU32::new(0));
-  let barrier = ArcShared::new(tokio::sync::Barrier::new(3));
+  let barrier = ArcShared::new(Barrier::new(3));
 
   for i in 0..3 {
     let c = counter.clone();
@@ -216,7 +218,7 @@ async fn phase_timeout_is_respected() {
 
   let c = completed.clone();
   cs.add_task("fast-phase", "slow-task", move || async move {
-    core::future::pending::<()>().await;
+    pending::<()>().await;
     c.fetch_add(1, Ordering::SeqCst);
   })
   .unwrap();

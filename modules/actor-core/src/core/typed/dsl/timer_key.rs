@@ -2,7 +2,7 @@
 //! [`TimerScheduler`](super::timer_scheduler::TimerScheduler).
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 /// Identifies a named timer managed by a
 /// [`TimerScheduler`](super::timer_scheduler::TimerScheduler).
@@ -27,14 +27,14 @@ impl TimerKey {
   }
 }
 
-impl fmt::Debug for TimerKey {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for TimerKey {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_tuple("TimerKey").field(&self.name).finish()
   }
 }
 
-impl fmt::Display for TimerKey {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for TimerKey {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", self.name)
   }
 }

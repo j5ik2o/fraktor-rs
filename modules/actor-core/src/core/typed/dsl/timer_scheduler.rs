@@ -9,7 +9,7 @@ use core::{
   time::Duration,
 };
 
-use ahash::RandomState;
+use ahash::{AHasher, RandomState};
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeMutex};
 use hashbrown::HashMap;
 
@@ -46,7 +46,7 @@ where
   fn timer_key_for_message(message: &M) -> TimerKey
   where
     M: Hash, {
-    let mut hasher = ahash::AHasher::default();
+    let mut hasher = AHasher::default();
     message.hash(&mut hasher);
     TimerKey::new(alloc::format!("{:016x}", hasher.finish()))
   }

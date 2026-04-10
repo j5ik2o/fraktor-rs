@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 #[cfg(test)]
 mod tests;
 
@@ -10,13 +12,13 @@ mod tests;
 /// upstream finishes.
 pub trait StatefulMapConcatAccumulator<In, Out>: Send + Sync {
   /// Transforms an input element into zero or more output elements.
-  fn apply(&mut self, input: In) -> alloc::vec::Vec<Out>;
+  fn apply(&mut self, input: In) -> Vec<Out>;
 
   /// Called once when the upstream completes.
   ///
   /// Returns additional elements to emit before the stream finishes.
   /// The default implementation emits nothing.
-  fn on_complete(&mut self) -> alloc::vec::Vec<Out> {
-    alloc::vec::Vec::new()
+  fn on_complete(&mut self) -> Vec<Out> {
+    Vec::new()
   }
 }

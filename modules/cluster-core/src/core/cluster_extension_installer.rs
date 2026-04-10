@@ -1,6 +1,6 @@
 //! Installs the cluster extension into an actor system.
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::extension::ExtensionInstaller,
@@ -24,8 +24,8 @@ use crate::core::{
 struct EmptyBlockListProvider;
 
 impl BlockListProvider for EmptyBlockListProvider {
-  fn blocked_members(&self) -> alloc::vec::Vec<alloc::string::String> {
-    alloc::vec::Vec::new()
+  fn blocked_members(&self) -> Vec<String> {
+    Vec::new()
   }
 }
 

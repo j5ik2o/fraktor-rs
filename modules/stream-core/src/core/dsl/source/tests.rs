@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, collections::VecDeque};
+use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
 use core::{
   future::{Future, ready},
   marker::PhantomData,
@@ -7,11 +7,12 @@ use core::{
 };
 use std::{
   env,
+  panic::AssertUnwindSafe,
   sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
   },
-  thread,
+  thread::{self, Builder},
   time::{Duration, Instant},
 };
 
@@ -59,8 +60,8 @@ impl<T, F> CreateSourceTestLogic<T, F> {
 
     let producer_queue = self.queue.clone();
     let termination_queue = self.queue.clone();
-    let spawn_result = thread::Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
-      let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| producer(producer_queue)));
+    let spawn_result = Builder::new().name("fraktor-streams-create".to_string()).spawn(move || {
+      let result = std::panic::catch_unwind(AssertUnwindSafe(|| producer(producer_queue)));
       match result {
         | Ok(()) => {
           let _ = termination_queue.complete_if_open();
@@ -224,7 +225,7 @@ impl<T> YieldThenOutputFuture<T> {
 impl<T: Unpin> Future for YieldThenOutputFuture<T> {
   type Output = T;
 
-  fn poll(self: Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     let this = self.get_mut();
     if this.poll_count < this.ready_after {
       this.poll_count = this.poll_count.saturating_add(1);
@@ -1742,7 +1743,7 @@ fn source_stateful_map_concat_with_accumulator_processes_elements() {
   struct DoublingAccumulator;
 
   impl StatefulMapConcatAccumulator<u32, u32> for DoublingAccumulator {
-    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+    fn apply(&mut self, input: u32) -> Vec<u32> {
       vec![input, input * 2]
     }
   }
@@ -1762,22 +1763,22 @@ fn source_stateful_map_concat_with_accumulator_on_complete_emits_trailing() {
   use crate::core::dsl::StatefulMapConcatAccumulator;
 
   struct BufferingAccumulator {
-    buffer: alloc::vec::Vec<u32>,
+    buffer: Vec<u32>,
   }
 
   impl StatefulMapConcatAccumulator<u32, u32> for BufferingAccumulator {
-    fn apply(&mut self, input: u32) -> alloc::vec::Vec<u32> {
+    fn apply(&mut self, input: u32) -> Vec<u32> {
       self.buffer.push(input);
       if self.buffer.len() >= 2 { core::mem::take(&mut self.buffer) } else { vec![] }
     }
 
-    fn on_complete(&mut self) -> alloc::vec::Vec<u32> {
+    fn on_complete(&mut self) -> Vec<u32> {
       core::mem::take(&mut self.buffer)
     }
   }
 
   let values = Source::<u32, _>::from_logic(StageKind::Custom, SequenceSourceLogic::new(&[1, 2, 3]))
-    .stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: alloc::vec::Vec::new() })
+    .stateful_map_concat_with_accumulator(|| BufferingAccumulator { buffer: Vec::new() })
     .collect_values()
     .expect("collect_values");
 
@@ -2367,7 +2368,7 @@ fn source_throttle_enforcing_mode_keeps_single_path() {
 #[test]
 fn source_throttle_enforcing_mode_fails_on_capacity_overflow() {
   let result = Source::single(alloc::vec![1_u32, 2, 3])
-    .map_concat(|v: alloc::vec::Vec<u32>| v)
+    .map_concat(|v: Vec<u32>| v)
     .throttle(1, ThrottleMode::Enforcing)
     .expect("throttle")
     .collect_values();
@@ -2380,7 +2381,7 @@ fn source_named_keeps_elements_and_sets_attributes() {
   assert_eq!(values, vec![1_u32, 2, 3]);
 
   let (graph, _mat) = Source::<u32, StreamNotUsed>::from_array([1_u32, 2]).named("test-source").into_parts();
-  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("test-source")]);
+  assert_eq!(graph.attributes().names(), &[String::from("test-source")]);
 }
 
 #[test]
@@ -2389,7 +2390,7 @@ fn source_with_and_add_attributes_merge_names() {
     .with_attributes(Attributes::named("base"))
     .add_attributes(Attributes::named("extra"))
     .into_parts();
-  assert_eq!(graph.attributes().names(), &[alloc::string::String::from("base"), alloc::string::String::from("extra")]);
+  assert_eq!(graph.attributes().names(), &[String::from("base"), String::from("extra")]);
 }
 
 #[test]

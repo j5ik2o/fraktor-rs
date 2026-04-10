@@ -6,7 +6,7 @@ mod tests;
 use alloc::{collections::BTreeSet, string::String};
 use core::{
   any::Any,
-  fmt::{Debug, Formatter},
+  fmt::{Debug, Formatter, Result as FmtResult},
 };
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -60,7 +60,7 @@ impl Tagged {
 }
 
 impl Debug for Tagged {
-  fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("Tagged").field("tags", &self.tags).field("payload", &"<any>").finish()
   }
 }

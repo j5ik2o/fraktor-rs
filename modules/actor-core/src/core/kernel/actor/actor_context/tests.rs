@@ -171,8 +171,6 @@ fn actor_context_spawn_child_with_invalid_parent() {
 
 #[test]
 fn actor_context_log() {
-  use alloc::string::String;
-
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
   let context = ActorContext::new(&system, pid);
@@ -730,7 +728,7 @@ fn set_receive_timeout_stores_handle() {
 
   // When: set_receive_timeout is called
   let timeout_msg = AnyMessage::new(999_u32);
-  context.set_receive_timeout(core::time::Duration::from_millis(500), timeout_msg);
+  context.set_receive_timeout(Duration::from_millis(500), timeout_msg);
 
   // Then: has_receive_timeout returns true
   assert!(context.has_receive_timeout(), "receive timeout should be configured after set");
@@ -744,7 +742,7 @@ fn cancel_receive_timeout_clears_handle() {
   let props = Props::from_fn(|| TestActor);
   let _cell = register_cell(&system, pid, "cancel-actor", &props);
   let mut context = ActorContext::new(&system, pid);
-  context.set_receive_timeout(core::time::Duration::from_millis(500), AnyMessage::new(999_u32));
+  context.set_receive_timeout(Duration::from_millis(500), AnyMessage::new(999_u32));
 
   // When: cancel_receive_timeout is called
   context.cancel_receive_timeout();
@@ -761,10 +759,10 @@ fn set_receive_timeout_replaces_previous_timeout() {
   let props = Props::from_fn(|| TestActor);
   let _cell = register_cell(&system, pid, "replace-actor", &props);
   let mut context = ActorContext::new(&system, pid);
-  context.set_receive_timeout(core::time::Duration::from_millis(500), AnyMessage::new(1_u32));
+  context.set_receive_timeout(Duration::from_millis(500), AnyMessage::new(1_u32));
 
   // When: set_receive_timeout is called again with different parameters
-  context.set_receive_timeout(core::time::Duration::from_millis(1000), AnyMessage::new(2_u32));
+  context.set_receive_timeout(Duration::from_millis(1000), AnyMessage::new(2_u32));
 
   // Then: the timeout is still active (replaced, not accumulated)
   assert!(context.has_receive_timeout(), "receive timeout should still be configured");
@@ -810,7 +808,7 @@ fn receive_timeout_state_resets_across_fresh_contexts() {
   // Configure the timeout via one context instance.
   {
     let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
-    context.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+    context.set_receive_timeout(Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
   }
 
   // Advance to t=1: the initial deadline is still in the future.
@@ -846,7 +844,7 @@ fn receive_timeout_state_can_be_armed_again_after_later_delivery() {
 
   {
     let mut context = ActorContext::new(&system, pid).with_receive_timeout_state(&timeout_state);
-    context.set_receive_timeout(core::time::Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
+    context.set_receive_timeout(Duration::from_millis(20), AnyMessage::new(ReceiveTimeoutTick));
   }
 
   system.scheduler().with_write(|scheduler| scheduler.run_for_test(2));

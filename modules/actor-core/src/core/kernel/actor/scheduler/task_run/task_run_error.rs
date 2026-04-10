@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Error reported by shutdown tasks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,8 +20,8 @@ impl TaskRunError {
   }
 }
 
-impl fmt::Display for TaskRunError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for TaskRunError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", self.message)
   }
 }

@@ -3,7 +3,10 @@
 #![allow(multiple_type_definitions)]
 
 use alloc::boxed::Box;
-use core::cmp::Ordering;
+use core::{
+  cmp::Ordering,
+  fmt::{Debug, Formatter, Result as FmtResult},
+};
 
 use fraktor_utils_core_rs::core::collections::{
   PriorityMessage,
@@ -60,8 +63,8 @@ pub(crate) struct TaskRunEntry {
   pub(crate) task:     Box<dyn TaskRunOnClose>,
 }
 
-impl core::fmt::Debug for TaskRunEntry {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for TaskRunEntry {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TaskRunEntry")
       .field("priority", &self.priority)
       .field("sequence", &self.sequence)

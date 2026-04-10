@@ -1,3 +1,5 @@
+use core::future::{Pending, Ready, pending, ready};
+
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
@@ -66,19 +68,19 @@ struct PendingSnapshotStore;
 
 impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
   type DeleteManyFuture<'a>
-    = core::future::Pending<Result<(), SnapshotError>>
+    = Pending<Result<(), SnapshotError>>
   where
     Self: 'a;
   type DeleteOneFuture<'a>
-    = core::future::Pending<Result<(), SnapshotError>>
+    = Pending<Result<(), SnapshotError>>
   where
     Self: 'a;
   type LoadFuture<'a>
-    = core::future::Pending<Result<Option<Snapshot>, SnapshotError>>
+    = Pending<Result<Option<Snapshot>, SnapshotError>>
   where
     Self: 'a;
   type SaveFuture<'a>
-    = core::future::Pending<Result<(), SnapshotError>>
+    = Pending<Result<(), SnapshotError>>
   where
     Self: 'a;
 
@@ -87,7 +89,7 @@ impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
     _metadata: SnapshotMetadata,
     _snapshot: ArcShared<dyn core::any::Any + Send + Sync>,
   ) -> Self::SaveFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn load_snapshot<'a>(
@@ -95,11 +97,11 @@ impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
     _persistence_id: &'a str,
     _criteria: SnapshotSelectionCriteria,
   ) -> Self::LoadFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn delete_snapshot<'a>(&'a mut self, _metadata: &'a SnapshotMetadata) -> Self::DeleteOneFuture<'a> {
-    core::future::pending()
+    pending()
   }
 
   fn delete_snapshots<'a>(
@@ -107,7 +109,7 @@ impl crate::core::snapshot_store::SnapshotStore for PendingSnapshotStore {
     _persistence_id: &'a str,
     _criteria: SnapshotSelectionCriteria,
   ) -> Self::DeleteManyFuture<'a> {
-    core::future::pending()
+    pending()
   }
 }
 
@@ -123,19 +125,19 @@ impl RetrySnapshotStore {
 
 impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
   type DeleteManyFuture<'a>
-    = core::future::Ready<Result<(), SnapshotError>>
+    = Ready<Result<(), SnapshotError>>
   where
     Self: 'a;
   type DeleteOneFuture<'a>
-    = core::future::Ready<Result<(), SnapshotError>>
+    = Ready<Result<(), SnapshotError>>
   where
     Self: 'a;
   type LoadFuture<'a>
-    = core::future::Ready<Result<Option<Snapshot>, SnapshotError>>
+    = Ready<Result<Option<Snapshot>, SnapshotError>>
   where
     Self: 'a;
   type SaveFuture<'a>
-    = core::future::Ready<Result<(), SnapshotError>>
+    = Ready<Result<(), SnapshotError>>
   where
     Self: 'a;
 
@@ -146,9 +148,9 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
   ) -> Self::SaveFuture<'a> {
     if self.failures_left > 0 {
       self.failures_left -= 1;
-      core::future::ready(Err(SnapshotError::SaveFailed("boom".into())))
+      ready(Err(SnapshotError::SaveFailed("boom".into())))
     } else {
-      core::future::ready(Ok(()))
+      ready(Ok(()))
     }
   }
 
@@ -157,11 +159,11 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
     _persistence_id: &'a str,
     _criteria: SnapshotSelectionCriteria,
   ) -> Self::LoadFuture<'a> {
-    core::future::ready(Ok(None))
+    ready(Ok(None))
   }
 
   fn delete_snapshot<'a>(&'a mut self, _metadata: &'a SnapshotMetadata) -> Self::DeleteOneFuture<'a> {
-    core::future::ready(Ok(()))
+    ready(Ok(()))
   }
 
   fn delete_snapshots<'a>(
@@ -169,7 +171,7 @@ impl crate::core::snapshot_store::SnapshotStore for RetrySnapshotStore {
     _persistence_id: &'a str,
     _criteria: SnapshotSelectionCriteria,
   ) -> Self::DeleteManyFuture<'a> {
-    core::future::ready(Ok(()))
+    ready(Ok(()))
   }
 }
 

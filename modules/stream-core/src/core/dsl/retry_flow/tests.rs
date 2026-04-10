@@ -1,3 +1,8 @@
+use std::sync::{
+  Arc,
+  atomic::{AtomicUsize, Ordering},
+};
+
 use crate::core::{
   dsl::{Flow, FlowWithContext, RetryFlow, Source},
   materialization::StreamNotUsed,
@@ -13,11 +18,11 @@ fn retry_flow_passes_through_when_no_retry_needed() {
 
 #[test]
 fn retry_flow_retries_and_succeeds() {
-  let attempt = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+  let attempt = Arc::new(AtomicUsize::new(0));
   let attempt_clone = attempt.clone();
 
   let inner_flow: Flow<u32, u32, StreamNotUsed> = Flow::from_function(move |x: u32| {
-    let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let count = attempt_clone.fetch_add(1, Ordering::Relaxed);
     if count == 0 { 0_u32 } else { x.saturating_mul(10) }
   });
 
@@ -127,12 +132,12 @@ fn retry_flow_with_context_passes_through_when_no_retry_needed() {
 
 #[test]
 fn retry_flow_with_context_retries_preserving_context() {
-  let attempt = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+  let attempt = Arc::new(AtomicUsize::new(0));
   let attempt_clone = attempt.clone();
 
   let inner_flow: Flow<(String, u32), (String, u32), StreamNotUsed> =
     Flow::from_function(move |(ctx, x): (String, u32)| {
-      let count = attempt_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+      let count = attempt_clone.fetch_add(1, Ordering::Relaxed);
       if count == 0 { (ctx, 0_u32) } else { (ctx, x.saturating_mul(10)) }
     });
   let fwc = FlowWithContext::from_flow(inner_flow);

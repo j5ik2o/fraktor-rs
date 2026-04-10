@@ -4,6 +4,10 @@
 mod tests;
 
 use alloc::{string::String, vec::Vec};
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  str::Utf8Error,
+};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -128,7 +132,7 @@ impl ByteString {
   /// # Errors
   ///
   /// Returns `Err` if the bytes are not valid UTF-8.
-  pub fn decode_string(&self) -> Result<String, core::str::Utf8Error> {
+  pub fn decode_string(&self) -> Result<String, Utf8Error> {
     core::str::from_utf8(self.as_slice()).map(String::from)
   }
 
@@ -165,8 +169,8 @@ impl core::hash::Hash for ByteString {
   }
 }
 
-impl core::fmt::Debug for ByteString {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for ByteString {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("ByteString").field("len", &self.len()).finish()
   }
 }

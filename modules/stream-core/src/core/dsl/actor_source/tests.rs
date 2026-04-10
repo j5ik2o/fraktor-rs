@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{collections::VecDeque, vec::Vec};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -189,7 +189,7 @@ fn actor_source_actor_ref_should_reject_backpressure_strategy() {
 #[test]
 fn actor_source_actor_ref_with_backpressure_should_emit_told_values() {
   // Given: a source with backpressure semantics
-  let acks = ArcShared::new(SpinSyncMutex::new(alloc::collections::VecDeque::<u8>::new()));
+  let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::<u8>::new()));
   let source = ActorSource::actor_ref_with_backpressure::<u32, u8, _>(1_u8, {
     let acks = acks.clone();
     move || acks.lock().pop_front()
@@ -216,7 +216,7 @@ fn actor_source_actor_ref_with_backpressure_should_emit_told_values() {
 #[test]
 fn actor_source_actor_ref_with_backpressure_should_complete_with_empty_output() {
   // Given: a source with backpressure semantics
-  let acks = ArcShared::new(SpinSyncMutex::new(alloc::collections::VecDeque::<u8>::new()));
+  let acks = ArcShared::new(SpinSyncMutex::new(VecDeque::<u8>::new()));
   let source = ActorSource::actor_ref_with_backpressure::<u32, u8, _>(1_u8, {
     let acks = acks.clone();
     move || acks.lock().pop_front()

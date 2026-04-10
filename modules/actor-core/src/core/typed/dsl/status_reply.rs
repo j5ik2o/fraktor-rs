@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
+
 use crate::core::typed::dsl::StatusReplyError;
 
 /// A reply that carries either a success value or a structured error.
@@ -26,7 +28,7 @@ impl<T> StatusReply<T> {
 
   /// Creates an error reply with the given message.
   #[must_use]
-  pub fn error(message: impl Into<alloc::string::String>) -> Self {
+  pub fn error(message: impl Into<String>) -> Self {
     Self::Error(StatusReplyError::new(message))
   }
 

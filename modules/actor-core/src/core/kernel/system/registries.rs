@@ -1,5 +1,7 @@
 //! Name registry collection for actor naming.
 
+use core::marker::PhantomData;
+
 use ahash::RandomState;
 use hashbrown::HashMap;
 
@@ -8,14 +10,14 @@ use crate::core::kernel::actor::{Pid, spawn::NameRegistry};
 /// Collection of name registries indexed by parent [`Pid`].
 pub(crate) struct Registries {
   map:     HashMap<Option<Pid>, NameRegistry, RandomState>,
-  _marker: core::marker::PhantomData<()>,
+  _marker: PhantomData<()>,
 }
 #[allow(dead_code)]
 impl Registries {
   /// Creates a new empty registries collection.
   #[must_use]
   pub(crate) fn new() -> Self {
-    Self { map: HashMap::with_hasher(RandomState::new()), _marker: core::marker::PhantomData }
+    Self { map: HashMap::with_hasher(RandomState::new()), _marker: PhantomData }
   }
 
   /// Returns a mutable reference to the registry for the given parent, inserting a new one if

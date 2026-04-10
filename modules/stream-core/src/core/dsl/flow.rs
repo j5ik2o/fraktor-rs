@@ -1,4 +1,10 @@
-use alloc::{boxed::Box, collections::VecDeque, vec, vec::Vec};
+use alloc::{
+  boxed::Box,
+  collections::{BTreeSet, VecDeque},
+  string::String,
+  vec,
+  vec::Vec,
+};
 use core::{
   any::TypeId,
   future::Future,
@@ -607,7 +613,7 @@ where
   /// The island created by the async boundary will use the specified
   /// dispatcher for its execution context.
   #[must_use]
-  pub fn async_with_dispatcher(mut self, dispatcher: impl Into<alloc::string::String>) -> Flow<In, Out, Mat> {
+  pub fn async_with_dispatcher(mut self, dispatcher: impl Into<String>) -> Flow<In, Out, Mat> {
     self.graph.mark_last_node_async();
     self.graph.mark_last_node_dispatcher(dispatcher);
     self
@@ -3115,7 +3121,7 @@ where
   pub fn distinct(self) -> Flow<In, Out, Mat> {
     self
       .stateful_map(|| {
-        let mut seen = alloc::collections::BTreeSet::new();
+        let mut seen = BTreeSet::new();
         move |value: Out| {
           if seen.contains(&value) {
             return None;
@@ -3142,7 +3148,7 @@ where
     self
       .stateful_map(move || {
         let mut key_fn = key_fn.clone();
-        let mut seen = alloc::collections::BTreeSet::<K>::new();
+        let mut seen = BTreeSet::<K>::new();
         move |value: Out| {
           let key = key_fn(&value);
           if seen.contains(&key) {
@@ -3814,13 +3820,8 @@ where
   FA: FnMut(T, In) -> T + Send + Sync + 'static, {
   let inlet: Inlet<In> = Inlet::new();
   let outlet: Outlet<T> = Outlet::new();
-  let logic = ConflateWithSeedLogic::<In, T, FS, FA> {
-    seed,
-    aggregate,
-    pending: None,
-    just_updated: false,
-    _pd: core::marker::PhantomData,
-  };
+  let logic =
+    ConflateWithSeedLogic::<In, T, FS, FA> { seed, aggregate, pending: None, just_updated: false, _pd: PhantomData };
   FlowDefinition {
     kind:        StageKind::Custom,
     inlet:       inlet.id(),

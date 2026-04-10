@@ -1,4 +1,5 @@
 use core::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -155,14 +156,14 @@ fn schedule_once_runnable_returns_handle() {
 fn schedule_once_runnable_executes_when_context_runs() {
   // 前提: Scheduler facade と SchedulerContext がある
   let (scheduler, context) = new_scheduler_with_context();
-  let executions = ArcShared::new(std::sync::atomic::AtomicUsize::new(0));
+  let executions = ArcShared::new(AtomicUsize::new(0));
 
   // 操作: runnable を schedule してテスト用ランナーを進める
   let handle = scheduler
     .schedule_once_runnable(Duration::from_millis(1), {
       let executions = executions.clone();
       move |_batch: &ExecutionBatch| {
-        executions.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        executions.fetch_add(1, Ordering::Relaxed);
       }
     })
     .expect("schedule_once_runnable should return a handle");
@@ -170,7 +171,7 @@ fn schedule_once_runnable_executes_when_context_runs() {
   context.scheduler().with_write(|scheduler| scheduler.run_for_test(1));
 
   // 期待: runnable が実行される
-  assert_eq!(executions.load(std::sync::atomic::Ordering::Relaxed), 1);
+  assert_eq!(executions.load(Ordering::Relaxed), 1);
 }
 
 #[test]

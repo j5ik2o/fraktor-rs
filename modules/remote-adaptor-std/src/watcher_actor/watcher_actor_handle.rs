@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use fraktor_remote_core_rs::watcher::WatcherCommand;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// Boxed [`WatcherCommand`] returned in the `Err` arm of
 /// [`WatcherActorHandle::submit`] when the actor task has exited.
@@ -15,13 +15,13 @@ pub type SubmitError = Box<WatcherCommand>;
 /// submitting commands to the running actor task.
 #[derive(Debug, Clone)]
 pub struct WatcherActorHandle {
-  command_tx: mpsc::UnboundedSender<WatcherCommand>,
+  command_tx: UnboundedSender<WatcherCommand>,
 }
 
 impl WatcherActorHandle {
   /// Internal constructor used by [`crate::watcher_actor::WatcherActor`].
   #[must_use]
-  pub(crate) const fn new(command_tx: mpsc::UnboundedSender<WatcherCommand>) -> Self {
+  pub(crate) const fn new(command_tx: UnboundedSender<WatcherCommand>) -> Self {
     Self { command_tx }
   }
 

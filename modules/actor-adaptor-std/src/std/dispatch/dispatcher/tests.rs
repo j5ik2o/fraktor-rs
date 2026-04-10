@@ -42,6 +42,7 @@ use fraktor_actor_core_rs::core::kernel::{
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
+use tokio::runtime::Handle;
 
 use crate::std::{default_tick_driver_config, dispatch::dispatcher::TokioExecutor};
 
@@ -87,7 +88,7 @@ impl Actor for TeamGuardian {
 }
 
 fn build_system() -> ActorSystem {
-  let handle = tokio::runtime::Handle::current();
+  let handle = Handle::current();
 
   // Use the default throughput (5). With the lost-wake-up fix in
   // `Mailbox::run` (Phase 14.5 follow-up), the dispatcher correctly

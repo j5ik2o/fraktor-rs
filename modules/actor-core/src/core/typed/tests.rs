@@ -6,6 +6,7 @@ use alloc::{
 };
 use core::{
   hint::spin_loop,
+  num::NonZeroUsize,
   sync::atomic::{AtomicUsize, Ordering},
   time::Duration,
 };
@@ -144,7 +145,7 @@ fn typed_props_with_same_as_parent_dispatcher_selector_marks_parent_inheritance(
 fn typed_props_empty_supports_immutable_builder_chain() {
   // Given: factory を持たない empty typed props がある
   let props = TypedProps::<CounterMessage>::empty();
-  let capacity = core::num::NonZeroUsize::new(8).expect("capacity");
+  let capacity = NonZeroUsize::new(8).expect("capacity");
 
   // When: dispatcher / mailbox / tags を immutable builder で合成する
   let configured = props
@@ -172,7 +173,7 @@ fn typed_props_empty_supports_immutable_builder_chain() {
 
 #[test]
 fn typed_props_with_mailbox_unbounded_overrides_bounded_selector() {
-  let capacity = core::num::NonZeroUsize::new(8).expect("capacity");
+  let capacity = NonZeroUsize::new(8).expect("capacity");
   let props = TypedProps::<CounterMessage>::empty().with_mailbox_bounded(capacity).with_mailbox_unbounded();
 
   assert_eq!(

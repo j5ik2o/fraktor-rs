@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors returned by durable state store operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,8 +37,8 @@ impl DurableStateException {
   }
 }
 
-impl fmt::Display for DurableStateException {
-  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for DurableStateException {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::GetObjectFailed(reason) => write!(formatter, "get durable state object failed: {}", reason),
       | Self::UpsertObjectFailed(reason) => write!(formatter, "upsert durable state object failed: {}", reason),

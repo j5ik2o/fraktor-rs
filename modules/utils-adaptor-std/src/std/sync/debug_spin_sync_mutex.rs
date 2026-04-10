@@ -9,6 +9,7 @@ use core::{
 use std::{collections::hash_map::DefaultHasher, thread};
 
 use fraktor_utils_core_rs::core::sync::LockDriver;
+use spin::Mutex;
 
 use super::debug_spin_sync_mutex_guard::DebugSpinSyncMutexGuard;
 
@@ -20,7 +21,7 @@ fn current_thread_id_u64() -> u64 {
 
 /// Re-entry detecting spin-based mutex for debug/test instrumentation.
 pub struct DebugSpinSyncMutex<T> {
-  pub(super) inner: spin::Mutex<T>,
+  pub(super) inner: Mutex<T>,
   pub(super) owner: AtomicU64,
 }
 
@@ -31,7 +32,7 @@ impl<T> DebugSpinSyncMutex<T> {
   /// Creates a new debug mutex.
   #[must_use]
   pub const fn new(value: T) -> Self {
-    Self { inner: spin::Mutex::new(value), owner: AtomicU64::new(0) }
+    Self { inner: Mutex::new(value), owner: AtomicU64::new(0) }
   }
 
   /// Acquires the mutex, panicking on same-thread re-entry.

@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Error raised when a [`MailboxConfig`](super::MailboxConfig) violates its
 /// construction contract.
@@ -18,8 +18,8 @@ pub enum MailboxConfigError {
   DequeWithControlAware,
 }
 
-impl fmt::Display for MailboxConfigError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for MailboxConfigError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::StablePriorityWithoutGenerator => {
         write!(f, "stable_priority requires a priority generator to be attached")

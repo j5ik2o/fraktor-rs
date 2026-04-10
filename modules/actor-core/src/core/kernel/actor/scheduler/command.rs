@@ -1,6 +1,6 @@
 //! Scheduler command representations.
 
-use core::fmt;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -28,8 +28,8 @@ pub enum SchedulerCommand {
   },
 }
 
-impl fmt::Debug for SchedulerCommand {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for SchedulerCommand {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::Noop => write!(f, "SchedulerCommand::Noop"),
       | Self::SendMessage { receiver, .. } => {

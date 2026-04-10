@@ -4,7 +4,7 @@
 mod tests;
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Errors returned by journal operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,8 +24,8 @@ pub enum JournalError {
   DeleteFailed(String),
 }
 
-impl fmt::Display for JournalError {
-  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for JournalError {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> FmtResult {
     match self {
       | JournalError::SequenceMismatch { expected, actual } => {
         write!(formatter, "sequence mismatch: expected {}, actual {}", expected, actual)

@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::format;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::core::kernel::actor::error::{ActorErrorReason, SendError};
 
@@ -35,8 +36,8 @@ impl From<&SendError> for AskError {
   }
 }
 
-impl core::fmt::Display for AskError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for AskError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | AskError::Timeout => f.write_str("AskError::Timeout"),
       | AskError::DeadLetter => f.write_str("AskError::DeadLetter"),

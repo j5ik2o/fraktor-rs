@@ -172,7 +172,7 @@ fn register_with_ack_sends_registered_to_reply_to() {
   let key = ServiceKey::<u32>::new("ack-svc");
 
   let ack_received = ArcShared::new(NoStdMutex::new(false));
-  let ack_service_id = ArcShared::new(NoStdMutex::new(alloc::string::String::new()));
+  let ack_service_id = ArcShared::new(NoStdMutex::new(String::new()));
 
   // Spawn a receiver for Registered ack
   let ack_props = TypedProps::<Registered>::from_behavior_factory({
@@ -182,7 +182,7 @@ fn register_with_ack_sends_registered_to_reply_to() {
       let ack_received = ack_received.clone();
       let ack_service_id = ack_service_id.clone();
       Behaviors::receive_message(move |_ctx, registered: &Registered| {
-        *ack_service_id.lock() = alloc::string::String::from(registered.service_id());
+        *ack_service_id.lock() = String::from(registered.service_id());
         *ack_received.lock() = true;
         Ok(Behaviors::same())
       })
@@ -223,7 +223,7 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
 
   // Spawn an ack receiver for Deregistered
   let ack_received = ArcShared::new(NoStdMutex::new(false));
-  let ack_service_id = ArcShared::new(NoStdMutex::new(alloc::string::String::new()));
+  let ack_service_id = ArcShared::new(NoStdMutex::new(String::new()));
 
   let ack_props = TypedProps::<Deregistered>::from_behavior_factory({
     let ack_received = ack_received.clone();
@@ -232,7 +232,7 @@ fn deregister_with_ack_sends_deregistered_to_reply_to() {
       let ack_received = ack_received.clone();
       let ack_service_id = ack_service_id.clone();
       Behaviors::receive_message(move |_ctx, deregistered: &Deregistered| {
-        *ack_service_id.lock() = alloc::string::String::from(deregistered.service_id());
+        *ack_service_id.lock() = String::from(deregistered.service_id());
         *ack_received.lock() = true;
         Ok(Behaviors::same())
       })

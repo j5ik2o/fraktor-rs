@@ -1,24 +1,21 @@
 //! Actor path handle for registry caching.
 
+use alloc::string::String;
+
 use crate::core::kernel::actor::{Pid, actor_path::ActorUid};
 
 /// Handle for cached actor path with UID-independent hash.
 #[derive(Clone, Debug)]
 pub struct ActorPathHandle {
   pid:           Pid,
-  canonical_uri: alloc::string::String,
+  canonical_uri: String,
   uid:           Option<ActorUid>,
   path_hash:     u64,
 }
 
 impl ActorPathHandle {
   /// Creates a new handle with given PID, canonical URI and optional UID.
-  pub(crate) const fn new(
-    pid: Pid,
-    canonical_uri: alloc::string::String,
-    uid: Option<ActorUid>,
-    path_hash: u64,
-  ) -> Self {
+  pub(crate) const fn new(pid: Pid, canonical_uri: String, uid: Option<ActorUid>, path_hash: u64) -> Self {
     Self { pid, canonical_uri, uid, path_hash }
   }
 

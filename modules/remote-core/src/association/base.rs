@@ -1,6 +1,10 @@
 //! Per-remote association state machine.
 
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{
+  string::{String, ToString},
+  vec,
+  vec::Vec,
+};
 use core::mem;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{CorrelationId, RemotingLifecycleEvent};
@@ -238,7 +242,7 @@ impl Association {
   // helpers
   // -------------------------------------------------------------------------
 
-  fn authority_string(&self) -> alloc::string::String {
+  fn authority_string(&self) -> String {
     self.remote.to_string()
   }
 }

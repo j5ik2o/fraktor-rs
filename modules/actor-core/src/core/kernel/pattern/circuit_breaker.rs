@@ -5,7 +5,10 @@
 //! For a thread-safe, clonable wrapper see
 //! [`CircuitBreakerShared`](super::CircuitBreakerShared).
 
-use core::{fmt, time::Duration};
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  time::Duration,
+};
 
 use super::{
   circuit_breaker_open_error::CircuitBreakerOpenError, circuit_breaker_state::CircuitBreakerState, clock::Clock,
@@ -35,8 +38,8 @@ pub struct CircuitBreaker<C: Clock> {
   clock:         C,
 }
 
-impl<C: Clock> fmt::Debug for CircuitBreaker<C> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<C: Clock> Debug for CircuitBreaker<C> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("CircuitBreaker")
       .field("max_failures", &self.max_failures)
       .field("reset_timeout", &self.reset_timeout)

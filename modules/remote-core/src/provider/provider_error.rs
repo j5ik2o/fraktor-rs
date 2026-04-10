@@ -1,6 +1,6 @@
 //! Failure cases produced by [`crate::provider::RemoteActorRefProvider`].
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Failures reported by [`crate::provider::RemoteActorRefProvider`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,8 +20,8 @@ pub enum ProviderError {
   UnsupportedScheme,
 }
 
-impl fmt::Display for ProviderError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for ProviderError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | ProviderError::NotRemote => f.write_str("provider: local path routed to remote-only provider"),
       | ProviderError::InvalidPath => f.write_str("provider: invalid actor path"),

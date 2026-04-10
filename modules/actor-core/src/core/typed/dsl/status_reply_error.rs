@@ -4,6 +4,7 @@
 mod tests;
 
 use alloc::string::String;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Error returned by a status-aware ask when the responder reports failure.
 #[derive(Clone, Debug)]
@@ -25,8 +26,8 @@ impl StatusReplyError {
   }
 }
 
-impl core::fmt::Display for StatusReplyError {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for StatusReplyError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}", self.message)
   }
 }

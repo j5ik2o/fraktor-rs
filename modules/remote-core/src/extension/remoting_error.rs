@@ -1,6 +1,6 @@
 //! Errors raised by the remote extension surface.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Failure categories for [`crate::extension::Remoting`] operations and
 /// [`crate::extension::RemotingLifecycleState`] transitions.
@@ -19,8 +19,8 @@ pub enum RemotingError {
   NotStarted,
 }
 
-impl fmt::Display for RemotingError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for RemotingError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | RemotingError::InvalidTransition => f.write_str("remoting: invalid lifecycle transition"),
       | RemotingError::TransportUnavailable => f.write_str("remoting: transport unavailable"),

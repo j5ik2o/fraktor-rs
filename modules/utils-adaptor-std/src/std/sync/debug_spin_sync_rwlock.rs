@@ -2,10 +2,11 @@
 mod tests;
 
 use fraktor_utils_core_rs::core::sync::RwLockDriver;
+use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Debug spin rwlock. V1 keeps spin semantics and provides a parallel driver
 /// family for tests that need rwlock selection.
-pub struct DebugSpinSyncRwLock<T>(spin::RwLock<T>);
+pub struct DebugSpinSyncRwLock<T>(RwLock<T>);
 
 unsafe impl<T: Send> Send for DebugSpinSyncRwLock<T> {}
 unsafe impl<T: Send + Sync> Sync for DebugSpinSyncRwLock<T> {}
@@ -14,16 +15,16 @@ impl<T> DebugSpinSyncRwLock<T> {
   /// Creates a new debug rwlock.
   #[must_use]
   pub const fn new(value: T) -> Self {
-    Self(spin::RwLock::new(value))
+    Self(RwLock::new(value))
   }
 
   /// Acquires a shared read guard.
-  pub fn read(&self) -> spin::RwLockReadGuard<'_, T> {
+  pub fn read(&self) -> RwLockReadGuard<'_, T> {
     self.0.read()
   }
 
   /// Acquires an exclusive write guard.
-  pub fn write(&self) -> spin::RwLockWriteGuard<'_, T> {
+  pub fn write(&self) -> RwLockWriteGuard<'_, T> {
     self.0.write()
   }
 
@@ -35,12 +36,12 @@ impl<T> DebugSpinSyncRwLock<T> {
 
 impl<T> RwLockDriver<T> for DebugSpinSyncRwLock<T> {
   type ReadGuard<'a>
-    = spin::RwLockReadGuard<'a, T>
+    = RwLockReadGuard<'a, T>
   where
     Self: 'a,
     T: 'a;
   type WriteGuard<'a>
-    = spin::RwLockWriteGuard<'a, T>
+    = RwLockWriteGuard<'a, T>
   where
     Self: 'a,
     T: 'a;

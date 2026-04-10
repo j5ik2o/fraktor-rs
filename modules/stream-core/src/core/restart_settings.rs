@@ -1,4 +1,4 @@
-use core::fmt;
+use core::fmt::{self, Formatter, Result as FmtResult};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -28,7 +28,7 @@ pub struct RestartSettings {
 // should_restart() の結果が異なる RestartSettings 同士が == になる問題を防ぐ。
 
 impl fmt::Debug for RestartSettings {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("RestartSettings")
       .field("min_backoff_ticks", &self.min_backoff_ticks)
       .field("max_backoff_ticks", &self.max_backoff_ticks)

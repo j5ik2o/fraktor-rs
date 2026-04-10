@@ -4,12 +4,14 @@ use core::{
   sync::atomic::Ordering,
 };
 
+use spin::MutexGuard;
+
 use super::debug_spin_sync_mutex::DebugSpinSyncMutex;
 
 /// Guard for [`DebugSpinSyncMutex`](super::DebugSpinSyncMutex).
 pub struct DebugSpinSyncMutexGuard<'a, T> {
   pub(super) parent: &'a DebugSpinSyncMutex<T>,
-  pub(super) guard:  ManuallyDrop<spin::MutexGuard<'a, T>>,
+  pub(super) guard:  ManuallyDrop<MutexGuard<'a, T>>,
 }
 
 impl<T> Deref for DebugSpinSyncMutexGuard<'_, T> {

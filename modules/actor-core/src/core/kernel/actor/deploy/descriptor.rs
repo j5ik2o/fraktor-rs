@@ -1,3 +1,5 @@
+use alloc::string::String;
+
 use super::Scope;
 
 #[cfg(test)]
@@ -6,7 +8,7 @@ mod tests;
 /// Immutable deployment description for classic actor configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Deploy {
-  path:  Option<alloc::string::String>,
+  path:  Option<String>,
   scope: Scope,
 }
 
@@ -19,7 +21,7 @@ impl Deploy {
 
   /// Attaches a logical deployment path.
   #[must_use]
-  pub fn with_path(mut self, path: impl Into<alloc::string::String>) -> Self {
+  pub fn with_path(mut self, path: impl Into<String>) -> Self {
     self.path = Some(path.into());
     self
   }

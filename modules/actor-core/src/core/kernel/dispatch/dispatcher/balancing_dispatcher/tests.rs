@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::ToString};
+use alloc::{boxed::Box, format, string::ToString, vec::Vec};
 use core::{num::NonZeroUsize, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -46,11 +46,11 @@ fn make_dispatcher() -> BalancingDispatcher {
   BalancingDispatcher::new(&settings, executor)
 }
 
-fn make_actor_cells(names: &[&str]) -> (ActorSystem, alloc::vec::Vec<ArcShared<ActorCell>>) {
+fn make_actor_cells(names: &[&str]) -> (ActorSystem, Vec<ArcShared<ActorCell>>) {
   let system = ActorSystem::new_empty();
   let state = system.state();
   let props = Props::from_fn(|| ProbeActor);
-  let mut cells = alloc::vec::Vec::new();
+  let mut cells = Vec::new();
   for name in names {
     let pid = state.allocate_pid();
     let cell = ActorCell::create(state.clone(), pid, None, name.to_string(), &props).expect("create actor cell");
@@ -185,14 +185,14 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   });
   let state = system.state();
 
-  let counters: alloc::vec::Vec<Arc<AtomicUsize>> = (0..3).map(|_| Arc::new(AtomicUsize::new(0))).collect();
-  let mut cells: alloc::vec::Vec<ArcShared<ActorCell>> = alloc::vec::Vec::new();
+  let counters: Vec<Arc<AtomicUsize>> = (0..3).map(|_| Arc::new(AtomicUsize::new(0))).collect();
+  let mut cells: Vec<ArcShared<ActorCell>> = Vec::new();
   for (idx, counter) in counters.iter().enumerate() {
     let counter_clone = counter.clone();
     let props =
       Props::from_fn(move || CountingActor { seen: counter_clone.clone() }).with_dispatcher_id("balancing-load");
     let pid = state.allocate_pid();
-    let name = alloc::format!("balancer-{idx}");
+    let name = format!("balancer-{idx}");
     let cell = ActorCell::create(state.clone(), pid, None, name, &props).expect("create cell");
     state.register_cell(cell.clone());
     cells.push(cell);
@@ -203,7 +203,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   // receiver mailbox, so by tell-ing through each actor in turn we exercise
   // every team member's drain path. The shared queue is the same instance
   // for all three cells, so every envelope is routed through it.
-  let mut refs: alloc::vec::Vec<_> = cells.iter().map(|cell| cell.actor_ref()).collect();
+  let mut refs: Vec<_> = cells.iter().map(|cell| cell.actor_ref()).collect();
   for value in 0..9_u32 {
     let target = (value as usize) % refs.len();
     refs[target].tell(AnyMessage::new(value));
@@ -216,6 +216,6 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   assert!(
     actors_with_work >= 2,
     "load balancing must spread work across more than one actor (counters: {:?})",
-    counters.iter().map(|c| c.load(Ordering::SeqCst)).collect::<alloc::vec::Vec<_>>()
+    counters.iter().map(|c| c.load(Ordering::SeqCst)).collect::<Vec<_>>()
   );
 }

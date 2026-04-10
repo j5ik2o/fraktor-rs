@@ -1,7 +1,7 @@
 //! Canonical remote address (`host + port + system`).
 
 use alloc::string::String;
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Canonical remote address identifying an actor system endpoint.
 ///
@@ -41,8 +41,8 @@ impl Address {
   }
 }
 
-impl fmt::Display for Address {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Address {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     write!(f, "{}@{}:{}", self.system, self.host, self.port)
   }
 }

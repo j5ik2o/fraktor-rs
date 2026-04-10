@@ -1,3 +1,5 @@
+use alloc::{format, string::String, vec};
+
 use crate::core::kernel::util::ByteString;
 
 #[test]
@@ -24,7 +26,7 @@ fn from_slice_copies_data() {
 
 #[test]
 fn from_vec_takes_ownership() {
-  let v = alloc::vec![10u8, 20, 30];
+  let v = vec![10u8, 20, 30];
   let bs = ByteString::from_vec(v);
   assert_eq!(bs.len(), 3);
   assert_eq!(bs.as_slice(), &[10, 20, 30]);
@@ -111,7 +113,7 @@ fn concat_with_empty_returns_other() {
 fn to_vec_copies_contents() {
   let bs = ByteString::from_slice(&[1, 2, 3]);
   let v = bs.to_vec();
-  assert_eq!(v, alloc::vec![1, 2, 3]);
+  assert_eq!(v, vec![1, 2, 3]);
 }
 
 #[test]
@@ -172,13 +174,13 @@ fn from_trait_impls() {
   let from_slice: ByteString = [1u8, 2, 3].as_slice().into();
   assert_eq!(from_slice.as_slice(), &[1, 2, 3]);
 
-  let from_vec: ByteString = alloc::vec![4u8, 5, 6].into();
+  let from_vec: ByteString = vec![4u8, 5, 6].into();
   assert_eq!(from_vec.as_slice(), &[4, 5, 6]);
 
   let from_str: ByteString = "abc".into();
   assert_eq!(from_str.as_slice(), b"abc");
 
-  let from_string: ByteString = alloc::string::String::from("xyz").into();
+  let from_string: ByteString = String::from("xyz").into();
   assert_eq!(from_string.as_slice(), b"xyz");
 }
 
@@ -192,7 +194,7 @@ fn as_ref_returns_slice() {
 #[test]
 fn debug_displays_len() {
   let bs = ByteString::from_slice(&[1, 2, 3]);
-  let dbg = alloc::format!("{:?}", bs);
+  let dbg = format!("{:?}", bs);
   assert!(dbg.contains("ByteString"));
   assert!(dbg.contains("3"));
 }

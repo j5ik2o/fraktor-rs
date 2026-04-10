@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -157,7 +157,7 @@ impl StreamGraph {
   /// Marks the last node with both async boundary and dispatcher attributes.
   ///
   /// This is a no-op if the graph is empty.
-  pub(in crate::core) fn mark_last_node_dispatcher(&mut self, name: impl Into<alloc::string::String>) {
+  pub(in crate::core) fn mark_last_node_dispatcher(&mut self, name: impl Into<String>) {
     if let Some(node) = self.nodes.last_mut() {
       let old = core::mem::take(&mut node.attributes);
       node.attributes = old.and(Attributes::async_boundary().and(Attributes::dispatcher(name)));

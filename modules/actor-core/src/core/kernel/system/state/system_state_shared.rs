@@ -10,7 +10,10 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
-use core::{any::TypeId, time::Duration};
+use core::{
+  any::{Any, TypeId},
+  time::Duration,
+};
 
 use fraktor_utils_core_rs::core::sync::{ArcShared, RuntimeRwLock, SharedAccess};
 
@@ -552,7 +555,7 @@ impl SystemStateShared {
   #[must_use]
   pub fn extension<E>(&self, type_id: TypeId) -> Option<ArcShared<E>>
   where
-    E: core::any::Any + Send + Sync + 'static, {
+    E: Any + Send + Sync + 'static, {
     self.inner.read().extension(type_id)
   }
 
@@ -565,7 +568,7 @@ impl SystemStateShared {
   /// Panics when an extension exists for `type_id` but cannot be downcast to `E`.
   pub fn extension_or_insert_with<E, F>(&self, type_id: TypeId, factory: F) -> ArcShared<E>
   where
-    E: core::any::Any + Send + Sync + 'static,
+    E: Any + Send + Sync + 'static,
     F: FnOnce() -> ArcShared<E>, {
     {
       let guard = self.inner.read();
@@ -578,7 +581,7 @@ impl SystemStateShared {
     }
 
     let created = factory();
-    let erased: ArcShared<dyn core::any::Any + Send + Sync + 'static> = created.clone();
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = created.clone();
 
     let mut guard = self.inner.write();
     if let Some(existing) = guard.extension_raw(&type_id) {
@@ -595,7 +598,7 @@ impl SystemStateShared {
   #[must_use]
   pub fn extension_by_type<E>(&self) -> Option<ArcShared<E>>
   where
-    E: core::any::Any + Send + Sync + 'static, {
+    E: Any + Send + Sync + 'static, {
     self.inner.read().extension_by_type()
   }
 
@@ -609,7 +612,7 @@ impl SystemStateShared {
     provider: &ActorRefProviderShared<P>,
   ) -> Result<(), ActorSystemBuildError>
   where
-    P: ActorRefProvider + core::any::Any + Send + Sync + 'static, {
+    P: ActorRefProvider + Any + Send + Sync + 'static, {
     let mut guard = self.inner.write();
     if guard.has_root_started() {
       return Err(ActorSystemBuildError::Configuration(
@@ -621,7 +624,7 @@ impl SystemStateShared {
   }
 
   /// Registers a remote watch hook.
-  pub fn register_remote_watch_hook(&self, hook: alloc::boxed::Box<dyn super::RemoteWatchHook>) {
+  pub fn register_remote_watch_hook(&self, hook: Box<dyn super::RemoteWatchHook>) {
     self.remote_watch_hook.replace(hook);
   }
 
@@ -629,7 +632,7 @@ impl SystemStateShared {
   #[must_use]
   pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderShared<P>>
   where
-    P: ActorRefProvider + core::any::Any + Send + Sync + 'static, {
+    P: ActorRefProvider + Any + Send + Sync + 'static, {
     self.inner.read().actor_ref_provider()
   }
 

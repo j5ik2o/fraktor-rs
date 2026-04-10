@@ -1,6 +1,6 @@
 //! Errors that can occur while scheduling pipe-to-self tasks.
 
-use core::fmt;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 /// Describes failures encountered when spawning a pipe task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,8 +19,8 @@ impl PipeSpawnError {
   }
 }
 
-impl fmt::Display for PipeSpawnError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for PipeSpawnError {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     match self {
       | Self::ActorUnavailable => write!(f, "actor cell is unavailable"),
       | Self::TargetStopped => write!(f, "actor stopped before pipe task completed"),

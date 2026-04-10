@@ -1,6 +1,8 @@
 //! Thin helper that posts [`RemotingLifecycleEvent`]s into the actor-core
 //! event stream.
 
+use core::fmt::{Debug, Formatter, Result as FmtResult};
+
 use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStreamEvent, RemotingLifecycleEvent},
   system::ActorSystemWeak,
@@ -16,8 +18,8 @@ pub struct EventPublisher {
   system: ActorSystemWeak,
 }
 
-impl core::fmt::Debug for EventPublisher {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Debug for EventPublisher {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("EventPublisher").finish_non_exhaustive()
   }
 }

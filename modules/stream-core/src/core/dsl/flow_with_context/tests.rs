@@ -4,7 +4,10 @@ use core::{
   pin::Pin,
   task::{Context, Poll},
 };
-use std::sync::{Arc, Mutex};
+use std::{
+  path::Path,
+  sync::{Arc, Mutex},
+};
 
 use crate::core::{
   StreamError, ThrottleMode,
@@ -469,7 +472,7 @@ fn throttle_rejects_zero_capacity_on_context_flow() {
 
 #[test]
 fn comments_use_japanese_in_context_wrapper_tests() {
-  let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/dsl");
+  let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core/dsl");
   let files = [
     ("flow_with_context/tests.rs", base.join("flow_with_context/tests.rs")),
     ("source_with_context/tests.rs", base.join("source_with_context/tests.rs")),

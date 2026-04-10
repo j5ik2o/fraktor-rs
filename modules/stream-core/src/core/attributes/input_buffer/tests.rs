@@ -1,3 +1,6 @@
+use alloc::boxed::Box;
+use core::any::Any;
+
 use super::InputBuffer;
 use crate::core::attributes::Attribute;
 
@@ -23,7 +26,7 @@ fn new_allows_initial_equal_to_max() {
 
 #[test]
 fn as_any_downcast_succeeds() {
-  let boxed: alloc::boxed::Box<dyn Attribute> = alloc::boxed::Box::new(InputBuffer::new(8, 32));
+  let boxed: Box<dyn Attribute> = Box::new(InputBuffer::new(8, 32));
   let downcast = boxed.as_any().downcast_ref::<InputBuffer>();
   assert!(downcast.is_some());
   let result = downcast.unwrap();
@@ -33,7 +36,7 @@ fn as_any_downcast_succeeds() {
 
 #[test]
 fn clone_box_produces_independent_copy() {
-  let boxed: alloc::boxed::Box<dyn Attribute> = alloc::boxed::Box::new(InputBuffer::new(16, 64));
+  let boxed: Box<dyn Attribute> = Box::new(InputBuffer::new(16, 64));
   let cloned = boxed.clone_box();
   let result = cloned.as_any().downcast_ref::<InputBuffer>().unwrap();
   assert_eq!(result.initial, 16);
@@ -44,14 +47,14 @@ fn clone_box_produces_independent_copy() {
 fn eq_attr_returns_true_for_equal_values() {
   let lhs = InputBuffer::new(16, 64);
   let rhs = InputBuffer::new(16, 64);
-  assert!(lhs.eq_attr(&rhs as &dyn core::any::Any));
+  assert!(lhs.eq_attr(&rhs as &dyn Any));
 }
 
 #[test]
 fn eq_attr_returns_false_for_different_values() {
   let lhs = InputBuffer::new(16, 64);
   let rhs = InputBuffer::new(8, 32);
-  assert!(!lhs.eq_attr(&rhs as &dyn core::any::Any));
+  assert!(!lhs.eq_attr(&rhs as &dyn Any));
 }
 
 #[test]

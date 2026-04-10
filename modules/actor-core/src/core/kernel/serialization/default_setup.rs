@@ -5,7 +5,9 @@ use alloc::vec::Vec;
 use ahash::RandomState;
 use hashbrown::HashMap;
 
-use super::{builtin, serialization_extension_id::SerializationExtensionId, serialization_setup::SerializationSetup};
+use super::{
+  builtin::STRING_ID, serialization_extension_id::SerializationExtensionId, serialization_setup::SerializationSetup,
+};
 
 /// Returns the default serialization setup used by the runtime.
 #[must_use]
@@ -17,7 +19,7 @@ pub fn default_serialization_setup() -> SerializationSetup {
     HashMap::with_hasher(RandomState::new()),
     HashMap::with_hasher(RandomState::new()),
     Vec::new(),
-    builtin::STRING_ID,
+    STRING_ID,
     Vec::new(),
   )
 }

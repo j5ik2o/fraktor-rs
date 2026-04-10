@@ -1,6 +1,9 @@
+use core::time::Duration;
+
 use bytes::{Bytes, BytesMut};
 use fraktor_remote_core_rs::wire::{AckPdu, ControlPdu, EnvelopePdu, HandshakePdu, HandshakeReq};
-use tokio_util::codec::{Decoder, Encoder};
+use tokio::net::TcpListener;
+use tokio_util::codec::{Decoder, Encoder, Framed};
 
 use crate::tcp_transport::{
   frame_codec::WireFrameCodec, inbound_frame_event::InboundFrameEvent, wire_frame::WireFrame,
@@ -106,7 +109,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
   let (server_inbound_tx, mut server_inbound_rx) = mpsc::unbounded_channel();
   let mut server = TcpServer::new("127.0.0.1:0".into());
   // Bind to a system-assigned port first to learn the port number.
-  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let bind_addr = listener.local_addr().unwrap();
   // Manually spawn an accept loop mirroring TcpServer semantics to avoid
   // re-binding.
@@ -115,7 +118,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
     let (stream, peer) = listener.accept().await.unwrap();
     let peer_addr = peer.to_string();
     let inbound_tx = accept_tx;
-    let mut framed = tokio_util::codec::Framed::new(stream, WireFrameCodec::new());
+    let mut framed = Framed::new(stream, WireFrameCodec::new());
     use futures::StreamExt;
     if let Some(Ok(frame)) = framed.next().await {
       inbound_tx.send(InboundFrameEvent { peer: peer_addr, frame }).unwrap();
@@ -133,7 +136,7 @@ async fn tcp_server_and_client_exchange_a_frame() {
   client.send(WireFrame::Envelope(pdu.clone())).unwrap();
 
   // Wait for the frame to land on the server side.
-  let event = tokio::time::timeout(core::time::Duration::from_secs(5), server_inbound_rx.recv())
+  let event = tokio::time::timeout(Duration::from_secs(5), server_inbound_rx.recv())
     .await
     .unwrap()
     .expect("server inbound frame");

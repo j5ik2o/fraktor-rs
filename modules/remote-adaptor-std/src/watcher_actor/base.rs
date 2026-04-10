@@ -4,7 +4,10 @@ use fraktor_remote_core_rs::{
   failure_detector::PhiAccrualFailureDetector,
   watcher::{WatcherCommand, WatcherEffect, WatcherState},
 };
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{
+  sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+  task::JoinHandle,
+};
 
 use crate::watcher_actor::watcher_actor_handle::WatcherActorHandle;
 
@@ -18,16 +21,16 @@ use crate::watcher_actor::watcher_actor_handle::WatcherActorHandle;
 /// extra locking.
 pub struct WatcherActor {
   state:      WatcherState,
-  command_tx: mpsc::UnboundedSender<WatcherCommand>,
-  command_rx: mpsc::UnboundedReceiver<WatcherCommand>,
-  effect_tx:  mpsc::UnboundedSender<WatcherEffect>,
+  command_tx: UnboundedSender<WatcherCommand>,
+  command_rx: UnboundedReceiver<WatcherCommand>,
+  effect_tx:  UnboundedSender<WatcherEffect>,
 }
 
 impl WatcherActor {
   /// Creates a new actor backed by `state`. Effects produced by the state
   /// machine are forwarded to `effect_tx`.
   #[must_use]
-  pub fn new(state: WatcherState, effect_tx: mpsc::UnboundedSender<WatcherEffect>) -> Self {
+  pub fn new(state: WatcherState, effect_tx: UnboundedSender<WatcherEffect>) -> Self {
     let (command_tx, command_rx) = mpsc::unbounded_channel::<WatcherCommand>();
     Self { state, command_tx, command_rx, effect_tx }
   }
@@ -35,7 +38,7 @@ impl WatcherActor {
   /// Creates a new actor whose detector factory uses sensible Pekko-style
   /// defaults. Convenience constructor for tests and simple wiring.
   #[must_use]
-  pub fn with_default_detectors(effect_tx: mpsc::UnboundedSender<WatcherEffect>) -> Self {
+  pub fn with_default_detectors(effect_tx: UnboundedSender<WatcherEffect>) -> Self {
     let state = WatcherState::new(default_detector_factory);
     Self::new(state, effect_tx)
   }

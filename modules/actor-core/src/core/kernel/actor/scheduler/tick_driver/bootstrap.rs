@@ -3,6 +3,8 @@
 #[cfg(any(test, feature = "test-support"))]
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
+#[cfg(any(test, feature = "test-support"))]
+use core::time::Duration;
 
 #[cfg(any(test, feature = "test-support"))]
 use fraktor_utils_core_rs::core::time::TimerInstant;
@@ -153,9 +155,9 @@ fn publish_driver_warning(ctx: &TickDriverProvisioningContext, message: &str) {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-fn instant_to_duration(instant: TimerInstant) -> core::time::Duration {
+fn instant_to_duration(instant: TimerInstant) -> Duration {
   let nanos = instant.resolution().as_nanos().saturating_mul(u128::from(instant.ticks()));
-  core::time::Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
+  Duration::from_nanos(nanos.min(u64::MAX as u128) as u64)
 }
 
 struct CompositeTickDriverControl {

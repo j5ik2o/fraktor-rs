@@ -7,6 +7,7 @@ use alloc::{
   string::{String, ToString},
   vec::Vec,
 };
+use core::time::Duration;
 
 use crate::core::{
   ConfigValidation, JoinConfigCompatChecker, cluster_topology::ClusterTopology, pub_sub::PubSubConfig,
@@ -35,7 +36,7 @@ impl ClusterExtensionConfig {
       advertised_address: String::new(),
       metrics_enabled:    false,
       static_topology:    None,
-      pubsub_config:      PubSubConfig::new(core::time::Duration::from_secs(3), core::time::Duration::from_secs(60)),
+      pubsub_config:      PubSubConfig::new(Duration::from_secs(3), Duration::from_secs(60)),
       app_version:        String::from(env!("CARGO_PKG_VERSION")),
       roles:              Vec::new(),
     }

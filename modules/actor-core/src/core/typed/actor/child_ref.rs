@@ -1,6 +1,9 @@
 //! Typed child reference wrapper.
 
-use core::marker::PhantomData;
+use core::{
+  fmt::{Debug, Formatter, Result as FmtResult},
+  marker::PhantomData,
+};
 
 use crate::core::{
   kernel::actor::{ChildRef, Pid, error::SendError, messaging::AnyMessage},
@@ -123,11 +126,11 @@ where
   }
 }
 
-impl<M> core::fmt::Debug for TypedChildRef<M>
+impl<M> Debug for TypedChildRef<M>
 where
   M: Send + Sync + 'static,
 {
-  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_struct("TypedChildRef").field("pid", &self.pid()).finish()
   }
 }

@@ -1,3 +1,6 @@
+use alloc::boxed::Box;
+use core::any::Any;
+
 use super::LogLevels;
 use crate::core::attributes::{Attribute, LogLevel};
 
@@ -27,8 +30,7 @@ fn new_allows_all_distinct_levels() {
 
 #[test]
 fn as_any_downcast_succeeds() {
-  let boxed: alloc::boxed::Box<dyn Attribute> =
-    alloc::boxed::Box::new(LogLevels::new(LogLevel::Info, LogLevel::Warning, LogLevel::Error));
+  let boxed: Box<dyn Attribute> = Box::new(LogLevels::new(LogLevel::Info, LogLevel::Warning, LogLevel::Error));
   let downcast = boxed.as_any().downcast_ref::<LogLevels>();
   assert!(downcast.is_some());
   let result = downcast.unwrap();
@@ -39,8 +41,7 @@ fn as_any_downcast_succeeds() {
 
 #[test]
 fn clone_box_produces_independent_copy() {
-  let boxed: alloc::boxed::Box<dyn Attribute> =
-    alloc::boxed::Box::new(LogLevels::new(LogLevel::Debug, LogLevel::Info, LogLevel::Error));
+  let boxed: Box<dyn Attribute> = Box::new(LogLevels::new(LogLevel::Debug, LogLevel::Info, LogLevel::Error));
   let cloned = boxed.clone_box();
   let result = cloned.as_any().downcast_ref::<LogLevels>().unwrap();
   assert_eq!(result.on_element, LogLevel::Debug);
@@ -52,14 +53,14 @@ fn clone_box_produces_independent_copy() {
 fn eq_attr_returns_true_for_equal_values() {
   let lhs = LogLevels::new(LogLevel::Info, LogLevel::Warning, LogLevel::Error);
   let rhs = LogLevels::new(LogLevel::Info, LogLevel::Warning, LogLevel::Error);
-  assert!(lhs.eq_attr(&rhs as &dyn core::any::Any));
+  assert!(lhs.eq_attr(&rhs as &dyn Any));
 }
 
 #[test]
 fn eq_attr_returns_false_for_different_values() {
   let lhs = LogLevels::new(LogLevel::Info, LogLevel::Warning, LogLevel::Error);
   let rhs = LogLevels::new(LogLevel::Debug, LogLevel::Info, LogLevel::Error);
-  assert!(!lhs.eq_attr(&rhs as &dyn core::any::Any));
+  assert!(!lhs.eq_attr(&rhs as &dyn Any));
 }
 
 #[test]

@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests;
 
+use alloc::string::String;
 use core::time::Duration;
 
 use crate::core::kernel::{
@@ -24,7 +25,7 @@ impl BootstrapSetup {
 
   /// Sets the actor system name.
   #[must_use]
-  pub fn with_system_name(self, name: impl Into<alloc::string::String>) -> Self {
+  pub fn with_system_name(self, name: impl Into<String>) -> Self {
     Self::new(self.config.with_system_name(name))
   }
 

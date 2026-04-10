@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{collections::BTreeSet, format, string::String};
 
 use crate::core::typed::delivery::{DurableProducerQueueState, MessageSent, NO_QUALIFIER, SeqNr};
 
@@ -156,7 +156,7 @@ fn cleanup_removes_qualifier_entries() {
 
   // When: cleanup q1
   let qualifiers = {
-    let mut set = alloc::collections::BTreeSet::new();
+    let mut set = BTreeSet::new();
     set.insert(String::from("q1"));
     set
   };
@@ -174,7 +174,7 @@ fn cleanup_with_nonexistent_qualifier_is_noop() {
 
   // When: cleanup a qualifier that does not exist
   let qualifiers = {
-    let mut set = alloc::collections::BTreeSet::new();
+    let mut set = BTreeSet::new();
     set.insert(String::from("nonexistent"));
     set
   };
@@ -208,7 +208,7 @@ fn debug_format_is_non_empty() {
   let state = DurableProducerQueueState::<u32>::empty();
 
   // When
-  let debug_str = alloc::format!("{:?}", state);
+  let debug_str = format!("{:?}", state);
 
   // Then
   assert!(!debug_str.is_empty());
