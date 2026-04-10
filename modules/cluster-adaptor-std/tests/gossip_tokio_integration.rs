@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::sync::{Arc, Mutex};
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
 };
 use fraktor_cluster_adaptor_std_rs::std::{
   TokioGossipTransport, TokioGossipTransportConfig, TokioGossiper, TokioGossiperConfig,
@@ -18,6 +18,7 @@ use fraktor_cluster_core_rs::core::{
     MembershipCoordinatorShared, MembershipDelta, MembershipTable, MembershipVersion, NodeRecord, NodeStatus,
   },
 };
+use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use tokio::runtime::Handle;
 
 struct EventSink {
@@ -36,6 +37,10 @@ impl EventStreamSubscriber for EventSink {
       self.events.lock().expect("events lock").push(cluster_event.clone());
     }
   }
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber))
 }
 
 fn build_coordinator() -> MembershipCoordinatorShared {
@@ -78,7 +83,7 @@ fn join_delta(authority: &str) -> MembershipDelta {
 async fn gossip_delta_triggers_topology_update() {
   let event_stream = EventStreamShared::default();
   let captured = Arc::new(Mutex::new(Vec::new()));
-  let subscriber = subscriber_handle(EventSink { events: captured.clone() });
+  let subscriber = test_subscriber_handle(EventSink { events: captured.clone() });
   let _subscription = event_stream.subscribe(&subscriber);
 
   let coordinator = build_coordinator();

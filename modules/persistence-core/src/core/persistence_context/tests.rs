@@ -8,11 +8,11 @@ use core::any::{Any, TypeId};
 
 use fraktor_actor_core_rs::core::kernel::actor::{
   ActorContext, Pid,
-  actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+  actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
   error::{ActorError, SendError},
   messaging::{AnyMessage, AnyMessageView},
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use crate::core::{
   Recovery, event_adapters::EventAdapters, event_seq::EventSeq, eventsourced::Eventsourced,
@@ -49,9 +49,16 @@ impl ActorRefSender for TestSender {
   }
 }
 
+fn actor_ref_with_sender(pid: Pid, sender: impl ActorRefSender + 'static) -> ActorRef {
+  let sender = ActorRefSenderShared::from_shared_lock(SharedLock::new_with_driver::<
+    SpinSyncMutex<Box<dyn ActorRefSender>>,
+  >(Box::new(sender)));
+  ActorRef::new(pid, sender)
+}
+
 fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = actor_ref_with_sender(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 
@@ -64,7 +71,7 @@ impl ActorRefSender for FailingSender {
 }
 
 fn create_failing_sender() -> ActorRef {
-  ActorRef::new(Pid::new(2, 1), FailingSender)
+  actor_ref_with_sender(Pid::new(2, 1), FailingSender)
 }
 
 struct AddTenWriteAdapter;
