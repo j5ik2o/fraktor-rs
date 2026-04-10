@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+use crate::core::sync::LockDriver;
+
 /// Thin wrapper around [`spin::Mutex`].
 pub struct SpinSyncMutex<T>(spin::Mutex<T>);
 
@@ -46,5 +48,25 @@ impl<T> SpinSyncMutex<T> {
   /// must be diagnosed via stack traces of the spinning thread.
   pub fn lock(&self) -> spin::MutexGuard<'_, T> {
     self.0.lock()
+  }
+}
+
+impl<T> LockDriver<T> for SpinSyncMutex<T> {
+  type Guard<'a>
+    = spin::MutexGuard<'a, T>
+  where
+    Self: 'a,
+    T: 'a;
+
+  fn new(value: T) -> Self {
+    Self::new(value)
+  }
+
+  fn lock(&self) -> Self::Guard<'_> {
+    self.lock()
+  }
+
+  fn into_inner(self) -> T {
+    self.into_inner()
   }
 }

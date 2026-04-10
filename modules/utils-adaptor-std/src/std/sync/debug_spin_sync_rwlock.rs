@@ -1,30 +1,20 @@
 #[cfg(test)]
 mod tests;
 
-use crate::core::sync::RwLockDriver;
+use fraktor_utils_core_rs::core::sync::RwLockDriver;
 
-/// Thin wrapper around [`spin::RwLock`].
-pub struct SpinSyncRwLock<T>(spin::RwLock<T>);
+/// Debug spin rwlock. V1 keeps spin semantics and provides a parallel driver
+/// family for tests that need rwlock selection.
+pub struct DebugSpinSyncRwLock<T>(spin::RwLock<T>);
 
-unsafe impl<T: Send> Send for SpinSyncRwLock<T> {}
-unsafe impl<T: Send + Sync> Sync for SpinSyncRwLock<T> {}
+unsafe impl<T: Send> Send for DebugSpinSyncRwLock<T> {}
+unsafe impl<T: Send + Sync> Sync for DebugSpinSyncRwLock<T> {}
 
-impl<T> SpinSyncRwLock<T> {
-  /// Creates a new spin-based read-write lock.
+impl<T> DebugSpinSyncRwLock<T> {
+  /// Creates a new debug rwlock.
   #[must_use]
   pub const fn new(value: T) -> Self {
     Self(spin::RwLock::new(value))
-  }
-
-  /// Returns a reference to the inner lock.
-  #[must_use]
-  pub const fn as_inner(&self) -> &spin::RwLock<T> {
-    &self.0
-  }
-
-  /// Consumes the lock and returns the inner value.
-  pub fn into_inner(self) -> T {
-    self.0.into_inner()
   }
 
   /// Acquires a shared read guard.
@@ -36,9 +26,14 @@ impl<T> SpinSyncRwLock<T> {
   pub fn write(&self) -> spin::RwLockWriteGuard<'_, T> {
     self.0.write()
   }
+
+  /// Consumes the rwlock and returns the inner value.
+  pub fn into_inner(self) -> T {
+    self.0.into_inner()
+  }
 }
 
-impl<T> RwLockDriver<T> for SpinSyncRwLock<T> {
+impl<T> RwLockDriver<T> for DebugSpinSyncRwLock<T> {
   type ReadGuard<'a>
     = spin::RwLockReadGuard<'a, T>
   where
@@ -55,14 +50,14 @@ impl<T> RwLockDriver<T> for SpinSyncRwLock<T> {
   }
 
   fn read(&self) -> Self::ReadGuard<'_> {
-    self.read()
+    DebugSpinSyncRwLock::read(self)
   }
 
   fn write(&self) -> Self::WriteGuard<'_> {
-    self.write()
+    DebugSpinSyncRwLock::write(self)
   }
 
   fn into_inner(self) -> T {
-    self.into_inner()
+    DebugSpinSyncRwLock::into_inner(self)
   }
 }

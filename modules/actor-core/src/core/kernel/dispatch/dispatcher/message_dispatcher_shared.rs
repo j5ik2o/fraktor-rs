@@ -12,7 +12,7 @@ mod tests;
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{
   executor_shared::ExecutorShared, message_dispatcher::MessageDispatcher, shutdown_schedule::ShutdownSchedule,
@@ -20,7 +20,6 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, ScheduleHints},
-  system::lock_provider::SharedLock,
 };
 
 /// Shared wrapper providing thread-safe orchestration around a `MessageDispatcher`.
@@ -38,12 +37,14 @@ impl MessageDispatcherShared {
   /// Wraps the supplied dispatcher in a shared handle backed by the built-in lock.
   #[must_use]
   pub fn new_with_builtin_lock<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self::from_shared_lock(SharedLock::builtin(Box::new(dispatcher) as Box<dyn MessageDispatcher>))
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<Box<dyn MessageDispatcher>>>(
+      Box::new(dispatcher) as Box<dyn MessageDispatcher>,
+    ))
   }
 
-  /// Wraps an already locked dispatcher in a shared handle.
+  /// Wraps an already materialized shared lock in a shared handle.
   #[must_use]
-  pub(crate) fn from_shared_lock(inner: SharedLock<Box<dyn MessageDispatcher>>) -> Self {
+  pub fn from_shared_lock(inner: SharedLock<Box<dyn MessageDispatcher>>) -> Self {
     Self { inner }
   }
 
@@ -311,12 +312,10 @@ impl MessageDispatcherShared {
 
 impl SharedAccess<Box<dyn MessageDispatcher>> for MessageDispatcherShared {
   fn with_read<R>(&self, f: impl FnOnce(&Box<dyn MessageDispatcher>) -> R) -> R {
-    let guard = self.inner.lock();
-    f(&guard)
+    self.inner.with_read(|guard| f(guard))
   }
 
   fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn MessageDispatcher>) -> R) -> R {
-    let mut guard = self.inner.lock();
-    f(&mut guard)
+    self.inner.with_lock(|guard| f(guard))
   }
 }
