@@ -35,20 +35,16 @@ impl Clone for MessageDispatcherShared {
 }
 
 impl MessageDispatcherShared {
-  /// Wraps the supplied dispatcher in a shared handle.
+  /// Wraps the supplied dispatcher in a shared handle backed by the built-in lock.
   #[must_use]
-  pub fn new<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
-    Self::from_boxed(Box::new(dispatcher) as Box<dyn MessageDispatcher>)
+  pub fn new_with_builtin_lock<D: MessageDispatcher + 'static>(dispatcher: D) -> Self {
+    Self::from_shared_lock(SharedLock::builtin(Box::new(dispatcher) as Box<dyn MessageDispatcher>))
   }
 
-  /// Wraps an already boxed dispatcher in the built-in shared handle.
+  /// Wraps an already locked dispatcher in a shared handle.
   #[must_use]
-  pub fn from_boxed(dispatcher: Box<dyn MessageDispatcher>) -> Self {
-    Self { inner: SharedLock::builtin(dispatcher) }
-  }
-
-  pub(crate) fn from_boxed_debug(dispatcher: Box<dyn MessageDispatcher>) -> Self {
-    Self { inner: SharedLock::debug(dispatcher, "message_dispatcher_shared.inner") }
+  pub(crate) fn from_shared_lock(inner: SharedLock<Box<dyn MessageDispatcher>>) -> Self {
+    Self { inner }
   }
 
   /// Returns the dispatcher identifier.

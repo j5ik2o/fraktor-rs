@@ -30,7 +30,7 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_core() -> (DispatcherCore, Arc<AtomicUsize>) {
   let shutdowns = Arc::new(AtomicUsize::new(0));
-  let executor = ExecutorShared::new(StubExecutor { shutdowns: Arc::clone(&shutdowns) });
+  let executor = ExecutorShared::new_with_builtin_lock(StubExecutor { shutdowns: Arc::clone(&shutdowns) });
   let settings = DispatcherSettings::new("test", nz(5), Some(Duration::from_millis(10)), Duration::from_secs(1));
   (DispatcherCore::new(&settings, executor), shutdowns)
 }

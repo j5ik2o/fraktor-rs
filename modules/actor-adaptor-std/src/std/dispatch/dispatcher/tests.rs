@@ -95,12 +95,12 @@ fn build_system() -> ActorSystem {
   // batch drains correctly even though each `mailbox.run` invocation only
   // processes a small slice.
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-  let default_executor = ExecutorShared::new(TokioExecutor::new(handle.clone()));
+  let default_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle.clone()));
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
 
   let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
-  let balancing_executor = ExecutorShared::new(TokioExecutor::new(handle));
+  let balancing_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
   let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor));
 

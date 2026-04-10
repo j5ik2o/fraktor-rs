@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 
 use crate::core::kernel::{
   actor::actor_ref::{ActorRefSender, ActorRefSenderShared},
-  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared},
-  system::lock_provider::{ActorLockProvider, MailboxSharedSet},
+  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, TrampolineState},
+  system::lock_provider::{ActorLockProvider, MailboxSharedSet, SharedLock},
 };
 
 /// Debug lock provider that fails fast on re-entrant or contended hot-path locks.
@@ -22,15 +22,18 @@ impl DebugSpinLockProvider {
 
 impl ActorLockProvider for DebugSpinLockProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    MessageDispatcherShared::from_boxed_debug(dispatcher)
+    MessageDispatcherShared::from_shared_lock(SharedLock::debug(dispatcher, "message_dispatcher_shared.inner"))
   }
 
   fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
-    ExecutorShared::from_boxed_debug(executor)
+    ExecutorShared::from_parts(
+      SharedLock::debug(executor, "executor_shared.inner"),
+      SharedLock::debug(TrampolineState::new(), "executor_shared.trampoline"),
+    )
   }
 
   fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderShared::from_boxed_debug(sender)
+    ActorRefSenderShared::from_shared_lock(SharedLock::debug(sender, "actor_ref_sender_shared.inner"))
   }
 
   fn create_mailbox_shared_set(&self) -> MailboxSharedSet {

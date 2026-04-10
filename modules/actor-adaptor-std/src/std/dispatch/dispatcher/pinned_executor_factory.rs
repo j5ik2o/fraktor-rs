@@ -34,6 +34,6 @@ impl PinnedExecutorFactory {
 impl ExecutorFactory for PinnedExecutorFactory {
   fn create(&self, dispatcher_id: &str) -> ExecutorShared {
     let name = self.allocate_name(dispatcher_id);
-    ExecutorShared::new(PinnedExecutor::with_name(name))
+    ExecutorShared::new_with_builtin_lock(PinnedExecutor::with_name(name))
   }
 }

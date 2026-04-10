@@ -28,20 +28,16 @@ impl Clone for ActorRefSenderShared {
 }
 
 impl ActorRefSenderShared {
-  /// Creates a new shared sender.
+  /// Creates a new shared sender backed by the built-in lock.
   #[must_use]
-  pub fn new<S: ActorRefSender + 'static>(sender: S) -> Self {
-    Self::from_boxed(Box::new(sender))
+  pub fn new_with_builtin_lock<S: ActorRefSender + 'static>(sender: S) -> Self {
+    Self::from_shared_lock(SharedLock::builtin(Box::new(sender)))
   }
 
-  /// Creates a built-in shared sender from an already boxed sender.
+  /// Creates a shared sender from an already constructed lock.
   #[must_use]
-  pub fn from_boxed(sender: Box<dyn ActorRefSender>) -> Self {
-    Self { inner: SharedLock::builtin(sender) }
-  }
-
-  pub(crate) fn from_boxed_debug(sender: Box<dyn ActorRefSender>) -> Self {
-    Self { inner: SharedLock::debug(sender, "actor_ref_sender_shared.inner") }
+  pub(crate) fn from_shared_lock(inner: SharedLock<Box<dyn ActorRefSender>>) -> Self {
+    Self { inner }
   }
 
   /// Sends a message through the wrapped sender.

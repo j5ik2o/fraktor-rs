@@ -35,6 +35,7 @@ pub use execute_error::ExecuteError;
 pub use executor::Executor;
 pub use executor_factory::ExecutorFactory;
 pub use executor_shared::ExecutorShared;
+pub(crate) use executor_shared::TrampolineState;
 pub use inline_executor::InlineExecutor;
 pub use message_dispatcher::MessageDispatcher;
 pub use message_dispatcher_configurator::MessageDispatcherConfigurator;

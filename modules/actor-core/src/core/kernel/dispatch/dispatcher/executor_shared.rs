@@ -34,8 +34,14 @@ use crate::core::kernel::system::lock_provider::SharedLock;
 
 type BoxedTask = Box<dyn FnOnce() + Send + 'static>;
 
-struct TrampolineState {
+pub(crate) struct TrampolineState {
   pending: VecDeque<BoxedTask>,
+}
+
+impl TrampolineState {
+  pub(crate) fn new() -> Self {
+    Self { pending: VecDeque::new() }
+  }
 }
 
 /// Multi-owner handle for a boxed [`Executor`].
@@ -51,28 +57,16 @@ pub struct ExecutorShared {
 }
 
 impl ExecutorShared {
-  /// Wraps the provided executor in a shareable handle.
+  /// Wraps the provided executor in a shareable handle backed by the built-in lock.
   #[must_use]
-  pub fn new<E: Executor + 'static>(executor: E) -> Self {
-    Self::from_boxed(Box::new(executor))
+  pub fn new_with_builtin_lock<E: Executor + 'static>(executor: E) -> Self {
+    Self::from_parts(SharedLock::builtin(Box::new(executor)), SharedLock::builtin(TrampolineState::new()))
   }
 
-  /// Wraps an already-boxed executor in a shareable handle.
+  /// Wraps already constructed locks in a shareable handle.
   #[must_use]
-  pub fn from_boxed(executor: Box<dyn Executor>) -> Self {
-    Self {
-      inner:      SharedLock::builtin(executor),
-      trampoline: SharedLock::builtin(TrampolineState { pending: VecDeque::new() }),
-      running:    ArcShared::new(AtomicBool::new(false)),
-    }
-  }
-
-  pub(crate) fn from_boxed_debug(executor: Box<dyn Executor>) -> Self {
-    Self {
-      inner:      SharedLock::debug(executor, "executor_shared.inner"),
-      trampoline: SharedLock::debug(TrampolineState { pending: VecDeque::new() }, "executor_shared.trampoline"),
-      running:    ArcShared::new(AtomicBool::new(false)),
-    }
+  pub(crate) fn from_parts(inner: SharedLock<Box<dyn Executor>>, trampoline: SharedLock<TrampolineState>) -> Self {
+    Self { inner, trampoline, running: ArcShared::new(AtomicBool::new(false)) }
   }
 
   /// Submits the task to the inner executor.

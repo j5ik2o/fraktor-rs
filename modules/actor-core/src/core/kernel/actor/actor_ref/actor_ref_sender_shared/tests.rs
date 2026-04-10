@@ -6,7 +6,10 @@ use std::{
 };
 
 use super::*;
-use crate::core::kernel::actor::{error::SendError, messaging::AnyMessage};
+use crate::core::kernel::{
+  actor::{error::SendError, messaging::AnyMessage},
+  system::lock_provider::SharedLock,
+};
 
 struct DeferredScheduleSender {
   send_count:             Arc<AtomicUsize>,
@@ -34,11 +37,14 @@ impl ActorRefSender for DeferredScheduleSender {
 fn debug_sender_allows_parallel_send_after_releasing_inner_lock() {
   let (first_schedule_entered_tx, first_schedule_entered_rx) = mpsc::channel();
   let first_schedule_release = Arc::new(Barrier::new(2));
-  let sender = ActorRefSenderShared::from_boxed_debug(Box::new(DeferredScheduleSender {
-    send_count:             Arc::new(AtomicUsize::new(0)),
-    first_schedule_entered: first_schedule_entered_tx,
-    first_schedule_release: first_schedule_release.clone(),
-  }));
+  let sender = ActorRefSenderShared::from_shared_lock(SharedLock::debug(
+    Box::new(DeferredScheduleSender {
+      send_count:             Arc::new(AtomicUsize::new(0)),
+      first_schedule_entered: first_schedule_entered_tx,
+      first_schedule_release: first_schedule_release.clone(),
+    }),
+    "actor_ref_sender_shared.inner",
+  ));
 
   let mut first_sender = sender.clone();
   let first_handle = thread::spawn(move || first_sender.send(AnyMessage::new(1_u8)));

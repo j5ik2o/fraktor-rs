@@ -42,7 +42,7 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_dispatcher() -> BalancingDispatcher {
   let settings = DispatcherSettings::new("balancing-id", nz(5), None, Duration::from_secs(1));
-  let executor = ExecutorShared::new(NoopExecutor);
+  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   BalancingDispatcher::new(&settings, executor)
 }
 
@@ -173,7 +173,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   }
 
   let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
-    let executor = ExecutorShared::new(InlineExec);
+    let executor = ExecutorShared::new_with_builtin_lock(InlineExec);
     let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
     let inner: Box<dyn MessageDispatcherConfigurator> =
       Box::new(BalancingDispatcherConfigurator::new(&settings, executor));

@@ -275,7 +275,10 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new(TestSender { counter: self.counter.clone(), behavior: self.behavior });
+    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender {
+      counter:  self.counter.clone(),
+      behavior: self.behavior,
+    });
     Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
   }
 
