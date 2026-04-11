@@ -3,7 +3,7 @@
 use alloc::string::String;
 use core::{any::TypeId, marker::PhantomData};
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use super::{ActorRefProvider, ActorRefProviderHandle};
 use crate::core::kernel::{
@@ -27,7 +27,7 @@ use crate::core::kernel::{
 ///
 /// # Usage
 ///
-/// 1. Create a shared wrapper: `ActorRefProviderShared::new(provider)`
+/// 1. Materialize a shared handle via `ActorRefProviderHandleSharedFactory`
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
 pub struct ActorRefProviderShared<P: ActorRefProvider + 'static> {
@@ -36,16 +36,9 @@ pub struct ActorRefProviderShared<P: ActorRefProvider + 'static> {
 }
 
 impl<P: ActorRefProvider + 'static> ActorRefProviderShared<P> {
-  /// Creates a new shared wrapper around the provided implementation.
-  pub fn new(provider: P) -> Self {
-    let schemes = provider.supported_schemes();
-    let handle = ActorRefProviderHandle::new(provider, schemes);
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(handle), _marker: PhantomData }
-  }
-
   /// Creates a new shared wrapper from an existing shared lock.
   #[must_use]
-  pub(crate) const fn from_shared(inner: SharedLock<ActorRefProviderHandle<P>>) -> Self {
+  pub const fn from_shared(inner: SharedLock<ActorRefProviderHandle<P>>) -> Self {
     Self { inner, _marker: PhantomData }
   }
 

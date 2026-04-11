@@ -13,7 +13,7 @@ use crate::core::kernel::{
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify,
+      ActorIdentity, AnyMessage, AnyMessageView, AskResult, Identify,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
       system_message::SystemMessage,
     },
@@ -35,6 +35,7 @@ use crate::core::kernel::{
     ActorSystem,
     shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
   },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 struct ProbeActor;
@@ -260,6 +261,12 @@ impl MailboxSharedSetFactory for TestDebugActorSharedFactory {
       self.create_lock(Option::<MessageInvokerShared>::None),
       self.create_lock(Option::<WeakShared<KernelActorCell>>::None),
     )
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for TestDebugActorSharedFactory {
+  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureShared::from_shared_lock(self.create_lock(future))
   }
 }
 

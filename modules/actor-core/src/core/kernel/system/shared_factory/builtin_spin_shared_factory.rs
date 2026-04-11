@@ -9,6 +9,9 @@ use crate::core::kernel::{
     Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorRuntimeLockFactory,
     ActorSharedLockFactory, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleSharedFactory, ActorRefProviderShared,
+    },
     messaging::message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
   },
   dispatch::{
@@ -23,6 +26,7 @@ use crate::core::kernel::{
     EventStreamSubscriberSharedFactory,
   },
   system::shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 /// Default shared factory used by `ActorSystemConfig::default()`.
@@ -125,5 +129,24 @@ impl MailboxSharedSetFactory for BuiltinSpinSharedFactory {
       Self::create_lock(Option::<MessageInvokerShared>::None),
       Self::create_lock(Option::<WeakShared<ActorCell>>::None),
     )
+  }
+}
+
+impl<T> ActorFutureSharedFactory<T> for BuiltinSpinSharedFactory
+where
+  T: Send + 'static,
+{
+  fn create(&self, future: ActorFuture<T>) -> ActorFutureShared<T> {
+    ActorFutureShared::from_shared_lock(Self::create_lock(future))
+  }
+}
+
+impl<P> ActorRefProviderHandleSharedFactory<P> for BuiltinSpinSharedFactory
+where
+  P: ActorRefProvider + 'static,
+{
+  fn create(&self, provider: P) -> ActorRefProviderShared<P> {
+    let schemes = provider.supported_schemes();
+    ActorRefProviderShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
 }

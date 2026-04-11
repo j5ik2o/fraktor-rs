@@ -19,7 +19,7 @@ use crate::core::{
       Actor, ActorCell, ActorContext, Pid,
       actor_path::{ActorPath, ActorPathParts, ActorPathScheme},
       actor_ref::ActorRef,
-      actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, ActorRefResolveError},
+      actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory, ActorRefResolveError},
       error::ActorError,
       lifecycle::LifecycleStage,
       messaging::{AnyMessageView, system_message::SystemMessage},
@@ -844,7 +844,10 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let system = ActorSystem::from_state(SystemStateShared::new(state));
 
   let recorded = ArcShared::new(SpinSyncMutex::new(None));
-  let provider = ActorRefProviderShared::new(DummyActorRefProvider::new(recorded.clone()));
+  let provider = ActorRefProviderHandleSharedFactory::create(
+    &BuiltinSpinSharedFactory::new(),
+    DummyActorRefProvider::new(recorded.clone()),
+  );
   system.extended().register_actor_ref_provider(&provider).expect("register provider");
   system.state().mark_root_started();
 

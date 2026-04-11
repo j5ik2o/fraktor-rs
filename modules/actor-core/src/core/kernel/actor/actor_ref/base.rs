@@ -17,13 +17,18 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_path::ActorPath,
-    actor_ref::{ActorRefSender, ActorRefSenderShared, ask_reply_sender::AskReplySender},
+    actor_ref::{
+      ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, NullSender, ask_reply_sender::AskReplySender,
+    },
     error::SendError,
     messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   },
   pattern,
-  system::state::{SystemStateShared, SystemStateWeak},
-  util::futures::ActorFutureShared,
+  system::{
+    shared_factory::BuiltinSpinSharedFactory,
+    state::{SystemStateShared, SystemStateWeak},
+  },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 /// Handle used to communicate with an actor instance.
@@ -63,7 +68,8 @@ impl ActorRef {
     if path_aware_reply && let Some(system) = system {
       return Self::with_system(pid, reply_sender, system);
     }
-    Self::new(pid, ActorRefSenderShared::from_builtin_sender(Box::new(reply_sender)))
+    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(reply_sender));
+    Self::new(pid, sender)
   }
 
   fn next_ask_reply_pid(system: Option<&SystemStateShared>) -> Pid {
@@ -96,7 +102,8 @@ impl ActorRef {
   fn new_with_builtin_lock_impl<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender + 'static, {
-    Self { pid, sender: ActorRefSenderShared::new_with_builtin_lock(sender), system: None }
+    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(sender));
+    Self { pid, sender, system: None }
   }
 
   /// Creates an actor reference backed by the given sender and system state (path-aware).
@@ -147,8 +154,11 @@ impl ActorRef {
   pub(crate) fn ask_with_factory<F>(&mut self, path_aware_reply: bool, build: F) -> AskResponse
   where
     F: FnOnce(ActorRef) -> AnyMessage, {
-    let future = ActorFutureShared::<AskResult>::new();
     let system = self.system_state();
+    let future = system
+      .as_ref()
+      .map(|state| state.actor_future_shared_factory().create(ActorFuture::new()))
+      .unwrap_or_else(|| ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new()));
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = Self::build_ask_reply_ref(system.as_ref(), path_aware_reply, reply_sender);
     let message = build(reply_ref.clone());
@@ -240,7 +250,8 @@ impl ActorRef {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    Self::new(Pid::new(0, 0), ActorRefSenderShared::null_sender())
+    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NullSender));
+    Self::new(Pid::new(0, 0), sender)
   }
 
   /// Returns a sentinel reference indicating "no sender".

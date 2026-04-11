@@ -3,7 +3,7 @@ use crate::core::kernel::{
     Actor, ActorContext, Address, Pid,
     actor_path::ActorPathParser,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, LocalActorRefProvider},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -12,6 +12,7 @@ use crate::core::kernel::{
   },
   system::{
     ActorSystem,
+    shared_factory::BuiltinSpinSharedFactory,
     state::{SystemStateShared, system_state::SystemState},
   },
 };
@@ -150,7 +151,10 @@ fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration(
   let weak = state.downgrade();
 
   {
-    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&state));
+    let provider = ActorRefProviderHandleSharedFactory::create(
+      &BuiltinSpinSharedFactory::new(),
+      LocalActorRefProvider::new_with_state(&state),
+    );
     state.install_actor_ref_provider(&provider).expect("install provider");
   }
 
@@ -168,7 +172,10 @@ fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
 
-  let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&system.state()));
+  let provider = ActorRefProviderHandleSharedFactory::create(
+    &BuiltinSpinSharedFactory::new(),
+    LocalActorRefProvider::new_with_state(&system.state()),
+  );
 
   let resolved = provider.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
   assert_eq!(resolved, child.actor_ref().clone());

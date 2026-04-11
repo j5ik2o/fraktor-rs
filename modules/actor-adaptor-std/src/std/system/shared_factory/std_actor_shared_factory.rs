@@ -5,6 +5,9 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorRuntimeLockFactory,
     ActorSharedLockFactory, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleSharedFactory, ActorRefProviderShared,
+    },
     messaging::message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
   },
   dispatch::{
@@ -19,6 +22,7 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamSubscriberSharedFactory,
   },
   system::shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_adaptor_std_rs::std::sync::{StdSyncMutex, StdSyncRwLock};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SharedRwLock, WeakShared};
@@ -123,5 +127,24 @@ impl MailboxSharedSetFactory for StdActorSharedFactory {
       Self::create_lock(Option::<MessageInvokerShared>::None),
       Self::create_lock(Option::<WeakShared<ActorCell>>::None),
     )
+  }
+}
+
+impl<T> ActorFutureSharedFactory<T> for StdActorSharedFactory
+where
+  T: Send + 'static,
+{
+  fn create(&self, future: ActorFuture<T>) -> ActorFutureShared<T> {
+    ActorFutureShared::from_shared_lock(Self::create_lock(future))
+  }
+}
+
+impl<P> ActorRefProviderHandleSharedFactory<P> for StdActorSharedFactory
+where
+  P: ActorRefProvider + 'static,
+{
+  fn create(&self, provider: P) -> ActorRefProviderShared<P> {
+    let schemes = provider.supported_schemes();
+    ActorRefProviderShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
 }

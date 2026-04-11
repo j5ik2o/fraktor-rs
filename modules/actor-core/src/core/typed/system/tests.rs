@@ -20,7 +20,7 @@ use crate::core::{
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::{
-        AnyMessage,
+        AnyMessage, AskResult,
         message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
       },
       scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
@@ -41,6 +41,7 @@ use crate::core::{
       ActorSystem,
       shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
     },
+    util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
   },
   typed::{
     DispatcherSelector, TypedActorRef, TypedActorSystem, TypedProps,
@@ -183,6 +184,12 @@ impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
 impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
   fn create(&self) -> MailboxSharedSet {
     MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
+  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureSharedFactory::create(&self.inner, future)
   }
 }
 

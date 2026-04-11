@@ -13,7 +13,7 @@ use crate::core::kernel::{
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
-    messaging::message_invoker::MessageInvokerSharedFactory,
+    messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
@@ -23,6 +23,7 @@ use crate::core::kernel::{
   },
   event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
   system::shared_factory::MailboxSharedSetFactory,
+  util::futures::ActorFutureSharedFactory,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -89,6 +90,7 @@ impl ActorSystemSetup {
       + ActorCellStateSharedFactory
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
+      + ActorFutureSharedFactory<AskResult>
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory

@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
@@ -171,8 +171,10 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(move |system: &ActorSystem| {
-      let provider =
-        ActorRefProviderShared::new(TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior));
+      let provider = ActorRefProviderHandleSharedFactory::create(
+        &BuiltinSpinSharedFactory::new(),
+        TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior),
+      );
       system.extended().register_actor_ref_provider(&provider)
     });
   let props = Props::from_fn(|| TestGuardian);

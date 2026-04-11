@@ -440,11 +440,13 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::kernel::{actor::messaging::AskResult, util::futures::ActorFutureShared};
+  use crate::core::kernel::{
+    system::shared_factory::BuiltinSpinSharedFactory,
+    util::futures::{ActorFuture, ActorFutureSharedFactory},
+  };
 
-  type TestAskResult = AskResult;
   let mut state = build_state();
-  let future = ActorFutureShared::<TestAskResult>::new();
+  let future = ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();

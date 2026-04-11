@@ -14,7 +14,7 @@ use crate::core::kernel::{
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     error::ActorError,
     messaging::{
-      AnyMessageView,
+      AnyMessageView, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     },
     props::Props,
@@ -33,6 +33,7 @@ use crate::core::kernel::{
     remote::RemotingConfig,
     shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 struct NoopActor;
@@ -177,6 +178,12 @@ impl MailboxSharedSetFactory for CountingLockProvider {
   fn create(&self) -> MailboxSharedSet {
     self.mailbox_shared_set_calls.fetch_add(1, Ordering::SeqCst);
     MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingLockProvider {
+  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureSharedFactory::create(&self.inner, future)
   }
 }
 

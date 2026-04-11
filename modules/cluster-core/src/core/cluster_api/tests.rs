@@ -10,11 +10,11 @@ use fraktor_actor_core_rs::core::kernel::{
     ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{
-      AnyMessage, AnyMessageView,
+      AnyMessage, AnyMessageView, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     },
     props::Props,
@@ -37,6 +37,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ActorSystem, TerminationSignal,
     shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
@@ -134,6 +135,12 @@ impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
 impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
   fn create(&self) -> MailboxSharedSet {
     MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
+  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureSharedFactory::create(&self.inner, future)
   }
 }
 
@@ -341,7 +348,10 @@ fn down_delegates_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
+      let provider = ActorRefProviderHandleSharedFactory::create(
+        &BuiltinSpinSharedFactory::new(),
+        TestActorRefProvider::new(system.clone()),
+      );
       system.extended().register_actor_ref_provider(&provider)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -377,7 +387,10 @@ fn join_and_leave_delegate_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
+      let provider = ActorRefProviderHandleSharedFactory::create(
+        &BuiltinSpinSharedFactory::new(),
+        TestActorRefProvider::new(system.clone()),
+      );
       system.extended().register_actor_ref_provider(&provider)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -562,7 +575,10 @@ fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_pr
     .with_shared_factory(lock_provider)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
+      let provider = ActorRefProviderHandleSharedFactory::create(
+        &BuiltinSpinSharedFactory::new(),
+        TestActorRefProvider::new(system.clone()),
+      );
       system.extended().register_actor_ref_provider(&provider)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -626,7 +642,10 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
+      let provider = ActorRefProviderHandleSharedFactory::create(
+        &BuiltinSpinSharedFactory::new(),
+        TestActorRefProvider::new(system.clone()),
+      );
       system.extended().register_actor_ref_provider(&provider)
     });
   let props = Props::from_fn(|| TestGuardian);

@@ -10,7 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     messaging::{
-      AnyMessage,
+      AnyMessage, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     },
   },
@@ -27,6 +27,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ActorSystem,
     shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedLock, SpinSyncMutex},
@@ -125,6 +126,12 @@ impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
 impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
   fn create(&self) -> MailboxSharedSet {
     MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
+  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureSharedFactory::create(&self.inner, future)
   }
 }
 

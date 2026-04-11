@@ -5,16 +5,15 @@ use fraktor_utils_core_rs::core::sync::SharedAccess;
 use crate::core::kernel::{
   actor::{
     actor_ref::{actor_ref_sender::ActorRefSender, ask_reply_sender::AskReplySender},
-    messaging::{AnyMessage, AskResult},
+    messaging::AnyMessage,
   },
-  util::futures::ActorFutureShared,
+  system::shared_factory::BuiltinSpinSharedFactory,
+  util::futures::{ActorFuture, ActorFutureSharedFactory},
 };
-
-type TestAskResult = AskResult;
 
 #[test]
 fn completes_future_on_send() {
-  let future = ActorFutureShared::<TestAskResult>::new();
+  let future = ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let mut sender: AskReplySender = AskReplySender::new(future.clone());
   sender.send(AnyMessage::new("ok".to_string())).unwrap();
   assert!(future.with_write(|af| af.is_ready()));
@@ -22,7 +21,7 @@ fn completes_future_on_send() {
 
 #[test]
 fn reply_is_wrapped_in_ok() {
-  let future = ActorFutureShared::<TestAskResult>::new();
+  let future = ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let mut sender: AskReplySender = AskReplySender::new(future.clone());
   sender.send(AnyMessage::new(42_u32)).unwrap();
 

@@ -55,7 +55,7 @@ use crate::core::kernel::{
   system::{
     ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSetFactory,
   },
-  util::futures::ActorFutureShared,
+  util::futures::{ActorFutureShared, ActorFutureSharedFactory},
 };
 
 /// Shared wrapper for [`SystemState`] providing thread-safe access.
@@ -229,6 +229,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn message_invoker_shared_factory(&self) -> ArcShared<dyn MessageInvokerSharedFactory> {
     self.inner.with_read(|inner| inner.message_invoker_shared_factory())
+  }
+
+  /// Returns the actor-future shared factory.
+  #[must_use]
+  pub fn actor_future_shared_factory(&self) -> ArcShared<dyn ActorFutureSharedFactory<AskResult>> {
+    self.inner.with_read(|inner| inner.actor_future_shared_factory())
   }
 
   /// Returns the event-stream-subscriber shared factory.
