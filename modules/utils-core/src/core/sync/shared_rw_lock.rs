@@ -3,7 +3,7 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use super::{ArcShared, RwLockDriver, SharedAccess, WeakSharedRwLock};
+use super::{ArcShared, DefaultRwLockDriver, RwLockDriver, SharedAccess, WeakSharedRwLock};
 
 pub(crate) trait SharedRwLockBackend<T>: Send + Sync {
   fn with_read(&self, f: &mut dyn FnMut(&T));
@@ -54,6 +54,18 @@ where
   #[must_use]
   pub(crate) const fn from_inner(inner: ArcShared<dyn SharedRwLockBackend<T>>) -> Self {
     Self { inner }
+  }
+
+  /// Creates a new shared rwlock backed by the workspace's compile-time
+  /// selected default driver.
+  ///
+  /// Mirrors [`super::SharedLock::new`]: the driver type is resolved through
+  /// [`DefaultRwLockDriver<T>`](super::DefaultRwLockDriver) so that callers do
+  /// not have to thread either a driver type parameter or a runtime
+  /// `LockProvider` through their constructors.
+  #[must_use]
+  pub fn new(value: T) -> Self {
+    Self::new_with_driver::<DefaultRwLockDriver<T>>(value)
   }
 
   /// Creates a new shared rwlock from the supplied value using the requested driver.

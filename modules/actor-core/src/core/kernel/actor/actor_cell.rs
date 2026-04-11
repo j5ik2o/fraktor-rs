@@ -22,7 +22,7 @@ use crate::core::{
     actor::{
       Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
       actor_context::ReceiveTimeoutState,
-      actor_ref::{ActorRef, ActorRefSenderShared},
+      actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, PipeSpawnError},
       lifecycle::{LifecycleEvent, LifecycleStage},
@@ -44,6 +44,7 @@ use crate::core::{
     system::{
       ActorSystem,
       guardian::GuardianKind,
+      lock_provider::MailboxSharedSet,
       state::{SystemStateShared, SystemStateWeak, system_state::FailureOutcome},
     },
   },
@@ -180,6 +181,11 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
+    // Optional runtime override for `*Shared` construction. `None` is the
+    // common path: shared wrappers are built via the workspace's compile-time
+    // selected default lock driver. `Some` is reserved for tests / debug
+    // builds that install `DebugActorLockProvider` (or a `parking_lot`
+    // variant) at the actor system boundary.
     let lock_provider = system.lock_provider();
 
     // Give the dispatcher a chance to supply its own mailbox (e.g.,
@@ -191,10 +197,16 @@ impl ActorCell {
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      let shared_set = lock_provider.create_mailbox_shared_set();
+      let shared_set = match lock_provider.as_ref() {
+        | Some(provider) => provider.create_mailbox_shared_set(),
+        | None => MailboxSharedSet::with_builtin_lock(),
+      };
       ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &shared_set))
     } else {
-      let shared_set = lock_provider.create_mailbox_shared_set();
+      let shared_set = match lock_provider.as_ref() {
+        | Some(provider) => provider.create_mailbox_shared_set(),
+        | None => MailboxSharedSet::with_builtin_lock(),
+      };
       ArcShared::new(
         Mailbox::new_from_config_with_shared_set(&mailbox_config, &shared_set)
           .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
@@ -212,8 +224,14 @@ impl ActorCell {
       mailbox.set_instrumentation(instrumentation);
     }
     use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
-    let sender = lock_provider
-      .create_actor_ref_sender_shared(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
+    let sender = {
+      let dispatcher_sender: Box<dyn ActorRefSender> =
+        Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone()));
+      match lock_provider.as_ref() {
+        | Some(provider) => provider.create_actor_ref_sender_shared(dispatcher_sender),
+        | None => ActorRefSenderShared::from_shared_lock(SharedLock::new(dispatcher_sender)),
+      }
+    };
     let Some(factory) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };

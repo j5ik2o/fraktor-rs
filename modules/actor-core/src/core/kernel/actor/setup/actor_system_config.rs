@@ -20,16 +20,23 @@ use crate::core::kernel::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
-  system::{
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
-    remote::RemotingConfig,
-  },
+  system::{lock_provider::ActorLockProvider, remote::RemotingConfig},
 };
 
 #[cfg(test)]
 mod tests;
 
 /// Configuration for the actor system.
+///
+/// `lock_provider` is an **opt-in** runtime override: when `None` (the
+/// default) every `*Shared` wrapper is materialized through the workspace's
+/// compile-time selected default lock driver (`SharedLock::new`). Setting
+/// it via [`Self::with_lock_provider`] flips the construction of the *next*
+/// dispatcher built by [`Dispatchers::ensure_default_inline`] /
+/// [`Dispatchers::replace_default_inline_with_provider`] over to the supplied
+/// trait object so that test/diagnostic builds can swap in
+/// `DebugSpinSyncMutex` or `parking_lot::Mutex` without rewiring every
+/// constructor in the workspace.
 pub struct ActorSystemConfig {
   system_name:          String,
   default_guardian:     PathGuardianKind,
@@ -38,7 +45,7 @@ pub struct ActorSystemConfig {
   tick_driver_config:   Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
   provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  lock_provider:        ArcShared<dyn ActorLockProvider>,
+  lock_provider:        Option<ArcShared<dyn ActorLockProvider>>,
   dispatchers:          Dispatchers,
   mailboxes:            Mailboxes,
   start_time:           Option<Duration>,
@@ -96,13 +103,32 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Overrides the actor-system scoped lock provider.
+  /// Installs a runtime [`ActorLockProvider`] override at the actor system
+  /// boundary.
+  ///
+  /// By default the system constructs every `*Shared` wrapper through the
+  /// workspace's compile-time selected lock driver (see [`SharedLock::new`]).
+  /// Calling this method flips the seeded default dispatcher (and any future
+  /// `_with_provider` factories that consult the config) over to the supplied
+  /// provider so that:
+  ///
+  /// - tests can swap in `DebugActorLockProvider` for re-entry / deadlock detection without
+  ///   recompiling the workspace, and
+  /// - production tokio builds can plug in a `parking_lot` based provider to avoid the spin-mutex
+  ///   `tokio` worker hazard.
+  ///
+  /// Newly registered constructors should *not* propagate the provider
+  /// further: the override is intentionally limited to the actor system
+  /// boundary so that deeper subsystems do not have to thread it through.
+  ///
+  /// [`SharedLock::new`]: fraktor_utils_core_rs::core::sync::SharedLock::new
   #[must_use]
   pub fn with_lock_provider<P>(mut self, provider: P) -> Self
   where
     P: ActorLockProvider + 'static, {
-    self.lock_provider = ArcShared::new(provider);
-    self.dispatchers.replace_default_inline_with_provider(&self.lock_provider);
+    let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+    self.dispatchers.replace_default_inline_with_provider(&provider);
+    self.lock_provider = Some(provider);
     self
   }
 
@@ -200,10 +226,14 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped lock provider override, if one was
+  /// installed via [`Self::with_lock_provider`].
+  ///
+  /// Returns `None` when the system is using the workspace default lock
+  /// driver (the common case).
   #[must_use]
-  pub const fn lock_provider(&self) -> &ArcShared<dyn ActorLockProvider> {
-    &self.lock_provider
+  pub const fn lock_provider(&self) -> Option<&ArcShared<dyn ActorLockProvider>> {
+    self.lock_provider.as_ref()
   }
 
   /// Returns the dispatcher registry configured for the system.
@@ -229,9 +259,8 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline_with_provider(&lock_provider);
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -242,7 +271,7 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      lock_provider,
+      lock_provider: None,
       dispatchers,
       mailboxes,
       start_time: None,

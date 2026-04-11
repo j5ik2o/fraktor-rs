@@ -61,8 +61,7 @@ impl ClusterEventFilterSubscriber {
 impl EventStreamSubscriber for ClusterEventFilterSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     if Self::matches_event(event, &self.event_types) {
-      let mut subscriber = self.subscriber.lock();
-      subscriber.on_event(event);
+      self.subscriber.with_lock(|inner| inner.on_event(event));
     }
   }
 }
@@ -194,8 +193,7 @@ impl ClusterApi {
       | ClusterSubscriptionInitialStateMode::AsEvents => {
         let (subscription_id, snapshot) = event_stream.with_write(|stream| stream.subscribe(filtered.clone()));
         for event in &snapshot {
-          let mut guard = filtered.lock();
-          guard.on_event(event);
+          filtered.with_lock(|guard| guard.on_event(event));
         }
         EventStreamSubscription::new(event_stream, subscription_id)
       },
@@ -209,8 +207,7 @@ impl ClusterApi {
         };
         let payload = AnyMessage::new(initial_event);
         let extension_event = EventStreamEvent::Extension { name: String::from(CLUSTER_EVENT_STREAM_NAME), payload };
-        let mut guard = subscriber.lock();
-        guard.on_event(&extension_event);
+        subscriber.with_lock(|guard| guard.on_event(&extension_event));
         EventStreamSubscription::new(event_stream, subscription_id)
       },
     }

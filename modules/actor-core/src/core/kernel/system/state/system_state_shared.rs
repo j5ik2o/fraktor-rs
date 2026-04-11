@@ -198,9 +198,12 @@ impl SystemStateShared {
     &self.inner
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped lock provider override, if any.
+  ///
+  /// See [`SystemState::lock_provider`] for the semantics: `None` means the
+  /// system uses the workspace's compile-time selected default lock driver.
   #[must_use]
-  pub fn lock_provider(&self) -> ArcShared<dyn ActorLockProvider> {
+  pub fn lock_provider(&self) -> Option<ArcShared<dyn ActorLockProvider>> {
     self.inner.with_read(|inner| inner.lock_provider())
   }
 

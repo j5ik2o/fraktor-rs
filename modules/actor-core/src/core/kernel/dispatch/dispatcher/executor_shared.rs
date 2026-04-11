@@ -27,7 +27,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
 
 use super::{execute_error::ExecuteError, executor::Executor, trampoline_state::TrampolineState};
 
@@ -46,13 +46,14 @@ pub struct ExecutorShared {
 }
 
 impl ExecutorShared {
-  /// Wraps the provided executor in a shareable handle backed by the built-in lock.
+  /// Wraps the provided executor in a shareable handle backed by the
+  /// workspace's compile-time selected default lock driver.
+  ///
+  /// Equivalent to `from_parts(SharedLock::new(...), SharedLock::new(...))`
+  /// but kept as a helper so call sites can stay short.
   #[must_use]
   pub fn new_with_builtin_lock<E: Executor + 'static>(executor: E) -> Self {
-    Self::from_parts(
-      SharedLock::new_with_driver::<SpinSyncMutex<Box<dyn Executor>>>(Box::new(executor)),
-      SharedLock::new_with_driver::<SpinSyncMutex<TrampolineState>>(TrampolineState::new()),
-    )
+    Self::from_parts(SharedLock::new(Box::new(executor) as Box<dyn Executor>), SharedLock::new(TrampolineState::new()))
   }
 
   /// Wraps already constructed shared locks in a shareable handle.

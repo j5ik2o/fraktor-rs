@@ -1,9 +1,39 @@
 # ロック戦略の全体整理と優先順位検討
 
 **作成日**: 2026-04-08
-**ステータス**: 調査・検討中（コード変更なし）
+**最終更新**: 2026-04-11（LockProvider DI 戦略の確定を追記）
+**ステータス**: 調査・検討中（コード変更なし） → DI 戦略は確定（2026-04-11）
 **関連 openspec change**: `openspec/changes/lock-driver-port-adapter/`
 **関連 PR**: #1530 (utils-sync-collapse), #1535, #1537, #1538
+**関連プラン**: `~/.claude/plans/scalable-puzzling-sunset.md`
+
+## 2026-04-11 追記：LockProvider DI 戦略の確定
+
+`ActorLockProvider` を全コンストラクタにバケツリレーする（実行時 DI 全伝播）案
+は、API 肥大化と既存の `dyn MessageDispatcher` 等の trait object 設計との衝突
+から不採用とした。代わりに以下の方針で確定：
+
+| 採用方針 | 説明 |
+|----------|------|
+| **デフォルトはコンパイル時確定** | `utils-core::SharedLock::new(value)` が cfg-選択された `DefaultLockDriver`（現状 `SpinSyncMutex`）を使う。99% の構築箇所は provider を引き回さない |
+| **`ActorLockProvider` は表層フックに降格** | `ActorSystemConfig::lock_provider` を `Option<ArcShared<dyn ActorLockProvider>>` 化。`with_lock_provider(...)` 呼び出し時のみ override path が起動する |
+| **深い型へのジェネリクス伝播は行わない** | `ActorSystem<L: LockDriverFactory>` 案は不採用（`Box<dyn MessageDispatcher>` 等との衝突、115 file migration の影響） |
+
+実行時オーバーライドを残すユースケースは次の 2 つに限定：
+
+1. **DebugSpinSyncMutex による deadlock 検知**（テスト用）
+   - `DebugActorLockProvider` を `with_lock_provider(...)` で注入
+   - `subscriber_handle_with_lock_provider` 経由で event-stream subscriber も検知対象
+2. **tokio runtime での parking_lot 切替**（本番用）
+   - `StdActorLockProvider` 相当を parking_lot 版に拡張する余地を残す
+   - spin mutex の tokio worker hazard（課題 1）への対処
+
+実装ファイル：
+- `modules/utils-core/src/core/sync/default_lock_driver.rs`（type alias）
+- `modules/utils-core/src/core/sync/shared_lock.rs`（`SharedLock::new`）
+- `modules/actor-core/src/core/kernel/actor/setup/actor_system_config.rs`（Option 化）
+- `modules/actor-core/src/core/kernel/system/lock_provider/actor_lock_provider.rs`
+- `modules/actor-core/src/core/kernel/event/stream/event_stream_subscriber.rs`
 
 ## 背景
 

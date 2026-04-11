@@ -1,5 +1,6 @@
 #[allow(clippy::disallowed_types)]
 mod arc_shared;
+mod default_lock_driver;
 mod lock_driver;
 mod lock_driver_factory;
 mod rw_lock_driver_factory;
@@ -23,6 +24,7 @@ mod weak_shared_lock;
 mod weak_shared_rw_lock;
 
 pub use arc_shared::ArcShared;
+pub use default_lock_driver::{DefaultLockDriver, DefaultRwLockDriver};
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;
 pub use rw_lock_driver_factory::RwLockDriverFactory;

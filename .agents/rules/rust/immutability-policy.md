@@ -47,9 +47,35 @@ impl Xyz {
 // 共有ラッパー: 内部可変性はここだけ
 #[derive(Clone)]
 pub struct XyzShared {
-    inner: ArcShared<SpinSyncMutex<Xyz>>,
+    inner: SharedLock<Xyz>,
 }
 ```
+
+### ロック型の選択：`SharedLock::new` を既定とする
+
+共有ラッパーを構築する際は **`SharedLock::new(value)` を第一選択とする**。
+
+```rust
+// ✅ 推奨: 既定パス（cfg-選択された default driver を使う）
+let xyz = XyzShared { inner: SharedLock::new(Xyz::new()) };
+```
+
+`SharedLock::new` はワークスペース全体で共通の `DefaultLockDriver`
+（`utils-core` 側で type alias 解決、現状 `SpinSyncMutex`）を使うため、
+コンストラクタが `LockProvider` を引数として受け取る必要がない。
+**このパターンを採ることで「LockProvider をすべての型のコンストラクタに
+バケツリレー」する設計を回避する。**
+
+`SharedLock::new_with_driver::<D>(value)` は次の場合のみ使う:
+
+- テストで `DebugSpinSyncMutex` を直接差し込む（actor 系以外）
+- 特殊用途で `parking_lot::Mutex` 等を **その場限り** で使う
+
+actor system のスコープでロック実装を切り替えたい場合は、
+`SharedLock::new_with_driver` を直接使うのではなく、
+`ActorSystemConfig::with_lock_provider(...)` で `ActorLockProvider` を差し込み、
+override path（`StdActorLockProvider` / `DebugActorLockProvider` 等）で対応する。
+詳細は `docs/plan/lock-strategy-analysis.md` 参照。
 
 ### 命名
 

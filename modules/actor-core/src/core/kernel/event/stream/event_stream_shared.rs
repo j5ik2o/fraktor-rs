@@ -58,10 +58,12 @@ impl EventStreamShared {
     let (id, snapshot) = self.inner.with_write(|guard| guard.subscribe(subscriber.clone()));
     // Lock released here!
 
-    // Phase 2: Replay buffered events without holding the lock
+    // Phase 2: Replay buffered events without holding the event stream lock.
+    // Each callback runs under the subscriber's own lock so that
+    // `DebugSpinSyncMutex`-instrumented overrides can detect re-entrant
+    // subscriber acquisitions.
     for event in snapshot.iter() {
-      let mut guard = subscriber.lock();
-      guard.on_event(event);
+      subscriber.with_lock(|guard| guard.on_event(event));
     }
 
     EventStreamSubscription::new(self.clone(), id)
@@ -100,11 +102,13 @@ impl EventStreamShared {
     let subscribers = self.inner.with_write(|guard| guard.publish_prepare(event.clone()));
     // Lock released here!
 
-    // Phase 2: Notify subscribers without holding the lock
+    // Phase 2: Notify subscribers without holding the event stream lock.
+    // Each callback runs under the subscriber's own lock so that
+    // `DebugSpinSyncMutex`-instrumented overrides can detect re-entrant
+    // subscriber acquisitions.
     for entry in subscribers.iter() {
       let handle = entry.subscriber();
-      let mut guard = handle.lock();
-      guard.on_event(event);
+      handle.with_lock(|guard| guard.on_event(event));
     }
   }
 }

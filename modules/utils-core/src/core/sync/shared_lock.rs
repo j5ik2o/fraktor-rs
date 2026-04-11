@@ -3,7 +3,7 @@ mod tests;
 
 use core::marker::PhantomData;
 
-use super::{ArcShared, LockDriver, SharedAccess, WeakSharedLock};
+use super::{ArcShared, DefaultLockDriver, LockDriver, SharedAccess, WeakSharedLock};
 
 pub(crate) trait SharedLockBackend<T>: Send + Sync {
   fn with_lock(&self, f: &mut dyn FnMut(&mut T));
@@ -48,6 +48,21 @@ where
   #[must_use]
   pub(crate) const fn from_inner(inner: ArcShared<dyn SharedLockBackend<T>>) -> Self {
     Self { inner }
+  }
+
+  /// Creates a new shared lock backed by the workspace's compile-time
+  /// selected default driver.
+  ///
+  /// This is the canonical constructor: it picks
+  /// [`DefaultLockDriver<T>`](super::DefaultLockDriver) (resolved through
+  /// `default-lock-*` Cargo features) so that callers do not have to plumb a
+  /// driver type or a runtime `LockProvider` through their constructors.
+  ///
+  /// Use [`Self::new_with_driver`] only when a specific driver (e.g. a debug
+  /// instrumented mutex) is required at the construction site.
+  #[must_use]
+  pub fn new(value: T) -> Self {
+    Self::new_with_driver::<DefaultLockDriver<T>>(value)
   }
 
   /// Creates a new shared lock from the supplied value using the requested driver.

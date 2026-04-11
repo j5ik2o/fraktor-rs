@@ -1,6 +1,6 @@
 //! Mailbox lock bundle materialized by an [`ActorLockProvider`](super::ActorLockProvider).
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{SharedLock, WeakShared};
 
 use crate::core::kernel::{
   actor::{ActorCell, messaging::message_invoker::MessageInvokerShared},
@@ -28,13 +28,14 @@ impl MailboxSharedSet {
     Self { user_queue_lock, instrumentation, invoker, actor }
   }
 
-  pub(crate) fn builtin() -> Self {
-    Self::new(
-      MailboxLocked::new_with_driver::<SpinSyncMutex<()>>(()),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<MailboxInstrumentation>>>(None),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<MessageInvokerShared>>>(None),
-      MailboxLocked::new_with_driver::<SpinSyncMutex<Option<WeakShared<ActorCell>>>>(None),
-    )
+  /// Builds a mailbox lock bundle using the workspace's compile-time selected
+  /// default lock driver.
+  ///
+  /// Used as the default-path constructor when no `ActorLockProvider` runtime
+  /// override is installed at the actor system boundary.
+  #[must_use]
+  pub fn with_builtin_lock() -> Self {
+    Self::new(MailboxLocked::new(()), MailboxLocked::new(None), MailboxLocked::new(None), MailboxLocked::new(None))
   }
 
   pub(crate) fn user_queue_lock(&self) -> MailboxLocked<()> {

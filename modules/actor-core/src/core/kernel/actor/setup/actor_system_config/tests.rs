@@ -13,6 +13,7 @@ use crate::core::kernel::{
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared},
+  event::stream::{EventStreamSubscriber, EventStreamSubscriberShared},
   system::{
     lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
     remote::RemotingConfig,
@@ -55,6 +56,13 @@ impl ActorLockProvider for CountingLockProvider {
 
   fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
     self.inner.create_mailbox_shared_set()
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    self.inner.create_event_stream_subscriber_shared(subscriber)
   }
 }
 

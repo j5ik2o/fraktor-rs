@@ -10,6 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, TrampolineState},
     mailbox::MailboxInstrumentation,
   },
+  event::stream::{EventStreamSubscriber, EventStreamSubscriberShared},
   system::lock_provider::{ActorLockProvider, MailboxSharedSet},
 };
 use fraktor_utils_adaptor_std_rs::std::sync::StdSyncMutex;
@@ -52,5 +53,12 @@ impl ActorLockProvider for StdActorLockProvider {
       SharedLock::new_with_driver::<StdSyncMutex<Option<MessageInvokerShared>>>(None),
       SharedLock::new_with_driver::<StdSyncMutex<Option<WeakShared<ActorCell>>>>(None),
     )
+  }
+
+  fn create_event_stream_subscriber_shared(
+    &self,
+    subscriber: Box<dyn EventStreamSubscriber>,
+  ) -> EventStreamSubscriberShared {
+    SharedLock::new_with_driver::<StdSyncMutex<Box<dyn EventStreamSubscriber>>>(subscriber)
   }
 }

@@ -18,7 +18,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
@@ -62,10 +62,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, RemoteAuthorityEvent, TickDriverSnapshot},
   },
-  system::{
-    RegisterExtraTopLevelError, ReservationPolicy,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
-  },
+  system::{RegisterExtraTopLevelError, ReservationPolicy, lock_provider::ActorLockProvider},
   util::futures::ActorFutureShared,
 };
 
@@ -105,7 +102,14 @@ pub struct SystemState {
   actor_ref_providers: ActorRefProviders,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
-  lock_provider: ArcShared<dyn ActorLockProvider>,
+  /// Optional runtime override for hot-path shared-lock construction.
+  ///
+  /// `None` (the default) means every `*Shared` wrapper is materialized
+  /// through the workspace's compile-time selected default lock driver via
+  /// `SharedLock::new`. `Some` enables the override path that
+  /// `ActorSystemConfig::with_lock_provider` installs at the actor system
+  /// boundary (e.g. `DebugActorLockProvider`, parking_lot variants).
+  lock_provider: Option<ArcShared<dyn ActorLockProvider>>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
@@ -125,9 +129,8 @@ impl SystemState {
     const DEAD_LETTER_CAPACITY: usize = 512;
     let event_stream = EventStreamShared::default();
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline_with_provider(&lock_provider);
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -159,7 +162,7 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
-      lock_provider,
+      lock_provider: None,
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -221,7 +224,7 @@ impl SystemState {
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
     let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = SharedLock::new(control);
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
     TickDriverBundle::new(handle, feed)
   }
@@ -237,7 +240,7 @@ impl SystemState {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfig) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
-    self.lock_provider = config.lock_provider().clone();
+    self.lock_provider = config.lock_provider().cloned();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
@@ -789,9 +792,17 @@ impl SystemState {
     self.dispatchers.resolve(id).ok()
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped lock provider override, if one was
+  /// installed via [`ActorSystemConfig::with_lock_provider`].
+  ///
+  /// Returns `None` when the system uses the workspace's compile-time
+  /// selected default lock driver (the common case). Callers that need to
+  /// produce `*Shared` wrappers should branch on the result and fall back to
+  /// the `*::new_with_builtin_lock` constructors when `None`.
+  ///
+  /// [`ActorSystemConfig::with_lock_provider`]: crate::core::kernel::actor::setup::actor_system_config::ActorSystemConfig::with_lock_provider
   #[must_use]
-  pub fn lock_provider(&self) -> ArcShared<dyn ActorLockProvider> {
+  pub fn lock_provider(&self) -> Option<ArcShared<dyn ActorLockProvider>> {
     self.lock_provider.clone()
   }
 

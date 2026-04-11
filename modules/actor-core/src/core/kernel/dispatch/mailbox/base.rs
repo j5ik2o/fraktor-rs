@@ -74,7 +74,7 @@ impl Mailbox {
   /// Returns [`MailboxConfigError`](crate::core::kernel::actor::props::MailboxConfigError) when the
   /// configuration contract is violated.
   pub fn new_from_config(config: &MailboxConfig) -> Result<Self, MailboxConfigError> {
-    let shared_set = MailboxSharedSet::builtin();
+    let shared_set = MailboxSharedSet::with_builtin_lock();
     Self::new_from_config_with_shared_set(config, &shared_set)
   }
 
@@ -96,7 +96,7 @@ impl Mailbox {
   /// Creates a new mailbox using the provided policy and pre-built queue.
   #[must_use]
   pub(crate) fn new_with_queue(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
-    let shared_set = MailboxSharedSet::builtin();
+    let shared_set = MailboxSharedSet::with_builtin_lock();
     Self::new_with_queue_and_shared_set(policy, queue, &shared_set)
   }
 
@@ -127,7 +127,7 @@ impl Mailbox {
   /// `BalancingDispatcher::create_mailbox`.
   #[must_use]
   pub fn new_sharing(policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
-    let shared_set = MailboxSharedSet::builtin();
+    let shared_set = MailboxSharedSet::with_builtin_lock();
     Self::new_sharing_with_shared_set(policy, queue, &shared_set)
   }
 
@@ -164,7 +164,7 @@ impl Mailbox {
   /// queue (used by `BalancingDispatcher::create_mailbox`).
   #[must_use]
   pub fn with_actor(actor: WeakShared<ActorCell>, policy: MailboxPolicy, queue: Box<dyn MessageQueue>) -> Self {
-    let shared_set = MailboxSharedSet::builtin();
+    let shared_set = MailboxSharedSet::with_builtin_lock();
     Self::with_actor_and_shared_set(actor, policy, queue, &shared_set)
   }
 
