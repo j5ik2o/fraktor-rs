@@ -24,7 +24,7 @@ use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
 use super::{
   super::termination_state::TerminationState, ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller,
-  ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared, ActorRefProviders, AskFutures,
+  ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviders, AskFutures,
   AuthorityState, CellsShared, Extensions, ExtraTopLevels, GuardianKind, GuardiansState, Registries,
   RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHookDynShared, RemotingConfig, TempActors,
 };
@@ -777,7 +777,7 @@ impl SystemState {
     self.event_stream.publish(&EventStreamEvent::Log(event));
   }
 
-  pub(crate) fn install_actor_ref_provider<P>(&mut self, provider: &ActorRefProviderShared<P>)
+  pub(crate) fn install_actor_ref_provider<P>(&mut self, provider: &ActorRefProviderHandleShared<P>)
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     let erased: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(provider.inner().clone());
@@ -790,7 +790,7 @@ impl SystemState {
     }
   }
 
-  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderShared<P>>
+  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     self
@@ -798,7 +798,7 @@ impl SystemState {
       .get(&TypeId::of::<P>())
       .cloned()
       .and_then(|provider| provider.downcast::<SharedLock<ActorRefProviderHandle<P>>>().ok())
-      .map(|provider| ActorRefProviderShared::from_shared((*provider).clone()))
+      .map(|provider| ActorRefProviderHandleShared::from_shared((*provider).clone()))
   }
 
   pub(crate) fn actor_ref_provider_caller_for_scheme(&self, scheme: ActorPathScheme) -> Option<ActorRefProviderCaller> {

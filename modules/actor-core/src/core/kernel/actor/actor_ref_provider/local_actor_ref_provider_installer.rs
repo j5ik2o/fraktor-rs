@@ -27,11 +27,9 @@ impl Default for LocalActorRefProviderInstaller {
 
 impl ActorRefProviderInstaller for LocalActorRefProviderInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    let provider = ActorRefProviderHandleSharedFactory::create(
-      &BuiltinSpinSharedFactory::new(),
-      LocalActorRefProvider::new_with_state(&system.state()),
-    );
-    system.extended().register_actor_ref_provider(&provider)?;
-    Ok(())
+    let shared_factory = BuiltinSpinSharedFactory::new();
+    let actor_ref_provider_handle_shared =
+      shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&system.state()));
+    system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
   }
 }

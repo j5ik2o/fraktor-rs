@@ -844,11 +844,9 @@ fn resolve_actor_ref_injects_canonical_authority() {
   let system = ActorSystem::from_state(SystemStateShared::new(state));
 
   let recorded = ArcShared::new(SpinSyncMutex::new(None));
-  let provider = ActorRefProviderHandleSharedFactory::create(
-    &BuiltinSpinSharedFactory::new(),
-    DummyActorRefProvider::new(recorded.clone()),
-  );
-  system.extended().register_actor_ref_provider(&provider).expect("register provider");
+  let shared_factory = BuiltinSpinSharedFactory::new();
+  let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(DummyActorRefProvider::new(recorded.clone()));
+  system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared).expect("register provider");
   system.state().mark_root_started();
 
   let path = ActorPath::root().child("svc");

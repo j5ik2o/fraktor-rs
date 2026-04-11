@@ -30,12 +30,12 @@ use crate::core::kernel::{
 /// 1. Materialize a shared handle via `ActorRefProviderHandleSharedFactory`
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
-pub struct ActorRefProviderShared<P: ActorRefProvider + 'static> {
+pub struct ActorRefProviderHandleShared<P: ActorRefProvider + 'static> {
   inner:   SharedLock<ActorRefProviderHandle<P>>,
   _marker: PhantomData<()>,
 }
 
-impl<P: ActorRefProvider + 'static> ActorRefProviderShared<P> {
+impl<P: ActorRefProvider + 'static> ActorRefProviderHandleShared<P> {
   /// Creates a new shared wrapper from an existing shared lock.
   #[must_use]
   pub const fn from_shared(inner: SharedLock<ActorRefProviderHandle<P>>) -> Self {
@@ -86,13 +86,13 @@ impl<P: ActorRefProvider + 'static> ActorRefProviderShared<P> {
   }
 }
 
-impl<P: ActorRefProvider + 'static> Clone for ActorRefProviderShared<P> {
+impl<P: ActorRefProvider + 'static> Clone for ActorRefProviderHandleShared<P> {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
-impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<P> {
+impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderHandleShared<P> {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     self.inner.with_read(|guard| guard.supported_schemes())
   }
@@ -178,7 +178,7 @@ impl<P: ActorRefProvider + 'static> ActorRefProvider for ActorRefProviderShared<
   }
 }
 
-impl<P: ActorRefProvider + 'static> SharedAccess<ActorRefProviderHandle<P>> for ActorRefProviderShared<P> {
+impl<P: ActorRefProvider + 'static> SharedAccess<ActorRefProviderHandle<P>> for ActorRefProviderHandleShared<P> {
   fn with_read<R>(&self, f: impl FnOnce(&ActorRefProviderHandle<P>) -> R) -> R {
     self.inner.with_read(f)
   }

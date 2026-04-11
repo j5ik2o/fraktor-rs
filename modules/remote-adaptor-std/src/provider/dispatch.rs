@@ -9,7 +9,7 @@ use fraktor_actor_core_rs::core::kernel::actor::{
   Pid,
   actor_path::ActorPath,
   actor_ref::ActorRef,
-  actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, LocalActorRefProvider},
+  actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider},
 };
 use fraktor_remote_core_rs::{
   address::UniqueAddress,
@@ -37,7 +37,7 @@ use crate::{provider::provider_dispatch_error::StdRemoteActorRefProviderError, t
 /// `ActorRef`.
 pub struct StdRemoteActorRefProvider {
   local_address:   UniqueAddress,
-  local_provider:  ActorRefProviderShared<LocalActorRefProvider>,
+  local_provider:  ActorRefProviderHandleShared<LocalActorRefProvider>,
   remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
   transport:       Arc<Mutex<TcpRemoteTransport>>,
 }
@@ -47,7 +47,7 @@ impl StdRemoteActorRefProvider {
   #[must_use]
   pub fn new(
     local_address: UniqueAddress,
-    local_provider: ActorRefProviderShared<LocalActorRefProvider>,
+    local_provider: ActorRefProviderHandleShared<LocalActorRefProvider>,
     remote_provider: Box<dyn RemoteActorRefProvider + Send + Sync>,
     transport: Arc<Mutex<TcpRemoteTransport>>,
   ) -> Self {

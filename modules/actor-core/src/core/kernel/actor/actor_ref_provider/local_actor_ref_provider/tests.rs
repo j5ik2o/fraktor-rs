@@ -151,11 +151,9 @@ fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration(
   let weak = state.downgrade();
 
   {
-    let provider = ActorRefProviderHandleSharedFactory::create(
-      &BuiltinSpinSharedFactory::new(),
-      LocalActorRefProvider::new_with_state(&state),
-    );
-    state.install_actor_ref_provider(&provider).expect("install provider");
+    let shared_factory = BuiltinSpinSharedFactory::new();
+    let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&state));
+    state.install_actor_ref_provider(&actor_ref_provider_handle_shared).expect("install provider");
   }
 
   drop(state);
@@ -172,11 +170,9 @@ fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
 
-  let provider = ActorRefProviderHandleSharedFactory::create(
-    &BuiltinSpinSharedFactory::new(),
-    LocalActorRefProvider::new_with_state(&system.state()),
-  );
+  let shared_factory = BuiltinSpinSharedFactory::new();
+  let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&system.state()));
 
-  let resolved = provider.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
+  let resolved = actor_ref_provider_handle_shared.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
   assert_eq!(resolved, child.actor_ref().clone());
 }

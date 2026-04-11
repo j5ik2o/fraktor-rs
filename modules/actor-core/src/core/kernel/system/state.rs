@@ -14,8 +14,8 @@ use super::{
   temp_actors::TempActors,
 };
 use crate::core::kernel::actor::actor_ref_provider::{
-  ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderShared,
-  ActorRefProviders,
+  ActorRefProvider, ActorRefProviderCaller, ActorRefProviderCallers, ActorRefProviderHandle,
+  ActorRefProviderHandleShared, ActorRefProviders,
 };
 
 mod authority_state;

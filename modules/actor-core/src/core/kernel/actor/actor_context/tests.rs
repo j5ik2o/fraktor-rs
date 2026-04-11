@@ -219,7 +219,7 @@ fn actor_context_pipe_to_self_handles_async_future() {
   register_cell(&system, pid, "self", &props);
   let mut context = ActorContext::new(&system, pid);
 
-  let signal = ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let signal = ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let future = {
     let handle = signal.clone();
     async move { ActorFutureListener::new(handle).await }

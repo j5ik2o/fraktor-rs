@@ -11,7 +11,7 @@ use crate::core::kernel::{
     ChildRef,
     actor_path::ActorPath,
     actor_ref::ActorRef,
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     actor_selection::ActorSelection,
     error::SendError,
     extension::{Extension, ExtensionId},
@@ -109,16 +109,16 @@ impl ExtendedActorSystem {
   /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
   pub fn register_actor_ref_provider<P>(
     &self,
-    provider: &ActorRefProviderShared<P>,
+    actor_ref_provider: &ActorRefProviderHandleShared<P>,
   ) -> Result<(), ActorSystemBuildError>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    self.inner.state().install_actor_ref_provider(provider)
+    self.inner.state().install_actor_ref_provider(actor_ref_provider)
   }
 
   /// Returns the actor-ref provider of the requested type when registered.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderShared<P>>
+  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     self.inner.state().actor_ref_provider::<P>()

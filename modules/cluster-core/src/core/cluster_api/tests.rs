@@ -140,7 +140,7 @@ impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
 
 impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
   fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    ActorFutureSharedFactory::create(&self.inner, future)
+    ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
   }
 }
 
@@ -348,11 +348,9 @@ fn down_delegates_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderHandleSharedFactory::create(
-        &BuiltinSpinSharedFactory::new(),
-        TestActorRefProvider::new(system.clone()),
-      );
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -387,11 +385,9 @@ fn join_and_leave_delegate_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderHandleSharedFactory::create(
-        &BuiltinSpinSharedFactory::new(),
-        TestActorRefProvider::new(system.clone()),
-      );
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -575,11 +571,9 @@ fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_pr
     .with_shared_factory(lock_provider)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderHandleSharedFactory::create(
-        &BuiltinSpinSharedFactory::new(),
-        TestActorRefProvider::new(system.clone()),
-      );
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -642,11 +636,9 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderHandleSharedFactory::create(
-        &BuiltinSpinSharedFactory::new(),
-        TestActorRefProvider::new(system.clone()),
-      );
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");

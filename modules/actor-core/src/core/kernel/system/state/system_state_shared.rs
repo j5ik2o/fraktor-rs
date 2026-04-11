@@ -18,7 +18,7 @@ use core::{
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedRwLock, SpinSyncRwLock};
 
 use super::{
-  ActorPathRegistry, ActorRefProvider, ActorRefProviderShared, AuthorityState, CellsShared, GuardianKind,
+  ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,
   RemoteAuthorityError, RemoteWatchHookDynShared, RemotingConfig, SystemStateWeak,
   system_state::{FailureOutcome, SystemState},
 };
@@ -669,7 +669,7 @@ impl SystemStateShared {
   /// Returns [`ActorSystemBuildError::Configuration`] when called after system startup.
   pub fn install_actor_ref_provider<P>(
     &self,
-    provider: &ActorRefProviderShared<P>,
+    provider: &ActorRefProviderHandleShared<P>,
   ) -> Result<(), ActorSystemBuildError>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
@@ -691,7 +691,7 @@ impl SystemStateShared {
 
   /// Returns an actor ref provider.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderShared<P>>
+  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     self.inner.with_read(|inner| inner.actor_ref_provider())

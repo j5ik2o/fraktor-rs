@@ -189,7 +189,7 @@ impl GrainRef {
       },
     };
     let state = self.api.system().state();
-    let future = state.actor_future_shared_factory().create(ActorFuture::new());
+    let future = state.actor_future_shared_factory().create_actor_future_shared(ActorFuture::new());
     let reply_pid = state.allocate_pid();
     let reply_context = GrainReplyContext {
       identity:     self.identity.clone(),

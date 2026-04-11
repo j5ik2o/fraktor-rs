@@ -6,7 +6,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ActorSharedLockFactory, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
-      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleSharedFactory, ActorRefProviderShared,
+      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
     },
     messaging::message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
   },
@@ -134,7 +134,7 @@ impl<T> ActorFutureSharedFactory<T> for StdActorSharedFactory
 where
   T: Send + 'static,
 {
-  fn create(&self, future: ActorFuture<T>) -> ActorFutureShared<T> {
+  fn create_actor_future_shared(&self, future: ActorFuture<T>) -> ActorFutureShared<T> {
     ActorFutureShared::from_shared_lock(Self::create_lock(future))
   }
 }
@@ -143,8 +143,8 @@ impl<P> ActorRefProviderHandleSharedFactory<P> for StdActorSharedFactory
 where
   P: ActorRefProvider + 'static,
 {
-  fn create(&self, provider: P) -> ActorRefProviderShared<P> {
+  fn create_actor_ref_provider_handle_shared(&self, provider: P) -> ActorRefProviderHandleShared<P> {
     let schemes = provider.supported_schemes();
-    ActorRefProviderShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
+    ActorRefProviderHandleShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
 }

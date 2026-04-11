@@ -61,11 +61,9 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderHandleSharedFactory::create(
-        &BuiltinSpinSharedFactory::new(),
-        TestActorRefProvider::new(system.clone()),
-      );
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
