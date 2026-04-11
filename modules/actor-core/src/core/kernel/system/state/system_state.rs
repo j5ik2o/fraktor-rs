@@ -125,7 +125,7 @@ impl SystemState {
     let event_stream = lock_provider.create_event_stream_shared(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline_with_provider(&lock_provider);
+    dispatchers.ensure_default_inline(&lock_provider);
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();

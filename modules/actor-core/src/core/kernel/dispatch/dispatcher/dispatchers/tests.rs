@@ -23,10 +23,11 @@ impl Executor for NoopExecutor {
 }
 
 fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
   let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
   ArcShared::new(configurator)
 }
 
@@ -97,7 +98,8 @@ fn ensure_default_is_idempotent_when_present() {
 #[test]
 fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.ensure_default_inline();
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  dispatchers.ensure_default_inline(&provider);
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let seeded_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("seeded blocking").clone();
   assert!(
@@ -105,7 +107,6 @@ fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
     "seeded default/blocking dispatchers should share the same configurator"
   );
 
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
   dispatchers.replace_default_inline_with_provider(&provider);
 
   let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");
@@ -123,12 +124,12 @@ fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
 #[test]
 fn replace_default_inline_with_provider_preserves_custom_blocking_dispatcher() {
   let mut dispatchers = Dispatchers::new();
-  dispatchers.ensure_default_inline();
+  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  dispatchers.ensure_default_inline(&provider);
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let custom_blocking = make_default_configurator("blocking");
   dispatchers.register_or_update(DEFAULT_BLOCKING_DISPATCHER_ID, custom_blocking.clone());
 
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
   dispatchers.replace_default_inline_with_provider(&provider);
 
   let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");

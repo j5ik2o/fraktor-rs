@@ -136,13 +136,13 @@ impl TokioBenchSystem {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
+      let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+      let lock_provider = config.lock_provider().clone();
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
       let executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
       let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
-      let config = ActorSystemConfig::default()
-        .with_tick_driver(default_tick_driver_config())
-        .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
+        Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
+      let config = config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::new_with_config(props, &config).expect("actor system")
     });
     Self { runtime, system }

@@ -15,7 +15,10 @@ use crate::core::kernel::{
     dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher},
     mailbox::{Envelope, MailboxCleanupPolicy},
   },
-  system::ActorSystem,
+  system::{
+    ActorSystem,
+    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  },
 };
 
 struct ProbeActor;
@@ -43,7 +46,8 @@ fn nz(value: usize) -> NonZeroUsize {
 fn make_dispatcher() -> BalancingDispatcher {
   let settings = DispatcherSettings::new("balancing-id", nz(5), None, Duration::from_secs(1));
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
-  BalancingDispatcher::new(&settings, executor)
+  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  BalancingDispatcher::new(&settings, executor, &lock_provider)
 }
 
 fn make_actor_cells(names: &[&str]) -> (ActorSystem, Vec<ArcShared<ActorCell>>) {
@@ -175,8 +179,9 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
     let executor = ExecutorShared::new_with_builtin_lock(InlineExec);
     let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
+    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let inner: Box<dyn MessageDispatcherConfigurator> =
-      Box::new(BalancingDispatcherConfigurator::new(&settings, executor));
+      Box::new(BalancingDispatcherConfigurator::new(&settings, executor, &lock_provider));
     ArcShared::new(inner)
   };
   let configurator_clone = configurator.clone();

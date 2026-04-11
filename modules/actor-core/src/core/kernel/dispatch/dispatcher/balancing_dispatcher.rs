@@ -18,7 +18,7 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
-  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  system::lock_provider::ActorLockProvider,
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
@@ -36,23 +36,16 @@ impl BalancingDispatcher {
   /// queue is reused by every actor that attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_provider(settings, executor, lock_provider)
-  }
-
-  /// Constructs a new balancing dispatcher with an explicit actor lock provider.
-  #[must_use]
-  pub fn new_with_provider(
+  pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    lock_provider: ArcShared<dyn ActorLockProvider>,
+    lock_provider: &ArcShared<dyn ActorLockProvider>,
   ) -> Self {
     Self {
-      core: DispatcherCore::new(settings, executor),
-      shared_queue: ArcShared::new(lock_provider.create_shared_message_queue()),
-      team: Vec::new(),
-      lock_provider,
+      core:          DispatcherCore::new(settings, executor),
+      shared_queue:  ArcShared::new(lock_provider.create_shared_message_queue()),
+      team:          Vec::new(),
+      lock_provider: lock_provider.clone(),
     }
   }
 

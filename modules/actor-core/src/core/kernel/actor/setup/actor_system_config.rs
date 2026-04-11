@@ -231,7 +231,7 @@ impl Default for ActorSystemConfig {
   fn default() -> Self {
     let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline_with_provider(&lock_provider);
+    dispatchers.ensure_default_inline(&lock_provider);
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {

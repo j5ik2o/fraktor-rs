@@ -190,18 +190,19 @@ fn build_system() -> ActorSystem {
   // re-schedules itself across throughput boundaries, so a 1000-envelope
   // batch drains correctly even though each `mailbox.run` invocation only
   // processes a small slice.
+  let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+  let lock_provider = config.lock_provider().clone();
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle.clone()));
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor));
+    Box::new(DefaultDispatcherConfigurator::new(&default_settings, default_executor, &lock_provider));
 
   let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
   let balancing_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
   let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor));
+    Box::new(BalancingDispatcherConfigurator::new(&balancing_settings, balancing_executor, &lock_provider));
 
-  let config = ActorSystemConfig::default()
-    .with_tick_driver(default_tick_driver_config())
+  let config = config
     .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(default_configurator))
     .with_dispatcher_configurator(BALANCING_DISPATCHER_ID, ArcShared::new(balancing_configurator));
   let props = Props::from_fn(|| TeamGuardian);
@@ -271,7 +272,7 @@ fn snapshot(per_actor: &[Arc<AtomicUsize>]) -> Vec<usize> {
 async fn tokio_executor_factory_new_with_provider_materializes_executor_shared_via_provider() {
   let (executor_shared_calls, dispatcher_shared_calls, _, provider) = CountingLockProvider::new();
   let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
-  let factory = TokioExecutorFactory::new_with_provider(Handle::current(), &provider);
+  let factory = TokioExecutorFactory::new(Handle::current(), &provider);
 
   let _executor = factory.create(DEFAULT_DISPATCHER_ID);
 
@@ -293,9 +294,8 @@ fn pinned_dispatcher_configurator_uses_provider_aware_executor_factory_for_each_
   let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
   let settings = DispatcherSettings::with_defaults("pinned-provider-test");
   let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
-    ArcShared::new(Box::new(PinnedExecutorFactory::new_with_provider("provider-aware", &provider)));
-  let configurator =
-    PinnedDispatcherConfigurator::new_with_provider(settings, executor_factory, &provider, "provider-aware");
+    ArcShared::new(Box::new(PinnedExecutorFactory::new("provider-aware", &provider)));
+  let configurator = PinnedDispatcherConfigurator::new(settings, executor_factory, &provider, "provider-aware");
 
   let _first = configurator.dispatcher();
   let _second = configurator.dispatcher();
@@ -318,7 +318,7 @@ fn balancing_dispatcher_configurator_materializes_shared_queue_via_provider() {
   let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
   let settings = DispatcherSettings::with_defaults("balancing-provider-test");
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
-  let configurator = BalancingDispatcherConfigurator::new_with_provider(&settings, executor, &provider);
+  let configurator = BalancingDispatcherConfigurator::new(&settings, executor, &provider);
 
   let _dispatcher = configurator.dispatcher();
 
