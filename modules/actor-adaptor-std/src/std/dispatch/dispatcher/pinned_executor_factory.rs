@@ -7,7 +7,7 @@ use std::string::String;
 
 use fraktor_actor_core_rs::core::kernel::{
   dispatch::dispatcher::{ExecutorFactory, ExecutorShared},
-  system::lock_provider::ActorLockProvider,
+  system::shared_factory::ActorSharedFactory,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -20,13 +20,13 @@ use super::pinned_executor::PinnedExecutor;
 pub struct PinnedExecutorFactory {
   thread_name_prefix: String,
   counter:            AtomicUsize,
-  lock_provider:      ArcShared<dyn ActorLockProvider>,
+  lock_provider:      ArcShared<dyn ActorSharedFactory>,
 }
 
 impl PinnedExecutorFactory {
   /// Creates a factory using the supplied thread name prefix.
   #[must_use]
-  pub fn new(thread_name_prefix: impl Into<String>, lock_provider: &ArcShared<dyn ActorLockProvider>) -> Self {
+  pub fn new(thread_name_prefix: impl Into<String>, lock_provider: &ArcShared<dyn ActorSharedFactory>) -> Self {
     Self {
       thread_name_prefix: thread_name_prefix.into(),
       counter:            AtomicUsize::new(0),

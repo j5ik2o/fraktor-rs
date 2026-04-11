@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
-use super::ActorLockProvider;
+use super::ActorSharedFactory;
 use crate::core::kernel::{
   actor::{
     Actor, ActorCellStateShared, ReceiveTimeoutStateShared,
@@ -11,20 +11,20 @@ use crate::core::kernel::{
   },
   dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
-  system::lock_provider::{BuiltinSpinLockProvider, MailboxSharedSet},
+  system::shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet},
 };
 
 struct ContractSmokeProvider {
-  inner: BuiltinSpinLockProvider,
+  inner: BuiltinSpinSharedFactory,
 }
 
 impl ContractSmokeProvider {
   const fn new() -> Self {
-    Self { inner: BuiltinSpinLockProvider::new() }
+    Self { inner: BuiltinSpinSharedFactory::new() }
   }
 }
 
-impl ActorLockProvider for ContractSmokeProvider {
+impl ActorSharedFactory for ContractSmokeProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.inner.create_message_dispatcher_shared(dispatcher)
   }
@@ -74,6 +74,6 @@ impl ActorLockProvider for ContractSmokeProvider {
 }
 
 #[test]
-fn actor_lock_provider_contract_is_implementable_without_runtime_state_types() {
-  let _provider: Box<dyn ActorLockProvider> = Box::new(ContractSmokeProvider::new());
+fn actor_shared_factory_contract_is_implementable_without_runtime_state_types() {
+  let _provider: Box<dyn ActorSharedFactory> = Box::new(ContractSmokeProvider::new());
 }

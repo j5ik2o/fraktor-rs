@@ -15,13 +15,13 @@ mod extensions;
 mod extra_top_levels;
 /// Guardian actor related types.
 pub mod guardian;
-/// Actor-system scoped lock-provider types.
-pub mod lock_provider;
 mod register_extra_top_level_error;
 mod registries;
 /// Remote watch hook and authority related types.
 pub mod remote;
 mod reservation_policy;
+/// Actor-system scoped shared-factory types.
+pub mod shared_factory;
 /// System state related types.
 pub mod state;
 mod temp_actors;

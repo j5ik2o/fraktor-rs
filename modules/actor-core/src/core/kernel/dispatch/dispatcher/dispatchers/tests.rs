@@ -9,7 +9,7 @@ use crate::core::kernel::{
     DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
     MessageDispatcherConfigurator,
   },
-  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  system::shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
 };
 
 struct NoopExecutor;
@@ -23,7 +23,7 @@ impl Executor for NoopExecutor {
 }
 
 fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
   let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =
@@ -98,7 +98,7 @@ fn ensure_default_is_idempotent_when_present() {
 #[test]
 fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
   let mut dispatchers = Dispatchers::new();
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  let provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
   dispatchers.ensure_default_inline(&provider);
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let seeded_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("seeded blocking").clone();
@@ -124,7 +124,7 @@ fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
 #[test]
 fn replace_default_inline_with_provider_preserves_custom_blocking_dispatcher() {
   let mut dispatchers = Dispatchers::new();
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  let provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
   dispatchers.ensure_default_inline(&provider);
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let custom_blocking = make_default_configurator("blocking");

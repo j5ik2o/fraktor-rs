@@ -1,4 +1,4 @@
-//! Built-in actor lock provider backed by the canonical spin mutex.
+//! Built-in actor shared factory backed by the canonical spin mutex.
 
 use alloc::{boxed::Box, collections::VecDeque};
 
@@ -17,14 +17,14 @@ use crate::core::kernel::{
     mailbox::MailboxInstrumentation,
   },
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
-  system::lock_provider::{ActorLockProvider, MailboxSharedSet},
+  system::shared_factory::{ActorSharedFactory, MailboxSharedSet},
 };
 
-/// Default lock provider used by `ActorSystemConfig::default()`.
+/// Default shared factory used by `ActorSystemConfig::default()`.
 #[derive(Default)]
-pub struct BuiltinSpinLockProvider;
+pub struct BuiltinSpinSharedFactory;
 
-impl BuiltinSpinLockProvider {
+impl BuiltinSpinSharedFactory {
   /// Creates the built-in provider.
   #[must_use]
   pub const fn new() -> Self {
@@ -44,7 +44,7 @@ impl BuiltinSpinLockProvider {
   }
 }
 
-impl ActorRuntimeLockFactory for BuiltinSpinLockProvider {
+impl ActorRuntimeLockFactory for BuiltinSpinSharedFactory {
   fn create_lock<T>(&self, value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
@@ -52,7 +52,7 @@ impl ActorRuntimeLockFactory for BuiltinSpinLockProvider {
   }
 }
 
-impl ActorLockProvider for BuiltinSpinLockProvider {
+impl ActorSharedFactory for BuiltinSpinSharedFactory {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     MessageDispatcherShared::from_shared_lock(Self::create_lock(dispatcher))
   }

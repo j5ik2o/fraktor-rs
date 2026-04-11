@@ -26,11 +26,11 @@ use fraktor_actor_core_rs::core::kernel::{
   dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
   event::stream::{
     EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
-    EventStreamSubscription, subscriber_handle_with_lock_provider,
+    EventStreamSubscription, subscriber_handle_with_shared_factory,
   },
   system::{
     ActorSystem, TerminationSignal,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory, MailboxSharedSet},
   },
 };
 use fraktor_utils_core_rs::core::{
@@ -50,7 +50,7 @@ use crate::core::{
 };
 
 struct CountingSubscriberLockProvider {
-  inner: BuiltinSpinLockProvider,
+  inner: BuiltinSpinSharedFactory,
   event_stream_subscriber_shared: ArcShared<AtomicUsize>,
 }
 
@@ -58,14 +58,14 @@ impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
-      inner: BuiltinSpinLockProvider::new(),
+      inner: BuiltinSpinSharedFactory::new(),
       event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
     };
     (event_stream_subscriber_shared, provider)
   }
 }
 
-impl ActorLockProvider for CountingSubscriberLockProvider {
+impl ActorSharedFactory for CountingSubscriberLockProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.inner.create_message_dispatcher_shared(dispatcher)
   }
@@ -116,17 +116,17 @@ impl ActorLockProvider for CountingSubscriberLockProvider {
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 #[test]
 fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
   let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(lock_provider);
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(lock_provider);
   let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
 
-  let _subscriber = subscriber_handle_with_lock_provider(&lock_provider, RecordingClusterEvents::new());
+  let _subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingClusterEvents::new());
 
   assert_eq!(
     event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
@@ -532,7 +532,7 @@ fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_pr
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
     .with_tick_driver(tick_driver)
-    .with_lock_provider(lock_provider)
+    .with_shared_factory(lock_provider)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
       let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));

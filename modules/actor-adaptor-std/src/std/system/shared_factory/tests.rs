@@ -20,14 +20,14 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_lock_provider},
+    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_shared_factory},
   },
   system::ActorSystem,
 };
 use fraktor_utils_adaptor_std_rs::std::sync::DebugSpinSyncMutex;
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
-use super::{DebugActorLockProvider, StdActorLockProvider};
+use super::{DebugActorSharedFactory, StdActorSharedFactory};
 
 struct SelfLoopActor {
   delivered:          Arc<AtomicUsize>,
@@ -48,11 +48,11 @@ impl Actor for SelfLoopActor {
 }
 
 fn build_debug_system() -> ActorSystem {
-  ActorSystem::new_empty_with(|config| config.with_lock_provider(DebugActorLockProvider::new()))
+  ActorSystem::new_empty_with(|config| config.with_shared_factory(DebugActorSharedFactory::new()))
 }
 
 fn build_std_system() -> ActorSystem {
-  ActorSystem::new_empty_with(|config| config.with_lock_provider(StdActorLockProvider::new()))
+  ActorSystem::new_empty_with(|config| config.with_shared_factory(StdActorSharedFactory::new()))
 }
 
 fn build_default_system() -> ActorSystem {
@@ -191,7 +191,7 @@ fn debug_provider_should_detect_reentrant_event_stream_subscriber_locking() {
   let exe = env::current_exe().expect("current test binary");
   let mut child = Command::new(exe)
     .arg("--exact")
-    .arg("std::system::lock_provider::tests::debug_provider_reentrant_event_stream_publish_worker")
+    .arg("std::system::shared_factory::tests::debug_provider_reentrant_event_stream_publish_worker")
     .env("FRAKTOR_REENTRANT_EVENT_STREAM_CHILD", "1")
     .stdout(Stdio::null())
     .stderr(Stdio::null())
@@ -226,8 +226,8 @@ fn debug_provider_reentrant_event_stream_publish_worker() {
   let system = build_debug_system();
   let stream = system.event_stream();
   let delivered = Arc::new(AtomicUsize::new(0));
-  let subscriber = subscriber_handle_with_lock_provider(
-    &system.state().lock_provider(),
+  let subscriber = subscriber_handle_with_shared_factory(
+    &system.state().shared_factory(),
     ReentrantPublishSubscriber::new(stream.clone(), delivered.clone()),
   );
   let _subscription = stream.subscribe(&subscriber);

@@ -24,7 +24,7 @@ use crate::core::kernel::{
   dispatch::mailbox::policy::MailboxPolicy,
   event::logging::LogLevel,
   system::{
-    lock_provider::{MailboxLocked, MailboxSharedSet},
+    shared_factory::{MailboxLocked, MailboxSharedSet},
     state::SystemStateShared,
   },
 };

@@ -3,9 +3,9 @@ use alloc::{string::String, vec, vec::Vec};
 use fraktor_actor_core_rs::core::kernel::{
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_lock_provider,
+    subscriber_handle_with_shared_factory,
   },
-  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  system::shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
@@ -70,8 +70,8 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEven
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 #[test]

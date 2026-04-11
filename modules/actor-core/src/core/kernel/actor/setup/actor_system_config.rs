@@ -21,8 +21,8 @@ use crate::core::kernel::{
     mailbox::Mailboxes,
   },
   system::{
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
     remote::RemotingConfig,
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
   },
 };
 
@@ -38,7 +38,7 @@ pub struct ActorSystemConfig {
   tick_driver_config:   Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
   provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  lock_provider:        ArcShared<dyn ActorLockProvider>,
+  shared_factory:       ArcShared<dyn ActorSharedFactory>,
   dispatchers:          Dispatchers,
   mailboxes:            Mailboxes,
   start_time:           Option<Duration>,
@@ -96,13 +96,13 @@ impl ActorSystemConfig {
     self
   }
 
-  /// Overrides the actor-system scoped lock provider.
+  /// Overrides the actor-system scoped shared factory.
   #[must_use]
-  pub fn with_lock_provider<P>(mut self, provider: P) -> Self
+  pub fn with_shared_factory<P>(mut self, provider: P) -> Self
   where
-    P: ActorLockProvider + 'static, {
-    self.lock_provider = ArcShared::new(provider);
-    self.dispatchers.replace_default_inline_with_provider(&self.lock_provider);
+    P: ActorSharedFactory + 'static, {
+    self.shared_factory = ArcShared::new(provider);
+    self.dispatchers.replace_default_inline_with_provider(&self.shared_factory);
     self
   }
 
@@ -200,10 +200,10 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped shared factory.
   #[must_use]
-  pub const fn lock_provider(&self) -> &ArcShared<dyn ActorLockProvider> {
-    &self.lock_provider
+  pub const fn shared_factory(&self) -> &ArcShared<dyn ActorSharedFactory> {
+    &self.shared_factory
   }
 
   /// Returns the dispatcher registry configured for the system.
@@ -229,7 +229,7 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+    let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
     let mut dispatchers = Dispatchers::new();
     dispatchers.ensure_default_inline(&lock_provider);
     let mut mailboxes = Mailboxes::new();
@@ -242,7 +242,7 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      lock_provider,
+      shared_factory: lock_provider,
       dispatchers,
       mailboxes,
       start_time: None,

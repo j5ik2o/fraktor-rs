@@ -18,7 +18,7 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
-  system::lock_provider::ActorLockProvider,
+  system::shared_factory::ActorSharedFactory,
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
@@ -26,7 +26,7 @@ pub struct BalancingDispatcher {
   core:          DispatcherCore,
   shared_queue:  ArcShared<SharedMessageQueue>,
   team:          Vec<WeakShared<ActorCell>>,
-  lock_provider: ArcShared<dyn ActorLockProvider>,
+  lock_provider: ArcShared<dyn ActorSharedFactory>,
 }
 
 impl BalancingDispatcher {
@@ -39,7 +39,7 @@ impl BalancingDispatcher {
   pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    lock_provider: &ArcShared<dyn ActorLockProvider>,
+    lock_provider: &ArcShared<dyn ActorSharedFactory>,
   ) -> Self {
     Self {
       core:          DispatcherCore::new(settings, executor),

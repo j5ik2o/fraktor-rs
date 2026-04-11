@@ -13,17 +13,17 @@ use fraktor_actor_core_rs::core::kernel::{
     mailbox::MailboxInstrumentation,
   },
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
-  system::lock_provider::{ActorLockProvider, MailboxSharedSet},
+  system::shared_factory::{ActorSharedFactory, MailboxSharedSet},
 };
-use fraktor_utils_adaptor_std_rs::std::sync::{StdSyncMutex, StdSyncRwLock};
+use fraktor_utils_adaptor_std_rs::std::sync::{DebugSpinSyncMutex, DebugSpinSyncRwLock};
 use fraktor_utils_core_rs::core::sync::{SharedLock, SharedRwLock, WeakShared};
 
-/// Std lock provider backed by `std::sync::Mutex`.
+/// Debug shared factory that panics on same-thread hot-path re-entry.
 #[derive(Default)]
-pub struct StdActorLockProvider;
+pub struct DebugActorSharedFactory;
 
-impl StdActorLockProvider {
-  /// Creates the std provider.
+impl DebugActorSharedFactory {
+  /// Creates the debug provider.
   #[must_use]
   pub const fn new() -> Self {
     Self
@@ -32,17 +32,17 @@ impl StdActorLockProvider {
   fn create_lock<T>(value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
-    SharedLock::new_with_driver::<StdSyncMutex<_>>(value)
+    SharedLock::new_with_driver::<DebugSpinSyncMutex<_>>(value)
   }
 
   fn create_rw_lock<T>(value: T) -> SharedRwLock<T>
   where
     T: Send + Sync + 'static, {
-    SharedRwLock::new_with_driver::<StdSyncRwLock<_>>(value)
+    SharedRwLock::new_with_driver::<DebugSpinSyncRwLock<_>>(value)
   }
 }
 
-impl ActorRuntimeLockFactory for StdActorLockProvider {
+impl ActorRuntimeLockFactory for DebugActorSharedFactory {
   fn create_lock<T>(&self, value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
@@ -50,7 +50,7 @@ impl ActorRuntimeLockFactory for StdActorLockProvider {
   }
 }
 
-impl ActorLockProvider for StdActorLockProvider {
+impl ActorSharedFactory for DebugActorSharedFactory {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     MessageDispatcherShared::from_shared_lock(Self::create_lock(dispatcher))
   }

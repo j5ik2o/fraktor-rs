@@ -51,7 +51,7 @@ use crate::core::kernel::{
     logging::{LogEvent, LogLevel},
     stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, lock_provider::ActorLockProvider},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::ActorSharedFactory},
   util::futures::ActorFutureShared,
 };
 
@@ -198,10 +198,10 @@ impl SystemStateShared {
     &self.inner
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped shared factory.
   #[must_use]
-  pub fn lock_provider(&self) -> ArcShared<dyn ActorLockProvider> {
-    self.inner.with_read(|inner| inner.lock_provider())
+  pub fn shared_factory(&self) -> ArcShared<dyn ActorSharedFactory> {
+    self.inner.with_read(|inner| inner.shared_factory())
   }
 
   /// Creates a weak reference to this system state.

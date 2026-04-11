@@ -25,8 +25,8 @@ use crate::core::kernel::{
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
   system::{
     ActorSystem,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
     remote::RemotingConfig,
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory, MailboxSharedSet},
   },
 };
 
@@ -39,7 +39,7 @@ impl Actor for NoopActor {
 }
 
 struct CountingLockProvider {
-  inner: BuiltinSpinLockProvider,
+  inner: BuiltinSpinSharedFactory,
   event_stream_shared_calls: ArcShared<AtomicUsize>,
   dispatcher_shared_calls: ArcShared<AtomicUsize>,
   executor_shared_calls: ArcShared<AtomicUsize>,
@@ -74,7 +74,7 @@ impl CountingLockProvider {
     let message_invoker_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let mailbox_shared_set_calls = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
-      inner: BuiltinSpinLockProvider::new(),
+      inner: BuiltinSpinSharedFactory::new(),
       event_stream_shared_calls: event_stream_shared_calls.clone(),
       dispatcher_shared_calls: dispatcher_shared_calls.clone(),
       executor_shared_calls: executor_shared_calls.clone(),
@@ -100,7 +100,7 @@ impl CountingLockProvider {
   }
 }
 
-impl ActorLockProvider for CountingLockProvider {
+impl ActorSharedFactory for CountingLockProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.dispatcher_shared_calls.fetch_add(1, Ordering::SeqCst);
     self.inner.create_message_dispatcher_shared(dispatcher)
@@ -224,7 +224,7 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
 }
 
 #[test]
-fn test_actor_system_config_with_lock_provider_rebuilds_default_dispatcher() {
+fn test_actor_system_config_with_shared_factory_rebuilds_default_dispatcher() {
   let (
     _event_stream_shared_calls,
     dispatcher_shared_calls,
@@ -238,7 +238,7 @@ fn test_actor_system_config_with_lock_provider_rebuilds_default_dispatcher() {
     provider,
   ) = CountingLockProvider::new();
 
-  let config = ActorSystemConfig::default().with_lock_provider(provider);
+  let config = ActorSystemConfig::default().with_shared_factory(provider);
 
   assert_eq!(
     executor_shared_calls.load(Ordering::SeqCst),
@@ -257,7 +257,7 @@ fn test_actor_system_config_with_lock_provider_rebuilds_default_dispatcher() {
 }
 
 #[test]
-fn test_actor_system_config_with_lock_provider_routes_spawn_path_through_sender_and_mailbox_helpers() {
+fn test_actor_system_config_with_shared_factory_routes_spawn_path_through_sender_and_mailbox_helpers() {
   let (
     event_stream_shared_calls,
     _dispatcher_shared_calls,
@@ -270,7 +270,7 @@ fn test_actor_system_config_with_lock_provider_routes_spawn_path_through_sender_
     mailbox_shared_set_calls,
     provider,
   ) = CountingLockProvider::new();
-  let system = ActorSystem::new_empty_with(|config| config.with_lock_provider(provider));
+  let system = ActorSystem::new_empty_with(|config| config.with_shared_factory(provider));
 
   let props = Props::from_fn(|| NoopActor);
   let state = system.state();

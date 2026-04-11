@@ -19,7 +19,7 @@ use fraktor_actor_core_rs::core::kernel::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_lock_provider},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_shared_factory},
   system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
@@ -74,7 +74,7 @@ fn fatal_failure_stops_child() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let subscriber = subscriber_handle_with_lock_provider(&system.state().lock_provider(), RecordingSubscriber {
+  let subscriber = subscriber_handle_with_shared_factory(&system.state().shared_factory(), RecordingSubscriber {
     events: events.clone(),
   });
   let _subscription = system.subscribe_event_stream(&subscriber);

@@ -44,8 +44,8 @@ use crate::core::{
     system::{
       TerminationSignal,
       base::LogLevel,
-      lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
       remote::RemotingConfig,
+      shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
       state::{SystemStateShared, system_state::SystemState},
     },
   },
@@ -142,7 +142,7 @@ impl Executor for NoopExecutor {
 }
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
   let settings = DispatcherSettings::with_defaults("noop");
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =

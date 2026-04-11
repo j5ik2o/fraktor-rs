@@ -14,8 +14,8 @@ use fraktor_actor_core_rs::core::kernel::{
       next_tick_driver_id,
     },
   },
-  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_lock_provider},
-  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle_with_shared_factory},
+  system::shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
@@ -210,8 +210,8 @@ impl EventStreamSubscriber for RecordingSubscriber {
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = EventStreamShared::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-  let subscriber = subscriber_handle_with_lock_provider(&lock_provider, RecordingSubscriber::new(events.clone()));
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);
 
   let config =

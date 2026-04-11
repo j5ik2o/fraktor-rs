@@ -27,7 +27,7 @@ use super::{
   dispatchers_error::DispatchersError, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
-use crate::core::kernel::system::lock_provider::ActorLockProvider;
+use crate::core::kernel::system::shared_factory::ActorSharedFactory;
 
 /// Reserved registry identifier for the default dispatcher.
 pub const DEFAULT_DISPATCHER_ID: &str = "default";
@@ -139,7 +139,7 @@ impl Dispatchers {
   }
 
   fn build_default_inline_configurator(
-    provider: &ArcShared<dyn ActorLockProvider>,
+    provider: &ArcShared<dyn ActorSharedFactory>,
   ) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
     let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
     let executor = provider.create_executor_shared(Box::new(InlineExecutor::new()));
@@ -169,7 +169,7 @@ impl Dispatchers {
   /// in-process tests run on the new dispatcher tree without bringing in
   /// `tokio` or another runtime. Production users override the entry through
   /// `ActorSystemConfig::with_dispatcher_configurator`.
-  pub fn ensure_default_inline(&mut self, provider: &ArcShared<dyn ActorLockProvider>) {
+  pub fn ensure_default_inline(&mut self, provider: &ArcShared<dyn ActorSharedFactory>) {
     self.ensure_default(|| Self::build_default_inline_configurator(provider));
   }
 
@@ -178,7 +178,7 @@ impl Dispatchers {
   /// When the default blocking dispatcher still aliases the same configurator as
   /// `default`, it is updated to keep both reserved ids on the same provider.
   /// Explicit blocking-dispatcher overrides are preserved.
-  pub fn replace_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorLockProvider>) {
+  pub fn replace_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorSharedFactory>) {
     let replace_blocking = self
       .entries
       .get(DEFAULT_BLOCKING_DISPATCHER_ID)

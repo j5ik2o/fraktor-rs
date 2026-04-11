@@ -146,7 +146,7 @@ fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   };
 
   let system = ActorSystem::new_empty_with(|config| {
-    let lock_provider = config.lock_provider().clone();
+    let lock_provider = config.shared_factory().clone();
     let executor = ExecutorShared::new_with_builtin_lock(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) });
     let settings = DispatcherSettings::new("system-test-dispatch", nz(4), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =

@@ -104,7 +104,7 @@ impl ActorRef {
   pub fn with_system<T>(pid: Pid, sender: T, system: &SystemStateShared) -> Self
   where
     T: ActorRefSender + 'static, {
-    let sender = system.lock_provider().create_actor_ref_sender_shared(Box::new(sender));
+    let sender = system.shared_factory().create_actor_ref_sender_shared(Box::new(sender));
     Self::from_shared(pid, sender, system)
   }
 

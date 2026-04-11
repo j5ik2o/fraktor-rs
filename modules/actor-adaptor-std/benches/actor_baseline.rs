@@ -137,7 +137,7 @@ impl TokioBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
-      let lock_provider = config.lock_provider().clone();
+      let lock_provider = config.shared_factory().clone();
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
       let executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
       let configurator: Box<dyn MessageDispatcherConfigurator> =

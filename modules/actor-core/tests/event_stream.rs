@@ -14,7 +14,7 @@ use fraktor_actor_core_rs::core::kernel::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
   },
   dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_lock_provider},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_shared_factory},
   system::{ActorSystem, SpinBlocker},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
@@ -85,7 +85,7 @@ fn dead_letter_event_is_published_when_send_fails() {
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let subscriber =
-    subscriber_handle_with_lock_provider(&system.state().lock_provider(), RecordingSubscriber::new(events.clone()));
+    subscriber_handle_with_shared_factory(&system.state().shared_factory(), RecordingSubscriber::new(events.clone()));
   let _subscription = system.subscribe_event_stream(&subscriber);
 
   wait_until(|| child_slot.lock().is_some());

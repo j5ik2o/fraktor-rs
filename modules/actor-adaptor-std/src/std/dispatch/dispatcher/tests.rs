@@ -46,7 +46,7 @@ use fraktor_actor_core_rs::core::kernel::{
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
   system::{
     ActorSystem,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider, MailboxSharedSet},
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory, MailboxSharedSet},
   },
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
@@ -72,7 +72,7 @@ impl Executor for NoopExecutor {
 }
 
 struct CountingLockProvider {
-  inner: BuiltinSpinLockProvider,
+  inner: BuiltinSpinSharedFactory,
   executor_shared_calls: Arc<AtomicUsize>,
   dispatcher_shared_calls: Arc<AtomicUsize>,
   shared_message_queue_calls: Arc<AtomicUsize>,
@@ -84,7 +84,7 @@ impl CountingLockProvider {
     let dispatcher_shared_calls = Arc::new(AtomicUsize::new(0));
     let shared_message_queue_calls = Arc::new(AtomicUsize::new(0));
     let provider = Self {
-      inner: BuiltinSpinLockProvider::new(),
+      inner: BuiltinSpinSharedFactory::new(),
       executor_shared_calls: Arc::clone(&executor_shared_calls),
       dispatcher_shared_calls: Arc::clone(&dispatcher_shared_calls),
       shared_message_queue_calls: Arc::clone(&shared_message_queue_calls),
@@ -93,7 +93,7 @@ impl CountingLockProvider {
   }
 }
 
-impl ActorLockProvider for CountingLockProvider {
+impl ActorSharedFactory for CountingLockProvider {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.dispatcher_shared_calls.fetch_add(1, Ordering::SeqCst);
     self.inner.create_message_dispatcher_shared(dispatcher)
@@ -191,7 +191,7 @@ fn build_system() -> ActorSystem {
   // batch drains correctly even though each `mailbox.run` invocation only
   // processes a small slice.
   let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
-  let lock_provider = config.lock_provider().clone();
+  let lock_provider = config.shared_factory().clone();
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle.clone()));
   let default_configurator: Box<dyn MessageDispatcherConfigurator> =
@@ -271,7 +271,7 @@ fn snapshot(per_actor: &[Arc<AtomicUsize>]) -> Vec<usize> {
 #[tokio::test(flavor = "current_thread")]
 async fn tokio_executor_factory_new_with_provider_materializes_executor_shared_via_provider() {
   let (executor_shared_calls, dispatcher_shared_calls, _, provider) = CountingLockProvider::new();
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(provider);
   let factory = TokioExecutorFactory::new(Handle::current(), &provider);
 
   let _executor = factory.create(DEFAULT_DISPATCHER_ID);
@@ -291,7 +291,7 @@ async fn tokio_executor_factory_new_with_provider_materializes_executor_shared_v
 #[test]
 fn pinned_dispatcher_configurator_uses_provider_aware_executor_factory_for_each_dispatcher_instance() {
   let (executor_shared_calls, dispatcher_shared_calls, _, provider) = CountingLockProvider::new();
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(provider);
   let settings = DispatcherSettings::with_defaults("pinned-provider-test");
   let executor_factory: ArcShared<Box<dyn ExecutorFactory>> =
     ArcShared::new(Box::new(PinnedExecutorFactory::new("provider-aware", &provider)));
@@ -315,7 +315,7 @@ fn pinned_dispatcher_configurator_uses_provider_aware_executor_factory_for_each_
 #[test]
 fn balancing_dispatcher_configurator_materializes_shared_queue_via_provider() {
   let (_, dispatcher_shared_calls, shared_message_queue_calls, provider) = CountingLockProvider::new();
-  let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(provider);
+  let provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(provider);
   let settings = DispatcherSettings::with_defaults("balancing-provider-test");
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator = BalancingDispatcherConfigurator::new(&settings, executor, &provider);

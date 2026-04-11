@@ -64,7 +64,7 @@ use crate::core::kernel::{
   },
   system::{
     RegisterExtraTopLevelError, ReservationPolicy,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
   },
   util::futures::ActorFutureShared,
 };
@@ -105,7 +105,7 @@ pub struct SystemState {
   actor_ref_providers: ActorRefProviders,
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
-  lock_provider: ArcShared<dyn ActorLockProvider>,
+  shared_factory: ArcShared<dyn ActorSharedFactory>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
@@ -119,13 +119,13 @@ pub struct SystemState {
 }
 
 impl SystemState {
-  fn new_with_lock_provider(lock_provider: ArcShared<dyn ActorLockProvider>) -> Self {
+  fn new_with_shared_factory(shared_factory: ArcShared<dyn ActorSharedFactory>) -> Self {
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
-    let event_stream = lock_provider.create_event_stream_shared(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
+    let event_stream = shared_factory.create_event_stream_shared(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline(&lock_provider);
+    dispatchers.ensure_default_inline(&shared_factory);
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
@@ -157,7 +157,7 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
-      lock_provider,
+      shared_factory,
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -175,14 +175,14 @@ impl SystemState {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_lock_provider(lock_provider)
+    let shared_factory: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+    Self::new_with_shared_factory(shared_factory)
   }
 
   pub(crate) fn build_from_config(config: &ActorSystemConfig) -> Result<Self, SpawnError> {
     use crate::core::kernel::actor::scheduler::tick_driver::TickDriverBootstrap;
 
-    let mut state = Self::new_with_lock_provider(config.lock_provider().clone());
+    let mut state = Self::new_with_shared_factory(config.shared_factory().clone());
     state.start_time = config.start_time().unwrap_or_else(|| state.monotonic_now());
     state.apply_actor_system_config(config);
 
@@ -242,7 +242,7 @@ impl SystemState {
   pub fn apply_actor_system_config(&mut self, config: &ActorSystemConfig) {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
-    self.lock_provider = config.lock_provider().clone();
+    self.shared_factory = config.shared_factory().clone();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
@@ -794,10 +794,10 @@ impl SystemState {
     self.dispatchers.resolve(id).ok()
   }
 
-  /// Returns the actor-system scoped lock provider.
+  /// Returns the actor-system scoped shared factory.
   #[must_use]
-  pub fn lock_provider(&self) -> ArcShared<dyn ActorLockProvider> {
-    self.lock_provider.clone()
+  pub fn shared_factory(&self) -> ArcShared<dyn ActorSharedFactory> {
+    self.shared_factory.clone()
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations

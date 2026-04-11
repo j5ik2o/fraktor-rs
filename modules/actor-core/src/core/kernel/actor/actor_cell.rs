@@ -141,7 +141,7 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
-    let lock_provider = system.lock_provider();
+    let lock_provider = system.shared_factory();
 
     // Give the dispatcher a chance to supply its own mailbox (e.g.,
     // `BalancingDispatcher` hands out sharing mailboxes that all wrap its

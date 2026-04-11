@@ -20,7 +20,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_lock_provider,
+    subscriber_handle_with_shared_factory,
   },
   system::ActorSystem,
   util::futures::ActorFutureShared,
@@ -186,8 +186,8 @@ impl ClusterApi {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
     let event_type_set = to_event_type_set(event_types);
-    let lock_provider = self.system.state().lock_provider();
-    let filtered = subscriber_handle_with_lock_provider(
+    let lock_provider = self.system.state().shared_factory();
+    let filtered = subscriber_handle_with_shared_factory(
       &lock_provider,
       ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set),
     );
@@ -232,8 +232,8 @@ impl ClusterApi {
   ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
-    let lock_provider = self.system.state().lock_provider();
-    let filtered = subscriber_handle_with_lock_provider(
+    let lock_provider = self.system.state().shared_factory();
+    let filtered = subscriber_handle_with_shared_factory(
       &lock_provider,
       ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)),
     );

@@ -19,11 +19,11 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    subscriber_handle_with_lock_provider,
+    subscriber_handle_with_shared_factory,
   },
   system::{
     ActorSystem, TerminationSignal,
-    lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
   },
 };
 use fraktor_utils_core_rs::core::{
@@ -225,8 +225,8 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-  subscriber_handle_with_lock_provider(&lock_provider, subscriber)
+  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 struct TestGuardian;

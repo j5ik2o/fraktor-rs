@@ -13,13 +13,13 @@ use super::{
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
   pinned_dispatcher::PinnedDispatcher,
 };
-use crate::core::kernel::system::lock_provider::ActorLockProvider;
+use crate::core::kernel::system::shared_factory::ActorSharedFactory;
 
 /// Configurator that produces a fresh [`PinnedDispatcher`] per call.
 pub struct PinnedDispatcherConfigurator {
   settings:           DispatcherSettings,
   executor_factory:   ArcShared<Box<dyn ExecutorFactory>>,
-  lock_provider:      ArcShared<dyn ActorLockProvider>,
+  lock_provider:      ArcShared<dyn ActorSharedFactory>,
   thread_name_prefix: String,
 }
 
@@ -29,7 +29,7 @@ impl PinnedDispatcherConfigurator {
   pub fn new(
     settings: DispatcherSettings,
     executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
-    lock_provider: &ArcShared<dyn ActorLockProvider>,
+    lock_provider: &ArcShared<dyn ActorSharedFactory>,
     thread_name_prefix: impl Into<String>,
   ) -> Self {
     Self {

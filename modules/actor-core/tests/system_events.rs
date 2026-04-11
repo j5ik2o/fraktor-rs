@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_lock_provider},
+    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle_with_shared_factory},
   },
   system::{ActorSystem, SpinBlocker},
 };
@@ -58,7 +58,7 @@ fn lifecycle_and_log_events_are_published() {
   let system = ActorSystem::new(&props, tick_driver).expect("system");
 
   let events = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let subscriber = subscriber_handle_with_lock_provider(&system.state().lock_provider(), RecordingSubscriber {
+  let subscriber = subscriber_handle_with_shared_factory(&system.state().shared_factory(), RecordingSubscriber {
     events: events.clone(),
   });
   let _subscription = system.subscribe_event_stream(&subscriber);

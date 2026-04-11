@@ -123,7 +123,7 @@ impl DispatcherBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
-      let lock_provider = config.lock_provider().clone();
+      let lock_provider = config.shared_factory().clone();
       let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
       let default_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle.clone()));
       let default_configurator: Box<dyn MessageDispatcherConfigurator> =

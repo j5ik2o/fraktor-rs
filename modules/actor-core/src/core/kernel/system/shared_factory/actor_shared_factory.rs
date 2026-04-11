@@ -1,4 +1,4 @@
-//! Actor-system scoped hot-path lock provider.
+//! Actor-system scoped hot-path shared factory.
 
 #[cfg(test)]
 mod tests;
@@ -15,11 +15,11 @@ use crate::core::kernel::{
   },
   dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
-  system::lock_provider::MailboxSharedSet,
+  system::shared_factory::MailboxSharedSet,
 };
 
 /// Factory contract for actor-system hot-path shared wrappers.
-pub trait ActorLockProvider: Send + Sync {
+pub trait ActorSharedFactory: Send + Sync {
   /// Materializes a dispatcher shared wrapper.
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared;
 

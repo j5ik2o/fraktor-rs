@@ -8,7 +8,7 @@ use super::{
   balancing_dispatcher::BalancingDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
 };
-use crate::core::kernel::system::lock_provider::ActorLockProvider;
+use crate::core::kernel::system::shared_factory::ActorSharedFactory;
 
 /// Configurator that holds a single eagerly built [`BalancingDispatcher`] handle.
 ///
@@ -25,7 +25,7 @@ impl BalancingDispatcherConfigurator {
   pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    provider: &ArcShared<dyn ActorLockProvider>,
+    provider: &ArcShared<dyn ActorSharedFactory>,
   ) -> Self {
     let dispatcher = BalancingDispatcher::new(settings, executor, provider);
     Self { shared: provider.create_message_dispatcher_shared(Box::new(dispatcher)) }

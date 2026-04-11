@@ -28,7 +28,7 @@ use crate::core::kernel::{
   event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
   system::{
     ActorSystem,
-    lock_provider::{ActorLockProvider, MailboxSharedSet},
+    shared_factory::{ActorSharedFactory, MailboxSharedSet},
   },
 };
 
@@ -159,9 +159,9 @@ impl Actor for ResumeSupervisorActor {
   }
 }
 
-struct TestDebugActorLockProvider;
+struct TestDebugActorSharedFactory;
 
-impl TestDebugActorLockProvider {
+impl TestDebugActorSharedFactory {
   const fn new() -> Self {
     Self
   }
@@ -179,7 +179,7 @@ impl TestDebugActorLockProvider {
   }
 }
 
-impl ActorRuntimeLockFactory for TestDebugActorLockProvider {
+impl ActorRuntimeLockFactory for TestDebugActorSharedFactory {
   fn create_lock<T>(&self, value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
@@ -187,7 +187,7 @@ impl ActorRuntimeLockFactory for TestDebugActorLockProvider {
   }
 }
 
-impl ActorLockProvider for TestDebugActorLockProvider {
+impl ActorSharedFactory for TestDebugActorSharedFactory {
   fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     MessageDispatcherShared::from_shared_lock(self.create_lock(dispatcher))
   }
@@ -282,7 +282,7 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 #[test]
 fn actor_cell_mailbox_accessor_returns_stable_shared_handle() {
   let system =
-    ActorSystem::new_empty_with(|config| config.with_lock_provider(TestDebugActorLockProvider::new())).state();
+    ActorSystem::new_empty_with(|config| config.with_shared_factory(TestDebugActorSharedFactory::new())).state();
   let props = Props::from_fn(|| ProbeActor);
   let cell = ActorCell::create(system, Pid::new(701, 0), None, "mailbox-slot".to_string(), &props).expect("cell");
 
