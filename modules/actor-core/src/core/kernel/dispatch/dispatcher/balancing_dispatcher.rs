@@ -18,15 +18,15 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
-  system::shared_factory::ActorSharedFactory,
+  system::shared_factory::MailboxSharedSetFactory,
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
 pub struct BalancingDispatcher {
-  core:          DispatcherCore,
-  shared_queue:  ArcShared<SharedMessageQueue>,
-  team:          Vec<WeakShared<ActorCell>>,
-  lock_provider: ArcShared<dyn ActorSharedFactory>,
+  core: DispatcherCore,
+  shared_queue: ArcShared<SharedMessageQueue>,
+  team: Vec<WeakShared<ActorCell>>,
+  mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
 }
 
 impl BalancingDispatcher {
@@ -39,13 +39,14 @@ impl BalancingDispatcher {
   pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    lock_provider: &ArcShared<dyn ActorSharedFactory>,
+    shared_message_queue_factory: &ArcShared<dyn super::SharedMessageQueueFactory>,
+    mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
   ) -> Self {
     Self {
-      core:          DispatcherCore::new(settings, executor),
-      shared_queue:  ArcShared::new(lock_provider.create_shared_message_queue()),
-      team:          Vec::new(),
-      lock_provider: lock_provider.clone(),
+      core: DispatcherCore::new(settings, executor),
+      shared_queue: ArcShared::new(shared_message_queue_factory.create()),
+      team: Vec::new(),
+      mailbox_shared_set_factory: mailbox_shared_set_factory.clone(),
     }
   }
 
@@ -116,7 +117,7 @@ impl MessageDispatcher for BalancingDispatcher {
     // for the dispatcher's lifetime, so every call returns a mailbox that
     // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    let shared_set = self.lock_provider.create_mailbox_shared_set();
+    let shared_set = self.mailbox_shared_set_factory.create();
     Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, &shared_set)))
   }
 

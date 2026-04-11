@@ -2,6 +2,7 @@
 
 mod actor_ref_sender;
 mod actor_ref_sender_shared;
+mod actor_ref_sender_shared_factory;
 mod ask_reply_sender;
 mod base;
 pub mod dead_letter;
@@ -10,6 +11,7 @@ mod send_outcome;
 
 pub use actor_ref_sender::ActorRefSender;
 pub use actor_ref_sender_shared::ActorRefSenderShared;
+pub use actor_ref_sender_shared_factory::ActorRefSenderSharedFactory;
 pub use ask_reply_sender::AskReplySender;
 pub use base::ActorRef;
 pub use null_sender::NullSender;

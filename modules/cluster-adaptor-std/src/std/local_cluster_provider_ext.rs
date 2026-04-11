@@ -3,12 +3,9 @@
 //! This module provides Transport event auto-detection functionality
 //! that is only available in std environments.
 
-use fraktor_actor_core_rs::core::kernel::{
-  event::stream::{
-    EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
-    RemotingLifecycleEvent, subscriber_handle_with_shared_factory,
-  },
-  system::shared_factory::ActorSharedFactory,
+use fraktor_actor_core_rs::core::kernel::event::stream::{
+  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriberSharedFactory,
+  EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle_with_shared_factory,
 };
 use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
@@ -22,7 +19,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 /// **Note**: This function is only available in std environments.
 pub fn subscribe_remoting_events(
   provider: &LocalClusterProviderShared,
-  lock_provider: &ArcShared<dyn ActorSharedFactory>,
+  lock_provider: &ArcShared<dyn EventStreamSubscriberSharedFactory>,
 ) {
   struct RemotingEventHandler {
     provider: LocalClusterProviderShared,

@@ -24,10 +24,10 @@ use hashbrown::{HashMap, hash_map::Entry};
 
 use super::{
   default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
-  dispatchers_error::DispatchersError, inline_executor::InlineExecutor,
+  dispatchers_error::DispatchersError, executor_shared_factory::ExecutorSharedFactory, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory,
 };
-use crate::core::kernel::system::shared_factory::ActorSharedFactory;
 
 /// Reserved registry identifier for the default dispatcher.
 pub const DEFAULT_DISPATCHER_ID: &str = "default";
@@ -139,12 +139,13 @@ impl Dispatchers {
   }
 
   fn build_default_inline_configurator(
-    provider: &ArcShared<dyn ActorSharedFactory>,
+    message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
+    executor_shared_factory: &ArcShared<dyn ExecutorSharedFactory>,
   ) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
     let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-    let executor = provider.create_executor_shared(Box::new(InlineExecutor::new()));
+    let executor = executor_shared_factory.create(Box::new(InlineExecutor::new()));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
-      Box::new(DefaultDispatcherConfigurator::new(&settings, executor, provider));
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor, message_dispatcher_shared_factory));
     ArcShared::new(configurator)
   }
 
@@ -169,8 +170,14 @@ impl Dispatchers {
   /// in-process tests run on the new dispatcher tree without bringing in
   /// `tokio` or another runtime. Production users override the entry through
   /// `ActorSystemConfig::with_dispatcher_configurator`.
-  pub fn ensure_default_inline(&mut self, provider: &ArcShared<dyn ActorSharedFactory>) {
-    self.ensure_default(|| Self::build_default_inline_configurator(provider));
+  pub fn ensure_default_inline(
+    &mut self,
+    message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
+    executor_shared_factory: &ArcShared<dyn ExecutorSharedFactory>,
+  ) {
+    self.ensure_default(|| {
+      Self::build_default_inline_configurator(message_dispatcher_shared_factory, executor_shared_factory)
+    });
   }
 
   /// Replaces the seeded default inline dispatcher using the supplied provider.
@@ -178,13 +185,18 @@ impl Dispatchers {
   /// When the default blocking dispatcher still aliases the same configurator as
   /// `default`, it is updated to keep both reserved ids on the same provider.
   /// Explicit blocking-dispatcher overrides are preserved.
-  pub fn replace_default_inline_with_provider(&mut self, provider: &ArcShared<dyn ActorSharedFactory>) {
+  pub fn replace_default_inline_with_factories(
+    &mut self,
+    message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
+    executor_shared_factory: &ArcShared<dyn ExecutorSharedFactory>,
+  ) {
     let replace_blocking = self
       .entries
       .get(DEFAULT_BLOCKING_DISPATCHER_ID)
       .zip(self.entries.get(DEFAULT_DISPATCHER_ID))
       .is_some_and(|(blocking, default)| ArcShared::ptr_eq(blocking, default));
-    let configurator = Self::build_default_inline_configurator(provider);
+    let configurator =
+      Self::build_default_inline_configurator(message_dispatcher_shared_factory, executor_shared_factory);
     self.entries.insert(DEFAULT_DISPATCHER_ID.to_owned(), configurator.clone());
     if replace_blocking || !self.entries.contains_key(DEFAULT_BLOCKING_DISPATCHER_ID) {
       self.entries.insert(DEFAULT_BLOCKING_DISPATCHER_ID.to_owned(), configurator);

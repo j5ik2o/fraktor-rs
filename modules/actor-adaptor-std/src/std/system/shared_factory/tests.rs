@@ -227,7 +227,7 @@ fn debug_provider_reentrant_event_stream_publish_worker() {
   let stream = system.event_stream();
   let delivered = Arc::new(AtomicUsize::new(0));
   let subscriber = subscriber_handle_with_shared_factory(
-    &system.state().shared_factory(),
+    &system.state().event_stream_subscriber_shared_factory(),
     ReentrantPublishSubscriber::new(stream.clone(), delivered.clone()),
   );
   let _subscription = stream.subscribe(&subscriber);

@@ -10,19 +10,26 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
+    ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
+    actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
+    messaging::message_invoker::MessageInvokerSharedFactory,
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
   },
   dispatch::{
-    dispatcher::{Dispatchers, MessageDispatcherConfigurator},
+    dispatcher::{
+      Dispatchers, ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
+      SharedMessageQueueFactory,
+    },
     mailbox::Mailboxes,
   },
+  event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
   system::{
     remote::RemotingConfig,
-    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
+    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSetFactory},
   },
 };
 
@@ -31,17 +38,27 @@ mod tests;
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name:          String,
-  default_guardian:     PathGuardianKind,
-  remoting_config:      Option<RemotingConfig>,
-  scheduler_config:     SchedulerConfig,
-  tick_driver_config:   Option<TickDriverConfig>,
+  system_name: String,
+  default_guardian: PathGuardianKind,
+  remoting_config: Option<RemotingConfig>,
+  scheduler_config: SchedulerConfig,
+  tick_driver_config: Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
-  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  shared_factory:       ArcShared<dyn ActorSharedFactory>,
-  dispatchers:          Dispatchers,
-  mailboxes:            Mailboxes,
-  start_time:           Option<Duration>,
+  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  executor_shared_factory: ArcShared<dyn ExecutorSharedFactory>,
+  message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory>,
+  shared_message_queue_factory: ArcShared<dyn SharedMessageQueueFactory>,
+  actor_ref_sender_shared_factory: ArcShared<dyn ActorRefSenderSharedFactory>,
+  actor_shared_lock_factory: ArcShared<dyn ActorSharedLockFactory>,
+  actor_cell_state_shared_factory: ArcShared<dyn ActorCellStateSharedFactory>,
+  receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
+  message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
+  event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory>,
+  event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
+  mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
+  dispatchers: Dispatchers,
+  mailboxes: Mailboxes,
+  start_time: Option<Duration>,
 }
 
 impl ActorSystemConfig {
@@ -100,9 +117,33 @@ impl ActorSystemConfig {
   #[must_use]
   pub fn with_shared_factory<P>(mut self, provider: P) -> Self
   where
-    P: ActorSharedFactory + 'static, {
-    self.shared_factory = ArcShared::new(provider);
-    self.dispatchers.replace_default_inline_with_provider(&self.shared_factory);
+    P: ExecutorSharedFactory
+      + MessageDispatcherSharedFactory
+      + SharedMessageQueueFactory
+      + ActorRefSenderSharedFactory
+      + ActorSharedLockFactory
+      + ActorCellStateSharedFactory
+      + ReceiveTimeoutStateSharedFactory
+      + MessageInvokerSharedFactory
+      + EventStreamSharedFactory
+      + EventStreamSubscriberSharedFactory
+      + MailboxSharedSetFactory
+      + 'static, {
+    let provider = ArcShared::new(provider);
+    self.executor_shared_factory = provider.clone();
+    self.message_dispatcher_shared_factory = provider.clone();
+    self.shared_message_queue_factory = provider.clone();
+    self.actor_ref_sender_shared_factory = provider.clone();
+    self.actor_shared_lock_factory = provider.clone();
+    self.actor_cell_state_shared_factory = provider.clone();
+    self.receive_timeout_state_shared_factory = provider.clone();
+    self.message_invoker_shared_factory = provider.clone();
+    self.event_stream_shared_factory = provider.clone();
+    self.event_stream_subscriber_shared_factory = provider.clone();
+    self.mailbox_shared_set_factory = provider;
+    self
+      .dispatchers
+      .replace_default_inline_with_factories(&self.message_dispatcher_shared_factory, &self.executor_shared_factory);
     self
   }
 
@@ -200,10 +241,70 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the actor-system scoped shared factory.
+  /// Returns the executor shared factory.
   #[must_use]
-  pub const fn shared_factory(&self) -> &ArcShared<dyn ActorSharedFactory> {
-    &self.shared_factory
+  pub const fn executor_shared_factory(&self) -> &ArcShared<dyn ExecutorSharedFactory> {
+    &self.executor_shared_factory
+  }
+
+  /// Returns the message-dispatcher shared factory.
+  #[must_use]
+  pub const fn message_dispatcher_shared_factory(&self) -> &ArcShared<dyn MessageDispatcherSharedFactory> {
+    &self.message_dispatcher_shared_factory
+  }
+
+  /// Returns the shared-message-queue factory.
+  #[must_use]
+  pub const fn shared_message_queue_factory(&self) -> &ArcShared<dyn SharedMessageQueueFactory> {
+    &self.shared_message_queue_factory
+  }
+
+  /// Returns the actor-ref sender shared factory.
+  #[must_use]
+  pub const fn actor_ref_sender_shared_factory(&self) -> &ArcShared<dyn ActorRefSenderSharedFactory> {
+    &self.actor_ref_sender_shared_factory
+  }
+
+  /// Returns the actor shared-lock factory.
+  #[must_use]
+  pub const fn actor_shared_lock_factory(&self) -> &ArcShared<dyn ActorSharedLockFactory> {
+    &self.actor_shared_lock_factory
+  }
+
+  /// Returns the actor-cell-state shared factory.
+  #[must_use]
+  pub const fn actor_cell_state_shared_factory(&self) -> &ArcShared<dyn ActorCellStateSharedFactory> {
+    &self.actor_cell_state_shared_factory
+  }
+
+  /// Returns the receive-timeout-state shared factory.
+  #[must_use]
+  pub const fn receive_timeout_state_shared_factory(&self) -> &ArcShared<dyn ReceiveTimeoutStateSharedFactory> {
+    &self.receive_timeout_state_shared_factory
+  }
+
+  /// Returns the message-invoker shared factory.
+  #[must_use]
+  pub const fn message_invoker_shared_factory(&self) -> &ArcShared<dyn MessageInvokerSharedFactory> {
+    &self.message_invoker_shared_factory
+  }
+
+  /// Returns the event-stream shared factory.
+  #[must_use]
+  pub const fn event_stream_shared_factory(&self) -> &ArcShared<dyn EventStreamSharedFactory> {
+    &self.event_stream_shared_factory
+  }
+
+  /// Returns the event-stream-subscriber shared factory.
+  #[must_use]
+  pub const fn event_stream_subscriber_shared_factory(&self) -> &ArcShared<dyn EventStreamSubscriberSharedFactory> {
+    &self.event_stream_subscriber_shared_factory
+  }
+
+  /// Returns the mailbox shared-set factory.
+  #[must_use]
+  pub const fn mailbox_shared_set_factory(&self) -> &ArcShared<dyn MailboxSharedSetFactory> {
+    &self.mailbox_shared_set_factory
   }
 
   /// Returns the dispatcher registry configured for the system.
@@ -229,9 +330,11 @@ impl ActorSystemConfig {
 
 impl Default for ActorSystemConfig {
   fn default() -> Self {
-    let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+    let shared_factory = ArcShared::new(BuiltinSpinSharedFactory::new());
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline(&lock_provider);
+    let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = shared_factory.clone();
+    let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = shared_factory.clone();
+    dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
@@ -242,7 +345,17 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      shared_factory: lock_provider,
+      executor_shared_factory,
+      message_dispatcher_shared_factory,
+      shared_message_queue_factory: shared_factory.clone(),
+      actor_ref_sender_shared_factory: shared_factory.clone(),
+      actor_shared_lock_factory: shared_factory.clone(),
+      actor_cell_state_shared_factory: shared_factory.clone(),
+      receive_timeout_state_shared_factory: shared_factory.clone(),
+      message_invoker_shared_factory: shared_factory.clone(),
+      event_stream_shared_factory: shared_factory.clone(),
+      event_stream_subscriber_shared_factory: shared_factory.clone(),
+      mailbox_shared_set_factory: shared_factory,
       dispatchers,
       mailboxes,
       start_time: None,

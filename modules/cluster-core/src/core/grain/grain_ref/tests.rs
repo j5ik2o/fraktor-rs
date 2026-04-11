@@ -21,10 +21,7 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle_with_shared_factory,
   },
-  system::{
-    ActorSystem, TerminationSignal,
-    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
-  },
+  system::{ActorSystem, TerminationSignal, shared_factory::BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SpinSyncMutex},
@@ -225,7 +222,10 @@ fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEv
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
   subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 

@@ -8,25 +8,30 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellStateShared, ActorContext, ReceiveTimeoutStateShared,
+    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorSharedLockFactory,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
-    actor_ref::{ActorRefSender, ActorRefSenderShared},
+    actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     error::ActorError,
     messaging::{
       AnyMessageView,
-      message_invoker::{MessageInvoker, MessageInvokerShared},
+      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     },
     props::Props,
     setup::ActorSystemConfig,
   },
   dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue,
+    DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory,
   },
-  event::stream::{EventStream, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared},
+  event::stream::{
+    EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscriberSharedFactory,
+  },
   system::{
     ActorSystem,
     remote::RemotingConfig,
-    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory, MailboxSharedSet},
+    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
 };
 
@@ -100,61 +105,78 @@ impl CountingLockProvider {
   }
 }
 
-impl ActorSharedFactory for CountingLockProvider {
-  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+impl MessageDispatcherSharedFactory for CountingLockProvider {
+  fn create(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     self.dispatcher_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_message_dispatcher_shared(dispatcher)
+    MessageDispatcherSharedFactory::create(&self.inner, dispatcher)
   }
+}
 
-  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+impl ExecutorSharedFactory for CountingLockProvider {
+  fn create(&self, executor: Box<dyn Executor>) -> ExecutorShared {
     self.executor_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_executor_shared(executor)
+    ExecutorSharedFactory::create(&self.inner, executor)
   }
+}
 
-  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+impl ActorRefSenderSharedFactory for CountingLockProvider {
+  fn create(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
     self.actor_ref_sender_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_actor_ref_sender_shared(sender)
+    ActorRefSenderSharedFactory::create(&self.inner, sender)
   }
+}
 
-  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+impl ActorSharedLockFactory for CountingLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
     self.actor_shared_lock_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_actor_shared_lock(actor)
+    ActorSharedLockFactory::create(&self.inner, actor)
   }
+}
 
-  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
+impl ActorCellStateSharedFactory for CountingLockProvider {
+  fn create(&self) -> ActorCellStateShared {
     self.actor_cell_state_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_actor_cell_state_shared()
+    ActorCellStateSharedFactory::create(&self.inner)
   }
+}
 
-  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
+impl ReceiveTimeoutStateSharedFactory for CountingLockProvider {
+  fn create(&self) -> ReceiveTimeoutStateShared {
     self.receive_timeout_state_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_receive_timeout_state_shared()
+    ReceiveTimeoutStateSharedFactory::create(&self.inner)
   }
+}
 
-  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+impl MessageInvokerSharedFactory for CountingLockProvider {
+  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
     self.message_invoker_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_message_invoker_shared(invoker)
+    MessageInvokerSharedFactory::create(&self.inner, invoker)
   }
+}
 
-  fn create_shared_message_queue(&self) -> SharedMessageQueue {
-    self.inner.create_shared_message_queue()
+impl SharedMessageQueueFactory for CountingLockProvider {
+  fn create(&self) -> SharedMessageQueue {
+    SharedMessageQueueFactory::create(&self.inner)
   }
+}
 
-  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
+impl EventStreamSharedFactory for CountingLockProvider {
+  fn create(&self, stream: EventStream) -> EventStreamShared {
     self.event_stream_shared_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_event_stream_shared(stream)
+    EventStreamSharedFactory::create(&self.inner, stream)
   }
+}
 
-  fn create_event_stream_subscriber_shared(
-    &self,
-    subscriber: Box<dyn EventStreamSubscriber>,
-  ) -> EventStreamSubscriberShared {
-    self.inner.create_event_stream_subscriber_shared(subscriber)
+impl EventStreamSubscriberSharedFactory for CountingLockProvider {
+  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
+    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
   }
+}
 
-  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
+impl MailboxSharedSetFactory for CountingLockProvider {
+  fn create(&self) -> MailboxSharedSet {
     self.mailbox_shared_set_calls.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_mailbox_shared_set()
+    MailboxSharedSetFactory::create(&self.inner)
   }
 }
 

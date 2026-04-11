@@ -30,7 +30,7 @@ use crate::core::{
         EventStreamSubscription, subscriber_handle_with_shared_factory,
       },
     },
-    system::{ActorSystem, TerminationSignal, shared_factory::ActorSharedFactory, state::SystemStateShared},
+    system::{ActorSystem, TerminationSignal, state::SystemStateShared},
     util::futures::ActorFutureShared,
   },
   typed::{
@@ -52,8 +52,9 @@ struct EventStreamRefEndpoint {
 }
 
 struct EventStreamRefSender {
-  event_stream:  EventStreamShared,
-  lock_provider: ArcShared<dyn ActorSharedFactory>,
+  event_stream: EventStreamShared,
+  event_stream_subscriber_shared_factory:
+    ArcShared<dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory>,
   subscriptions: Vec<EventStreamActorSubscription>,
 }
 
@@ -90,8 +91,13 @@ impl EventStreamRefEndpoint {
 }
 
 impl EventStreamRefSender {
-  fn new(event_stream: EventStreamShared, lock_provider: ArcShared<dyn ActorSharedFactory>) -> Self {
-    Self { event_stream, lock_provider, subscriptions: Vec::new() }
+  fn new(
+    event_stream: EventStreamShared,
+    event_stream_subscriber_shared_factory: ArcShared<
+      dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+    >,
+  ) -> Self {
+    Self { event_stream, event_stream_subscriber_shared_factory, subscriptions: Vec::new() }
   }
 
   fn subscribe_actor(&mut self, subscriber: &ActorRef) {
@@ -99,7 +105,7 @@ impl EventStreamRefSender {
       return;
     }
     let subscriber_handle = subscriber_handle_with_shared_factory(
-      &self.lock_provider,
+      &self.event_stream_subscriber_shared_factory,
       ActorRefEventStreamSubscriber::new(subscriber.clone()),
     );
     let subscription = self.event_stream.subscribe(&subscriber_handle);
@@ -135,7 +141,7 @@ impl ExtensionId for EventStreamRefId {
     let state = system.state();
     let actor_ref = ActorRef::with_system(
       EVENT_STREAM_FACADE_PID,
-      EventStreamRefSender::new(system.event_stream(), state.shared_factory()),
+      EventStreamRefSender::new(system.event_stream(), state.event_stream_subscriber_shared_factory()),
       &state,
     );
     EventStreamRefEndpoint::new(actor_ref)
@@ -316,7 +322,7 @@ where
   where
     U: Send + Sync + 'static, {
     let state = self.inner.state();
-    let sender = state.shared_factory().create_actor_ref_sender_shared(Box::new(IgnoreRefSender));
+    let sender = state.actor_ref_sender_shared_factory().create(Box::new(IgnoreRefSender));
     TypedActorRef::from_untyped(ActorRef::from_shared(IGNORE_FACADE_PID, sender, &state))
   }
 

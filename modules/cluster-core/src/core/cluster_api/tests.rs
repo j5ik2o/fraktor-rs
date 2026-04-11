@@ -6,15 +6,16 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellStateShared, ActorContext, Pid, ReceiveTimeoutStateShared,
+    Actor, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorSharedLockFactory, Pid,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
     actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{
       AnyMessage, AnyMessageView,
-      message_invoker::{MessageInvoker, MessageInvokerShared},
+      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     },
     props::Props,
     scheduler::{
@@ -23,14 +24,18 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue},
+  dispatch::dispatcher::{
+    Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory,
+  },
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared,
-    EventStreamSubscription, subscriber_handle_with_shared_factory,
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber,
+    EventStreamSubscriberShared, EventStreamSubscriberSharedFactory, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
   },
   system::{
     ActorSystem, TerminationSignal,
-    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory, MailboxSharedSet},
+    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
 };
 use fraktor_utils_core_rs::core::{
@@ -65,65 +70,87 @@ impl CountingSubscriberLockProvider {
   }
 }
 
-impl ActorSharedFactory for CountingSubscriberLockProvider {
-  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    self.inner.create_message_dispatcher_shared(dispatcher)
+impl MessageDispatcherSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherSharedFactory::create(&self.inner, dispatcher)
   }
+}
 
-  fn create_executor_shared(&self, executor: Box<dyn Executor>) -> ExecutorShared {
-    self.inner.create_executor_shared(executor)
+impl ExecutorSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, executor: Box<dyn Executor>) -> ExecutorShared {
+    ExecutorSharedFactory::create(&self.inner, executor)
   }
+}
 
-  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    self.inner.create_actor_ref_sender_shared(sender)
+impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    ActorRefSenderSharedFactory::create(&self.inner, sender)
   }
+}
 
-  fn create_actor_shared_lock(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
-    self.inner.create_actor_shared_lock(actor)
+impl ActorSharedLockFactory for CountingSubscriberLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+    ActorSharedLockFactory::create(&self.inner, actor)
   }
+}
 
-  fn create_actor_cell_state_shared(&self) -> ActorCellStateShared {
-    self.inner.create_actor_cell_state_shared()
+impl ActorCellStateSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> ActorCellStateShared {
+    ActorCellStateSharedFactory::create(&self.inner)
   }
+}
 
-  fn create_receive_timeout_state_shared(&self) -> ReceiveTimeoutStateShared {
-    self.inner.create_receive_timeout_state_shared()
+impl ReceiveTimeoutStateSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateSharedFactory::create(&self.inner)
   }
+}
 
-  fn create_message_invoker_shared(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
-    self.inner.create_message_invoker_shared(invoker)
+impl MessageInvokerSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    MessageInvokerSharedFactory::create(&self.inner, invoker)
   }
+}
 
-  fn create_shared_message_queue(&self) -> SharedMessageQueue {
-    self.inner.create_shared_message_queue()
+impl SharedMessageQueueFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> SharedMessageQueue {
+    SharedMessageQueueFactory::create(&self.inner)
   }
+}
 
-  fn create_event_stream_shared(&self, stream: EventStream) -> EventStreamShared {
-    self.inner.create_event_stream_shared(stream)
+impl EventStreamSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, stream: EventStream) -> EventStreamShared {
+    EventStreamSharedFactory::create(&self.inner, stream)
   }
+}
 
-  fn create_event_stream_subscriber_shared(
-    &self,
-    subscriber: Box<dyn EventStreamSubscriber>,
-  ) -> EventStreamSubscriberShared {
+impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
     self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
-    self.inner.create_event_stream_subscriber_shared(subscriber)
+    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
   }
+}
 
-  fn create_mailbox_shared_set(&self) -> MailboxSharedSet {
-    self.inner.create_mailbox_shared_set()
+impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> MailboxSharedSet {
+    MailboxSharedSetFactory::create(&self.inner)
   }
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
   subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 #[test]
 fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
   let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
-  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(lock_provider);
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = ArcShared::new(lock_provider);
   let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
 
   let _subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingClusterEvents::new());

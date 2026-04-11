@@ -186,7 +186,7 @@ impl ClusterApi {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
     let event_type_set = to_event_type_set(event_types);
-    let lock_provider = self.system.state().shared_factory();
+    let lock_provider = self.system.state().event_stream_subscriber_shared_factory();
     let filtered = subscriber_handle_with_shared_factory(
       &lock_provider,
       ClusterEventFilterSubscriber::new(subscriber.clone(), event_type_set),
@@ -232,7 +232,7 @@ impl ClusterApi {
   ) -> EventStreamSubscription {
     assert!(!event_types.is_empty(), "at least one cluster event type is required");
 
-    let lock_provider = self.system.state().shared_factory();
+    let lock_provider = self.system.state().event_stream_subscriber_shared_factory();
     let filtered = subscriber_handle_with_shared_factory(
       &lock_provider,
       ClusterEventFilterSubscriber::new(subscriber.clone(), to_event_type_set(event_types)),

@@ -11,7 +11,7 @@ use fraktor_actor_core_rs::core::kernel::{
   serialization::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
-  system::shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_cluster_core_rs::core::{
   BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
@@ -61,7 +61,10 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (EventCollector, Even
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
   subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 

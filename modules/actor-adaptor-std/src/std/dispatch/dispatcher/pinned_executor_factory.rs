@@ -5,9 +5,8 @@ extern crate std;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::string::String;
 
-use fraktor_actor_core_rs::core::kernel::{
-  dispatch::dispatcher::{ExecutorFactory, ExecutorShared},
-  system::shared_factory::ActorSharedFactory,
+use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{
+  ExecutorFactory, ExecutorShared, ExecutorSharedFactory,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -18,19 +17,22 @@ use super::pinned_executor::PinnedExecutor;
 /// Each call increments a static counter to suffix the worker thread name so
 /// the spawned threads can be identified in stack traces and metrics.
 pub struct PinnedExecutorFactory {
-  thread_name_prefix: String,
-  counter:            AtomicUsize,
-  lock_provider:      ArcShared<dyn ActorSharedFactory>,
+  thread_name_prefix:      String,
+  counter:                 AtomicUsize,
+  executor_shared_factory: ArcShared<dyn ExecutorSharedFactory>,
 }
 
 impl PinnedExecutorFactory {
   /// Creates a factory using the supplied thread name prefix.
   #[must_use]
-  pub fn new(thread_name_prefix: impl Into<String>, lock_provider: &ArcShared<dyn ActorSharedFactory>) -> Self {
+  pub fn new(
+    thread_name_prefix: impl Into<String>,
+    executor_shared_factory: &ArcShared<dyn ExecutorSharedFactory>,
+  ) -> Self {
     Self {
-      thread_name_prefix: thread_name_prefix.into(),
-      counter:            AtomicUsize::new(0),
-      lock_provider:      lock_provider.clone(),
+      thread_name_prefix:      thread_name_prefix.into(),
+      counter:                 AtomicUsize::new(0),
+      executor_shared_factory: executor_shared_factory.clone(),
     }
   }
 
@@ -43,6 +45,6 @@ impl PinnedExecutorFactory {
 impl ExecutorFactory for PinnedExecutorFactory {
   fn create(&self, dispatcher_id: &str) -> ExecutorShared {
     let name = self.allocate_name(dispatcher_id);
-    self.lock_provider.create_executor_shared(Box::new(PinnedExecutor::with_name(name)))
+    self.executor_shared_factory.create(Box::new(PinnedExecutor::with_name(name)))
   }
 }

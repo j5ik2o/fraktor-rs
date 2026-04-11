@@ -7,8 +7,8 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{
   default_dispatcher::DefaultDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory,
 };
-use crate::core::kernel::system::shared_factory::ActorSharedFactory;
 
 /// Configurator that holds a single eagerly built [`DefaultDispatcher`] handle.
 ///
@@ -24,10 +24,10 @@ impl DefaultDispatcherConfigurator {
   pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    provider: &ArcShared<dyn ActorSharedFactory>,
+    factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
   ) -> Self {
     let dispatcher = DefaultDispatcher::new(settings, executor);
-    Self { shared: provider.create_message_dispatcher_shared(Box::new(dispatcher)) }
+    Self { shared: factory.create(Box::new(dispatcher)) }
   }
 }
 

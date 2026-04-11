@@ -32,7 +32,7 @@ use crate::core::kernel::{
   dispatch::{
     dispatcher::{
       DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
-      MessageDispatcherConfigurator,
+      MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
     },
     mailbox::MailboxMessage,
   },
@@ -41,7 +41,7 @@ use crate::core::kernel::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
     remote::RemotingConfig,
-    shared_factory::{ActorSharedFactory, BuiltinSpinSharedFactory},
+    shared_factory::BuiltinSpinSharedFactory,
     state::{AuthorityState, SystemStateShared, system_state::LogLevel},
   },
 };
@@ -874,11 +874,12 @@ impl Executor for NoopExecutor {
 }
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let lock_provider: ArcShared<dyn ActorSharedFactory> = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
   let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)
 }
 

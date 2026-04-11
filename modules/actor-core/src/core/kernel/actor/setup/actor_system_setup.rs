@@ -9,14 +9,20 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
+    ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
+    actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::ActorRefProviderInstaller,
     extension::ExtensionInstallers,
+    messaging::message_invoker::MessageInvokerSharedFactory,
     props::MailboxConfig,
     scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
     setup::{ActorSystemConfig, BootstrapSetup},
   },
-  dispatch::dispatcher::MessageDispatcherConfigurator,
-  system::shared_factory::ActorSharedFactory,
+  dispatch::dispatcher::{
+    ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory, SharedMessageQueueFactory,
+  },
+  event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
+  system::shared_factory::MailboxSharedSetFactory,
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -75,7 +81,18 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_shared_factory<P>(self, provider: P) -> Self
   where
-    P: ActorSharedFactory + 'static, {
+    P: ExecutorSharedFactory
+      + MessageDispatcherSharedFactory
+      + SharedMessageQueueFactory
+      + ActorRefSenderSharedFactory
+      + ActorSharedLockFactory
+      + ActorCellStateSharedFactory
+      + ReceiveTimeoutStateSharedFactory
+      + MessageInvokerSharedFactory
+      + EventStreamSharedFactory
+      + EventStreamSubscriberSharedFactory
+      + MailboxSharedSetFactory
+      + 'static, {
     Self { config: self.config.with_shared_factory(provider) }
   }
 
