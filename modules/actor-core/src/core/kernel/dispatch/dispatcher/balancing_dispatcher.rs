@@ -24,7 +24,7 @@ use crate::core::kernel::{
 /// Dispatcher that load-balances actors over a shared message queue.
 pub struct BalancingDispatcher {
   core: DispatcherCore,
-  shared_queue: ArcShared<SharedMessageQueue>,
+  shared_queue: SharedMessageQueue,
   team: Vec<WeakShared<ActorCell>>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
 }
@@ -32,19 +32,19 @@ pub struct BalancingDispatcher {
 impl BalancingDispatcher {
   /// Constructs a new `BalancingDispatcher`.
   ///
-  /// The dispatcher allocates a fresh [`SharedMessageQueue`] internally; the
-  /// queue is reused by every actor that attaches via
+  /// The supplied [`SharedMessageQueue`] is reused by every actor that
+  /// attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
   pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    shared_message_queue_factory: &ArcShared<dyn super::SharedMessageQueueFactory>,
+    shared_queue: SharedMessageQueue,
     mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
   ) -> Self {
     Self {
       core: DispatcherCore::new(settings, executor),
-      shared_queue: ArcShared::new(shared_message_queue_factory.create()),
+      shared_queue,
       team: Vec::new(),
       mailbox_shared_set_factory: mailbox_shared_set_factory.clone(),
     }
@@ -52,7 +52,7 @@ impl BalancingDispatcher {
 
   /// Returns a clone of the shared message queue used by team members.
   #[must_use]
-  pub fn shared_queue(&self) -> ArcShared<SharedMessageQueue> {
+  pub fn shared_queue(&self) -> SharedMessageQueue {
     self.shared_queue.clone()
   }
 
@@ -155,7 +155,7 @@ impl MessageDispatcher for BalancingDispatcher {
 }
 
 /// Adapter that exposes [`SharedMessageQueue`] through the [`MessageQueue`] trait.
-struct SharedMessageQueueBox(ArcShared<SharedMessageQueue>);
+struct SharedMessageQueueBox(SharedMessageQueue);
 
 impl MessageQueue for SharedMessageQueueBox {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {

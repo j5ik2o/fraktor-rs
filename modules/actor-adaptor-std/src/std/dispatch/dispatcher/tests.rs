@@ -215,6 +215,7 @@ fn build_system() -> ActorSystem {
   let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
   let message_dispatcher_shared_factory = config.message_dispatcher_shared_factory().clone();
   let shared_message_queue_factory = config.shared_message_queue_factory().clone();
+  let shared_queue = shared_message_queue_factory.create();
   let mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
   let default_executor = BuiltinSpinSharedFactory::new()
@@ -232,7 +233,7 @@ fn build_system() -> ActorSystem {
     &balancing_settings,
     balancing_executor,
     &message_dispatcher_shared_factory,
-    &shared_message_queue_factory,
+    shared_queue,
     &mailbox_shared_set_factory,
   ));
 
@@ -358,12 +359,13 @@ fn balancing_dispatcher_configurator_materializes_shared_queue_via_provider() {
   let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let shared_message_queue_factory: ArcShared<dyn SharedMessageQueueFactory> = provider.clone();
+  let shared_queue = shared_message_queue_factory.create();
   let mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory> = provider;
   let configurator = BalancingDispatcherConfigurator::new(
     &settings,
     executor,
     &message_dispatcher_shared_factory,
-    &shared_message_queue_factory,
+    shared_queue,
     &mailbox_shared_set_factory,
   );
 

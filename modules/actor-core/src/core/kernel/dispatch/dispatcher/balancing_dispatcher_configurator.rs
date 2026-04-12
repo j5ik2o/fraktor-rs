@@ -7,8 +7,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{
   balancing_dispatcher::BalancingDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
-  message_dispatcher_shared_factory::MessageDispatcherSharedFactory,
-  shared_message_queue_factory::SharedMessageQueueFactory,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory, shared_message_queue::SharedMessageQueue,
 };
 use crate::core::kernel::system::shared_factory::MailboxSharedSetFactory;
 
@@ -28,11 +27,10 @@ impl BalancingDispatcherConfigurator {
     settings: &DispatcherSettings,
     executor: ExecutorShared,
     message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
-    shared_message_queue_factory: &ArcShared<dyn SharedMessageQueueFactory>,
+    shared_queue: SharedMessageQueue,
     mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
   ) -> Self {
-    let dispatcher =
-      BalancingDispatcher::new(settings, executor, shared_message_queue_factory, mailbox_shared_set_factory);
+    let dispatcher = BalancingDispatcher::new(settings, executor, shared_queue, mailbox_shared_set_factory);
     Self { shared: message_dispatcher_shared_factory.create_message_dispatcher_shared(Box::new(dispatcher)) }
   }
 }
