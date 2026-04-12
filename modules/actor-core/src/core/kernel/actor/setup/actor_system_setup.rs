@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
+    ActorCellStateSharedFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
     context_pipe::ContextPipeWakerHandleSharedFactory,
@@ -90,7 +90,7 @@ impl ActorSystemSetup {
       + MessageDispatcherSharedFactory
       + SharedMessageQueueFactory
       + ActorRefSenderSharedFactory
-      + ActorSharedLockFactory
+      + ActorSharedFactory
       + ActorCellStateSharedFactory
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory

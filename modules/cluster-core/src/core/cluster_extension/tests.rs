@@ -6,7 +6,7 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorSharedLockFactory,
+    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorShared, ActorSharedFactory,
     ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
@@ -33,7 +33,7 @@ use fraktor_actor_core_rs::core::kernel::{
   util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -83,9 +83,9 @@ impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
   }
 }
 
-impl ActorSharedLockFactory for CountingSubscriberLockProvider {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
-    ActorSharedLockFactory::create(&self.inner, actor)
+impl ActorSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorSharedFactory::create(&self.inner, actor)
   }
 }
 

@@ -28,8 +28,8 @@ use std::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorSharedLockFactory,
-    ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorShared,
+    ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     error::ActorError,
     messaging::{
@@ -54,7 +54,7 @@ use fraktor_actor_core_rs::core::kernel::{
     shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
+use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::Handle;
 
 use crate::std::{
@@ -118,9 +118,9 @@ impl ActorRefSenderSharedFactory for CountingLockProvider {
   }
 }
 
-impl ActorSharedLockFactory for CountingLockProvider {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
-    ActorSharedLockFactory::create(&self.inner, actor)
+impl ActorSharedFactory for CountingLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorSharedFactory::create(&self.inner, actor)
   }
 }
 

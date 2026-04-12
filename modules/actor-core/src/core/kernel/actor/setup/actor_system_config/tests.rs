@@ -4,12 +4,12 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
-    ActorSharedLockFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorShared,
+    ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
@@ -130,10 +130,10 @@ impl ActorRefSenderSharedFactory for CountingLockProvider {
   }
 }
 
-impl ActorSharedLockFactory for CountingLockProvider {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
+impl ActorSharedFactory for CountingLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
     self.actor_shared_lock_calls.fetch_add(1, Ordering::SeqCst);
-    ActorSharedLockFactory::create(&self.inner, actor)
+    ActorSharedFactory::create(&self.inner, actor)
   }
 }
 

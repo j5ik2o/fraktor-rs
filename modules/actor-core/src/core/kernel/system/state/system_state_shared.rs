@@ -24,7 +24,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    ActorCell, ActorCellStateSharedFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutStateSharedFactory,
+    ActorCell, ActorCellStateSharedFactory, ActorSharedFactory, Pid, ReceiveTimeoutStateSharedFactory,
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::{
       ActorRef, ActorRefSenderSharedFactory,
@@ -209,10 +209,10 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.actor_ref_sender_shared_factory())
   }
 
-  /// Returns the actor shared-lock factory.
+  /// Returns the actor shared factory.
   #[must_use]
-  pub fn actor_shared_lock_factory(&self) -> ArcShared<dyn ActorSharedLockFactory> {
-    self.inner.with_read(|inner| inner.actor_shared_lock_factory())
+  pub fn actor_shared_factory(&self) -> ArcShared<dyn ActorSharedFactory> {
+    self.inner.with_read(|inner| inner.actor_shared_factory())
   }
 
   /// Returns the actor-cell-state shared factory.

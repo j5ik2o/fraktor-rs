@@ -37,7 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, Dispatchers, MessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -49,7 +49,6 @@ use crate::core::{
   },
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
-use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
 
 /// Runtime container responsible for executing an actor instance.
 ///
@@ -143,7 +142,7 @@ impl ActorCell {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
     let actor_ref_sender_shared_factory = system.actor_ref_sender_shared_factory();
-    let actor_shared_lock_factory = system.actor_shared_lock_factory();
+    let actor_shared_factory = system.actor_shared_factory();
     let actor_cell_state_shared_factory = system.actor_cell_state_shared_factory();
     let receive_timeout_state_shared_factory = system.receive_timeout_state_shared_factory();
     let message_invoker_shared_factory = system.message_invoker_shared_factory();
@@ -183,10 +182,9 @@ impl ActorCell {
     let Some(actor_factory_shared) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
-    let shared_lock = actor_shared_lock_factory.create(actor_factory_shared.with_write(|f| f.create()));
-    let actor = ActorShared::from_shared_lock(shared_lock);
-    let receive_timeout = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
-    let state = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
+    let actor_shared = actor_shared_factory.create(actor_factory_shared.with_write(|f| f.create()));
+    let receive_timeout_shared = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
+    let actor_cell_state_shared = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
 
     let tags = props.tags().clone();
     let cell = ArcShared::new(Self {
@@ -196,14 +194,14 @@ impl ActorCell {
       tags,
       system: system.downgrade(),
       factory: actor_factory_shared,
-      actor,
+      actor: actor_shared,
       pipeline: MessageInvokerPipeline::new(),
       mailbox,
       dispatcher_id,
       new_dispatcher,
       sender: actor_ref_sender_shared,
-      receive_timeout,
-      state,
+      receive_timeout: receive_timeout_shared,
+      state: actor_cell_state_shared,
       terminated: AtomicBool::new(false),
     });
 

@@ -11,20 +11,16 @@ use super::actor_lifecycle::Actor;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying actor, allowing safe
 /// concurrent access from multiple owners.
-pub(crate) struct ActorShared {
+#[derive(Clone)]
+pub struct ActorShared {
   inner: SharedLock<Box<dyn Actor + Send>>,
 }
-#[allow(dead_code)]
-impl ActorShared {
-  #[must_use]
-  pub(crate) const fn from_shared_lock(inner: SharedLock<Box<dyn Actor + Send>>) -> Self {
-    Self { inner }
-  }
-}
 
-impl Clone for ActorShared {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
+impl ActorShared {
+  /// Creates an `ActorShared` wrapper from an existing shared lock.
+  #[must_use]
+  pub const fn from_shared_lock(inner: SharedLock<Box<dyn Actor + Send>>) -> Self {
+    Self { inner }
   }
 }
 

@@ -30,7 +30,7 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    ActorCell, ActorCellStateSharedFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutStateSharedFactory,
+    ActorCell, ActorCellStateSharedFactory, ActorSharedFactory, Pid, ReceiveTimeoutStateSharedFactory,
     actor_path::{ActorPath, ActorPathParser, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::{
       ActorRef, ActorRefSenderSharedFactory,
@@ -108,7 +108,7 @@ pub struct SystemState {
   actor_ref_provider_callers_by_scheme: ActorRefProviderCallers,
   remote_watch_hook: RemoteWatchHookDynShared,
   actor_ref_sender_shared_factory: ArcShared<dyn ActorRefSenderSharedFactory>,
-  actor_shared_lock_factory: ArcShared<dyn ActorSharedLockFactory>,
+  actor_shared_factory: ArcShared<dyn ActorSharedFactory>,
   actor_cell_state_shared_factory: ArcShared<dyn ActorCellStateSharedFactory>,
   receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
   message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
@@ -137,7 +137,8 @@ impl SystemState {
     let config = ActorSystemConfig::default();
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
-    let event_stream_shared = config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
+    let event_stream_shared =
+      config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter_shared = DeadLetterShared::with_capacity(event_stream_shared.clone(), DEAD_LETTER_CAPACITY);
     let dispatchers = config.dispatchers().clone();
     let mailboxes = config.mailboxes().clone();
@@ -172,7 +173,7 @@ impl SystemState {
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       actor_ref_sender_shared_factory: config.actor_ref_sender_shared_factory().clone(),
-      actor_shared_lock_factory: config.actor_shared_lock_factory().clone(),
+      actor_shared_factory: config.actor_shared_factory().clone(),
       actor_cell_state_shared_factory: config.actor_cell_state_shared_factory().clone(),
       receive_timeout_state_shared_factory: config.receive_timeout_state_shared_factory().clone(),
       message_invoker_shared_factory: config.message_invoker_shared_factory().clone(),
@@ -237,7 +238,7 @@ impl SystemState {
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
       actor_ref_sender_shared_factory: config.actor_ref_sender_shared_factory().clone(),
-      actor_shared_lock_factory: config.actor_shared_lock_factory().clone(),
+      actor_shared_factory: config.actor_shared_factory().clone(),
       actor_cell_state_shared_factory: config.actor_cell_state_shared_factory().clone(),
       receive_timeout_state_shared_factory: config.receive_timeout_state_shared_factory().clone(),
       message_invoker_shared_factory: config.message_invoker_shared_factory().clone(),
@@ -322,7 +323,7 @@ impl SystemState {
     self.path_identity.system_name = config.system_name().to_string();
     self.path_identity.guardian_kind = config.default_guardian();
     self.actor_ref_sender_shared_factory = config.actor_ref_sender_shared_factory().clone();
-    self.actor_shared_lock_factory = config.actor_shared_lock_factory().clone();
+    self.actor_shared_factory = config.actor_shared_factory().clone();
     self.actor_cell_state_shared_factory = config.actor_cell_state_shared_factory().clone();
     self.receive_timeout_state_shared_factory = config.receive_timeout_state_shared_factory().clone();
     self.message_invoker_shared_factory = config.message_invoker_shared_factory().clone();
@@ -889,10 +890,10 @@ impl SystemState {
     self.actor_ref_sender_shared_factory.clone()
   }
 
-  /// Returns the actor shared-lock factory.
+  /// Returns the actor shared factory.
   #[must_use]
-  pub fn actor_shared_lock_factory(&self) -> ArcShared<dyn ActorSharedLockFactory> {
-    self.actor_shared_lock_factory.clone()
+  pub fn actor_shared_factory(&self) -> ArcShared<dyn ActorSharedFactory> {
+    self.actor_shared_factory.clone()
   }
 
   /// Returns the actor-cell-state shared factory.

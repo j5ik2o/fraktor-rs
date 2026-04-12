@@ -10,7 +10,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
+    ActorCellStateSharedFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
@@ -54,7 +54,7 @@ pub struct ActorSystemConfig {
   message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory>,
   shared_message_queue_factory: ArcShared<dyn SharedMessageQueueFactory>,
   actor_ref_sender_shared_factory: ArcShared<dyn ActorRefSenderSharedFactory>,
-  actor_shared_lock_factory: ArcShared<dyn ActorSharedLockFactory>,
+  actor_shared_factory: ArcShared<dyn ActorSharedFactory>,
   actor_cell_state_shared_factory: ArcShared<dyn ActorCellStateSharedFactory>,
   receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
   message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
@@ -131,7 +131,7 @@ impl ActorSystemConfig {
       + MessageDispatcherSharedFactory
       + SharedMessageQueueFactory
       + ActorRefSenderSharedFactory
-      + ActorSharedLockFactory
+      + ActorSharedFactory
       + ActorCellStateSharedFactory
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
@@ -148,7 +148,7 @@ impl ActorSystemConfig {
     self.message_dispatcher_shared_factory = provider.clone();
     self.shared_message_queue_factory = provider.clone();
     self.actor_ref_sender_shared_factory = provider.clone();
-    self.actor_shared_lock_factory = provider.clone();
+    self.actor_shared_factory = provider.clone();
     self.actor_cell_state_shared_factory = provider.clone();
     self.receive_timeout_state_shared_factory = provider.clone();
     self.message_invoker_shared_factory = provider.clone();
@@ -283,10 +283,10 @@ impl ActorSystemConfig {
     &self.actor_ref_sender_shared_factory
   }
 
-  /// Returns the actor shared-lock factory.
+  /// Returns the actor shared factory.
   #[must_use]
-  pub const fn actor_shared_lock_factory(&self) -> &ArcShared<dyn ActorSharedLockFactory> {
-    &self.actor_shared_lock_factory
+  pub const fn actor_shared_factory(&self) -> &ArcShared<dyn ActorSharedFactory> {
+    &self.actor_shared_factory
   }
 
   /// Returns the actor-cell-state shared factory.
@@ -393,7 +393,7 @@ impl Default for ActorSystemConfig {
       message_dispatcher_shared_factory,
       shared_message_queue_factory: shared_factory.clone(),
       actor_ref_sender_shared_factory: shared_factory.clone(),
-      actor_shared_lock_factory: shared_factory.clone(),
+      actor_shared_factory: shared_factory.clone(),
       actor_cell_state_shared_factory: shared_factory.clone(),
       receive_timeout_state_shared_factory: shared_factory.clone(),
       message_invoker_shared_factory: shared_factory.clone(),

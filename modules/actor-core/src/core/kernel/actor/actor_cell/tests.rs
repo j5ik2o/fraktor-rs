@@ -8,8 +8,8 @@ use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
     Actor, ActorCell as KernelActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory,
-    ActorContext, ActorLockFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
-    ReceiveTimeoutStateSharedFactory,
+    ActorContext, ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
@@ -217,9 +217,9 @@ impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
   }
 }
 
-impl ActorSharedLockFactory for TestDebugActorSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
-    self.create_lock(actor)
+impl ActorSharedFactory for TestDebugActorSharedFactory {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorShared::from_shared_lock(self.create_lock(actor))
   }
 }
 

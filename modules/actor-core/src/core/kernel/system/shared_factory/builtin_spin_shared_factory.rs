@@ -6,8 +6,8 @@ use fraktor_utils_core_rs::core::sync::{SharedLock, SharedRwLock, SpinSyncMutex,
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory,
-    ActorSharedLockFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory, ActorShared,
+    ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
@@ -30,10 +30,7 @@ use crate::core::kernel::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscriberSharedFactory,
   },
-  system::{
-    remote::{RemoteWatchHook, RemoteWatchHookHandle, RemoteWatchHookHandleShared, RemoteWatchHookHandleSharedFactory},
-    shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
-  },
+  system::shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
   util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
@@ -87,9 +84,9 @@ impl ActorRefSenderSharedFactory for BuiltinSpinSharedFactory {
   }
 }
 
-impl ActorSharedLockFactory for BuiltinSpinSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
-    Self::create_lock(actor)
+impl ActorSharedFactory for BuiltinSpinSharedFactory {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorShared::from_shared_lock(Self::create_lock(actor))
   }
 }
 
@@ -171,16 +168,6 @@ where
   fn create_actor_ref_provider_handle_shared(&self, provider: P) -> ActorRefProviderHandleShared<P> {
     let schemes = provider.supported_schemes();
     ActorRefProviderHandleShared::from_shared_lock(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
-  }
-}
-
-impl<P> RemoteWatchHookHandleSharedFactory<P> for BuiltinSpinSharedFactory
-where
-  P: ActorRefProvider + RemoteWatchHook + 'static,
-{
-  fn create_remote_watch_hook_handle_shared(&self, provider: P) -> RemoteWatchHookHandleShared<P> {
-    let schemes = provider.supported_schemes();
-    RemoteWatchHookHandleShared::from_shared_lock(Self::create_lock(RemoteWatchHookHandle::new(provider, schemes)))
   }
 }
 
