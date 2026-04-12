@@ -31,7 +31,10 @@ use crate::core::kernel::{
       Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
       MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
     },
-    mailbox::{MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy},
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy,
+    },
   },
   event::stream::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
@@ -242,6 +245,15 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugAct
 impl ActorCellStateSharedFactory for TestDebugActorSharedFactory {
   fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
     ActorCellStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
   }
 }
 

@@ -26,9 +26,15 @@ use crate::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory,
+    },
   },
   event::stream::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
@@ -190,6 +196,18 @@ impl ActorRefSenderSharedFactory for CountingAskSharedFactory {
 impl ActorSharedFactory for CountingAskSharedFactory {
   fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
     ActorSharedFactory::create(&self.inner, actor)
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for CountingAskSharedFactory {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
   }
 }
 

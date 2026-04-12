@@ -22,8 +22,11 @@ use crate::core::kernel::{
     },
     setup::{ActorSystemConfig, BootstrapSetup},
   },
-  dispatch::dispatcher::{
-    ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory, SharedMessageQueueFactory,
+  dispatch::{
+    dispatcher::{
+      ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory, SharedMessageQueueFactory,
+    },
+    mailbox::BoundedPriorityMessageQueueStateSharedFactory,
   },
   event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
   pattern::{CircuitBreakerSharedFactory, Clock},
@@ -103,6 +106,7 @@ impl ActorSystemSetup {
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory
       + ContextPipeWakerHandleSharedFactory
+      + BoundedPriorityMessageQueueStateSharedFactory
       + 'static, {
     Self { config: self.config.with_shared_factory(provider) }
   }

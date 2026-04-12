@@ -21,7 +21,10 @@ use crate::core::kernel::{
     messaging::{AnyMessage, message_invoker::MessageInvokerShared, system_message::SystemMessage},
     props::{MailboxConfig, MailboxConfigError},
   },
-  dispatch::mailbox::{BoundedStablePriorityMessageQueueStateSharedFactory, policy::MailboxPolicy},
+  dispatch::mailbox::{
+    BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
+    policy::MailboxPolicy,
+  },
   event::logging::LogLevel,
   system::{
     shared_factory::{MailboxLocked, MailboxSharedSet},
@@ -75,10 +78,16 @@ impl Mailbox {
   /// configuration contract is violated.
   pub fn new_from_config(
     config: &MailboxConfig,
+    bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
     bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   ) -> Result<Self, MailboxConfigError> {
     let shared_set = MailboxSharedSet::builtin();
-    Self::new_from_config_with_shared_set(config, &shared_set, bounded_stable_priority_state_shared_factory)
+    Self::new_from_config_with_shared_set(
+      config,
+      &shared_set,
+      bounded_priority_state_shared_factory,
+      bounded_stable_priority_state_shared_factory,
+    )
   }
 
   /// Creates a mailbox from configuration using the supplied lock bundle.
@@ -90,11 +99,15 @@ impl Mailbox {
   pub fn new_from_config_with_shared_set(
     config: &MailboxConfig,
     shared_set: &MailboxSharedSet,
+    bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
     bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   ) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
-    let queue =
-      super::mailboxes::create_message_queue_from_config(config, bounded_stable_priority_state_shared_factory)?;
+    let queue = super::mailboxes::create_message_queue_from_config(
+      config,
+      bounded_priority_state_shared_factory,
+      bounded_stable_priority_state_shared_factory,
+    )?;
     Ok(Self::new_with_queue_and_shared_set(policy, queue, shared_set))
   }
 

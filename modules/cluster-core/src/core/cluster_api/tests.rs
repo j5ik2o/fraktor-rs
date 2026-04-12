@@ -30,9 +30,15 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory,
+    },
   },
   event::stream::{
     EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber,
@@ -106,6 +112,18 @@ impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
 impl ActorSharedFactory for CountingSubscriberLockProvider {
   fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
     ActorSharedFactory::create(&self.inner, actor)
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for CountingSubscriberLockProvider {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
   }
 }
 

@@ -34,8 +34,8 @@ use crate::core::kernel::{
       SharedMessageQueueFactory,
     },
     mailbox::{
-      BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared,
-      BoundedStablePriorityMessageQueueStateSharedFactory, Mailboxes,
+      BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueState,
+      BoundedStablePriorityMessageQueueStateShared, BoundedStablePriorityMessageQueueStateSharedFactory, Mailboxes,
     },
   },
   event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
@@ -187,6 +187,7 @@ pub struct ActorSystemConfig {
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
   context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
+  bounded_priority_message_queue_state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
   bounded_stable_priority_message_queue_state_shared_factory:
     ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry,
@@ -267,6 +268,7 @@ impl ActorSystemConfig {
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory
       + ContextPipeWakerHandleSharedFactory
+      + BoundedPriorityMessageQueueStateSharedFactory
       + 'static, {
     let provider = ArcShared::new(provider);
     self.executor_shared_factory = provider.clone();
@@ -284,6 +286,7 @@ impl ActorSystemConfig {
     self.event_stream_subscriber_shared_factory = provider.clone();
     self.mailbox_shared_set_factory = provider.clone();
     self.context_pipe_waker_handle_shared_factory = provider.clone();
+    self.bounded_priority_message_queue_state_shared_factory = provider.clone();
     self.bounded_stable_priority_message_queue_state_shared_factory =
       ArcShared::new(ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(provider));
     self
@@ -488,6 +491,14 @@ impl ActorSystemConfig {
     &self.context_pipe_waker_handle_shared_factory
   }
 
+  /// Returns the bounded priority message-queue-state shared factory.
+  #[must_use]
+  pub const fn bounded_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
+    &self.bounded_priority_message_queue_state_shared_factory
+  }
+
   /// Returns the bounded stable-priority message-queue-state shared factory.
   #[must_use]
   pub const fn bounded_stable_priority_message_queue_state_shared_factory(
@@ -560,6 +571,7 @@ impl Default for ActorSystemConfig {
       event_stream_subscriber_shared_factory: shared_factory.clone(),
       mailbox_shared_set_factory: shared_factory.clone(),
       context_pipe_waker_handle_shared_factory: shared_factory.clone(),
+      bounded_priority_message_queue_state_shared_factory: shared_factory.clone(),
       bounded_stable_priority_message_queue_state_shared_factory: ArcShared::new(
         ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(shared_factory),
       ),

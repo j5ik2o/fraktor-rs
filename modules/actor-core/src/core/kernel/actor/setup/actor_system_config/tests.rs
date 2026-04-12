@@ -24,9 +24,16 @@ use crate::core::kernel::{
     scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
     setup::ActorSystemConfig,
   },
-  dispatch::dispatcher::{
-    DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+  dispatch::{
+    dispatcher::{
+      DEFAULT_DISPATCHER_ID, Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher,
+      MessageDispatcherShared, MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory,
+      TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory,
+    },
   },
   event::stream::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
@@ -185,6 +192,18 @@ impl ActorSharedFactory for CountingLockProvider {
   fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
     self.actor_shared_lock_calls.fetch_add(1, Ordering::SeqCst);
     ActorSharedFactory::create(&self.inner, actor)
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for CountingLockProvider {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
   }
 }
 

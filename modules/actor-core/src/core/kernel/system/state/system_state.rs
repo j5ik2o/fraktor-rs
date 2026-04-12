@@ -58,7 +58,10 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{Dispatchers, MessageDispatcherShared},
-    mailbox::{BoundedStablePriorityMessageQueueStateSharedFactory, MailboxRegistryError, Mailboxes, MessageQueue},
+    mailbox::{
+      BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
+      MailboxRegistryError, Mailboxes, MessageQueue,
+    },
   },
   event::{
     logging::{LogEvent, LogLevel},
@@ -118,6 +121,7 @@ pub struct SystemState {
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
   context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
+  bounded_priority_message_queue_state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
   bounded_stable_priority_message_queue_state_shared_factory:
     ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   dispatchers: Dispatchers,
@@ -184,6 +188,9 @@ impl SystemState {
       event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
       mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
       context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
+      bounded_priority_message_queue_state_shared_factory: config
+        .bounded_priority_message_queue_state_shared_factory()
+        .clone(),
       bounded_stable_priority_message_queue_state_shared_factory: config
         .bounded_stable_priority_message_queue_state_shared_factory()
         .clone(),
@@ -252,6 +259,9 @@ impl SystemState {
       event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
       mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
       context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
+      bounded_priority_message_queue_state_shared_factory: config
+        .bounded_priority_message_queue_state_shared_factory()
+        .clone(),
       bounded_stable_priority_message_queue_state_shared_factory: config
         .bounded_stable_priority_message_queue_state_shared_factory()
         .clone(),
@@ -341,6 +351,8 @@ impl SystemState {
     self.event_stream_subscriber_shared_factory = config.event_stream_subscriber_shared_factory().clone();
     self.mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
     self.context_pipe_waker_handle_shared_factory = config.context_pipe_waker_handle_shared_factory().clone();
+    self.bounded_priority_message_queue_state_shared_factory =
+      config.bounded_priority_message_queue_state_shared_factory().clone();
     self.bounded_stable_priority_message_queue_state_shared_factory =
       config.bounded_stable_priority_message_queue_state_shared_factory().clone();
     self.dispatchers = config.dispatchers().clone();
@@ -964,6 +976,14 @@ impl SystemState {
     self.bounded_stable_priority_message_queue_state_shared_factory.clone()
   }
 
+  /// Returns the bounded priority message-queue-state shared factory.
+  #[must_use]
+  pub fn bounded_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
+    self.bounded_priority_message_queue_state_shared_factory.clone()
+  }
+
   /// Returns the cumulative number of `Dispatchers::resolve` invocations
   /// observed by the actor system's dispatcher registry.
   ///
@@ -990,7 +1010,11 @@ impl SystemState {
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn create_mailbox_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
-    self.mailboxes.create_message_queue(id, &self.bounded_stable_priority_message_queue_state_shared_factory)
+    self.mailboxes.create_message_queue(
+      id,
+      &self.bounded_priority_message_queue_state_shared_factory,
+      &self.bounded_stable_priority_message_queue_state_shared_factory,
+    )
   }
 
   /// Returns the remoting configuration when it has been configured.

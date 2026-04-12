@@ -19,7 +19,6 @@ use crate::core::kernel::{
     unbounded_priority_mailbox_type::UnboundedPriorityMailboxType,
     unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 #[cfg(test)]
@@ -44,6 +43,7 @@ pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn
 /// (e.g. `stable_priority` enabled without a priority generator).
 pub(crate) fn create_message_queue_from_config(
   config: &MailboxConfig,
+  bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
   bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
 ) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
   config.validate()?;
@@ -58,7 +58,10 @@ pub(crate) fn create_message_queue_from_config(
         .create(),
       );
     }
-    return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
+    return Ok(
+      priority_mailbox_type_from_config(generator.clone(), bounded_priority_state_shared_factory, config.policy())
+        .create(),
+    );
   }
   if config.requirement().needs_control_aware() {
     let mailbox_type: Box<dyn MailboxType> = Box::new(UnboundedControlAwareMailboxType::new());
@@ -72,13 +75,12 @@ pub(crate) fn create_message_queue_from_config(
 
 fn priority_mailbox_type_from_config(
   generator: ArcShared<dyn MessagePriorityGenerator>,
+  state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
   policy: MailboxPolicy,
 ) -> Box<dyn MailboxType> {
   match policy.capacity() {
     | MailboxCapacity::Bounded { capacity } => {
-      let state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> =
-        ArcShared::new(BuiltinSpinSharedFactory::new());
-      Box::new(BoundedPriorityMailboxType::new(generator, state_shared_factory, capacity, policy.overflow()))
+      Box::new(BoundedPriorityMailboxType::new(generator, state_shared_factory.clone(), capacity, policy.overflow()))
     },
     | MailboxCapacity::Unbounded => Box::new(UnboundedPriorityMailboxType::new(generator)),
   }
@@ -179,10 +181,15 @@ impl Mailboxes {
   pub fn create_message_queue(
     &self,
     id: &str,
+    bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
     bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   ) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
     let config = self.resolve(id)?;
-    Ok(create_message_queue_from_config(&config, bounded_stable_priority_state_shared_factory)?)
+    Ok(create_message_queue_from_config(
+      &config,
+      bounded_priority_state_shared_factory,
+      bounded_stable_priority_state_shared_factory,
+    )?)
   }
 
   /// Ensures the default mailbox configuration is registered.
