@@ -18,7 +18,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
@@ -49,8 +49,8 @@ use crate::core::kernel::{
       SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
       tick_driver::{
-        TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverKind, TickDriverProvisioningContext,
-        TickExecutorSignal, TickFeed, next_tick_driver_id,
+        TickDriverBundle, TickDriverControl, TickDriverControlSharedFactory, TickDriverHandle, TickDriverKind,
+        TickDriverProvisioningContext, TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     },
     spawn::{NameRegistryError, SpawnError},
@@ -142,7 +142,8 @@ impl SystemState {
     let mailboxes = config.mailboxes().clone();
     let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
-    let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
+    let tick_driver_bundle =
+      Self::default_tick_driver_bundle(scheduler_config.resolution(), &**config.tick_driver_control_shared_factory());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -205,7 +206,8 @@ impl SystemState {
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
-    let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
+    let tick_driver_bundle =
+      Self::default_tick_driver_bundle(scheduler_config.resolution(), &**config.tick_driver_control_shared_factory());
     let mut state = Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -278,15 +280,19 @@ impl SystemState {
     let tick_driver_config = config
       .tick_driver_config()
       .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
-    let (runtime, snapshot) = TickDriverBootstrap::provision(tick_driver_config, &provisioning)
-      .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
+    let (runtime, snapshot) =
+      TickDriverBootstrap::provision(tick_driver_config, &provisioning, &**config.tick_driver_control_shared_factory())
+        .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
     state.tick_driver_bundle = runtime;
     state.tick_driver_snapshot = Some(snapshot);
 
     Ok(state)
   }
 
-  fn default_tick_driver_bundle(resolution: Duration) -> TickDriverBundle {
+  fn default_tick_driver_bundle(
+    resolution: Duration,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> TickDriverBundle {
     struct NoopDriverControl;
 
     impl TickDriverControl for NoopDriverControl {
@@ -296,7 +302,7 @@ impl SystemState {
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
     let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
     TickDriverBundle::new(handle, feed)
   }

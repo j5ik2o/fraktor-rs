@@ -15,7 +15,10 @@ use crate::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
-    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{TickDriverConfig, TickDriverControlSharedFactory},
+    },
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::{
@@ -91,6 +94,7 @@ impl ActorSystemSetup {
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
       + ActorFutureSharedFactory<AskResult>
+      + TickDriverControlSharedFactory
       + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory

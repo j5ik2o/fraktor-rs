@@ -23,7 +23,9 @@ use fraktor_actor_core_rs::core::kernel::{
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
+      tick_driver::{
+        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
+      },
     },
     setup::ActorSystemConfig,
   },
@@ -144,6 +146,19 @@ impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
 impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
   fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl TickDriverControlSharedFactory for CountingSubscriberLockProvider {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
+  }
+
+  fn create_tick_driver_control_shared_from_shared(
+    &self,
+    shared: SharedLock<Box<dyn TickDriverControl>>,
+  ) -> TickDriverControlShared {
+    TickDriverControlSharedFactory::create_tick_driver_control_shared_from_shared(&self.inner, shared)
   }
 }
 

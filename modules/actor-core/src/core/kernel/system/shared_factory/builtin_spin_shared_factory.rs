@@ -13,6 +13,7 @@ use crate::core::kernel::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
     },
     messaging::message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
+    scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
   },
   dispatch::{
     dispatcher::{
@@ -141,6 +142,19 @@ where
 {
   fn create_actor_future_shared(&self, future: ActorFuture<T>) -> ActorFutureShared<T> {
     ActorFutureShared::from_shared_lock(Self::create_lock(future))
+  }
+}
+
+impl TickDriverControlSharedFactory for BuiltinSpinSharedFactory {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlShared::from_shared(Self::create_lock(control))
+  }
+
+  fn create_tick_driver_control_shared_from_shared(
+    &self,
+    shared: SharedLock<Box<dyn TickDriverControl>>,
+  ) -> TickDriverControlShared {
+    TickDriverControlShared::from_shared(shared)
   }
 }
 

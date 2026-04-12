@@ -1,18 +1,15 @@
 //! Handle owning the lifetime of a running tick driver instance.
 
-use alloc::boxed::Box;
 use core::{marker::PhantomData, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::SharedLock;
-
-use super::{TickDriverControl, TickDriverId, TickDriverKind};
+use super::{TickDriverControlShared, TickDriverId, TickDriverKind};
 
 /// Handle owning the lifetime of a running tick driver instance.
 pub struct TickDriverHandle {
   id:         TickDriverId,
   kind:       TickDriverKind,
   resolution: Duration,
-  control:    SharedLock<Box<dyn TickDriverControl>>,
+  control:    TickDriverControlShared,
   _marker:    PhantomData<()>,
 }
 
@@ -31,11 +28,11 @@ impl Clone for TickDriverHandle {
 impl TickDriverHandle {
   /// Creates a new driver handle.
   #[must_use]
-  pub fn new(
+  pub const fn new(
     id: TickDriverId,
     kind: TickDriverKind,
     resolution: Duration,
-    control: SharedLock<Box<dyn TickDriverControl>>,
+    control: TickDriverControlShared,
   ) -> Self {
     Self { id, kind, resolution, control, _marker: PhantomData }
   }
@@ -59,12 +56,12 @@ impl TickDriverHandle {
   }
 
   #[must_use]
-  pub(crate) fn control(&self) -> SharedLock<Box<dyn TickDriverControl>> {
+  pub(crate) fn control(&self) -> TickDriverControlShared {
     self.control.clone()
   }
 
   /// Stops the underlying driver.
   pub fn shutdown(&mut self) {
-    self.control.with_lock(|control| control.shutdown());
+    self.control.shutdown();
   }
 }

@@ -8,7 +8,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::{
   collections::queue::capabilities::{QueueCapabilityRegistry, QueueCapabilitySet},
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SpinSyncMutex},
   timing::delay::{DelayFuture, DelayProvider},
 };
 
@@ -29,8 +29,8 @@ use crate::core::{
         task_run::{TaskRunError, TaskRunPriority},
         tick_driver::{
           AutoDriverMetadata, AutoProfileKind, ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig,
-          TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump,
-          TickFeedHandle,
+          TickDriverControl, TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId,
+          TickDriverKind, TickExecutorPump, TickFeedHandle,
         },
       },
       setup::ActorSystemConfig,
@@ -182,9 +182,13 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    _feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id, self.kind, self.resolution, control))
   }
 }

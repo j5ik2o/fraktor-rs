@@ -22,6 +22,7 @@ use crate::core::kernel::{
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
+    scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
   dispatch::{
@@ -218,6 +219,19 @@ impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
 impl ActorSharedLockFactory for TestDebugActorSharedFactory {
   fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
     self.create_lock(actor)
+  }
+}
+
+impl TickDriverControlSharedFactory for TestDebugActorSharedFactory {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlShared::from_shared(self.create_lock(control))
+  }
+
+  fn create_tick_driver_control_shared_from_shared(
+    &self,
+    shared: SharedLock<Box<dyn TickDriverControl>>,
+  ) -> TickDriverControlShared {
+    TickDriverControlShared::from_shared(shared)
   }
 }
 

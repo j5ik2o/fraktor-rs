@@ -17,7 +17,10 @@ use crate::core::kernel::{
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
-    scheduler::{SchedulerConfig, tick_driver::TickDriverConfig},
+    scheduler::{
+      SchedulerConfig,
+      tick_driver::{TickDriverConfig, TickDriverControlSharedFactory},
+    },
   },
   dispatch::{
     dispatcher::{
@@ -55,6 +58,7 @@ pub struct ActorSystemConfig {
   receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
   message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
   actor_future_shared_factory: ArcShared<dyn ActorFutureSharedFactory<AskResult>>,
+  tick_driver_control_shared_factory: ArcShared<dyn TickDriverControlSharedFactory>,
   local_actor_ref_provider_handle_shared_factory:
     ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>>,
   event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory>,
@@ -130,6 +134,7 @@ impl ActorSystemConfig {
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
       + ActorFutureSharedFactory<AskResult>
+      + TickDriverControlSharedFactory
       + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
@@ -145,6 +150,7 @@ impl ActorSystemConfig {
     self.receive_timeout_state_shared_factory = provider.clone();
     self.message_invoker_shared_factory = provider.clone();
     self.actor_future_shared_factory = provider.clone();
+    self.tick_driver_control_shared_factory = provider.clone();
     self.local_actor_ref_provider_handle_shared_factory = provider.clone();
     self.event_stream_shared_factory = provider.clone();
     self.event_stream_subscriber_shared_factory = provider.clone();
@@ -303,6 +309,12 @@ impl ActorSystemConfig {
     &self.actor_future_shared_factory
   }
 
+  /// Returns the tick-driver-control shared factory.
+  #[must_use]
+  pub const fn tick_driver_control_shared_factory(&self) -> &ArcShared<dyn TickDriverControlSharedFactory> {
+    &self.tick_driver_control_shared_factory
+  }
+
   /// Returns the local actor-ref-provider handle shared factory.
   #[must_use]
   pub const fn local_actor_ref_provider_handle_shared_factory(
@@ -376,6 +388,7 @@ impl Default for ActorSystemConfig {
       receive_timeout_state_shared_factory: shared_factory.clone(),
       message_invoker_shared_factory: shared_factory.clone(),
       actor_future_shared_factory: shared_factory.clone(),
+      tick_driver_control_shared_factory: shared_factory.clone(),
       local_actor_ref_provider_handle_shared_factory: shared_factory.clone(),
       event_stream_shared_factory: shared_factory.clone(),
       event_stream_subscriber_shared_factory: shared_factory.clone(),

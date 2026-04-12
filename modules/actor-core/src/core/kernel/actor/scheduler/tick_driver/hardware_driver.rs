@@ -3,12 +3,12 @@
 use alloc::boxed::Box;
 use core::{ffi::c_void, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
-  HardwareKind, TickDriver, TickDriverControl, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
-  TickFeedHandle, TickPulseHandler, TickPulseSource, tick_driver_trait::next_tick_driver_id,
+  HardwareKind, TickDriver, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
+  TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle, TickPulseHandler, TickPulseSource,
+  tick_driver_trait::next_tick_driver_id,
 };
 
 /// Tick driver that bridges hardware pulse sources into tick feeds.
@@ -45,13 +45,17 @@ impl TickDriver for HardwareTickDriver {
     self.pulse.resolution()
   }
 
-  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
     let handler = TickPulseHandler { func: pulse_trampoline, ctx: ptr };
     self.pulse.set_callback(handler);
     self.pulse.enable()?;
-    let control = build_control(ptr, feed);
+    let control = build_control(ptr, feed, tick_driver_control_shared_factory);
     // Access fields directly to avoid trait method ambiguity.
     let id = self.id;
     let kind = TickDriverKind::Hardware { source: self.kind };
@@ -60,9 +64,13 @@ impl TickDriver for HardwareTickDriver {
   }
 }
 
-fn build_control(ctx: *mut c_void, feed: TickFeedHandle) -> SharedLock<Box<dyn TickDriverControl>> {
+fn build_control(
+  ctx: *mut c_void,
+  feed: TickFeedHandle,
+  tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+) -> TickDriverControlShared {
   let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(ctx, feed));
-  SharedLock::new_with_driver::<SpinSyncMutex<_>>(control)
+  tick_driver_control_shared_factory.create_tick_driver_control_shared(control)
 }
 
 struct PulseContext {

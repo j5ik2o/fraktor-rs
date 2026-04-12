@@ -4,7 +4,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{super::booting_state::BootingSystemState, SystemState};
 use crate::core::kernel::{
@@ -23,8 +23,9 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
-        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
+        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl,
+        TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+        TickExecutorPump, TickFeedHandle,
       },
     },
     setup::ActorSystemConfig,
@@ -135,9 +136,13 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    _feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
   }
 }
