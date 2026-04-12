@@ -34,6 +34,8 @@ use crate::core::kernel::{
     mailbox::{
       BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
       BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy,
+      UnboundedPriorityMessageQueueState, UnboundedPriorityMessageQueueStateShared,
+      UnboundedPriorityMessageQueueStateSharedFactory,
     },
   },
   event::stream::{
@@ -254,6 +256,15 @@ impl BoundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFacto
     state: BoundedPriorityMessageQueueState,
   ) -> BoundedPriorityMessageQueueStateShared {
     BoundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl UnboundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_unbounded_priority_message_queue_state_shared(
+    &self,
+    state: UnboundedPriorityMessageQueueState,
+  ) -> UnboundedPriorityMessageQueueStateShared {
+    UnboundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
   }
 }
 

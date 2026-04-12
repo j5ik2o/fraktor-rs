@@ -11,7 +11,7 @@ use crate::core::kernel::{
   },
   dispatch::mailbox::{
     BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory, Envelope,
-    MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError,
+    MailboxOverflowStrategy, MailboxPolicy, MailboxRegistryError, UnboundedPriorityMessageQueueStateSharedFactory,
   },
   system::shared_factory::BuiltinSpinSharedFactory,
 };
@@ -21,6 +21,10 @@ fn bounded_priority_state_shared_factory() -> ArcShared<dyn BoundedPriorityMessa
 }
 
 fn bounded_stable_state_shared_factory() -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
+  ArcShared::new(BuiltinSpinSharedFactory::new())
+}
+
+fn unbounded_priority_state_shared_factory() -> ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory> {
   ArcShared::new(BuiltinSpinSharedFactory::new())
 }
 
@@ -57,7 +61,12 @@ fn create_message_queue_uses_registered_mailbox_policy() {
   registry.register("bounded", config).expect("register mailbox");
 
   let queue = registry
-    .create_message_queue("bounded", &bounded_priority_state_shared_factory(), &bounded_stable_state_shared_factory())
+    .create_message_queue(
+      "bounded",
+      &bounded_priority_state_shared_factory(),
+      &unbounded_priority_state_shared_factory(),
+      &bounded_stable_state_shared_factory(),
+    )
     .expect("create queue");
   assert!(queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).is_ok());
   assert!(matches!(queue.enqueue(Envelope::new(AnyMessage::new(2_u32))), Err(SendError::Full(_))));
@@ -72,6 +81,7 @@ fn create_message_queue_rejects_stable_priority_without_generator() {
   let result = registry.create_message_queue(
     "bad",
     &bounded_priority_state_shared_factory(),
+    &unbounded_priority_state_shared_factory(),
     &bounded_stable_state_shared_factory(),
   );
   assert!(matches!(
@@ -88,7 +98,12 @@ fn create_message_queue_from_control_aware_requirement() {
   registry.register("ctrl", config).expect("register mailbox");
 
   let queue = registry
-    .create_message_queue("ctrl", &bounded_priority_state_shared_factory(), &bounded_stable_state_shared_factory())
+    .create_message_queue(
+      "ctrl",
+      &bounded_priority_state_shared_factory(),
+      &unbounded_priority_state_shared_factory(),
+      &bounded_stable_state_shared_factory(),
+    )
     .expect("create queue");
   // 制御認識キューは通常メッセージも受け入れられる
   assert!(queue.enqueue(Envelope::new(AnyMessage::new(42_u32))).is_ok());
@@ -106,6 +121,7 @@ fn create_message_queue_rejects_bounded_with_deque() {
   let result = registry.create_message_queue(
     "bounded-deque",
     &bounded_priority_state_shared_factory(),
+    &unbounded_priority_state_shared_factory(),
     &bounded_stable_state_shared_factory(),
   );
   assert!(matches!(result, Err(MailboxRegistryError::InvalidConfig(MailboxConfigError::BoundedWithDeque))));

@@ -23,7 +23,7 @@ use crate::core::kernel::{
   },
   dispatch::mailbox::{
     BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
-    policy::MailboxPolicy,
+    UnboundedPriorityMessageQueueStateSharedFactory, policy::MailboxPolicy,
   },
   event::logging::LogLevel,
   system::{
@@ -79,6 +79,7 @@ impl Mailbox {
   pub fn new_from_config(
     config: &MailboxConfig,
     bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
+    unbounded_priority_state_shared_factory: &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
     bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   ) -> Result<Self, MailboxConfigError> {
     let shared_set = MailboxSharedSet::builtin();
@@ -86,6 +87,7 @@ impl Mailbox {
       config,
       &shared_set,
       bounded_priority_state_shared_factory,
+      unbounded_priority_state_shared_factory,
       bounded_stable_priority_state_shared_factory,
     )
   }
@@ -100,12 +102,14 @@ impl Mailbox {
     config: &MailboxConfig,
     shared_set: &MailboxSharedSet,
     bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
+    unbounded_priority_state_shared_factory: &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
     bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   ) -> Result<Self, MailboxConfigError> {
     let policy = config.policy();
     let queue = super::mailboxes::create_message_queue_from_config(
       config,
       bounded_priority_state_shared_factory,
+      unbounded_priority_state_shared_factory,
       bounded_stable_priority_state_shared_factory,
     )?;
     Ok(Self::new_with_queue_and_shared_set(policy, queue, shared_set))

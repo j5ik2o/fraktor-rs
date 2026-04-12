@@ -3,7 +3,11 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
-  dispatch::mailbox::{MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue},
+  dispatch::mailbox::{
+    MessagePriorityGenerator, UnboundedPriorityMessageQueueState, UnboundedPriorityMessageQueueStateSharedFactory,
+    envelope::Envelope, message_queue::MessageQueue,
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 /// Priority generator that assigns priority based on the i32 payload value.
@@ -18,7 +22,9 @@ impl MessagePriorityGenerator for PayloadPriorityGenerator {
 #[test]
 fn dequeues_in_priority_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).unwrap();
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).unwrap();
@@ -37,14 +43,18 @@ fn dequeues_in_priority_order() {
 #[test]
 fn dequeue_empty_returns_none() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
   assert!(queue.dequeue().is_none());
 }
 
 #[test]
 fn number_of_messages_tracks_count() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   assert_eq!(queue.number_of_messages(), 0);
   queue.enqueue(Envelope::new(AnyMessage::new(1_i32))).unwrap();
@@ -59,7 +69,9 @@ fn number_of_messages_tracks_count() {
 #[test]
 fn clean_up_removes_all_messages() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_i32))).unwrap();
   queue.enqueue(Envelope::new(AnyMessage::new(2_i32))).unwrap();
@@ -74,7 +86,9 @@ fn clean_up_removes_all_messages() {
 #[test]
 fn has_messages_reflects_queue_state() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   assert!(!queue.has_messages());
   queue.enqueue(Envelope::new(AnyMessage::new(1_i32))).unwrap();
@@ -86,7 +100,9 @@ fn has_messages_reflects_queue_state() {
 #[test]
 fn struct_based_priority_generator_dequeues_in_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = UnboundedPriorityMessageQueue::new(pgen);
+  let state_shared = BuiltinSpinSharedFactory::new()
+    .create_unbounded_priority_message_queue_state_shared(UnboundedPriorityMessageQueueState::new());
+  let queue = UnboundedPriorityMessageQueue::new(pgen, state_shared);
 
   queue.enqueue(Envelope::new(AnyMessage::new(50_i32))).expect("enqueue 50");
   queue.enqueue(Envelope::new(AnyMessage::new(5_i32))).expect("enqueue 5");

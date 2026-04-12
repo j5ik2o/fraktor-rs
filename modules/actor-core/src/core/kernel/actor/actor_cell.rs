@@ -166,6 +166,7 @@ impl ActorCell {
           &mailbox_config,
           &shared_set,
           &system.bounded_priority_message_queue_state_shared_factory(),
+          &system.unbounded_priority_message_queue_state_shared_factory(),
           &system.bounded_stable_priority_message_queue_state_shared_factory(),
         )
         .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,

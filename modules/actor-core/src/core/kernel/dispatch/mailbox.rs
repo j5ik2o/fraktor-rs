@@ -70,6 +70,9 @@ mod unbounded_message_queue;
 mod unbounded_priority_mailbox_type;
 /// Unbounded priority message queue backed by a binary heap.
 mod unbounded_priority_message_queue;
+mod unbounded_priority_message_queue_state;
+mod unbounded_priority_message_queue_state_shared;
+mod unbounded_priority_message_queue_state_shared_factory;
 /// Unbounded stable-priority mailbox type factory.
 mod unbounded_stable_priority_mailbox_type;
 /// Unbounded stable-priority message queue with FIFO ordering within equal priorities.
@@ -115,6 +118,9 @@ pub use unbounded_mailbox_type::UnboundedMailboxType;
 pub use unbounded_message_queue::UnboundedMessageQueue;
 pub use unbounded_priority_mailbox_type::UnboundedPriorityMailboxType;
 pub use unbounded_priority_message_queue::UnboundedPriorityMessageQueue;
+pub use unbounded_priority_message_queue_state::UnboundedPriorityMessageQueueState;
+pub use unbounded_priority_message_queue_state_shared::UnboundedPriorityMessageQueueStateShared;
+pub use unbounded_priority_message_queue_state_shared_factory::UnboundedPriorityMessageQueueStateSharedFactory;
 pub use unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType;
 pub use unbounded_stable_priority_message_queue::UnboundedStablePriorityMessageQueue;
 

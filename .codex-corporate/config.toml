@@ -13,6 +13,8 @@ apps = false
 shell_snapshot = true
 steer = true
 multi_agent = true
+js_repl = true
+prevent_idle_sleep = true
 
 [agents]
 max_threads = 4

@@ -50,7 +50,7 @@ use crate::core::kernel::{
     dispatcher::MessageDispatcherShared,
     mailbox::{
       BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
-      MailboxRegistryError, MessageQueue,
+      MailboxRegistryError, MessageQueue, UnboundedPriorityMessageQueueStateSharedFactory,
     },
   },
   event::{
@@ -268,20 +268,28 @@ impl SystemStateShared {
     self.inner.with_read(|inner| inner.context_pipe_waker_handle_shared_factory())
   }
 
-  /// Returns the bounded stable-priority message-queue-state shared factory.
-  #[must_use]
-  pub fn bounded_stable_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
-    self.inner.with_read(|inner| inner.bounded_stable_priority_message_queue_state_shared_factory())
-  }
-
   /// Returns the bounded priority message-queue-state shared factory.
   #[must_use]
   pub fn bounded_priority_message_queue_state_shared_factory(
     &self,
   ) -> ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
     self.inner.with_read(|inner| inner.bounded_priority_message_queue_state_shared_factory())
+  }
+
+  /// Returns the unbounded priority message-queue-state shared factory.
+  #[must_use]
+  pub fn unbounded_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory> {
+    self.inner.with_read(|inner| inner.unbounded_priority_message_queue_state_shared_factory())
+  }
+
+  /// Returns the bounded stable-priority message-queue-state shared factory.
+  #[must_use]
+  pub fn bounded_stable_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
+    self.inner.with_read(|inner| inner.bounded_stable_priority_message_queue_state_shared_factory())
   }
 
   /// Creates a weak reference to this system state.

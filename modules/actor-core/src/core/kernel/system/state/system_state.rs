@@ -60,7 +60,7 @@ use crate::core::kernel::{
     dispatcher::{Dispatchers, MessageDispatcherShared},
     mailbox::{
       BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
-      MailboxRegistryError, Mailboxes, MessageQueue,
+      MailboxRegistryError, Mailboxes, MessageQueue, UnboundedPriorityMessageQueueStateSharedFactory,
     },
   },
   event::{
@@ -122,6 +122,7 @@ pub struct SystemState {
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
   context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
   bounded_priority_message_queue_state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
+  unbounded_priority_message_queue_state_shared_factory: ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
   bounded_stable_priority_message_queue_state_shared_factory:
     ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   dispatchers: Dispatchers,
@@ -190,6 +191,9 @@ impl SystemState {
       context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
       bounded_priority_message_queue_state_shared_factory: config
         .bounded_priority_message_queue_state_shared_factory()
+        .clone(),
+      unbounded_priority_message_queue_state_shared_factory: config
+        .unbounded_priority_message_queue_state_shared_factory()
         .clone(),
       bounded_stable_priority_message_queue_state_shared_factory: config
         .bounded_stable_priority_message_queue_state_shared_factory()
@@ -261,6 +265,9 @@ impl SystemState {
       context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
       bounded_priority_message_queue_state_shared_factory: config
         .bounded_priority_message_queue_state_shared_factory()
+        .clone(),
+      unbounded_priority_message_queue_state_shared_factory: config
+        .unbounded_priority_message_queue_state_shared_factory()
         .clone(),
       bounded_stable_priority_message_queue_state_shared_factory: config
         .bounded_stable_priority_message_queue_state_shared_factory()
@@ -353,6 +360,8 @@ impl SystemState {
     self.context_pipe_waker_handle_shared_factory = config.context_pipe_waker_handle_shared_factory().clone();
     self.bounded_priority_message_queue_state_shared_factory =
       config.bounded_priority_message_queue_state_shared_factory().clone();
+    self.unbounded_priority_message_queue_state_shared_factory =
+      config.unbounded_priority_message_queue_state_shared_factory().clone();
     self.bounded_stable_priority_message_queue_state_shared_factory =
       config.bounded_stable_priority_message_queue_state_shared_factory().clone();
     self.dispatchers = config.dispatchers().clone();
@@ -968,20 +977,28 @@ impl SystemState {
     self.context_pipe_waker_handle_shared_factory.clone()
   }
 
-  /// Returns the bounded stable-priority message-queue-state shared factory.
-  #[must_use]
-  pub fn bounded_stable_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
-    self.bounded_stable_priority_message_queue_state_shared_factory.clone()
-  }
-
   /// Returns the bounded priority message-queue-state shared factory.
   #[must_use]
   pub fn bounded_priority_message_queue_state_shared_factory(
     &self,
   ) -> ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
     self.bounded_priority_message_queue_state_shared_factory.clone()
+  }
+
+  /// Returns the unbounded priority message-queue-state shared factory.
+  #[must_use]
+  pub fn unbounded_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory> {
+    self.unbounded_priority_message_queue_state_shared_factory.clone()
+  }
+
+  /// Returns the bounded stable-priority message-queue-state shared factory.
+  #[must_use]
+  pub fn bounded_stable_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
+    self.bounded_stable_priority_message_queue_state_shared_factory.clone()
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations
@@ -1013,6 +1030,7 @@ impl SystemState {
     self.mailboxes.create_message_queue(
       id,
       &self.bounded_priority_message_queue_state_shared_factory,
+      &self.unbounded_priority_message_queue_state_shared_factory,
       &self.bounded_stable_priority_message_queue_state_shared_factory,
     )
   }
