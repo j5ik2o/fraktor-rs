@@ -26,7 +26,7 @@ use super::{
   default_dispatcher_configurator::DefaultDispatcherConfigurator, dispatcher_settings::DispatcherSettings,
   dispatchers_error::DispatchersError, executor_shared_factory::ExecutorSharedFactory, inline_executor::InlineExecutor,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
-  message_dispatcher_shared_factory::MessageDispatcherSharedFactory,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory, trampoline_state::TrampolineState,
 };
 
 /// Reserved registry identifier for the default dispatcher.
@@ -143,7 +143,8 @@ impl Dispatchers {
     executor_shared_factory: &ArcShared<dyn ExecutorSharedFactory>,
   ) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
     let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-    let executor = executor_shared_factory.create(Box::new(InlineExecutor::new()));
+    let executor =
+      executor_shared_factory.create_executor_shared(Box::new(InlineExecutor::new()), TrampolineState::new());
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, message_dispatcher_shared_factory));
     ArcShared::new(configurator)

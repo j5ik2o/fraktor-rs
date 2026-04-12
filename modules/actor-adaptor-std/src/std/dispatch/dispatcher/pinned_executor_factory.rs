@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use std::string::String;
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{
-  ExecutorFactory, ExecutorShared, ExecutorSharedFactory,
+  ExecutorFactory, ExecutorShared, ExecutorSharedFactory, TrampolineState,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -45,6 +45,8 @@ impl PinnedExecutorFactory {
 impl ExecutorFactory for PinnedExecutorFactory {
   fn create(&self, dispatcher_id: &str) -> ExecutorShared {
     let name = self.allocate_name(dispatcher_id);
-    self.executor_shared_factory.create(Box::new(PinnedExecutor::with_name(name)))
+    self
+      .executor_shared_factory
+      .create_executor_shared(Box::new(PinnedExecutor::with_name(name)), TrampolineState::new())
   }
 }

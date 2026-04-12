@@ -2,8 +2,8 @@ use alloc::{boxed::Box, collections::VecDeque};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory, ActorSharedLockFactory,
-    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory,
+    ActorSharedLockFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
@@ -67,19 +67,19 @@ impl ActorLockFactory for DebugActorSharedFactory {
 }
 
 impl MessageDispatcherSharedFactory for DebugActorSharedFactory {
-  fn create(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     MessageDispatcherShared::from_shared_lock(Self::create_lock(dispatcher))
   }
 }
 
 impl ExecutorSharedFactory for DebugActorSharedFactory {
-  fn create(&self, executor: Box<dyn Executor>) -> ExecutorShared {
-    ExecutorShared::from_parts(Self::create_lock(executor), Self::create_lock(TrampolineState::new()))
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    ExecutorShared::from_shared_lock(Self::create_lock(executor), Self::create_lock(trampoline))
   }
 }
 
 impl ActorRefSenderSharedFactory for DebugActorSharedFactory {
-  fn create(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
     ActorRefSenderShared::from_shared_lock(Self::create_lock(sender))
   }
 }
@@ -91,14 +91,14 @@ impl ActorSharedLockFactory for DebugActorSharedFactory {
 }
 
 impl ActorCellStateSharedFactory for DebugActorSharedFactory {
-  fn create(&self) -> ActorCellStateShared {
-    ActorCellStateShared::new_with_lock_factory(self)
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateShared::from_shared_lock(Self::create_lock(state))
   }
 }
 
 impl ReceiveTimeoutStateSharedFactory for DebugActorSharedFactory {
-  fn create(&self) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateShared::new_with_lock_factory(self)
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateShared::from_shared_lock(Self::create_lock(state))
   }
 }
 
@@ -119,7 +119,7 @@ impl BoundedPriorityMessageQueueStateSharedFactory for DebugActorSharedFactory {
     &self,
     state: BoundedPriorityMessageQueueState,
   ) -> BoundedPriorityMessageQueueStateShared {
-    BoundedPriorityMessageQueueStateShared::from_shared(Self::create_lock(state))
+    BoundedPriorityMessageQueueStateShared::from_shared_lock(Self::create_lock(state))
   }
 }
 
@@ -131,7 +131,7 @@ impl EventStreamSharedFactory for DebugActorSharedFactory {
 
 impl EventStreamSubscriberSharedFactory for DebugActorSharedFactory {
   fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
-    Self::create_lock(subscriber)
+    EventStreamSubscriberShared::from_shared_lock(Self::create_lock(subscriber))
   }
 }
 
@@ -159,13 +159,6 @@ impl TickDriverControlSharedFactory for DebugActorSharedFactory {
   fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
     TickDriverControlShared::from_shared(Self::create_lock(control))
   }
-
-  fn create_tick_driver_control_shared_from_shared(
-    &self,
-    shared: SharedLock<Box<dyn TickDriverControl>>,
-  ) -> TickDriverControlShared {
-    TickDriverControlShared::from_shared(shared)
-  }
 }
 
 impl<P> ActorRefProviderHandleSharedFactory<P> for DebugActorSharedFactory
@@ -175,13 +168,6 @@ where
   fn create_actor_ref_provider_handle_shared(&self, provider: P) -> ActorRefProviderHandleShared<P> {
     let schemes = provider.supported_schemes();
     ActorRefProviderHandleShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
-  }
-
-  fn create_actor_ref_provider_handle_shared_from_shared(
-    &self,
-    shared: SharedLock<ActorRefProviderHandle<P>>,
-  ) -> ActorRefProviderHandleShared<P> {
-    ActorRefProviderHandleShared::from_shared(shared)
   }
 }
 

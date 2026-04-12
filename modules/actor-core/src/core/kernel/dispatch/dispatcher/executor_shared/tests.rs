@@ -2,7 +2,7 @@ use alloc::{boxed::Box, sync::Arc};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::core::kernel::{
-  dispatch::dispatcher::{ExecuteError, Executor, ExecutorSharedFactory},
+  dispatch::dispatcher::{ExecuteError, Executor, ExecutorSharedFactory, TrampolineState},
   system::shared_factory::BuiltinSpinSharedFactory,
 };
 
@@ -35,10 +35,8 @@ impl Executor for RejectingExecutor {
 #[test]
 fn execute_delegates_to_inner() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorSharedFactory::create(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(CountingExecutor { count: Arc::clone(&count) }),
-  );
+  let shared = BuiltinSpinSharedFactory::new()
+    .create_executor_shared(Box::new(CountingExecutor { count: Arc::clone(&count) }), TrampolineState::new());
   let observed = Arc::new(AtomicUsize::new(0));
   let observed_clone = Arc::clone(&observed);
   shared
@@ -52,7 +50,8 @@ fn execute_delegates_to_inner() {
 
 #[test]
 fn execute_propagates_errors() {
-  let shared = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(RejectingExecutor));
+  let shared =
+    BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(RejectingExecutor), TrampolineState::new());
   let result = shared.execute(Box::new(|| {}));
   assert!(matches!(result, Err(ExecuteError::Rejected)));
 }
@@ -60,10 +59,8 @@ fn execute_propagates_errors() {
 #[test]
 fn shutdown_invokes_inner_shutdown() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorSharedFactory::create(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(CountingExecutor { count: Arc::clone(&count) }),
-  );
+  let shared = BuiltinSpinSharedFactory::new()
+    .create_executor_shared(Box::new(CountingExecutor { count: Arc::clone(&count) }), TrampolineState::new());
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   assert_eq!(count.load(Ordering::SeqCst), 1);
   shared.shutdown();
@@ -73,10 +70,8 @@ fn shutdown_invokes_inner_shutdown() {
 #[test]
 fn clone_shares_inner_state() {
   let count = Arc::new(AtomicUsize::new(0));
-  let shared = ExecutorSharedFactory::create(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(CountingExecutor { count: Arc::clone(&count) }),
-  );
+  let shared = BuiltinSpinSharedFactory::new()
+    .create_executor_shared(Box::new(CountingExecutor { count: Arc::clone(&count) }), TrampolineState::new());
   let cloned = shared.clone();
   shared.execute(Box::new(|| {})).expect("execute should succeed");
   cloned.execute(Box::new(|| {})).expect("execute should succeed");

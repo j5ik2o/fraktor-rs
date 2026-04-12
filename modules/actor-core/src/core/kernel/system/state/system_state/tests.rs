@@ -33,7 +33,7 @@ use crate::core::kernel::{
   dispatch::{
     dispatcher::{
       DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
-      MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
+      MessageDispatcherConfigurator, MessageDispatcherSharedFactory, TrampolineState,
     },
     mailbox::MailboxMessage,
   },
@@ -885,7 +885,7 @@ fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigur
   let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
+  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)

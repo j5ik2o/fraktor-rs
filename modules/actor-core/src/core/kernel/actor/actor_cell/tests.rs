@@ -7,8 +7,8 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SharedRwLock, Spi
 use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell as KernelActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
-    ActorLockFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    Actor, ActorCell as KernelActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory,
+    ActorContext, ActorLockFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
     ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
@@ -199,19 +199,19 @@ impl ActorLockFactory for TestDebugActorSharedFactory {
 }
 
 impl MessageDispatcherSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
     MessageDispatcherShared::from_shared_lock(self.create_lock(dispatcher))
   }
 }
 
 impl ExecutorSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, executor: Box<dyn Executor>) -> ExecutorShared {
-    ExecutorShared::from_parts(self.create_lock(executor), self.create_lock(TrampolineState::new()))
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    ExecutorShared::from_shared_lock(self.create_lock(executor), self.create_lock(trampoline))
   }
 }
 
 impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
     ActorRefSenderShared::from_shared_lock(self.create_lock(sender))
   }
 }
@@ -226,13 +226,6 @@ impl TickDriverControlSharedFactory for TestDebugActorSharedFactory {
   fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
     TickDriverControlShared::from_shared(self.create_lock(control))
   }
-
-  fn create_tick_driver_control_shared_from_shared(
-    &self,
-    shared: SharedLock<Box<dyn TickDriverControl>>,
-  ) -> TickDriverControlShared {
-    TickDriverControlShared::from_shared(shared)
-  }
 }
 
 impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugActorSharedFactory {
@@ -243,24 +236,17 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugAct
     let schemes = provider.supported_schemes();
     ActorRefProviderHandleShared::from_shared(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
-
-  fn create_actor_ref_provider_handle_shared_from_shared(
-    &self,
-    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
-  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
-    ActorRefProviderHandleShared::from_shared(shared)
-  }
 }
 
 impl ActorCellStateSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self) -> ActorCellStateShared {
-    ActorCellStateShared::new_with_lock_factory(self)
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateShared::from_shared_lock(self.create_lock(state))
   }
 }
 
 impl ReceiveTimeoutStateSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateShared::new_with_lock_factory(self)
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateShared::from_shared_lock(self.create_lock(state))
   }
 }
 
@@ -284,7 +270,7 @@ impl EventStreamSharedFactory for TestDebugActorSharedFactory {
 
 impl EventStreamSubscriberSharedFactory for TestDebugActorSharedFactory {
   fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
-    self.create_lock(subscriber)
+    EventStreamSubscriberShared::from_shared_lock(self.create_lock(subscriber))
   }
 }
 

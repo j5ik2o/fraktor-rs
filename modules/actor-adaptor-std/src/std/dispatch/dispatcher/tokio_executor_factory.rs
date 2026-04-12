@@ -1,7 +1,7 @@
 //! Factory that produces [`TokioExecutor`] handles wrapped in [`ExecutorShared`].
 
 use fraktor_actor_core_rs::core::kernel::dispatch::dispatcher::{
-  ExecutorFactory, ExecutorShared, ExecutorSharedFactory,
+  ExecutorFactory, ExecutorShared, ExecutorSharedFactory, TrampolineState,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::Handle;
@@ -24,6 +24,8 @@ impl TokioExecutorFactory {
 
 impl ExecutorFactory for TokioExecutorFactory {
   fn create(&self, _id: &str) -> ExecutorShared {
-    self.executor_shared_factory.create(Box::new(TokioExecutor::new(self.handle.clone())))
+    self
+      .executor_shared_factory
+      .create_executor_shared(Box::new(TokioExecutor::new(self.handle.clone())), TrampolineState::new())
   }
 }

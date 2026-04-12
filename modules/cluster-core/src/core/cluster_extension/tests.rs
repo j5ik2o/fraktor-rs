@@ -6,12 +6,10 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellStateShared, ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateShared,
-    ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorSharedLockFactory,
+    ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
-    actor_ref_provider::{
-      ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
-    },
+    actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     messaging::{
       AnyMessage, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
@@ -20,7 +18,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::dispatcher::{
     Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory,
+    MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
   },
   event::stream::{
     EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber,
@@ -67,20 +65,20 @@ impl CountingSubscriberLockProvider {
 }
 
 impl MessageDispatcherSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    MessageDispatcherSharedFactory::create(&self.inner, dispatcher)
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherSharedFactory::create_message_dispatcher_shared(&self.inner, dispatcher)
   }
 }
 
 impl ExecutorSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, executor: Box<dyn Executor>) -> ExecutorShared {
-    ExecutorSharedFactory::create(&self.inner, executor)
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    self.inner.create_executor_shared(executor, trampoline)
   }
 }
 
 impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderSharedFactory::create(&self.inner, sender)
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&self.inner, sender)
   }
 }
 
@@ -91,14 +89,14 @@ impl ActorSharedLockFactory for CountingSubscriberLockProvider {
 }
 
 impl ActorCellStateSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self) -> ActorCellStateShared {
-    ActorCellStateSharedFactory::create(&self.inner)
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateSharedFactory::create_actor_cell_state_shared(&self.inner, state)
   }
 }
 
 impl ReceiveTimeoutStateSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateSharedFactory::create(&self.inner)
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateSharedFactory::create_receive_timeout_state_shared(&self.inner, state)
   }
 }
 
@@ -143,13 +141,6 @@ impl TickDriverControlSharedFactory for CountingSubscriberLockProvider {
   fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
     TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
   }
-
-  fn create_tick_driver_control_shared_from_shared(
-    &self,
-    shared: SharedLock<Box<dyn TickDriverControl>>,
-  ) -> TickDriverControlShared {
-    TickDriverControlSharedFactory::create_tick_driver_control_shared_from_shared(&self.inner, shared)
-  }
 }
 
 impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubscriberLockProvider {
@@ -158,13 +149,6 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubs
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
-  }
-
-  fn create_actor_ref_provider_handle_shared_from_shared(
-    &self,
-    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
-  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
-    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared_from_shared(&self.inner, shared)
   }
 }
 

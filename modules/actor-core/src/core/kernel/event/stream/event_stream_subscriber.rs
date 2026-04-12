@@ -2,12 +2,11 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use crate::core::kernel::event::stream::{EventStreamEvent, EventStreamSubscriberSharedFactory};
-
-/// Shared subscriber handle guarded by the runtime mutex family.
-pub type EventStreamSubscriberShared = SharedLock<Box<dyn EventStreamSubscriber>>;
+use crate::core::kernel::event::stream::{
+  EventStreamEvent, EventStreamSubscriberShared, EventStreamSubscriberSharedFactory,
+};
 
 /// Observers registered with the event stream must implement this trait.
 pub trait EventStreamSubscriber: Send + Sync + 'static {

@@ -62,7 +62,7 @@ impl EventStreamShared {
 
     // Phase 2: Replay buffered events without holding the lock
     for event in snapshot.iter() {
-      subscriber.with_lock(|guard| guard.on_event(event));
+      subscriber.notify(event);
     }
 
     EventStreamSubscription::new(self.clone(), id)
@@ -91,7 +91,7 @@ impl EventStreamShared {
     // Phase 2: Notify subscribers without holding the lock
     for entry in subscribers.iter() {
       let handle = entry.subscriber();
-      handle.with_lock(|guard| guard.on_event(event));
+      handle.notify(event);
     }
   }
 }

@@ -8,5 +8,5 @@ use super::{EventStreamSubscriber, EventStreamSubscriberShared};
 
 #[must_use]
 pub(crate) fn subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber))
+  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }

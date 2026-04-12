@@ -47,7 +47,7 @@ impl EventStreamSubscriber for RecordingClusterEvents {
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber))
+  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {

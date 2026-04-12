@@ -33,7 +33,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::dispatcher::{
     BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
-    ExecutorShared, ExecutorSharedFactory, MessageDispatcherConfigurator,
+    ExecutorShared, ExecutorSharedFactory, MessageDispatcherConfigurator, TrampolineState,
   },
   system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
 };
@@ -128,15 +128,15 @@ impl DispatcherBenchSystem {
         let shared_message_queue_factory = config.shared_message_queue_factory().clone();
         let mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
         let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-        let default_executor =
-          ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(TokioExecutor::new(handle.clone())));
+        let default_executor = BuiltinSpinSharedFactory::new()
+          .create_executor_shared(Box::new(TokioExecutor::new(handle.clone())), TrampolineState::new());
         let default_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(
           DefaultDispatcherConfigurator::new(&default_settings, default_executor, &message_dispatcher_shared_factory),
         );
 
         let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
-        let balancing_executor =
-          ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(TokioExecutor::new(handle)));
+        let balancing_executor = BuiltinSpinSharedFactory::new()
+          .create_executor_shared(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
         let balancing_configurator: Box<dyn MessageDispatcherConfigurator> =
           Box::new(BalancingDispatcherConfigurator::new(
             &balancing_settings,

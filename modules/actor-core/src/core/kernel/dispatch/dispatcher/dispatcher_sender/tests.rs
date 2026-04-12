@@ -10,7 +10,8 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use crate::core::kernel::{
   actor::{ActorCell, messaging::AnyMessage},
   dispatch::dispatcher::{
-    DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcherSharedFactory,
+    DispatcherSettings, ExecuteError, Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcherSharedFactory,
+    TrampolineState,
   },
   system::shared_factory::BuiltinSpinSharedFactory,
 };
@@ -28,6 +29,10 @@ impl Executor for InlineExec {
 
 fn nz(value: usize) -> NonZeroUsize {
   NonZeroUsize::new(value).expect("non-zero")
+}
+
+fn inline_executor_shared() -> ExecutorShared {
+  BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(InlineExec), TrampolineState::new())
 }
 
 // `send_returns_schedule_outcome_that_drives_register_for_execution` has been
@@ -66,7 +71,7 @@ fn actor_creation_attaches_to_new_dispatcher_and_increments_inhabitants() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -119,7 +124,7 @@ fn new_dispatcher_delivers_many_messages_to_single_actor_in_order() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(16), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -194,7 +199,7 @@ fn new_dispatcher_handles_actor_to_actor_send_without_deadlock() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(16), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -267,7 +272,7 @@ fn new_dispatcher_delivers_messages_to_multiple_actors_independently() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -330,7 +335,7 @@ fn removing_actor_cell_detaches_from_new_dispatcher_and_decrements_inhabitants()
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -384,7 +389,7 @@ fn end_to_end_send_via_actor_system_with_dispatcher_configurator() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
@@ -436,7 +441,7 @@ fn dispatcher_full_lifecycle_attach_dispatch_drain_detach_and_auto_shutdown() {
   }
 
   let configurator_for_resolve: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("lifecycle", nz(8), None, Duration::from_secs(1));
     let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
     let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
@@ -519,7 +524,7 @@ fn dispatcher_resolve_is_not_called_from_message_hot_path() {
 
   let system = ActorSystem::new_empty_with(|config| {
     let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = inline_executor_shared();
     let settings = DispatcherSettings::new("default", nz(8), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
       Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));

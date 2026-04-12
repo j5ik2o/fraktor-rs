@@ -14,6 +14,7 @@ mod event_stream_shared_factory;
 mod event_stream_subscriber;
 mod event_stream_subscriber_entries;
 mod event_stream_subscriber_entry;
+mod event_stream_subscriber_shared;
 mod event_stream_subscriber_shared_factory;
 mod event_stream_subscription;
 mod remote_authority_event;
@@ -33,11 +34,10 @@ pub use event_stream_event::EventStreamEvent;
 pub(crate) use event_stream_events::EventStreamEvents;
 pub use event_stream_shared::EventStreamShared;
 pub use event_stream_shared_factory::EventStreamSharedFactory;
-pub use event_stream_subscriber::{
-  EventStreamSubscriber, EventStreamSubscriberShared, subscriber_handle_with_shared_factory,
-};
+pub use event_stream_subscriber::{EventStreamSubscriber, subscriber_handle_with_shared_factory};
 pub(crate) use event_stream_subscriber_entries::EventStreamSubscriberEntries;
 pub(crate) use event_stream_subscriber_entry::EventStreamSubscriberEntry;
+pub use event_stream_subscriber_shared::EventStreamSubscriberShared;
 pub use event_stream_subscriber_shared_factory::EventStreamSubscriberSharedFactory;
 pub use event_stream_subscription::EventStreamSubscription;
 pub use remote_authority_event::RemoteAuthorityEvent;

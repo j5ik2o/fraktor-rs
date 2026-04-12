@@ -40,7 +40,7 @@ impl EventStreamSubscriber for EventSink {
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber))
+  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }
 
 fn build_coordinator() -> MembershipCoordinatorShared {

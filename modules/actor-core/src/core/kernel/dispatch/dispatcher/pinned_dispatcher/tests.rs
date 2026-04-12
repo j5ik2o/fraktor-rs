@@ -8,7 +8,9 @@ use crate::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, error::ActorError, messaging::AnyMessageView, props::Props, spawn::SpawnError,
   },
-  dispatch::dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher},
+  dispatch::dispatcher::{
+    DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher, TrampolineState,
+  },
   system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
 };
 
@@ -38,7 +40,7 @@ fn make_dispatcher() -> PinnedDispatcher {
   // Note the throughput value here is intentionally small; PinnedDispatcher must
   // override it to usize::MAX so we can verify the normalisation.
   let settings = DispatcherSettings::new("pinned-id", nz(3), Some(Duration::from_millis(50)), Duration::from_secs(1));
-  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
+  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
   PinnedDispatcher::new(&settings, executor)
 }
 

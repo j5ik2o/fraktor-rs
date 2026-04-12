@@ -12,7 +12,9 @@ use crate::core::kernel::{
     props::Props,
   },
   dispatch::{
-    dispatcher::{DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher},
+    dispatcher::{
+      DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher, TrampolineState,
+    },
     mailbox::{Envelope, MailboxCleanupPolicy},
   },
   system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
@@ -42,7 +44,7 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_dispatcher() -> BalancingDispatcher {
   let settings = DispatcherSettings::new("balancing-id", nz(5), None, Duration::from_secs(1));
-  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
+  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
   let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
   let shared_message_queue_factory: ArcShared<
     dyn crate::core::kernel::dispatch::dispatcher::SharedMessageQueueFactory,
@@ -179,7 +181,7 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   }
 
   let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
-    let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(InlineExec));
+    let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(InlineExec), TrampolineState::new());
     let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
     let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
     let message_dispatcher_shared_factory: ArcShared<
