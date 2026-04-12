@@ -9,10 +9,10 @@ use crate::core::kernel::{
     error::ActorError,
   },
   system::{
-      TerminationSignal,
-      remote::{RemoteWatchHook, RemoteWatchHookHandleSharedFactory},
-      shared_factory::BuiltinSpinSharedFactory,
-      state::{SystemStateShared, system_state::SystemState},
+    TerminationSignal,
+    remote::{RemoteWatchHook, RemoteWatchHookHandleSharedFactory},
+    shared_factory::BuiltinSpinSharedFactory,
+    state::{SystemStateShared, system_state::SystemState},
   },
 };
 
