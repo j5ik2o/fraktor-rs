@@ -137,12 +137,12 @@ impl SystemState {
     let config = ActorSystemConfig::default();
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
-    let event_stream = config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
-    let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
+    let event_stream_shared = config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
+    let dead_letter_shared = DeadLetterShared::with_capacity(event_stream_shared.clone(), DEAD_LETTER_CAPACITY);
     let dispatchers = config.dispatchers().clone();
     let mailboxes = config.mailboxes().clone();
     let scheduler_config = *config.scheduler_config();
-    let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
+    let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream_shared.clone());
     let tick_driver_bundle =
       Self::default_tick_driver_bundle(scheduler_config.resolution(), &**config.tick_driver_control_shared_factory());
     Self {
@@ -157,8 +157,8 @@ impl SystemState {
       ask_futures: AskFutures::default(),
       termination_state: ArcShared::new(TerminationState::new()),
       root_started: AtomicBool::new(false),
-      event_stream,
-      dead_letter,
+      event_stream: event_stream_shared,
+      dead_letter: dead_letter_shared,
       extra_top_levels: ExtraTopLevels::default(),
       temp_actors: TempActors::default(),
       temp_counter: AtomicU64::new(0),

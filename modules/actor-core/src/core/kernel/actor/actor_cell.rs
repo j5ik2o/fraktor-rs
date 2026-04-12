@@ -49,6 +49,7 @@ use crate::core::{
   },
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
+use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
 
 /// Runtime container responsible for executing an actor instance.
 ///
@@ -177,13 +178,13 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
-    let sender = actor_ref_sender_shared_factory
+    let actor_ref_sender_shared = actor_ref_sender_shared_factory
       .create_actor_ref_sender_shared(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
-    let Some(factory) = props.factory().cloned() else {
+    let Some(actor_factory_shared) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
-    let actor = ActorShared::from_shared_lock(actor_shared_lock_factory.create(factory.with_write(|f| f.create())));
+    let shared_lock = actor_shared_lock_factory.create(actor_factory_shared.with_write(|f| f.create()));
+    let actor = ActorShared::from_shared_lock(shared_lock);
     let receive_timeout = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
     let state = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
 
@@ -194,13 +195,13 @@ impl ActorCell {
       name,
       tags,
       system: system.downgrade(),
-      factory,
+      factory: actor_factory_shared,
       actor,
       pipeline: MessageInvokerPipeline::new(),
       mailbox,
       dispatcher_id,
       new_dispatcher,
-      sender,
+      sender: actor_ref_sender_shared,
       receive_timeout,
       state,
       terminated: AtomicBool::new(false),
