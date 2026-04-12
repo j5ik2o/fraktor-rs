@@ -11,7 +11,7 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_ref::ActorRef,
-    context_pipe::{ContextPipeTaskId, ContextPipeWaker},
+    context_pipe::{ContextPipeTaskId, ContextPipeWaker, ContextPipeWakerHandle},
     messaging::AnyMessage,
   },
   system::state::SystemStateShared,
@@ -64,7 +64,9 @@ impl ContextPipeTask {
 
   /// Polls the underlying future using a context pipe waker.
   pub(crate) fn poll(&mut self) -> Poll<Option<AnyMessage>> {
-    let waker = ContextPipeWaker::into_waker(self.system.clone(), self.pid, self.id);
+    let handle = ContextPipeWakerHandle::new(self.system.clone(), self.pid, self.id);
+    let shared = self.system.context_pipe_waker_handle_shared_factory().create_context_pipe_waker_handle_shared(handle);
+    let waker = ContextPipeWaker::into_waker(shared);
     let mut context = Context::from_waker(&waker);
     self.future.as_mut().poll(&mut context)
   }

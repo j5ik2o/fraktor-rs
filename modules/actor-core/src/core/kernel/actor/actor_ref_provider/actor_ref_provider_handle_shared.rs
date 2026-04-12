@@ -38,7 +38,7 @@ pub struct ActorRefProviderHandleShared<P: ActorRefProvider + 'static> {
 impl<P: ActorRefProvider + 'static> ActorRefProviderHandleShared<P> {
   /// Creates a new shared wrapper from an existing shared lock.
   #[must_use]
-  pub const fn from_shared(inner: SharedLock<ActorRefProviderHandle<P>>) -> Self {
+  pub const fn from_shared_lock(inner: SharedLock<ActorRefProviderHandle<P>>) -> Self {
     Self { inner, _marker: PhantomData }
   }
 

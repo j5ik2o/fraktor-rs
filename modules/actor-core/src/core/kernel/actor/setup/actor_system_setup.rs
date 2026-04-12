@@ -12,6 +12,7 @@ use crate::core::kernel::{
     ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
+    context_pipe::ContextPipeWakerHandleSharedFactory,
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
@@ -99,6 +100,7 @@ impl ActorSystemSetup {
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory
+      + ContextPipeWakerHandleSharedFactory
       + 'static, {
     Self { config: self.config.with_shared_factory(provider) }
   }

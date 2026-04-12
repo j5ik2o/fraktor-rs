@@ -18,6 +18,7 @@ use crate::core::{
         dead_letter::DeadLetterReason,
       },
       actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+      context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::{
@@ -208,6 +209,12 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubs
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingSubscriberLockProvider {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    self.inner.create_context_pipe_waker_handle_shared(handle)
   }
 }
 

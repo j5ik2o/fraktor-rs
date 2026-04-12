@@ -14,7 +14,7 @@ pub struct TickDriverControlShared {
 impl TickDriverControlShared {
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
-  pub const fn from_shared(inner: SharedLock<Box<dyn TickDriverControl>>) -> Self {
+  pub const fn from_shared_lock(inner: SharedLock<Box<dyn TickDriverControl>>) -> Self {
     Self { inner }
   }
 

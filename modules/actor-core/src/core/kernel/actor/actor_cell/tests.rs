@@ -15,6 +15,7 @@ use crate::core::kernel::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
       LocalActorRefProvider,
     },
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::ActorError,
     messaging::{
       ActorIdentity, AnyMessage, AnyMessageView, AskResult, Identify,
@@ -224,7 +225,7 @@ impl ActorSharedLockFactory for TestDebugActorSharedFactory {
 
 impl TickDriverControlSharedFactory for TestDebugActorSharedFactory {
   fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
-    TickDriverControlShared::from_shared(self.create_lock(control))
+    TickDriverControlShared::from_shared_lock(self.create_lock(control))
   }
 }
 
@@ -234,7 +235,7 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugAct
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     let schemes = provider.supported_schemes();
-    ActorRefProviderHandleShared::from_shared(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
+    ActorRefProviderHandleShared::from_shared_lock(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
 }
 
@@ -288,6 +289,12 @@ impl MailboxSharedSetFactory for TestDebugActorSharedFactory {
 impl ActorFutureSharedFactory<AskResult> for TestDebugActorSharedFactory {
   fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureShared::from_shared_lock(self.create_lock(future))
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for TestDebugActorSharedFactory {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    ContextPipeWakerHandleShared::from_shared_lock(self.create_lock(handle))
   }
 }
 

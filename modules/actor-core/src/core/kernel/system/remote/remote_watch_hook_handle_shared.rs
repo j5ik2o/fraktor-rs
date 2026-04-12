@@ -34,7 +34,7 @@ pub struct RemoteWatchHookHandleShared<P: Send + 'static> {
 impl<P: Send + 'static> RemoteWatchHookHandleShared<P> {
   /// Creates a new shared wrapper from an existing shared lock.
   #[must_use]
-  pub const fn from_shared(inner: SharedLock<RemoteWatchHookHandle<P>>) -> Self {
+  pub const fn from_shared_lock(inner: SharedLock<RemoteWatchHookHandle<P>>) -> Self {
     Self { inner, _marker: PhantomData }
   }
 

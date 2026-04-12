@@ -14,6 +14,7 @@ use crate::core::kernel::{
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
+    context_pipe::ContextPipeWakerHandleSharedFactory,
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
@@ -64,6 +65,7 @@ pub struct ActorSystemConfig {
   event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory>,
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
+  context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   start_time: Option<Duration>,
@@ -139,6 +141,7 @@ impl ActorSystemConfig {
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory
+      + ContextPipeWakerHandleSharedFactory
       + 'static, {
     let provider = ArcShared::new(provider);
     self.executor_shared_factory = provider.clone();
@@ -154,7 +157,8 @@ impl ActorSystemConfig {
     self.local_actor_ref_provider_handle_shared_factory = provider.clone();
     self.event_stream_shared_factory = provider.clone();
     self.event_stream_subscriber_shared_factory = provider.clone();
-    self.mailbox_shared_set_factory = provider;
+    self.mailbox_shared_set_factory = provider.clone();
+    self.context_pipe_waker_handle_shared_factory = provider;
     self
       .dispatchers
       .replace_default_inline_with_factories(&self.message_dispatcher_shared_factory, &self.executor_shared_factory);
@@ -341,6 +345,12 @@ impl ActorSystemConfig {
     &self.mailbox_shared_set_factory
   }
 
+  /// Returns the context-pipe-waker-handle shared factory.
+  #[must_use]
+  pub const fn context_pipe_waker_handle_shared_factory(&self) -> &ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
+    &self.context_pipe_waker_handle_shared_factory
+  }
+
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
   pub const fn dispatchers(&self) -> &Dispatchers {
@@ -392,7 +402,8 @@ impl Default for ActorSystemConfig {
       local_actor_ref_provider_handle_shared_factory: shared_factory.clone(),
       event_stream_shared_factory: shared_factory.clone(),
       event_stream_subscriber_shared_factory: shared_factory.clone(),
-      mailbox_shared_set_factory: shared_factory,
+      mailbox_shared_set_factory: shared_factory.clone(),
+      context_pipe_waker_handle_shared_factory: shared_factory,
       dispatchers,
       mailboxes,
       start_time: None,

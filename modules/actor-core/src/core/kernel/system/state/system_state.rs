@@ -75,7 +75,7 @@ mod failure_outcome;
 
 pub(crate) use failure_outcome::FailureOutcome;
 
-use crate::core::kernel::actor::setup::ActorSystemConfig;
+use crate::core::kernel::actor::{context_pipe::ContextPipeWakerHandleSharedFactory, setup::ActorSystemConfig};
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 
@@ -117,6 +117,7 @@ pub struct SystemState {
     ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>>,
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
+  context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   deployer: Deployer,
@@ -179,6 +180,7 @@ impl SystemState {
       local_actor_ref_provider_handle_shared_factory: config.local_actor_ref_provider_handle_shared_factory().clone(),
       event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
       mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
+      context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -243,6 +245,7 @@ impl SystemState {
       local_actor_ref_provider_handle_shared_factory: config.local_actor_ref_provider_handle_shared_factory().clone(),
       event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
       mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
+      context_pipe_waker_handle_shared_factory: config.context_pipe_waker_handle_shared_factory().clone(),
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -328,6 +331,7 @@ impl SystemState {
       config.local_actor_ref_provider_handle_shared_factory().clone();
     self.event_stream_subscriber_shared_factory = config.event_stream_subscriber_shared_factory().clone();
     self.mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
+    self.context_pipe_waker_handle_shared_factory = config.context_pipe_waker_handle_shared_factory().clone();
     self.dispatchers = config.dispatchers().clone();
     self.mailboxes = config.mailboxes().clone();
     if let Some(remoting) = config.remoting_config() {
@@ -933,6 +937,12 @@ impl SystemState {
   #[must_use]
   pub fn mailbox_shared_set_factory(&self) -> ArcShared<dyn MailboxSharedSetFactory> {
     self.mailbox_shared_set_factory.clone()
+  }
+
+  /// Returns the context-pipe-waker-handle shared factory.
+  #[must_use]
+  pub fn context_pipe_waker_handle_shared_factory(&self) -> ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
+    self.context_pipe_waker_handle_shared_factory.clone()
   }
 
   /// Returns the cumulative number of `Dispatchers::resolve` invocations

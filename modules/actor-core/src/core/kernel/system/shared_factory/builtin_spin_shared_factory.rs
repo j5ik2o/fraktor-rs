@@ -12,6 +12,7 @@ use crate::core::kernel::{
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
     },
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     messaging::message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
     scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
   },
@@ -159,7 +160,7 @@ where
 
 impl TickDriverControlSharedFactory for BuiltinSpinSharedFactory {
   fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
-    TickDriverControlShared::from_shared(Self::create_lock(control))
+    TickDriverControlShared::from_shared_lock(Self::create_lock(control))
   }
 }
 
@@ -169,7 +170,7 @@ where
 {
   fn create_actor_ref_provider_handle_shared(&self, provider: P) -> ActorRefProviderHandleShared<P> {
     let schemes = provider.supported_schemes();
-    ActorRefProviderHandleShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
+    ActorRefProviderHandleShared::from_shared_lock(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
 }
 
@@ -179,6 +180,12 @@ where
 {
   fn create_remote_watch_hook_handle_shared(&self, provider: P) -> RemoteWatchHookHandleShared<P> {
     let schemes = provider.supported_schemes();
-    RemoteWatchHookHandleShared::from_shared(Self::create_lock(RemoteWatchHookHandle::new(provider, schemes)))
+    RemoteWatchHookHandleShared::from_shared_lock(Self::create_lock(RemoteWatchHookHandle::new(provider, schemes)))
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for BuiltinSpinSharedFactory {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    ContextPipeWakerHandleShared::from_shared_lock(Self::create_lock(handle))
   }
 }

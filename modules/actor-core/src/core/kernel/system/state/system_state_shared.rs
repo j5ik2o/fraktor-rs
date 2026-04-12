@@ -31,6 +31,7 @@ use crate::core::kernel::{
       dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
     },
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+    context_pipe::ContextPipeWakerHandleSharedFactory,
     deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
@@ -256,6 +257,12 @@ impl SystemStateShared {
   #[must_use]
   pub fn mailbox_shared_set_factory(&self) -> ArcShared<dyn MailboxSharedSetFactory> {
     self.inner.with_read(|inner| inner.mailbox_shared_set_factory())
+  }
+
+  /// Returns the context-pipe-waker-handle shared factory.
+  #[must_use]
+  pub fn context_pipe_waker_handle_shared_factory(&self) -> ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
+    self.inner.with_read(|inner| inner.context_pipe_waker_handle_shared_factory())
   }
 
   /// Creates a weak reference to this system state.

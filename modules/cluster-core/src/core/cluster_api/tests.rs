@@ -13,6 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
     },
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{
@@ -160,6 +161,12 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubs
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingSubscriberLockProvider {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    self.inner.create_context_pipe_waker_handle_shared(handle)
   }
 }
 

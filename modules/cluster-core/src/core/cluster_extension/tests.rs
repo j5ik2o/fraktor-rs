@@ -10,6 +10,7 @@ use fraktor_actor_core_rs::core::kernel::{
     ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     messaging::{
       AnyMessage, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
@@ -149,6 +150,12 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubs
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingSubscriberLockProvider {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    self.inner.create_context_pipe_waker_handle_shared(handle)
   }
 }
 

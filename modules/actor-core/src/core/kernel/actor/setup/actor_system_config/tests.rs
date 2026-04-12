@@ -13,6 +13,7 @@ use crate::core::kernel::{
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::ActorError,
     messaging::{
       AnyMessageView, AskResult,
@@ -201,6 +202,12 @@ impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingLock
     provider: LocalActorRefProvider,
   ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
     ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingLockProvider {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    self.inner.create_context_pipe_waker_handle_shared(handle)
   }
 }
 
