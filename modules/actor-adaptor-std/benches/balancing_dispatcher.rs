@@ -33,7 +33,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::dispatcher::{
     BalancingDispatcherConfigurator, DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings,
-    ExecutorShared, ExecutorSharedFactory, MessageDispatcherConfigurator, TrampolineState,
+    ExecutorSharedFactory, MessageDispatcherConfigurator, TrampolineState,
   },
   system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
 };
@@ -126,6 +126,7 @@ impl DispatcherBenchSystem {
         let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
         let message_dispatcher_shared_factory = config.message_dispatcher_shared_factory().clone();
         let shared_message_queue_factory = config.shared_message_queue_factory().clone();
+        let shared_queue = shared_message_queue_factory.create();
         let mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
         let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
         let default_executor = BuiltinSpinSharedFactory::new()
@@ -142,7 +143,7 @@ impl DispatcherBenchSystem {
             &balancing_settings,
             balancing_executor,
             &message_dispatcher_shared_factory,
-            &shared_message_queue_factory,
+            shared_queue,
             &mailbox_shared_set_factory,
           ));
 
