@@ -15,7 +15,7 @@ use crate::core::{
     },
     event::{
       logging::LogLevel,
-      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, subscriber_handle},
+      stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscription, tests::subscriber_handle},
     },
     system::ActorSystem,
   },
@@ -319,7 +319,7 @@ fn register_returns_error_and_does_not_store_registration_when_watch_fails() {
   let system = ActorSystem::new_empty();
   let state = Receptionist::empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-register");
-  let routee = ActorRef::new(Pid::new(701, 0), NullSender);
+  let routee = ActorRef::new_with_builtin_lock(Pid::new(701, 0), NullSender);
   let command = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
 
   state.with_lock(|guard| {
@@ -337,8 +337,10 @@ fn subscribe_returns_error_and_does_not_store_subscriber_when_watch_fails() {
   let state = Receptionist::empty_state();
   let key = ServiceKey::<u32>::new("watch-fail-subscriber");
   let listings = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let subscriber =
-    TypedActorRef::<Listing>::from_untyped(ActorRef::new(Pid::new(702, 0), ListingSender::new(listings.clone())));
+  let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::new_with_builtin_lock(
+    Pid::new(702, 0),
+    ListingSender::new(listings.clone()),
+  ));
   let command = Receptionist::subscribe(&key, subscriber.clone());
 
   state.with_lock(|guard| {
@@ -380,7 +382,7 @@ fn register_logs_warn_and_preserves_registration_when_notifying_closed_subscribe
   let key = ServiceKey::<u32>::new("notify-fail");
   let subscriber = TypedActorRef::<Listing>::from_untyped(ActorRef::null());
   let subscribe = Receptionist::subscribe(&key, subscriber);
-  let routee = ActorRef::new(Pid::new(705, 0), NullSender);
+  let routee = ActorRef::new_with_builtin_lock(Pid::new(705, 0), NullSender);
   let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));
 
   state.with_lock(|guard| {
@@ -401,7 +403,7 @@ fn register_with_ack_logs_warn_and_preserves_registration_when_reply_target_is_c
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = Receptionist::empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-register");
-  let routee = ActorRef::new(Pid::new(703, 0), NullSender);
+  let routee = ActorRef::new_with_builtin_lock(Pid::new(703, 0), NullSender);
   let reply_to = TypedActorRef::from_untyped(ActorRef::null());
   let command = Receptionist::register_with_ack(&key, TypedActorRef::from_untyped(routee.clone()), reply_to);
 
@@ -421,7 +423,7 @@ fn deregister_with_ack_logs_warn_and_removes_registration_when_reply_target_is_c
   let (events, _subscription) = subscribe_log_recorder(&system);
   let state = Receptionist::empty_state();
   let key = ServiceKey::<u32>::new("ack-fail-deregister");
-  let routee = ActorRef::new(Pid::new(704, 0), NullSender);
+  let routee = ActorRef::new_with_builtin_lock(Pid::new(704, 0), NullSender);
 
   state.with_lock(|guard| {
     let register = Receptionist::register(&key, TypedActorRef::from_untyped(routee.clone()));

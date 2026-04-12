@@ -14,14 +14,14 @@ use alloc::{
 };
 use core::{mem, task::Poll, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, WeakShared};
 use portable_atomic::{AtomicBool, Ordering};
 
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorContext, ActorShared, Pid, STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
-      actor_context::ReceiveTimeoutState,
+      Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutStateShared,
+      STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, PipeSpawnError},
@@ -37,7 +37,7 @@ use crate::core::{
       supervision::{RestartStatistics, SupervisorDirective, SupervisorStrategyKind},
     },
     dispatch::{
-      dispatcher::{DEFAULT_DISPATCHER_ID, Dispatchers, MessageDispatcherShared},
+      dispatcher::{DEFAULT_DISPATCHER_ID, DispatcherSender, Dispatchers, MessageDispatcherShared},
       mailbox::{Mailbox, MailboxCapacity, MailboxInstrumentation, metrics_event::MailboxPressureEvent},
     },
     event::{logging::LogLevel, stream::EventStreamEvent},
@@ -49,36 +49,6 @@ use crate::core::{
   },
   typed::message_adapter::{AdapterLifecycleState, AdapterRefHandle, AdapterRefHandleId},
 };
-
-struct ActorCellState {
-  children:               Vec<Pid>,
-  child_stats:            Vec<(Pid, RestartStatistics)>,
-  watchers:               Vec<Pid>,
-  watch_with_messages:    Vec<(Pid, AnyMessage)>,
-  stashed_messages:       VecDeque<AnyMessage>,
-  timer_handles:          Vec<(String, SchedulerHandle)>,
-  pipe_tasks:             Vec<ContextPipeTask>,
-  adapter_handles:        Vec<AdapterRefHandle>,
-  adapter_handle_counter: u64,
-  pipe_task_counter:      u64,
-}
-
-impl ActorCellState {
-  const fn new() -> Self {
-    Self {
-      children:               Vec::new(),
-      child_stats:            Vec::new(),
-      watchers:               Vec::new(),
-      watch_with_messages:    Vec::new(),
-      stashed_messages:       VecDeque::new(),
-      timer_handles:          Vec::new(),
-      pipe_tasks:             Vec::new(),
-      adapter_handles:        Vec::new(),
-      adapter_handle_counter: 0,
-      pipe_task_counter:      0,
-    }
-  }
-}
 
 /// Runtime container responsible for executing an actor instance.
 ///
@@ -98,16 +68,7 @@ pub struct ActorCell {
   factory:         ActorFactoryShared,
   actor:           ActorShared,
   pipeline:        MessageInvokerPipeline,
-  /// Interior-mutable mailbox slot.
-  ///
-  /// `ActorCell::create` builds the mailbox eagerly and immediately calls
-  /// [`Self::install_mailbox`], so by the time the cell is observable from
-  /// outside the slot is always populated. The interior mutability is
-  /// confined to this single slot to leave the rest of `ActorCell` as plain
-  /// owned state — it is the only seam needed for the Pekko-style 2-phase
-  /// `attach` flow where the dispatcher creates the mailbox after the cell
-  /// exists. The slot uses `SpinSyncMutex` so it stays `no_std` compatible.
-  mailbox:         SpinSyncMutex<Option<ArcShared<Mailbox>>>,
+  mailbox:         ArcShared<Mailbox>,
   dispatcher_id:   String,
   /// Handle to the new-dispatcher tree that owns the cell.
   ///
@@ -116,8 +77,8 @@ pub struct ActorCell {
   /// inhabitants counter when the cell is dropped.
   new_dispatcher:  MessageDispatcherShared,
   sender:          ActorRefSenderShared,
-  receive_timeout: SharedLock<Option<ReceiveTimeoutState>>,
-  state:           SharedLock<ActorCellState>,
+  receive_timeout: ReceiveTimeoutStateShared,
+  state:           ActorCellStateShared,
   terminated:      AtomicBool,
 }
 
@@ -147,7 +108,7 @@ impl ActorCell {
 
   fn make_context(&self) -> ActorContext<'_> {
     let system = ActorSystem::from_state(self.system());
-    ActorContext::new(&system, self.pid).with_receive_timeout_state(&self.receive_timeout)
+    ActorContext::new(&system, self.pid).with_receive_timeout_state(self.receive_timeout.as_shared_lock())
   }
 
   /// Creates a new actor cell using the provided runtime state and props.
@@ -180,7 +141,12 @@ impl ActorCell {
     let new_dispatcher = system.resolve_dispatcher(&dispatcher_id).ok_or_else(|| {
       SpawnError::invalid_props(alloc::format!("no dispatcher configurator registered for id `{dispatcher_id}`"))
     })?;
-    let lock_provider = system.lock_provider();
+    let actor_ref_sender_shared_factory = system.actor_ref_sender_shared_factory();
+    let actor_shared_factory = system.actor_shared_factory();
+    let actor_cell_state_shared_factory = system.actor_cell_state_shared_factory();
+    let receive_timeout_state_shared_factory = system.receive_timeout_state_shared_factory();
+    let message_invoker_shared_factory = system.message_invoker_shared_factory();
+    let mailbox_shared_set_factory = system.mailbox_shared_set_factory();
 
     // Give the dispatcher a chance to supply its own mailbox (e.g.,
     // `BalancingDispatcher` hands out sharing mailboxes that all wrap its
@@ -191,13 +157,19 @@ impl ActorCell {
     } else if let Some(id) = mailbox_id {
       let queue =
         system.create_mailbox_queue(id).map_err(|error| SpawnError::invalid_props(alloc::format!("{error:?}")))?;
-      let shared_set = lock_provider.create_mailbox_shared_set();
+      let shared_set = mailbox_shared_set_factory.create();
       ArcShared::new(Mailbox::new_with_queue_and_shared_set(mailbox_config.policy(), queue, &shared_set))
     } else {
-      let shared_set = lock_provider.create_mailbox_shared_set();
+      let shared_set = mailbox_shared_set_factory.create();
       ArcShared::new(
-        Mailbox::new_from_config_with_shared_set(&mailbox_config, &shared_set)
-          .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
+        Mailbox::new_from_config_with_shared_set(
+          &mailbox_config,
+          &shared_set,
+          &system.bounded_priority_message_queue_state_shared_factory(),
+          &system.unbounded_priority_message_queue_state_shared_factory(),
+          &system.bounded_stable_priority_message_queue_state_shared_factory(),
+        )
+        .map_err(|error| SpawnError::invalid_props(alloc::format!("{error}")))?,
       )
     };
     {
@@ -211,15 +183,14 @@ impl ActorCell {
       let instrumentation = MailboxInstrumentation::new(system.clone(), pid, capacity, throughput, warn_threshold);
       mailbox.set_instrumentation(instrumentation);
     }
-    use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
-    let sender = lock_provider
+    let actor_ref_sender_shared = actor_ref_sender_shared_factory
       .create_actor_ref_sender_shared(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
-    let Some(factory) = props.factory().cloned() else {
+    let Some(actor_factory_shared) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
-    let actor = ActorShared::new(factory.with_write(|f| f.create()));
-    let receive_timeout = SharedLock::new_with_driver::<SpinSyncMutex<_>>(None);
-    let state = SharedLock::new_with_driver::<SpinSyncMutex<_>>(ActorCellState::new());
+    let actor_shared = actor_shared_factory.create(actor_factory_shared.with_write(|f| f.create()));
+    let receive_timeout_shared = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
+    let actor_cell_state_shared = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
 
     let tags = props.tags().clone();
     let cell = ArcShared::new(Self {
@@ -228,27 +199,17 @@ impl ActorCell {
       name,
       tags,
       system: system.downgrade(),
-      factory,
-      actor,
+      factory: actor_factory_shared,
+      actor: actor_shared,
       pipeline: MessageInvokerPipeline::new(),
-      mailbox: SpinSyncMutex::new(None),
+      mailbox,
       dispatcher_id,
       new_dispatcher,
-      sender,
-      receive_timeout,
-      state,
+      sender: actor_ref_sender_shared,
+      receive_timeout: receive_timeout_shared,
+      state: actor_cell_state_shared,
       terminated: AtomicBool::new(false),
     });
-
-    // Install the eagerly-built mailbox into the cell's interior-mutable slot.
-    // The contract is "install once": every later call to `cell.mailbox()`
-    // returns this `ArcShared<Mailbox>`. This is the single seam used to
-    // satisfy the Pekko-style 2-phase init where the dispatcher is responsible
-    // for the mailbox; until that flow lands the cell still pre-builds the
-    // mailbox and installs it itself, but the slot makes the `install_mailbox`
-    // contract observable to tests and to future dispatcher-side
-    // `create_mailbox` callers.
-    cell.install_mailbox(mailbox);
 
     {
       // Install the message invoker on the mailbox so the new dispatcher's
@@ -257,7 +218,7 @@ impl ActorCell {
       // break the ActorCell → Mailbox → Invoker → ActorCell ownership cycle.
       let mailbox_handle = cell.mailbox();
       let invoker: MessageInvokerShared =
-        MessageInvokerShared::new(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
+        message_invoker_shared_factory.create(Box::new(ActorCellInvoker { cell: cell.downgrade() }));
       mailbox_handle.install_invoker(invoker);
       // Late-bind the weak actor handle to the mailbox so `Mailbox::run` can
       // early-return after the cell drops, and so detach paths can call
@@ -325,34 +286,10 @@ impl ActorCell {
     &self.tags
   }
 
-  /// Installs the mailbox into the cell's interior-mutable slot.
-  ///
-  /// Calling this twice on the same cell is a programmer error: the contract
-  /// is "install once" so callers can rely on `cell.mailbox()` returning a
-  /// stable handle for the rest of the cell's lifetime. The double-install
-  /// case panics in debug builds and overwrites in release.
-  ///
-  /// # Panics
-  ///
-  /// Panics in debug builds when called more than once for the same cell.
-  pub fn install_mailbox(&self, mailbox: ArcShared<Mailbox>) {
-    let mut slot = self.mailbox.lock();
-    debug_assert!(slot.is_none(), "ActorCell::install_mailbox called twice for the same cell");
-    *slot = Some(mailbox);
-  }
-
   /// Returns a handle to the mailbox managed by this cell.
-  ///
-  /// # Panics
-  ///
-  /// Panics when the cell has not yet been initialised via
-  /// [`Self::install_mailbox`]. In normal flow `ActorCell::create` performs
-  /// the install before returning the cell, so external callers always
-  /// observe a populated slot.
   #[must_use]
-  #[allow(clippy::expect_used)]
   pub fn mailbox(&self) -> ArcShared<Mailbox> {
-    self.mailbox.lock().clone().expect("mailbox not installed yet")
+    self.mailbox.clone()
   }
 
   /// Returns the new-dispatcher handle owned by this cell.

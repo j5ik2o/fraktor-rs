@@ -42,7 +42,7 @@ fn null_sender_try_tell_returns_closed() {
 #[test]
 fn new_actor_ref_forwards_messages() {
   let (count, sender) = RecordingSender::new();
-  let mut actor: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  let mut actor: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
   assert!(actor.try_tell(AnyMessage::new(42_u32)).is_ok());
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -51,14 +51,14 @@ fn new_actor_ref_forwards_messages() {
 fn actor_ref_pid() {
   let pid = Pid::new(42, 1);
   let (_, sender) = RecordingSender::new();
-  let actor: ActorRef = ActorRef::new(pid, sender);
+  let actor: ActorRef = ActorRef::new_with_builtin_lock(pid, sender);
   assert_eq!(actor.pid(), pid);
 }
 
 #[test]
 fn actor_ref_clone() {
   let (count, sender) = RecordingSender::new();
-  let mut actor1: ActorRef = ActorRef::new(Pid::new(1, 0), sender);
+  let mut actor1: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
   let mut actor2 = actor1.clone();
 
   assert_eq!(actor1.pid(), actor2.pid());
@@ -163,9 +163,9 @@ fn actor_ref_partial_eq() {
   let (_, sender3) = RecordingSender::new();
   let pid = Pid::new(1, 0);
 
-  let actor1: ActorRef = ActorRef::new(pid, sender1);
-  let actor2: ActorRef = ActorRef::new(pid, sender2);
-  let actor3: ActorRef = ActorRef::new(Pid::new(2, 0), sender3);
+  let actor1: ActorRef = ActorRef::new_with_builtin_lock(pid, sender1);
+  let actor2: ActorRef = ActorRef::new_with_builtin_lock(pid, sender2);
+  let actor3: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(2, 0), sender3);
 
   assert_eq!(actor1, actor2);
   assert_ne!(actor1, actor3);
@@ -178,7 +178,7 @@ fn actor_ref_debug() {
 
   let (_, sender) = RecordingSender::new();
   let pid = Pid::new(42, 1);
-  let actor: ActorRef = ActorRef::new(pid, sender);
+  let actor: ActorRef = ActorRef::new_with_builtin_lock(pid, sender);
 
   let debug_str = format!("{:?}", actor);
   assert!(debug_str.contains("ActorRef"));
@@ -191,8 +191,8 @@ fn actor_ref_hash() {
   let (_, sender2) = RecordingSender::new();
   let pid = Pid::new(1, 0);
 
-  let actor1: ActorRef = ActorRef::new(pid, sender1);
-  let actor2: ActorRef = ActorRef::new(pid, sender2);
+  let actor1: ActorRef = ActorRef::new_with_builtin_lock(pid, sender1);
+  let actor2: ActorRef = ActorRef::new_with_builtin_lock(pid, sender2);
 
   let _ = actor1;
   let _ = actor2;
@@ -209,7 +209,7 @@ fn no_sender_try_tell_is_equivalent_to_null() {
 #[test]
 fn actor_ref_poison_pill_without_system_uses_user_channel() {
   let (count, sender) = RecordingSender::new();
-  let mut actor: ActorRef = ActorRef::new(Pid::new(10, 0), sender);
+  let mut actor: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(10, 0), sender);
   actor.poison_pill();
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -217,7 +217,7 @@ fn actor_ref_poison_pill_without_system_uses_user_channel() {
 #[test]
 fn actor_ref_kill_without_system_uses_user_channel() {
   let (count, sender) = RecordingSender::new();
-  let mut actor: ActorRef = ActorRef::new(Pid::new(11, 0), sender);
+  let mut actor: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(11, 0), sender);
   actor.kill();
   assert_eq!(count.load(Ordering::Relaxed), 1);
 }

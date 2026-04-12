@@ -3,13 +3,10 @@
 use alloc::boxed::Box;
 use core::time::Duration;
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
-
 use crate::core::kernel::actor::scheduler::tick_driver::{
-  SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError, TickDriverHandle,
-  TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
+  SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverControlSharedFactory,
+  TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
 };
-
 struct NoopControl;
 
 impl TickDriverControl for NoopControl {
@@ -31,9 +28,13 @@ impl TickDriver for RuntimeTestDriver {
     Duration::from_millis(1)
   }
 
-  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    _feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id(), self.kind(), self.resolution(), control))
   }
 }

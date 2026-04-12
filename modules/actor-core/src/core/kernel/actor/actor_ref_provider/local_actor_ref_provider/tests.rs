@@ -3,7 +3,7 @@ use crate::core::kernel::{
     Actor, ActorContext, Address, Pid,
     actor_path::ActorPathParser,
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared, LocalActorRefProvider},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -12,6 +12,7 @@ use crate::core::kernel::{
   },
   system::{
     ActorSystem,
+    shared_factory::BuiltinSpinSharedFactory,
     state::{SystemStateShared, system_state::SystemState},
   },
 };
@@ -73,7 +74,7 @@ fn local_actor_ref_provider_supports_temp_actor_round_trip() {
   let config = ActorSystemConfig::default().with_tick_driver(tick_driver);
   let system = ActorSystem::new_with_config(&props, &config).expect("system");
   let provider = LocalActorRefProvider::new_with_state(&system.state());
-  let temp_ref = ActorRef::new(Pid::new(4242, 0), TempProbeSender);
+  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(4242, 0), TempProbeSender);
 
   let name = provider.register_temp_actor(temp_ref.clone()).expect("temp actor name");
   let path = provider.temp_path().child(&name);
@@ -106,7 +107,7 @@ fn local_actor_ref_provider_exposes_classic_contract_helpers() {
   let temp_container = provider.temp_container().expect("temp container");
   assert_eq!(temp_container.path().expect("temp path").to_relative_string(), "/user/temp");
 
-  let temp_ref = ActorRef::new(Pid::new(5252, 0), TempProbeSender);
+  let temp_ref = ActorRef::new_with_builtin_lock(Pid::new(5252, 0), TempProbeSender);
   let name = provider.register_temp_actor(temp_ref).expect("temp actor");
   let path = provider.temp_path().child(&name);
   provider.unregister_temp_actor_path(&path).expect("unregister by path");
@@ -150,8 +151,10 @@ fn local_actor_ref_provider_does_not_keep_system_state_alive_after_registration(
   let weak = state.downgrade();
 
   {
-    let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&state));
-    state.install_actor_ref_provider(&provider).expect("install provider");
+    let shared_factory = BuiltinSpinSharedFactory::new();
+    let actor_ref_provider_handle_shared =
+      shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&state));
+    state.install_actor_ref_provider(&actor_ref_provider_handle_shared).expect("install provider");
   }
 
   drop(state);
@@ -168,8 +171,10 @@ fn actor_ref_provider_shared_resolves_actor_refs_via_shared_borrow() {
   let child = system.actor_of_named(&Props::from_fn(|| ProbeActor), "provider-child").expect("child");
   let canonical = child.actor_ref().canonical_path().expect("canonical path").to_canonical_uri();
 
-  let provider = ActorRefProviderShared::new(LocalActorRefProvider::new_with_state(&system.state()));
+  let shared_factory = BuiltinSpinSharedFactory::new();
+  let actor_ref_provider_handle_shared =
+    shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&system.state()));
 
-  let resolved = provider.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
+  let resolved = actor_ref_provider_handle_shared.resolve_actor_ref_str(&canonical).expect("resolve actor ref");
   assert_eq!(resolved, child.actor_ref().clone());
 }

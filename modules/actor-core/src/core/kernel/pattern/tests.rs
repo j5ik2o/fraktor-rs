@@ -124,7 +124,7 @@ fn ask_with_timeout_preserves_immediate_reply_without_installing_timeout() {
 
 #[test]
 fn ask_with_timeout_without_system_times_out_immediately() {
-  let mut actor = ActorRef::new(Pid::new(41, 0), SilentSender);
+  let mut actor = ActorRef::new_with_builtin_lock(Pid::new(41, 0), SilentSender);
 
   let response = actor.ask_with_timeout(AnyMessage::new("ping"), Duration::from_millis(1));
 
@@ -222,7 +222,7 @@ fn graceful_stop_with_message_returns_timeout_when_target_stays_alive() {
 
 #[test]
 fn graceful_stop_returns_send_failed_without_system() {
-  let mut actor_ref = ActorRef::new(Pid::new(90, 0), SilentSender);
+  let mut actor_ref = ActorRef::new_with_builtin_lock(Pid::new(90, 0), SilentSender);
   let mut future = Box::pin(graceful_stop(&mut actor_ref, Duration::from_millis(1)));
 
   assert!(matches!(poll_future(future.as_mut()), Poll::Ready(Err(AskError::SendFailed(_)))));

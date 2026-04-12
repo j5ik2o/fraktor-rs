@@ -6,11 +6,14 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::ArcShared;
 
-use crate::core::kernel::actor::scheduler::tick_driver::{
-  AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverHandle, TickDriverId,
-  TickDriverKind, TickExecutorSignal, TickFeed,
+use crate::core::kernel::{
+  actor::scheduler::tick_driver::{
+    AutoDriverMetadata, AutoProfileKind, TickDriverBundle, TickDriverControl, TickDriverControlSharedFactory,
+    TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorSignal, TickFeed,
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 struct RecordingControl {
@@ -34,7 +37,7 @@ impl TickDriverControl for RecordingControl {
 
 fn runtime_bundle(shutdown_calls: ArcShared<AtomicUsize>) -> TickDriverBundle {
   let control: Box<dyn TickDriverControl> = Box::new(RecordingControl::new(shutdown_calls));
-  let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+  let control = BuiltinSpinSharedFactory::new().create_tick_driver_control_shared(control);
   let handle = TickDriverHandle::new(TickDriverId::new(1), TickDriverKind::Auto, Duration::from_millis(1), control);
   let feed = TickFeed::new(Duration::from_millis(1), 1, TickExecutorSignal::new());
   let metadata = AutoDriverMetadata {

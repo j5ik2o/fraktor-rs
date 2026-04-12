@@ -6,7 +6,7 @@ use crate::core::kernel::{
   actor::Pid,
   event::{
     logging::{ActorLogMarker, LogLevel, LoggingAdapter, tests::RecordingSubscriber},
-    stream::{EventStreamEvent, subscriber_handle},
+    stream::{EventStreamEvent, tests::subscriber_handle},
   },
   system::ActorSystem,
 };

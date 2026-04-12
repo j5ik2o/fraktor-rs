@@ -25,6 +25,12 @@ where
     Self { inner: shared_queue }
   }
 
+  /// Creates a shared queue by materializing the built-in spin lock locally.
+  #[must_use]
+  pub fn new_with_builtin_lock(queue: SyncQueue<T, B>) -> Self {
+    Self { inner: ArcShared::new(SpinSyncMutex::new(queue)) }
+  }
+
   /// Enqueues an item according to the backend's overflow policy.
   ///
   /// # Errors

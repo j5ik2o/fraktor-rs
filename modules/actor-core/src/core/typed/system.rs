@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{boxed::Box, format, string::String, vec::Vec};
 use core::{marker::PhantomData, time::Duration};
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -25,7 +25,10 @@ use crate::core::{
     },
     event::{
       logging::LogLevel,
-      stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberShared, EventStreamSubscription},
+      stream::{
+        ActorRefEventStreamSubscriber, EventStreamEvent, EventStreamShared, EventStreamSubscriberShared,
+        EventStreamSubscription, subscriber_handle_with_shared_factory,
+      },
     },
     system::{ActorSystem, TerminationSignal, state::SystemStateShared},
     util::futures::ActorFutureShared,
@@ -49,7 +52,9 @@ struct EventStreamRefEndpoint {
 }
 
 struct EventStreamRefSender {
-  event_stream:  EventStreamShared,
+  event_stream: EventStreamShared,
+  event_stream_subscriber_shared_factory:
+    ArcShared<dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory>,
   subscriptions: Vec<EventStreamActorSubscription>,
 }
 
@@ -86,15 +91,24 @@ impl EventStreamRefEndpoint {
 }
 
 impl EventStreamRefSender {
-  const fn new(event_stream: EventStreamShared) -> Self {
-    Self { event_stream, subscriptions: Vec::new() }
+  fn new(
+    event_stream: EventStreamShared,
+    event_stream_subscriber_shared_factory: ArcShared<
+      dyn crate::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+    >,
+  ) -> Self {
+    Self { event_stream, event_stream_subscriber_shared_factory, subscriptions: Vec::new() }
   }
 
   fn subscribe_actor(&mut self, subscriber: &ActorRef) {
     if self.subscriptions.iter().any(|entry| entry.pid == subscriber.pid()) {
       return;
     }
-    let subscription = self.event_stream.subscribe_actor(subscriber.clone());
+    let subscriber_handle = subscriber_handle_with_shared_factory(
+      &self.event_stream_subscriber_shared_factory,
+      ActorRefEventStreamSubscriber::new(subscriber.clone()),
+    );
+    let subscription = self.event_stream.subscribe(&subscriber_handle);
     self.subscriptions.push(EventStreamActorSubscription::new(subscriber.pid(), subscription));
   }
 
@@ -125,8 +139,11 @@ impl ExtensionId for EventStreamRefId {
 
   fn create_extension(&self, system: &ActorSystem) -> Self::Ext {
     let state = system.state();
-    let actor_ref =
-      ActorRef::with_system(EVENT_STREAM_FACADE_PID, EventStreamRefSender::new(system.event_stream()), &state);
+    let actor_ref = ActorRef::with_system(
+      EVENT_STREAM_FACADE_PID,
+      EventStreamRefSender::new(system.event_stream(), state.event_stream_subscriber_shared_factory()),
+      &state,
+    );
     EventStreamRefEndpoint::new(actor_ref)
   }
 }
@@ -304,7 +321,9 @@ where
   pub fn ignore_ref<U>(&self) -> TypedActorRef<U>
   where
     U: Send + Sync + 'static, {
-    TypedActorRef::from_untyped(ActorRef::new(IGNORE_FACADE_PID, IgnoreRefSender))
+    let state = self.inner.state();
+    let sender = state.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(IgnoreRefSender));
+    TypedActorRef::from_untyped(ActorRef::from_shared(IGNORE_FACADE_PID, sender, &state))
   }
 
   /// Renders the current actor hierarchy for debugging.

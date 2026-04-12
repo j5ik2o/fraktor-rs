@@ -1,91 +1,57 @@
-//! Unbounded priority message queue backed by a binary heap.
+//! Unbounded priority message queue backed by shared mailbox state.
 
 #[cfg(test)]
 mod tests;
 
-use alloc::collections::BinaryHeap;
-use core::cmp::Ordering;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
-
-use super::{envelope::Envelope, message_queue::MessageQueue};
+use super::{
+  envelope::Envelope, message_queue::MessageQueue,
+  unbounded_priority_message_queue_state::UnboundedPriorityMessageQueueEntry,
+  unbounded_priority_message_queue_state_shared::UnboundedPriorityMessageQueueStateShared,
+};
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
-
-/// Initial capacity hint for the backing binary heap.
-const DEFAULT_CAPACITY: usize = 11;
 
 /// Unbounded message queue that dequeues envelopes in priority order.
 ///
 /// Inspired by Pekko's `UnboundedPriorityMailbox`. A [`MessagePriorityGenerator`]
 /// assigns an integer priority to each message; lower values are dequeued first.
 pub struct UnboundedPriorityMessageQueue {
-  inner:     SharedLock<BinaryHeap<PriorityEntry>>,
-  generator: ArcShared<dyn MessagePriorityGenerator>,
+  state_shared: UnboundedPriorityMessageQueueStateShared,
+  generator:    ArcShared<dyn MessagePriorityGenerator>,
 }
 
 impl UnboundedPriorityMessageQueue {
   /// Creates a new unbounded priority message queue.
   #[must_use]
-  pub fn new(generator: ArcShared<dyn MessagePriorityGenerator>) -> Self {
-    Self {
-      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(BinaryHeap::with_capacity(DEFAULT_CAPACITY)),
-      generator,
-    }
+  pub fn new(
+    generator: ArcShared<dyn MessagePriorityGenerator>,
+    state_shared: UnboundedPriorityMessageQueueStateShared,
+  ) -> Self {
+    Self { state_shared, generator }
   }
 }
 
 impl MessageQueue for UnboundedPriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
-    self.inner.with_write(|inner| inner.push(PriorityEntry { priority, envelope }));
+    self
+      .state_shared
+      .with_write(|state| state.heap_mut().push(UnboundedPriorityMessageQueueEntry::new(priority, envelope)));
     Ok(())
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.inner.with_write(|inner| inner.pop().map(|entry| entry.envelope))
+    self.state_shared.with_write(|state| state.heap_mut().pop().map(UnboundedPriorityMessageQueueEntry::into_envelope))
   }
 
   fn number_of_messages(&self) -> usize {
-    self.inner.with_read(|inner| inner.len())
+    self.state_shared.with_read(|state| state.heap().len())
   }
 
   fn clean_up(&self) {
-    self.inner.with_write(|inner| inner.clear());
-  }
-}
-
-/// Wrapper that orders envelopes by priority for use in [`BinaryHeap`].
-///
-/// `BinaryHeap` is a max-heap, so [`Ord`] is implemented such that entries
-/// with *lower* priority values compare as *greater*, ensuring they are
-/// dequeued first.
-struct PriorityEntry {
-  priority: i32,
-  envelope: Envelope,
-}
-
-// BinaryHeap での使用を前提としているため、priority のみで比較する。
-// envelope の比較は不要（AnyMessage は PartialEq を実装しない）。
-// 将来この型を公開する場合は比較セマンティクスの再検討が必要。
-impl PartialEq for PriorityEntry {
-  fn eq(&self, other: &Self) -> bool {
-    self.priority == other.priority
-  }
-}
-
-impl Eq for PriorityEntry {}
-
-impl PartialOrd for PriorityEntry {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-
-impl Ord for PriorityEntry {
-  fn cmp(&self, other: &Self) -> Ordering {
-    // Reverse: lower priority value → greater in heap ordering → dequeued first.
-    other.priority.cmp(&self.priority)
+    self.state_shared.with_write(|state| state.heap_mut().clear());
   }
 }

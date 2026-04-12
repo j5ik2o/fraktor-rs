@@ -1,6 +1,6 @@
 #![cfg(not(target_os = "none"))]
 
-use std::{string::String, thread, vec::Vec};
+use std::{boxed::Box, string::String, thread, vec::Vec};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
@@ -12,7 +12,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::{
     logging::{ActorLogMarker, ActorLogging, DiagnosticActorLogging, LogLevel, LoggingReceive},
-    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    stream::{EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared},
   },
   system::ActorSystem,
 };
@@ -34,6 +34,10 @@ impl EventStreamSubscriber for RecordingSubscriber {
   fn on_event(&mut self, event: &EventStreamEvent) {
     self.events.with_lock(|events| events.push(event.clone()));
   }
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
 }
 
 struct LoggingActor;
@@ -61,7 +65,7 @@ impl Actor for LoggingActor {
 
 fn main() {
   let events = SharedLock::new_with_driver::<SpinSyncMutex<_>>(Vec::new());
-  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let subscriber = test_subscriber_handle(RecordingSubscriber::new(events.clone()));
   let props = Props::from_fn(|| LoggingActor);
   let system = ActorSystem::new(&props, TickDriverConfig::manual(ManualTestDriver::new())).expect("system");
   let _subscription = system.event_stream().subscribe(&subscriber);

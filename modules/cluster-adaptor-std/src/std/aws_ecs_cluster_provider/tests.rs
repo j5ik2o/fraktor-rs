@@ -1,12 +1,13 @@
 //! Tests for AwsEcsClusterProvider.
 
+use alloc::boxed::Box;
 use std::sync::Mutex;
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+  EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
 };
 use fraktor_cluster_core_rs::core::{BlockListProvider, ClusterEvent, StartupMode, cluster_provider::ClusterProvider};
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::{AwsEcsClusterProvider, EcsClusterConfig};
 
@@ -45,9 +46,13 @@ impl EventStreamSubscriber for RecordingClusterEvents {
   }
 }
 
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  EventStreamSubscriberShared::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(Box::new(subscriber)))
+}
+
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEvents, EventStreamSubscription) {
   let subscriber_impl = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(subscriber_impl.clone());
+  let subscriber = test_subscriber_handle(subscriber_impl.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (subscriber_impl, subscription)
 }

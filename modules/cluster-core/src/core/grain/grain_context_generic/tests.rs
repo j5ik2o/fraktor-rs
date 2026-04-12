@@ -4,8 +4,8 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  system::{ActorSystem, TerminationSignal},
+  system::{ActorSystem, TerminationSignal, shared_factory::BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -61,8 +61,10 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared =
+        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -124,8 +126,7 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender);
-    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+    Ok(ActorRef::with_system(Pid::new(1, 0), TestSender, &self.system.state()))
   }
 
   fn termination_signal(&self) -> TerminationSignal {

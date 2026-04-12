@@ -4,9 +4,11 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
   },
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SpinSyncMutex},
@@ -49,7 +51,10 @@ impl EventStreamSubscriber for TestSubscriber {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (TestSubscriber, EventStreamSubscription) {
   let subscriber = TestSubscriber::new();
-  let handle = subscriber_handle(subscriber.clone());
+  let shared_factory: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let handle = subscriber_handle_with_shared_factory(&shared_factory, subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
 }

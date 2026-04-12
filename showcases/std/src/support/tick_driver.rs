@@ -19,15 +19,13 @@ use std::{
 
 #[cfg(feature = "advanced")]
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
-  AutoDriverMetadata, AutoProfileKind, TickDriver, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle,
-  next_tick_driver_id,
+  AutoDriverMetadata, AutoProfileKind, TickDriver, TickDriverControlSharedFactory, TickDriverHandle, TickDriverId,
+  TickDriverKind, TickFeedHandle, next_tick_driver_id,
 };
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   HardwareKind, HardwareTickDriver, SchedulerTickExecutor, TickDriverConfig, TickDriverControl, TickDriverError,
   TickExecutorPump, TickPulseHandler, TickPulseSource,
 };
-#[cfg(feature = "advanced")]
-use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex};
 #[cfg(feature = "advanced")]
 use tokio::{
   runtime::Handle as TokioHandle,
@@ -234,7 +232,11 @@ impl TickDriver for TokioDemoTickDriver {
     self.resolution
   }
 
-  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let handle = TokioHandle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
     let tick_task = handle.spawn(async move {
@@ -247,7 +249,7 @@ impl TickDriver for TokioDemoTickDriver {
     });
 
     let control: Box<dyn TickDriverControl> = Box::new(TokioDemoTickDriverControl { tick_task });
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, resolution, control))
   }
 }

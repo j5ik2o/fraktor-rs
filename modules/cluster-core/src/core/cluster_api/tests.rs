@@ -1,29 +1,59 @@
 use alloc::{string::String, vec::Vec};
-use core::time::Duration;
+use core::{
+  sync::atomic::{AtomicUsize, Ordering},
+  time::Duration,
+};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorLockFactory,
+    ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    ReceiveTimeoutStateSharedFactory,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
+    },
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{
+      AnyMessage, AnyMessageView, AskResult,
+      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
+    },
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
+      tick_driver::{
+        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
+      },
     },
     setup::ActorSystemConfig,
   },
-  event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory, UnboundedPriorityMessageQueueState,
+      UnboundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueStateSharedFactory,
+    },
   },
-  system::{ActorSystem, TerminationSignal},
+  event::stream::{
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber,
+    EventStreamSubscriberShared, EventStreamSubscriberSharedFactory, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
+  },
+  system::{
+    ActorSystem, TerminationSignal,
+    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
+  },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -37,6 +67,173 @@ use crate::core::{
   identity::{ClusterIdentity, IdentityLookup, IdentitySetupError, LookupError, NoopIdentityLookup},
   placement::{ActivatedKind, PlacementDecision, PlacementEvent, PlacementLocality, PlacementResolution},
 };
+
+struct CountingSubscriberLockProvider {
+  inner: BuiltinSpinSharedFactory,
+  event_stream_subscriber_shared: ArcShared<AtomicUsize>,
+}
+
+impl CountingSubscriberLockProvider {
+  fn new() -> (ArcShared<AtomicUsize>, Self) {
+    let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinSharedFactory::new(),
+      event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
+    };
+    (event_stream_subscriber_shared, provider)
+  }
+}
+
+impl ActorLockFactory for CountingSubscriberLockProvider {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.inner.create_lock(value)
+  }
+}
+
+impl MessageDispatcherSharedFactory for CountingSubscriberLockProvider {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherSharedFactory::create_message_dispatcher_shared(&self.inner, dispatcher)
+  }
+}
+
+impl ExecutorSharedFactory for CountingSubscriberLockProvider {
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    self.inner.create_executor_shared(executor, trampoline)
+  }
+}
+
+impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&self.inner, sender)
+  }
+}
+
+impl ActorSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorSharedFactory::create(&self.inner, actor)
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for CountingSubscriberLockProvider {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
+  }
+}
+
+impl UnboundedPriorityMessageQueueStateSharedFactory for CountingSubscriberLockProvider {
+  fn create_unbounded_priority_message_queue_state_shared(
+    &self,
+    state: UnboundedPriorityMessageQueueState,
+  ) -> UnboundedPriorityMessageQueueStateShared {
+    UnboundedPriorityMessageQueueStateSharedFactory::create_unbounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
+  }
+}
+
+impl ActorCellStateSharedFactory for CountingSubscriberLockProvider {
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateSharedFactory::create_actor_cell_state_shared(&self.inner, state)
+  }
+}
+
+impl ReceiveTimeoutStateSharedFactory for CountingSubscriberLockProvider {
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateSharedFactory::create_receive_timeout_state_shared(&self.inner, state)
+  }
+}
+
+impl MessageInvokerSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    MessageInvokerSharedFactory::create(&self.inner, invoker)
+  }
+}
+
+impl SharedMessageQueueFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> SharedMessageQueue {
+    SharedMessageQueueFactory::create(&self.inner)
+  }
+}
+
+impl EventStreamSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, stream: EventStream) -> EventStreamShared {
+    EventStreamSharedFactory::create(&self.inner, stream)
+  }
+}
+
+impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
+  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
+    self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
+    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
+  }
+}
+
+impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
+  fn create(&self) -> MailboxSharedSet {
+    MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
+  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl TickDriverControlSharedFactory for CountingSubscriberLockProvider {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubscriberLockProvider {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingSubscriberLockProvider {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    self.inner.create_context_pipe_waker_handle_shared(handle)
+  }
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
+}
+
+#[test]
+fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
+  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = ArcShared::new(lock_provider);
+  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
+
+  let _subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingClusterEvents::new());
+
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
+    1,
+    "external subscribers should materialize via the supplied lock provider"
+  );
+}
 
 #[test]
 fn try_from_system_fails_when_extension_missing() {
@@ -217,8 +414,10 @@ fn down_delegates_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared =
+        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -253,8 +452,10 @@ fn join_and_leave_delegate_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared =
+        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -276,7 +477,7 @@ fn subscribe_and_unsubscribe_control_event_stream_registration() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[ClusterEventType::TopologyUpdated]);
 
@@ -304,7 +505,7 @@ fn subscribe_snapshot_mode_sends_current_cluster_state_first() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -339,7 +540,7 @@ fn subscribe_snapshot_mode_sends_self_member_before_topology_events() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -365,7 +566,7 @@ fn subscribe_snapshot_mode_keeps_current_cluster_state_first_when_topology_updat
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription =
     api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsSnapshot, &[ClusterEventType::TopologyUpdated]);
 
@@ -396,7 +597,7 @@ fn subscribe_no_replay_skips_buffered_cluster_events() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let _subscription = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
   assert!(recorder.events().is_empty());
 
@@ -416,9 +617,55 @@ fn subscribe_panics_when_event_type_filter_is_empty() {
 
   let api = ClusterApi::try_from_system(&system).expect("cluster api");
   let recorder = RecordingClusterEvents::new();
-  let subscriber = subscriber_handle(recorder);
+  let subscriber = test_subscriber_handle(recorder);
 
   let _ = api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[]);
+}
+
+#[test]
+fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_provider() {
+  let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler_config = SchedulerConfig::default().with_runner_api_enabled(true);
+  let cluster_config = ClusterExtensionConfig::new().with_advertised_address("node1:8080");
+  let cluster_installer = ClusterExtensionInstaller::new(cluster_config, |_event_stream, _block_list, _address| {
+    Box::new(NoopClusterProvider::new())
+  })
+  .with_identity_lookup_factory(|| Box::new(StaticIdentityLookup::new("node1:8080")));
+  let extensions = ExtensionInstallers::default().with_extension_installer(cluster_installer);
+  let config = ActorSystemConfig::default()
+    .with_scheduler_config(scheduler_config)
+    .with_tick_driver(tick_driver)
+    .with_shared_factory(lock_provider)
+    .with_extension_installers(extensions)
+    .with_actor_ref_provider_installer(|system: &ActorSystem| {
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared =
+        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
+    });
+  let props = Props::from_fn(|| TestGuardian);
+  let system = ActorSystem::new_with_config(&props, &config).expect("build system");
+  let extension = system.extended().extension_by_type::<ClusterExtension>().expect("cluster extension");
+  extension.start_member().expect("start member");
+
+  let api = ClusterApi::try_from_system(&system).expect("cluster api");
+  let recorder = RecordingClusterEvents::new();
+  let subscriber = test_subscriber_handle(recorder);
+  let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
+
+  let subscription =
+    api.subscribe(&subscriber, ClusterSubscriptionInitialStateMode::AsEvents, &[ClusterEventType::TopologyUpdated]);
+  let no_replay = api.subscribe_no_replay(&subscriber, &[ClusterEventType::TopologyUpdated]);
+
+  assert_eq!(
+    event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
+    2,
+    "cluster api should materialize both filtered subscribers via the actor-system lock provider"
+  );
+
+  api.unsubscribe(subscription.id());
+  api.unsubscribe(no_replay.id());
 }
 
 fn run_scheduler(system: &ActorSystem, duration: Duration) {
@@ -458,8 +705,10 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let provider = ActorRefProviderShared::new(TestActorRefProvider::new(system.clone()));
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared =
+        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -495,7 +744,7 @@ impl EventStreamSubscriber for RecordingGrainEvents {
 
 fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEvents, EventStreamSubscription) {
   let recorder = RecordingGrainEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
 }
@@ -761,8 +1010,7 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender);
-    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+    Ok(ActorRef::with_system(Pid::new(1, 0), TestSender, &self.system.state()))
   }
 
   fn termination_signal(&self) -> TerminationSignal {

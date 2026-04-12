@@ -18,12 +18,12 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared,
-      MessageDispatcherConfigurator,
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared, ExecutorSharedFactory,
+      MessageDispatcherConfigurator, TrampolineState,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
-  system::ActorSystem,
+  system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::{Builder, Runtime};
@@ -136,13 +136,14 @@ impl TokioBenchSystem {
     let runtime = Builder::new_multi_thread().worker_threads(2).enable_time().build().expect("tokio runtime");
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
+      let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
+      let message_dispatcher_shared_factory = config.message_dispatcher_shared_factory().clone();
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
+      let executor = BuiltinSpinSharedFactory::new()
+        .create_executor_shared(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
       let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
-      let config = ActorSystemConfig::default()
-        .with_tick_driver(default_tick_driver_config())
-        .with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
+        Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
+      let config = config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::new_with_config(props, &config).expect("actor system")
     });
     Self { runtime, system }

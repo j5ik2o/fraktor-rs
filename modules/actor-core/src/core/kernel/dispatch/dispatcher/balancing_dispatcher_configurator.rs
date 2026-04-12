@@ -7,8 +7,9 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{
   balancing_dispatcher::BalancingDispatcher, dispatcher_settings::DispatcherSettings, executor_shared::ExecutorShared,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory, shared_message_queue::SharedMessageQueue,
 };
-use crate::core::kernel::system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider};
+use crate::core::kernel::system::shared_factory::MailboxSharedSetFactory;
 
 /// Configurator that holds a single eagerly built [`BalancingDispatcher`] handle.
 ///
@@ -22,20 +23,15 @@ pub struct BalancingDispatcherConfigurator {
 impl BalancingDispatcherConfigurator {
   /// Builds a new configurator from the supplied settings and executor.
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
-    let provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_provider(settings, executor, &provider)
-  }
-
-  /// Builds a configurator that binds the supplied actor lock provider.
-  #[must_use]
-  pub fn new_with_provider(
+  pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    provider: &ArcShared<dyn ActorLockProvider>,
+    message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
+    shared_queue: SharedMessageQueue,
+    mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
   ) -> Self {
-    let dispatcher = BalancingDispatcher::new_with_provider(settings, executor, provider.clone());
-    Self { shared: provider.create_message_dispatcher_shared(Box::new(dispatcher)) }
+    let dispatcher = BalancingDispatcher::new(settings, executor, shared_queue, mailbox_shared_set_factory);
+    Self { shared: message_dispatcher_shared_factory.create_message_dispatcher_shared(Box::new(dispatcher)) }
   }
 }
 

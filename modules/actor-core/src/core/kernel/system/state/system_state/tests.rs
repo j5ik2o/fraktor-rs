@@ -4,7 +4,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SpinSyncMutex};
 
 use super::{super::booting_state::BootingSystemState, SystemState};
 use crate::core::kernel::{
@@ -23,24 +23,26 @@ use crate::core::kernel::{
     scheduler::{
       SchedulerConfig,
       tick_driver::{
-        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverError,
-        TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
+        ManualTestDriver, SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl,
+        TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+        TickExecutorPump, TickFeedHandle,
       },
     },
     setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
-      MessageDispatcherConfigurator,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
+      MessageDispatcherConfigurator, MessageDispatcherSharedFactory, TrampolineState,
     },
     mailbox::MailboxMessage,
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::{
     RegisterExtraTopLevelError, TerminationSignal,
     guardian::GuardianKind,
     remote::RemotingConfig,
+    shared_factory::BuiltinSpinSharedFactory,
     state::{AuthorityState, SystemStateShared, system_state::LogLevel},
   },
 };
@@ -134,9 +136,13 @@ impl TickDriver for StaticTickDriver {
     self.resolution
   }
 
-  fn start(&mut self, _feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    _feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, self.resolution, control))
   }
 }
@@ -439,11 +445,14 @@ fn system_state_deadletters() {
 
 #[test]
 fn system_state_register_ask_future() {
-  use crate::core::kernel::{actor::messaging::AskResult, util::futures::ActorFutureShared};
+  use crate::core::kernel::{
+    system::shared_factory::BuiltinSpinSharedFactory,
+    util::futures::{ActorFuture, ActorFutureSharedFactory},
+  };
 
-  type TestAskResult = AskResult;
   let mut state = build_state();
-  let future = ActorFutureShared::<TestAskResult>::new();
+  let future =
+    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();
@@ -873,10 +882,12 @@ impl Executor for NoopExecutor {
 }
 
 fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)
 }
 

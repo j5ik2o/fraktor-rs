@@ -1,0 +1,10 @@
+//! Actor-system scoped shared-factory package.
+
+mod builtin_spin_shared_factory;
+mod mailbox_shared_set;
+mod mailbox_shared_set_factory;
+
+pub use builtin_spin_shared_factory::BuiltinSpinSharedFactory;
+pub(crate) use mailbox_shared_set::MailboxLocked;
+pub use mailbox_shared_set::MailboxSharedSet;
+pub use mailbox_shared_set_factory::MailboxSharedSetFactory;

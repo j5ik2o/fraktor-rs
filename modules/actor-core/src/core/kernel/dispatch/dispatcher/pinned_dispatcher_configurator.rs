@@ -11,15 +11,14 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{
   dispatcher_settings::DispatcherSettings, executor_factory::ExecutorFactory,
   message_dispatcher_configurator::MessageDispatcherConfigurator, message_dispatcher_shared::MessageDispatcherShared,
-  pinned_dispatcher::PinnedDispatcher,
+  message_dispatcher_shared_factory::MessageDispatcherSharedFactory, pinned_dispatcher::PinnedDispatcher,
 };
-use crate::core::kernel::system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider};
 
 /// Configurator that produces a fresh [`PinnedDispatcher`] per call.
 pub struct PinnedDispatcherConfigurator {
-  settings:           DispatcherSettings,
-  executor_factory:   ArcShared<Box<dyn ExecutorFactory>>,
-  lock_provider:      ArcShared<dyn ActorLockProvider>,
+  settings: DispatcherSettings,
+  executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
+  message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory>,
   thread_name_prefix: String,
 }
 
@@ -29,24 +28,13 @@ impl PinnedDispatcherConfigurator {
   pub fn new(
     settings: DispatcherSettings,
     executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
-    thread_name_prefix: impl Into<String>,
-  ) -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_provider(settings, executor_factory, &lock_provider, thread_name_prefix)
-  }
-
-  /// Builds a new pinned configurator with an explicit lock provider.
-  #[must_use]
-  pub fn new_with_provider(
-    settings: DispatcherSettings,
-    executor_factory: ArcShared<Box<dyn ExecutorFactory>>,
-    lock_provider: &ArcShared<dyn ActorLockProvider>,
+    message_dispatcher_shared_factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
     thread_name_prefix: impl Into<String>,
   ) -> Self {
     Self {
       settings,
       executor_factory,
-      lock_provider: lock_provider.clone(),
+      message_dispatcher_shared_factory: message_dispatcher_shared_factory.clone(),
       thread_name_prefix: thread_name_prefix.into(),
     }
   }
@@ -62,6 +50,6 @@ impl MessageDispatcherConfigurator for PinnedDispatcherConfigurator {
   fn dispatcher(&self) -> MessageDispatcherShared {
     let executor = self.executor_factory.create(self.settings.id());
     let dispatcher = PinnedDispatcher::new(&self.settings, executor);
-    self.lock_provider.create_message_dispatcher_shared(Box::new(dispatcher))
+    self.message_dispatcher_shared_factory.create_message_dispatcher_shared(Box::new(dispatcher))
   }
 }

@@ -6,7 +6,7 @@ use crate::core::kernel::actor::{
 
 #[test]
 fn actor_identity_keeps_correlation_id_and_actor_ref() {
-  let actor_ref = ActorRef::new(Pid::new(10, 0), NullSender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(10, 0), NullSender);
   let identity = ActorIdentity::found(AnyMessage::new("corr"), actor_ref.clone());
 
   let correlation_id = identity.correlation_id().payload().downcast_ref::<&str>().expect("&str");

@@ -18,47 +18,41 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
-  system::lock_provider::{ActorLockProvider, BuiltinSpinLockProvider},
+  system::shared_factory::MailboxSharedSetFactory,
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
 pub struct BalancingDispatcher {
-  core:          DispatcherCore,
-  shared_queue:  ArcShared<SharedMessageQueue>,
-  team:          Vec<WeakShared<ActorCell>>,
-  lock_provider: ArcShared<dyn ActorLockProvider>,
+  core: DispatcherCore,
+  shared_queue: SharedMessageQueue,
+  team: Vec<WeakShared<ActorCell>>,
+  mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
 }
 
 impl BalancingDispatcher {
   /// Constructs a new `BalancingDispatcher`.
   ///
-  /// The dispatcher allocates a fresh [`SharedMessageQueue`] internally; the
-  /// queue is reused by every actor that attaches via
+  /// The supplied [`SharedMessageQueue`] is reused by every actor that
+  /// attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
-  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared) -> Self {
-    let lock_provider: ArcShared<dyn ActorLockProvider> = ArcShared::new(BuiltinSpinLockProvider::new());
-    Self::new_with_provider(settings, executor, lock_provider)
-  }
-
-  /// Constructs a new balancing dispatcher with an explicit actor lock provider.
-  #[must_use]
-  pub fn new_with_provider(
+  pub fn new(
     settings: &DispatcherSettings,
     executor: ExecutorShared,
-    lock_provider: ArcShared<dyn ActorLockProvider>,
+    shared_queue: SharedMessageQueue,
+    mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
   ) -> Self {
     Self {
       core: DispatcherCore::new(settings, executor),
-      shared_queue: ArcShared::new(SharedMessageQueue::new()),
+      shared_queue,
       team: Vec::new(),
-      lock_provider,
+      mailbox_shared_set_factory: mailbox_shared_set_factory.clone(),
     }
   }
 
   /// Returns a clone of the shared message queue used by team members.
   #[must_use]
-  pub fn shared_queue(&self) -> ArcShared<SharedMessageQueue> {
+  pub fn shared_queue(&self) -> SharedMessageQueue {
     self.shared_queue.clone()
   }
 
@@ -123,7 +117,7 @@ impl MessageDispatcher for BalancingDispatcher {
     // for the dispatcher's lifetime, so every call returns a mailbox that
     // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    let shared_set = self.lock_provider.create_mailbox_shared_set();
+    let shared_set = self.mailbox_shared_set_factory.create();
     Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, &shared_set)))
   }
 
@@ -161,7 +155,7 @@ impl MessageDispatcher for BalancingDispatcher {
 }
 
 /// Adapter that exposes [`SharedMessageQueue`] through the [`MessageQueue`] trait.
-struct SharedMessageQueueBox(ArcShared<SharedMessageQueue>);
+struct SharedMessageQueueBox(SharedMessageQueue);
 
 impl MessageQueue for SharedMessageQueueBox {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {

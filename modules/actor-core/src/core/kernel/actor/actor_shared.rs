@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use super::actor_lifecycle::Actor;
 
@@ -11,30 +11,25 @@ use super::actor_lifecycle::Actor;
 /// This wrapper provides [`SharedAccess`] methods (`with_read`/`with_write`)
 /// that internally lock the underlying actor, allowing safe
 /// concurrent access from multiple owners.
-pub(crate) struct ActorShared {
-  inner: SharedLock<Box<dyn Actor + Send + Sync>>,
+#[derive(Clone)]
+pub struct ActorShared {
+  inner: SharedLock<Box<dyn Actor + Send>>,
 }
-#[allow(dead_code)]
+
 impl ActorShared {
-  /// Creates a new shared wrapper around the provided actor instance.
+  /// Creates an `ActorShared` wrapper from an existing shared lock.
   #[must_use]
-  pub(crate) fn new(actor: Box<dyn Actor + Send + Sync>) -> Self {
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(actor) }
+  pub const fn from_shared_lock(inner: SharedLock<Box<dyn Actor + Send>>) -> Self {
+    Self { inner }
   }
 }
 
-impl Clone for ActorShared {
-  fn clone(&self) -> Self {
-    Self { inner: self.inner.clone() }
-  }
-}
-
-impl SharedAccess<Box<dyn Actor + Send + Sync>> for ActorShared {
-  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Actor + Send + Sync>) -> R) -> R {
+impl SharedAccess<Box<dyn Actor + Send>> for ActorShared {
+  fn with_read<R>(&self, f: impl FnOnce(&Box<dyn Actor + Send>) -> R) -> R {
     self.inner.with_read(f)
   }
 
-  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Actor + Send + Sync>) -> R) -> R {
+  fn with_write<R>(&self, f: impl FnOnce(&mut Box<dyn Actor + Send>) -> R) -> R {
     self.inner.with_write(f)
   }
 }

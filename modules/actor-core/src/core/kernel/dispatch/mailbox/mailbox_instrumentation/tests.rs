@@ -8,7 +8,7 @@ use crate::core::kernel::{
   dispatch::mailbox::{BackpressurePublisher, metrics_event::MailboxPressureEvent},
   event::{
     logging::LogLevel,
-    stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+    stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   },
   system::ActorSystem,
 };

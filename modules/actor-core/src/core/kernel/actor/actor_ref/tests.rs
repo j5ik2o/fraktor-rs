@@ -1,25 +1,52 @@
 use alloc::string::ToString;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::SharedAccess;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorContext, Pid,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
+    ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    ReceiveTimeoutStateSharedFactory,
     actor_path::ActorPathScheme,
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
+    actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::{ActorError, SendError},
-    messaging::{AnyMessage, AnyMessageView},
+    messaging::{
+      AnyMessage, AnyMessageView, AskResult,
+      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
+    },
     props::Props,
     scheduler::{
       SchedulerConfig,
-      tick_driver::{ManualTestDriver, TickDriverConfig},
+      tick_driver::{
+        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
+      },
     },
     setup::ActorSystemConfig,
   },
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory, UnboundedPriorityMessageQueueState,
+      UnboundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueStateSharedFactory,
+    },
+  },
+  event::stream::{
+    EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscriberSharedFactory,
+  },
   system::{
     remote::RemotingConfig,
+    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
     state::{SystemStateShared, system_state::SystemState},
   },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 struct TestSender;
@@ -34,7 +61,7 @@ impl ActorRefSender for TestSender {
 #[test]
 fn try_tell_delegates_to_sender() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   assert!(reference.try_tell(AnyMessage::new("ping")).is_ok());
 }
 
@@ -57,7 +84,7 @@ fn try_tell_on_failing_sender_returns_error() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
@@ -66,7 +93,7 @@ fn try_tell_on_failing_sender_returns_error() {
 #[test]
 fn try_tell_returns_result_on_success() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   assert!(reference.try_tell(AnyMessage::new("ask-payload")).is_ok());
 }
 
@@ -82,7 +109,7 @@ fn try_tell_returns_error_on_failure() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   assert!(matches!(reference.try_tell(AnyMessage::new("will-fail")), Err(SendError::Closed(_))));
 }
 
@@ -90,7 +117,7 @@ fn try_tell_returns_error_on_failure() {
 #[test]
 fn ask_returns_response_handle() {
   let pid = Pid::new(5, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, TestSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, TestSender);
   let _response = reference.ask(AnyMessage::new("ask-payload"));
 }
 
@@ -106,7 +133,7 @@ fn ask_on_failing_sender_completes_future_with_send_failed() {
   }
 
   let pid = Pid::new(10, 1);
-  let mut reference: ActorRef = ActorRef::new(pid, FailingSender);
+  let mut reference: ActorRef = ActorRef::new_with_builtin_lock(pid, FailingSender);
   let response = reference.ask(AnyMessage::new("will-fail"));
   assert_ne!(response.sender().pid(), pid);
   let result = response.future().with_write(|future| future.try_take()).expect("future should be ready");
@@ -118,6 +145,152 @@ struct NoopActor;
 impl Actor for NoopActor {
   fn receive(&mut self, _ctx: &mut ActorContext<'_>, _message: AnyMessageView<'_>) -> Result<(), ActorError> {
     Ok(())
+  }
+}
+
+struct CountingAskSharedFactory {
+  inner: BuiltinSpinSharedFactory,
+  actor_ref_sender_shared_calls: ArcShared<AtomicUsize>,
+  actor_future_shared_calls: ArcShared<AtomicUsize>,
+}
+
+impl CountingAskSharedFactory {
+  fn new() -> (ArcShared<AtomicUsize>, ArcShared<AtomicUsize>, Self) {
+    let actor_ref_sender_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let actor_future_shared_calls = ArcShared::new(AtomicUsize::new(0));
+    let provider = Self {
+      inner: BuiltinSpinSharedFactory::new(),
+      actor_ref_sender_shared_calls: actor_ref_sender_shared_calls.clone(),
+      actor_future_shared_calls: actor_future_shared_calls.clone(),
+    };
+    (actor_ref_sender_shared_calls, actor_future_shared_calls, provider)
+  }
+}
+
+impl ActorLockFactory for CountingAskSharedFactory {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.inner.create_lock(value)
+  }
+}
+
+impl MessageDispatcherSharedFactory for CountingAskSharedFactory {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherSharedFactory::create_message_dispatcher_shared(&self.inner, dispatcher)
+  }
+}
+
+impl ExecutorSharedFactory for CountingAskSharedFactory {
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    ExecutorSharedFactory::create_executor_shared(&self.inner, executor, trampoline)
+  }
+}
+
+impl ActorRefSenderSharedFactory for CountingAskSharedFactory {
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    self.actor_ref_sender_shared_calls.fetch_add(1, Ordering::SeqCst);
+    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&self.inner, sender)
+  }
+}
+
+impl ActorSharedFactory for CountingAskSharedFactory {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorSharedFactory::create(&self.inner, actor)
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for CountingAskSharedFactory {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
+  }
+}
+
+impl UnboundedPriorityMessageQueueStateSharedFactory for CountingAskSharedFactory {
+  fn create_unbounded_priority_message_queue_state_shared(
+    &self,
+    state: UnboundedPriorityMessageQueueState,
+  ) -> UnboundedPriorityMessageQueueStateShared {
+    UnboundedPriorityMessageQueueStateSharedFactory::create_unbounded_priority_message_queue_state_shared(
+      &self.inner,
+      state,
+    )
+  }
+}
+
+impl ActorCellStateSharedFactory for CountingAskSharedFactory {
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateSharedFactory::create_actor_cell_state_shared(&self.inner, state)
+  }
+}
+
+impl ReceiveTimeoutStateSharedFactory for CountingAskSharedFactory {
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateSharedFactory::create_receive_timeout_state_shared(&self.inner, state)
+  }
+}
+
+impl MessageInvokerSharedFactory for CountingAskSharedFactory {
+  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    MessageInvokerSharedFactory::create(&self.inner, invoker)
+  }
+}
+
+impl SharedMessageQueueFactory for CountingAskSharedFactory {
+  fn create(&self) -> SharedMessageQueue {
+    SharedMessageQueueFactory::create(&self.inner)
+  }
+}
+
+impl EventStreamSharedFactory for CountingAskSharedFactory {
+  fn create(&self, stream: EventStream) -> EventStreamShared {
+    EventStreamSharedFactory::create(&self.inner, stream)
+  }
+}
+
+impl EventStreamSubscriberSharedFactory for CountingAskSharedFactory {
+  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
+    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
+  }
+}
+
+impl MailboxSharedSetFactory for CountingAskSharedFactory {
+  fn create(&self) -> MailboxSharedSet {
+    MailboxSharedSetFactory::create(&self.inner)
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for CountingAskSharedFactory {
+  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    self.actor_future_shared_calls.fetch_add(1, Ordering::SeqCst);
+    ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl TickDriverControlSharedFactory for CountingAskSharedFactory {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingAskSharedFactory {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for CountingAskSharedFactory {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    ContextPipeWakerHandleSharedFactory::create_context_pipe_waker_handle_shared(&self.inner, handle)
   }
 }
 
@@ -180,6 +353,41 @@ fn canonical_path_returns_local_when_remoting_disabled() {
 
 #[test]
 fn canonical_path_is_none_without_system_state() {
-  let reference: ActorRef = ActorRef::new(Pid::new(1, 0), TestSender);
+  let reference: ActorRef = ActorRef::new_with_builtin_lock(Pid::new(1, 0), TestSender);
   assert!(reference.canonical_path().is_none());
+}
+
+#[test]
+fn ask_without_path_aware_reply_uses_system_sender_factory_when_system_is_available() {
+  let (sender_calls, future_calls, provider) = CountingAskSharedFactory::new();
+  let tick_driver = TickDriverConfig::manual(ManualTestDriver::new());
+  let scheduler = SchedulerConfig::default().with_runner_api_enabled(true);
+  let config = ActorSystemConfig::default()
+    .with_system_name("ask-shared-factory")
+    .with_scheduler_config(scheduler)
+    .with_tick_driver(tick_driver)
+    .with_shared_factory(provider);
+  let state = SystemStateShared::new(SystemState::build_from_config(&config).expect("state"));
+
+  let props = Props::from_fn(|| NoopActor);
+  let pid = state.allocate_pid();
+  let cell = ActorCell::create(state.clone(), pid, None, "worker".to_string(), &props).expect("child cell");
+  state.register_cell(cell.clone());
+  let mut reference = cell.actor_ref();
+
+  let sender_before = sender_calls.load(Ordering::SeqCst);
+  let future_before = future_calls.load(Ordering::SeqCst);
+
+  let _response = reference.ask(AnyMessage::new("ask-payload"));
+
+  assert_eq!(
+    sender_calls.load(Ordering::SeqCst),
+    sender_before + 1,
+    "ask reply refs should materialize sender shared handles via the system's configured factory"
+  );
+  assert_eq!(
+    future_calls.load(Ordering::SeqCst),
+    future_before + 1,
+    "ask futures should materialize via the system's configured factory"
+  );
 }

@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   event::stream::{EventStreamEvent, EventStreamShared},
   system::{ActorSystem, state::SystemStateShared},
-  util::futures::ActorFutureShared,
+  util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
@@ -189,7 +189,7 @@ impl GrainRef {
       },
     };
     let state = self.api.system().state();
-    let future = ActorFutureShared::<AskResult>::new();
+    let future = state.actor_future_shared_factory().create_actor_future_shared(ActorFuture::new());
     let reply_pid = state.allocate_pid();
     let reply_context = GrainReplyContext {
       identity:     self.identity.clone(),

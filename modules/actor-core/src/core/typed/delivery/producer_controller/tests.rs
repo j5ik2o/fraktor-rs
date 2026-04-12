@@ -18,7 +18,7 @@ use crate::core::{
 };
 
 fn make_typed_ref<M: Send + Sync + 'static>() -> TypedActorRef<M> {
-  TypedActorRef::from_untyped(ActorRef::new(Pid::new(1, 0), NullSender))
+  TypedActorRef::from_untyped(ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender))
 }
 
 #[test]

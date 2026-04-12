@@ -5,8 +5,8 @@ use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme, PathSegment},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderShared},
+    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
@@ -18,9 +18,10 @@ use fraktor_actor_core_rs::core::kernel::{
     setup::ActorSystemConfig,
   },
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
   },
-  system::{ActorSystem, TerminationSignal},
+  system::{ActorSystem, TerminationSignal, shared_factory::BuiltinSpinSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SpinSyncMutex},
@@ -170,9 +171,11 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(move |system: &ActorSystem| {
-      let provider =
-        ActorRefProviderShared::new(TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior));
-      system.extended().register_actor_ref_provider(&provider)
+      let shared_factory = BuiltinSpinSharedFactory::new();
+      let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(
+        TestActorRefProvider::new(system.clone(), send_counter.clone(), send_behavior),
+      );
+      system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
   let system = ActorSystem::new_with_config(&props, &config).expect("build system");
@@ -215,9 +218,17 @@ impl EventStreamSubscriber for RecordingGrainEvents {
 
 fn subscribe_grain_events(event_stream: &EventStreamShared) -> (RecordingGrainEvents, EventStreamSubscription) {
   let recorder = RecordingGrainEvents::new();
-  let subscriber = subscriber_handle(recorder.clone());
+  let subscriber = test_subscriber_handle(recorder.clone());
   let subscription = event_stream.subscribe(&subscriber);
   (recorder, subscription)
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 struct TestGuardian;
@@ -276,11 +287,11 @@ impl ActorRefProvider for TestActorRefProvider {
   }
 
   fn actor_ref(&mut self, _path: ActorPath) -> Result<ActorRef, ActorError> {
-    let sender = ActorRefSenderShared::new_with_builtin_lock(TestSender {
-      counter:  self.counter.clone(),
-      behavior: self.behavior,
-    });
-    Ok(ActorRef::from_shared(Pid::new(1, 0), sender, &self.system.state()))
+    Ok(ActorRef::with_system(
+      Pid::new(1, 0),
+      TestSender { counter: self.counter.clone(), behavior: self.behavior },
+      &self.system.state(),
+    ))
   }
 
   fn termination_signal(&self) -> TerminationSignal {
@@ -327,7 +338,7 @@ fn request_with_sender_forwards_reply_and_completes_future() {
   let grain_ref = GrainRef::new(api, identity);
 
   let recorder = RecordingSender::new();
-  let sender_ref = ActorRef::new(Pid::new(99, 0), recorder.clone());
+  let sender_ref = ActorRef::with_system(Pid::new(99, 0), recorder.clone(), &system.state());
 
   let response =
     grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
@@ -361,7 +372,7 @@ fn request_with_sender_forward_failure_completes_error_and_emits_event() {
   let identity = ClusterIdentity::new("user", "abc").expect("identity");
   let grain_ref = GrainRef::new(api, identity.clone());
 
-  let sender_ref = ActorRef::new(Pid::new(98, 0), FailingSender);
+  let sender_ref = ActorRef::with_system(Pid::new(98, 0), FailingSender, &system.state());
   let response =
     grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 
@@ -392,7 +403,7 @@ fn request_with_sender_cleans_temp_actor_on_completion() {
   let grain_ref = GrainRef::new(api, identity);
 
   let recorder = RecordingSender::new();
-  let sender_ref = ActorRef::new(Pid::new(97, 0), recorder);
+  let sender_ref = ActorRef::with_system(Pid::new(97, 0), recorder, &system.state());
   let response =
     grain_ref.request_with_sender(&AnyMessage::new(String::from("ping")), &sender_ref).expect("request with sender");
 

@@ -24,7 +24,8 @@ pub struct ActorRefProviderHandle<P> {
 }
 
 impl<P> ActorRefProviderHandle<P> {
-  pub(crate) const fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
+  /// Creates a new handle from the provider and its supported schemes.
+  pub const fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
     Self { provider, schemes }
   }
 

@@ -14,8 +14,8 @@ use crate::core::kernel::{
     scheduler::SchedulerHandle,
   },
   event::logging::LogLevel,
-  system::ActorSystem,
-  util::futures::{ActorFutureListener, ActorFutureShared},
+  system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
+  util::futures::{ActorFuture, ActorFutureListener, ActorFutureSharedFactory},
 };
 
 struct TestActor;
@@ -218,8 +218,8 @@ fn actor_context_pipe_to_self_handles_async_future() {
   });
   register_cell(&system, pid, "self", &props);
   let mut context = ActorContext::new(&system, pid);
-
-  let signal = ActorFutureShared::<i32>::new();
+  let factory = BuiltinSpinSharedFactory::new();
+  let signal = factory.create_actor_future_shared(ActorFuture::new());
   let future = {
     let handle = signal.clone();
     async move { ActorFutureListener::new(handle).await }
@@ -447,9 +447,9 @@ fn actor_context_forward_preserves_sender() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
-  let original_sender = ActorRef::new(Pid::new(800, 0), NullSender);
+  let original_sender = ActorRef::new_with_builtin_lock(Pid::new(800, 0), NullSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -480,7 +480,7 @@ fn actor_context_forward_without_sender_sends_without_sender() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -653,7 +653,7 @@ fn actor_context_reply_with_sender_returns_ok() {
   }
 
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let sender_ref = ActorRef::new(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
+  let sender_ref = ActorRef::new_with_builtin_lock(Pid::new(800, 0), CapturingSender { inbox: inbox.clone() });
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -680,7 +680,7 @@ fn actor_context_reply_with_failing_sender_returns_err() {
     }
   }
 
-  let sender_ref = ActorRef::new(Pid::new(800, 0), FailingSender);
+  let sender_ref = ActorRef::new_with_builtin_lock(Pid::new(800, 0), FailingSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();
@@ -705,7 +705,7 @@ fn actor_context_forward_on_failing_target_does_not_propagate_error() {
     }
   }
 
-  let mut target_ref = ActorRef::new(Pid::new(900, 0), FailingSender);
+  let mut target_ref = ActorRef::new_with_builtin_lock(Pid::new(900, 0), FailingSender);
 
   let system = ActorSystem::new_empty();
   let pid = system.allocate_pid();

@@ -10,12 +10,12 @@ use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    ChildRef, ClassicTimerScheduler, Pid,
+    ChildRef, ClassicTimerScheduler, Pid, ReceiveTimeoutState,
     actor_ref::ActorRef,
     error::{ActorError, PipeSpawnError, SendError},
     messaging::{AnyMessage, system_message::SystemMessage},
     props::Props,
-    scheduler::{SchedulerCommand, SchedulerHandle},
+    scheduler::SchedulerCommand,
     spawn::SpawnError,
   },
   event::logging::LogLevel,
@@ -24,18 +24,6 @@ use crate::core::kernel::{
 
 pub(crate) const STASH_OVERFLOW_REASON: &str = "stash buffer overflow";
 pub(crate) const STASH_REQUIRES_DEQUE_REASON: &str = "stash requires deque-capable mailbox";
-
-pub(crate) struct ReceiveTimeoutState {
-  duration: Duration,
-  message:  AnyMessage,
-  handle:   Option<SchedulerHandle>,
-}
-
-impl ReceiveTimeoutState {
-  const fn new(duration: Duration, message: AnyMessage) -> Self {
-    Self { duration, message, handle: None }
-  }
-}
 
 /// Provides contextual APIs while handling a message.
 pub struct ActorContext<'a> {

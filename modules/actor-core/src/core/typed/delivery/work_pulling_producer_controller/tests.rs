@@ -32,7 +32,7 @@ use crate::core::{
 };
 
 fn make_typed_ref<M: Send + Sync + 'static>() -> TypedActorRef<M> {
-  TypedActorRef::from_untyped(ActorRef::new(Pid::new(1, 0), NullSender))
+  TypedActorRef::from_untyped(ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender))
 }
 
 struct FailingSender;
@@ -202,7 +202,7 @@ fn internal_demand_confirm_updates_durable_queue() {
 #[test]
 fn worker_removal_replays_unconfirmed_messages_to_self() {
   let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
-  let worker_ref = ActorRef::new(Pid::new(10, 0), NullSender);
+  let worker_ref = ActorRef::new_with_builtin_lock(Pid::new(10, 0), NullSender);
   let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
   let listing = Listing::new("test-workers", TypeId::of::<ConsumerControllerCommand<u32>>(), vec![]);
   state.workers.insert(worker_ref.pid().value(), WorkerEntry {
@@ -246,7 +246,7 @@ fn worker_spawn_propagates_nested_producer_controller_settings() {
   let mut state = WorkPullingState::<u32>::new("test-producer".to_string(), 16);
   state.demand_adapter = Some(make_typed_ref::<ProducerControllerRequestNext<u32>>());
   let self_ref = make_typed_ref::<WorkPullingProducerControllerCommand<u32>>();
-  let worker_ref = ActorRef::new(Pid::new(11, 0), NullSender);
+  let worker_ref = ActorRef::new_with_builtin_lock(Pid::new(11, 0), NullSender);
   let listing = Listing::new("test-workers", TypeId::of::<ConsumerControllerCommand<u32>>(), vec![worker_ref]);
   let mut deferred = Vec::new();
   let producer_settings = ProducerControllerSettings::new().with_durable_queue_retry_attempts(3);
@@ -320,7 +320,7 @@ fn durable_queue_send_failure_stops_work_pulling_controller() {
   let mut typed_ctx = TypedActorContext::<WorkPullingProducerControllerCommand<u32>>::from_untyped(&mut context, None);
   let state =
     SharedLock::new_with_driver::<SpinSyncMutex<_>>(WorkPullingState::<u32>::new("test-producer".to_string(), 16));
-  let durable_queue = TypedActorRef::from_untyped(ActorRef::new(Pid::new(999, 0), FailingSender));
+  let durable_queue = TypedActorRef::from_untyped(ActorRef::new_with_builtin_lock(Pid::new(999, 0), FailingSender));
 
   execute_wppc_deferred(
     vec![WppcDeferredAction::TellDurableQueue {

@@ -16,10 +16,16 @@ pub struct MessageInvokerShared {
 }
 
 impl MessageInvokerShared {
+  /// Creates a shared wrapper from an already materialized shared lock.
+  #[must_use]
+  pub const fn from_shared_lock(inner: SharedRwLock<Box<dyn MessageInvoker>>) -> Self {
+    Self { inner }
+  }
+
   /// Creates a new shared wrapper around the provided invoker.
   #[must_use]
   pub fn new(invoker: Box<dyn MessageInvoker>) -> Self {
-    Self { inner: SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(invoker) }
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(invoker))
   }
 }
 

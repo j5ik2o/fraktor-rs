@@ -1,10 +1,13 @@
 use alloc::vec::Vec;
 use std::sync::{Arc, Mutex};
 
-use fraktor_actor_core_rs::core::kernel::actor::{
-  Pid,
-  actor_path::{ActorPath, ActorPathParser},
-  actor_ref_provider::{ActorRefProviderShared, LocalActorRefProvider},
+use fraktor_actor_core_rs::core::kernel::{
+  actor::{
+    Pid,
+    actor_path::{ActorPath, ActorPathParser},
+    actor_ref_provider::{ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_remote_core_rs::{
   address::{Address, RemoteNodeId, UniqueAddress},
@@ -51,10 +54,12 @@ fn local_address() -> UniqueAddress {
 }
 
 fn make_provider() -> StdRemoteActorRefProvider {
-  let local_provider = ActorRefProviderShared::new(LocalActorRefProvider::new());
+  let shared_factory = BuiltinSpinSharedFactory::new();
+  let local_actor_ref_provider_handle_shared =
+    shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new());
   let remote_provider = Box::new(StubRemoteProvider::default()) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let transport = Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", Vec::new())));
-  StdRemoteActorRefProvider::new(local_address(), local_provider, remote_provider, transport)
+  StdRemoteActorRefProvider::new(local_address(), local_actor_ref_provider_handle_shared, remote_provider, transport)
 }
 
 // ---------------------------------------------------------------------------

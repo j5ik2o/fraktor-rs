@@ -3,7 +3,7 @@ use core::future::{Pending, Ready, pending, ready};
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
     Actor, ActorCell, ActorContext, Pid,
-    actor_ref::{ActorRef, ActorRefSender, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     error::{ActorError, SendError},
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
@@ -13,7 +13,7 @@ use fraktor_actor_core_rs::core::kernel::{
     state::{SystemStateShared, system_state::SystemState},
   },
 };
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SpinSyncMutex};
 
 use super::SnapshotPoll;
 use crate::core::{
@@ -36,9 +36,16 @@ impl ActorRefSender for TestSender {
   }
 }
 
+fn actor_ref_with_sender(pid: Pid, sender: impl ActorRefSender + 'static) -> ActorRef {
+  let sender = ActorRefSenderShared::from_shared_lock(SharedLock::new_with_driver::<
+    SpinSyncMutex<Box<dyn ActorRefSender>>,
+  >(Box::new(sender)));
+  ActorRef::new(pid, sender)
+}
+
 fn create_sender() -> (ActorRef, MessageStore) {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
-  let sender = ActorRef::new(Pid::new(1, 1), TestSender { messages: messages.clone() });
+  let sender = actor_ref_with_sender(Pid::new(1, 1), TestSender { messages: messages.clone() });
   (sender, messages)
 }
 

@@ -9,15 +9,19 @@ use fraktor_actor_core_rs::core::kernel::{
     SchedulerConfig, SchedulerContext,
     tick_driver::{
       AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, SchedulerTickMetricsProbe, TickDriver,
-      TickDriverBootstrap, TickDriverConfig as CoreTickDriverConfig, TickDriverControl, TickDriverError,
-      TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext, TickExecutorPump, TickFeedHandle,
-      next_tick_driver_id,
+      TickDriverBootstrap, TickDriverConfig as CoreTickDriverConfig, TickDriverControl, TickDriverControlSharedFactory,
+      TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickDriverProvisioningContext, TickExecutorPump,
+      TickFeedHandle, next_tick_driver_id,
     },
   },
-  event::stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriber, subscriber_handle},
+  event::stream::{
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberSharedFactory,
+    subscriber_handle_with_shared_factory,
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
+  sync::{ArcShared, SharedAccess},
   time::TimerInstant,
 };
 use tokio::{
@@ -65,7 +69,11 @@ impl TickDriver for TokioMetricsDriver {
     self.resolution
   }
 
-  fn start(&mut self, feed: TickFeedHandle) -> Result<TickDriverHandle, TickDriverError> {
+  fn start(
+    &mut self,
+    feed: TickFeedHandle,
+    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
+  ) -> Result<TickDriverHandle, TickDriverError> {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     if let Ok(mut slot) = self.feed_slot.lock() {
       *slot = Some(feed.clone());
@@ -81,7 +89,7 @@ impl TickDriver for TokioMetricsDriver {
     });
 
     let control: Box<dyn TickDriverControl> = Box::new(TokioMetricsDriverControl { tick_task });
-    let control = SharedLock::new_with_driver::<SpinSyncMutex<_>>(control);
+    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, resolution, control))
   }
 }
@@ -176,7 +184,8 @@ async fn tokio_interval_driver_produces_ticks() {
   let config = tick_driver_config_with_resolution(Duration::from_millis(5));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut runtime, _) =
+    TickDriverBootstrap::provision(&config, &ctx, &BuiltinSpinSharedFactory::new()).expect("runtime");
 
   tokio::time::advance(Duration::from_millis(20)).await;
   tokio::task::yield_now().await;
@@ -209,14 +218,17 @@ impl EventStreamSubscriber for RecordingSubscriber {
 async fn tokio_interval_driver_publishes_tick_metrics_events() {
   let event_stream = EventStreamShared::default();
   let events = ArcShared::new(Mutex::new(Vec::new()));
-  let subscriber = subscriber_handle(RecordingSubscriber::new(events.clone()));
+  let lock_provider: ArcShared<dyn EventStreamSubscriberSharedFactory> =
+    ArcShared::new(BuiltinSpinSharedFactory::new());
+  let subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingSubscriber::new(events.clone()));
   let _subscription = event_stream.subscribe(&subscriber);
 
   let config =
     tokio_quickstart_with_event_stream(Duration::from_millis(5), event_stream.clone(), Duration::from_millis(50));
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut runtime, _) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut runtime, _) =
+    TickDriverBootstrap::provision(&config, &ctx, &BuiltinSpinSharedFactory::new()).expect("runtime");
 
   tokio::time::advance(Duration::from_millis(120)).await;
   tokio::task::yield_now().await;
@@ -236,7 +248,8 @@ async fn default_config_provisions_driver() {
   let config = default_tick_driver_config();
   let scheduler_context = SchedulerContext::new(SchedulerConfig::default());
   let ctx = TickDriverProvisioningContext::from_scheduler_context(&scheduler_context);
-  let (mut runtime, snapshot) = TickDriverBootstrap::provision(&config, &ctx).expect("runtime");
+  let (mut runtime, snapshot) =
+    TickDriverBootstrap::provision(&config, &ctx, &BuiltinSpinSharedFactory::new()).expect("runtime");
   assert!(
     matches!(snapshot.auto.as_ref().map(|meta| meta.profile), Some(AutoProfileKind::Tokio)),
     "auto metadata must be recorded for tokio quickstart",

@@ -11,7 +11,7 @@ use crate::core::kernel::{
     messaging::{AnyMessage, AnyMessageView},
     props::Props,
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   system::ActorSystem,
 };
 

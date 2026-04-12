@@ -23,7 +23,7 @@ use crate::core::kernel::{
     scheduler::tick_driver::{ManualTestDriver, TickDriverConfig},
     setup::ActorSystemConfig,
   },
-  event::stream::{EventStreamEvent, EventStreamSubscriber, subscriber_handle},
+  event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
   serialization::{
     SerializationSetupBuilder, builtin::NullSerializer, call_scope::SerializationCallScope, error::SerializationError,
     error_event::SerializationErrorEvent, not_serializable_error::NotSerializableError,
@@ -135,7 +135,7 @@ fn push_pop_transport_information_sets_scope_temporarily() {
 #[test]
 fn serialized_actor_path_prefers_transport_address() {
   let (mut extension, _, _system) = build_extension(None);
-  let actor_ref = ActorRef::new(Pid::new(1, 0), NullSender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(1, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   extension.push_transport_information(info);
   let path = extension.serialized_actor_path(&actor_ref).expect("path");
@@ -492,7 +492,7 @@ fn shutdown_blocks_deserialize_and_actor_path_calls() {
   let error = extension.deserialize(&serialized, Some(TypeId::of::<TestPayload>())).expect_err("should fail");
   assert!(matches!(error, SerializationError::Uninitialized));
 
-  let actor_ref = ActorRef::new(Pid::new(2, 0), NullSender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(2, 0), NullSender);
   let path_error = extension.serialized_actor_path(&actor_ref).expect_err("should fail");
   assert!(matches!(path_error, SerializationError::Uninitialized));
 }
@@ -804,7 +804,7 @@ fn builtin_serializers_support_primitives() {
 #[test]
 fn actor_ref_serialization_uses_helper() {
   let (mut extension, _, _system) = build_extension(None);
-  let actor_ref = ActorRef::new(Pid::new(99, 0), NullSender);
+  let actor_ref = ActorRef::new_with_builtin_lock(Pid::new(99, 0), NullSender);
   let info = TransportInformation::new(Some("fraktor://sys@host:2552".into()));
   extension.push_transport_information(info);
   let message = extension.serialize(&actor_ref, SerializationCallScope::Remote).expect("serialize");

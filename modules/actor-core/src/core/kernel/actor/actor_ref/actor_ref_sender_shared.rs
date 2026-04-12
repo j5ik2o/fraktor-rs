@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use crate::core::kernel::actor::{
   actor_ref::{ActorRefSender, SendOutcome},
@@ -22,12 +22,6 @@ impl Clone for ActorRefSenderShared {
 }
 
 impl ActorRefSenderShared {
-  /// Creates a new shared sender backed by the built-in lock.
-  #[must_use]
-  pub fn new_with_builtin_lock<S: ActorRefSender + 'static>(sender: S) -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<Box<dyn ActorRefSender>>>(Box::new(sender)))
-  }
-
   /// Creates a shared sender from an already constructed shared lock.
   #[must_use]
   pub fn from_shared_lock(inner: SharedLock<Box<dyn ActorRefSender>>) -> Self {

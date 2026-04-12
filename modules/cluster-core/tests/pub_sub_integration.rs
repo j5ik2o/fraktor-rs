@@ -5,11 +5,13 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription, subscriber_handle,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    subscriber_handle_with_shared_factory,
   },
   serialization::{
     builtin::register_defaults, default_serialization_setup, serialization_registry::SerializationRegistry,
   },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_cluster_core_rs::core::{
   BlockListProvider, ClusterCore, ClusterExtensionConfig, ClusterProviderShared, ClusterTopology, TopologyUpdate,
@@ -53,9 +55,17 @@ impl EventStreamSubscriber for EventCollector {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (EventCollector, EventStreamSubscription) {
   let subscriber = EventCollector::new();
-  let handle = subscriber_handle(subscriber.clone());
+  let handle = test_subscriber_handle(subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
+}
+
+fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
+  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let lock_provider: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = provider;
+  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 fn collect_pubsub_events(events: &[EventStreamEvent]) -> Vec<PubSubEvent> {

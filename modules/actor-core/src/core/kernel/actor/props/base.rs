@@ -62,7 +62,7 @@ impl Props {
   pub fn from_fn<F, A>(factory: F) -> Self
   where
     F: FnMut() -> A + Send + Sync + 'static,
-    A: Actor + Sync + 'static, {
+    A: Actor + 'static, {
     Self::new(Box::new(factory))
   }
 

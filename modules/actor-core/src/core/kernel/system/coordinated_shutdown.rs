@@ -19,10 +19,7 @@ use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
   timing::delay::DelayProvider,
 };
-use futures::{
-  FutureExt,
-  future::{Either, join_all, poll_fn, select},
-};
+use futures::future::{Either, join_all, poll_fn, select};
 
 use super::{coordinated_shutdown_error::CoordinatedShutdownError, coordinated_shutdown_id::CoordinatedShutdownId};
 use crate::core::kernel::{
@@ -34,7 +31,7 @@ use crate::core::kernel::{
 mod tests;
 
 /// Async task closure type for shutdown phases.
-type ShutdownTaskFn = Box<dyn FnOnce() -> Pin<Box<dyn core::future::Future<Output = ()> + Send>> + Send + Sync>;
+type ShutdownTaskFn = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// A shutdown task.
 struct ShutdownTask {
@@ -77,21 +74,21 @@ pub struct CoordinatedShutdown {
 }
 
 impl CoordinatedShutdown {
-  /// Phase for actor system termination (last phase).
+  /// Phase for actor system termination (the last phase).
   pub const PHASE_ACTOR_SYSTEM_TERMINATE: &'static str = "actor-system-terminate";
-  /// Phase for application tasks before actor system termination.
+  /// Phase for application tasks before the actor system terminates.
   pub const PHASE_BEFORE_ACTOR_SYSTEM_TERMINATE: &'static str = "before-actor-system-terminate";
-  /// Phase for application tasks before cluster shutdown.
+  /// Phase for application tasks before the cluster shuts down.
   pub const PHASE_BEFORE_CLUSTER_SHUTDOWN: &'static str = "before-cluster-shutdown";
-  /// Phase for application tasks before service unbind.
+  /// Phase for application tasks before services are unbound.
   pub const PHASE_BEFORE_SERVICE_UNBIND: &'static str = "before-service-unbind";
-  /// Phase for cluster extension shutdown.
+  /// Phase for shutting down the cluster extension.
   pub const PHASE_CLUSTER_SHUTDOWN: &'static str = "cluster-shutdown";
-  /// Phase to wait for in-progress requests to complete.
+  /// Phase that waits for in-progress requests to complete.
   pub const PHASE_SERVICE_REQUESTS_DONE: &'static str = "service-requests-done";
-  /// Phase for final service endpoint shutdown.
+  /// Phase for the final service endpoint shutdown.
   pub const PHASE_SERVICE_STOP: &'static str = "service-stop";
-  /// Phase to stop accepting new incoming requests.
+  /// Phase that stops accepting new incoming requests.
   pub const PHASE_SERVICE_UNBIND: &'static str = "service-unbind";
 
   /// Returns the coordinated shutdown extension from the actor system.
@@ -232,7 +229,7 @@ impl CoordinatedShutdown {
   pub fn add_task<F, Fut>(&self, phase: &str, task_name: &str, task: F) -> Result<(), CoordinatedShutdownError>
   where
     F: FnOnce() -> Fut + Send + Sync + 'static,
-    Fut: core::future::Future<Output = ()> + Send + 'static, {
+    Fut: Future<Output = ()> + Send + 'static, {
     // シャットダウン開始後のタスク追加を拒否する（run() がフェーズを消費済みのため消失する）
     if self.run_started.load(Ordering::Acquire) {
       return Err(CoordinatedShutdownError::RunAlreadyStarted);
@@ -351,13 +348,19 @@ impl CoordinatedShutdown {
   /// Returns `true` if the phase timed out.
   async fn run_phase_tasks(&self, tasks: Vec<ShutdownTask>, timeout: Duration) -> bool {
     let task_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> = tasks.into_iter().map(|t| (t.task)()).collect();
-    let phase_future = join_all(task_futures).map(|_| false).boxed();
+    let phase_future = Box::pin(async move {
+      join_all(task_futures).await;
+      false
+    });
 
     let Some(delay_provider) = &self.delay_provider else {
       return phase_future.await;
     };
 
-    let timeout_future = delay_provider.with_write(|provider| provider.delay(timeout)).map(|_| true).boxed();
+    let timeout_future = Box::pin(async {
+      delay_provider.with_write(|provider| provider.delay(timeout)).await;
+      true
+    });
 
     match select(phase_future, timeout_future).await {
       | Either::Left((completed, _)) => completed,

@@ -173,7 +173,8 @@ fn typed_actor_ref_tell_returns_unit() {
 /// `TypedActorRef::tell` on a failing sender does not panic.
 #[test]
 fn typed_actor_ref_tell_on_failing_sender_does_not_panic() {
-  let mut recipient = TypedActorRef::<u32>::from_untyped(ActorRef::new(Pid::new(77, 1), FailingSender));
+  let mut recipient =
+    TypedActorRef::<u32>::from_untyped(ActorRef::new_with_builtin_lock(Pid::new(77, 1), FailingSender));
 
   // tell is fire-and-forget: no Result, no panic
   recipient.tell(1);

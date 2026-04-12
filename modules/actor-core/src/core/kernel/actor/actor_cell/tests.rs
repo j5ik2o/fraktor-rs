@@ -1,22 +1,52 @@
-use alloc::{string::ToString, vec, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, string::ToString, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
+use fraktor_utils_adaptor_std_rs::std::sync::{DebugSpinSyncMutex, DebugSpinSyncRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SharedRwLock, SpinSyncMutex, WeakShared};
 
-use super::{super::actor_context::ReceiveTimeoutState, ActorCell, ActorCellInvoker};
+use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
-    Actor, ActorContext, Pid,
+    Actor, ActorCell as KernelActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory,
+    ActorContext, ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
+      LocalActorRefProvider,
+    },
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, Identify, message_invoker::MessageInvoker,
+      ActorIdentity, AnyMessage, AnyMessageView, AskResult, Identify,
+      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
+    scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
-  system::ActorSystem,
+  dispatch::{
+    dispatcher::{
+      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
+      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+    },
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy,
+      UnboundedPriorityMessageQueueState, UnboundedPriorityMessageQueueStateShared,
+      UnboundedPriorityMessageQueueStateSharedFactory,
+    },
+  },
+  event::stream::{
+    EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
+    EventStreamSubscriberSharedFactory,
+  },
+  system::{
+    ActorSystem,
+    shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
+  },
+  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 
 struct ProbeActor;
@@ -146,6 +176,151 @@ impl Actor for ResumeSupervisorActor {
   }
 }
 
+struct TestDebugActorSharedFactory;
+
+impl TestDebugActorSharedFactory {
+  const fn new() -> Self {
+    Self
+  }
+
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    SharedLock::new_with_driver::<DebugSpinSyncMutex<_>>(value)
+  }
+
+  fn create_rw_lock<T>(&self, value: T) -> SharedRwLock<T>
+  where
+    T: Send + Sync + 'static, {
+    SharedRwLock::new_with_driver::<DebugSpinSyncRwLock<_>>(value)
+  }
+}
+
+impl ActorLockFactory for TestDebugActorSharedFactory {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.create_lock(value)
+  }
+}
+
+impl MessageDispatcherSharedFactory for TestDebugActorSharedFactory {
+  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
+    MessageDispatcherShared::from_shared_lock(self.create_lock(dispatcher))
+  }
+}
+
+impl ExecutorSharedFactory for TestDebugActorSharedFactory {
+  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
+    ExecutorShared::from_shared_lock(self.create_lock(executor), self.create_lock(trampoline))
+  }
+}
+
+impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
+  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
+    ActorRefSenderShared::from_shared_lock(self.create_lock(sender))
+  }
+}
+
+impl ActorSharedFactory for TestDebugActorSharedFactory {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
+    ActorShared::from_shared_lock(self.create_lock(actor))
+  }
+}
+
+impl TickDriverControlSharedFactory for TestDebugActorSharedFactory {
+  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
+    TickDriverControlShared::from_shared_lock(self.create_lock(control))
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugActorSharedFactory {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    let schemes = provider.supported_schemes();
+    ActorRefProviderHandleShared::from_shared_lock(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
+  }
+}
+
+impl ActorCellStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
+    ActorCellStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl UnboundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_unbounded_priority_message_queue_state_shared(
+    &self,
+    state: UnboundedPriorityMessageQueueState,
+  ) -> UnboundedPriorityMessageQueueStateShared {
+    UnboundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl ReceiveTimeoutStateSharedFactory for TestDebugActorSharedFactory {
+  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
+    ReceiveTimeoutStateShared::from_shared_lock(self.create_lock(state))
+  }
+}
+
+impl MessageInvokerSharedFactory for TestDebugActorSharedFactory {
+  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
+    MessageInvokerShared::from_shared_lock(self.create_rw_lock(invoker))
+  }
+}
+
+impl SharedMessageQueueFactory for TestDebugActorSharedFactory {
+  fn create(&self) -> SharedMessageQueue {
+    SharedMessageQueue::from_shared_lock(self.create_lock(VecDeque::new()))
+  }
+}
+
+impl EventStreamSharedFactory for TestDebugActorSharedFactory {
+  fn create(&self, stream: EventStream) -> EventStreamShared {
+    EventStreamShared::from_shared_lock(self.create_rw_lock(stream))
+  }
+}
+
+impl EventStreamSubscriberSharedFactory for TestDebugActorSharedFactory {
+  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
+    EventStreamSubscriberShared::from_shared_lock(self.create_lock(subscriber))
+  }
+}
+
+impl MailboxSharedSetFactory for TestDebugActorSharedFactory {
+  fn create(&self) -> MailboxSharedSet {
+    MailboxSharedSet::new(
+      self.create_lock(()),
+      self.create_lock(Option::<MailboxInstrumentation>::None),
+      self.create_lock(Option::<MessageInvokerShared>::None),
+      self.create_lock(Option::<WeakShared<KernelActorCell>>::None),
+    )
+  }
+}
+
+impl ActorFutureSharedFactory<AskResult> for TestDebugActorSharedFactory {
+  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+    ActorFutureShared::from_shared_lock(self.create_lock(future))
+  }
+}
+
+impl ContextPipeWakerHandleSharedFactory for TestDebugActorSharedFactory {
+  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
+    ContextPipeWakerHandleShared::from_shared_lock(self.create_lock(handle))
+  }
+}
+
 #[test]
 fn actor_cell_holds_components() {
   let system = ActorSystem::new_empty().state();
@@ -156,20 +331,6 @@ fn actor_cell_holds_components() {
   assert_eq!(cell.name(), "worker");
   assert!(cell.parent().is_none());
   assert_eq!(cell.mailbox().system_len(), 0);
-}
-
-#[test]
-#[should_panic(expected = "ActorCell::install_mailbox called twice for the same cell")]
-fn actor_cell_install_mailbox_panics_on_double_install() {
-  let system = ActorSystem::new_empty().state();
-  let props = Props::from_fn(|| ProbeActor);
-  let cell =
-    ActorCell::create(system.clone(), Pid::new(7, 0), None, "double-install".to_string(), &props).expect("cell");
-  // The cell already installed its mailbox during `create`. Re-installing it
-  // must trip the debug-build assertion that enforces the install-once
-  // contract.
-  let mailbox = cell.mailbox();
-  cell.install_mailbox(mailbox);
 }
 
 #[test]
@@ -196,6 +357,18 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
   let second = mailbox.enqueue_user(AnyMessage::new(2_u32));
   assert!(matches!(second, Err(_)), "DropNewest should reject the second enqueue past capacity 1");
   assert_eq!(mailbox.user_len(), 1);
+}
+
+#[test]
+fn actor_cell_mailbox_accessor_returns_stable_shared_handle() {
+  let system =
+    ActorSystem::new_empty_with(|config| config.with_shared_factory(TestDebugActorSharedFactory::new())).state();
+  let props = Props::from_fn(|| ProbeActor);
+  let cell = ActorCell::create(system, Pid::new(701, 0), None, "mailbox-slot".to_string(), &props).expect("cell");
+
+  let first = cell.mailbox();
+  let second = cell.mailbox();
+  assert!(ArcShared::ptr_eq(&first, &second));
 }
 
 #[test]
@@ -466,6 +639,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let initial_handle = cell
     .receive_timeout
+    .as_shared_lock()
     .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should exist after pre_start");
 
@@ -474,6 +648,7 @@ fn user_message_failure_does_not_reschedule_receive_timeout() {
 
   let current_handle = cell
     .receive_timeout
+    .as_shared_lock()
     .with_lock(|state| state.as_ref().and_then(ReceiveTimeoutState::handle_raw))
     .expect("receive timeout handle should remain registered after failure");
 
@@ -546,7 +721,7 @@ fn unstash_message_rejects_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(62, 0), None, "unstash-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.with_lock(|state| state.stashed_messages.push_back(AnyMessage::new(1_i32)));
+  cell.state.with_write(|state| state.stashed_messages.push_back(AnyMessage::new(1_i32)));
 
   let error = cell.unstash_message().expect_err("non-deque unstash should fail");
 
@@ -561,7 +736,7 @@ fn unstash_messages_reject_non_deque_mailbox_without_consuming_stash() {
   let cell = ActorCell::create(state.clone(), Pid::new(63, 0), None, "unstash-all-reject".to_string(), &props)
     .expect("create actor cell");
 
-  cell.state.with_lock(|state| {
+  cell.state.with_write(|state| {
     state.stashed_messages.push_back(AnyMessage::new(1_i32));
     state.stashed_messages.push_back(AnyMessage::new(2_i32));
   });

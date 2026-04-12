@@ -132,7 +132,10 @@ fn service_instances_with_refs_returns_typed_refs() {
     }
   }
 
-  let refs = vec![ActorRef::new(Pid::new(1, 0), StubSender), ActorRef::new(Pid::new(2, 0), StubSender)];
+  let refs = vec![
+    ActorRef::new_with_builtin_lock(Pid::new(1, 0), StubSender),
+    ActorRef::new_with_builtin_lock(Pid::new(2, 0), StubSender),
+  ];
   let key = ServiceKey::<u32>::new("svc");
   let listing = Listing::new("svc", TypeId::of::<u32>(), refs);
 
@@ -159,7 +162,7 @@ fn service_instances_deduplicate_duplicate_refs() {
     }
   }
 
-  let duplicate = ActorRef::new(Pid::new(9, 0), StubSender);
+  let duplicate = ActorRef::new_with_builtin_lock(Pid::new(9, 0), StubSender);
   let key = ServiceKey::<u32>::new("svc");
   let listing = Listing::new("svc", TypeId::of::<u32>(), vec![duplicate.clone(), duplicate]);
 

@@ -272,7 +272,7 @@ fn schedule_at_fixed_rate_executes_multiple_runs() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRef::new(Pid::new(2, 0), sender);
+  let receiver = ActorRef::new_with_builtin_lock(Pid::new(2, 0), sender);
   scheduler
     .schedule_at_fixed_rate(Duration::from_millis(2), Duration::from_millis(3), SchedulerCommand::SendMessage {
       receiver,
@@ -315,7 +315,7 @@ fn run_for_test_executes_send_message() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRef::new(Pid::new(1, 0), sender);
+  let receiver = ActorRef::new_with_builtin_lock(Pid::new(1, 0), sender);
   schedule_message_command(&mut scheduler, Duration::from_millis(5), receiver, AnyMessage::new(7u32), None)
     .expect("handle");
   scheduler.run_for_test(5);
@@ -342,7 +342,7 @@ fn runner_manual_processes_ticks_in_order() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRef::new(Pid::new(7, 0), sender);
+  let receiver = ActorRef::new_with_builtin_lock(Pid::new(7, 0), sender);
 
   schedule_message_command(&mut scheduler, Duration::from_millis(1), receiver.clone(), AnyMessage::new(1u32), None)
     .expect("handle");
@@ -397,7 +397,7 @@ fn cancelled_job_is_not_delivered() {
   let mut scheduler = build_scheduler();
   let inbox = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let sender = RecordingSender { inbox: inbox.clone() };
-  let receiver = ActorRef::new(Pid::new(3, 0), sender);
+  let receiver = ActorRef::new_with_builtin_lock(Pid::new(3, 0), sender);
   let handle =
     schedule_message_command(&mut scheduler, Duration::from_millis(2), receiver, AnyMessage::new(42u32), None)
       .expect("handle");
