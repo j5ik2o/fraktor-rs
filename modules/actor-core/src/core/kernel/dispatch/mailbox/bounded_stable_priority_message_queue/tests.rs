@@ -6,10 +6,9 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateSharedFactory,
+    BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared,
     MailboxOverflowStrategy, MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 /// Priority generator that assigns priority based on the i32 payload value.
@@ -28,8 +27,7 @@ fn capacity(n: usize) -> NonZeroUsize {
 #[test]
 fn dequeues_in_priority_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(10)),
   );
   let queue =
@@ -52,8 +50,7 @@ fn dequeues_in_priority_order() {
 #[test]
 fn equal_priority_preserves_insertion_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(10)),
   );
   let queue =
@@ -76,8 +73,7 @@ fn equal_priority_preserves_insertion_order() {
 #[test]
 fn drop_newest_rejects_when_full() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
   );
   let queue =
@@ -95,23 +91,19 @@ fn drop_newest_rejects_when_full() {
 #[test]
 fn drop_oldest_evicts_earliest_inserted_message() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
   );
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // 最初に優先度10を挿入、次に優先度30を挿入。
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // 優先度20をエンキュー — 優先度10（最も古い挿入）が退避される。
   queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // 残り: 優先度20と30、優先度順にデキューされる。
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 20);
 
@@ -124,21 +116,17 @@ fn drop_oldest_evicts_earliest_inserted_message() {
 #[test]
 fn drop_oldest_with_equal_priority_evicts_earliest() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
   );
   let queue =
     BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // 全メッセージが同一優先度。DropOldest は最も早く挿入された
-  // （最小シーケンス番号の）メッセージを退避する。
   queue.enqueue(Envelope::new(AnyMessage::new("a"))).expect("enqueue a");
   queue.enqueue(Envelope::new(AnyMessage::new("b"))).expect("enqueue b");
   queue.enqueue(Envelope::new(AnyMessage::new("c"))).expect("enqueue c");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // "a" が最も古いため退避された。"b" と "c" が FIFO 順で残る。
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<&str>().expect("downcast"), "b");
 
@@ -149,8 +137,7 @@ fn drop_oldest_with_equal_priority_evicts_earliest() {
 #[test]
 fn grow_ignores_capacity() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(2)),
   );
   let queue = BoundedStablePriorityMessageQueue::new(pgen, state_shared, capacity(2), MailboxOverflowStrategy::Grow);
@@ -167,8 +154,7 @@ fn grow_ignores_capacity() {
 #[test]
 fn clean_up_removes_all_messages() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(10)),
   );
   let queue =
@@ -185,8 +171,7 @@ fn clean_up_removes_all_messages() {
 #[test]
 fn dequeue_empty_returns_none() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory.create_bounded_stable_priority_message_queue_state_shared(
+  let state_shared = BoundedStablePriorityMessageQueueStateShared::new(
     BoundedStablePriorityMessageQueueState::with_capacity(capacity(10)),
   );
   let queue =

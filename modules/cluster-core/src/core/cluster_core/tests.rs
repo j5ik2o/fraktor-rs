@@ -7,7 +7,6 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle_with_shared_factory,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedLock, SpinSyncMutex},
@@ -430,11 +429,7 @@ fn subscribe_recorder(event_stream: &EventStreamShared) -> (RecordingClusterEven
 }
 
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = provider;
-  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
+  subscriber_handle_with_shared_factory(subscriber)
 }
 
 /// Helper wrapping an `IdentityLookup` in `IdentityLookupShared`.

@@ -3,17 +3,15 @@ use alloc::vec::Vec;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use crate::core::{
-  kernel::{
-    actor::{
-      Pid,
-      actor_ref::{ActorRefSender, ActorRefSenderSharedFactory},
-      error::SendError,
-      messaging::AnyMessage,
-    },
-    system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
+  kernel::actor::{
+    Pid,
+    actor_ref::{ActorRefSender, ActorRefSenderShared},
+    error::SendError,
+    messaging::AnyMessage,
   },
   typed::message_adapter::{AdapterEnvelope, AdapterLifecycleState, AdapterRefSender, adapter_ref_sender::SendOutcome},
 };
+use crate::core::kernel::system::ActorSystem;
 
 struct ProbeSender {
   messages: ArcShared<SpinSyncMutex<Vec<AnyMessage>>>,
@@ -39,8 +37,7 @@ fn adapter_sender_wraps_payload_into_envelope() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
-  let target =
-    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&BuiltinSpinSharedFactory::new(), Box::new(probe));
+  let target = ActorRefSenderShared::new(Box::new(probe));
   let mut sender = AdapterRefSender::new(Pid::new(1, 0), 1, target, lifecycle, system);
 
   sender.send(AnyMessage::new(9_u32)).expect("send succeeds");
@@ -59,8 +56,7 @@ fn adapter_sender_rejects_when_lifecycle_stopped() {
   let messages = ArcShared::new(SpinSyncMutex::new(Vec::new()));
   let messages_clone = messages.clone();
   let probe = ProbeSender::new(messages);
-  let target =
-    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&BuiltinSpinSharedFactory::new(), Box::new(probe));
+  let target = ActorRefSenderShared::new(Box::new(probe));
   let mut sender = AdapterRefSender::new(Pid::new(1, 0), 2, target, lifecycle, system);
 
   let result = sender.send(AnyMessage::new(1_u8));

@@ -18,12 +18,12 @@ use fraktor_actor_core_rs::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared, ExecutorSharedFactory,
+      DEFAULT_DISPATCHER_ID, DefaultDispatcherConfigurator, DispatcherSettings, ExecutorShared,
       MessageDispatcherConfigurator, TrampolineState,
     },
     mailbox::{Mailbox, MailboxOverflowStrategy, MailboxPolicy},
   },
-  system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
+  system::ActorSystem,
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 use tokio::runtime::{Builder, Runtime};
@@ -137,12 +137,10 @@ impl TokioBenchSystem {
     let handle = runtime.handle().clone();
     let system = runtime.block_on(async {
       let config = ActorSystemConfig::default().with_tick_driver(default_tick_driver_config());
-      let message_dispatcher_shared_factory = config.message_dispatcher_shared_factory().clone();
       let settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-      let executor = BuiltinSpinSharedFactory::new()
-        .create_executor_shared(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
+      let executor = ExecutorShared::new(Box::new(TokioExecutor::new(handle)), TrampolineState::new());
       let configurator: Box<dyn MessageDispatcherConfigurator> =
-        Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
+        Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
       let config = config.with_dispatcher_configurator(DEFAULT_DISPATCHER_ID, ArcShared::new(configurator));
       ActorSystem::new_with_config(props, &config).expect("actor system")
     });

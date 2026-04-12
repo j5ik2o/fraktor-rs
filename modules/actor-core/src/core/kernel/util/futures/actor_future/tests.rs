@@ -6,10 +6,7 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::{
-  system::shared_factory::BuiltinSpinSharedFactory,
-  util::futures::{ActorFuture, ActorFutureListener, ActorFutureSharedFactory},
-};
+use crate::core::kernel::util::futures::{ActorFuture, ActorFutureListener, ActorFutureShared};
 
 fn noop_waker() -> Waker {
   fn noop(_: *const ()) {}
@@ -22,8 +19,7 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let mut listener = ActorFutureListener::new(future.clone());
 
   assert!(future.with_write(|af| af.try_take().is_none()));

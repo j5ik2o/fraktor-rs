@@ -15,10 +15,9 @@ use std::{
 use crate::core::kernel::{
   actor::{Actor, ActorContext, error::ActorError, messaging::AnyMessageView},
   dispatch::dispatcher::{
-    DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
-    MessageDispatcherSharedFactory, TrampolineState,
+    DefaultDispatcher, DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcherShared,
+    TrampolineState,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 struct CountingExecutor {
@@ -66,16 +65,13 @@ fn nz(value: usize) -> NonZeroUsize {
 
 #[test]
 fn shared_query_methods_delegate_to_inner() {
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(
+  let executor = ExecutorShared::new(
     Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
     TrampolineState::new(),
   );
   let settings = DispatcherSettings::new("shared", nz(11), Some(Duration::from_millis(7)), Duration::from_secs(2));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherSharedFactory::create_message_dispatcher_shared(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(dispatcher),
-  );
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
   assert_eq!(shared.id(), "shared");
   assert_eq!(shared.throughput(), nz(11));
   assert_eq!(shared.throughput_deadline(), Some(Duration::from_millis(7)));
@@ -85,16 +81,13 @@ fn shared_query_methods_delegate_to_inner() {
 
 #[test]
 fn clone_shares_inner_state() {
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(
+  let executor = ExecutorShared::new(
     Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
     TrampolineState::new(),
   );
   let settings = DispatcherSettings::with_defaults("clone-test");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherSharedFactory::create_message_dispatcher_shared(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(dispatcher),
-  );
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
   let cloned = shared.clone();
   // Both clones see the same id.
   assert_eq!(shared.id(), cloned.id());
@@ -102,16 +95,13 @@ fn clone_shares_inner_state() {
 
 #[test]
 fn shutdown_invokes_inner_shutdown() {
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(
+  let executor = ExecutorShared::new(
     Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
     TrampolineState::new(),
   );
   let settings = DispatcherSettings::with_defaults("shutdown");
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherSharedFactory::create_message_dispatcher_shared(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(dispatcher),
-  );
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
   shared.shutdown();
 }
 
@@ -148,16 +138,13 @@ fn dispatch_drives_user_message_through_actor_invoker() {
   let cell = ActorCell::create(state.clone(), pid, None, "drive-test".into(), &props).expect("create cell");
   state.register_cell(cell.clone());
 
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(
+  let executor = ExecutorShared::new(
     Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
     TrampolineState::new(),
   );
   let settings = DispatcherSettings::new("dispatch-drive", nz(8), None, Duration::from_secs(1));
   let dispatcher = DefaultDispatcher::new(&settings, executor);
-  let shared = MessageDispatcherSharedFactory::create_message_dispatcher_shared(
-    &BuiltinSpinSharedFactory::new(),
-    Box::new(dispatcher),
-  );
+  let shared = MessageDispatcherShared::new(Box::new(dispatcher));
 
   shared.dispatch(&cell, Envelope::new(AnyMessage::new(7_u32))).expect("dispatch");
   assert_eq!(seen.load(Ordering::SeqCst), 1, "user message should be drained through invoker");
@@ -173,14 +160,13 @@ fn resolve_dispatcher_from_actor_system_returns_registered_configurator() {
   };
 
   let system = ActorSystem::new_empty_with(|config| {
-    let lock_provider = config.message_dispatcher_shared_factory().clone();
-    let executor = BuiltinSpinSharedFactory::new().create_executor_shared(
+    let executor = ExecutorShared::new(
       Box::new(CountingExecutor { submits: Arc::new(AtomicUsize::new(0)) }),
       TrampolineState::new(),
     );
     let settings = DispatcherSettings::new("system-test-dispatch", nz(4), None, Duration::from_secs(1));
     let configurator: Box<dyn MessageDispatcherConfigurator> =
-      Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &lock_provider));
+      Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
     let configurator_handle: ArcShared<Box<dyn MessageDispatcherConfigurator>> = ArcShared::new(configurator);
     config.with_dispatcher_configurator("system-test-dispatch", configurator_handle)
   });

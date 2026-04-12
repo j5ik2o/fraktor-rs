@@ -6,10 +6,9 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateSharedFactory, MailboxOverflowStrategy,
+    BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared, MailboxOverflowStrategy,
     MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 /// Priority generator that assigns priority based on the i32 payload value.
@@ -30,9 +29,8 @@ fn queue(
   capacity: NonZeroUsize,
   overflow: MailboxOverflowStrategy,
 ) -> BoundedPriorityMessageQueue {
-  let shared_factory = BuiltinSpinSharedFactory::new();
-  let state_shared = shared_factory
-    .create_bounded_priority_message_queue_state_shared(BoundedPriorityMessageQueueState::with_capacity(capacity));
+  let state_shared =
+    BoundedPriorityMessageQueueStateShared::new(BoundedPriorityMessageQueueState::with_capacity(capacity));
   BoundedPriorityMessageQueue::new(generator, state_shared, capacity, overflow)
 }
 
@@ -64,7 +62,6 @@ fn drop_newest_rejects_when_full() {
   queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // 3つ目のエンキューはキャパシティ2のため失敗するべき
   let result = queue.enqueue(Envelope::new(AnyMessage::new(5_i32)));
   assert!(result.is_err());
   assert_eq!(queue.number_of_messages(), 2);
@@ -75,16 +72,13 @@ fn drop_oldest_evicts_earliest_inserted_message() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
   let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
 
-  // 最初に優先度10を挿入、次に優先度30を挿入
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // 優先度20をエンキュー — 優先度10（最も古い挿入）が退避される
   queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
   assert_eq!(queue.number_of_messages(), 2);
 
-  // 残り: 優先度20と30、優先度順にデキューされる
   let first = queue.dequeue().expect("dequeue 1st").into_payload();
   assert_eq!(*first.payload().downcast_ref::<i32>().expect("downcast"), 20);
 

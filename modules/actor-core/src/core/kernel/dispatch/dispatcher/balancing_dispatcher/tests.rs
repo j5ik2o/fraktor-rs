@@ -13,12 +13,12 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher, SharedMessageQueueFactory,
+      DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher, SharedMessageQueue,
       TrampolineState,
     },
     mailbox::{Envelope, MailboxCleanupPolicy},
   },
-  system::{ActorSystem, shared_factory::BuiltinSpinSharedFactory},
+  system::ActorSystem,
 };
 
 struct ProbeActor;
@@ -45,12 +45,9 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_dispatcher() -> BalancingDispatcher {
   let settings = DispatcherSettings::new("balancing-id", nz(5), None, Duration::from_secs(1));
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let shared_queue = SharedMessageQueueFactory::create(&*provider);
-  let mailbox_shared_set_factory: ArcShared<dyn crate::core::kernel::system::shared_factory::MailboxSharedSetFactory> =
-    provider.clone();
-  BalancingDispatcher::new(&settings, executor, shared_queue, &mailbox_shared_set_factory)
+  let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
+  let shared_queue = SharedMessageQueue::new();
+  BalancingDispatcher::new(&settings, executor, shared_queue)
 }
 
 fn make_actor_cells(names: &[&str]) -> (ActorSystem, Vec<ArcShared<ActorCell>>) {
@@ -180,23 +177,11 @@ fn balancing_dispatcher_load_balances_envelopes_across_team_via_shared_queue() {
   }
 
   let configurator: ArcShared<Box<dyn MessageDispatcherConfigurator>> = {
-    let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(InlineExec), TrampolineState::new());
+    let executor = ExecutorShared::new(Box::new(InlineExec), TrampolineState::new());
     let settings = DispatcherSettings::new("balancing-load", nz(8), None, Duration::from_secs(1));
-    let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-    let message_dispatcher_shared_factory: ArcShared<
-      dyn crate::core::kernel::dispatch::dispatcher::MessageDispatcherSharedFactory,
-    > = provider.clone();
-    let shared_queue = SharedMessageQueueFactory::create(&*provider);
-    let mailbox_shared_set_factory: ArcShared<
-      dyn crate::core::kernel::system::shared_factory::MailboxSharedSetFactory,
-    > = provider.clone();
-    let inner: Box<dyn MessageDispatcherConfigurator> = Box::new(BalancingDispatcherConfigurator::new(
-      &settings,
-      executor,
-      &message_dispatcher_shared_factory,
-      shared_queue,
-      &mailbox_shared_set_factory,
-    ));
+    let shared_queue = SharedMessageQueue::new();
+    let inner: Box<dyn MessageDispatcherConfigurator> =
+      Box::new(BalancingDispatcherConfigurator::new(&settings, executor, shared_queue));
     ArcShared::new(inner)
   };
   let configurator_clone = configurator.clone();

@@ -1,52 +1,23 @@
-use alloc::{boxed::Box, collections::VecDeque, string::ToString, vec, vec::Vec};
+use alloc::{string::ToString, vec, vec::Vec};
 use core::{hint::spin_loop, num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_adaptor_std_rs::std::sync::{DebugSpinSyncMutex, DebugSpinSyncRwLock};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, SharedRwLock, SpinSyncMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SpinSyncMutex};
 
 use super::{ActorCell, ActorCellInvoker};
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell as KernelActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory,
-    ActorContext, ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState,
-    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
-    actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
-    actor_ref_provider::{
-      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
-      LocalActorRefProvider,
-    },
-    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
+    Actor, ActorContext, Pid, ReceiveTimeoutState,
     error::ActorError,
     messaging::{
-      ActorIdentity, AnyMessage, AnyMessageView, AskResult, Identify,
-      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
+      ActorIdentity, AnyMessage, AnyMessageView, Identify,
+      message_invoker::MessageInvoker,
       system_message::SystemMessage,
     },
     props::{MailboxConfig, Props},
-    scheduler::tick_driver::{TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory},
     supervision::{SupervisorDirective, SupervisorStrategy, SupervisorStrategyConfig, SupervisorStrategyKind},
   },
-  dispatch::{
-    dispatcher::{
-      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
-    },
-    mailbox::{
-      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
-      BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation, MailboxOverflowStrategy, MailboxPolicy,
-      UnboundedPriorityMessageQueueState, UnboundedPriorityMessageQueueStateShared,
-      UnboundedPriorityMessageQueueStateSharedFactory,
-    },
-  },
-  event::stream::{
-    EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
-    EventStreamSubscriberSharedFactory,
-  },
-  system::{
-    ActorSystem,
-    shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
-  },
-  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
+  dispatch::mailbox::{MailboxOverflowStrategy, MailboxPolicy},
+  system::ActorSystem,
 };
 
 struct ProbeActor;
@@ -176,151 +147,6 @@ impl Actor for ResumeSupervisorActor {
   }
 }
 
-struct TestDebugActorSharedFactory;
-
-impl TestDebugActorSharedFactory {
-  const fn new() -> Self {
-    Self
-  }
-
-  fn create_lock<T>(&self, value: T) -> SharedLock<T>
-  where
-    T: Send + 'static, {
-    SharedLock::new_with_driver::<DebugSpinSyncMutex<_>>(value)
-  }
-
-  fn create_rw_lock<T>(&self, value: T) -> SharedRwLock<T>
-  where
-    T: Send + Sync + 'static, {
-    SharedRwLock::new_with_driver::<DebugSpinSyncRwLock<_>>(value)
-  }
-}
-
-impl ActorLockFactory for TestDebugActorSharedFactory {
-  fn create_lock<T>(&self, value: T) -> SharedLock<T>
-  where
-    T: Send + 'static, {
-    self.create_lock(value)
-  }
-}
-
-impl MessageDispatcherSharedFactory for TestDebugActorSharedFactory {
-  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    MessageDispatcherShared::from_shared_lock(self.create_lock(dispatcher))
-  }
-}
-
-impl ExecutorSharedFactory for TestDebugActorSharedFactory {
-  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
-    ExecutorShared::from_shared_lock(self.create_lock(executor), self.create_lock(trampoline))
-  }
-}
-
-impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
-  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderShared::from_shared_lock(self.create_lock(sender))
-  }
-}
-
-impl ActorSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
-    ActorShared::from_shared_lock(self.create_lock(actor))
-  }
-}
-
-impl TickDriverControlSharedFactory for TestDebugActorSharedFactory {
-  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
-    TickDriverControlShared::from_shared_lock(self.create_lock(control))
-  }
-}
-
-impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugActorSharedFactory {
-  fn create_actor_ref_provider_handle_shared(
-    &self,
-    provider: LocalActorRefProvider,
-  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
-    let schemes = provider.supported_schemes();
-    ActorRefProviderHandleShared::from_shared_lock(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
-  }
-}
-
-impl ActorCellStateSharedFactory for TestDebugActorSharedFactory {
-  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
-    ActorCellStateShared::from_shared_lock(self.create_lock(state))
-  }
-}
-
-impl BoundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
-  fn create_bounded_priority_message_queue_state_shared(
-    &self,
-    state: BoundedPriorityMessageQueueState,
-  ) -> BoundedPriorityMessageQueueStateShared {
-    BoundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
-  }
-}
-
-impl UnboundedPriorityMessageQueueStateSharedFactory for TestDebugActorSharedFactory {
-  fn create_unbounded_priority_message_queue_state_shared(
-    &self,
-    state: UnboundedPriorityMessageQueueState,
-  ) -> UnboundedPriorityMessageQueueStateShared {
-    UnboundedPriorityMessageQueueStateShared::from_shared_lock(self.create_lock(state))
-  }
-}
-
-impl ReceiveTimeoutStateSharedFactory for TestDebugActorSharedFactory {
-  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateShared::from_shared_lock(self.create_lock(state))
-  }
-}
-
-impl MessageInvokerSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
-    MessageInvokerShared::from_shared_lock(self.create_rw_lock(invoker))
-  }
-}
-
-impl SharedMessageQueueFactory for TestDebugActorSharedFactory {
-  fn create(&self) -> SharedMessageQueue {
-    SharedMessageQueue::from_shared_lock(self.create_lock(VecDeque::new()))
-  }
-}
-
-impl EventStreamSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, stream: EventStream) -> EventStreamShared {
-    EventStreamShared::from_shared_lock(self.create_rw_lock(stream))
-  }
-}
-
-impl EventStreamSubscriberSharedFactory for TestDebugActorSharedFactory {
-  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
-    EventStreamSubscriberShared::from_shared_lock(self.create_lock(subscriber))
-  }
-}
-
-impl MailboxSharedSetFactory for TestDebugActorSharedFactory {
-  fn create(&self) -> MailboxSharedSet {
-    MailboxSharedSet::new(
-      self.create_lock(()),
-      self.create_lock(Option::<MailboxInstrumentation>::None),
-      self.create_lock(Option::<MessageInvokerShared>::None),
-      self.create_lock(Option::<WeakShared<KernelActorCell>>::None),
-    )
-  }
-}
-
-impl ActorFutureSharedFactory<AskResult> for TestDebugActorSharedFactory {
-  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    ActorFutureShared::from_shared_lock(self.create_lock(future))
-  }
-}
-
-impl ContextPipeWakerHandleSharedFactory for TestDebugActorSharedFactory {
-  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
-    ContextPipeWakerHandleShared::from_shared_lock(self.create_lock(handle))
-  }
-}
-
 #[test]
 fn actor_cell_holds_components() {
   let system = ActorSystem::new_empty().state();
@@ -361,8 +187,7 @@ fn actor_cell_create_with_mailbox_id_uses_registered_mailbox_policy() {
 
 #[test]
 fn actor_cell_mailbox_accessor_returns_stable_shared_handle() {
-  let system =
-    ActorSystem::new_empty_with(|config| config.with_shared_factory(TestDebugActorSharedFactory::new())).state();
+  let system = ActorSystem::new_empty().state();
   let props = Props::from_fn(|| ProbeActor);
   let cell = ActorCell::create(system, Pid::new(701, 0), None, "mailbox-slot".to_string(), &props).expect("cell");
 

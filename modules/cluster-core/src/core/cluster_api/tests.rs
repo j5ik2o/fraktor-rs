@@ -6,51 +6,47 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorLockFactory,
-    ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
-    ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCellState, ActorCellStateShared, ActorContext,
+    ActorShared, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
     actor_path::{ActorPath, ActorPathScheme},
-    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
+    actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome},
     actor_ref_provider::{
-      ActorRefProvider, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
+      ActorRefProvider, ActorRefProviderHandleShared, LocalActorRefProvider,
     },
-    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
+    context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{
       AnyMessage, AnyMessageView, AskResult,
-      message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
+      message_invoker::{MessageInvoker, MessageInvokerShared},
     },
     props::Props,
     scheduler::{
       SchedulerConfig, SchedulerShared,
       tick_driver::{
-        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
+        ManualTestDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared,
       },
     },
     setup::ActorSystemConfig,
   },
   dispatch::{
     dispatcher::{
-      Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
-      MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
+      Executor, ExecutorShared, MessageDispatcher, MessageDispatcherShared, SharedMessageQueue, TrampolineState,
     },
     mailbox::{
-      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
-      BoundedPriorityMessageQueueStateSharedFactory, UnboundedPriorityMessageQueueState,
-      UnboundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueStateSharedFactory,
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared, UnboundedPriorityMessageQueueState,
+      UnboundedPriorityMessageQueueStateShared,
     },
   },
   event::stream::{
-    EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber,
-    EventStreamSubscriberShared, EventStreamSubscriberSharedFactory, EventStreamSubscription,
+    EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriber,
+    EventStreamSubscriberShared, EventStreamSubscription,
     subscriber_handle_with_shared_factory,
   },
   system::{
     ActorSystem, TerminationSignal,
-    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSet, MailboxSharedSetFactory},
-  },
-  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
+    },
+  util::futures::{ActorFuture, ActorFutureShared},
 };
 use fraktor_utils_core_rs::core::{
   sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex},
@@ -69,7 +65,6 @@ use crate::core::{
 };
 
 struct CountingSubscriberLockProvider {
-  inner: BuiltinSpinSharedFactory,
   event_stream_subscriber_shared: ArcShared<AtomicUsize>,
 }
 
@@ -77,156 +72,23 @@ impl CountingSubscriberLockProvider {
   fn new() -> (ArcShared<AtomicUsize>, Self) {
     let event_stream_subscriber_shared = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
-      inner: BuiltinSpinSharedFactory::new(),
+      
       event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
     };
     (event_stream_subscriber_shared, provider)
   }
 }
 
-impl ActorLockFactory for CountingSubscriberLockProvider {
-  fn create_lock<T>(&self, value: T) -> SharedLock<T>
-  where
-    T: Send + 'static, {
-    self.inner.create_lock(value)
-  }
-}
-
-impl MessageDispatcherSharedFactory for CountingSubscriberLockProvider {
-  fn create_message_dispatcher_shared(&self, dispatcher: Box<dyn MessageDispatcher>) -> MessageDispatcherShared {
-    MessageDispatcherSharedFactory::create_message_dispatcher_shared(&self.inner, dispatcher)
-  }
-}
-
-impl ExecutorSharedFactory for CountingSubscriberLockProvider {
-  fn create_executor_shared(&self, executor: Box<dyn Executor>, trampoline: TrampolineState) -> ExecutorShared {
-    self.inner.create_executor_shared(executor, trampoline)
-  }
-}
-
-impl ActorRefSenderSharedFactory for CountingSubscriberLockProvider {
-  fn create_actor_ref_sender_shared(&self, sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&self.inner, sender)
-  }
-}
-
-impl ActorSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, actor: Box<dyn Actor + Send>) -> ActorShared {
-    ActorSharedFactory::create(&self.inner, actor)
-  }
-}
-
-impl BoundedPriorityMessageQueueStateSharedFactory for CountingSubscriberLockProvider {
-  fn create_bounded_priority_message_queue_state_shared(
-    &self,
-    state: BoundedPriorityMessageQueueState,
-  ) -> BoundedPriorityMessageQueueStateShared {
-    BoundedPriorityMessageQueueStateSharedFactory::create_bounded_priority_message_queue_state_shared(
-      &self.inner,
-      state,
-    )
-  }
-}
-
-impl UnboundedPriorityMessageQueueStateSharedFactory for CountingSubscriberLockProvider {
-  fn create_unbounded_priority_message_queue_state_shared(
-    &self,
-    state: UnboundedPriorityMessageQueueState,
-  ) -> UnboundedPriorityMessageQueueStateShared {
-    UnboundedPriorityMessageQueueStateSharedFactory::create_unbounded_priority_message_queue_state_shared(
-      &self.inner,
-      state,
-    )
-  }
-}
-
-impl ActorCellStateSharedFactory for CountingSubscriberLockProvider {
-  fn create_actor_cell_state_shared(&self, state: ActorCellState) -> ActorCellStateShared {
-    ActorCellStateSharedFactory::create_actor_cell_state_shared(&self.inner, state)
-  }
-}
-
-impl ReceiveTimeoutStateSharedFactory for CountingSubscriberLockProvider {
-  fn create_receive_timeout_state_shared(&self, state: Option<ReceiveTimeoutState>) -> ReceiveTimeoutStateShared {
-    ReceiveTimeoutStateSharedFactory::create_receive_timeout_state_shared(&self.inner, state)
-  }
-}
-
-impl MessageInvokerSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, invoker: Box<dyn MessageInvoker>) -> MessageInvokerShared {
-    MessageInvokerSharedFactory::create(&self.inner, invoker)
-  }
-}
-
-impl SharedMessageQueueFactory for CountingSubscriberLockProvider {
-  fn create(&self) -> SharedMessageQueue {
-    SharedMessageQueueFactory::create(&self.inner)
-  }
-}
-
-impl EventStreamSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, stream: EventStream) -> EventStreamShared {
-    EventStreamSharedFactory::create(&self.inner, stream)
-  }
-}
-
-impl EventStreamSubscriberSharedFactory for CountingSubscriberLockProvider {
-  fn create(&self, subscriber: Box<dyn EventStreamSubscriber>) -> EventStreamSubscriberShared {
-    self.event_stream_subscriber_shared.fetch_add(1, Ordering::SeqCst);
-    EventStreamSubscriberSharedFactory::create(&self.inner, subscriber)
-  }
-}
-
-impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
-  fn create(&self) -> MailboxSharedSet {
-    MailboxSharedSetFactory::create(&self.inner)
-  }
-}
-
-impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
-  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
-  }
-}
-
-impl TickDriverControlSharedFactory for CountingSubscriberLockProvider {
-  fn create_tick_driver_control_shared(&self, control: Box<dyn TickDriverControl>) -> TickDriverControlShared {
-    TickDriverControlSharedFactory::create_tick_driver_control_shared(&self.inner, control)
-  }
-}
-
-impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubscriberLockProvider {
-  fn create_actor_ref_provider_handle_shared(
-    &self,
-    provider: LocalActorRefProvider,
-  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
-    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
-  }
-}
-
-impl ContextPipeWakerHandleSharedFactory for CountingSubscriberLockProvider {
-  fn create_context_pipe_waker_handle_shared(&self, handle: ContextPipeWakerHandle) -> ContextPipeWakerHandleShared {
-    self.inner.create_context_pipe_waker_handle_shared(handle)
-  }
-}
-
 fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = provider;
-  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
+  subscriber_handle_with_shared_factory(subscriber)
 }
 
 #[test]
 fn external_subscriber_handle_materializes_via_explicit_lock_provider() {
   let (event_stream_subscriber_shared, lock_provider) = CountingSubscriberLockProvider::new();
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = ArcShared::new(lock_provider);
   let baseline = event_stream_subscriber_shared.load(Ordering::SeqCst);
 
-  let _subscriber = subscriber_handle_with_shared_factory(&lock_provider, RecordingClusterEvents::new());
+  let _subscriber = subscriber_handle_with_shared_factory(RecordingClusterEvents::new());
 
   assert_eq!(
     event_stream_subscriber_shared.load(Ordering::SeqCst) - baseline,
@@ -414,9 +276,8 @@ fn down_delegates_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
       let actor_ref_provider_handle_shared =
-        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -452,9 +313,8 @@ fn join_and_leave_delegate_to_cluster_provider() {
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
       let actor_ref_provider_handle_shared =
-        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -636,12 +496,11 @@ fn cluster_api_subscriptions_materialize_filtered_subscribers_via_system_lock_pr
   let config = ActorSystemConfig::default()
     .with_scheduler_config(scheduler_config)
     .with_tick_driver(tick_driver)
-    .with_shared_factory(lock_provider)
+    
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
       let actor_ref_provider_handle_shared =
-        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
@@ -705,9 +564,8 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
       let actor_ref_provider_handle_shared =
-        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);

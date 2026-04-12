@@ -2,11 +2,8 @@ use alloc::boxed::Box;
 use core::{num::NonZeroUsize, time::Duration};
 
 use super::DefaultDispatcher;
-use crate::core::kernel::{
-  dispatch::dispatcher::{
-    DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory, MessageDispatcher, TrampolineState,
-  },
-  system::shared_factory::BuiltinSpinSharedFactory,
+use crate::core::kernel::dispatch::dispatcher::{
+  DispatcherSettings, ExecuteError, Executor, ExecutorShared, MessageDispatcher, TrampolineState,
 };
 
 struct NoopExecutor;
@@ -25,7 +22,7 @@ fn nz(value: usize) -> NonZeroUsize {
 
 fn make_dispatcher() -> DefaultDispatcher {
   let settings = DispatcherSettings::new("default-id", nz(7), None, Duration::from_secs(1));
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
+  let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   DefaultDispatcher::new(&settings, executor)
 }
 

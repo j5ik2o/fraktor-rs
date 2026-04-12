@@ -16,6 +16,6 @@
 
 ## 4. テストと OpenSpec の整合
 
-- [ ] 4.1 `with_shared_factory(...)` の既存 16 call site と `std/system/shared_factory/tests.rs`、`actor_system_config/tests.rs`、`typed/system/tests.rs`、dispatcher tests 群を direct builtin spin construction 前提へ置換する
-- [ ] 4.2 dispatcher configurator の instance 戦略、`SharedRwLock` wrapper の direct builtin spin construction、config override API の削除、std 公開面の削除を確認するテストと OpenSpec 整合を更新する
-- [ ] 4.3 `serialization_registry` など actor runtime core path か境界判断が必要な `SharedRwLock` 利用箇所は、この change に含めるか follow-up へ分離するかを実装中に明示する
+- [x] 4.1 `with_shared_factory(...)` の既存 16 call site と `std/system/shared_factory/tests.rs`、`actor_system_config/tests.rs`、`typed/system/tests.rs`、dispatcher tests 群を direct builtin spin construction 前提へ置換する
+- [x] 4.2 dispatcher configurator の instance 戦略、`SharedRwLock` wrapper の direct builtin spin construction、config override API の削除、std 公開面の削除を確認するテストと OpenSpec 整合を更新する
+- [x] 4.3 `serialization_registry` は `SharedRwLock` を直接使用しており factory に依存していない。actor runtime core path の一部として follow-up 不要と判断

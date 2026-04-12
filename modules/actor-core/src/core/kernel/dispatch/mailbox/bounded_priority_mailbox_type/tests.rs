@@ -6,10 +6,9 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    BoundedPriorityMessageQueueStateSharedFactory, Envelope, MailboxOverflowStrategy, MessagePriorityGenerator,
+    Envelope, MailboxOverflowStrategy, MessagePriorityGenerator,
     mailbox_type::MailboxType,
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 #[test]
@@ -17,10 +16,8 @@ fn creates_bounded_priority_queue() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> =
     ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
   let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
-  let state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> =
-    ArcShared::new(BuiltinSpinSharedFactory::new());
   let factory =
-    BoundedPriorityMailboxType::new(pgen, state_shared_factory, capacity, MailboxOverflowStrategy::DropNewest);
+    BoundedPriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
   let queue = factory.create();
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");

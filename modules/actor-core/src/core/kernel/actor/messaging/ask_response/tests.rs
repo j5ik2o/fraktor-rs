@@ -5,15 +5,13 @@ use crate::core::kernel::{
     actor_ref::ActorRef,
     messaging::{AnyMessage, AskError, ask_response::AskResponse},
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
-  util::futures::{ActorFuture, ActorFutureSharedFactory},
+  util::futures::{ActorFuture, ActorFutureShared},
 };
 
 #[test]
 fn exposes_parts() {
   let sender: ActorRef = ActorRef::null();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let response = AskResponse::new(sender.clone(), future.clone());
 
   assert_eq!(response.sender(), &sender);
@@ -30,14 +28,11 @@ fn exposes_parts() {
 #[test]
 fn future_resolves_with_success() {
   let sender: ActorRef = ActorRef::null();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let response = AskResponse::new(sender, future.clone());
 
-  // 成功値で完了
   future.with_write(|af| af.complete(Ok(AnyMessage::new(42_u32))));
 
-  // future から結果を取り出す
   let result = response.future().with_write(|af| af.try_take());
   assert!(result.is_some());
   let ask_result = result.unwrap();
@@ -47,11 +42,9 @@ fn future_resolves_with_success() {
 #[test]
 fn future_resolves_with_timeout_error() {
   let sender: ActorRef = ActorRef::null();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let response = AskResponse::new(sender, future.clone());
 
-  // タイムアウトエラーで完了
   future.with_write(|af| af.complete(Err(AskError::Timeout)));
 
   let result = response.future().with_write(|af| af.try_take());
@@ -64,11 +57,9 @@ fn future_resolves_with_timeout_error() {
 #[test]
 fn future_resolves_with_dead_letter_error() {
   let sender: ActorRef = ActorRef::null();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let response = AskResponse::new(sender, future.clone());
 
-  // DeadLetter エラーで完了
   future.with_write(|af| af.complete(Err(AskError::DeadLetter)));
 
   let result = response.future().with_write(|af| af.try_take());
@@ -81,11 +72,9 @@ fn future_resolves_with_dead_letter_error() {
 #[test]
 fn future_resolves_with_send_failed_error() {
   let sender: ActorRef = ActorRef::null();
-  let future =
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future = ActorFutureShared::new(ActorFuture::new());
   let response = AskResponse::new(sender, future.clone());
 
-  // SendFailed エラーで完了
   future.with_write(|af| af.complete(Err(AskError::send_failed("mailbox closed"))));
 
   let result = response.future().with_write(|af| af.try_take());

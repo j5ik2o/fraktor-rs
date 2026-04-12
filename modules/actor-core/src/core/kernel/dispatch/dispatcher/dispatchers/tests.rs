@@ -4,12 +4,9 @@ use core::time::Duration;
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers, DispatchersError};
-use crate::core::kernel::{
-  dispatch::dispatcher::{
-    DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
-    MessageDispatcherConfigurator, MessageDispatcherSharedFactory, TrampolineState,
-  },
-  system::shared_factory::BuiltinSpinSharedFactory,
+use crate::core::kernel::dispatch::dispatcher::{
+  DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+  MessageDispatcherConfigurator, TrampolineState,
 };
 
 struct NoopExecutor;
@@ -23,12 +20,10 @@ impl Executor for NoopExecutor {
 }
 
 fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherConfigurator>> {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
-  let executor = BuiltinSpinSharedFactory::new().create_executor_shared(Box::new(NoopExecutor), TrampolineState::new());
+  let executor = ExecutorShared::new(Box::new(NoopExecutor), TrampolineState::new());
   let configurator: Box<dyn MessageDispatcherConfigurator> =
-    Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
+    Box::new(DefaultDispatcherConfigurator::new(&settings, executor));
   ArcShared::new(configurator)
 }
 
@@ -97,12 +92,9 @@ fn ensure_default_is_idempotent_when_present() {
 }
 
 #[test]
-fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
+fn replace_default_inline_updates_seeded_default_aliases() {
   let mut dispatchers = Dispatchers::new();
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
-  let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = provider.clone();
-  dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
+  dispatchers.ensure_default_inline();
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let seeded_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("seeded blocking").clone();
   assert!(
@@ -110,7 +102,7 @@ fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
     "seeded default/blocking dispatchers should share the same configurator"
   );
 
-  dispatchers.replace_default_inline_with_factories(&message_dispatcher_shared_factory, &executor_shared_factory);
+  dispatchers.replace_default_inline();
 
   let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");
   let replaced_blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("replaced blocking");
@@ -125,17 +117,14 @@ fn replace_default_inline_with_provider_updates_seeded_default_aliases() {
 }
 
 #[test]
-fn replace_default_inline_with_provider_preserves_custom_blocking_dispatcher() {
+fn replace_default_inline_preserves_custom_blocking_dispatcher() {
   let mut dispatchers = Dispatchers::new();
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
-  let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = provider.clone();
-  dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
+  dispatchers.ensure_default_inline();
   let seeded_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("seeded default").clone();
   let custom_blocking = make_default_configurator("blocking");
   dispatchers.register_or_update(DEFAULT_BLOCKING_DISPATCHER_ID, custom_blocking.clone());
 
-  dispatchers.replace_default_inline_with_factories(&message_dispatcher_shared_factory, &executor_shared_factory);
+  dispatchers.replace_default_inline();
 
   let replaced_default = dispatchers.entries.get(DEFAULT_DISPATCHER_ID).expect("replaced default");
   let blocking = dispatchers.entries.get(DEFAULT_BLOCKING_DISPATCHER_ID).expect("blocking");

@@ -1,15 +1,14 @@
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::{
-    dispatcher::SharedMessageQueueFactory,
+    dispatcher::SharedMessageQueue,
     mailbox::{Envelope, MessageQueue},
   },
-  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 #[test]
 fn enqueue_appends_messages() {
-  let queue = SharedMessageQueueFactory::create(&BuiltinSpinSharedFactory::new());
+  let queue = SharedMessageQueue::new();
   queue.enqueue(Envelope::new(AnyMessage::new(42_u32))).expect("enqueue");
   assert_eq!(queue.number_of_messages(), 1);
   assert!(queue.has_messages());
@@ -17,7 +16,7 @@ fn enqueue_appends_messages() {
 
 #[test]
 fn dequeue_pops_in_fifo_order() {
-  let queue = SharedMessageQueueFactory::create(&BuiltinSpinSharedFactory::new());
+  let queue = SharedMessageQueue::new();
   let _ = queue.enqueue(Envelope::new(AnyMessage::new(1_u32))).unwrap();
   let _ = queue.enqueue(Envelope::new(AnyMessage::new(2_u32))).unwrap();
   let first = queue.dequeue().expect("first").into_payload();
@@ -29,7 +28,7 @@ fn dequeue_pops_in_fifo_order() {
 
 #[test]
 fn clean_up_does_not_drain_messages() {
-  let queue = SharedMessageQueueFactory::create(&BuiltinSpinSharedFactory::new());
+  let queue = SharedMessageQueue::new();
   let _ = queue.enqueue(Envelope::new(AnyMessage::new(99_u32))).unwrap();
   queue.clean_up();
   assert_eq!(queue.number_of_messages(), 1);
@@ -38,7 +37,7 @@ fn clean_up_does_not_drain_messages() {
 
 #[test]
 fn clone_shares_underlying_storage() {
-  let queue = SharedMessageQueueFactory::create(&BuiltinSpinSharedFactory::new());
+  let queue = SharedMessageQueue::new();
   let cloned = queue.clone();
   let _ = queue.enqueue(Envelope::new(AnyMessage::new(7_u32))).unwrap();
   assert_eq!(cloned.number_of_messages(), 1);

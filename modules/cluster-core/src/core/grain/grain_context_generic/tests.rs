@@ -5,7 +5,7 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorContext, Pid,
     actor_path::{ActorPath, ActorPathScheme},
     actor_ref::{ActorRef, ActorRefSender, SendOutcome},
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleSharedFactory},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
     error::{ActorError, SendError},
     extension::ExtensionInstallers,
     messaging::{AnyMessage, AnyMessageView},
@@ -16,7 +16,7 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     setup::ActorSystemConfig,
   },
-  system::{ActorSystem, TerminationSignal, shared_factory::BuiltinSpinSharedFactory},
+  system::{ActorSystem, TerminationSignal, },
 };
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -61,9 +61,8 @@ where
     .with_tick_driver(tick_driver)
     .with_extension_installers(extensions)
     .with_actor_ref_provider_installer(|system: &ActorSystem| {
-      let shared_factory = BuiltinSpinSharedFactory::new();
       let actor_ref_provider_handle_shared =
-        shared_factory.create_actor_ref_provider_handle_shared(TestActorRefProvider::new(system.clone()));
+        ActorRefProviderHandleShared::new(TestActorRefProvider::new(system.clone()));
       system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
     });
   let props = Props::from_fn(|| TestGuardian);
