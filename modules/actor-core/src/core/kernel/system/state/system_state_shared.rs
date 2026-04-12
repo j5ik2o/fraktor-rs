@@ -24,19 +24,16 @@ use super::{
 };
 use crate::core::kernel::{
   actor::{
-    ActorCell, ActorCellStateSharedFactory, ActorSharedFactory, Pid, ReceiveTimeoutStateSharedFactory,
+    ActorCell, Pid,
     actor_path::{ActorPath, ActorPathParser, ActorPathParts, ActorPathScheme, GuardianKind as PathGuardianKind},
     actor_ref::{
-      ActorRef, ActorRefSenderSharedFactory,
+      ActorRef,
       dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
     },
-    actor_ref_provider::{ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
-    context_pipe::ContextPipeWakerHandleSharedFactory,
     deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
       AnyMessage, AskResult,
-      message_invoker::MessageInvokerSharedFactory,
       system_message::{FailurePayload, SystemMessage},
     },
     props::MailboxConfig,
@@ -48,19 +45,14 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::MessageDispatcherShared,
-    mailbox::{
-      BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
-      MailboxRegistryError, MessageQueue, UnboundedPriorityMessageQueueStateSharedFactory,
-    },
+    mailbox::{MailboxRegistryError, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel},
-    stream::{EventStreamEvent, EventStreamShared, EventStreamSubscriberSharedFactory, TickDriverSnapshot},
+    stream::{EventStreamEvent, EventStreamShared, TickDriverSnapshot},
   },
-  system::{
-    ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal, shared_factory::MailboxSharedSetFactory,
-  },
-  util::futures::{ActorFutureShared, ActorFutureSharedFactory},
+  system::{ActorSystemBuildError, RegisterExtraTopLevelError, TerminationSignal},
+  util::futures::ActorFutureShared,
 };
 
 /// Shared wrapper for [`SystemState`] providing thread-safe access.
@@ -204,92 +196,6 @@ impl SystemStateShared {
   #[must_use]
   pub(crate) const fn inner(&self) -> &SharedRwLock<SystemState> {
     &self.inner
-  }
-
-  /// Returns the actor-ref-sender shared factory.
-  #[must_use]
-  pub fn actor_ref_sender_shared_factory(&self) -> ArcShared<dyn ActorRefSenderSharedFactory> {
-    self.inner.with_read(|inner| inner.actor_ref_sender_shared_factory())
-  }
-
-  /// Returns the actor shared factory.
-  #[must_use]
-  pub fn actor_shared_factory(&self) -> ArcShared<dyn ActorSharedFactory> {
-    self.inner.with_read(|inner| inner.actor_shared_factory())
-  }
-
-  /// Returns the actor-cell-state shared factory.
-  #[must_use]
-  pub fn actor_cell_state_shared_factory(&self) -> ArcShared<dyn ActorCellStateSharedFactory> {
-    self.inner.with_read(|inner| inner.actor_cell_state_shared_factory())
-  }
-
-  /// Returns the receive-timeout-state shared factory.
-  #[must_use]
-  pub fn receive_timeout_state_shared_factory(&self) -> ArcShared<dyn ReceiveTimeoutStateSharedFactory> {
-    self.inner.with_read(|inner| inner.receive_timeout_state_shared_factory())
-  }
-
-  /// Returns the message-invoker shared factory.
-  #[must_use]
-  pub fn message_invoker_shared_factory(&self) -> ArcShared<dyn MessageInvokerSharedFactory> {
-    self.inner.with_read(|inner| inner.message_invoker_shared_factory())
-  }
-
-  /// Returns the actor-future shared factory.
-  #[must_use]
-  pub fn actor_future_shared_factory(&self) -> ArcShared<dyn ActorFutureSharedFactory<AskResult>> {
-    self.inner.with_read(|inner| inner.actor_future_shared_factory())
-  }
-
-  /// Returns the local actor-ref-provider handle shared factory.
-  #[must_use]
-  pub fn local_actor_ref_provider_handle_shared_factory(
-    &self,
-  ) -> ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>> {
-    self.inner.with_read(|inner| inner.local_actor_ref_provider_handle_shared_factory())
-  }
-
-  /// Returns the event-stream-subscriber shared factory.
-  #[must_use]
-  pub fn event_stream_subscriber_shared_factory(&self) -> ArcShared<dyn EventStreamSubscriberSharedFactory> {
-    self.inner.with_read(|inner| inner.event_stream_subscriber_shared_factory())
-  }
-
-  /// Returns the mailbox-shared-set factory.
-  #[must_use]
-  pub fn mailbox_shared_set_factory(&self) -> ArcShared<dyn MailboxSharedSetFactory> {
-    self.inner.with_read(|inner| inner.mailbox_shared_set_factory())
-  }
-
-  /// Returns the context-pipe-waker-handle shared factory.
-  #[must_use]
-  pub fn context_pipe_waker_handle_shared_factory(&self) -> ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
-    self.inner.with_read(|inner| inner.context_pipe_waker_handle_shared_factory())
-  }
-
-  /// Returns the bounded priority message-queue-state shared factory.
-  #[must_use]
-  pub fn bounded_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> {
-    self.inner.with_read(|inner| inner.bounded_priority_message_queue_state_shared_factory())
-  }
-
-  /// Returns the unbounded priority message-queue-state shared factory.
-  #[must_use]
-  pub fn unbounded_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory> {
-    self.inner.with_read(|inner| inner.unbounded_priority_message_queue_state_shared_factory())
-  }
-
-  /// Returns the bounded stable-priority message-queue-state shared factory.
-  #[must_use]
-  pub fn bounded_stable_priority_message_queue_state_shared_factory(
-    &self,
-  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
-    self.inner.with_read(|inner| inner.bounded_stable_priority_message_queue_state_shared_factory())
   }
 
   /// Creates a weak reference to this system state.

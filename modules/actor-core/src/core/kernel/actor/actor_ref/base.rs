@@ -159,10 +159,7 @@ impl ActorRef {
   where
     F: FnOnce(ActorRef) -> AnyMessage, {
     let system = self.system_state();
-    let future = system
-      .as_ref()
-      .map(|state| state.actor_future_shared_factory().create_actor_future_shared(ActorFuture::new()))
-      .unwrap_or_else(|| Self::create_builtin_actor_future_shared(ActorFuture::new()));
+    let future = Self::create_builtin_actor_future_shared(ActorFuture::new());
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = Self::build_ask_reply_ref(system.as_ref(), path_aware_reply, reply_sender);
     let message = build(reply_ref.clone());

@@ -6,7 +6,7 @@
 ## 2. Runtime wiring と config の単純化
 
 - [x] 2.1 `DefaultDispatcherConfigurator`、`BalancingDispatcherConfigurator`、`PinnedDispatcherConfigurator`、spawn path、bootstrap、tick driver、event stream helper、mailbox helper から `*SharedFactory` 依存を除去する
-- [ ] 2.2 `ActorSystemConfig` / `ActorSystemSetup` から shared runtime override field / API（`with_shared_factory(...)` を含む）を削除し、default builtin spin 構成へ整理する
+- [x] 2.2 `ActorSystemConfig` / `ActorSystemSetup` から shared runtime override field / API（`with_shared_factory(...)` を含む）を削除し、default builtin spin 構成へ整理する
 
 ## 3. 旧 strategy の削除
 
