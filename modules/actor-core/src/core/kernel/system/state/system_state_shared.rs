@@ -700,13 +700,10 @@ impl SystemStateShared {
 
   /// Returns an actor ref provider.
   #[must_use]
-  pub fn actor_ref_provider<P>(
-    &self,
-    actor_ref_provider_handle_shared_factory: &dyn ActorRefProviderHandleSharedFactory<P>,
-  ) -> Option<ActorRefProviderHandleShared<P>>
+  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    self.inner.with_read(|inner| inner.actor_ref_provider(actor_ref_provider_handle_shared_factory))
+    self.inner.with_read(|inner| inner.actor_ref_provider())
   }
 
   /// Invokes a provider registered for the given scheme.

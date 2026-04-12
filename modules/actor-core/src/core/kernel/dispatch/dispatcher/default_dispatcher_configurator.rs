@@ -27,7 +27,7 @@ impl DefaultDispatcherConfigurator {
     factory: &ArcShared<dyn MessageDispatcherSharedFactory>,
   ) -> Self {
     let dispatcher = DefaultDispatcher::new(settings, executor);
-    Self { shared: factory.create(Box::new(dispatcher)) }
+    Self { shared: factory.create_message_dispatcher_shared(Box::new(dispatcher)) }
   }
 }
 

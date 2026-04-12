@@ -18,15 +18,15 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
 use self::path_identity::{DEFAULT_QUARANTINE_DURATION, PathIdentity};
 use super::{
   super::termination_state::TerminationState, ActorPathRegistry, ActorRefProvider, ActorRefProviderCaller,
-  ActorRefProviderCallers, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviders, AskFutures,
-  AuthorityState, CellsShared, Extensions, ExtraTopLevels, GuardianKind, GuardiansState, Registries,
-  RemoteAuthorityError, RemoteAuthorityRegistry, RemoteWatchHookDynShared, RemotingConfig, TempActors,
+  ActorRefProviderCallers, ActorRefProviderHandleShared, ActorRefProviders, AskFutures, AuthorityState, CellsShared,
+  Extensions, ExtraTopLevels, GuardianKind, GuardiansState, Registries, RemoteAuthorityError, RemoteAuthorityRegistry,
+  RemoteWatchHookDynShared, RemotingConfig, TempActors,
 };
 use crate::core::kernel::{
   actor::{
@@ -776,7 +776,7 @@ impl SystemState {
   pub(crate) fn install_actor_ref_provider<P>(&mut self, provider: &ActorRefProviderHandleShared<P>)
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    let erased: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(provider.inner().clone());
+    let erased: ArcShared<dyn Any + Send + Sync + 'static> = ArcShared::new(provider.clone());
     self.actor_ref_providers.insert(TypeId::of::<P>(), erased);
     let schemes = provider.supported_schemes().to_vec();
     for scheme in schemes {
@@ -786,21 +786,15 @@ impl SystemState {
     }
   }
 
-  pub(crate) fn actor_ref_provider<P>(
-    &self,
-    actor_ref_provider_handle_shared_factory: &dyn ActorRefProviderHandleSharedFactory<P>,
-  ) -> Option<ActorRefProviderHandleShared<P>>
+  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     self
       .actor_ref_providers
       .get(&TypeId::of::<P>())
       .cloned()
-      .and_then(|provider| provider.downcast::<SharedLock<ActorRefProviderHandle<P>>>().ok())
-      .map(|provider| {
-        actor_ref_provider_handle_shared_factory
-          .create_actor_ref_provider_handle_shared_from_shared((*provider).clone())
-      })
+      .and_then(|provider| provider.downcast::<ActorRefProviderHandleShared<P>>().ok())
+      .map(|provider| (*provider).clone())
   }
 
   pub(crate) fn actor_ref_provider_caller_for_scheme(&self, scheme: ActorPathScheme) -> Option<ActorRefProviderCaller> {

@@ -48,7 +48,7 @@ pub struct ExecutorShared {
 impl ExecutorShared {
   /// Wraps already constructed shared locks in a shareable handle.
   #[must_use]
-  pub fn from_parts(inner: SharedLock<Box<dyn Executor>>, trampoline: SharedLock<TrampolineState>) -> Self {
+  pub fn from_shared_lock(inner: SharedLock<Box<dyn Executor>>, trampoline: SharedLock<TrampolineState>) -> Self {
     Self { inner, trampoline, running: ArcShared::new(AtomicBool::new(false)) }
   }
 

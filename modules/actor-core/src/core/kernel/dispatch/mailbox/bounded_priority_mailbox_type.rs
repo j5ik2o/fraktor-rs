@@ -10,7 +10,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use super::{
   bounded_priority_message_queue::BoundedPriorityMessageQueue,
-  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueState,
+  bounded_priority_message_queue_state::BoundedPriorityMessageQueueState,
   bounded_priority_message_queue_state_shared_factory::BoundedPriorityMessageQueueStateSharedFactory,
   mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
   overflow_strategy::MailboxOverflowStrategy,

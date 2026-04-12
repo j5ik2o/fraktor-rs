@@ -11,7 +11,7 @@ use crate::core::{
 };
 
 /// Runtime-owned mutable state for a live [`ActorCell`].
-pub(crate) struct ActorCellState {
+pub struct ActorCellState {
   pub(crate) children:               Vec<Pid>,
   pub(crate) child_stats:            Vec<(Pid, RestartStatistics)>,
   pub(crate) watchers:               Vec<Pid>,
@@ -27,7 +27,7 @@ pub(crate) struct ActorCellState {
 impl ActorCellState {
   /// Creates an empty runtime state for a freshly spawned actor cell.
   #[must_use]
-  pub(crate) const fn new() -> Self {
+  pub const fn new() -> Self {
     Self {
       children:               Vec::new(),
       child_stats:            Vec::new(),
@@ -40,5 +40,11 @@ impl ActorCellState {
       adapter_handle_counter: 0,
       pipe_task_counter:      0,
     }
+  }
+}
+
+impl Default for ActorCellState {
+  fn default() -> Self {
+    Self::new()
   }
 }

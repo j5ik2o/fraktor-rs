@@ -42,12 +42,6 @@ impl<P: ActorRefProvider + 'static> ActorRefProviderHandleShared<P> {
     Self { inner, _marker: PhantomData }
   }
 
-  /// Returns a reference to the inner shared lock.
-  #[must_use]
-  pub(crate) const fn inner(&self) -> &SharedLock<ActorRefProviderHandle<P>> {
-    &self.inner
-  }
-
   /// Returns the type ID of the inner provider type.
   #[must_use]
   #[allow(clippy::missing_const_for_fn)]

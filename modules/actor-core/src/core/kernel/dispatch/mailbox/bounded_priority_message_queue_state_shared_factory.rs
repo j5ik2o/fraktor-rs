@@ -1,7 +1,8 @@
 //! Factory contract for bounded-priority mailbox state.
 
-use super::bounded_priority_message_queue_state_shared::{
-  BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+use super::{
+  bounded_priority_message_queue_state::BoundedPriorityMessageQueueState,
+  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared,
 };
 
 /// Materializes shared state for bounded-priority message queues.

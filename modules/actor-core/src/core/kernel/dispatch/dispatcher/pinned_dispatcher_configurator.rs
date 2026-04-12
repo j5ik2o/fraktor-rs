@@ -50,6 +50,6 @@ impl MessageDispatcherConfigurator for PinnedDispatcherConfigurator {
   fn dispatcher(&self) -> MessageDispatcherShared {
     let executor = self.executor_factory.create(self.settings.id());
     let dispatcher = PinnedDispatcher::new(&self.settings, executor);
-    self.message_dispatcher_shared_factory.create(Box::new(dispatcher))
+    self.message_dispatcher_shared_factory.create_message_dispatcher_shared(Box::new(dispatcher))
   }
 }

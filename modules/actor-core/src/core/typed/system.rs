@@ -322,7 +322,7 @@ where
   where
     U: Send + Sync + 'static, {
     let state = self.inner.state();
-    let sender = state.actor_ref_sender_shared_factory().create(Box::new(IgnoreRefSender));
+    let sender = state.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(IgnoreRefSender));
     TypedActorRef::from_untyped(ActorRef::from_shared(IGNORE_FACADE_PID, sender, &state))
   }
 

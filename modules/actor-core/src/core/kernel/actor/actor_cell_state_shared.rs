@@ -2,7 +2,7 @@
 
 use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
-use crate::core::kernel::actor::{ActorCellState, ActorLockFactory};
+use crate::core::kernel::actor::ActorCellState;
 
 /// Stable shared wrapper for actor-cell runtime state.
 #[derive(Clone)]
@@ -11,10 +11,10 @@ pub struct ActorCellStateShared {
 }
 
 impl ActorCellStateShared {
-  /// Creates actor-cell runtime state with the requested lock driver family.
+  /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
-  pub fn new_with_lock_factory(factory: &impl ActorLockFactory) -> Self {
-    Self { inner: factory.create_lock(ActorCellState::new()) }
+  pub const fn from_shared_lock(inner: SharedLock<ActorCellState>) -> Self {
+    Self { inner }
   }
 
   pub(crate) fn with_read<R>(&self, f: impl FnOnce(&ActorCellState) -> R) -> R {

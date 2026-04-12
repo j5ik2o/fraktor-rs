@@ -40,7 +40,7 @@ mod stash_overflow_error;
 pub mod supervision;
 
 pub use actor_cell::ActorCell;
-pub(crate) use actor_cell_state::ActorCellState;
+pub use actor_cell_state::ActorCellState;
 pub use actor_cell_state_shared::ActorCellStateShared;
 pub use actor_cell_state_shared_factory::ActorCellStateSharedFactory;
 pub use actor_context::ActorContext;
@@ -54,7 +54,7 @@ pub use child_ref::ChildRef;
 pub use classic_timer_scheduler::ClassicTimerScheduler;
 pub use pid::Pid;
 pub use receive_state::ReceiveState;
-pub(crate) use receive_timeout_state::ReceiveTimeoutState;
+pub use receive_timeout_state::ReceiveTimeoutState;
 pub use receive_timeout_state_shared::ReceiveTimeoutStateShared;
 pub use receive_timeout_state_shared_factory::ReceiveTimeoutStateSharedFactory;
 pub use stash_overflow_error::StashOverflowError;

@@ -20,8 +20,8 @@ use portable_atomic::{AtomicBool, Ordering};
 use crate::core::{
   kernel::{
     actor::{
-      Actor, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutStateShared, STASH_OVERFLOW_REASON,
-      STASH_REQUIRES_DEQUE_REASON,
+      Actor, ActorCellState, ActorCellStateShared, ActorContext, ActorShared, Pid, ReceiveTimeoutStateShared,
+      STASH_OVERFLOW_REASON, STASH_REQUIRES_DEQUE_REASON,
       actor_ref::{ActorRef, ActorRefSenderShared},
       context_pipe::{ContextPipeFuture, ContextPipeTask, ContextPipeTaskId},
       error::{ActorError, PipeSpawnError},
@@ -178,14 +178,14 @@ impl ActorCell {
       mailbox.set_instrumentation(instrumentation);
     }
     use crate::core::kernel::dispatch::dispatcher::DispatcherSender;
-    let sender =
-      actor_ref_sender_shared_factory.create(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
+    let sender = actor_ref_sender_shared_factory
+      .create_actor_ref_sender_shared(Box::new(DispatcherSender::new(new_dispatcher.clone(), mailbox.clone())));
     let Some(factory) = props.factory().cloned() else {
       return Err(SpawnError::invalid_props("actor factory is required"));
     };
     let actor = ActorShared::from_shared_lock(actor_shared_lock_factory.create(factory.with_write(|f| f.create())));
-    let receive_timeout = receive_timeout_state_shared_factory.create();
-    let state = actor_cell_state_shared_factory.create();
+    let receive_timeout = receive_timeout_state_shared_factory.create_receive_timeout_state_shared(None);
+    let state = actor_cell_state_shared_factory.create_actor_cell_state_shared(ActorCellState::new());
 
     let tags = props.tags().clone();
     let cell = ArcShared::new(Self {

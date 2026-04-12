@@ -8,12 +8,9 @@ use core::num::NonZeroUsize;
 use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
-  bounded_priority_message_queue_state_shared::{
-    BoundedPriorityMessageQueueEntry, BoundedPriorityMessageQueueStateShared,
-  },
-  envelope::Envelope,
-  message_queue::MessageQueue,
-  overflow_strategy::MailboxOverflowStrategy,
+  bounded_priority_message_queue_state::BoundedPriorityMessageQueueEntry,
+  bounded_priority_message_queue_state_shared::BoundedPriorityMessageQueueStateShared, envelope::Envelope,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
 };
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,

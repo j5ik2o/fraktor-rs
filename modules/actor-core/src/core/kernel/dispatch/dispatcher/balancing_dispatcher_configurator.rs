@@ -33,7 +33,7 @@ impl BalancingDispatcherConfigurator {
   ) -> Self {
     let dispatcher =
       BalancingDispatcher::new(settings, executor, shared_message_queue_factory, mailbox_shared_set_factory);
-    Self { shared: message_dispatcher_shared_factory.create(Box::new(dispatcher)) }
+    Self { shared: message_dispatcher_shared_factory.create_message_dispatcher_shared(Box::new(dispatcher)) }
   }
 }
 

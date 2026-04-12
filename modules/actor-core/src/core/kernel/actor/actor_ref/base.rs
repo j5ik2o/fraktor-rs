@@ -69,7 +69,7 @@ impl ActorRef {
       return Self::with_system(pid, reply_sender, system);
     }
     let config = ActorSystemConfig::default();
-    let sender = config.actor_ref_sender_shared_factory().create(Box::new(reply_sender));
+    let sender = config.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(reply_sender));
     Self::new(pid, sender)
   }
 
@@ -103,7 +103,8 @@ impl ActorRef {
   fn new_with_builtin_lock_impl<T>(pid: Pid, sender: T) -> Self
   where
     T: ActorRefSender + 'static, {
-    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(sender));
+    let sender =
+      ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&BuiltinSpinSharedFactory::new(), Box::new(sender));
     Self { pid, sender, system: None }
   }
 
@@ -112,7 +113,7 @@ impl ActorRef {
   pub fn with_system<T>(pid: Pid, sender: T, system: &SystemStateShared) -> Self
   where
     T: ActorRefSender + 'static, {
-    let sender = system.actor_ref_sender_shared_factory().create(Box::new(sender));
+    let sender = system.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(sender));
     Self::from_shared(pid, sender, system)
   }
 
@@ -255,7 +256,7 @@ impl ActorRef {
   #[must_use]
   pub fn null() -> Self {
     let config = ActorSystemConfig::default();
-    let sender = config.actor_ref_sender_shared_factory().create(Box::new(NullSender));
+    let sender = config.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(NullSender));
     Self::new(Pid::new(0, 0), sender)
   }
 
