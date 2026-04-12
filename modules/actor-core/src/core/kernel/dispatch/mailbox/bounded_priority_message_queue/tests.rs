@@ -6,8 +6,10 @@ use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
   dispatch::mailbox::{
-    MailboxOverflowStrategy, MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
+    BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateSharedFactory, MailboxOverflowStrategy,
+    MessagePriorityGenerator, envelope::Envelope, message_queue::MessageQueue,
   },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 /// Priority generator that assigns priority based on the i32 payload value.
@@ -23,10 +25,21 @@ fn capacity(n: usize) -> NonZeroUsize {
   NonZeroUsize::new(n).expect("capacity must be greater than 0")
 }
 
+fn queue(
+  generator: ArcShared<dyn MessagePriorityGenerator>,
+  capacity: NonZeroUsize,
+  overflow: MailboxOverflowStrategy,
+) -> BoundedPriorityMessageQueue {
+  let shared_factory = BuiltinSpinSharedFactory::new();
+  let state_shared = shared_factory
+    .create_bounded_priority_message_queue_state_shared(BoundedPriorityMessageQueueState::with_capacity(capacity));
+  BoundedPriorityMessageQueue::new(generator, state_shared, capacity, overflow)
+}
+
 #[test]
 fn dequeues_in_priority_order() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
+  let queue = queue(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
@@ -45,7 +58,7 @@ fn dequeues_in_priority_order() {
 #[test]
 fn drop_newest_rejects_when_full() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(2), MailboxOverflowStrategy::DropNewest);
+  let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::DropNewest);
 
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
   queue.enqueue(Envelope::new(AnyMessage::new(20_i32))).expect("enqueue 20");
@@ -60,7 +73,7 @@ fn drop_newest_rejects_when_full() {
 #[test]
 fn drop_oldest_evicts_earliest_inserted_message() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
+  let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::DropOldest);
 
   // 最初に優先度10を挿入、次に優先度30を挿入
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
@@ -84,7 +97,7 @@ fn drop_oldest_evicts_earliest_inserted_message() {
 #[test]
 fn grow_ignores_capacity() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(2), MailboxOverflowStrategy::Grow);
+  let queue = queue(pgen, capacity(2), MailboxOverflowStrategy::Grow);
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
   queue.enqueue(Envelope::new(AnyMessage::new(10_i32))).expect("enqueue 10");
@@ -98,7 +111,7 @@ fn grow_ignores_capacity() {
 #[test]
 fn clean_up_removes_all_messages() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
+  let queue = queue(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
 
   queue.enqueue(Envelope::new(AnyMessage::new(1_i32))).expect("enqueue 1");
   queue.enqueue(Envelope::new(AnyMessage::new(2_i32))).expect("enqueue 2");
@@ -111,6 +124,6 @@ fn clean_up_removes_all_messages() {
 #[test]
 fn dequeue_empty_returns_none() {
   let pgen = ArcShared::new(PayloadPriorityGenerator);
-  let queue = BoundedPriorityMessageQueue::new(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
+  let queue = queue(pgen, capacity(10), MailboxOverflowStrategy::DropNewest);
   assert!(queue.dequeue().is_none());
 }

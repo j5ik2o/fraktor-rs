@@ -16,6 +16,8 @@ mod bounded_message_queue;
 mod bounded_priority_mailbox_type;
 /// Bounded priority message queue backed by a binary heap with capacity control.
 mod bounded_priority_message_queue;
+mod bounded_priority_message_queue_state_shared;
+mod bounded_priority_message_queue_state_shared_factory;
 /// Bounded stable-priority mailbox type factory.
 mod bounded_stable_priority_mailbox_type;
 /// Bounded stable-priority message queue with capacity control and FIFO ordering within equal
@@ -75,6 +77,10 @@ pub use bounded_mailbox_type::BoundedMailboxType;
 pub use bounded_message_queue::BoundedMessageQueue;
 pub use bounded_priority_mailbox_type::BoundedPriorityMailboxType;
 pub use bounded_priority_message_queue::BoundedPriorityMessageQueue;
+pub use bounded_priority_message_queue_state_shared::{
+  BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+};
+pub use bounded_priority_message_queue_state_shared_factory::BoundedPriorityMessageQueueStateSharedFactory;
 pub use bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType;
 pub use bounded_stable_priority_message_queue::BoundedStablePriorityMessageQueue;
 pub use capacity::MailboxCapacity;

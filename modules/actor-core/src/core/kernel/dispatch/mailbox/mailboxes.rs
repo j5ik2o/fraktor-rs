@@ -8,7 +8,7 @@ use hashbrown::HashMap;
 use crate::core::kernel::{
   actor::props::{MailboxConfig, MailboxConfigError},
   dispatch::mailbox::{
-    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
+    BoundedPriorityMessageQueueStateSharedFactory, MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
     bounded_priority_mailbox_type::BoundedPriorityMailboxType,
     bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
     mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
@@ -18,6 +18,7 @@ use crate::core::kernel::{
     unbounded_priority_mailbox_type::UnboundedPriorityMailboxType,
     unbounded_stable_priority_mailbox_type::UnboundedStablePriorityMailboxType,
   },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 #[cfg(test)]
@@ -66,7 +67,9 @@ fn priority_mailbox_type_from_config(
 ) -> Box<dyn MailboxType> {
   match policy.capacity() {
     | MailboxCapacity::Bounded { capacity } => {
-      Box::new(BoundedPriorityMailboxType::new(generator, capacity, policy.overflow()))
+      let state_shared_factory: ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory> =
+        ArcShared::new(BuiltinSpinSharedFactory::new());
+      Box::new(BoundedPriorityMailboxType::new(generator, state_shared_factory, capacity, policy.overflow()))
     },
     | MailboxCapacity::Unbounded => Box::new(UnboundedPriorityMailboxType::new(generator)),
   }

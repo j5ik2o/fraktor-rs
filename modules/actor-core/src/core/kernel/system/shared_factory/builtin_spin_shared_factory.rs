@@ -20,7 +20,10 @@ use crate::core::kernel::{
       Executor, ExecutorShared, ExecutorSharedFactory, MessageDispatcher, MessageDispatcherShared,
       MessageDispatcherSharedFactory, SharedMessageQueue, SharedMessageQueueFactory, TrampolineState,
     },
-    mailbox::MailboxInstrumentation,
+    mailbox::{
+      BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
+      BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation,
+    },
   },
   event::stream::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
@@ -110,6 +113,15 @@ impl MessageInvokerSharedFactory for BuiltinSpinSharedFactory {
 impl SharedMessageQueueFactory for BuiltinSpinSharedFactory {
   fn create(&self) -> SharedMessageQueue {
     SharedMessageQueue::from_shared_lock(Self::create_lock(VecDeque::new()))
+  }
+}
+
+impl BoundedPriorityMessageQueueStateSharedFactory for BuiltinSpinSharedFactory {
+  fn create_bounded_priority_message_queue_state_shared(
+    &self,
+    state: BoundedPriorityMessageQueueState,
+  ) -> BoundedPriorityMessageQueueStateShared {
+    BoundedPriorityMessageQueueStateShared::from_shared(Self::create_lock(state))
   }
 }
 
