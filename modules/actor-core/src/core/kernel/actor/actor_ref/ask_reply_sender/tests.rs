@@ -13,7 +13,8 @@ use crate::core::kernel::{
 
 #[test]
 fn completes_future_on_send() {
-  let future = ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future =
+    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let mut sender: AskReplySender = AskReplySender::new(future.clone());
   sender.send(AnyMessage::new("ok".to_string())).unwrap();
   assert!(future.with_write(|af| af.is_ready()));
@@ -21,7 +22,8 @@ fn completes_future_on_send() {
 
 #[test]
 fn reply_is_wrapped_in_ok() {
-  let future = ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future =
+    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let mut sender: AskReplySender = AskReplySender::new(future.clone());
   sender.send(AnyMessage::new(42_u32)).unwrap();
 

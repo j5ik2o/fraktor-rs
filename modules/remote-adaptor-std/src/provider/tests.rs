@@ -55,7 +55,8 @@ fn local_address() -> UniqueAddress {
 
 fn make_provider() -> StdRemoteActorRefProvider {
   let shared_factory = BuiltinSpinSharedFactory::new();
-  let local_actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new());
+  let local_actor_ref_provider_handle_shared =
+    shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new());
   let remote_provider = Box::new(StubRemoteProvider::default()) as Box<dyn RemoteActorRefProvider + Send + Sync>;
   let transport = Arc::new(Mutex::new(TcpRemoteTransport::new("127.0.0.1:0", Vec::new())));
   StdRemoteActorRefProvider::new(local_address(), local_actor_ref_provider_handle_shared, remote_provider, transport)

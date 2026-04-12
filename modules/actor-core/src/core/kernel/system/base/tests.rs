@@ -37,7 +37,7 @@ use crate::core::{
       spawn::SpawnError,
     },
     dispatch::dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
       MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
     },
     event::stream::{EventStreamEvent, EventStreamSubscriber, tests::subscriber_handle},
@@ -145,7 +145,7 @@ fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigur
   let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)
@@ -845,7 +845,8 @@ fn resolve_actor_ref_injects_canonical_authority() {
 
   let recorded = ArcShared::new(SpinSyncMutex::new(None));
   let shared_factory = BuiltinSpinSharedFactory::new();
-  let actor_ref_provider_handle_shared = shared_factory.create_actor_ref_provider_handle_shared(DummyActorRefProvider::new(recorded.clone()));
+  let actor_ref_provider_handle_shared =
+    shared_factory.create_actor_ref_provider_handle_shared(DummyActorRefProvider::new(recorded.clone()));
   system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared).expect("register provider");
   system.state().mark_root_started();
 

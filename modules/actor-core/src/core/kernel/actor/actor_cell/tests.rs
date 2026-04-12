@@ -265,7 +265,7 @@ impl MailboxSharedSetFactory for TestDebugActorSharedFactory {
 }
 
 impl ActorFutureSharedFactory<AskResult> for TestDebugActorSharedFactory {
-  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureShared::from_shared_lock(self.create_lock(future))
   }
 }

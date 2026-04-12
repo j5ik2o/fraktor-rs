@@ -22,7 +22,8 @@ fn noop_waker() -> Waker {
 
 #[test]
 fn completes_and_listens() {
-  let future = ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future =
+    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   let mut listener = ActorFutureListener::new(future.clone());
 
   assert!(future.with_write(|af| af.try_take().is_none()));

@@ -182,7 +182,7 @@ impl MailboxSharedSetFactory for CountingLockProvider {
 }
 
 impl ActorFutureSharedFactory<AskResult> for CountingLockProvider {
-  fn create(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
+  fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
   }
 }

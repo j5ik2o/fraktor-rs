@@ -217,7 +217,8 @@ fn build_system() -> ActorSystem {
   let shared_message_queue_factory = config.shared_message_queue_factory().clone();
   let mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
   let default_settings = DispatcherSettings::with_defaults(DEFAULT_DISPATCHER_ID);
-  let default_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle.clone()));
+  let default_executor =
+    ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(TokioExecutor::new(handle.clone())));
   let default_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(DefaultDispatcherConfigurator::new(
     &default_settings,
     default_executor,
@@ -225,7 +226,8 @@ fn build_system() -> ActorSystem {
   ));
 
   let balancing_settings = DispatcherSettings::with_defaults(BALANCING_DISPATCHER_ID);
-  let balancing_executor = ExecutorShared::new_with_builtin_lock(TokioExecutor::new(handle));
+  let balancing_executor =
+    ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(TokioExecutor::new(handle)));
   let balancing_configurator: Box<dyn MessageDispatcherConfigurator> = Box::new(BalancingDispatcherConfigurator::new(
     &balancing_settings,
     balancing_executor,
@@ -353,7 +355,7 @@ fn balancing_dispatcher_configurator_materializes_shared_queue_via_provider() {
   let (_, dispatcher_shared_calls, shared_message_queue_calls, provider) = CountingLockProvider::new();
   let provider = ArcShared::new(provider);
   let settings = DispatcherSettings::with_defaults("balancing-provider-test");
-  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let shared_message_queue_factory: ArcShared<dyn SharedMessageQueueFactory> = provider.clone();
   let mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory> = provider;

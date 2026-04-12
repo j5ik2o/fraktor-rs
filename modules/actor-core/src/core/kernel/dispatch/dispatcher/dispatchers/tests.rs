@@ -6,7 +6,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::{DEFAULT_BLOCKING_DISPATCHER_ID, DEFAULT_DISPATCHER_ID, Dispatchers, DispatchersError};
 use crate::core::kernel::{
   dispatch::dispatcher::{
-    DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared, ExecutorSharedFactory,
+    DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
     MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
   },
   system::shared_factory::BuiltinSpinSharedFactory,
@@ -26,7 +26,7 @@ fn make_default_configurator(id: &str) -> ArcShared<Box<dyn MessageDispatcherCon
   let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults(id).with_shutdown_timeout(Duration::from_secs(2));
-  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)

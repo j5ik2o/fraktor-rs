@@ -31,7 +31,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::{
-      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorShared,
+      DefaultDispatcherConfigurator, DispatcherSettings, ExecuteError, Executor, ExecutorSharedFactory,
       MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
     },
     mailbox::MailboxMessage,
@@ -446,7 +446,8 @@ fn system_state_register_ask_future() {
   };
 
   let mut state = build_state();
-  let future = ActorFutureSharedFactory::create(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
+  let future =
+    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new());
   state.register_ask_future(future.clone());
 
   let ready = state.drain_ready_ask_futures();
@@ -879,7 +880,7 @@ fn noop_dispatcher_configurator() -> ArcShared<Box<dyn MessageDispatcherConfigur
   let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
   let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = provider.clone();
   let settings = DispatcherSettings::with_defaults("noop");
-  let executor = ExecutorShared::new_with_builtin_lock(NoopExecutor);
+  let executor = ExecutorSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NoopExecutor));
   let configurator: Box<dyn MessageDispatcherConfigurator> =
     Box::new(DefaultDispatcherConfigurator::new(&settings, executor, &message_dispatcher_shared_factory));
   ArcShared::new(configurator)

@@ -11,8 +11,6 @@ mod tests;
 
 use alloc::collections::VecDeque;
 
-#[cfg(any(test, feature = "test-support"))]
-use fraktor_utils_core_rs::core::sync::SpinSyncMutex;
 use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use crate::core::kernel::{
@@ -31,25 +29,11 @@ impl SharedMessageQueue {
   pub const fn from_shared_lock(inner: SharedLock<VecDeque<Envelope>>) -> Self {
     Self { inner }
   }
-
-  /// Creates an empty shared message queue.
-  #[must_use]
-  #[cfg(any(test, feature = "test-support"))]
-  pub fn new() -> Self {
-    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(VecDeque::new()))
-  }
 }
 
 impl Clone for SharedMessageQueue {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone() }
-  }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl Default for SharedMessageQueue {
-  fn default() -> Self {
-    Self::new()
   }
 }
 
