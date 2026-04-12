@@ -48,7 +48,7 @@ use crate::core::kernel::{
   },
   dispatch::{
     dispatcher::MessageDispatcherShared,
-    mailbox::{MailboxRegistryError, MessageQueue},
+    mailbox::{BoundedStablePriorityMessageQueueStateSharedFactory, MailboxRegistryError, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel},
@@ -263,6 +263,14 @@ impl SystemStateShared {
   #[must_use]
   pub fn context_pipe_waker_handle_shared_factory(&self) -> ArcShared<dyn ContextPipeWakerHandleSharedFactory> {
     self.inner.with_read(|inner| inner.context_pipe_waker_handle_shared_factory())
+  }
+
+  /// Returns the bounded stable-priority message-queue-state shared factory.
+  #[must_use]
+  pub fn bounded_stable_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
+    self.inner.with_read(|inner| inner.bounded_stable_priority_message_queue_state_shared_factory())
   }
 
   /// Creates a weak reference to this system state.

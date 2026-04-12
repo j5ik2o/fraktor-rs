@@ -33,7 +33,10 @@ use crate::core::kernel::{
       Dispatchers, ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory,
       SharedMessageQueueFactory,
     },
-    mailbox::Mailboxes,
+    mailbox::{
+      BoundedStablePriorityMessageQueueState, BoundedStablePriorityMessageQueueStateShared,
+      BoundedStablePriorityMessageQueueStateSharedFactory, Mailboxes,
+    },
   },
   event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
   pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, Clock},
@@ -119,6 +122,34 @@ where
   _marker:  PhantomData<fn() -> C>,
 }
 
+struct ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
+where
+  P: ActorLockFactory + Send + Sync + 'static, {
+  actor_lock_factory: ArcShared<P>,
+}
+
+impl<P> ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
+where
+  P: ActorLockFactory + Send + Sync + 'static,
+{
+  const fn new(actor_lock_factory: ArcShared<P>) -> Self {
+    Self { actor_lock_factory }
+  }
+}
+
+impl<P> BoundedStablePriorityMessageQueueStateSharedFactory
+  for ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric<P>
+where
+  P: ActorLockFactory + Send + Sync + 'static,
+{
+  fn create_bounded_stable_priority_message_queue_state_shared(
+    &self,
+    state: BoundedStablePriorityMessageQueueState,
+  ) -> BoundedStablePriorityMessageQueueStateShared {
+    BoundedStablePriorityMessageQueueStateShared::from_shared_lock(self.actor_lock_factory.create_lock(state))
+  }
+}
+
 impl<C> CircuitBreakerSharedFactory<C> for ActorSystemConfigCircuitBreakerSharedFactory<'_, C>
 where
   C: Clock + 'static,
@@ -156,6 +187,8 @@ pub struct ActorSystemConfig {
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
   context_pipe_waker_handle_shared_factory: ArcShared<dyn ContextPipeWakerHandleSharedFactory>,
+  bounded_stable_priority_message_queue_state_shared_factory:
+    ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
@@ -250,7 +283,9 @@ impl ActorSystemConfig {
     self.event_stream_shared_factory = provider.clone();
     self.event_stream_subscriber_shared_factory = provider.clone();
     self.mailbox_shared_set_factory = provider.clone();
-    self.context_pipe_waker_handle_shared_factory = provider;
+    self.context_pipe_waker_handle_shared_factory = provider.clone();
+    self.bounded_stable_priority_message_queue_state_shared_factory =
+      ArcShared::new(ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(provider));
     self
       .dispatchers
       .replace_default_inline_with_factories(&self.message_dispatcher_shared_factory, &self.executor_shared_factory);
@@ -453,6 +488,14 @@ impl ActorSystemConfig {
     &self.context_pipe_waker_handle_shared_factory
   }
 
+  /// Returns the bounded stable-priority message-queue-state shared factory.
+  #[must_use]
+  pub const fn bounded_stable_priority_message_queue_state_shared_factory(
+    &self,
+  ) -> &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> {
+    &self.bounded_stable_priority_message_queue_state_shared_factory
+  }
+
   /// Returns the circuit-breaker shared factory for the supplied clock type.
   #[must_use]
   pub fn circuit_breaker_shared_factory<C>(&self) -> Option<impl CircuitBreakerSharedFactory<C> + '_>
@@ -516,7 +559,10 @@ impl Default for ActorSystemConfig {
       event_stream_shared_factory: shared_factory.clone(),
       event_stream_subscriber_shared_factory: shared_factory.clone(),
       mailbox_shared_set_factory: shared_factory.clone(),
-      context_pipe_waker_handle_shared_factory: shared_factory,
+      context_pipe_waker_handle_shared_factory: shared_factory.clone(),
+      bounded_stable_priority_message_queue_state_shared_factory: ArcShared::new(
+        ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(shared_factory),
+      ),
       circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry::default(),
       dispatchers,
       mailboxes,

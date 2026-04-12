@@ -5,7 +5,11 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 use super::*;
 use crate::core::kernel::{
   actor::messaging::AnyMessage,
-  dispatch::mailbox::{Envelope, MailboxOverflowStrategy, MessagePriorityGenerator, mailbox_type::MailboxType},
+  dispatch::mailbox::{
+    BoundedStablePriorityMessageQueueStateSharedFactory, Envelope, MailboxOverflowStrategy, MessagePriorityGenerator,
+    mailbox_type::MailboxType,
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
 };
 
 #[test]
@@ -13,7 +17,10 @@ fn creates_bounded_stable_priority_queue() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> =
     ArcShared::new(|msg: &AnyMessage| -> i32 { msg.payload().downcast_ref::<i32>().copied().unwrap_or(i32::MAX) });
   let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
-  let factory = BoundedStablePriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
+  let state_shared_factory: ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> =
+    ArcShared::new(BuiltinSpinSharedFactory::new());
+  let factory =
+    BoundedStablePriorityMailboxType::new(pgen, state_shared_factory, capacity, MailboxOverflowStrategy::DropNewest);
   let queue = factory.create();
 
   queue.enqueue(Envelope::new(AnyMessage::new(30_i32))).expect("enqueue 30");
@@ -27,7 +34,10 @@ fn creates_bounded_stable_priority_queue() {
 fn preserves_insertion_order_for_equal_priority() {
   let pgen: ArcShared<dyn MessagePriorityGenerator> = ArcShared::new(|_msg: &AnyMessage| -> i32 { 0 });
   let capacity = NonZeroUsize::new(10).expect("capacity is non-zero");
-  let factory = BoundedStablePriorityMailboxType::new(pgen, capacity, MailboxOverflowStrategy::DropNewest);
+  let state_shared_factory: ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory> =
+    ArcShared::new(BuiltinSpinSharedFactory::new());
+  let factory =
+    BoundedStablePriorityMailboxType::new(pgen, state_shared_factory, capacity, MailboxOverflowStrategy::DropNewest);
   let queue = factory.create();
 
   queue.enqueue(Envelope::new(AnyMessage::new("first"))).expect("enqueue first");

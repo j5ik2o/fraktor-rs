@@ -19,7 +19,9 @@ use fraktor_actor_core_rs::core::kernel::{
     },
     mailbox::{
       BoundedPriorityMessageQueueState, BoundedPriorityMessageQueueStateShared,
-      BoundedPriorityMessageQueueStateSharedFactory, MailboxInstrumentation,
+      BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueState,
+      BoundedStablePriorityMessageQueueStateShared, BoundedStablePriorityMessageQueueStateSharedFactory,
+      MailboxInstrumentation,
     },
   },
   event::stream::{
@@ -119,6 +121,15 @@ impl BoundedPriorityMessageQueueStateSharedFactory for StdActorSharedFactory {
     state: BoundedPriorityMessageQueueState,
   ) -> BoundedPriorityMessageQueueStateShared {
     BoundedPriorityMessageQueueStateShared::from_shared_lock(Self::create_lock(state))
+  }
+}
+
+impl BoundedStablePriorityMessageQueueStateSharedFactory for StdActorSharedFactory {
+  fn create_bounded_stable_priority_message_queue_state_shared(
+    &self,
+    state: BoundedStablePriorityMessageQueueState,
+  ) -> BoundedStablePriorityMessageQueueStateShared {
+    BoundedStablePriorityMessageQueueStateShared::from_shared_lock(Self::create_lock(state))
   }
 }
 

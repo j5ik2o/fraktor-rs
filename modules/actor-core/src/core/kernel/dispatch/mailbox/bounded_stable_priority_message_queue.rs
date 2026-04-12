@@ -6,24 +6,17 @@
 #[cfg(test)]
 mod tests;
 
-use alloc::collections::BinaryHeap;
 use core::num::NonZeroUsize;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 
 use super::{
-  envelope::Envelope, message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy,
-  stable_priority_entry::StablePriorityEntry,
+  bounded_stable_priority_message_queue_state_shared::BoundedStablePriorityMessageQueueStateShared, envelope::Envelope,
+  message_queue::MessageQueue, overflow_strategy::MailboxOverflowStrategy, stable_priority_entry::StablePriorityEntry,
 };
 use crate::core::kernel::{
   actor::error::SendError, dispatch::mailbox::message_priority_generator::MessagePriorityGenerator,
 };
-
-/// Internal mutable state guarded by a lock.
-struct Inner {
-  heap:     BinaryHeap<StablePriorityEntry>,
-  sequence: u64,
-}
 
 /// Bounded message queue that dequeues in priority order with stable
 /// (FIFO) ordering among envelopes of equal priority.
@@ -33,10 +26,10 @@ struct Inner {
 /// lower values are dequeued first. When the queue reaches capacity, the
 /// configured [`MailboxOverflowStrategy`] determines the behaviour.
 pub struct BoundedStablePriorityMessageQueue {
-  inner:     SharedLock<Inner>,
-  generator: ArcShared<dyn MessagePriorityGenerator>,
-  capacity:  usize,
-  overflow:  MailboxOverflowStrategy,
+  state_shared: BoundedStablePriorityMessageQueueStateShared,
+  generator:    ArcShared<dyn MessagePriorityGenerator>,
+  capacity:     usize,
+  overflow:     MailboxOverflowStrategy,
 }
 
 impl BoundedStablePriorityMessageQueue {
@@ -44,31 +37,23 @@ impl BoundedStablePriorityMessageQueue {
   #[must_use]
   pub fn new(
     generator: ArcShared<dyn MessagePriorityGenerator>,
+    state_shared: BoundedStablePriorityMessageQueueStateShared,
     capacity: NonZeroUsize,
     overflow: MailboxOverflowStrategy,
   ) -> Self {
-    Self {
-      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(Inner {
-        heap:     BinaryHeap::with_capacity(capacity.get()),
-        sequence: 0,
-      }),
-      generator,
-      capacity: capacity.get(),
-      overflow,
-    }
+    Self { state_shared, generator, capacity: capacity.get(), overflow }
   }
 }
 
 impl MessageQueue for BoundedStablePriorityMessageQueue {
   fn enqueue(&self, envelope: Envelope) -> Result<(), SendError> {
     let priority = self.generator.priority(envelope.payload());
-    self.inner.with_write(|inner| {
-      let sequence = inner.sequence;
-      inner.sequence += 1;
+    self.state_shared.with_write(|state| {
+      let sequence = state.next_sequence();
       let entry = StablePriorityEntry { priority, sequence, envelope };
 
-      if inner.heap.len() < self.capacity {
-        inner.heap.push(entry);
+      if state.heap().len() < self.capacity {
+        state.heap_mut().push(entry);
         return Ok(());
       }
 
@@ -79,13 +64,13 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
         },
         | MailboxOverflowStrategy::DropOldest => {
           // Pekko 互換: キュー先頭（次にデキューされる最高優先度メッセージ）を削除する
-          let _ = inner.heap.pop();
-          inner.heap.push(entry);
+          let _ = state.heap_mut().pop();
+          state.heap_mut().push(entry);
           Ok(())
         },
         | MailboxOverflowStrategy::Grow => {
           // Ignore the bound and grow.
-          inner.heap.push(entry);
+          state.heap_mut().push(entry);
           Ok(())
         },
       }
@@ -93,14 +78,14 @@ impl MessageQueue for BoundedStablePriorityMessageQueue {
   }
 
   fn dequeue(&self) -> Option<Envelope> {
-    self.inner.with_write(|inner| inner.heap.pop().map(|entry| entry.envelope))
+    self.state_shared.with_write(|state| state.heap_mut().pop().map(|entry| entry.envelope))
   }
 
   fn number_of_messages(&self) -> usize {
-    self.inner.with_read(|inner| inner.heap.len())
+    self.state_shared.with_read(|state| state.heap().len())
   }
 
   fn clean_up(&self) {
-    self.inner.with_write(|inner| inner.heap.clear());
+    self.state_shared.with_write(|state| state.heap_mut().clear());
   }
 }
