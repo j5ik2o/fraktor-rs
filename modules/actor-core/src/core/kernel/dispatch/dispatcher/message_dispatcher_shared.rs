@@ -13,7 +13,7 @@ mod tests;
 use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{num::NonZeroUsize, time::Duration};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::{
   executor_shared::ExecutorShared, message_dispatcher::MessageDispatcher, shutdown_schedule::ShutdownSchedule,
@@ -35,6 +35,12 @@ impl Clone for MessageDispatcherShared {
 }
 
 impl MessageDispatcherShared {
+  /// Creates a new shared wrapper using the builtin spin lock backend.
+  #[must_use]
+  pub fn new(dispatcher: Box<dyn MessageDispatcher>) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(dispatcher))
+  }
+
   /// Wraps an already materialized shared lock in a shared handle.
   #[must_use]
   pub fn from_shared_lock(inner: SharedLock<Box<dyn MessageDispatcher>>) -> Self {

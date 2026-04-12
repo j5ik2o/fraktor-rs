@@ -13,7 +13,7 @@ use crate::core::{
     actor::{
       Address, Pid,
       actor_ref::{
-        ActorRef, ActorRefSender, SendOutcome,
+        ActorRef, ActorRefSender, ActorRefSenderShared, SendOutcome,
         dead_letter::{DeadLetterEntry, DeadLetterReason},
       },
       error::SendError,
@@ -322,7 +322,7 @@ where
   where
     U: Send + Sync + 'static, {
     let state = self.inner.state();
-    let sender = state.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(IgnoreRefSender));
+    let sender = ActorRefSenderShared::new(Box::new(IgnoreRefSender));
     TypedActorRef::from_untyped(ActorRef::from_shared(IGNORE_FACADE_PID, sender, &state))
   }
 

@@ -1,6 +1,6 @@
 //! Shared wrapper for bounded stable-priority message queue state.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use super::bounded_stable_priority_message_queue_state::BoundedStablePriorityMessageQueueState;
 
@@ -10,6 +10,12 @@ pub struct BoundedStablePriorityMessageQueueStateShared {
 }
 
 impl BoundedStablePriorityMessageQueueStateShared {
+  /// Creates a new shared wrapper using the builtin spin lock backend.
+  #[must_use]
+  pub fn new(state: BoundedStablePriorityMessageQueueState) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(state))
+  }
+
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
   pub const fn from_shared_lock(inner: SharedLock<BoundedStablePriorityMessageQueueState>) -> Self {

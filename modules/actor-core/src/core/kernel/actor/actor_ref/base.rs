@@ -17,18 +17,13 @@ use crate::core::kernel::{
   actor::{
     Pid,
     actor_path::ActorPath,
-    actor_ref::{
-      ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, NullSender, ask_reply_sender::AskReplySender,
-    },
+    actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
     error::SendError,
     messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
   },
   pattern,
-  system::{
-    shared_factory::BuiltinSpinSharedFactory,
-    state::{SystemStateShared, SystemStateWeak},
-  },
-  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
+  system::state::{SystemStateShared, SystemStateWeak},
+  util::futures::{ActorFuture, ActorFutureShared},
 };
 
 /// Handle used to communicate with an actor instance.
@@ -47,11 +42,11 @@ static ASK_REPLY_FALLBACK_PID: AtomicU64 = AtomicU64::new(u64::MAX / 2);
 
 impl ActorRef {
   fn create_builtin_actor_ref_sender_shared(sender: Box<dyn ActorRefSender>) -> ActorRefSenderShared {
-    ActorRefSenderSharedFactory::create_actor_ref_sender_shared(&BuiltinSpinSharedFactory::new(), sender)
+    ActorRefSenderShared::new(sender)
   }
 
   fn create_builtin_actor_future_shared(future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
-    ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), future)
+    ActorFutureShared::new(future)
   }
 
   fn complete_ask_future_with_error(future: &ActorFutureShared<AskResult>, error: &SendError) {
@@ -74,7 +69,7 @@ impl ActorRef {
   ) -> Self {
     let pid = Self::next_ask_reply_pid(system);
     if let Some(system) = system {
-      let sender = system.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(reply_sender));
+      let sender = ActorRefSenderShared::new(Box::new(reply_sender));
       return if path_aware_reply { Self::from_shared(pid, sender, system) } else { Self::new(pid, sender) };
     }
     let sender = Self::create_builtin_actor_ref_sender_shared(Box::new(reply_sender));
@@ -120,7 +115,7 @@ impl ActorRef {
   pub fn with_system<T>(pid: Pid, sender: T, system: &SystemStateShared) -> Self
   where
     T: ActorRefSender + 'static, {
-    let sender = system.actor_ref_sender_shared_factory().create_actor_ref_sender_shared(Box::new(sender));
+    let sender = ActorRefSenderShared::new(Box::new(sender));
     Self::from_shared(pid, sender, system)
   }
 

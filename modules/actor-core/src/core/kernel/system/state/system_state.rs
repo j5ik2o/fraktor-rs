@@ -49,7 +49,7 @@ use crate::core::kernel::{
       SchedulerBackedDelayProvider, SchedulerConfig, SchedulerContext, SchedulerShared,
       task_run::TaskRunSummary,
       tick_driver::{
-        TickDriverBundle, TickDriverControl, TickDriverControlSharedFactory, TickDriverHandle, TickDriverKind,
+        TickDriverBundle, TickDriverControl, TickDriverControlShared, TickDriverHandle, TickDriverKind,
         TickDriverProvisioningContext, TickExecutorSignal, TickFeed, next_tick_driver_id,
       },
     },
@@ -152,7 +152,7 @@ impl SystemState {
     let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream_shared.clone());
     let tick_driver_bundle =
-      Self::default_tick_driver_bundle(scheduler_config.resolution(), &**config.tick_driver_control_shared_factory());
+      Self::default_tick_driver_bundle(scheduler_config.resolution());
     Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -217,16 +217,16 @@ impl SystemState {
 
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
-    let event_stream = config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
+    let event_stream = EventStreamShared::new(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
     let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline(config.message_dispatcher_shared_factory(), config.executor_shared_factory());
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     let scheduler_config = SchedulerConfig::default();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle =
-      Self::default_tick_driver_bundle(scheduler_config.resolution(), &**config.tick_driver_control_shared_factory());
+      Self::default_tick_driver_bundle(scheduler_config.resolution());
     let mut state = Self {
       next_pid: AtomicU64::new(0),
       clock: AtomicU64::new(0),
@@ -318,10 +318,7 @@ impl SystemState {
     Ok(state)
   }
 
-  fn default_tick_driver_bundle(
-    resolution: Duration,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
-  ) -> TickDriverBundle {
+  fn default_tick_driver_bundle(resolution: Duration) -> TickDriverBundle {
     struct NoopDriverControl;
 
     impl TickDriverControl for NoopDriverControl {
@@ -330,8 +327,7 @@ impl SystemState {
 
     let signal = TickExecutorSignal::new();
     let feed = TickFeed::new(resolution, 1, signal);
-    let control: Box<dyn TickDriverControl> = Box::new(NoopDriverControl);
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(Box::new(NoopDriverControl));
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::Auto, resolution, control);
     TickDriverBundle::new(handle, feed)
   }
@@ -1027,12 +1023,7 @@ impl SystemState {
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
   pub fn create_mailbox_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
-    self.mailboxes.create_message_queue(
-      id,
-      &self.bounded_priority_message_queue_state_shared_factory,
-      &self.unbounded_priority_message_queue_state_shared_factory,
-      &self.bounded_stable_priority_message_queue_state_shared_factory,
-    )
+    self.mailboxes.create_message_queue(id)
   }
 
   /// Returns the remoting configuration when it has been configured.

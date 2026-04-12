@@ -18,7 +18,7 @@ use super::{
 use crate::core::kernel::{
   actor::{ActorCell, Pid, error::SendError, messaging::system_message::SystemMessage, spawn::SpawnError},
   dispatch::mailbox::{Envelope, Mailbox, MailboxPolicy, MessageQueue},
-  system::shared_factory::MailboxSharedSetFactory,
+  system::shared_factory::MailboxSharedSet,
 };
 
 /// Dispatcher that load-balances actors over a shared message queue.
@@ -26,7 +26,6 @@ pub struct BalancingDispatcher {
   core: DispatcherCore,
   shared_queue: SharedMessageQueue,
   team: Vec<WeakShared<ActorCell>>,
-  mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
 }
 
 impl BalancingDispatcher {
@@ -36,18 +35,8 @@ impl BalancingDispatcher {
   /// attaches via
   /// [`MessageDispatcher::try_create_shared_mailbox`].
   #[must_use]
-  pub fn new(
-    settings: &DispatcherSettings,
-    executor: ExecutorShared,
-    shared_queue: SharedMessageQueue,
-    mailbox_shared_set_factory: &ArcShared<dyn MailboxSharedSetFactory>,
-  ) -> Self {
-    Self {
-      core: DispatcherCore::new(settings, executor),
-      shared_queue,
-      team: Vec::new(),
-      mailbox_shared_set_factory: mailbox_shared_set_factory.clone(),
-    }
+  pub fn new(settings: &DispatcherSettings, executor: ExecutorShared, shared_queue: SharedMessageQueue) -> Self {
+    Self { core: DispatcherCore::new(settings, executor), shared_queue, team: Vec::new() }
   }
 
   /// Returns a clone of the shared message queue used by team members.
@@ -117,7 +106,7 @@ impl MessageDispatcher for BalancingDispatcher {
     // for the dispatcher's lifetime, so every call returns a mailbox that
     // wraps the same underlying `SharedMessageQueue`.
     let queue: Box<dyn MessageQueue> = Box::new(SharedMessageQueueBox(self.shared_queue.clone()));
-    let shared_set = self.mailbox_shared_set_factory.create();
+    let shared_set = MailboxSharedSet::builtin();
     Some(ArcShared::new(Mailbox::new_sharing_with_shared_set(MailboxPolicy::unbounded(None), queue, &shared_set)))
   }
 

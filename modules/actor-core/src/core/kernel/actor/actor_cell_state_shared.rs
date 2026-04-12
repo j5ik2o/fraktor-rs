@@ -1,6 +1,6 @@
 //! Shared wrapper for actor-cell runtime state.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
 
 use crate::core::kernel::actor::ActorCellState;
 
@@ -11,6 +11,12 @@ pub struct ActorCellStateShared {
 }
 
 impl ActorCellStateShared {
+  /// Creates a new shared wrapper using the builtin spin lock backend.
+  #[must_use]
+  pub fn new(state: ActorCellState) -> Self {
+    Self::from_shared_lock(SharedLock::new_with_driver::<SpinSyncMutex<_>>(state))
+  }
+
   /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
   pub const fn from_shared_lock(inner: SharedLock<ActorCellState>) -> Self {

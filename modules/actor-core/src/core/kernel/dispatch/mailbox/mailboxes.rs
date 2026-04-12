@@ -8,8 +8,7 @@ use hashbrown::HashMap;
 use crate::core::kernel::{
   actor::props::{MailboxConfig, MailboxConfigError},
   dispatch::mailbox::{
-    BoundedPriorityMessageQueueStateSharedFactory, BoundedStablePriorityMessageQueueStateSharedFactory,
-    MailboxRegistryError, UnboundedPriorityMessageQueueStateSharedFactory, bounded_mailbox_type::BoundedMailboxType,
+    MailboxRegistryError, bounded_mailbox_type::BoundedMailboxType,
     bounded_priority_mailbox_type::BoundedPriorityMailboxType,
     bounded_stable_priority_mailbox_type::BoundedStablePriorityMailboxType, capacity::MailboxCapacity,
     mailbox_type::MailboxType, message_priority_generator::MessagePriorityGenerator, message_queue::MessageQueue,
@@ -43,31 +42,13 @@ pub(crate) fn create_message_queue_from_policy(policy: MailboxPolicy) -> Box<dyn
 /// (e.g. `stable_priority` enabled without a priority generator).
 pub(crate) fn create_message_queue_from_config(
   config: &MailboxConfig,
-  bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
-  unbounded_priority_state_shared_factory: &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
-  bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
 ) -> Result<Box<dyn MessageQueue>, MailboxConfigError> {
   config.validate()?;
   if let Some(generator) = config.priority_generator() {
     if config.stable_priority() {
-      return Ok(
-        stable_priority_mailbox_type_from_config(
-          generator.clone(),
-          bounded_stable_priority_state_shared_factory,
-          config.policy(),
-        )
-        .create(),
-      );
+      return Ok(stable_priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
     }
-    return Ok(
-      priority_mailbox_type_from_config(
-        generator.clone(),
-        bounded_priority_state_shared_factory,
-        unbounded_priority_state_shared_factory,
-        config.policy(),
-      )
-      .create(),
-    );
+    return Ok(priority_mailbox_type_from_config(generator.clone(), config.policy()).create());
   }
   if config.requirement().needs_control_aware() {
     let mailbox_type: Box<dyn MailboxType> = Box::new(UnboundedControlAwareMailboxType::new());
@@ -81,32 +62,24 @@ pub(crate) fn create_message_queue_from_config(
 
 fn priority_mailbox_type_from_config(
   generator: ArcShared<dyn MessagePriorityGenerator>,
-  state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
-  unbounded_state_shared_factory: &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
   policy: MailboxPolicy,
 ) -> Box<dyn MailboxType> {
   match policy.capacity() {
     | MailboxCapacity::Bounded { capacity } => {
-      Box::new(BoundedPriorityMailboxType::new(generator, state_shared_factory.clone(), capacity, policy.overflow()))
+      Box::new(BoundedPriorityMailboxType::new(generator, capacity, policy.overflow()))
     },
-    | MailboxCapacity::Unbounded => {
-      Box::new(UnboundedPriorityMailboxType::new(generator, unbounded_state_shared_factory.clone()))
-    },
+    | MailboxCapacity::Unbounded => Box::new(UnboundedPriorityMailboxType::new(generator)),
   }
 }
 
 fn stable_priority_mailbox_type_from_config(
   generator: ArcShared<dyn MessagePriorityGenerator>,
-  state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
   policy: MailboxPolicy,
 ) -> Box<dyn MailboxType> {
   match policy.capacity() {
-    | MailboxCapacity::Bounded { capacity } => Box::new(BoundedStablePriorityMailboxType::new(
-      generator,
-      state_shared_factory.clone(),
-      capacity,
-      policy.overflow(),
-    )),
+    | MailboxCapacity::Bounded { capacity } => {
+      Box::new(BoundedStablePriorityMailboxType::new(generator, capacity, policy.overflow()))
+    },
     | MailboxCapacity::Unbounded => Box::new(UnboundedStablePriorityMailboxType::new(generator)),
   }
 }
@@ -187,20 +160,9 @@ impl Mailboxes {
   /// # Errors
   ///
   /// Returns [`MailboxRegistryError::Unknown`] when the identifier has not been registered.
-  pub fn create_message_queue(
-    &self,
-    id: &str,
-    bounded_priority_state_shared_factory: &ArcShared<dyn BoundedPriorityMessageQueueStateSharedFactory>,
-    unbounded_priority_state_shared_factory: &ArcShared<dyn UnboundedPriorityMessageQueueStateSharedFactory>,
-    bounded_stable_priority_state_shared_factory: &ArcShared<dyn BoundedStablePriorityMessageQueueStateSharedFactory>,
-  ) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
+  pub fn create_message_queue(&self, id: &str) -> Result<Box<dyn MessageQueue>, MailboxRegistryError> {
     let config = self.resolve(id)?;
-    Ok(create_message_queue_from_config(
-      &config,
-      bounded_priority_state_shared_factory,
-      unbounded_priority_state_shared_factory,
-      bounded_stable_priority_state_shared_factory,
-    )?)
+    Ok(create_message_queue_from_config(&config)?)
   }
 
   /// Ensures the default mailbox configuration is registered.

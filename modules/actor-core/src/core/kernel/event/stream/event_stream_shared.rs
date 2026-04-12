@@ -39,6 +39,12 @@ pub struct EventStreamShared {
 }
 
 impl EventStreamShared {
+  /// Creates a new shared wrapper using the builtin spin rw-lock backend.
+  #[must_use]
+  pub fn new(stream: EventStream) -> Self {
+    Self::from_shared_lock(SharedRwLock::new_with_driver::<SpinSyncRwLock<_>>(stream))
+  }
+
   /// Creates a shared wrapper from an already materialized event-stream lock.
   #[must_use]
   pub const fn from_shared_lock(inner: SharedRwLock<EventStream>) -> Self {

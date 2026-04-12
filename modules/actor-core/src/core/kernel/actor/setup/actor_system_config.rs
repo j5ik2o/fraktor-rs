@@ -325,7 +325,7 @@ impl ActorSystemConfig {
       ArcShared::new(ActorSystemConfigBoundedStablePriorityMessageQueueStateSharedFactoryGeneric::new(provider));
     self
       .dispatchers
-      .replace_default_inline_with_factories(&self.message_dispatcher_shared_factory, &self.executor_shared_factory);
+      .replace_default_inline();
     self
   }
 
@@ -587,7 +587,7 @@ impl Default for ActorSystemConfig {
     let mut dispatchers = Dispatchers::new();
     let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = shared_factory.clone();
     let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = shared_factory.clone();
-    dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
+    dispatchers.ensure_default_inline();
     let mut mailboxes = Mailboxes::new();
     mailboxes.ensure_default();
     Self {
