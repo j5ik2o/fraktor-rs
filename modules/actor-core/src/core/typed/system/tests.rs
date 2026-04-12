@@ -17,6 +17,10 @@ use crate::core::{
         ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome,
         dead_letter::DeadLetterReason,
       },
+      actor_ref_provider::{
+        ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
+        LocalActorRefProvider,
+      },
       error::SendError,
       extension::{Extension, ExtensionId},
       messaging::{
@@ -190,6 +194,22 @@ impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
 impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
   fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubscriberLockProvider {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+
+  fn create_actor_ref_provider_handle_shared_from_shared(
+    &self,
+    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared_from_shared(&self.inner, shared)
   }
 }
 

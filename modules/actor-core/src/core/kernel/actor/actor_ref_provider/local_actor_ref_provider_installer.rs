@@ -2,11 +2,8 @@
 
 use core::marker::PhantomData;
 
-use super::{
-  ActorRefProviderHandleSharedFactory, actor_ref_provider_installer::ActorRefProviderInstaller,
-  local_actor_ref_provider::LocalActorRefProvider,
-};
-use crate::core::kernel::system::{ActorSystem, ActorSystemBuildError, shared_factory::BuiltinSpinSharedFactory};
+use super::{actor_ref_provider_installer::ActorRefProviderInstaller, local_actor_ref_provider::LocalActorRefProvider};
+use crate::core::kernel::system::{ActorSystem, ActorSystemBuildError};
 
 /// Installer for local-only actor-ref provider.
 ///
@@ -27,9 +24,9 @@ impl Default for LocalActorRefProviderInstaller {
 
 impl ActorRefProviderInstaller for LocalActorRefProviderInstaller {
   fn install(&self, system: &ActorSystem) -> Result<(), ActorSystemBuildError> {
-    let shared_factory = BuiltinSpinSharedFactory::new();
-    let actor_ref_provider_handle_shared =
-      shared_factory.create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&system.state()));
+    let actor_ref_provider_handle_shared_factory = system.state().local_actor_ref_provider_handle_shared_factory();
+    let actor_ref_provider_handle_shared = actor_ref_provider_handle_shared_factory
+      .create_actor_ref_provider_handle_shared(LocalActorRefProvider::new_with_state(&system.state()));
     system.extended().register_actor_ref_provider(&actor_ref_provider_handle_shared)
   }
 }

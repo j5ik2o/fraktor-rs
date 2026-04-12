@@ -9,6 +9,9 @@ use fraktor_actor_core_rs::core::kernel::{
     Actor, ActorCellStateShared, ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateShared,
     ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
+    },
     messaging::{
       AnyMessage, AskResult,
       message_invoker::{MessageInvoker, MessageInvokerShared, MessageInvokerSharedFactory},
@@ -132,6 +135,22 @@ impl MailboxSharedSetFactory for CountingSubscriberLockProvider {
 impl ActorFutureSharedFactory<AskResult> for CountingSubscriberLockProvider {
   fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingSubscriberLockProvider {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+
+  fn create_actor_ref_provider_handle_shared_from_shared(
+    &self,
+    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared_from_shared(&self.inner, shared)
   }
 }
 

@@ -13,22 +13,22 @@ use core::{
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 use portable_atomic::{AtomicU64, Ordering};
 
+#[cfg(any(test, feature = "test-support"))]
+use crate::core::kernel::actor::actor_ref::ActorRefSenderSharedFactory;
+#[cfg(any(test, feature = "test-support"))]
+use crate::core::kernel::system::shared_factory::BuiltinSpinSharedFactory;
 use crate::core::kernel::{
   actor::{
     Pid,
     actor_path::ActorPath,
-    actor_ref::{
-      ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, NullSender, ask_reply_sender::AskReplySender,
-    },
+    actor_ref::{ActorRefSender, ActorRefSenderShared, NullSender, ask_reply_sender::AskReplySender},
     error::SendError,
     messaging::{AnyMessage, AskError, AskResponse, AskResult, system_message::SystemMessage},
+    setup::ActorSystemConfig,
   },
   pattern,
-  system::{
-    shared_factory::BuiltinSpinSharedFactory,
-    state::{SystemStateShared, SystemStateWeak},
-  },
-  util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
+  system::state::{SystemStateShared, SystemStateWeak},
+  util::futures::{ActorFuture, ActorFutureShared},
 };
 
 /// Handle used to communicate with an actor instance.
@@ -68,7 +68,8 @@ impl ActorRef {
     if path_aware_reply && let Some(system) = system {
       return Self::with_system(pid, reply_sender, system);
     }
-    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(reply_sender));
+    let config = ActorSystemConfig::default();
+    let sender = config.actor_ref_sender_shared_factory().create(Box::new(reply_sender));
     Self::new(pid, sender)
   }
 
@@ -159,7 +160,8 @@ impl ActorRef {
       .as_ref()
       .map(|state| state.actor_future_shared_factory().create_actor_future_shared(ActorFuture::new()))
       .unwrap_or_else(|| {
-        ActorFutureSharedFactory::create_actor_future_shared(&BuiltinSpinSharedFactory::new(), ActorFuture::new())
+        let config = ActorSystemConfig::default();
+        config.actor_future_shared_factory().create_actor_future_shared(ActorFuture::new())
       });
     let reply_sender = AskReplySender::new(future.clone());
     let reply_ref = Self::build_ask_reply_ref(system.as_ref(), path_aware_reply, reply_sender);
@@ -252,7 +254,8 @@ impl ActorRef {
   /// Creates a placeholder reference that rejects all messages.
   #[must_use]
   pub fn null() -> Self {
-    let sender = ActorRefSenderSharedFactory::create(&BuiltinSpinSharedFactory::new(), Box::new(NullSender));
+    let config = ActorSystemConfig::default();
+    let sender = config.actor_ref_sender_shared_factory().create(Box::new(NullSender));
     Self::new(Pid::new(0, 0), sender)
   }
 

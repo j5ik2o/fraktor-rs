@@ -30,6 +30,7 @@ use crate::core::kernel::{
       ActorRef, ActorRefSenderSharedFactory,
       dead_letter::{DeadLetterEntry, DeadLetterReason, DeadLetterShared},
     },
+    actor_ref_provider::{ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
@@ -235,6 +236,14 @@ impl SystemStateShared {
   #[must_use]
   pub fn actor_future_shared_factory(&self) -> ArcShared<dyn ActorFutureSharedFactory<AskResult>> {
     self.inner.with_read(|inner| inner.actor_future_shared_factory())
+  }
+
+  /// Returns the local actor-ref-provider handle shared factory.
+  #[must_use]
+  pub fn local_actor_ref_provider_handle_shared_factory(
+    &self,
+  ) -> ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>> {
+    self.inner.with_read(|inner| inner.local_actor_ref_provider_handle_shared_factory())
   }
 
   /// Returns the event-stream-subscriber shared factory.
@@ -691,10 +700,13 @@ impl SystemStateShared {
 
   /// Returns an actor ref provider.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
+  pub fn actor_ref_provider<P>(
+    &self,
+    actor_ref_provider_handle_shared_factory: &dyn ActorRefProviderHandleSharedFactory<P>,
+  ) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    self.inner.with_read(|inner| inner.actor_ref_provider())
+    self.inner.with_read(|inner| inner.actor_ref_provider(actor_ref_provider_handle_shared_factory))
   }
 
   /// Invokes a provider registered for the given scheme.

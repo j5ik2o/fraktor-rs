@@ -36,6 +36,7 @@ use crate::core::kernel::{
       ActorRef, ActorRefSenderSharedFactory,
       dead_letter::{DeadLetterEntry, DeadLetterShared},
     },
+    actor_ref_provider::{ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     deploy::Deployer,
     error::{ActorError, SendError},
     messaging::{
@@ -56,20 +57,17 @@ use crate::core::kernel::{
     supervision::SupervisorDirective,
   },
   dispatch::{
-    dispatcher::{Dispatchers, ExecutorSharedFactory, MessageDispatcherShared, MessageDispatcherSharedFactory},
+    dispatcher::{Dispatchers, MessageDispatcherShared},
     mailbox::{MailboxRegistryError, Mailboxes, MessageQueue},
   },
   event::{
     logging::{LogEvent, LogLevel},
     stream::{
-      EventStream, EventStreamEvent, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriberSharedFactory,
-      RemoteAuthorityEvent, TickDriverSnapshot,
+      EventStream, EventStreamEvent, EventStreamShared, EventStreamSubscriberSharedFactory, RemoteAuthorityEvent,
+      TickDriverSnapshot,
     },
   },
-  system::{
-    RegisterExtraTopLevelError, ReservationPolicy,
-    shared_factory::{BuiltinSpinSharedFactory, MailboxSharedSetFactory},
-  },
+  system::{RegisterExtraTopLevelError, ReservationPolicy, shared_factory::MailboxSharedSetFactory},
   util::futures::{ActorFutureShared, ActorFutureSharedFactory},
 };
 
@@ -115,6 +113,8 @@ pub struct SystemState {
   receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
   message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
   actor_future_shared_factory: ArcShared<dyn ActorFutureSharedFactory<AskResult>>,
+  local_actor_ref_provider_handle_shared_factory:
+    ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>>,
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
   dispatchers: Dispatchers,
@@ -133,28 +133,14 @@ impl SystemState {
   /// Creates a fresh state container without any registered actors.
   #[must_use]
   pub fn new() -> Self {
-    let shared_factory = ArcShared::new(BuiltinSpinSharedFactory::new());
-    let message_dispatcher_shared_factory: ArcShared<dyn MessageDispatcherSharedFactory> = shared_factory.clone();
-    let executor_shared_factory: ArcShared<dyn ExecutorSharedFactory> = shared_factory.clone();
-    let actor_ref_sender_shared_factory: ArcShared<dyn ActorRefSenderSharedFactory> = shared_factory.clone();
-    let actor_shared_lock_factory: ArcShared<dyn ActorSharedLockFactory> = shared_factory.clone();
-    let actor_cell_state_shared_factory: ArcShared<dyn ActorCellStateSharedFactory> = shared_factory.clone();
-    let receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory> = shared_factory.clone();
-    let message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory> = shared_factory.clone();
-    let actor_future_shared_factory: ArcShared<dyn ActorFutureSharedFactory<AskResult>> = shared_factory.clone();
-    let event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory> = shared_factory.clone();
-    let event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory> =
-      shared_factory.clone();
-    let mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory> = shared_factory;
+    let config = ActorSystemConfig::default();
     const DEAD_LETTER_CAPACITY: usize = 512;
     const EVENT_STREAM_CAPACITY: usize = 256;
-    let event_stream = event_stream_shared_factory.create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
+    let event_stream = config.event_stream_shared_factory().create(EventStream::with_capacity(EVENT_STREAM_CAPACITY));
     let dead_letter = DeadLetterShared::with_capacity(event_stream.clone(), DEAD_LETTER_CAPACITY);
-    let mut dispatchers = Dispatchers::new();
-    dispatchers.ensure_default_inline(&message_dispatcher_shared_factory, &executor_shared_factory);
-    let mut mailboxes = Mailboxes::new();
-    mailboxes.ensure_default();
-    let scheduler_config = SchedulerConfig::default();
+    let dispatchers = config.dispatchers().clone();
+    let mailboxes = config.mailboxes().clone();
+    let scheduler_config = *config.scheduler_config();
     let scheduler_context = SchedulerContext::with_event_stream(scheduler_config, event_stream.clone());
     let tick_driver_bundle = Self::default_tick_driver_bundle(scheduler_config.resolution());
     Self {
@@ -183,14 +169,15 @@ impl SystemState {
       extensions: Extensions::default(),
       actor_ref_providers: ActorRefProviders::default(),
       remote_watch_hook: RemoteWatchHookDynShared::noop(),
-      actor_ref_sender_shared_factory,
-      actor_shared_lock_factory,
-      actor_cell_state_shared_factory,
-      receive_timeout_state_shared_factory,
-      message_invoker_shared_factory,
-      actor_future_shared_factory,
-      event_stream_subscriber_shared_factory,
-      mailbox_shared_set_factory,
+      actor_ref_sender_shared_factory: config.actor_ref_sender_shared_factory().clone(),
+      actor_shared_lock_factory: config.actor_shared_lock_factory().clone(),
+      actor_cell_state_shared_factory: config.actor_cell_state_shared_factory().clone(),
+      receive_timeout_state_shared_factory: config.receive_timeout_state_shared_factory().clone(),
+      message_invoker_shared_factory: config.message_invoker_shared_factory().clone(),
+      actor_future_shared_factory: config.actor_future_shared_factory().clone(),
+      local_actor_ref_provider_handle_shared_factory: config.local_actor_ref_provider_handle_shared_factory().clone(),
+      event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
+      mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
       dispatchers,
       mailboxes,
       deployer: Deployer::default(),
@@ -251,6 +238,7 @@ impl SystemState {
       receive_timeout_state_shared_factory: config.receive_timeout_state_shared_factory().clone(),
       message_invoker_shared_factory: config.message_invoker_shared_factory().clone(),
       actor_future_shared_factory: config.actor_future_shared_factory().clone(),
+      local_actor_ref_provider_handle_shared_factory: config.local_actor_ref_provider_handle_shared_factory().clone(),
       event_stream_subscriber_shared_factory: config.event_stream_subscriber_shared_factory().clone(),
       mailbox_shared_set_factory: config.mailbox_shared_set_factory().clone(),
       dispatchers,
@@ -330,6 +318,8 @@ impl SystemState {
     self.receive_timeout_state_shared_factory = config.receive_timeout_state_shared_factory().clone();
     self.message_invoker_shared_factory = config.message_invoker_shared_factory().clone();
     self.actor_future_shared_factory = config.actor_future_shared_factory().clone();
+    self.local_actor_ref_provider_handle_shared_factory =
+      config.local_actor_ref_provider_handle_shared_factory().clone();
     self.event_stream_subscriber_shared_factory = config.event_stream_subscriber_shared_factory().clone();
     self.mailbox_shared_set_factory = config.mailbox_shared_set_factory().clone();
     self.dispatchers = config.dispatchers().clone();
@@ -790,7 +780,10 @@ impl SystemState {
     }
   }
 
-  pub(crate) fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
+  pub(crate) fn actor_ref_provider<P>(
+    &self,
+    actor_ref_provider_handle_shared_factory: &dyn ActorRefProviderHandleSharedFactory<P>,
+  ) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
     self
@@ -798,7 +791,10 @@ impl SystemState {
       .get(&TypeId::of::<P>())
       .cloned()
       .and_then(|provider| provider.downcast::<SharedLock<ActorRefProviderHandle<P>>>().ok())
-      .map(|provider| ActorRefProviderHandleShared::from_shared((*provider).clone()))
+      .map(|provider| {
+        actor_ref_provider_handle_shared_factory
+          .create_actor_ref_provider_handle_shared_from_shared((*provider).clone())
+      })
   }
 
   pub(crate) fn actor_ref_provider_caller_for_scheme(&self, scheme: ActorPathScheme) -> Option<ActorRefProviderCaller> {
@@ -917,6 +913,14 @@ impl SystemState {
   #[must_use]
   pub fn actor_future_shared_factory(&self) -> ArcShared<dyn ActorFutureSharedFactory<AskResult>> {
     self.actor_future_shared_factory.clone()
+  }
+
+  /// Returns the local actor-ref-provider handle shared factory.
+  #[must_use]
+  pub fn local_actor_ref_provider_handle_shared_factory(
+    &self,
+  ) -> ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>> {
+    self.local_actor_ref_provider_handle_shared_factory.clone()
   }
 
   /// Returns the event-stream-subscriber shared factory.

@@ -11,6 +11,10 @@ use crate::core::kernel::{
     ActorLockFactory, ActorSharedLockFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
     ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
+      LocalActorRefProvider,
+    },
     error::ActorError,
     messaging::{
       ActorIdentity, AnyMessage, AnyMessageView, AskResult, Identify,
@@ -214,6 +218,23 @@ impl ActorRefSenderSharedFactory for TestDebugActorSharedFactory {
 impl ActorSharedLockFactory for TestDebugActorSharedFactory {
   fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
     self.create_lock(actor)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for TestDebugActorSharedFactory {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    let schemes = provider.supported_schemes();
+    ActorRefProviderHandleShared::from_shared(self.create_lock(ActorRefProviderHandle::new(provider, schemes)))
+  }
+
+  fn create_actor_ref_provider_handle_shared_from_shared(
+    &self,
+    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleShared::from_shared(shared)
   }
 }
 

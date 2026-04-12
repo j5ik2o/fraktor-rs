@@ -11,7 +11,7 @@ use crate::core::kernel::{
   actor::{
     ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
     actor_ref::ActorRefSenderSharedFactory,
-    actor_ref_provider::ActorRefProviderInstaller,
+    actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
@@ -91,6 +91,7 @@ impl ActorSystemSetup {
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
       + ActorFutureSharedFactory<AskResult>
+      + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory

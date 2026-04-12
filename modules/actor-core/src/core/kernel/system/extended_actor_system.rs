@@ -11,7 +11,7 @@ use crate::core::kernel::{
     ChildRef,
     actor_path::ActorPath,
     actor_ref::ActorRef,
-    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared},
+    actor_ref_provider::{ActorRefProvider, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory},
     actor_selection::ActorSelection,
     error::SendError,
     extension::{Extension, ExtensionId},
@@ -118,10 +118,13 @@ impl ExtendedActorSystem {
 
   /// Returns the actor-ref provider of the requested type when registered.
   #[must_use]
-  pub fn actor_ref_provider<P>(&self) -> Option<ActorRefProviderHandleShared<P>>
+  pub fn actor_ref_provider<P>(
+    &self,
+    actor_ref_provider_handle_shared_factory: &dyn ActorRefProviderHandleSharedFactory<P>,
+  ) -> Option<ActorRefProviderHandleShared<P>>
   where
     P: ActorRefProvider + Any + Send + Sync + 'static, {
-    self.inner.state().actor_ref_provider::<P>()
+    self.inner.state().actor_ref_provider::<P>(actor_ref_provider_handle_shared_factory)
   }
 
   /// Registers a remote watch hook that intercepts watch/unwatch to remote actors.

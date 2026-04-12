@@ -13,7 +13,7 @@ use crate::core::kernel::{
     ActorCellStateSharedFactory, ActorSharedLockFactory, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::ActorRefSenderSharedFactory,
-    actor_ref_provider::ActorRefProviderInstaller,
+    actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
     extension::ExtensionInstallers,
     messaging::{AskResult, message_invoker::MessageInvokerSharedFactory},
     props::MailboxConfig,
@@ -55,6 +55,8 @@ pub struct ActorSystemConfig {
   receive_timeout_state_shared_factory: ArcShared<dyn ReceiveTimeoutStateSharedFactory>,
   message_invoker_shared_factory: ArcShared<dyn MessageInvokerSharedFactory>,
   actor_future_shared_factory: ArcShared<dyn ActorFutureSharedFactory<AskResult>>,
+  local_actor_ref_provider_handle_shared_factory:
+    ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>>,
   event_stream_shared_factory: ArcShared<dyn EventStreamSharedFactory>,
   event_stream_subscriber_shared_factory: ArcShared<dyn EventStreamSubscriberSharedFactory>,
   mailbox_shared_set_factory: ArcShared<dyn MailboxSharedSetFactory>,
@@ -128,6 +130,7 @@ impl ActorSystemConfig {
       + ReceiveTimeoutStateSharedFactory
       + MessageInvokerSharedFactory
       + ActorFutureSharedFactory<AskResult>
+      + ActorRefProviderHandleSharedFactory<LocalActorRefProvider>
       + EventStreamSharedFactory
       + EventStreamSubscriberSharedFactory
       + MailboxSharedSetFactory
@@ -142,6 +145,7 @@ impl ActorSystemConfig {
     self.receive_timeout_state_shared_factory = provider.clone();
     self.message_invoker_shared_factory = provider.clone();
     self.actor_future_shared_factory = provider.clone();
+    self.local_actor_ref_provider_handle_shared_factory = provider.clone();
     self.event_stream_shared_factory = provider.clone();
     self.event_stream_subscriber_shared_factory = provider.clone();
     self.mailbox_shared_set_factory = provider;
@@ -299,6 +303,14 @@ impl ActorSystemConfig {
     &self.actor_future_shared_factory
   }
 
+  /// Returns the local actor-ref-provider handle shared factory.
+  #[must_use]
+  pub const fn local_actor_ref_provider_handle_shared_factory(
+    &self,
+  ) -> &ArcShared<dyn ActorRefProviderHandleSharedFactory<LocalActorRefProvider>> {
+    &self.local_actor_ref_provider_handle_shared_factory
+  }
+
   /// Returns the event-stream shared factory.
   #[must_use]
   pub const fn event_stream_shared_factory(&self) -> &ArcShared<dyn EventStreamSharedFactory> {
@@ -364,6 +376,7 @@ impl Default for ActorSystemConfig {
       receive_timeout_state_shared_factory: shared_factory.clone(),
       message_invoker_shared_factory: shared_factory.clone(),
       actor_future_shared_factory: shared_factory.clone(),
+      local_actor_ref_provider_handle_shared_factory: shared_factory.clone(),
       event_stream_shared_factory: shared_factory.clone(),
       event_stream_subscriber_shared_factory: shared_factory.clone(),
       mailbox_shared_set_factory: shared_factory,

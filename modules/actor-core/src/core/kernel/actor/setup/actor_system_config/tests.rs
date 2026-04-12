@@ -12,6 +12,9 @@ use crate::core::kernel::{
     ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
+    actor_ref_provider::{
+      ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider,
+    },
     error::ActorError,
     messaging::{
       AnyMessageView, AskResult,
@@ -184,6 +187,22 @@ impl MailboxSharedSetFactory for CountingLockProvider {
 impl ActorFutureSharedFactory<AskResult> for CountingLockProvider {
   fn create_actor_future_shared(&self, future: ActorFuture<AskResult>) -> ActorFutureShared<AskResult> {
     ActorFutureSharedFactory::create_actor_future_shared(&self.inner, future)
+  }
+}
+
+impl ActorRefProviderHandleSharedFactory<LocalActorRefProvider> for CountingLockProvider {
+  fn create_actor_ref_provider_handle_shared(
+    &self,
+    provider: LocalActorRefProvider,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared(&self.inner, provider)
+  }
+
+  fn create_actor_ref_provider_handle_shared_from_shared(
+    &self,
+    shared: SharedLock<ActorRefProviderHandle<LocalActorRefProvider>>,
+  ) -> ActorRefProviderHandleShared<LocalActorRefProvider> {
+    ActorRefProviderHandleSharedFactory::create_actor_ref_provider_handle_shared_from_shared(&self.inner, shared)
   }
 }
 

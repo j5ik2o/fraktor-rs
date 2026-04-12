@@ -150,6 +150,13 @@ where
     let schemes = provider.supported_schemes();
     ActorRefProviderHandleShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
   }
+
+  fn create_actor_ref_provider_handle_shared_from_shared(
+    &self,
+    shared: SharedLock<ActorRefProviderHandle<P>>,
+  ) -> ActorRefProviderHandleShared<P> {
+    ActorRefProviderHandleShared::from_shared(shared)
+  }
 }
 
 impl<P> RemoteWatchHookHandleSharedFactory<P> for StdActorSharedFactory
