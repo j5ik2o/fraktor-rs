@@ -6,8 +6,8 @@ use fraktor_utils_core_rs::core::sync::{SharedLock, SharedRwLock, SpinSyncMutex,
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorRuntimeLockFactory,
-    ActorSharedLockFactory, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory, ActorSharedLockFactory,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
@@ -53,7 +53,7 @@ impl BuiltinSpinSharedFactory {
   }
 }
 
-impl ActorRuntimeLockFactory for BuiltinSpinSharedFactory {
+impl ActorLockFactory for BuiltinSpinSharedFactory {
   fn create_lock<T>(&self, value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
@@ -80,7 +80,7 @@ impl ActorRefSenderSharedFactory for BuiltinSpinSharedFactory {
 }
 
 impl ActorSharedLockFactory for BuiltinSpinSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
     Self::create_lock(actor)
   }
 }

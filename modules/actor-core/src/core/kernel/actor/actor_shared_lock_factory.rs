@@ -9,5 +9,5 @@ use super::Actor;
 /// Materializes the shared lock used by actor runtime instances.
 pub trait ActorSharedLockFactory: Send + Sync {
   /// Creates a shared actor lock.
-  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>>;
+  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>>;
 }

@@ -119,7 +119,7 @@ impl ActorRefSenderSharedFactory for CountingLockProvider {
 }
 
 impl ActorSharedLockFactory for CountingLockProvider {
-  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
     ActorSharedLockFactory::create(&self.inner, actor)
   }
 }

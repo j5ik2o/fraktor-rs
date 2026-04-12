@@ -4,7 +4,7 @@ use core::time::Duration;
 use fraktor_actor_core_rs::core::kernel::{
   actor::messaging::AnyMessage,
   event::stream::{
-    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+    EventStreamEvent, EventStreamShared, EventStreamSubscriber, EventStreamSubscription,
     subscriber_handle_with_shared_factory,
   },
   serialization::{default_serialization_setup, serialization_registry::SerializationRegistry},
@@ -51,17 +51,12 @@ impl EventStreamSubscriber for TestSubscriber {
 
 fn subscribe_recorder(event_stream: &EventStreamShared) -> (TestSubscriber, EventStreamSubscription) {
   let subscriber = TestSubscriber::new();
-  let handle = test_subscriber_handle(subscriber.clone());
+  let shared_factory: ArcShared<
+    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
+  > = ArcShared::new(BuiltinSpinSharedFactory::new());
+  let handle = subscriber_handle_with_shared_factory(&shared_factory, subscriber.clone());
   let subscription = event_stream.subscribe(&handle);
   (subscriber, subscription)
-}
-
-fn test_subscriber_handle(subscriber: impl EventStreamSubscriber) -> EventStreamSubscriberShared {
-  let provider = ArcShared::new(BuiltinSpinSharedFactory::new());
-  let lock_provider: ArcShared<
-    dyn fraktor_actor_core_rs::core::kernel::event::stream::EventStreamSubscriberSharedFactory,
-  > = provider;
-  subscriber_handle_with_shared_factory(&lock_provider, subscriber)
 }
 
 fn extract_cluster_events(events: &[EventStreamEvent]) -> Vec<ClusterEvent> {

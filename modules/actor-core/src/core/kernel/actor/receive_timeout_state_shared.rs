@@ -2,7 +2,7 @@
 
 use fraktor_utils_core_rs::core::sync::SharedLock;
 
-use crate::core::kernel::actor::{ActorRuntimeLockFactory, ReceiveTimeoutState};
+use crate::core::kernel::actor::{ActorLockFactory, ReceiveTimeoutState};
 
 /// Stable shared wrapper for receive-timeout runtime state.
 #[derive(Clone)]
@@ -13,7 +13,7 @@ pub struct ReceiveTimeoutStateShared {
 impl ReceiveTimeoutStateShared {
   /// Creates an empty receive-timeout slot with the requested lock driver family.
   #[must_use]
-  pub fn new_with_lock_factory(factory: &impl ActorRuntimeLockFactory) -> Self {
+  pub fn new_with_lock_factory(factory: &impl ActorLockFactory) -> Self {
     Self { inner: factory.create_lock(None) }
   }
 

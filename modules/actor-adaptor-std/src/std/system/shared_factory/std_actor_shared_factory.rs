@@ -2,8 +2,8 @@ use alloc::{boxed::Box, collections::VecDeque};
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorRuntimeLockFactory,
-    ActorSharedLockFactory, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory, ActorSharedLockFactory,
+    ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{
       ActorRefProvider, ActorRefProviderHandle, ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory,
@@ -51,7 +51,7 @@ impl StdActorSharedFactory {
   }
 }
 
-impl ActorRuntimeLockFactory for StdActorSharedFactory {
+impl ActorLockFactory for StdActorSharedFactory {
   fn create_lock<T>(&self, value: T) -> SharedLock<T>
   where
     T: Send + 'static, {
@@ -78,7 +78,7 @@ impl ActorRefSenderSharedFactory for StdActorSharedFactory {
 }
 
 impl ActorSharedLockFactory for StdActorSharedFactory {
-  fn create(&self, actor: Box<dyn Actor + Send + Sync>) -> SharedLock<Box<dyn Actor + Send + Sync>> {
+  fn create(&self, actor: Box<dyn Actor + Send>) -> SharedLock<Box<dyn Actor + Send>> {
     Self::create_lock(actor)
   }
 }
