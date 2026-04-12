@@ -1,5 +1,4 @@
-//! Mailbox lock bundle materialized by a
-//! [`MailboxSharedSetFactory`](super::MailboxSharedSetFactory).
+//! Mailbox lock bundle for shared mailbox state.
 
 use fraktor_utils_core_rs::core::sync::{SharedLock, SpinSyncMutex, WeakShared};
 

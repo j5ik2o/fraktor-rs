@@ -4,11 +4,11 @@
 //! that is only available in std environments.
 
 use fraktor_actor_core_rs::core::kernel::event::stream::{
-  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscriberSharedFactory,
-  EventStreamSubscription, RemotingLifecycleEvent, subscriber_handle_with_shared_factory,
+  EventStreamEvent, EventStreamSubscriber, EventStreamSubscriberShared, EventStreamSubscription,
+  RemotingLifecycleEvent, subscriber_handle_with_shared_factory,
 };
 use fraktor_cluster_core_rs::core::cluster_provider::{LocalClusterProvider, LocalClusterProviderShared};
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::SharedAccess;
 
 /// Subscribes to remoting lifecycle events for automatic topology updates.
 ///
@@ -17,10 +17,7 @@ use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
 /// triggering `TopologyUpdated` events when nodes join or leave.
 ///
 /// **Note**: This function is only available in std environments.
-pub fn subscribe_remoting_events(
-  provider: &LocalClusterProviderShared,
-  lock_provider: &ArcShared<dyn EventStreamSubscriberSharedFactory>,
-) {
+pub fn subscribe_remoting_events(provider: &LocalClusterProviderShared) {
   struct RemotingEventHandler {
     provider: LocalClusterProviderShared,
   }
@@ -52,7 +49,7 @@ pub fn subscribe_remoting_events(
   // event_stream への参照を取得
   let event_stream = provider.with_read(|p| p.event_stream().clone());
   let handler = RemotingEventHandler { provider: provider.clone() };
-  let subscriber: EventStreamSubscriberShared = subscriber_handle_with_shared_factory(lock_provider, handler);
+  let subscriber: EventStreamSubscriberShared = subscriber_handle_with_shared_factory(handler);
   let _subscription: EventStreamSubscription = event_stream.subscribe(&subscriber);
   // Note: subscription は provider のライフタイムに依存するので、
   // provider がドロップされるまで有効

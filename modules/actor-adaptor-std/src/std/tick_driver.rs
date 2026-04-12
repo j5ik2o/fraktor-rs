@@ -10,7 +10,7 @@ use core::time::Duration;
 #[cfg(feature = "tokio-executor")]
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
   AutoDriverMetadata, AutoProfileKind, SchedulerTickExecutor, TickDriver, TickDriverConfig as CoreTickDriverConfig,
-  TickDriverControl, TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
+  TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind,
   TickExecutorPump, TickFeedHandle, next_tick_driver_id,
 };
 #[cfg(feature = "tokio-executor")]
@@ -70,7 +70,6 @@ impl TickDriver for TokioTickDriver {
   fn start(
     &mut self,
     feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<TickDriverHandle, TickDriverError> {
     let handle = Handle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
@@ -84,7 +83,7 @@ impl TickDriver for TokioTickDriver {
     });
 
     let control: Box<dyn TickDriverControl> = Box::new(TokioTickDriverControl { tick_task });
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, resolution, control))
   }
 }

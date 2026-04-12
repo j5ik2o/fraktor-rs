@@ -10,9 +10,9 @@
 
 ## 3. 旧 strategy の削除
 
-- [ ] 3.1 `ActorLockFactory` trait と、`MessageDispatcherSharedFactory`、`ExecutorSharedFactory`、`SharedMessageQueueFactory`、`ActorRefSenderSharedFactory`、`ActorSharedFactory`、`ActorCellStateSharedFactory`、`ReceiveTimeoutStateSharedFactory`、`MessageInvokerSharedFactory`、`ActorFutureSharedFactory<AskResult>`、`TickDriverControlSharedFactory`、`ActorRefProviderHandleSharedFactory<LocalActorRefProvider>`、`EventStreamSharedFactory`、`EventStreamSubscriberSharedFactory`、`MailboxSharedSetFactory`、`ContextPipeWakerHandleSharedFactory`、`BoundedPriorityMessageQueueStateSharedFactory`、`BoundedStablePriorityMessageQueueStateSharedFactory`、`UnboundedPriorityMessageQueueStateSharedFactory` を削除する
-- [ ] 3.2 `modules/actor-adaptor-std/src/std/system/shared_factory/`、`StdActorSharedFactory`、`DebugActorSharedFactory`、`BuiltinSpinSharedFactory` と、それらに依存する公開面・wiring・tests を削除または置換する
-- [ ] 3.3 `ActorFutureSharedFactory<AskResult>` は direct construction へ吸収し、`CircuitBreakerSharedFactory<C>` は type-indexed registry として据え置く境界をコード上で明確にする
+- [x] 3.1 `ActorLockFactory` trait と、`MessageDispatcherSharedFactory`、`ExecutorSharedFactory`、`SharedMessageQueueFactory`、`ActorRefSenderSharedFactory`、`ActorSharedFactory`、`ActorCellStateSharedFactory`、`ReceiveTimeoutStateSharedFactory`、`MessageInvokerSharedFactory`、`ActorFutureSharedFactory<AskResult>`、`TickDriverControlSharedFactory`、`ActorRefProviderHandleSharedFactory<LocalActorRefProvider>`、`EventStreamSharedFactory`、`EventStreamSubscriberSharedFactory`、`MailboxSharedSetFactory`、`ContextPipeWakerHandleSharedFactory`、`BoundedPriorityMessageQueueStateSharedFactory`、`BoundedStablePriorityMessageQueueStateSharedFactory`、`UnboundedPriorityMessageQueueStateSharedFactory` を削除する
+- [x] 3.2 `modules/actor-adaptor-std/src/std/system/shared_factory/`、`StdActorSharedFactory`、`DebugActorSharedFactory`、`BuiltinSpinSharedFactory` と、それらに依存する公開面・wiring・tests を削除または置換する
+- [x] 3.3 `ActorFutureSharedFactory<AskResult>` は direct construction へ吸収し、`CircuitBreakerSharedFactory<C>` は type-indexed registry として据え置く境界をコード上で明確にする
 
 ## 4. テストと OpenSpec の整合
 

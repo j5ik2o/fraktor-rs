@@ -2,14 +2,12 @@
 
 mod invoker_shared;
 mod invoker_trait;
-mod message_invoker_shared_factory;
 mod middleware;
 mod middleware_shared;
 mod pipeline;
 
 pub use invoker_shared::MessageInvokerShared;
 pub use invoker_trait::MessageInvoker;
-pub use message_invoker_shared_factory::MessageInvokerSharedFactory;
 pub use middleware::MessageInvokerMiddleware;
 pub use pipeline::MessageInvokerPipeline;
 

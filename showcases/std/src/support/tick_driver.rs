@@ -19,7 +19,7 @@ use std::{
 
 #[cfg(feature = "advanced")]
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
-  AutoDriverMetadata, AutoProfileKind, TickDriver, TickDriverControlSharedFactory, TickDriverHandle, TickDriverId,
+  AutoDriverMetadata, AutoProfileKind, TickDriver, TickDriverControlShared, TickDriverHandle, TickDriverId,
   TickDriverKind, TickFeedHandle, next_tick_driver_id,
 };
 use fraktor_actor_core_rs::core::kernel::actor::scheduler::tick_driver::{
@@ -235,7 +235,6 @@ impl TickDriver for TokioDemoTickDriver {
   fn start(
     &mut self,
     feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<TickDriverHandle, TickDriverError> {
     let handle = TokioHandle::try_current().map_err(|_| TickDriverError::HandleUnavailable)?;
     let resolution = self.resolution;
@@ -249,7 +248,7 @@ impl TickDriver for TokioDemoTickDriver {
     });
 
     let control: Box<dyn TickDriverControl> = Box::new(TokioDemoTickDriverControl { tick_task });
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id, TickDriverKind::Auto, resolution, control))
   }
 }

@@ -73,10 +73,7 @@ mod failure_outcome;
 
 pub(crate) use failure_outcome::FailureOutcome;
 
-use crate::core::kernel::{
-  actor::setup::ActorSystemConfig,
-  system::shared_factory::BuiltinSpinSharedFactory,
-};
+use crate::core::kernel::actor::setup::ActorSystemConfig;
 
 const RESERVED_TOP_LEVEL: [&str; 4] = ["user", "system", "temp", "deadLetters"];
 
@@ -254,7 +251,7 @@ impl SystemState {
       .tick_driver_config()
       .ok_or_else(|| SpawnError::SystemBuildError("tick driver configuration is required".into()))?;
     let (runtime, snapshot) =
-      TickDriverBootstrap::provision(tick_driver_config, &provisioning, &BuiltinSpinSharedFactory)
+      TickDriverBootstrap::provision(tick_driver_config, &provisioning)
         .map_err(|error| SpawnError::SystemBuildError(format!("tick driver provisioning failed: {error}")))?;
     state.tick_driver_bundle = runtime;
     state.tick_driver_snapshot = Some(snapshot);

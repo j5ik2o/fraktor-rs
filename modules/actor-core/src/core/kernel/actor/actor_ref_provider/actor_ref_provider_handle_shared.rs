@@ -27,7 +27,7 @@ use crate::core::kernel::{
 ///
 /// # Usage
 ///
-/// 1. Materialize a shared handle via `ActorRefProviderHandleSharedFactory`
+/// 1. Materialize a shared handle via `ActorRefProviderHandleShared::new`
 /// 2. Clone and share as needed
 /// 3. Call provider methods through the wrapper (automatically acquires lock)
 pub struct ActorRefProviderHandleShared<P: ActorRefProvider + 'static> {

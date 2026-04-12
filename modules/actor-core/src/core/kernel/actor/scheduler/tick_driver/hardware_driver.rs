@@ -6,9 +6,8 @@ use core::{ffi::c_void, time::Duration};
 use portable_atomic::{AtomicBool, Ordering};
 
 use super::{
-  HardwareKind, TickDriver, TickDriverControl, TickDriverControlShared, TickDriverControlSharedFactory,
-  TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickFeedHandle, TickPulseHandler, TickPulseSource,
-  tick_driver_trait::next_tick_driver_id,
+  HardwareKind, TickDriver, TickDriverControl, TickDriverControlShared, TickDriverError, TickDriverHandle,
+  TickDriverId, TickDriverKind, TickFeedHandle, TickPulseHandler, TickPulseSource, tick_driver_trait::next_tick_driver_id,
 };
 
 /// Tick driver that bridges hardware pulse sources into tick feeds.
@@ -48,14 +47,13 @@ impl TickDriver for HardwareTickDriver {
   fn start(
     &mut self,
     feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<TickDriverHandle, TickDriverError> {
     let context = Box::new(PulseContext { feed: feed.clone() });
     let ptr = Box::into_raw(context) as *mut c_void;
     let handler = TickPulseHandler { func: pulse_trampoline, ctx: ptr };
     self.pulse.set_callback(handler);
     self.pulse.enable()?;
-    let control = build_control(ptr, feed, tick_driver_control_shared_factory);
+    let control = build_control(ptr, feed);
     // Access fields directly to avoid trait method ambiguity.
     let id = self.id;
     let kind = TickDriverKind::Hardware { source: self.kind };
@@ -64,13 +62,9 @@ impl TickDriver for HardwareTickDriver {
   }
 }
 
-fn build_control(
-  ctx: *mut c_void,
-  feed: TickFeedHandle,
-  tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
-) -> TickDriverControlShared {
+fn build_control(ctx: *mut c_void, feed: TickFeedHandle) -> TickDriverControlShared {
   let control: Box<dyn TickDriverControl> = Box::new(HardwareDriverControl::new(ctx, feed));
-  tick_driver_control_shared_factory.create_tick_driver_control_shared(control)
+  TickDriverControlShared::new(control)
 }
 
 struct PulseContext {

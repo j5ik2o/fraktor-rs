@@ -4,8 +4,8 @@ use alloc::boxed::Box;
 use core::time::Duration;
 
 use crate::core::kernel::actor::scheduler::tick_driver::{
-  SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverControlSharedFactory,
-  TickDriverError, TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
+  SchedulerTickExecutor, TickDriver, TickDriverConfig, TickDriverControl, TickDriverControlShared, TickDriverError,
+  TickDriverHandle, TickDriverId, TickDriverKind, TickExecutorPump, TickFeedHandle,
 };
 struct NoopControl;
 
@@ -31,10 +31,9 @@ impl TickDriver for RuntimeTestDriver {
   fn start(
     &mut self,
     _feed: TickFeedHandle,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<TickDriverHandle, TickDriverError> {
     let control: Box<dyn TickDriverControl> = Box::new(NoopControl);
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     Ok(TickDriverHandle::new(self.id(), self.kind(), self.resolution(), control))
   }
 }

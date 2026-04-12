@@ -12,7 +12,7 @@ use fraktor_utils_core_rs::core::{sync::SharedAccess, time::MonotonicClock};
 
 use super::{
   SchedulerTickExecutor, TickDriverBundle, TickDriverConfig, TickDriverControl, TickDriverControlShared,
-  TickDriverControlSharedFactory, TickDriverError, TickDriverHandle, TickDriverMetadata, TickExecutorSignal, TickFeed,
+  TickDriverError, TickDriverHandle, TickDriverMetadata, TickExecutorSignal, TickFeed,
 };
 #[cfg(any(test, feature = "test-support"))]
 use super::{
@@ -43,28 +43,25 @@ impl TickDriverBootstrap {
   pub fn provision(
     config: &TickDriverConfig,
     ctx: &TickDriverProvisioningContext,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
-    Self::provision_impl(config, ctx, tick_driver_control_shared_factory)
+    Self::provision_impl(config, ctx)
   }
 
   #[cfg(not(any(test, feature = "test-support")))]
   pub(crate) fn provision(
     config: &TickDriverConfig,
     ctx: &TickDriverProvisioningContext,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
-    Self::provision_impl(config, ctx, tick_driver_control_shared_factory)
+    Self::provision_impl(config, ctx)
   }
 
   fn provision_impl(
     config: &TickDriverConfig,
     ctx: &TickDriverProvisioningContext,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
     match config {
       #[cfg(any(test, feature = "test-support"))]
-      | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx, tick_driver_control_shared_factory),
+      | TickDriverConfig::ManualTest(driver) => Self::provision_manual(driver, ctx),
       | TickDriverConfig::Runtime { driver, executor_pump } => {
         let start_instant = {
           let scheduler = ctx.scheduler();
@@ -77,7 +74,7 @@ impl TickDriverBootstrap {
         };
         let signal = TickExecutorSignal::new();
         let feed = TickFeed::new(resolution, capacity, signal.clone());
-        let handle = { driver.with_lock(|driver| driver.start(feed.clone(), tick_driver_control_shared_factory))? };
+        let handle = { driver.with_lock(|driver| driver.start(feed.clone()))? };
         let auto_metadata =
           { executor_pump.with_lock(|executor_pump| executor_pump.auto_metadata(handle.id(), handle.resolution())) };
         let executor = SchedulerTickExecutor::new(ctx.scheduler(), feed.clone(), signal);
@@ -91,7 +88,7 @@ impl TickDriverBootstrap {
             },
           }
         };
-        let handle = compose_runtime_handle(&handle, executor_control, tick_driver_control_shared_factory);
+        let handle = compose_runtime_handle(&handle, executor_control);
         let mut bundle = TickDriverBundle::new(handle, feed);
         if let Some(metadata) = auto_metadata.clone() {
           bundle = bundle.with_auto_metadata(metadata);
@@ -109,7 +106,6 @@ impl TickDriverBootstrap {
   fn provision_manual(
     driver: &ManualTestDriver,
     ctx: &TickDriverProvisioningContext,
-    tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
   ) -> Result<(TickDriverBundle, TickDriverSnapshot), TickDriverError> {
     let scheduler = ctx.scheduler();
     let runner_enabled = scheduler.with_read(|s| s.config().runner_api_enabled());
@@ -125,7 +121,7 @@ impl TickDriverBootstrap {
     driver.attach(ctx);
     let state = driver.state();
     let control: Box<dyn TickDriverControl> = Box::new(ManualDriverControl::new(state));
-    let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+    let control = TickDriverControlShared::new(control);
     let handle = TickDriverHandle::new(next_tick_driver_id(), TickDriverKind::ManualTest, resolution, control);
     let controller = driver.controller();
     let bundle = TickDriverBundle::new_manual(handle.clone(), controller);
@@ -173,11 +169,10 @@ impl TickDriverControl for CompositeTickDriverControl {
 fn compose_runtime_handle(
   handle: &TickDriverHandle,
   executor_control: Box<dyn TickDriverControl>,
-  tick_driver_control_shared_factory: &dyn TickDriverControlSharedFactory,
 ) -> TickDriverHandle {
-  let executor_control = tick_driver_control_shared_factory.create_tick_driver_control_shared(executor_control);
+  let executor_control = TickDriverControlShared::new(executor_control);
   let control: Box<dyn TickDriverControl> =
     Box::new(CompositeTickDriverControl::new(handle.control(), executor_control));
-  let control = tick_driver_control_shared_factory.create_tick_driver_control_shared(control);
+  let control = TickDriverControlShared::new(control);
   TickDriverHandle::new(handle.id(), handle.kind(), handle.resolution(), control)
 }
