@@ -1,8 +1,11 @@
 //! Shared wrapper for RemoteWatchHook implementations.
 
+#[cfg(test)]
+mod tests;
+
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use super::{super::TerminationSignal, ActorRefProvider, RemoteWatchHook, RemoteWatchHookHandle};
 use crate::core::kernel::actor::{
@@ -20,22 +23,19 @@ use crate::core::kernel::actor::{
 /// lock scope and reduce deadlock risk.
 ///
 /// # Usage
-/// 1. Create: `RemoteWatchHookShared::new(provider, &[ActorPathScheme::FraktorTcp])`
+/// 1. Materialize a shared handle via `RemoteWatchHookSharedFactory`
 /// 2. Use clones for `ActorRefProvider` registration
 /// 3. Pass the same shared instance for `RemoteWatchHook` registration
-pub struct RemoteWatchHookShared<P: Send + 'static> {
+pub struct RemoteWatchHookHandleShared<P: Send + 'static> {
   inner:   SharedLock<RemoteWatchHookHandle<P>>,
   _marker: PhantomData<()>,
 }
 
-impl<P: Send + 'static> RemoteWatchHookShared<P> {
-  /// Creates a new shared wrapper around the provided implementation.
-  ///
-  /// The `schemes` parameter specifies the actor path schemes supported by
-  /// the underlying provider for `ActorRefProvider::supported_schemes()`.
-  pub fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
-    let handle = RemoteWatchHookHandle::new(provider, schemes);
-    Self { inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(handle), _marker: PhantomData }
+impl<P: Send + 'static> RemoteWatchHookHandleShared<P> {
+  /// Creates a new shared wrapper from an existing shared lock.
+  #[must_use]
+  pub const fn from_shared(inner: SharedLock<RemoteWatchHookHandle<P>>) -> Self {
+    Self { inner, _marker: PhantomData }
   }
 
   /// Acquires a write lock and applies the closure to the inner handle.
@@ -51,7 +51,7 @@ impl<P: Send + 'static> RemoteWatchHookShared<P> {
   }
 }
 
-impl<P: Send + 'static> SharedAccess<RemoteWatchHookHandle<P>> for RemoteWatchHookShared<P> {
+impl<P: Send + 'static> SharedAccess<RemoteWatchHookHandle<P>> for RemoteWatchHookHandleShared<P> {
   fn with_read<R>(&self, f: impl FnOnce(&RemoteWatchHookHandle<P>) -> R) -> R {
     self.inner.with_read(f)
   }
@@ -61,13 +61,13 @@ impl<P: Send + 'static> SharedAccess<RemoteWatchHookHandle<P>> for RemoteWatchHo
   }
 }
 
-impl<P: Send + 'static> Clone for RemoteWatchHookShared<P> {
+impl<P: Send + 'static> Clone for RemoteWatchHookHandleShared<P> {
   fn clone(&self) -> Self {
     Self { inner: self.inner.clone(), _marker: PhantomData }
   }
 }
 
-impl<P: RemoteWatchHook + Send + 'static> RemoteWatchHook for RemoteWatchHookShared<P> {
+impl<P: RemoteWatchHook + Send + 'static> RemoteWatchHook for RemoteWatchHookHandleShared<P> {
   fn handle_watch(&mut self, target: Pid, watcher: Pid) -> bool {
     self.with_write(|inner| inner.handle_watch(target, watcher))
   }
@@ -77,7 +77,7 @@ impl<P: RemoteWatchHook + Send + 'static> RemoteWatchHook for RemoteWatchHookSha
   }
 }
 
-impl<P: ActorRefProvider + RemoteWatchHook + Send + 'static> ActorRefProvider for RemoteWatchHookShared<P> {
+impl<P: ActorRefProvider + RemoteWatchHook + Send + 'static> ActorRefProvider for RemoteWatchHookHandleShared<P> {
   fn supported_schemes(&self) -> &'static [ActorPathScheme] {
     self.with_read(|inner| inner.supported_schemes())
   }

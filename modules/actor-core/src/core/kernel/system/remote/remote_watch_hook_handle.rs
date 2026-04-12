@@ -18,7 +18,9 @@ pub struct RemoteWatchHookHandle<P> {
 }
 
 impl<P> RemoteWatchHookHandle<P> {
-  pub(crate) const fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
+  /// Creates a new handle from the provider and its supported schemes.
+  #[must_use]
+  pub const fn new(provider: P, schemes: &'static [ActorPathScheme]) -> Self {
     Self { provider, schemes }
   }
 

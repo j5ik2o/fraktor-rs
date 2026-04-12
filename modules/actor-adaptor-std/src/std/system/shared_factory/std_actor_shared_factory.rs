@@ -21,7 +21,10 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscriberSharedFactory,
   },
-  system::shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
+  system::{
+    remote::{RemoteWatchHook, RemoteWatchHookHandle, RemoteWatchHookHandleShared, RemoteWatchHookHandleSharedFactory},
+    shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
+  },
   util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_adaptor_std_rs::std::sync::{StdSyncMutex, StdSyncRwLock};
@@ -146,5 +149,15 @@ where
   fn create_actor_ref_provider_handle_shared(&self, provider: P) -> ActorRefProviderHandleShared<P> {
     let schemes = provider.supported_schemes();
     ActorRefProviderHandleShared::from_shared(Self::create_lock(ActorRefProviderHandle::new(provider, schemes)))
+  }
+}
+
+impl<P> RemoteWatchHookHandleSharedFactory<P> for StdActorSharedFactory
+where
+  P: ActorRefProvider + RemoteWatchHook + 'static,
+{
+  fn create_remote_watch_hook_handle_shared(&self, provider: P) -> RemoteWatchHookHandleShared<P> {
+    let schemes = provider.supported_schemes();
+    RemoteWatchHookHandleShared::from_shared(Self::create_lock(RemoteWatchHookHandle::new(provider, schemes)))
   }
 }
