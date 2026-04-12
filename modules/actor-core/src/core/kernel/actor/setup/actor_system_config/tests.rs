@@ -4,12 +4,13 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::ArcShared;
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorShared,
-    ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
+    ActorLockFactory, ActorShared, ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    ReceiveTimeoutStateSharedFactory,
     actor_path::GuardianKind as PathGuardianKind,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
@@ -31,6 +32,7 @@ use crate::core::kernel::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscriberSharedFactory,
   },
+  pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, CircuitBreakerState, Clock},
   system::{
     ActorSystem,
     remote::RemotingConfig,
@@ -58,10 +60,12 @@ struct CountingLockProvider {
   receive_timeout_state_shared_calls: ArcShared<AtomicUsize>,
   message_invoker_shared_calls: ArcShared<AtomicUsize>,
   mailbox_shared_set_calls: ArcShared<AtomicUsize>,
+  circuit_breaker_shared_calls: ArcShared<AtomicUsize>,
 }
 
 impl CountingLockProvider {
   fn new() -> (
+    ArcShared<AtomicUsize>,
     ArcShared<AtomicUsize>,
     ArcShared<AtomicUsize>,
     ArcShared<AtomicUsize>,
@@ -82,6 +86,7 @@ impl CountingLockProvider {
     let receive_timeout_state_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let message_invoker_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let mailbox_shared_set_calls = ArcShared::new(AtomicUsize::new(0));
+    let circuit_breaker_shared_calls = ArcShared::new(AtomicUsize::new(0));
     let provider = Self {
       inner: BuiltinSpinSharedFactory::new(),
       event_stream_shared_calls: event_stream_shared_calls.clone(),
@@ -93,6 +98,7 @@ impl CountingLockProvider {
       receive_timeout_state_shared_calls: receive_timeout_state_shared_calls.clone(),
       message_invoker_shared_calls: message_invoker_shared_calls.clone(),
       mailbox_shared_set_calls: mailbox_shared_set_calls.clone(),
+      circuit_breaker_shared_calls: circuit_breaker_shared_calls.clone(),
     };
     (
       event_stream_shared_calls,
@@ -104,8 +110,53 @@ impl CountingLockProvider {
       receive_timeout_state_shared_calls,
       message_invoker_shared_calls,
       mailbox_shared_set_calls,
+      circuit_breaker_shared_calls,
       provider,
     )
+  }
+}
+
+impl Clone for CountingLockProvider {
+  fn clone(&self) -> Self {
+    Self {
+      inner: BuiltinSpinSharedFactory::new(),
+      event_stream_shared_calls: self.event_stream_shared_calls.clone(),
+      dispatcher_shared_calls: self.dispatcher_shared_calls.clone(),
+      executor_shared_calls: self.executor_shared_calls.clone(),
+      actor_ref_sender_shared_calls: self.actor_ref_sender_shared_calls.clone(),
+      actor_shared_lock_calls: self.actor_shared_lock_calls.clone(),
+      actor_cell_state_shared_calls: self.actor_cell_state_shared_calls.clone(),
+      receive_timeout_state_shared_calls: self.receive_timeout_state_shared_calls.clone(),
+      message_invoker_shared_calls: self.message_invoker_shared_calls.clone(),
+      mailbox_shared_set_calls: self.mailbox_shared_set_calls.clone(),
+      circuit_breaker_shared_calls: self.circuit_breaker_shared_calls.clone(),
+    }
+  }
+}
+
+#[derive(Clone)]
+struct FakeClock;
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct FakeInstant(u64);
+
+impl Clock for FakeClock {
+  type Instant = FakeInstant;
+
+  fn now(&self) -> Self::Instant {
+    FakeInstant(0)
+  }
+
+  fn elapsed_since(&self, _earlier: Self::Instant) -> Duration {
+    Duration::ZERO
+  }
+}
+
+impl ActorLockFactory for CountingLockProvider {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.inner.create_lock(value)
   }
 }
 
@@ -211,6 +262,16 @@ impl ContextPipeWakerHandleSharedFactory for CountingLockProvider {
   }
 }
 
+impl CircuitBreakerSharedFactory<FakeClock> for CountingLockProvider {
+  fn create_circuit_breaker_shared(
+    &self,
+    circuit_breaker: CircuitBreaker<FakeClock>,
+  ) -> CircuitBreakerShared<FakeClock> {
+    self.circuit_breaker_shared_calls.fetch_add(1, Ordering::SeqCst);
+    CircuitBreakerSharedFactory::create_circuit_breaker_shared(&self.inner, circuit_breaker)
+  }
+}
+
 #[test]
 fn test_actor_system_config_default() {
   let config = ActorSystemConfig::default();
@@ -288,6 +349,7 @@ fn test_actor_system_config_with_shared_factory_rebuilds_default_dispatcher() {
     _receive_timeout_state_shared_calls,
     _message_invoker_shared_calls,
     _mailbox_shared_set_calls,
+    _circuit_breaker_shared_calls,
     provider,
   ) = CountingLockProvider::new();
 
@@ -321,6 +383,7 @@ fn test_actor_system_config_with_shared_factory_routes_spawn_path_through_sender
     receive_timeout_state_shared_calls,
     message_invoker_shared_calls,
     mailbox_shared_set_calls,
+    _circuit_breaker_shared_calls,
     provider,
   ) = CountingLockProvider::new();
   let system = ActorSystem::new_empty_with(|config| config.with_shared_factory(provider));
@@ -365,5 +428,38 @@ fn test_actor_system_config_with_shared_factory_routes_spawn_path_through_sender
     mailbox_shared_set_calls.load(Ordering::SeqCst),
     1,
     "spawn path should materialize mailbox shared locks via the configured lock provider"
+  );
+}
+
+#[test]
+fn test_actor_system_config_circuit_breaker_shared_factory_uses_registered_provider() {
+  let (
+    _event_stream_shared_calls,
+    _dispatcher_shared_calls,
+    _executor_shared_calls,
+    _actor_ref_sender_shared_calls,
+    _actor_shared_lock_calls,
+    _actor_cell_state_shared_calls,
+    _receive_timeout_state_shared_calls,
+    _message_invoker_shared_calls,
+    _mailbox_shared_set_calls,
+    circuit_breaker_shared_calls,
+    provider,
+  ) = CountingLockProvider::new();
+
+  let config = ActorSystemConfig::default()
+    .with_shared_factory(provider.clone())
+    .with_circuit_breaker_shared_factory::<FakeClock, _>(provider);
+
+  let shared = config
+    .circuit_breaker_shared_factory::<FakeClock>()
+    .expect("circuit breaker shared factory should be registered for FakeClock")
+    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(2, Duration::from_secs(1), FakeClock));
+
+  assert_eq!(shared.state(), CircuitBreakerState::Closed);
+  assert_eq!(
+    circuit_breaker_shared_calls.load(Ordering::SeqCst),
+    1,
+    "ActorSystemConfig should materialize CircuitBreakerShared via the registered provider"
   );
 }

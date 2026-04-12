@@ -1,12 +1,13 @@
 use alloc::string::ToString;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess};
+use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock};
 
 use crate::core::kernel::{
   actor::{
-    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext, ActorShared,
-    ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCell, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorContext,
+    ActorLockFactory, ActorShared, ActorSharedFactory, Pid, ReceiveTimeoutState, ReceiveTimeoutStateShared,
+    ReceiveTimeoutStateSharedFactory,
     actor_path::ActorPathScheme,
     actor_ref::{ActorRef, ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory, SendOutcome},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
@@ -156,6 +157,14 @@ impl CountingAskSharedFactory {
       actor_future_shared_calls: actor_future_shared_calls.clone(),
     };
     (actor_ref_sender_shared_calls, actor_future_shared_calls, provider)
+  }
+}
+
+impl ActorLockFactory for CountingAskSharedFactory {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.inner.create_lock(value)
   }
 }
 

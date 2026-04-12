@@ -6,8 +6,8 @@ use core::{
 
 use fraktor_actor_core_rs::core::kernel::{
   actor::{
-    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorShared, ActorSharedFactory,
-    ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
+    Actor, ActorCellState, ActorCellStateShared, ActorCellStateSharedFactory, ActorLockFactory, ActorShared,
+    ActorSharedFactory, ReceiveTimeoutState, ReceiveTimeoutStateShared, ReceiveTimeoutStateSharedFactory,
     actor_ref::{ActorRefSender, ActorRefSenderShared, ActorRefSenderSharedFactory},
     actor_ref_provider::{ActorRefProviderHandleShared, ActorRefProviderHandleSharedFactory, LocalActorRefProvider},
     context_pipe::{ContextPipeWakerHandle, ContextPipeWakerHandleShared, ContextPipeWakerHandleSharedFactory},
@@ -33,7 +33,7 @@ use fraktor_actor_core_rs::core::kernel::{
   util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SpinSyncMutex},
+  sync::{ArcShared, SharedLock, SpinSyncMutex},
   time::TimerInstant,
 };
 
@@ -62,6 +62,14 @@ impl CountingSubscriberLockProvider {
       event_stream_subscriber_shared: event_stream_subscriber_shared.clone(),
     };
     (event_stream_subscriber_shared, provider)
+  }
+}
+
+impl ActorLockFactory for CountingSubscriberLockProvider {
+  fn create_lock<T>(&self, value: T) -> SharedLock<T>
+  where
+    T: Send + 'static, {
+    self.inner.create_lock(value)
   }
 }
 

@@ -6,7 +6,14 @@ use core::{
 
 use fraktor_utils_core_rs::core::sync::SharedAccess;
 
-use crate::core::kernel::pattern::{CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerState, Clock};
+use crate::core::kernel::{
+  actor::setup::ActorSystemConfig,
+  pattern::{
+    CircuitBreaker, CircuitBreakerCallError, CircuitBreakerShared, CircuitBreakerSharedFactory, CircuitBreakerState,
+    Clock,
+  },
+  system::shared_factory::BuiltinSpinSharedFactory,
+};
 
 /// A deterministic clock for unit tests that does not depend on `std::time`.
 #[derive(Clone)]
@@ -41,16 +48,37 @@ impl Clock for FakeClock {
   }
 }
 
+fn shared_with_clock(max_failures: u32, reset_timeout: Duration, clock: FakeClock) -> CircuitBreakerShared<FakeClock> {
+  let config =
+    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinSpinSharedFactory::new());
+  config
+    .circuit_breaker_shared_factory::<FakeClock>()
+    .expect("circuit breaker shared factory should be registered for FakeClock")
+    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(max_failures, reset_timeout, clock))
+}
+
 #[test]
 fn new_starts_closed() {
-  let cb = CircuitBreakerShared::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
+  let cb = shared_with_clock(3, Duration::from_millis(100), FakeClock::new());
+  assert_eq!(cb.state(), CircuitBreakerState::Closed);
+  assert_eq!(cb.failure_count(), 0);
+}
+
+#[test]
+fn builtin_spin_shared_factory_wraps_circuit_breaker() {
+  let config =
+    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinSpinSharedFactory::new());
+  let cb = config
+    .circuit_breaker_shared_factory::<FakeClock>()
+    .expect("circuit breaker shared factory should be registered for FakeClock")
+    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(3, Duration::from_millis(100), FakeClock::new()));
   assert_eq!(cb.state(), CircuitBreakerState::Closed);
   assert_eq!(cb.failure_count(), 0);
 }
 
 #[test]
 fn clone_shares_state() {
-  let cb1 = CircuitBreakerShared::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
+  let cb1 = shared_with_clock(3, Duration::from_millis(100), FakeClock::new());
   let cb2 = cb1.clone();
 
   SharedAccess::with_write(&cb1, |inner| {
@@ -61,7 +89,7 @@ fn clone_shares_state() {
 
 #[tokio::test]
 async fn call_succeeds_in_closed() {
-  let cb = CircuitBreakerShared::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
+  let cb = shared_with_clock(3, Duration::from_millis(100), FakeClock::new());
 
   let result = cb.call(|| async { Ok::<_, &str>(42) }).await;
   match result {
@@ -73,7 +101,7 @@ async fn call_succeeds_in_closed() {
 
 #[tokio::test]
 async fn call_records_failure() {
-  let cb = CircuitBreakerShared::new_with_clock(2, Duration::from_millis(100), FakeClock::new());
+  let cb = shared_with_clock(2, Duration::from_millis(100), FakeClock::new());
 
   let result = cb.call(|| async { Err::<(), _>("oops") }).await;
   assert!(matches!(result, Err(CircuitBreakerCallError::Failed("oops"))));
@@ -82,7 +110,7 @@ async fn call_records_failure() {
 
 #[tokio::test]
 async fn call_trips_after_max_failures() {
-  let cb = CircuitBreakerShared::new_with_clock(2, Duration::from_millis(100), FakeClock::new());
+  let cb = shared_with_clock(2, Duration::from_millis(100), FakeClock::new());
 
   let _ = cb.call(|| async { Err::<(), _>("a") }).await;
   let _ = cb.call(|| async { Err::<(), _>("b") }).await;
@@ -95,7 +123,7 @@ async fn call_trips_after_max_failures() {
 #[tokio::test]
 async fn call_recovers_after_reset_timeout() {
   let clock = FakeClock::new();
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
@@ -113,7 +141,7 @@ async fn call_recovers_after_reset_timeout() {
 #[tokio::test]
 async fn half_open_failure_reopens() {
   let clock = FakeClock::new();
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -127,7 +155,7 @@ async fn half_open_failure_reopens() {
 #[tokio::test]
 async fn open_error_contains_remaining_duration() {
   let clock = FakeClock::new();
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_secs(10), clock.clone());
+  let cb = shared_with_clock(1, Duration::from_secs(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
 
@@ -144,7 +172,7 @@ async fn open_error_contains_remaining_duration() {
 #[tokio::test(start_paused = true)]
 async fn cancel_during_half_open_records_failure() {
   let clock = FakeClock::new();
-  let cb = CircuitBreakerShared::new_with_clock(1, Duration::from_millis(10), clock.clone());
+  let cb = shared_with_clock(1, Duration::from_millis(10), clock.clone());
 
   let _ = cb.call(|| async { Err::<(), _>("fail") }).await;
   assert_eq!(cb.state(), CircuitBreakerState::Open);
@@ -165,7 +193,7 @@ async fn cancel_during_half_open_records_failure() {
 
 #[tokio::test]
 async fn successful_calls_do_not_leak_guard_resources() {
-  let cb = CircuitBreakerShared::new_with_clock(3, Duration::from_millis(100), FakeClock::new());
+  let cb = shared_with_clock(3, Duration::from_millis(100), FakeClock::new());
 
   for _ in 0..100 {
     let result = cb.call(|| async { Ok::<_, &str>(1) }).await;

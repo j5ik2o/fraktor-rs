@@ -26,6 +26,7 @@ use fraktor_actor_core_rs::core::kernel::{
     EventStream, EventStreamShared, EventStreamSharedFactory, EventStreamSubscriber, EventStreamSubscriberShared,
     EventStreamSubscriberSharedFactory,
   },
+  pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, Clock},
   system::shared_factory::{MailboxSharedSet, MailboxSharedSetFactory},
   util::futures::{ActorFuture, ActorFutureShared, ActorFutureSharedFactory},
 };
@@ -118,6 +119,15 @@ impl BoundedPriorityMessageQueueStateSharedFactory for StdActorSharedFactory {
     state: BoundedPriorityMessageQueueState,
   ) -> BoundedPriorityMessageQueueStateShared {
     BoundedPriorityMessageQueueStateShared::from_shared_lock(Self::create_lock(state))
+  }
+}
+
+impl<C> CircuitBreakerSharedFactory<C> for StdActorSharedFactory
+where
+  C: Clock + 'static,
+{
+  fn create_circuit_breaker_shared(&self, circuit_breaker: CircuitBreaker<C>) -> CircuitBreakerShared<C> {
+    CircuitBreakerShared::from_shared_lock(Self::create_lock(circuit_breaker))
   }
 }
 

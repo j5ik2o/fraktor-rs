@@ -1,8 +1,8 @@
 //! Thread-safe shared wrapper for [`CircuitBreaker`](super::CircuitBreaker).
 
-use core::{future::Future, time::Duration};
+use core::future::Future;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, SpinSyncMutex};
+use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock};
 
 use super::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,
@@ -28,20 +28,10 @@ impl<C: Clock + 'static> Clone for CircuitBreakerShared<C> {
 }
 
 impl<C: Clock + 'static> CircuitBreakerShared<C> {
-  /// Creates a new shared circuit breaker in the **Closed** state.
-  ///
-  /// * `max_failures` — consecutive failure threshold before the circuit trips.
-  /// * `reset_timeout` — delay in the **Open** state before a probe call is allowed.
-  /// * `clock` — a [`Clock`] implementation for obtaining the current time.
+  /// Creates a shared wrapper from an existing shared lock.
   #[must_use]
-  pub fn new_with_clock(max_failures: u32, reset_timeout: Duration, clock: C) -> Self {
-    Self {
-      inner: SharedLock::new_with_driver::<SpinSyncMutex<_>>(CircuitBreaker::new_with_clock(
-        max_failures,
-        reset_timeout,
-        clock,
-      )),
-    }
+  pub const fn from_shared_lock(inner: SharedLock<CircuitBreaker<C>>) -> Self {
+    Self { inner }
   }
 
   /// Executes `operation` through the circuit breaker.

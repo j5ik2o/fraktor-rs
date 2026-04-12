@@ -9,7 +9,7 @@ use fraktor_utils_core_rs::core::sync::ArcShared;
 
 use crate::core::kernel::{
   actor::{
-    ActorCellStateSharedFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
+    ActorCellStateSharedFactory, ActorLockFactory, ActorSharedFactory, ReceiveTimeoutStateSharedFactory,
     actor_ref::ActorRefSenderSharedFactory,
     actor_ref_provider::{ActorRefProviderHandleSharedFactory, ActorRefProviderInstaller, LocalActorRefProvider},
     context_pipe::ContextPipeWakerHandleSharedFactory,
@@ -26,6 +26,7 @@ use crate::core::kernel::{
     ExecutorSharedFactory, MessageDispatcherConfigurator, MessageDispatcherSharedFactory, SharedMessageQueueFactory,
   },
   event::stream::{EventStreamSharedFactory, EventStreamSubscriberSharedFactory},
+  pattern::{CircuitBreakerSharedFactory, Clock},
   system::shared_factory::MailboxSharedSetFactory,
   util::futures::ActorFutureSharedFactory,
 };
@@ -86,7 +87,8 @@ impl ActorSystemSetup {
   #[must_use]
   pub fn with_shared_factory<P>(self, provider: P) -> Self
   where
-    P: ExecutorSharedFactory
+    P: ActorLockFactory
+      + ExecutorSharedFactory
       + MessageDispatcherSharedFactory
       + SharedMessageQueueFactory
       + ActorRefSenderSharedFactory
@@ -103,6 +105,15 @@ impl ActorSystemSetup {
       + ContextPipeWakerHandleSharedFactory
       + 'static, {
     Self { config: self.config.with_shared_factory(provider) }
+  }
+
+  /// Registers a circuit-breaker shared factory for the supplied clock type.
+  #[must_use]
+  pub fn with_circuit_breaker_shared_factory<C, F>(self, factory: F) -> Self
+  where
+    C: Clock + 'static,
+    F: CircuitBreakerSharedFactory<C> + 'static, {
+    Self { config: self.config.with_circuit_breaker_shared_factory::<C, F>(factory) }
   }
 
   /// Registers a dispatcher configurator under the supplied id.
