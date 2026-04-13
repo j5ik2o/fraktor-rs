@@ -54,8 +54,9 @@
 
 //! Utilities for the fraktor actor runtime.
 
+// std is intentionally imported here for std-locks / debug-locks backends (reviewed & approved).
 #[cfg(feature = "std")]
-#[allow(cfg_std_forbid)]
+#[allow(clippy::useless_attribute, cfg_std_forbid)]
 extern crate std;
 
 extern crate alloc;
