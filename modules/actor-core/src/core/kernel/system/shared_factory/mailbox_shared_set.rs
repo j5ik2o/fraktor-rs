@@ -16,7 +16,7 @@ pub struct MailboxSharedSet {
 impl MailboxSharedSet {
   /// Creates a mailbox lock bundle from an already materialized shared lock.
   #[must_use]
-  pub const fn new(user_queue_lock: MailboxLocked<()>) -> Self {
+  pub(crate) const fn new(user_queue_lock: MailboxLocked<()>) -> Self {
     Self { user_queue_lock }
   }
 
