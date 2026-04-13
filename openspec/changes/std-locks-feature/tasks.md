@@ -11,13 +11,13 @@
 
 ## 3. utils-adaptor-std の StdSyncMutex / StdSyncRwLock を re-export に置換
 
-- [ ] 3.1 `utils-adaptor-std` の `StdSyncMutex` / `StdSyncRwLock` の自前実装を削除し、`utils-core` からの re-export に置き換える（`pub use fraktor_utils_core_rs::core::sync::{StdSyncMutex, StdSyncRwLock};`）
+- [ ] 3.1 `utils-adaptor-std` の `[dependencies]` で `fraktor-utils-core-rs` に `std-locks` feature を追加し、`StdSyncMutex` / `StdSyncRwLock` の自前実装を削除して `utils-core` からの re-export に置き換える（`pub use fraktor_utils_core_rs::core::sync::{StdSyncMutex, StdSyncRwLock};`）
 - [ ] 3.2 `utils-adaptor-std` の `StdSyncMutex` / `StdSyncRwLock` の単体テストを削除する（utils-core 側のテストで担保）
 
 ## 4. actor-adaptor-std 等で feature を有効化
 
 - [ ] 4.1 `fraktor-actor-adaptor-std-rs/Cargo.toml` の `[dependencies]` で `fraktor-utils-core-rs` に `std-locks` feature を追加する
-- [ ] 4.2 `utils-adaptor-std`, `cluster-adaptor-std`, `remote-adaptor-std`, `showcases-std` の `[dependencies]` で `fraktor-utils-core-rs` に `std-locks` feature を追加する
+- [ ] 4.2 `cluster-adaptor-std`, `remote-adaptor-std`, `showcases-std` の `[dependencies]` で `fraktor-utils-core-rs` に `std-locks` feature を追加する
 
 ## 5. 検証
 

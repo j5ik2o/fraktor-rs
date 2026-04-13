@@ -26,7 +26,7 @@
   - `modules/utils-core/Cargo.toml` — `std`, `std-locks` feature 追加
   - `modules/utils-core/src/core/sync/` — `StdSyncMutex`, `StdSyncRwLock` 新設、type alias 分岐追加
   - `modules/actor-adaptor-std/Cargo.toml` — utils-core の `std-locks` feature 有効化
-  - `modules/utils-adaptor-std/` — 既存の `StdSyncMutex` / `StdSyncRwLock` との関係整理
+  - `modules/utils-adaptor-std/` — 既存の `StdSyncMutex` / `StdSyncRwLock` を utils-core からの re-export に置換
 - 影響内容:
   - actor-core のソースコードは変更なし
   - `actor-adaptor-std` を依存に含む std 環境では `DefaultMutex` = `StdSyncMutex` になる
@@ -34,4 +34,4 @@
   - `debug-locks` と `std-locks` が同時に有効な場合は `debug-locks` を優先する
 - 非目標:
   - actor-core に `#[cfg(feature = "std")]` ブロックを追加すること
-  - utils-adaptor-std の既存 `StdSyncMutex` を削除すること
+  - utils-adaptor-std の `StdSyncMutex` / `StdSyncRwLock` の外部 import パスを変更すること
