@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{RemoteWatchHook, noop_remote_watch_hook::NoopRemoteWatchHook};
 use crate::core::kernel::actor::Pid;

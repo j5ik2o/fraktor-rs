@@ -4,7 +4,7 @@
 //! that subscriber callbacks are executed without holding the event stream lock,
 //! preventing potential deadlocks.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedRwLock, DefaultRwLock};
+use fraktor_utils_core_rs::core::sync::{DefaultRwLock, SharedAccess, SharedRwLock};
 
 use crate::core::kernel::event::stream::{
   EventStream, EventStreamEvent, EventStreamSubscriberShared, event_stream_events::DEFAULT_CAPACITY,

@@ -4,7 +4,7 @@ use alloc::{string::String, vec::Vec};
 use core::any::TypeId;
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedRwLock, DefaultRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedRwLock};
 use hashbrown::{HashMap, hash_map::Entry};
 
 use super::SerializerResolutionOrigin;

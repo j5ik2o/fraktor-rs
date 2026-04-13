@@ -3,7 +3,7 @@
 use alloc::{vec, vec::Vec};
 use core::sync::atomic::AtomicUsize;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 use portable_atomic::{AtomicU64, Ordering};
 
 use super::resizer::Resizer;

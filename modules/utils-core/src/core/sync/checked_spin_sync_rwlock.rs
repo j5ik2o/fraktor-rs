@@ -5,16 +5,16 @@ mod tests;
 
 use core::{
   mem::ManuallyDrop,
-  ops::{Deref, DerefMut},
   sync::atomic::{AtomicU8, Ordering},
 };
 
-use spin::{RwLockReadGuard, RwLockWriteGuard};
-
-use super::{RwLockDriver, spin_sync_rwlock::SpinSyncRwLock};
+use super::{
+  RwLockDriver, checked_rw_lock_read_guard::CheckedRwLockReadGuard,
+  checked_rw_lock_write_guard::CheckedRwLockWriteGuard, spin_sync_rwlock::SpinSyncRwLock,
+};
 
 /// Lock state constants.
-const STATE_FREE: u8 = 0;
+pub(super) const STATE_FREE: u8 = 0;
 const STATE_READ: u8 = 1;
 const STATE_WRITE: u8 = 2;
 
@@ -30,8 +30,8 @@ const STATE_WRITE: u8 = 2;
 ///
 /// This variant does **not** require `std::thread` and works in `no_std`.
 pub struct CheckedSpinSyncRwLock<T> {
-  inner: SpinSyncRwLock<T>,
-  state: AtomicU8,
+  pub(super) inner: SpinSyncRwLock<T>,
+  pub(super) state: AtomicU8,
 }
 
 unsafe impl<T: Send> Send for CheckedSpinSyncRwLock<T> {}
@@ -64,15 +64,11 @@ impl<T> CheckedSpinSyncRwLock<T> {
   /// Panics if any lock (read or write) is currently held.
   pub fn write(&self) -> CheckedRwLockWriteGuard<'_, T> {
     let prev = self.state.load(Ordering::Acquire);
-    assert!(
-      prev == STATE_FREE,
-      "CheckedSpinSyncRwLock: {}",
-      match prev {
-        STATE_READ => "write lock while read lock held",
-        STATE_WRITE => "re-entrant write lock detected",
-        _ => "unexpected lock state",
-      }
-    );
+    assert!(prev == STATE_FREE, "CheckedSpinSyncRwLock: {}", match prev {
+      | STATE_READ => "write lock while read lock held",
+      | STATE_WRITE => "re-entrant write lock detected",
+      | _ => "unexpected lock state",
+    });
     self.state.store(STATE_WRITE, Ordering::Release);
     let guard = self.inner.write();
     CheckedRwLockWriteGuard { parent: self, guard: ManuallyDrop::new(guard) }
@@ -81,54 +77,6 @@ impl<T> CheckedSpinSyncRwLock<T> {
   /// Consumes the rwlock and returns the inner value.
   pub fn into_inner(self) -> T {
     self.inner.into_inner()
-  }
-}
-
-/// Read guard for [`CheckedSpinSyncRwLock`].
-pub struct CheckedRwLockReadGuard<'a, T> {
-  parent: &'a CheckedSpinSyncRwLock<T>,
-  guard:  ManuallyDrop<RwLockReadGuard<'a, T>>,
-}
-
-impl<T> Deref for CheckedRwLockReadGuard<'_, T> {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    &self.guard
-  }
-}
-
-impl<T> Drop for CheckedRwLockReadGuard<'_, T> {
-  fn drop(&mut self) {
-    unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.state.store(STATE_FREE, Ordering::Release);
-  }
-}
-
-/// Write guard for [`CheckedSpinSyncRwLock`].
-pub struct CheckedRwLockWriteGuard<'a, T> {
-  parent: &'a CheckedSpinSyncRwLock<T>,
-  guard:  ManuallyDrop<RwLockWriteGuard<'a, T>>,
-}
-
-impl<T> Deref for CheckedRwLockWriteGuard<'_, T> {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    &self.guard
-  }
-}
-
-impl<T> DerefMut for CheckedRwLockWriteGuard<'_, T> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.guard
-  }
-}
-
-impl<T> Drop for CheckedRwLockWriteGuard<'_, T> {
-  fn drop(&mut self) {
-    unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.state.store(STATE_FREE, Ordering::Release);
   }
 }
 

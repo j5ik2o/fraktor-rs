@@ -7,7 +7,7 @@ use fraktor_utils_core_rs::core::{
     queue::{OfferOutcome, QueueError, SyncQueue, backend::VecDequeBackend},
     wait::{WaitError, WaitQueue, WaitShared},
   },
-  sync::{SharedLock, DefaultMutex},
+  sync::{DefaultMutex, SharedLock},
 };
 
 use super::UserQueueShared;

@@ -1,6 +1,6 @@
 //! Mailbox lock bundle for shared mailbox state.
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex, WeakShared};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock, WeakShared};
 
 use crate::core::kernel::{
   actor::{ActorCell, messaging::message_invoker::MessageInvokerShared},

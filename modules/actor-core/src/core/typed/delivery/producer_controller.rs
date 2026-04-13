@@ -5,7 +5,7 @@ mod tests;
 
 use alloc::{string::String, vec::Vec};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::core::{
   kernel::event::logging::LogLevel,

@@ -1,6 +1,6 @@
 //! Shared wrapper for PlacementCoordinatorCore.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::placement_coordinator::PlacementCoordinatorCore;
 

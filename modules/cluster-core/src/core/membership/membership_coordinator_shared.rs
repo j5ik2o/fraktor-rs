@@ -1,6 +1,6 @@
 //! Shared wrapper for MembershipCoordinator.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::MembershipCoordinator;
 

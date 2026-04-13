@@ -81,4 +81,3 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
     "ActorSystemConfig::default() should seed the default dispatcher entry"
   );
 }
-

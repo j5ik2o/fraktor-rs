@@ -6,7 +6,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 #[cfg(any(test, feature = "test-support"))]
 use super::ManualTestDriver;

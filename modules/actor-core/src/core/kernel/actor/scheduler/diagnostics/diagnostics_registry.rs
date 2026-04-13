@@ -1,7 +1,7 @@
 use alloc::{collections::VecDeque, vec::Vec};
 use core::marker::PhantomData;
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::SchedulerDiagnosticsEvent;
 

@@ -1,6 +1,6 @@
 //! Shared wrapper for serialization extension instance.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::extension::SerializationExtension;
 use crate::core::kernel::actor::extension::Extension;

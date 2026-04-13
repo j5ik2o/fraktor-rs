@@ -1,6 +1,9 @@
 //! Actor system configuration API.
 
-use alloc::{boxed::Box, string::{String, ToString}};
+use alloc::{
+  boxed::Box,
+  string::{String, ToString},
+};
 use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
@@ -25,16 +28,16 @@ mod tests;
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
-  system_name: String,
-  default_guardian: PathGuardianKind,
-  remoting_config: Option<RemotingConfig>,
-  scheduler_config: SchedulerConfig,
-  tick_driver_config: Option<TickDriverConfig>,
+  system_name:          String,
+  default_guardian:     PathGuardianKind,
+  remoting_config:      Option<RemotingConfig>,
+  scheduler_config:     SchedulerConfig,
+  tick_driver_config:   Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
-  provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  dispatchers: Dispatchers,
-  mailboxes: Mailboxes,
-  start_time: Option<Duration>,
+  provider_installer:   Option<ArcShared<dyn ActorRefProviderInstaller>>,
+  dispatchers:          Dispatchers,
+  mailboxes:            Mailboxes,
+  start_time:           Option<Duration>,
 }
 
 impl ActorSystemConfig {

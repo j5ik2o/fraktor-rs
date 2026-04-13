@@ -5,13 +5,10 @@ mod tests;
 
 use core::{
   mem::ManuallyDrop,
-  ops::{Deref, DerefMut},
   sync::atomic::{AtomicBool, Ordering},
 };
 
-use spin::MutexGuard;
-
-use super::{LockDriver, spin_sync_mutex::SpinSyncMutex};
+use super::{LockDriver, checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard, spin_sync_mutex::SpinSyncMutex};
 
 /// Spin-based mutex with re-entry detection.
 ///
@@ -23,8 +20,8 @@ use super::{LockDriver, spin_sync_mutex::SpinSyncMutex};
 /// does **not** require `std::thread` and works in `no_std` environments.
 /// The trade-off is that the panic message cannot include the owning thread ID.
 pub struct CheckedSpinSyncMutex<T> {
-  inner:  SpinSyncMutex<T>,
-  locked: AtomicBool,
+  pub(super) inner:  SpinSyncMutex<T>,
+  pub(super) locked: AtomicBool,
 }
 
 unsafe impl<T: Send> Send for CheckedSpinSyncMutex<T> {}
@@ -43,10 +40,7 @@ impl<T> CheckedSpinSyncMutex<T> {
   ///
   /// Panics if the mutex is already held (re-entrant lock detected).
   pub fn lock(&self) -> CheckedSpinSyncMutexGuard<'_, T> {
-    assert!(
-      !self.locked.swap(true, Ordering::Acquire),
-      "CheckedSpinSyncMutex: re-entrant lock detected"
-    );
+    assert!(!self.locked.swap(true, Ordering::Acquire), "CheckedSpinSyncMutex: re-entrant lock detected");
     let guard = self.inner.lock();
     CheckedSpinSyncMutexGuard { parent: self, guard: ManuallyDrop::new(guard) }
   }
@@ -54,35 +48,6 @@ impl<T> CheckedSpinSyncMutex<T> {
   /// Consumes the mutex and returns the inner value.
   pub fn into_inner(self) -> T {
     self.inner.into_inner()
-  }
-}
-
-/// Guard for [`CheckedSpinSyncMutex`].
-pub struct CheckedSpinSyncMutexGuard<'a, T> {
-  parent: &'a CheckedSpinSyncMutex<T>,
-  guard:  ManuallyDrop<MutexGuard<'a, T>>,
-}
-
-impl<T> Deref for CheckedSpinSyncMutexGuard<'_, T> {
-  type Target = T;
-
-  fn deref(&self) -> &Self::Target {
-    &self.guard
-  }
-}
-
-impl<T> DerefMut for CheckedSpinSyncMutexGuard<'_, T> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.guard
-  }
-}
-
-impl<T> Drop for CheckedSpinSyncMutexGuard<'_, T> {
-  fn drop(&mut self) {
-    // Release the real lock first, then clear the flag.
-    // SAFETY: Drop is called exactly once and the guard is still valid.
-    unsafe { ManuallyDrop::drop(&mut self.guard) };
-    self.parent.locked.store(false, Ordering::Release);
   }
 }
 

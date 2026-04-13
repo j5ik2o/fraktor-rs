@@ -27,7 +27,7 @@ mod tests;
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock};
 
 use super::{execute_error::ExecuteError, executor::Executor, trampoline_state::TrampolineState};
 

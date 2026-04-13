@@ -7,7 +7,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::hash::Hash;
 
 use ahash::RandomState;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock};
 use hashbrown::HashMap;
 
 use crate::core::typed::{behavior::Behavior, dsl::Behaviors};

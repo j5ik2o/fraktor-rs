@@ -12,7 +12,7 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::any::TypeId;
 
 pub use deregistered::Deregistered;
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedLock, DefaultMutex, shared::Shared};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultMutex, SharedLock, shared::Shared};
 pub use listing::Listing;
 pub use receptionist_command::ReceptionistCommand;
 pub use registered::Registered;

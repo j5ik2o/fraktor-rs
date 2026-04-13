@@ -1,11 +1,17 @@
+#[allow(clippy::disallowed_types)]
+mod arc_shared;
 /// Re-entry detecting spin mutex (no_std compatible).
 #[allow(clippy::disallowed_types)]
 mod checked_spin_sync_mutex;
+/// Guard for the checked spin mutex.
+mod checked_spin_sync_mutex_guard;
+/// Read guard for the checked spin rwlock.
+mod checked_rw_lock_read_guard;
+/// Write guard for the checked spin rwlock.
+mod checked_rw_lock_write_guard;
 /// Re-entry detecting spin rwlock (no_std compatible).
 #[allow(clippy::disallowed_types)]
 mod checked_spin_sync_rwlock;
-#[allow(clippy::disallowed_types)]
-mod arc_shared;
 mod lock_driver;
 mod lock_driver_factory;
 mod rw_lock_driver_factory;
@@ -28,9 +34,12 @@ mod weak_shared;
 mod weak_shared_lock;
 mod weak_shared_rw_lock;
 
-pub use checked_spin_sync_mutex::{CheckedSpinSyncMutex, CheckedSpinSyncMutexGuard};
-pub use checked_spin_sync_rwlock::{CheckedRwLockReadGuard, CheckedRwLockWriteGuard, CheckedSpinSyncRwLock};
 pub use arc_shared::ArcShared;
+pub use checked_rw_lock_read_guard::CheckedRwLockReadGuard;
+pub use checked_rw_lock_write_guard::CheckedRwLockWriteGuard;
+pub use checked_spin_sync_mutex::CheckedSpinSyncMutex;
+pub use checked_spin_sync_mutex_guard::CheckedSpinSyncMutexGuard;
+pub use checked_spin_sync_rwlock::CheckedSpinSyncRwLock;
 pub use lock_driver::LockDriver;
 pub use lock_driver_factory::LockDriverFactory;
 pub use rw_lock_driver_factory::RwLockDriverFactory;

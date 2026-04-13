@@ -15,7 +15,7 @@ use core::{
   time::Duration,
 };
 
-use fraktor_utils_core_rs::core::sync::{ArcShared, SharedAccess, SharedRwLock, DefaultRwLock};
+use fraktor_utils_core_rs::core::sync::{ArcShared, DefaultRwLock, SharedAccess, SharedRwLock};
 
 use super::{
   ActorPathRegistry, ActorRefProvider, ActorRefProviderHandleShared, AuthorityState, CellsShared, GuardianKind,

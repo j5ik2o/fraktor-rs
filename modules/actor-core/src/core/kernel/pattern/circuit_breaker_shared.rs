@@ -2,7 +2,7 @@
 
 use core::future::Future;
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::{
   circuit_breaker::CircuitBreaker, circuit_breaker_call_error::CircuitBreakerCallError,

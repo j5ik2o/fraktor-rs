@@ -1,6 +1,6 @@
 //! Shared wrapper for actor-cell runtime state.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use crate::core::kernel::actor::ActorCellState;
 

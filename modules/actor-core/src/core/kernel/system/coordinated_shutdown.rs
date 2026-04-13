@@ -16,7 +16,7 @@ use core::{
 };
 
 use fraktor_utils_core_rs::core::{
-  sync::{ArcShared, SharedAccess, SharedLock, DefaultMutex},
+  sync::{ArcShared, DefaultMutex, SharedAccess, SharedLock},
   timing::delay::DelayProvider,
 };
 use futures::future::{Either, join_all, poll_fn, select};

@@ -1,6 +1,6 @@
 //! Shared wrapper for context-pipe waker handles.
 
-use fraktor_utils_core_rs::core::sync::{SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedLock};
 
 use crate::core::kernel::actor::{
   context_pipe::context_pipe_waker_handle::ContextPipeWakerHandle, messaging::system_message::SystemMessage,

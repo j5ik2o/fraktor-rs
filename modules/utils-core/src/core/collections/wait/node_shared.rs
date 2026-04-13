@@ -1,7 +1,7 @@
 //! Shared wrapper for WaitNode enabling interior mutability.
 
 use super::node::WaitNode;
-use crate::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use crate::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 /// Shared wrapper for [`WaitNode`] enabling interior mutability.
 ///

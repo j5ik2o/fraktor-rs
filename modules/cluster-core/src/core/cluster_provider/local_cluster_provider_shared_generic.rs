@@ -1,6 +1,6 @@
 //! Shared wrapper for LocalClusterProvider implementations.
 
-use fraktor_utils_core_rs::core::sync::{SharedAccess, SharedLock, DefaultMutex};
+use fraktor_utils_core_rs::core::sync::{DefaultMutex, SharedAccess, SharedLock};
 
 use super::LocalClusterProvider;
 
