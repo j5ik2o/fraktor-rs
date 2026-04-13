@@ -37,6 +37,16 @@ mod spin_sync_mutex;
 #[allow(clippy::disallowed_types)]
 mod spin_sync_rwlock;
 mod spin_sync_rwlock_factory;
+/// Standard-library-backed mutex driver (requires std).
+/// `std::sync::Mutex` usage is intentional — this is the std-locks backend (reviewed & approved).
+#[cfg(feature = "std-locks")]
+#[allow(clippy::disallowed_types, cfg_std_forbid)]
+mod std_sync_mutex;
+/// Standard-library-backed rwlock driver (requires std).
+/// `std::sync::RwLock` usage is intentional — this is the std-locks backend (reviewed & approved).
+#[cfg(feature = "std-locks")]
+#[allow(clippy::disallowed_types, cfg_std_forbid)]
+mod std_sync_rwlock;
 #[allow(clippy::disallowed_types)]
 mod weak_shared;
 mod weak_shared_lock;
@@ -65,22 +75,31 @@ pub use spin_sync_factory::SpinSyncFactory;
 pub use spin_sync_mutex::SpinSyncMutex;
 pub use spin_sync_rwlock::SpinSyncRwLock;
 pub use spin_sync_rwlock_factory::SpinSyncRwLockFactory;
+#[cfg(feature = "std-locks")]
+pub use std_sync_mutex::StdSyncMutex;
+#[cfg(feature = "std-locks")]
+pub use std_sync_rwlock::StdSyncRwLock;
 pub use weak_shared::WeakShared;
 pub use weak_shared_lock::WeakSharedLock;
 pub use weak_shared_rw_lock::WeakSharedRwLock;
 
-/// Default mutex backend. Resolves to [`SpinSyncMutex`] in production
-/// and [`CheckedSpinSyncMutex`] when the `debug-locks` feature is enabled.
-#[cfg(not(feature = "debug-locks"))]
-pub type DefaultMutex<T> = SpinSyncMutex<T>;
 /// Default mutex backend with re-entry detection (debug-locks enabled).
 #[cfg(feature = "debug-locks")]
 pub type DefaultMutex<T> = CheckedSpinSyncMutex<T>;
+/// Default mutex backend backed by [`std::sync::Mutex`] (std-locks enabled, debug-locks disabled).
+#[cfg(all(feature = "std-locks", not(feature = "debug-locks")))]
+pub type DefaultMutex<T> = StdSyncMutex<T>;
+/// Default mutex backend backed by spin lock (no std-locks, no debug-locks).
+#[cfg(not(any(feature = "debug-locks", feature = "std-locks")))]
+pub type DefaultMutex<T> = SpinSyncMutex<T>;
 
-/// Default rwlock backend. Resolves to [`SpinSyncRwLock`] in production
-/// and [`CheckedSpinSyncRwLock`] when the `debug-locks` feature is enabled.
-#[cfg(not(feature = "debug-locks"))]
-pub type DefaultRwLock<T> = SpinSyncRwLock<T>;
 /// Default rwlock backend with re-entry detection (debug-locks enabled).
 #[cfg(feature = "debug-locks")]
 pub type DefaultRwLock<T> = CheckedSpinSyncRwLock<T>;
+/// Default rwlock backend backed by [`std::sync::RwLock`] (std-locks enabled, debug-locks
+/// disabled).
+#[cfg(all(feature = "std-locks", not(feature = "debug-locks")))]
+pub type DefaultRwLock<T> = StdSyncRwLock<T>;
+/// Default rwlock backend backed by spin lock (no std-locks, no debug-locks).
+#[cfg(not(any(feature = "debug-locks", feature = "std-locks")))]
+pub type DefaultRwLock<T> = SpinSyncRwLock<T>;
