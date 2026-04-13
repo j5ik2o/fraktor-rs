@@ -16,7 +16,6 @@ use crate::core::kernel::{
     setup::{ActorSystemConfig, BootstrapSetup},
   },
   dispatch::dispatcher::MessageDispatcherConfigurator,
-  pattern::{CircuitBreakerSharedFactory, Clock},
 };
 
 /// Pekko-compatible setup aggregate backed by [`ActorSystemConfig`].
@@ -69,15 +68,6 @@ impl ActorSystemSetup {
   where
     P: ActorRefProviderInstaller + 'static, {
     Self { config: self.config.with_actor_ref_provider_installer(installer) }
-  }
-
-  /// Registers a circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn with_circuit_breaker_shared_factory<C, F>(self, factory: F) -> Self
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    Self { config: self.config.with_circuit_breaker_shared_factory::<C, F>(factory) }
   }
 
   /// Registers a dispatcher configurator under the supplied id.

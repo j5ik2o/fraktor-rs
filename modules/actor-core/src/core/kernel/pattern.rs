@@ -9,8 +9,6 @@ mod circuit_breaker_call_error;
 mod circuit_breaker_open_error;
 /// Thread-safe shared wrapper for the circuit breaker.
 mod circuit_breaker_shared;
-/// Factory contract for the shared circuit breaker wrapper.
-mod circuit_breaker_shared_factory;
 /// Circuit breaker state representation.
 mod circuit_breaker_state;
 /// Clock trait for abstracting time access.
@@ -24,7 +22,6 @@ pub use circuit_breaker::CircuitBreaker;
 pub use circuit_breaker_call_error::CircuitBreakerCallError;
 pub use circuit_breaker_open_error::CircuitBreakerOpenError;
 pub use circuit_breaker_shared::CircuitBreakerShared;
-pub use circuit_breaker_shared_factory::CircuitBreakerSharedFactory;
 pub use circuit_breaker_state::CircuitBreakerState;
 pub use clock::Clock;
 pub use graceful_stop::{graceful_stop, graceful_stop_with_message};

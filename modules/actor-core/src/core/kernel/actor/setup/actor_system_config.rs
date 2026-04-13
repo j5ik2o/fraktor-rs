@@ -1,15 +1,7 @@
 //! Actor system configuration API.
 
-use alloc::{
-  boxed::Box,
-  string::{String, ToString},
-  vec::Vec,
-};
-use core::{
-  any::{Any, TypeId},
-  marker::PhantomData,
-  time::Duration,
-};
+use alloc::{boxed::Box, string::{String, ToString}};
+use core::time::Duration;
 
 use fraktor_utils_core_rs::core::sync::ArcShared;
 
@@ -25,96 +17,11 @@ use crate::core::kernel::{
     dispatcher::{Dispatchers, MessageDispatcherConfigurator},
     mailbox::Mailboxes,
   },
-  pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, Clock},
   system::remote::RemotingConfig,
 };
 
 #[cfg(test)]
 mod tests;
-
-trait ErasedCircuitBreakerSharedFactoryEntry: Send + Sync {
-  fn clock_type_id(&self) -> TypeId;
-  fn create_boxed(&self, circuit_breaker: Box<dyn Any + Send>) -> Option<Box<dyn Any + Send>>;
-}
-
-struct TypedCircuitBreakerSharedFactoryEntry<C, F>
-where
-  C: Clock + 'static,
-  F: CircuitBreakerSharedFactory<C> + 'static, {
-  factory: F,
-  _marker: PhantomData<fn() -> C>,
-}
-
-impl<C, F> ErasedCircuitBreakerSharedFactoryEntry for TypedCircuitBreakerSharedFactoryEntry<C, F>
-where
-  C: Clock + 'static,
-  F: CircuitBreakerSharedFactory<C> + 'static,
-{
-  fn clock_type_id(&self) -> TypeId {
-    TypeId::of::<C>()
-  }
-
-  fn create_boxed(&self, circuit_breaker: Box<dyn Any + Send>) -> Option<Box<dyn Any + Send>> {
-    let circuit_breaker = circuit_breaker.downcast::<CircuitBreaker<C>>().ok()?;
-    Some(Box::new(self.factory.create_circuit_breaker_shared(*circuit_breaker)))
-  }
-}
-
-#[derive(Default)]
-struct CircuitBreakerSharedFactoryRegistry {
-  entries: Vec<Box<dyn ErasedCircuitBreakerSharedFactoryEntry>>,
-}
-
-impl CircuitBreakerSharedFactoryRegistry {
-  fn register<C, F>(&mut self, factory: F)
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    let entry: Box<dyn ErasedCircuitBreakerSharedFactoryEntry> =
-      Box::new(TypedCircuitBreakerSharedFactoryEntry::<C, F> { factory, _marker: PhantomData });
-    let clock_type_id = TypeId::of::<C>();
-    if let Some(index) = self.entries.iter().position(|current| current.clock_type_id() == clock_type_id) {
-      self.entries[index] = entry;
-    } else {
-      self.entries.push(entry);
-    }
-  }
-
-  fn contains<C>(&self) -> bool
-  where
-    C: Clock + 'static, {
-    let clock_type_id = TypeId::of::<C>();
-    self.entries.iter().any(|entry| entry.clock_type_id() == clock_type_id)
-  }
-
-  fn create<C>(&self, circuit_breaker: CircuitBreaker<C>) -> Option<CircuitBreakerShared<C>>
-  where
-    C: Clock + 'static, {
-    let clock_type_id = TypeId::of::<C>();
-    let entry = self.entries.iter().find(|entry| entry.clock_type_id() == clock_type_id)?;
-    let shared = entry.create_boxed(Box::new(circuit_breaker))?;
-    shared.downcast::<CircuitBreakerShared<C>>().ok().map(|shared| *shared)
-  }
-}
-
-struct ActorSystemConfigCircuitBreakerSharedFactory<'a, C>
-where
-  C: Clock + 'static, {
-  registry: &'a CircuitBreakerSharedFactoryRegistry,
-  _marker:  PhantomData<fn() -> C>,
-}
-
-impl<C> CircuitBreakerSharedFactory<C> for ActorSystemConfigCircuitBreakerSharedFactory<'_, C>
-where
-  C: Clock + 'static,
-{
-  fn create_circuit_breaker_shared(&self, circuit_breaker: CircuitBreaker<C>) -> CircuitBreakerShared<C> {
-    match self.registry.create(circuit_breaker) {
-      | Some(shared) => shared,
-      | None => panic!("circuit breaker shared factory should be registered for the requested clock type"),
-    }
-  }
-}
 
 /// Configuration for the actor system.
 pub struct ActorSystemConfig {
@@ -125,7 +32,6 @@ pub struct ActorSystemConfig {
   tick_driver_config: Option<TickDriverConfig>,
   extension_installers: Option<ExtensionInstallers>,
   provider_installer: Option<ArcShared<dyn ActorRefProviderInstaller>>,
-  circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry,
   dispatchers: Dispatchers,
   mailboxes: Mailboxes,
   start_time: Option<Duration>,
@@ -180,16 +86,6 @@ impl ActorSystemConfig {
   where
     P: ActorRefProviderInstaller + 'static, {
     self.provider_installer = Some(ArcShared::new(installer));
-    self
-  }
-
-  /// Registers a circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn with_circuit_breaker_shared_factory<C, F>(mut self, factory: F) -> Self
-  where
-    C: Clock + 'static,
-    F: CircuitBreakerSharedFactory<C> + 'static, {
-    self.circuit_breaker_shared_factories.register::<C, F>(factory);
     self
   }
 
@@ -287,17 +183,6 @@ impl ActorSystemConfig {
     self.provider_installer.take()
   }
 
-  /// Returns the circuit-breaker shared factory for the supplied clock type.
-  #[must_use]
-  pub fn circuit_breaker_shared_factory<C>(&self) -> Option<impl CircuitBreakerSharedFactory<C> + '_>
-  where
-    C: Clock + 'static, {
-    self.circuit_breaker_shared_factories.contains::<C>().then_some(ActorSystemConfigCircuitBreakerSharedFactory::<C> {
-      registry: &self.circuit_breaker_shared_factories,
-      _marker:  PhantomData,
-    })
-  }
-
   /// Returns the dispatcher registry configured for the system.
   #[must_use]
   pub const fn dispatchers(&self) -> &Dispatchers {
@@ -333,7 +218,6 @@ impl Default for ActorSystemConfig {
       tick_driver_config: None,
       extension_installers: None,
       provider_installer: None,
-      circuit_breaker_shared_factories: CircuitBreakerSharedFactoryRegistry::default(),
       dispatchers,
       mailboxes,
       start_time: None,

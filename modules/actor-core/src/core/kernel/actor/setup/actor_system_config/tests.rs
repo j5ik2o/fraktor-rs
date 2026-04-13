@@ -3,7 +3,6 @@ use core::time::Duration;
 use crate::core::kernel::{
   actor::{actor_path::GuardianKind as PathGuardianKind, setup::ActorSystemConfig},
   dispatch::dispatcher::DEFAULT_DISPATCHER_ID,
-  pattern::{CircuitBreaker, CircuitBreakerShared, CircuitBreakerSharedFactory, CircuitBreakerState, Clock},
   system::remote::RemotingConfig,
 };
 
@@ -16,24 +15,6 @@ impl crate::core::kernel::actor::Actor for NoopActor {
     _message: crate::core::kernel::actor::messaging::AnyMessageView<'_>,
   ) -> Result<(), crate::core::kernel::actor::error::ActorError> {
     Ok(())
-  }
-}
-
-#[derive(Clone)]
-struct FakeClock;
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct FakeInstant(u64);
-
-impl Clock for FakeClock {
-  type Instant = FakeInstant;
-
-  fn now(&self) -> Self::Instant {
-    FakeInstant(0)
-  }
-
-  fn elapsed_since(&self, _earlier: Self::Instant) -> Duration {
-    Duration::ZERO
   }
 }
 
@@ -101,23 +82,3 @@ fn test_actor_system_config_default_resolves_default_dispatcher() {
   );
 }
 
-struct BuiltinCircuitBreakerFactory;
-
-impl CircuitBreakerSharedFactory<FakeClock> for BuiltinCircuitBreakerFactory {
-  fn create_circuit_breaker_shared(&self, cb: CircuitBreaker<FakeClock>) -> CircuitBreakerShared<FakeClock> {
-    CircuitBreakerShared::new(cb)
-  }
-}
-
-#[test]
-fn test_actor_system_config_circuit_breaker_shared_factory_uses_registered_provider() {
-  let config =
-    ActorSystemConfig::default().with_circuit_breaker_shared_factory::<FakeClock, _>(BuiltinCircuitBreakerFactory);
-
-  let shared = config
-    .circuit_breaker_shared_factory::<FakeClock>()
-    .expect("circuit breaker shared factory should be registered for FakeClock")
-    .create_circuit_breaker_shared(CircuitBreaker::new_with_clock(2, Duration::from_secs(1), FakeClock));
-
-  assert_eq!(shared.state(), CircuitBreakerState::Closed);
-}
